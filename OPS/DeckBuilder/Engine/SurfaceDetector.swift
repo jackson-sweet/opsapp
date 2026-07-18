@@ -15,6 +15,7 @@
 
 import Foundation
 import CoreGraphics
+import CryptoKit
 
 /// One closed face in the deck-edge graph.
 struct DetectedSurface: Identifiable, Equatable {
@@ -276,6 +277,22 @@ enum DeckSurfaceInspector {
 
 enum SurfaceDetector {
 
+    /// Process- and launch-stable identity for a detected face. Swift's
+    /// `hashValue` is intentionally randomized between processes, so it cannot
+    /// identify legacy surfaces in persisted order snapshots. Length-prefixing
+    /// each UTF-8 ID keeps the digest input unambiguous even when IDs contain
+    /// separators, while SHA-256 makes accidental collisions impractical.
+    private static func stableSurfaceId(vertexIds: [String]) -> String {
+        let sortedIds = vertexIds.sorted {
+            $0.utf8.lexicographicallyPrecedes($1.utf8)
+        }
+        let canonical = sortedIds
+            .map { "\($0.utf8.count):\($0)" }
+            .joined()
+        let digest = SHA256.hash(data: Data(canonical.utf8))
+        return "surface-" + digest.map { String(format: "%02x", $0) }.joined()
+    }
+
     /// Find every closed face in the edge graph. Returns an empty array when
     /// nothing is closed yet. Uses the planar face-walking algorithm:
     ///   1. Prune vertices of degree ≤ 1 iteratively (drops dangling lines
@@ -455,16 +472,18 @@ enum SurfaceDetector {
         // 6. Dedupe inner faces by sorted vertex set. The walk should already
         //    enumerate each face once, but this is cheap insurance against
         //    pathological topologies.
-        var seen: Set<String> = []
+        var seen: Set<[String]> = []
         var result: [DetectedSurface] = []
         for (i, f) in faces.enumerated() where !outerIndices.contains(i) {
             // A degenerate face with zero area (collinear vertices) isn't a
             // real surface — skip it.
             guard f.absArea > 0.5 else { continue }
-            let dedupKey = f.ids.sorted().joined(separator: "|")
-            if seen.insert(dedupKey).inserted {
+            let sortedVertexIds = f.ids.sorted {
+                $0.utf8.lexicographicallyPrecedes($1.utf8)
+            }
+            if seen.insert(sortedVertexIds).inserted {
                 result.append(DetectedSurface(
-                    id: "surface-" + String(dedupKey.hashValue),
+                    id: stableSurfaceId(vertexIds: sortedVertexIds),
                     vertexIds: f.ids,
                     positions: f.positions
                 ))

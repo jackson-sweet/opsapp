@@ -35,6 +35,9 @@ struct DeckMaterialsDriftKey: Equatable {
     var ninetyExactFeet: Double
     var glueAreaSqFt: Double
     var vinylSurfaceCount: Int
+    var directionSurfaces: [VinylSurfaceDirectionGeometrySnapshot]?
+    var directionRegions: [VinylDirectionRegionSnapshot]?
+    var directionTransitions: [VinylDirectionTransitionSnapshot]?
 
     static func == (lhs: DeckMaterialsDriftKey, rhs: DeckMaterialsDriftKey) -> Bool {
         guard lhs.vinylSurfaceCount == rhs.vinylSurfaceCount,
@@ -42,6 +45,21 @@ struct DeckMaterialsDriftKey: Equatable {
         for (a, b) in zip(lhs.cutPairs, rhs.cutPairs) {
             if abs(a.lengthInches - b.lengthInches) > 0.05 { return false }
             if abs(a.rollWidthInches - b.rollWidthInches) > 0.05 { return false }
+        }
+        if let lhsSurfaces = lhs.directionSurfaces,
+           let rhsSurfaces = rhs.directionSurfaces {
+            guard directionSurfacesEqual(lhsSurfaces, rhsSurfaces) else { return false }
+        } else {
+            // Additive compatibility for snapshots written before direction
+            // geometry retained its enclosing-surface ownership.
+            if let lhsRegions = lhs.directionRegions,
+               let rhsRegions = rhs.directionRegions {
+                guard directionRegionsEqual(lhsRegions, rhsRegions) else { return false }
+            }
+            if let lhsTransitions = lhs.directionTransitions,
+               let rhsTransitions = rhs.directionTransitions {
+                guard directionTransitionsEqual(lhsTransitions, rhsTransitions) else { return false }
+            }
         }
         // Flashing/glue tolerance per spec § 8 (±0.1' feet, ±0.1 sq ft).
         return abs(lhs.dripExactFeet - rhs.dripExactFeet) <= 0.1
@@ -70,19 +88,272 @@ struct DeckMaterialsDriftKey: Equatable {
         // `cutGroups` here would diverge whenever two surfaces share a label or a
         // degenerate surface dropped out of the plan, false-flagging drift.
         self.vinylSurfaceCount = snapshot.vinylSurfaceCount
+        self.directionSurfaces = snapshot.vinylDirectionSurfaces
+        self.directionRegions = snapshot.vinylDirectionRegions
+        self.directionTransitions = snapshot.vinylDirectionTransitions
     }
 
-    init(cutPairs: [CutPair], dripExactFeet: Double, ninetyExactFeet: Double, glueAreaSqFt: Double, vinylSurfaceCount: Int) {
+    init(
+        cutPairs: [CutPair],
+        dripExactFeet: Double,
+        ninetyExactFeet: Double,
+        glueAreaSqFt: Double,
+        vinylSurfaceCount: Int,
+        directionSurfaces: [VinylSurfaceDirectionGeometrySnapshot]? = nil,
+        directionRegions: [VinylDirectionRegionSnapshot]? = nil,
+        directionTransitions: [VinylDirectionTransitionSnapshot]? = nil
+    ) {
         self.cutPairs = cutPairs
         self.dripExactFeet = dripExactFeet
         self.ninetyExactFeet = ninetyExactFeet
         self.glueAreaSqFt = glueAreaSqFt
         self.vinylSurfaceCount = vinylSurfaceCount
+        self.directionSurfaces = directionSurfaces
+        self.directionRegions = directionRegions
+        self.directionTransitions = directionTransitions
     }
 
     static func cutPairOrder(_ a: CutPair, _ b: CutPair) -> Bool {
         if abs(a.lengthInches - b.lengthInches) > 0.0001 { return a.lengthInches < b.lengthInches }
         return a.rollWidthInches < b.rollWidthInches
+    }
+
+    static func directionGeometry(
+        for plan: VinylCutPlan
+    ) -> (
+        surfaces: [VinylSurfaceDirectionGeometrySnapshot],
+        regions: [VinylDirectionRegionSnapshot],
+        transitions: [VinylDirectionTransitionSnapshot]
+    ) {
+        let scaledPlanPoints = plan.surfaces.flatMap { surface in
+            guard surface.scaleFactor > 0 else { return [VinylDirectionPointSnapshot]() }
+            return surface.positions.map {
+                VinylDirectionPointSnapshot(
+                    xInches: Double($0.x) / surface.scaleFactor,
+                    yInches: Double($0.y) / surface.scaleFactor
+                )
+            }
+        }
+        guard let planMinX = scaledPlanPoints.map(\.xInches).min(),
+              let planMinY = scaledPlanPoints.map(\.yInches).min() else {
+            return ([], [], [])
+        }
+
+        var surfaces: [VinylSurfaceDirectionGeometrySnapshot] = []
+
+        for surface in plan.surfaces {
+            guard surface.scaleFactor > 0 else { continue }
+
+            func point(_ value: CGPoint) -> VinylDirectionPointSnapshot {
+                VinylDirectionPointSnapshot(
+                    xInches: (Double(value.x) / surface.scaleFactor) - planMinX,
+                    yInches: (Double(value.y) / surface.scaleFactor) - planMinY
+                )
+            }
+
+            var regions = surface.directionRegions.map { region in
+                VinylDirectionRegionSnapshot(
+                    runAngleDegrees: normalizedRunAngle(region.runAngleDegrees),
+                    points: canonicalPolygon(region.polygon.map(point))
+                )
+            }
+            regions.sort(by: directionRegionOrder)
+
+            var transitions: [VinylDirectionTransitionSnapshot] = []
+            for transition in surface.directionTransitions {
+                for segment in transition.segments {
+                    let rawStart = point(segment.start)
+                    let rawEnd = point(segment.end)
+                    let ordered = directionPointOrder(rawEnd, rawStart)
+                        ? (start: rawEnd, end: rawStart)
+                        : (start: rawStart, end: rawEnd)
+                    transitions.append(
+                        VinylDirectionTransitionSnapshot(
+                            start: ordered.start,
+                            end: ordered.end
+                        )
+                    )
+                }
+            }
+            transitions.sort(by: directionTransitionOrder)
+
+            surfaces.append(
+                VinylSurfaceDirectionGeometrySnapshot(
+                    surfaceId: surface.id,
+                    boundary: canonicalPolygon(surface.positions.map(point)),
+                    regions: regions,
+                    transitions: transitions
+                )
+            )
+        }
+
+        surfaces.sort(by: directionSurfaceOrder)
+        return (
+            surfaces,
+            surfaces.flatMap(\.regions).sorted(by: directionRegionOrder),
+            surfaces.flatMap(\.transitions).sorted(by: directionTransitionOrder)
+        )
+    }
+
+    private static func directionSurfacesEqual(
+        _ lhs: [VinylSurfaceDirectionGeometrySnapshot],
+        _ rhs: [VinylSurfaceDirectionGeometrySnapshot]
+    ) -> Bool {
+        guard lhs.count == rhs.count else { return false }
+        let canUseIds = lhs.allSatisfy { $0.surfaceId != nil }
+            && rhs.allSatisfy { $0.surfaceId != nil }
+        let orderedLhs = canUseIds ? lhs : lhs.sorted(by: directionSurfaceGeometryOrder)
+        let orderedRhs = canUseIds ? rhs : rhs.sorted(by: directionSurfaceGeometryOrder)
+        for (a, b) in zip(orderedLhs, orderedRhs) {
+            if canUseIds, a.surfaceId != b.surfaceId { return false }
+            guard directionPointsEqual(a.boundary, b.boundary),
+                  directionRegionsEqual(a.regions, b.regions),
+                  directionTransitionsEqual(a.transitions, b.transitions) else {
+                return false
+            }
+        }
+        return true
+    }
+
+    private static func directionRegionsEqual(
+        _ lhs: [VinylDirectionRegionSnapshot],
+        _ rhs: [VinylDirectionRegionSnapshot]
+    ) -> Bool {
+        guard lhs.count == rhs.count else { return false }
+        for (a, b) in zip(lhs, rhs) {
+            guard abs(a.runAngleDegrees - b.runAngleDegrees) <= 0.1,
+                  a.points.count == b.points.count else { return false }
+            for (aPoint, bPoint) in zip(a.points, b.points) {
+                if abs(aPoint.xInches - bPoint.xInches) > 0.05 { return false }
+                if abs(aPoint.yInches - bPoint.yInches) > 0.05 { return false }
+            }
+        }
+        return true
+    }
+
+    private static func directionPointsEqual(
+        _ lhs: [VinylDirectionPointSnapshot],
+        _ rhs: [VinylDirectionPointSnapshot]
+    ) -> Bool {
+        guard lhs.count == rhs.count else { return false }
+        for (a, b) in zip(lhs, rhs) {
+            if abs(a.xInches - b.xInches) > 0.05 { return false }
+            if abs(a.yInches - b.yInches) > 0.05 { return false }
+        }
+        return true
+    }
+
+    private static func directionTransitionsEqual(
+        _ lhs: [VinylDirectionTransitionSnapshot],
+        _ rhs: [VinylDirectionTransitionSnapshot]
+    ) -> Bool {
+        guard lhs.count == rhs.count else { return false }
+        for (a, b) in zip(lhs, rhs) {
+            if abs(a.start.xInches - b.start.xInches) > 0.05 { return false }
+            if abs(a.start.yInches - b.start.yInches) > 0.05 { return false }
+            if abs(a.end.xInches - b.end.xInches) > 0.05 { return false }
+            if abs(a.end.yInches - b.end.yInches) > 0.05 { return false }
+        }
+        return true
+    }
+
+    private static func directionRegionOrder(
+        _ lhs: VinylDirectionRegionSnapshot,
+        _ rhs: VinylDirectionRegionSnapshot
+    ) -> Bool {
+        if abs(lhs.runAngleDegrees - rhs.runAngleDegrees) > 0.0001 {
+            return lhs.runAngleDegrees < rhs.runAngleDegrees
+        }
+        if lhs.points.count != rhs.points.count { return lhs.points.count < rhs.points.count }
+        for (a, b) in zip(lhs.points, rhs.points) {
+            if abs(a.xInches - b.xInches) > 0.0001 { return a.xInches < b.xInches }
+            if abs(a.yInches - b.yInches) > 0.0001 { return a.yInches < b.yInches }
+        }
+        return false
+    }
+
+    private static func directionSurfaceOrder(
+        _ lhs: VinylSurfaceDirectionGeometrySnapshot,
+        _ rhs: VinylSurfaceDirectionGeometrySnapshot
+    ) -> Bool {
+        if let lhsId = lhs.surfaceId, let rhsId = rhs.surfaceId, lhsId != rhsId {
+            return lhsId < rhsId
+        }
+        return directionSurfaceGeometryOrder(lhs, rhs)
+    }
+
+    private static func directionSurfaceGeometryOrder(
+        _ lhs: VinylSurfaceDirectionGeometrySnapshot,
+        _ rhs: VinylSurfaceDirectionGeometrySnapshot
+    ) -> Bool {
+        if directionPointSequenceOrder(lhs.boundary, rhs.boundary) { return true }
+        if directionPointSequenceOrder(rhs.boundary, lhs.boundary) { return false }
+        if lhs.regions.count != rhs.regions.count { return lhs.regions.count < rhs.regions.count }
+        for (a, b) in zip(lhs.regions, rhs.regions) {
+            if directionRegionOrder(a, b) { return true }
+            if directionRegionOrder(b, a) { return false }
+        }
+        if lhs.transitions.count != rhs.transitions.count {
+            return lhs.transitions.count < rhs.transitions.count
+        }
+        for (a, b) in zip(lhs.transitions, rhs.transitions) {
+            if directionTransitionOrder(a, b) { return true }
+            if directionTransitionOrder(b, a) { return false }
+        }
+        return false
+    }
+
+    private static func directionTransitionOrder(
+        _ lhs: VinylDirectionTransitionSnapshot,
+        _ rhs: VinylDirectionTransitionSnapshot
+    ) -> Bool {
+        if directionPointOrder(lhs.start, rhs.start) { return true }
+        if directionPointOrder(rhs.start, lhs.start) { return false }
+        return directionPointOrder(lhs.end, rhs.end)
+    }
+
+    private static func directionPointOrder(
+        _ lhs: VinylDirectionPointSnapshot,
+        _ rhs: VinylDirectionPointSnapshot
+    ) -> Bool {
+        if abs(lhs.xInches - rhs.xInches) > 0.0001 { return lhs.xInches < rhs.xInches }
+        return lhs.yInches < rhs.yInches
+    }
+
+    private static func canonicalPolygon(
+        _ points: [VinylDirectionPointSnapshot]
+    ) -> [VinylDirectionPointSnapshot] {
+        guard points.count > 1 else { return points }
+        let forward = canonicalRotation(points)
+        let reverse = canonicalRotation(Array(points.reversed()))
+        return directionPointSequenceOrder(reverse, forward) ? reverse : forward
+    }
+
+    private static func canonicalRotation(
+        _ points: [VinylDirectionPointSnapshot]
+    ) -> [VinylDirectionPointSnapshot] {
+        guard let firstIndex = points.indices.min(by: {
+            directionPointOrder(points[$0], points[$1])
+        }) else { return points }
+        return Array(points[firstIndex...]) + Array(points[..<firstIndex])
+    }
+
+    private static func directionPointSequenceOrder(
+        _ lhs: [VinylDirectionPointSnapshot],
+        _ rhs: [VinylDirectionPointSnapshot]
+    ) -> Bool {
+        if lhs.count != rhs.count { return lhs.count < rhs.count }
+        for (a, b) in zip(lhs, rhs) {
+            if directionPointOrder(a, b) { return true }
+            if directionPointOrder(b, a) { return false }
+        }
+        return false
+    }
+
+    private static func normalizedRunAngle(_ angle: Double) -> Double {
+        var normalized = angle.truncatingRemainder(dividingBy: 180)
+        if normalized < 0 { normalized += 180 }
+        return abs(normalized - 180) < 0.001 ? 0 : normalized
     }
 }
 
@@ -172,6 +443,7 @@ enum DeckMaterialsEngine {
             )
             : RollPackResult(rollCount: 0, overlengthStripCount: 0)
 
+        let directionGeometry = DeckMaterialsDriftKey.directionGeometry(for: plan)
         let driftKey = DeckMaterialsDriftKey(
             cutPairs: plan.surfaces
                 .flatMap(\.cuts)
@@ -180,7 +452,10 @@ enum DeckMaterialsEngine {
             dripExactFeet: dripFeetExact,
             ninetyExactFeet: ninetyFeetExact,
             glueAreaSqFt: glueAreaSqFt,
-            vinylSurfaceCount: vinylInputs.count
+            vinylSurfaceCount: vinylInputs.count,
+            directionSurfaces: directionGeometry.surfaces,
+            directionRegions: directionGeometry.regions,
+            directionTransitions: directionGeometry.transitions
         )
 
         return DeckMaterialsList(

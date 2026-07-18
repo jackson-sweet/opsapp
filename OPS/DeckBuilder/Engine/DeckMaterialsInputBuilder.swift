@@ -77,7 +77,10 @@ enum DeckMaterialsInputBuilder {
             let trimmedLabel = surface.label?.trimmingCharacters(in: .whitespacesAndNewlines)
             let label = trimmedLabel.flatMap { $0.isEmpty ? nil : $0 } ?? "Surface \(index + 1)"
             let input = VinylOrderSurfaceInput(
-                id: surface.id,
+                // Geometry owns order-plan identity. Persisted DeckSurface IDs
+                // are created during reconciliation, so using one here would
+                // make an unchanged legacy deck look edited after first open.
+                id: face.id,
                 label: label,
                 levelName: levelName,
                 positions: face.positions,

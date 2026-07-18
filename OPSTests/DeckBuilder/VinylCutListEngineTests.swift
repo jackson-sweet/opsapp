@@ -386,13 +386,30 @@ final class VinylCutListEngineTests: XCTestCase {
         XCTAssertEqual(surfacePlan.edges.filter { $0.edgeType == .deckEdge }.count, 1)
     }
 
-    func testAutomaticCanAllowTurnedCutsWhenTheyReduceWaste() {
-        let surface = lShape(
+    func testUnlockedMixedRunUsesOnlyHouseCollinearSeamEvenWhenInvalidSplitIsCheaper() {
+        let positions = [
+            CGPoint(x: 0, y: 0),
+            CGPoint(x: 300, y: 0),
+            CGPoint(x: 300, y: 70),
+            CGPoint(x: 60, y: 70),
+            CGPoint(x: 60, y: 300),
+            CGPoint(x: 0, y: 300)
+        ]
+        let surface = VinylOrderSurfaceInput(
             id: "main",
-            width: 300,
-            height: 300,
-            notchWidth: 230,
-            notchHeight: 230
+            label: "Main deck",
+            levelName: nil,
+            positions: positions,
+            scaleFactor: 1,
+            edges: positions.indices.map { index in
+                VinylOrderSurfaceEdge(
+                    id: index == 3 ? "house-wall" : "edge-\(index)",
+                    start: positions[index],
+                    end: positions[(index + 1) % positions.count],
+                    edgeType: index == 3 ? .houseEdge : .deckEdge,
+                    label: nil
+                )
+            }
         )
 
         let sameRunPlan = VinylCutListEngine.makePlan(
@@ -422,7 +439,331 @@ final class VinylCutListEngineTests: XCTestCase {
         let turnedCut = try! XCTUnwrap(turnedPlan.surfaces.first)
         XCTAssertFalse(sameRunCut.hasMixedRunAxes)
         XCTAssertTrue(turnedCut.hasMixedRunAxes)
-        XCTAssertLessThan(turnedCut.cutAreaSqFt, sameRunCut.cutAreaSqFt)
+        XCTAssertTrue(turnedPlan.isOrderable)
+        XCTAssertEqual(turnedCut.directionRegions.count, 2)
+
+        let transition = try! XCTUnwrap(turnedCut.directionTransitions.first)
+        XCTAssertEqual(transition.houseEdgeId, "house-wall")
+        XCTAssertEqual(transition.segments.count, 1)
+        let seam = try! XCTUnwrap(transition.segments.first)
+        XCTAssertEqual(seam.start.x, 60, accuracy: 0.01)
+        XCTAssertEqual(seam.end.x, 60, accuracy: 0.01)
+        XCTAssertEqual([seam.start.y, seam.end.y].min() ?? -1, 0, accuracy: 0.01)
+        XCTAssertEqual([seam.start.y, seam.end.y].max() ?? -1, 70, accuracy: 0.01)
+
+        let regionIds = Set(turnedCut.directionRegions.map(\.id))
+        XCTAssertEqual(Set(turnedCut.cuts.compactMap(\.directionRegionId)), regionIds)
+        XCTAssertTrue(turnedCut.cuts.allSatisfy { $0.directionRegionId != nil })
+        XCTAssertLessThanOrEqual(turnedCut.cutAreaSqFt, sameRunCut.cutAreaSqFt)
+    }
+
+    func testUnlockedMixedRunCanFollowHorizontalHouseWallExtension() {
+        let positions = [
+            CGPoint(x: 0, y: 0),
+            CGPoint(x: 300, y: 0),
+            CGPoint(x: 300, y: 60),
+            CGPoint(x: 70, y: 60),
+            CGPoint(x: 70, y: 300),
+            CGPoint(x: 0, y: 300)
+        ]
+        let surface = VinylOrderSurfaceInput(
+            id: "main",
+            label: "Main deck",
+            levelName: nil,
+            positions: positions,
+            scaleFactor: 1,
+            edges: positions.indices.map { index in
+                VinylOrderSurfaceEdge(
+                    id: index == 2 ? "house-wall" : "edge-\(index)",
+                    start: positions[index],
+                    end: positions[(index + 1) % positions.count],
+                    edgeType: index == 2 ? .houseEdge : .deckEdge,
+                    label: nil
+                )
+            }
+        )
+
+        let plan = VinylCutListEngine.makePlan(
+            surfaces: [surface],
+            settings: VinylOrderSettings(
+                color: "",
+                rollWidthInches: 72,
+                seamOverlapInches: 0,
+                edgeWrapInches: 0,
+                direction: .automatic,
+                allowsDirectionalChanges: true
+            )
+        )
+
+        let surfacePlan = try! XCTUnwrap(plan.surfaces.first)
+        guard let seam = surfacePlan.directionTransitions.first?.segments.first else {
+            return XCTFail(
+                "missing horizontal transition; issues=\(plan.issues), regions=\(surfacePlan.directionRegions), cuts=\(surfacePlan.cuts.map { $0.runAngleDegrees })"
+            )
+        }
+        XCTAssertTrue(plan.isOrderable)
+        XCTAssertEqual(seam.start.y, 60, accuracy: 0.01)
+        XCTAssertEqual(seam.end.y, 60, accuracy: 0.01)
+        XCTAssertEqual([seam.start.x, seam.end.x].min() ?? -1, 0, accuracy: 0.01)
+        XCTAssertEqual([seam.start.x, seam.end.x].max() ?? -1, 70, accuracy: 0.01)
+    }
+
+    func testWallAlignedTransitionDoesNotReceiveExteriorEdgeWrap() {
+        let positions = [
+            CGPoint(x: 0, y: 0),
+            CGPoint(x: 300, y: 0),
+            CGPoint(x: 300, y: 70),
+            CGPoint(x: 60, y: 70),
+            CGPoint(x: 60, y: 300),
+            CGPoint(x: 0, y: 300)
+        ]
+        let surface = VinylOrderSurfaceInput(
+            id: "main",
+            label: "Main deck",
+            levelName: nil,
+            positions: positions,
+            scaleFactor: 1,
+            edges: positions.indices.map { index in
+                VinylOrderSurfaceEdge(
+                    id: index == 3 ? "house-wall" : "edge-\(index)",
+                    start: positions[index],
+                    end: positions[(index + 1) % positions.count],
+                    edgeType: index == 3 ? .houseEdge : .deckEdge,
+                    label: nil
+                )
+            }
+        )
+        let plan = VinylCutListEngine.makePlan(
+            surfaces: [surface],
+            settings: VinylOrderSettings(
+                color: "",
+                rollWidthInches: 72,
+                seamOverlapInches: 0,
+                edgeWrapInches: 6,
+                direction: .automatic,
+                allowsDirectionalChanges: true
+            )
+        )
+
+        let surfacePlan = try! XCTUnwrap(plan.surfaces.first)
+        let transition = try! XCTUnwrap(surfacePlan.directionTransitions.first)
+        let seam = try! XCTUnwrap(transition.segments.first)
+
+        for region in surfacePlan.directionRegions {
+            let radians = region.runAngleDegrees * .pi / 180
+            func project(_ point: CGPoint) -> CGPoint {
+                CGPoint(
+                    x: (point.x * cos(radians)) + (point.y * sin(radians)),
+                    y: (-point.x * sin(radians)) + (point.y * cos(radians))
+                )
+            }
+
+            let projectedStart = project(seam.start)
+            let projectedEnd = project(seam.end)
+            let projectedCentroid = project(CGPoint(
+                x: region.polygon.map(\.x).reduce(0, +) / CGFloat(region.polygon.count),
+                y: region.polygon.map(\.y).reduce(0, +) / CGFloat(region.polygon.count)
+            ))
+            let cuts = surfacePlan.cuts.filter { $0.directionRegionId == region.id }
+            XCTAssertFalse(cuts.isEmpty)
+
+            if abs(projectedStart.x - projectedEnd.x) < 0.01 {
+                let seamRun = Double(projectedStart.x)
+                if Double(projectedCentroid.x) < seamRun {
+                    XCTAssertLessThanOrEqual(cuts.map(\.runEndInches).max() ?? .infinity, seamRun + 0.01)
+                } else {
+                    XCTAssertGreaterThanOrEqual(cuts.map(\.runStartInches).min() ?? -.infinity, seamRun - 0.01)
+                }
+            } else if abs(projectedStart.y - projectedEnd.y) < 0.01 {
+                let seamCross = Double(projectedStart.y)
+                if Double(projectedCentroid.y) < seamCross {
+                    XCTAssertLessThanOrEqual(cuts.map(\.bandEndInches).max() ?? .infinity, seamCross + 0.01)
+                } else {
+                    XCTAssertGreaterThanOrEqual(cuts.map(\.bandStartInches).min() ?? -.infinity, seamCross - 0.01)
+                }
+            } else {
+                XCTFail("Fixture must project the wall seam onto one cut axis.")
+            }
+        }
+    }
+
+    func testUnlockedMixedRunKeepsTransitionCollinearOnRotatedDeck() {
+        let radians = 30.0 * Double.pi / 180
+        func rotate(_ point: CGPoint) -> CGPoint {
+            CGPoint(
+                x: (point.x * cos(radians)) - (point.y * sin(radians)),
+                y: (point.x * sin(radians)) + (point.y * cos(radians))
+            )
+        }
+
+        let basePositions = [
+            CGPoint(x: 0, y: 0),
+            CGPoint(x: 300, y: 0),
+            CGPoint(x: 300, y: 70),
+            CGPoint(x: 60, y: 70),
+            CGPoint(x: 60, y: 300),
+            CGPoint(x: 0, y: 300)
+        ]
+        let positions = basePositions.map(rotate)
+        let surface = VinylOrderSurfaceInput(
+            id: "main",
+            label: "Main deck",
+            levelName: nil,
+            positions: positions,
+            scaleFactor: 1,
+            edges: positions.indices.map { index in
+                VinylOrderSurfaceEdge(
+                    id: index == 3 ? "rotated-house-wall" : "edge-\(index)",
+                    start: positions[index],
+                    end: positions[(index + 1) % positions.count],
+                    edgeType: index == 3 ? .houseEdge : .deckEdge,
+                    label: nil
+                )
+            }
+        )
+
+        let plan = VinylCutListEngine.makePlan(
+            surfaces: [surface],
+            settings: VinylOrderSettings(
+                color: "",
+                rollWidthInches: 72,
+                seamOverlapInches: 0,
+                edgeWrapInches: 0,
+                direction: .automatic,
+                allowsDirectionalChanges: true
+            )
+        )
+
+        let surfacePlan = try! XCTUnwrap(plan.surfaces.first)
+        guard let transition = surfacePlan.directionTransitions.first else {
+            return XCTFail(
+                "missing rotated transition; issues=\(plan.issues), regions=\(surfacePlan.directionRegions), cuts=\(surfacePlan.cuts.map { $0.runAngleDegrees })"
+            )
+        }
+        let wall = try! XCTUnwrap(surface.edges.first { $0.id == transition.houseEdgeId })
+        let wallDX = Double(wall.end.x - wall.start.x)
+        let wallDY = Double(wall.end.y - wall.start.y)
+        let wallLength = sqrt((wallDX * wallDX) + (wallDY * wallDY))
+        for point in transition.segments.flatMap({ [$0.start, $0.end] }) {
+            let cross = abs(
+                (wallDX * Double(point.y - wall.start.y)) -
+                    (wallDY * Double(point.x - wall.start.x))
+            )
+            XCTAssertLessThanOrEqual(cross / wallLength, 0.01)
+        }
+
+        let angles = Set(surfacePlan.directionRegions.map { Int($0.runAngleDegrees.rounded()) })
+        XCTAssertEqual(angles, Set([30, 120]))
+        XCTAssertTrue(plan.isOrderable)
+    }
+
+    func testUnlockedTurnIsBlockedWhenNoHouseWallCanCarryTheSeam() {
+        let surface = lShape(
+            id: "main",
+            width: 300,
+            height: 300,
+            notchWidth: 230,
+            notchHeight: 230
+        )
+
+        let plan = VinylCutListEngine.makePlan(
+            surfaces: [surface],
+            settings: VinylOrderSettings(
+                color: "",
+                rollWidthInches: 72,
+                seamOverlapInches: 0,
+                edgeWrapInches: 0,
+                direction: .automatic,
+                allowsDirectionalChanges: true
+            )
+        )
+
+        let surfacePlan = try! XCTUnwrap(plan.surfaces.first)
+        XCTAssertFalse(plan.isOrderable)
+        XCTAssertEqual(
+            plan.issues,
+            [.mixedRunMissingHouseAlignedTransition(surfaceId: "main")]
+        )
+        XCTAssertEqual(plan.blockingMessage, "NO HOUSE-WALL SPLIT · LOCK RUN OR MARK WALL")
+        XCTAssertFalse(surfacePlan.hasMixedRunAxes)
+        XCTAssertTrue(surfacePlan.directionTransitions.isEmpty)
+        XCTAssertEqual(plan.orderNotes(projectTitle: "P", deckTitle: "D"), "")
+        XCTAssertEqual(plan.textMessageBody(projectTitle: "P"), "")
+        XCTAssertTrue(VinylCutListTextTemplate.cutLines(for: plan).isEmpty)
+    }
+
+    func testUnlockedManualLengthUsesTheHouseWallTransition() {
+        let positions = [
+            CGPoint(x: 0, y: 0),
+            CGPoint(x: 300, y: 0),
+            CGPoint(x: 300, y: 70),
+            CGPoint(x: 60, y: 70),
+            CGPoint(x: 60, y: 300),
+            CGPoint(x: 0, y: 300)
+        ]
+        let surface = VinylOrderSurfaceInput(
+            id: "main",
+            label: "Main deck",
+            levelName: nil,
+            positions: positions,
+            scaleFactor: 1,
+            edges: positions.indices.map { index in
+                VinylOrderSurfaceEdge(
+                    id: index == 3 ? "house-wall" : "edge-\(index)",
+                    start: positions[index],
+                    end: positions[(index + 1) % positions.count],
+                    edgeType: index == 3 ? .houseEdge : .deckEdge,
+                    label: nil
+                )
+            }
+        )
+
+        let plan = VinylCutListEngine.makePlan(
+            surfaces: [surface],
+            settings: VinylOrderSettings(
+                color: "",
+                rollWidthInches: 72,
+                seamOverlapInches: 0,
+                edgeWrapInches: 0,
+                direction: .lengthwise,
+                allowsDirectionalChanges: true
+            )
+        )
+
+        let surfacePlan = try! XCTUnwrap(plan.surfaces.first)
+        XCTAssertTrue(plan.isOrderable)
+        XCTAssertTrue(surfacePlan.hasMixedRunAxes)
+        XCTAssertEqual(surfacePlan.directionTransitions.first?.houseEdgeId, "house-wall")
+        XCTAssertEqual(Set(surfacePlan.cuts.map(\.runDirectionLabel)), Set(["LENGTH"]))
+        XCTAssertTrue(surfacePlan.cuts.allSatisfy { $0.directionRegionId != nil })
+    }
+
+    func testUnlockedManualLengthWithoutHouseWallIsBlocked() {
+        let surface = lShape(
+            id: "main",
+            width: 300,
+            height: 300,
+            notchWidth: 240,
+            notchHeight: 230
+        )
+
+        let plan = VinylCutListEngine.makePlan(
+            surfaces: [surface],
+            settings: VinylOrderSettings(
+                color: "",
+                rollWidthInches: 72,
+                seamOverlapInches: 0,
+                edgeWrapInches: 0,
+                direction: .lengthwise,
+                allowsDirectionalChanges: true
+            )
+        )
+
+        XCTAssertFalse(plan.isOrderable)
+        XCTAssertEqual(
+            plan.issues,
+            [.mixedRunMissingHouseAlignedTransition(surfaceId: "main")]
+        )
     }
 
     func testReuseNotesIdentifyWhenOneSurfaceFitsFromAnotherOffcut() {

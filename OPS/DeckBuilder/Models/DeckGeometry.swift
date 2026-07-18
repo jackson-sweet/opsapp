@@ -744,6 +744,12 @@ struct DeckDrawingData: Codable {
     /// the UI substitutes `DeckMaterialsSettings()` defaults when nil.
     var materialsSettings: DeckMaterialsSettings? = nil
 
+    /// Design-scoped vinyl cut/order settings. Persisting the run lock and all
+    /// geometry inputs ensures the sheet, Materials tab, Details marker, and
+    /// procurement surfaces validate the same plan rather than silently
+    /// rebuilding with defaults. Nil on legacy drawings means `.default`.
+    var vinylOrderSettings: VinylOrderSettings? = nil
+
     /// The materials list frozen at MARK ORDERED. Present ⇒ the tab renders this
     /// snapshot, locks the presets, and flags drift. Cleared by CLEAR ORDERED.
     var orderedMaterials: DeckMaterialsSnapshot? = nil
@@ -762,6 +768,7 @@ struct DeckDrawingData: Codable {
         case levelConnections
         case components
         case materialsSettings
+        case vinylOrderSettings
         case orderedMaterials
     }
 
@@ -786,6 +793,7 @@ struct DeckDrawingData: Codable {
         // `orderedAt`) throws inside its own decode; catch it here so a bad
         // snapshot nils gracefully instead of failing the whole drawing decode.
         self.materialsSettings = try c.decodeIfPresent(DeckMaterialsSettings.self, forKey: .materialsSettings)
+        self.vinylOrderSettings = try c.decodeIfPresent(VinylOrderSettings.self, forKey: .vinylOrderSettings)
         self.orderedMaterials = try? c.decodeIfPresent(DeckMaterialsSnapshot.self, forKey: .orderedMaterials)
     }
 

@@ -12,6 +12,7 @@ import Supabase
 struct JobBoardProjectListView: View {
     @EnvironmentObject private var dataController: DataController
     @EnvironmentObject private var permissionStore: PermissionStore
+    @Environment(\.modelContext) private var modelContext
     @Environment(\.tutorialMode) private var tutorialMode
     @Environment(\.tutorialPhase) private var tutorialPhase
     @Environment(\.wizardStateManager) private var wizardStateManager
@@ -27,6 +28,7 @@ struct JobBoardProjectListView: View {
     /// vinyl task and reveals a per-card ordered-state strip + mark action.
     var vinylFilter: Bool = false
     @State private var markingVinylProjectIds: Set<String> = []
+    @State private var vinylOrderBlockers: [String: String] = [:]
     @State private var selectedStatuses: Set<Status> = []
     @State private var selectedTeamMemberIds: Set<String> = []
     // Persisted sort preference. Default is `.latestEdited` so freshly
@@ -177,6 +179,15 @@ struct JobBoardProjectListView: View {
     private func markVinylOrdered(_ project: Project) {
         guard canMarkVinyl, !markingVinylProjectIds.contains(project.id) else { return }
 
+        vinylOrderBlockers.removeValue(forKey: project.id)
+        if let materials = resolveMaterialsForVinylOrder(project: project),
+           !materials.vinylPlan.isOrderable {
+            vinylOrderBlockers[project.id] = materials.vinylPlan.blockingMessage
+                ?? VinylCutPlan.wallAlignedTransitionBlocker
+            UINotificationFeedbackGenerator().notificationOccurred(.error)
+            return
+        }
+
         markingVinylProjectIds.insert(project.id)
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
 
@@ -186,21 +197,62 @@ struct JobBoardProjectListView: View {
             ProjectVinylOrderFields.orderedBy: .null
         ]
 
-        Task {
+        Task { @MainActor in
             do {
-                try await dataController.updateProjectFields(projectId: project.id, fields: fields)
-                await MainActor.run {
-                    markingVinylProjectIds.remove(project.id)
-                    UINotificationFeedbackGenerator().notificationOccurred(.success)
-                }
-            } catch {
-                print("[JobBoardProjectListView] Vinyl mark-ordered failed: \(error)")
-                await MainActor.run {
+                if let currentMaterials = resolveMaterialsForVinylOrder(project: project),
+                   !currentMaterials.vinylPlan.isOrderable {
+                    vinylOrderBlockers[project.id] = currentMaterials.vinylPlan.blockingMessage
+                        ?? VinylCutPlan.wallAlignedTransitionBlocker
                     markingVinylProjectIds.remove(project.id)
                     UINotificationFeedbackGenerator().notificationOccurred(.error)
+                    return
                 }
+                try await dataController.updateProjectFields(projectId: project.id, fields: fields)
+                markingVinylProjectIds.remove(project.id)
+                UINotificationFeedbackGenerator().notificationOccurred(.success)
+            } catch {
+                print("[JobBoardProjectListView] Vinyl mark-ordered failed: \(error)")
+                markingVinylProjectIds.remove(project.id)
+                UINotificationFeedbackGenerator().notificationOccurred(.error)
             }
         }
+    }
+
+    /// Resolve the same design-wide plan used by the project Materials tab before
+    /// the board's compact marker writes anything. A missing plan retains the
+    /// legacy marker behavior; an explicit geometry blocker never does.
+    private func resolveMaterialsForVinylOrder(project: Project) -> DeckMaterialsList? {
+        let designDescriptor = FetchDescriptor<DeckDesign>()
+        guard let designs = try? modelContext.fetch(designDescriptor),
+              let design = DeckDesign.displayCandidate(in: designs, forProjectId: project.id) else {
+            return nil
+        }
+
+        let projectId = project.id
+        let taskDescriptor = FetchDescriptor<ProjectTask>(
+            predicate: #Predicate { $0.projectId == projectId && $0.deletedAt == nil }
+        )
+        let taskDisplays = ((try? modelContext.fetch(taskDescriptor)) ?? []).compactMap { $0.taskType?.display }
+
+        let companyId = project.companyId
+        let productDescriptor = FetchDescriptor<Product>(
+            predicate: #Predicate { $0.companyId == companyId }
+        )
+        let catalogDescriptor = FetchDescriptor<CatalogItem>(
+            predicate: #Predicate { $0.companyId == companyId && $0.deletedAt == nil }
+        )
+        let products = (try? modelContext.fetch(productDescriptor)) ?? []
+        let catalogItems = (try? modelContext.fetch(catalogDescriptor)) ?? []
+        let hints = DeckVinylHintBuilder.build(products: products, catalogItems: catalogItems)
+        let data = design.drawingData
+
+        return DeckMaterialsResolver.resolve(
+            data: data,
+            settings: data.materialsSettings ?? DeckMaterialsSettings(),
+            vinylSettings: data.vinylOrderSettings ?? .default,
+            taskTypeDisplays: taskDisplays,
+            vinylHintByProductId: hints
+        ).materials
     }
 
     var body: some View {
@@ -262,6 +314,7 @@ struct JobBoardProjectListView: View {
                                         project: project,
                                         marker: vinylMarker(for: project),
                                         canMark: canMarkVinyl,
+                                        blocker: vinylOrderBlockers[project.id],
                                         onMarkOrdered: { markVinylOrdered(project) }
                                     )
                                 }

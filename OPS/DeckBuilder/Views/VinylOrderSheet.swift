@@ -23,6 +23,7 @@ struct VinylOrderSheet: View {
     @Query private var stockUnits: [CatalogStockUnit]
 
     @State private var settings = VinylOrderSettings.default
+    @State private var didSeedVinylOrderSettings = false
     /// UI mirror of the design's persisted `materialsSettings.orderMode` — the
     /// single source of truth shared with the deck-tab materials card. Seeded on
     /// appear, written straight back to the design on change (so MARK ORDERED and
@@ -136,6 +137,22 @@ struct VinylOrderSheet: View {
         fullRollLengthFeet = ms.fullRollLengthFeet
     }
 
+    private func seedVinylOrderSettingsIfNeeded() {
+        guard !didSeedVinylOrderSettings else { return }
+        didSeedVinylOrderSettings = true
+        settings = viewModel.drawingData.vinylOrderSettings ?? .default
+    }
+
+    private func handlePlanInputChange() {
+        guard didSeedVinylOrderSettings else { return }
+        var data = viewModel.drawingData
+        if data.vinylOrderSettings != settings {
+            data.vinylOrderSettings = settings
+            viewModel.drawingData = data
+        }
+        recomputePlan()
+    }
+
     /// Persist an order-mode change straight to the design's `materialsSettings`
     /// so the deck-tab card and MARK ORDERED read the same value.
     private func writeMaterialsOrderMode(_ mode: VinylOrderMode) {
@@ -145,7 +162,7 @@ struct VinylOrderSheet: View {
         ms.orderMode = mode
         var data = viewModel.drawingData
         data.materialsSettings = ms
-        viewModel.deckDesign.drawingData = data
+        viewModel.drawingData = data
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
     }
 
@@ -155,7 +172,7 @@ struct VinylOrderSheet: View {
         ms.fullRollLengthFeet = feet
         var data = viewModel.drawingData
         data.materialsSettings = ms
-        viewModel.deckDesign.drawingData = data
+        viewModel.drawingData = data
     }
 
     /// The signed-in operator's `users.id` (a lowercase Postgres uuid). This
@@ -235,8 +252,13 @@ struct VinylOrderSheet: View {
         projectId != nil
             && currentUserId != nil
             && !plan.surfaces.isEmpty
+            && plan.isOrderable
             && hasResolvedCatalogColor
             && !isCreating
+    }
+
+    private var canExportCutPlan: Bool {
+        !plan.surfaces.isEmpty && plan.isOrderable
     }
 
     private var canToggleProjectMarker: Bool {
@@ -246,6 +268,7 @@ struct VinylOrderSheet: View {
             && PermissionStore.shared.can("deck_builder.view", requiredScope: "assigned")
             && PermissionStore.shared.can("projects.edit")
             && !isUpdatingProjectMarker
+            && (projectVinylOrderStatus == .ordered || plan.isOrderable)
     }
 
     private func computeCatalogProductChoices() -> [VinylCatalogProductChoice] {
@@ -300,22 +323,26 @@ struct VinylOrderSheet: View {
                     ScrollView {
                         VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing3) {
                             validationBanner
-                            VinylCutPreview(plan: plan)
-                                .frame(height: VinylOrderLayout.previewHeight)
-                                .background(OPSStyle.Colors.cardBackgroundDark)
-                                .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius))
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                        .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-                                )
+                            if plan.isOrderable {
+                                VinylCutPreview(plan: plan)
+                                    .frame(height: VinylOrderLayout.previewHeight)
+                                    .background(OPSStyle.Colors.cardBackgroundDark)
+                                    .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius))
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                                            .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+                                    )
+                            }
 
                             controlsSection
-                            summarySection
-                            cutListSection
-                            textTemplateSection
-                            reuseSection
-                            catalogSection
-                            stockSection
+                            if plan.isOrderable {
+                                summarySection
+                                cutListSection
+                                textTemplateSection
+                                reuseSection
+                                catalogSection
+                                stockSection
+                            }
                             projectMarkerSection
                             statusSection
 
@@ -348,6 +375,7 @@ struct VinylOrderSheet: View {
                 )
             }
             .task {
+                seedVinylOrderSettingsIfNeeded()
                 seedOrderModeIfNeeded()
                 await loadSurfaceInputsIfNeeded()
             }
@@ -382,7 +410,7 @@ struct VinylOrderSheet: View {
                 catalogVariants: catalogVariants,
                 catalogOptionValues: catalogOptionValues,
                 catalogVariantOptionValues: catalogVariantOptionValues,
-                onPlanInputChange: { recomputePlan() },
+                onPlanInputChange: { handlePlanInputChange() },
                 onCatalogChange: { rebuildCatalogChoices() }
             ))
         }
@@ -399,9 +427,11 @@ struct VinylOrderSheet: View {
                     .font(OPSStyle.Typography.metadata)
                     .foregroundColor(OPSStyle.Colors.secondaryText)
                     .tracking(1.1)
-                Text(isRollMode
-                     ? "\(plan.surfaces.count) SURFACE\(plan.surfaces.count == 1 ? "" : "S") / \(rollPack.rollCount) ROLL\(rollPack.rollCount == 1 ? "" : "S")"
-                     : "\(plan.surfaces.count) SURFACE\(plan.surfaces.count == 1 ? "" : "S") / \(plan.totalOrderedSqFt) SQ FT")
+                Text(plan.isOrderable
+                     ? (isRollMode
+                        ? "\(plan.surfaces.count) SURFACE\(plan.surfaces.count == 1 ? "" : "S") / \(rollPack.rollCount) ROLL\(rollPack.rollCount == 1 ? "" : "S")"
+                        : "\(plan.surfaces.count) SURFACE\(plan.surfaces.count == 1 ? "" : "S") / \(plan.totalOrderedSqFt) SQ FT")
+                     : "BLOCKED")
                     .font(OPSStyle.Typography.dataValue)
                     .foregroundColor(OPSStyle.Colors.primaryText)
                     .contentTransition(.numericText())
@@ -422,6 +452,8 @@ struct VinylOrderSheet: View {
             banner(text: "SELECT A SURFACE", color: OPSStyle.Colors.warningStatus)
         } else if viewModel.vinylOrderEffectiveScale == nil {
             banner(text: "CONFIRM ONE EDGE LENGTH", color: OPSStyle.Colors.warningStatus)
+        } else if let blocker = plan.blockingMessage {
+            banner(text: blocker, color: OPSStyle.Colors.errorStatus)
         } else if settings.catalogItemId != nil && selectedVariant == nil {
             banner(text: "SELECT VINYL COLOR", color: OPSStyle.Colors.warningStatus)
         } else if plan.surfaces.isEmpty {
@@ -1064,7 +1096,8 @@ struct VinylOrderSheet: View {
                     )
             }
             .buttonStyle(.plain)
-            .disabled(plan.surfaces.isEmpty)
+            .disabled(!canExportCutPlan)
+            .opacity(canExportCutPlan ? 1 : 0.45)
 
             Button {
                 beginCreateOrderAndNote()
@@ -1231,7 +1264,11 @@ struct VinylOrderSheet: View {
     }
 
     private func handleTextAction() {
-        guard !plan.surfaces.isEmpty else { return }
+        guard canExportCutPlan else {
+            errorMessage = plan.blockingMessage
+            return
+        }
+        guard refreshPlanForOutbound() != nil else { return }
         if MFMessageComposeViewController.canSendText() {
             showingMessageComposer = true
         } else {
@@ -1251,27 +1288,26 @@ struct VinylOrderSheet: View {
             return
         }
 
+        guard refreshPlanForOutbound() != nil else { return }
+
         // Resolve the full materials list over the whole drawing (same detection
         // the deck tab uses) so the frozen snapshot's vinyl set matches the tab's
         // live recompute and never false-flags drift.
-        let data = viewModel.drawingData
-        let materialsSettings = data.materialsSettings ?? DeckMaterialsSettings()
-        let resolved = DeckMaterialsResolver.resolve(
-            data: data,
-            settings: materialsSettings,
-            vinylSettings: settings,
-            taskTypeDisplays: projectTaskTypeDisplays(projectId: projectId),
-            vinylHintByProductId: vinylHintByProductId()
-        )
+        let current = resolveCurrentProjectOrder(projectId: projectId)
 
-        if let materials = resolved.materials {
+        if let materials = current.materials {
+            guard materials.vinylPlan.isOrderable else {
+                errorMessage = materials.vinylPlan.blockingMessage ?? VinylCutPlan.wallAlignedTransitionBlocker
+                UINotificationFeedbackGenerator().notificationOccurred(.error)
+                return
+            }
             // A materials list resolved → confirm the actual order first. The
             // mark happens in `confirmProjectVinylOrder` on CONFIRM ORDERED.
             pendingOrderConfirm = PendingVinylOrderConfirm(
                 design: viewModel.deckDesign,
                 materials: materials,
-                settings: materialsSettings,
-                vinylSettings: settings,
+                settings: current.settings,
+                vinylSettings: current.vinylSettings,
                 projectId: projectId,
                 projectTitle: projectTitle,
                 deckTitle: deckTitle
@@ -1293,21 +1329,45 @@ struct VinylOrderSheet: View {
         }
         Task { @MainActor in
             do {
+                // Re-resolve inside the task immediately before the local-first
+                // snapshot write; no queued UI/realtime event can slip between
+                // validation and the service boundary.
+                let current = resolveCurrentProjectOrder(projectId: ctx.projectId)
+                try DeckMaterialsOrderService.validateCurrentOrder(
+                    currentMaterials: current.materials,
+                    currentSettings: current.settings,
+                    currentVinylSettings: current.vinylSettings,
+                    pendingMaterials: ctx.materials,
+                    pendingSettings: ctx.settings,
+                    pendingVinylSettings: ctx.vinylSettings
+                )
+                guard let currentMaterials = current.materials else {
+                    throw DeckMaterialsOrderError.vinylPlanChanged
+                }
                 try await service.markOrdered(
                     projectId: ctx.projectId,
-                    design: ctx.design,
-                    materials: ctx.materials,
-                    settings: ctx.settings,
-                    vinylSettings: ctx.vinylSettings,
+                    design: viewModel.deckDesign,
+                    materials: currentMaterials,
+                    settings: current.settings,
+                    vinylSettings: current.vinylSettings,
                     confirmed: confirmed
                 )
+                // The designer owns an active drawing-data copy. Keep the newly
+                // frozen snapshot in that copy so its next save cannot erase the
+                // service's local-first write on the model object.
+                var activeData = viewModel.drawingData
+                DeckMaterialsOrderService.mergeOrderedSnapshot(
+                    from: viewModel.deckDesign,
+                    into: &activeData
+                )
+                viewModel.drawingData = activeData
                 isUpdatingProjectMarker = false
                 statusMessage = "VINYL MARKED ORDERED"
                 UINotificationFeedbackGenerator().notificationOccurred(.success)
             } catch {
                 print("[VinylOrderSheet] Vinyl marker update failed: \(error)")
                 isUpdatingProjectMarker = false
-                errorMessage = "VINYL STATUS FAILED"
+                errorMessage = (error as? DeckMaterialsOrderError)?.errorDescription ?? "VINYL STATUS FAILED"
                 UINotificationFeedbackGenerator().notificationOccurred(.error)
             }
         }
@@ -1318,6 +1378,17 @@ struct VinylOrderSheet: View {
         isUpdatingProjectMarker = true
         Task { @MainActor in
             do {
+                if let materials = resolveCurrentProjectOrder(projectId: projectId).materials {
+                    guard materials.vinylPlan.isOrderable else {
+                        throw DeckMaterialsOrderError.vinylPlanBlocked(
+                            materials.vinylPlan.blockingMessage
+                                ?? VinylCutPlan.wallAlignedTransitionBlocker
+                        )
+                    }
+                    // A plan appeared after the plain-marker decision. It now
+                    // requires the normal review + frozen snapshot flow.
+                    throw DeckMaterialsOrderError.vinylPlanChanged
+                }
                 try await dataController.updateProjectFields(
                     projectId: projectId,
                     fields: [
@@ -1334,7 +1405,8 @@ struct VinylOrderSheet: View {
             } catch {
                 print("[VinylOrderSheet] Vinyl marker update failed: \(error)")
                 isUpdatingProjectMarker = false
-                errorMessage = "VINYL STATUS FAILED"
+                errorMessage = (error as? DeckMaterialsOrderError)?.errorDescription
+                    ?? "VINYL STATUS FAILED"
                 UINotificationFeedbackGenerator().notificationOccurred(.error)
             }
         }
@@ -1349,6 +1421,12 @@ struct VinylOrderSheet: View {
         Task { @MainActor in
             do {
                 try await service.clearOrdered(projectId: projectId, design: design)
+                var activeData = viewModel.drawingData
+                DeckMaterialsOrderService.mergeOrderedSnapshot(
+                    from: viewModel.deckDesign,
+                    into: &activeData
+                )
+                viewModel.drawingData = activeData
                 isUpdatingProjectMarker = false
                 statusMessage = "VINYL MARK CLEARED"
                 UINotificationFeedbackGenerator().notificationOccurred(.success)
@@ -1386,6 +1464,26 @@ struct VinylOrderSheet: View {
         return DeckVinylHintBuilder.build(products: products, catalogItems: scopedCatalog)
     }
 
+    private func resolveCurrentProjectOrder(
+        projectId: String
+    ) -> (
+        materials: DeckMaterialsList?,
+        settings: DeckMaterialsSettings,
+        vinylSettings: VinylOrderSettings
+    ) {
+        let data = viewModel.drawingData
+        let materialsSettings = data.materialsSettings ?? DeckMaterialsSettings()
+        let vinylSettings = data.vinylOrderSettings ?? settings
+        let resolved = DeckMaterialsResolver.resolve(
+            data: data,
+            settings: materialsSettings,
+            vinylSettings: vinylSettings,
+            taskTypeDisplays: projectTaskTypeDisplays(projectId: projectId),
+            vinylHintByProductId: vinylHintByProductId()
+        )
+        return (resolved.materials, materialsSettings, vinylSettings)
+    }
+
     private func beginCreateOrderAndNote() {
         guard canCreateOrder else { return }
         isCreating = true
@@ -1419,6 +1517,39 @@ struct VinylOrderSheet: View {
             settings: settings,
             availableOffcuts: availableOffcutSeeds
         )
+    }
+
+    /// Every outbound action gets one fresh plan from the active drawing. If the
+    /// design changed since the preview was rendered, update the preview and
+    /// require a second deliberate tap before copying, ordering, marking, or
+    /// banking anything.
+    @discardableResult
+    private func refreshPlanForOutbound() -> VinylCutPlan? {
+        let currentInputs = viewModel.vinylOrderSurfaceInputs(
+            scope: viewModel.vinylOrderSurfaceScope
+        )
+        let currentPlan = VinylCutListEngine.makePlan(
+            surfaces: currentInputs,
+            settings: settings,
+            availableOffcuts: availableOffcutSeeds
+        )
+        guard currentPlan.isOrderable else {
+            surfaceInputs = currentInputs
+            plan = currentPlan
+            errorMessage = currentPlan.blockingMessage
+                ?? VinylCutPlan.wallAlignedTransitionBlocker
+            UINotificationFeedbackGenerator().notificationOccurred(.error)
+            return nil
+        }
+        guard currentPlan == plan else {
+            surfaceInputs = currentInputs
+            plan = currentPlan
+            errorMessage = DeckMaterialsOrderError.vinylPlanChanged.errorDescription
+                ?? "DESIGN CHANGED · REVIEW ORDER"
+            UINotificationFeedbackGenerator().notificationOccurred(.error)
+            return nil
+        }
+        return currentPlan
     }
 
     private func applyConfiguredCatalogProduct(in choices: [VinylCatalogProductChoice]) {
@@ -1460,7 +1591,7 @@ struct VinylOrderSheet: View {
             return
         }
 
-        let draftPlan = plan
+        guard let draftPlan = refreshPlanForOutbound() else { return }
         let draftSettings = settings.normalized
         // Reflect roll-mode quantity in the drafted note (catalog line-item
         // quantity stays sq ft — the catalog unit — per scope).
@@ -1471,6 +1602,11 @@ struct VinylOrderSheet: View {
 
         guard !draftPlan.surfaces.isEmpty else {
             errorMessage = "NO CUT LIST"
+            return
+        }
+        guard draftPlan.isOrderable else {
+            errorMessage = draftPlan.blockingMessage ?? VinylCutPlan.wallAlignedTransitionBlocker
+            UINotificationFeedbackGenerator().notificationOccurred(.error)
             return
         }
 
@@ -1638,7 +1774,6 @@ struct VinylOrderSheet: View {
     }
 
     private func bankOffcut(_ offcut: VinylProducedOffcut) {
-        guard let variantId = resolvedVariantId, let roll = coveringRoll(for: offcut) else { return }
         // Serialize: never start a bank while another is in flight, so two banks
         // cannot read the same roll's remaining length before either debits it.
         guard bankingOffcutIds.isEmpty, !bankedOffcutIds.contains(offcut.id) else { return }
@@ -1646,15 +1781,30 @@ struct VinylOrderSheet: View {
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
         Task { @MainActor in
             defer { bankingOffcutIds.remove(offcut.id) }
+            guard let currentPlan = refreshPlanForOutbound() else { return }
+            guard let currentOffcut = VinylOffcutBankingCandidateResolver.resolve(
+                offcut,
+                in: currentPlan.producedOffcuts
+            ) else {
+                errorMessage = DeckMaterialsOrderError.vinylPlanChanged.errorDescription
+                    ?? "DESIGN CHANGED · REVIEW ORDER"
+                UINotificationFeedbackGenerator().notificationOccurred(.error)
+                return
+            }
+            guard let variantId = resolvedVariantId,
+                  let roll = coveringRoll(for: currentOffcut) else {
+                UINotificationFeedbackGenerator().notificationOccurred(.error)
+                return
+            }
             do {
                 let banked = try await offcutInventoryService.bankOffcut(
                     variantId: variantId,
                     sourceRollId: roll.id,
-                    offcut: offcut,
+                    offcut: currentOffcut,
                     projectId: projectId
                 )
                 if banked != nil {
-                    bankedOffcutIds.insert(offcut.id)
+                    bankedOffcutIds.insert(currentOffcut.id)
                     UINotificationFeedbackGenerator().notificationOccurred(.success)
                     // Intentionally NOT recomputing the plan here: re-seeding the
                     // on-screen plan with the just-banked offcut would make this
@@ -1680,6 +1830,22 @@ struct VinylOrderSheet: View {
 
     private func formatSqFtForSheet(_ value: Double) -> String {
         String(format: "%.1f", value)
+    }
+}
+
+/// Resolves a tapped remnant against the freshly rebuilt plan immediately before
+/// inventory is mutated. Labels may change without changing material, but the
+/// stable remnant identity and both physical dimensions must still match.
+enum VinylOffcutBankingCandidateResolver {
+    static func resolve(
+        _ requested: VinylProducedOffcut,
+        in currentOffcuts: [VinylProducedOffcut]
+    ) -> VinylProducedOffcut? {
+        currentOffcuts.first {
+            $0.id == requested.id
+                && $0.widthInches == requested.widthInches
+                && $0.lengthInches == requested.lengthInches
+        }
     }
 }
 
@@ -1771,6 +1937,7 @@ private struct VinylCutPreview: View {
         drawOverlapBands(surface, in: &context, bounds: bounds, origin: origin, scale: scale)
         context.fill(path, with: .color(OPSStyle.Colors.surfaceActive.opacity(0.42)))
         drawCuts(surface, clippedTo: path, in: &context, bounds: bounds, origin: origin, scale: scale)
+        drawDirectionTransitions(surface, in: &context, bounds: bounds, origin: origin, scale: scale)
         context.stroke(path, with: .color(OPSStyle.Colors.secondaryText), lineWidth: OPSStyle.Layout.Border.standard)
         drawHouseEdgeLabels(surface, in: &context, bounds: bounds, origin: origin, scale: scale)
         drawOverlapLeaders(surface, in: &context, bounds: bounds, origin: origin, scale: scale)
@@ -1912,12 +2079,21 @@ private struct VinylCutPreview: View {
     ) {
         guard !surface.cuts.isEmpty else { return }
 
-        var clipped = context
-        clipped.clip(to: clipPath)
-
         for (index, cut) in surface.cuts.enumerated() {
             guard let cutPath = cutPath(for: cut, surface: surface, bounds: bounds, origin: origin, scale: scale) else {
                 continue
+            }
+
+            var clipped = context
+            clipped.clip(to: clipPath)
+            let regionPolygon = VinylPreviewAnnotationPlanner.regionPolygon(for: cut, in: surface)
+            if let regionPath = surfacePath(
+                for: regionPolygon,
+                bounds: bounds,
+                origin: origin,
+                scale: scale
+            ) {
+                clipped.clip(to: regionPath)
             }
 
             let fill = cutFillColor(cut: cut, index: index)
@@ -1929,6 +2105,30 @@ private struct VinylCutPreview: View {
                 .font(OPSStyle.Typography.smallCaption)
                 .foregroundColor(cut.isPurchased ? OPSStyle.Colors.primaryText : OPSStyle.Colors.tan)
             clipped.draw(label, at: labelPoint(for: cut, surface: surface, bounds: bounds, origin: origin, scale: scale), anchor: .center)
+        }
+    }
+
+    private func drawDirectionTransitions(
+        _ surface: VinylSurfaceCutPlan,
+        in context: inout GraphicsContext,
+        bounds: CGRect,
+        origin: CGPoint,
+        scale: CGFloat
+    ) {
+        let annotationPlan = VinylPreviewAnnotationPlanner.plan(
+            surface: surface,
+            settings: plan.settings,
+            viewportScale: scale
+        )
+        for transition in annotationPlan.transitions {
+            var line = Path()
+            line.move(to: map(transition.start, bounds: bounds, origin: origin, scale: scale))
+            line.addLine(to: map(transition.end, bounds: bounds, origin: origin, scale: scale))
+            context.stroke(
+                line,
+                with: .color(OPSStyle.Colors.primaryText),
+                lineWidth: OPSStyle.Layout.Border.standard
+            )
         }
     }
 

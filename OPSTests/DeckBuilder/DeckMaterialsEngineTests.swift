@@ -313,7 +313,10 @@ final class DeckMaterialsEngineTests: XCTestCase {
 
         // Relabel — geometry unchanged → equal drift key.
         var relabeled = data
-        relabeled.surfaces = [DeckSurface(id: "s1", vertexIds: faceIds, label: "RENAMED")]
+        let stableSurfaceId = try! XCTUnwrap(data.detectedSurfaces.first?.id)
+        relabeled.surfaces = [
+            DeckSurface(id: stableSurfaceId, vertexIds: faceIds, label: "RENAMED")
+        ]
         let list2 = DeckMaterialsEngine.compute(
             vinylInputs: inputs(for: relabeled),
             allDetectedFacesByLevel: facesByLevel(for: relabeled),
@@ -332,6 +335,220 @@ final class DeckMaterialsEngineTests: XCTestCase {
             vinylSettings: .default
         )
         XCTAssertNotEqual(list1.driftKey, list3.driftKey)
+    }
+
+    func testDriftKeyChangesWhenTheWallAlignedDirectionTransitionMoves() {
+        let positions = [
+            CGPoint(x: 0, y: 0),
+            CGPoint(x: 300, y: 0),
+            CGPoint(x: 300, y: 70),
+            CGPoint(x: 70, y: 70),
+            CGPoint(x: 70, y: 300),
+            CGPoint(x: 0, y: 300)
+        ]
+        func input(houseEdgeIndex: Int) -> VinylOrderSurfaceInput {
+            VinylOrderSurfaceInput(
+                id: "main",
+                label: "Main",
+                levelName: nil,
+                positions: positions,
+                scaleFactor: 1,
+                edges: positions.indices.map { index in
+                    VinylOrderSurfaceEdge(
+                        id: "edge-\(index)",
+                        start: positions[index],
+                        end: positions[(index + 1) % positions.count],
+                        edgeType: index == houseEdgeIndex ? .houseEdge : .deckEdge,
+                        label: nil
+                    )
+                }
+            )
+        }
+        let vinyl = VinylOrderSettings(
+            color: "",
+            rollWidthInches: 72,
+            seamOverlapInches: 0,
+            edgeWrapInches: 0,
+            direction: .automatic,
+            allowsDirectionalChanges: true
+        )
+        let verticalWall = DeckMaterialsEngine.compute(
+            vinylInputs: [input(houseEdgeIndex: 3)],
+            allDetectedFacesByLevel: [],
+            settings: defaults,
+            vinylSettings: vinyl
+        )
+        let horizontalWall = DeckMaterialsEngine.compute(
+            vinylInputs: [input(houseEdgeIndex: 2)],
+            allDetectedFacesByLevel: [],
+            settings: defaults,
+            vinylSettings: vinyl
+        )
+
+        XCTAssertTrue(verticalWall.vinylPlan.isOrderable)
+        XCTAssertTrue(horizontalWall.vinylPlan.isOrderable)
+        XCTAssertEqual(verticalWall.driftKey.cutPairs.count, horizontalWall.driftKey.cutPairs.count)
+        for (vertical, horizontal) in zip(
+            verticalWall.driftKey.cutPairs,
+            horizontalWall.driftKey.cutPairs
+        ) {
+            XCTAssertEqual(vertical.lengthInches, horizontal.lengthInches, accuracy: 0.01)
+            XCTAssertEqual(vertical.rollWidthInches, horizontal.rollWidthInches, accuracy: 0.01)
+        }
+        XCTAssertNotEqual(
+            verticalWall.vinylPlan.surfaces.first?.directionTransitions,
+            horizontalWall.vinylPlan.surfaces.first?.directionTransitions
+        )
+        XCTAssertNotEqual(verticalWall.driftKey, horizontalWall.driftKey)
+    }
+
+    func testDriftKeyKeepsDirectionGeometryAttachedToItsSurface() {
+        let shape = [
+            CGPoint(x: 0, y: 0),
+            CGPoint(x: 300, y: 0),
+            CGPoint(x: 300, y: 70),
+            CGPoint(x: 70, y: 70),
+            CGPoint(x: 70, y: 300),
+            CGPoint(x: 0, y: 300)
+        ]
+        func input(
+            id: String,
+            offsetX: CGFloat,
+            houseEdgeIndex: Int
+        ) -> VinylOrderSurfaceInput {
+            let positions = shape.map { CGPoint(x: $0.x + offsetX, y: $0.y) }
+            return VinylOrderSurfaceInput(
+                id: id,
+                label: id,
+                levelName: nil,
+                positions: positions,
+                scaleFactor: 1,
+                edges: positions.indices.map { index in
+                    VinylOrderSurfaceEdge(
+                        id: "\(id)-edge-\(index)",
+                        start: positions[index],
+                        end: positions[(index + 1) % positions.count],
+                        edgeType: index == houseEdgeIndex ? .houseEdge : .deckEdge,
+                        label: nil
+                    )
+                }
+            )
+        }
+        let vinyl = VinylOrderSettings(
+            color: "",
+            rollWidthInches: 72,
+            seamOverlapInches: 0,
+            edgeWrapInches: 0,
+            direction: .automatic,
+            allowsDirectionalChanges: true
+        )
+        let first = DeckMaterialsEngine.compute(
+            vinylInputs: [
+                input(id: "west", offsetX: 0, houseEdgeIndex: 3),
+                input(id: "east", offsetX: 500, houseEdgeIndex: 2)
+            ],
+            allDetectedFacesByLevel: [],
+            settings: defaults,
+            vinylSettings: vinyl
+        )
+        let swapped = DeckMaterialsEngine.compute(
+            vinylInputs: [
+                input(id: "west", offsetX: 0, houseEdgeIndex: 2),
+                input(id: "east", offsetX: 500, houseEdgeIndex: 3)
+            ],
+            allDetectedFacesByLevel: [],
+            settings: defaults,
+            vinylSettings: vinyl
+        )
+
+        XCTAssertTrue(first.vinylPlan.isOrderable)
+        XCTAssertTrue(swapped.vinylPlan.isOrderable)
+        XCTAssertEqual(first.driftKey.cutPairs.count, swapped.driftKey.cutPairs.count)
+        for (a, b) in zip(first.driftKey.cutPairs, swapped.driftKey.cutPairs) {
+            XCTAssertEqual(a.lengthInches, b.lengthInches, accuracy: 0.01)
+            XCTAssertEqual(a.rollWidthInches, b.rollWidthInches, accuracy: 0.01)
+        }
+        XCTAssertNotEqual(first.driftKey, swapped.driftKey)
+    }
+
+    @MainActor
+    func testDriftKeyKeepsDirectionGeometryAttachedAcrossOverlappingLevels() async throws {
+        let positions = [
+            CGPoint(x: 0, y: 0),
+            CGPoint(x: 300, y: 0),
+            CGPoint(x: 300, y: 70),
+            CGPoint(x: 70, y: 70),
+            CGPoint(x: 70, y: 300),
+            CGPoint(x: 0, y: 300)
+        ]
+        func input(
+            id: String,
+            levelName: String,
+            houseEdgeIndex: Int
+        ) -> VinylOrderSurfaceInput {
+            VinylOrderSurfaceInput(
+                id: id,
+                label: id,
+                levelName: levelName,
+                positions: positions,
+                scaleFactor: 1,
+                edges: positions.indices.map { index in
+                    VinylOrderSurfaceEdge(
+                        id: "\(id)-edge-\(index)",
+                        start: positions[index],
+                        end: positions[(index + 1) % positions.count],
+                        edgeType: index == houseEdgeIndex ? .houseEdge : .deckEdge,
+                        label: nil
+                    )
+                }
+            )
+        }
+        let vinyl = VinylOrderSettings(
+            color: "",
+            rollWidthInches: 72,
+            seamOverlapInches: 0,
+            edgeWrapInches: 0,
+            direction: .automatic,
+            allowsDirectionalChanges: true
+        )
+        let first = DeckMaterialsEngine.compute(
+            vinylInputs: [
+                input(id: "lower", levelName: "Level 1", houseEdgeIndex: 3),
+                input(id: "upper", levelName: "Level 2", houseEdgeIndex: 2)
+            ],
+            allDetectedFacesByLevel: [],
+            settings: defaults,
+            vinylSettings: vinyl
+        )
+        let swapped = DeckMaterialsEngine.compute(
+            vinylInputs: [
+                input(id: "lower", levelName: "Level 1", houseEdgeIndex: 2),
+                input(id: "upper", levelName: "Level 2", houseEdgeIndex: 3)
+            ],
+            allDetectedFacesByLevel: [],
+            settings: defaults,
+            vinylSettings: vinyl
+        )
+
+        XCTAssertEqual(first.driftKey.cutPairs.count, swapped.driftKey.cutPairs.count)
+        for (a, b) in zip(first.driftKey.cutPairs, swapped.driftKey.cutPairs) {
+            XCTAssertEqual(a.lengthInches, b.lengthInches, accuracy: 0.01)
+            XCTAssertEqual(a.rollWidthInches, b.rollWidthInches, accuracy: 0.01)
+        }
+        XCTAssertNotEqual(first.driftKey, swapped.driftKey)
+
+        let design = DeckDesign(companyId: "co-1")
+        let service = DeckMaterialsOrderService(userId: "user-1") { _, _ in }
+        try await service.markOrdered(
+            projectId: "project-1",
+            design: design,
+            materials: first,
+            settings: defaults,
+            vinylSettings: vinyl
+        )
+        let snapshot = try XCTUnwrap(design.drawingData.orderedMaterials)
+        XCTAssertEqual(DeckMaterialsDriftKey(snapshot: snapshot), first.driftKey)
+        XCTAssertNotEqual(DeckMaterialsDriftKey(snapshot: snapshot), swapped.driftKey)
     }
 
     // MARK: - Full-roll ordering (spec § 4.2)

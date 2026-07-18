@@ -37,6 +37,53 @@ final class DeckMaterialsInputBuilderTests: XCTestCase {
         XCTAssertTrue(result.first?.assignedItems.isEmpty ?? false)
     }
 
+    func testDetectedFallbackSurfaceIdIsStableAcrossVertexOrder() {
+        let original = closedSquare()
+        var reordered = original
+        reordered.vertices.reverse()
+
+        let originalId = DeckMaterialsInputBuilder.surfaceInputs(for: original, scale: 1.0).first?.input.id
+        let reorderedId = DeckMaterialsInputBuilder.surfaceInputs(for: reordered, scale: 1.0).first?.input.id
+        let expectedId = "surface-293f7c318564e908e7aeee2db6cc47cf9e83010c34e51e02187a80ff4587f6f9"
+
+        XCTAssertEqual(originalId, expectedId)
+        XCTAssertEqual(reorderedId, expectedId)
+    }
+
+    func testSurfaceIdentityAndDriftStayStableAfterPersistenceReconciliation() throws {
+        let legacy = closedSquare()
+        let legacyInputs = DeckMaterialsInputBuilder.surfaceInputs(for: legacy, scale: 1.0).map(\.input)
+
+        var reconciled = legacy
+        reconciled.surfaces = [
+            DeckSurface(
+                id: "new-random-persisted-uuid",
+                vertexIds: Set(["v1", "v2", "v3", "v4"]),
+                label: "MAIN"
+            )
+        ]
+        let reconciledInputs = DeckMaterialsInputBuilder.surfaceInputs(
+            for: reconciled,
+            scale: 1.0
+        ).map(\.input)
+
+        XCTAssertEqual(try XCTUnwrap(legacyInputs.first?.id), try XCTUnwrap(reconciledInputs.first?.id))
+
+        let legacyMaterials = DeckMaterialsEngine.compute(
+            vinylInputs: legacyInputs,
+            allDetectedFacesByLevel: [legacy.detectedSurfaces],
+            settings: DeckMaterialsSettings(),
+            vinylSettings: .default
+        )
+        let reconciledMaterials = DeckMaterialsEngine.compute(
+            vinylInputs: reconciledInputs,
+            allDetectedFacesByLevel: [reconciled.detectedSurfaces],
+            settings: DeckMaterialsSettings(),
+            vinylSettings: .default
+        )
+        XCTAssertEqual(legacyMaterials.driftKey, reconciledMaterials.driftKey)
+    }
+
     func testMatchedPersistedSurfaceUsesItsLabel() {
         var data = closedSquare()
         data.surfaces = [

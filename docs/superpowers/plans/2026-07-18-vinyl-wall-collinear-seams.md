@@ -79,6 +79,7 @@
 **Files:**
 
 - Modify: `OPS/DeckBuilder/Views/VinylOrderSheet.swift`
+- Modify: `OPS/DeckBuilder/Views/VinylPreviewAnnotationPlanner.swift`
 - Modify: `OPSTests/DeckBuilder/VinylPreviewAnnotationPlannerTests.swift`
 
 1. Add failing pure-planner tests proving exactly the plan's transition segments are rendered and cuts use their own region polygon.
@@ -97,7 +98,10 @@
 - Modify: `OPS/DeckBuilder/Services/DeckMaterialsOrderService.swift`
 - Modify: `OPS/Views/Components/Project/ProjectDetailsViewModel.swift`
 - Modify: `OPS/Views/Components/Project/Tabs/DeckMaterialsSection.swift`
+- Modify: `OPS/Views/JobBoard/JobBoardProjectListView.swift`
+- Modify: `OPS/Views/JobBoard/VinylOrderFilter.swift`
 - Modify: `OPSTests/DeckBuilder/DeckMaterialsEngineTests.swift`
+- Modify: `OPSTests/DeckBuilder/DeckMaterialsCodableTests.swift`
 - Modify: `OPSTests/DeckBuilder/DeckMaterialsOrderServiceTests.swift`
 
 1. Add failing readiness/service tests for blocked-plan copy/create/note/snapshot/MARK ORDERED behavior.

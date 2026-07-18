@@ -9,7 +9,21 @@ final class DeckMaterialsCodableTests: XCTestCase {
         let legacy = #"{"vertices":[],"edges":[]}"#
         let data = try XCTUnwrap(DeckDrawingData.fromJSON(legacy))
         XCTAssertNil(data.materialsSettings)
+        XCTAssertNil(data.vinylOrderSettings)
         XCTAssertNil(data.orderedMaterials)
+    }
+
+    func testVinylOrderSettingsPersistThroughDrawingData() throws {
+        var data = DeckDrawingData()
+        var settings = VinylOrderSettings.default
+        settings.rollWidthInches = 60
+        settings.edgeWrapInches = 8
+        settings.direction = .widthwise
+        settings.allowsDirectionalChanges = true
+        data.vinylOrderSettings = settings
+
+        let decoded = try XCTUnwrap(DeckDrawingData.fromJSON(data.toJSON()))
+        XCTAssertEqual(decoded.vinylOrderSettings, settings)
     }
 
     func testMaterialsSettingsDefaults() {
@@ -74,13 +88,68 @@ final class DeckMaterialsCodableTests: XCTestCase {
             clipFeet: 44, clipSticks: 5,
             ninetyFeet: 20, ninetySticks: 3,
             glueAreaSqFt: 240, glueBuckets: 1,
-            vinylSurfaceCount: 2
+            vinylSurfaceCount: 2,
+            vinylDirectionSurfaces: [
+                VinylSurfaceDirectionGeometrySnapshot(
+                    surfaceId: "surface-1",
+                    boundary: [
+                        VinylDirectionPointSnapshot(xInches: 0, yInches: 0),
+                        VinylDirectionPointSnapshot(xInches: 144, yInches: 0),
+                        VinylDirectionPointSnapshot(xInches: 144, yInches: 240),
+                        VinylDirectionPointSnapshot(xInches: 0, yInches: 240)
+                    ],
+                    regions: [
+                        VinylDirectionRegionSnapshot(
+                            runAngleDegrees: 0,
+                            points: [
+                                VinylDirectionPointSnapshot(xInches: 0, yInches: 0),
+                                VinylDirectionPointSnapshot(xInches: 144, yInches: 0),
+                                VinylDirectionPointSnapshot(xInches: 144, yInches: 120)
+                            ]
+                        )
+                    ],
+                    transitions: [
+                        VinylDirectionTransitionSnapshot(
+                            start: VinylDirectionPointSnapshot(xInches: 0, yInches: 120),
+                            end: VinylDirectionPointSnapshot(xInches: 144, yInches: 120)
+                        )
+                    ]
+                )
+            ],
+            vinylDirectionRegions: [
+                VinylDirectionRegionSnapshot(
+                    runAngleDegrees: 0,
+                    points: [
+                        VinylDirectionPointSnapshot(xInches: 0, yInches: 0),
+                        VinylDirectionPointSnapshot(xInches: 144, yInches: 0),
+                        VinylDirectionPointSnapshot(xInches: 144, yInches: 120)
+                    ]
+                ),
+                VinylDirectionRegionSnapshot(
+                    runAngleDegrees: 90,
+                    points: [
+                        VinylDirectionPointSnapshot(xInches: 0, yInches: 120),
+                        VinylDirectionPointSnapshot(xInches: 144, yInches: 120),
+                        VinylDirectionPointSnapshot(xInches: 0, yInches: 240)
+                    ]
+                )
+            ],
+            vinylDirectionTransitions: [
+                VinylDirectionTransitionSnapshot(
+                    start: VinylDirectionPointSnapshot(xInches: 0, yInches: 120),
+                    end: VinylDirectionPointSnapshot(xInches: 144, yInches: 120)
+                )
+            ]
         )
         let decoded = try XCTUnwrap(DeckDrawingData.fromJSON(data.toJSON()))
         XCTAssertEqual(decoded.materialsSettings, data.materialsSettings)
         XCTAssertEqual(decoded.orderedMaterials, data.orderedMaterials)
         // The explicit surface count survives the round-trip (not reconstructed).
         XCTAssertEqual(decoded.orderedMaterials?.vinylSurfaceCount, 2)
+        XCTAssertEqual(decoded.orderedMaterials?.vinylDirectionSurfaces?.count, 1)
+        XCTAssertEqual(decoded.orderedMaterials?.vinylDirectionSurfaces?.first?.surfaceId, "surface-1")
+        XCTAssertEqual(decoded.orderedMaterials?.vinylDirectionRegions?.count, 2)
+        XCTAssertEqual(decoded.orderedMaterials?.vinylDirectionTransitions?.count, 1)
     }
 
     /// A snapshot JSON written before `vinylSurfaceCount` existed decodes with the
@@ -98,6 +167,9 @@ final class DeckMaterialsCodableTests: XCTestCase {
         """
         let snapshot = try JSONDecoder().decode(DeckMaterialsSnapshot.self, from: Data(json.utf8))
         XCTAssertEqual(snapshot.vinylSurfaceCount, 1)
+        XCTAssertNil(snapshot.vinylDirectionSurfaces)
+        XCTAssertNil(snapshot.vinylDirectionRegions)
+        XCTAssertNil(snapshot.vinylDirectionTransitions)
     }
 
     func testVinylOrderSettingsCodableRoundTrip() throws {

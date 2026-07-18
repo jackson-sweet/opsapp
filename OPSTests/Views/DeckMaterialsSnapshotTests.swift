@@ -126,6 +126,48 @@ final class DeckMaterialsSnapshotTests: XCTestCase {
         return DeckMaterialsResolver.Resolved(scale: nil, vinylInputs: [input], materials: nil)
     }
 
+    /// Unlocked L-shaped plan with no house edge: the Materials card must show
+    /// the canonical blocker instead of order quantities or fabricated cuts.
+    private func blockedDirectionResolved() -> DeckMaterialsResolver.Resolved {
+        let positions = [
+            CGPoint(x: 0, y: 0),
+            CGPoint(x: 300, y: 0),
+            CGPoint(x: 300, y: 70),
+            CGPoint(x: 70, y: 70),
+            CGPoint(x: 70, y: 300),
+            CGPoint(x: 0, y: 300)
+        ]
+        let edges = positions.indices.map { index in
+            VinylOrderSurfaceEdge(
+                id: "e\(index)",
+                start: positions[index],
+                end: positions[(index + 1) % positions.count],
+                edgeType: .deckEdge,
+                label: nil
+            )
+        }
+        let input = VinylOrderSurfaceInput(
+            id: "s1",
+            label: "Main",
+            levelName: nil,
+            positions: positions,
+            scaleFactor: 1,
+            edges: edges
+        )
+        var vinyl = VinylOrderSettings.default
+        vinyl.seamOverlapInches = 0
+        vinyl.edgeWrapInches = 0
+        vinyl.allowsDirectionalChanges = true
+        let materials = DeckMaterialsEngine.compute(
+            vinylInputs: [input],
+            allDetectedFacesByLevel: [],
+            settings: DeckMaterialsSettings(),
+            vinylSettings: vinyl
+        )
+        XCTAssertFalse(materials.vinylPlan.isOrderable)
+        return DeckMaterialsResolver.Resolved(scale: 1, vinylInputs: [input], materials: materials)
+    }
+
     private func orderedSnapshot() -> DeckMaterialsSnapshot {
         DeckMaterialsSnapshot(
             orderedAt: Date(timeIntervalSince1970: 1_749_700_000),
@@ -235,6 +277,9 @@ final class DeckMaterialsSnapshotTests: XCTestCase {
 
         // 2 · Confirm dimensions — vinyl set but unresolved scale.
         snapshot("deck-materials-confirm-dims", design: design(), resolved: confirmDimsResolved(), drift: false)
+
+        // 2b · Invalid mixed run — blocker only, no fabricated materials list.
+        snapshot("deck-materials-direction-blocked", design: design(), resolved: blockedDirectionResolved(), drift: false)
 
         // 3b · Live full-roll — ROLLS headline + cut guide + ORDER preset.
         snapshot("deck-materials-live-rolls", design: design(materialsSettings: rollModeSettings()), resolved: liveResolvedRollMode(), drift: false)

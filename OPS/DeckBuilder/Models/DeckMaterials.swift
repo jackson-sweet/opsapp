@@ -76,6 +76,43 @@ struct DeckMaterialsSettings: Codable, Equatable {
     }
 }
 
+struct VinylDirectionPointSnapshot: Codable, Equatable {
+    var xInches: Double
+    var yInches: Double
+}
+
+struct VinylDirectionRegionSnapshot: Codable, Equatable {
+    var runAngleDegrees: Double
+    var points: [VinylDirectionPointSnapshot]
+}
+
+struct VinylDirectionTransitionSnapshot: Codable, Equatable {
+    var start: VinylDirectionPointSnapshot
+    var end: VinylDirectionPointSnapshot
+}
+
+/// Direction geometry grouped with the enclosing surface it belongs to. Points
+/// are stored in one plan-wide, translation-independent coordinate space so two
+/// same-shaped surfaces cannot exchange seam layouts without raising drift.
+struct VinylSurfaceDirectionGeometrySnapshot: Codable, Equatable {
+    var surfaceId: String?
+    var boundary: [VinylDirectionPointSnapshot]
+    var regions: [VinylDirectionRegionSnapshot]
+    var transitions: [VinylDirectionTransitionSnapshot]
+
+    init(
+        surfaceId: String? = nil,
+        boundary: [VinylDirectionPointSnapshot],
+        regions: [VinylDirectionRegionSnapshot],
+        transitions: [VinylDirectionTransitionSnapshot]
+    ) {
+        self.surfaceId = surfaceId
+        self.boundary = boundary
+        self.regions = regions
+        self.transitions = transitions
+    }
+}
+
 /// The materials list frozen at MARK ORDERED. Everything §6 of the spec produces
 /// is captured so the tab can render exactly what was ordered — the stored
 /// `cutGroups` are PURCHASED-only ("what was ordered"). Drift is detected by
@@ -135,6 +172,12 @@ struct DeckMaterialsSnapshot: Codable, Equatable {
     /// instant a reuse deck is ordered. Defaults to `cutGroups` for any legacy
     /// snapshot that predates this field (none exist in prod).
     var driftCutGroups: [CutGroup]
+    /// Explicit run-region and wall-seam geometry at order time. The grouped
+    /// surface form is authoritative for new snapshots; the flat arrays remain
+    /// as an additive legacy fallback for snapshots written during rollout.
+    var vinylDirectionSurfaces: [VinylSurfaceDirectionGeometrySnapshot]?
+    var vinylDirectionRegions: [VinylDirectionRegionSnapshot]?
+    var vinylDirectionTransitions: [VinylDirectionTransitionSnapshot]?
     var dripEdgeFeet: Double
     var dripSticks: Int
     var clipFeet: Double
@@ -173,6 +216,9 @@ struct DeckMaterialsSnapshot: Codable, Equatable {
         case vinylSurfaceAreaSqFt
         case cutGroups
         case driftCutGroups
+        case vinylDirectionSurfaces
+        case vinylDirectionRegions
+        case vinylDirectionTransitions
         case dripEdgeFeet
         case dripSticks
         case clipFeet
@@ -210,7 +256,10 @@ struct DeckMaterialsSnapshot: Codable, Equatable {
         fullRollLengthFeet: Double = 75,
         orderedRollCount: Int? = nil,
         isOrderedEdited: Bool = false,
-        driftCutGroups: [CutGroup]? = nil
+        driftCutGroups: [CutGroup]? = nil,
+        vinylDirectionSurfaces: [VinylSurfaceDirectionGeometrySnapshot]? = nil,
+        vinylDirectionRegions: [VinylDirectionRegionSnapshot]? = nil,
+        vinylDirectionTransitions: [VinylDirectionTransitionSnapshot]? = nil
     ) {
         self.orderedAt = orderedAt
         self.orderedBy = orderedBy
@@ -224,6 +273,9 @@ struct DeckMaterialsSnapshot: Codable, Equatable {
         // the purchased cutGroups (unchanged behavior). The order service passes
         // the real all-cuts set.
         self.driftCutGroups = driftCutGroups ?? cutGroups
+        self.vinylDirectionSurfaces = vinylDirectionSurfaces
+        self.vinylDirectionRegions = vinylDirectionRegions
+        self.vinylDirectionTransitions = vinylDirectionTransitions
         self.dripEdgeFeet = dripEdgeFeet
         self.dripSticks = dripSticks
         self.clipFeet = clipFeet
@@ -256,6 +308,18 @@ struct DeckMaterialsSnapshot: Codable, Equatable {
         // the purchased cutGroups (its prior, pre-fix behavior). Must decode AFTER
         // `cutGroups` so the fallback sees the decoded value.
         self.driftCutGroups = try c.decodeIfPresent([CutGroup].self, forKey: .driftCutGroups) ?? self.cutGroups
+        self.vinylDirectionSurfaces = try c.decodeIfPresent(
+            [VinylSurfaceDirectionGeometrySnapshot].self,
+            forKey: .vinylDirectionSurfaces
+        )
+        self.vinylDirectionRegions = try c.decodeIfPresent(
+            [VinylDirectionRegionSnapshot].self,
+            forKey: .vinylDirectionRegions
+        )
+        self.vinylDirectionTransitions = try c.decodeIfPresent(
+            [VinylDirectionTransitionSnapshot].self,
+            forKey: .vinylDirectionTransitions
+        )
         self.dripEdgeFeet = try c.decodeIfPresent(Double.self, forKey: .dripEdgeFeet) ?? 0
         self.dripSticks = try c.decodeIfPresent(Int.self, forKey: .dripSticks) ?? 0
         self.clipFeet = try c.decodeIfPresent(Double.self, forKey: .clipFeet) ?? 0

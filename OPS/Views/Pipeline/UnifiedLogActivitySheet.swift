@@ -14,9 +14,9 @@
 //    1. HEADER      — title + optional call-provenance subline + close.
 //    2. NOTE        — free text + inline DICTATE voice pill (LogCallSheet
 //                     pattern), folds transcription into notesText on stop.
-//    3. TYPE        — CALL / EMAIL / MEETING / NOTE chips. No SITE VISIT
-//                     (its own flow) and no TEXT (ActivityType has no
-//                     text/sms case — inventing one is out of scope here).
+//    3. TYPE        — CALL / TEXT / EMAIL / MEETING / NOTE chips. No SITE
+//                     VISIT (its own flow). TEXT landed with the Leads
+//                     redesign (ActivityType.textMessage, web parity).
 //    4. AGAINST     — state-aware target: locked NEUTRAL chip (never green)
 //                     when resolved, else a picker-launching row.
 //    5. DETAIL      — DIRECTION / DURATION / OUTCOME / SUBJECT, each gated
@@ -58,7 +58,7 @@ struct UnifiedLogActivitySheet: View {
                         if viewModel.showDirectionField { directionSection }
                         if viewModel.showDurationField { durationSection }
                         if viewModel.showOutcomeField { outcomeSection }
-                        subjectSection
+                        if viewModel.showSubjectField { subjectSection }
                         if showFollowUpRow { followUpSection }
                     }
                     .padding(.horizontal, OPSStyle.Layout.spacing3_5)
@@ -173,10 +173,11 @@ struct UnifiedLogActivitySheet: View {
 
     private var notePlaceholder: String {
         switch viewModel.selectedType {
-        case .call:    return "What did you talk about?"
-        case .email:   return "Paste the gist of the email here."
-        case .meeting: return "Agenda, decisions, next steps."
-        default:       return "Anything worth remembering."
+        case .call:        return "What did you talk about?"
+        case .textMessage: return "What did they say?"
+        case .email:       return "Paste the gist of the email here."
+        case .meeting:     return "Agenda, decisions, next steps."
+        default:           return "Anything worth remembering."
         }
     }
 
@@ -248,14 +249,14 @@ struct UnifiedLogActivitySheet: View {
 
     // MARK: - Type
 
-    /// CORRESPONDENCE ONLY — CALL / EMAIL / MEETING / NOTE. `ActivityType` has
-    /// no text/sms case, so TEXT is intentionally omitted rather than
-    /// invented. SITE VISIT is its own flow and never appears here.
+    /// CORRESPONDENCE ONLY — CALL / TEXT / EMAIL / MEETING / NOTE. SITE VISIT
+    /// is its own flow and never appears here.
     private static let typeOptions: [LeadChipOption] = [
-        .init(id: ActivityType.call.rawValue,    label: "CALL"),
-        .init(id: ActivityType.email.rawValue,   label: "EMAIL"),
-        .init(id: ActivityType.meeting.rawValue, label: "MEETING"),
-        .init(id: ActivityType.note.rawValue,    label: "NOTE"),
+        .init(id: ActivityType.call.rawValue,        label: "CALL"),
+        .init(id: ActivityType.textMessage.rawValue, label: "TEXT"),
+        .init(id: ActivityType.email.rawValue,       label: "EMAIL"),
+        .init(id: ActivityType.meeting.rawValue,     label: "MEETING"),
+        .init(id: ActivityType.note.rawValue,        label: "NOTE"),
     ]
 
     private var typeSection: some View {

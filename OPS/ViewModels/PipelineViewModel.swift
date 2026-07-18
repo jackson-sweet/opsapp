@@ -273,7 +273,7 @@ class PipelineViewModel: ObservableObject {
         case all
         case overdue        // nextFollowUpAt <= now
         case dueToday       // nextFollowUpAt == today
-        case waitingOnYou   // last message was inbound (lastMessageDirection == "in")
+        case waitingOnYou   // their touch is last AND not declared handled (isAwaitingReply)
         case fresh          // newLead stage with no activity yet
         case waitingOnThem  // catch-all for non-urgent open leads
 
@@ -284,11 +284,20 @@ class PipelineViewModel: ObservableObject {
             case .all:           return "ALL"
             case .overdue:       return "OVERDUE"
             case .dueToday:      return "DUE TODAY"
-            case .waitingOnYou:  return "REPLY DUE"
+            case .waitingOnYou:  return "YOUR MOVE"
             case .fresh:         return "NEW"
             case .waitingOnThem: return "WAITING"
             }
         }
+    }
+
+    /// YOUR MOVE = last recorded touch was theirs AND the operator has not
+    /// declared it handled since. A newer inbound after a flip re-arms it.
+    nonisolated static func isAwaitingReply(_ opp: Opportunity) -> Bool {
+        guard opp.stage != .newLead, opp.lastMessageDirection == "in" else { return false }
+        guard let handled = opp.handledAt else { return true }
+        guard let inbound = opp.lastInboundAt else { return false }
+        return inbound > handled
     }
 
     enum UrgencyTone {
@@ -361,9 +370,9 @@ class PipelineViewModel: ObservableObject {
                 }
             }
 
-            // "Waiting on you" — last inbound activity unanswered.
-            // Skip for newLead (those route to .fresh).
-            if opp.stage != .newLead, opp.lastMessageDirection == "in" {
+            // YOUR MOVE — their touch is last and not declared handled.
+            // newLead routes to .fresh instead.
+            if Self.isAwaitingReply(opp) {
                 waitingOnYou.append(opp)
                 continue
             }
@@ -413,7 +422,7 @@ class PipelineViewModel: ObservableObject {
             if due < startOfToday    { return .overdue }
             if due < startOfTomorrow { return .dueToday }
         }
-        if lead.stage != .newLead, lead.lastMessageDirection == "in" {
+        if Self.isAwaitingReply(lead) {
             return .waitingOnYou
         }
         if lead.stage == .newLead { return .fresh }

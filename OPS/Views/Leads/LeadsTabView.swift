@@ -313,9 +313,9 @@ struct LeadsTabView: View {
         case .all:           return "ALL"
         case .overdue:       return "OVERDUE"
         case .dueToday:      return "DUE TODAY"
-        case .waitingOnYou:  return "WAITING ON YOU"
+        case .waitingOnYou:  return "YOUR MOVE"
         case .fresh:         return "FRESH"
-        case .waitingOnThem: return "WAITING ON THEM"
+        case .waitingOnThem: return "WAITING"
         }
     }
 
@@ -397,8 +397,8 @@ struct LeadsTabView: View {
         switch b {
         case .overdue:       return "OVERDUE · CHASE NOW"
         case .dueToday:      return "DUE TODAY"
-        case .waitingOnYou:  return "WAITING ON YOU"
-        case .waitingOnThem: return "WAITING ON THEM"
+        case .waitingOnYou:  return "YOUR MOVE"
+        case .waitingOnThem: return "WAITING"
         case .fresh:         return "FRESH"
         case .all:           return "ALL"
         }

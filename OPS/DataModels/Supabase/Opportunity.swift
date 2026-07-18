@@ -73,6 +73,14 @@ class Opportunity: Identifiable {
     var lastOutboundAt: Date?
     var lastMessageDirection: String?
 
+    // Chase flip + agent summary (Leads redesign 2026-07). `handledAt` is the
+    // operator's "handled — their move now" declaration; a newer lastInboundAt
+    // re-flips the lead to YOUR MOVE. `aiSummary` is written by the web agent;
+    // iOS renders it with the `aiSummaryUpdatedAt` freshness stamp.
+    var handledAt: Date?
+    var aiSummary: String?
+    var aiSummaryUpdatedAt: Date?
+
     // Timestamps
     var createdAt: Date
     var updatedAt: Date
@@ -179,6 +187,10 @@ class Opportunity: Identifiable {
         lastInboundAt = other.lastInboundAt
         lastOutboundAt = other.lastOutboundAt
         lastMessageDirection = other.lastMessageDirection
+
+        handledAt = other.handledAt
+        aiSummary = other.aiSummary
+        aiSummaryUpdatedAt = other.aiSummaryUpdatedAt
 
         createdAt = other.createdAt
         updatedAt = other.updatedAt

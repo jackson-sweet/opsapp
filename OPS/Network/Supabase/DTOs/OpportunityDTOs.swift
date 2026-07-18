@@ -109,6 +109,10 @@ struct OpportunityDTO: Codable, Identifiable {
     let lastOutboundAt: String?
     let lastMessageDirection: String?
 
+    let handledAt: String?
+    let aiSummary: String?
+    let aiSummaryUpdatedAt: String?
+
     let createdAt: String
     let updatedAt: String
 
@@ -153,6 +157,9 @@ struct OpportunityDTO: Codable, Identifiable {
         case lastInboundAt        = "last_inbound_at"
         case lastOutboundAt       = "last_outbound_at"
         case lastMessageDirection = "last_message_direction"
+        case handledAt            = "handled_at"
+        case aiSummary            = "ai_summary"
+        case aiSummaryUpdatedAt   = "ai_summary_updated_at"
         case createdAt            = "created_at"
         case updatedAt            = "updated_at"
     }
@@ -202,6 +209,9 @@ struct OpportunityDTO: Codable, Identifiable {
         opp.lastInboundAt = lastInboundAt.flatMap { SupabaseDate.parse($0) }
         opp.lastOutboundAt = lastOutboundAt.flatMap { SupabaseDate.parse($0) }
         opp.lastMessageDirection = lastMessageDirection
+        opp.handledAt = handledAt.flatMap { SupabaseDate.parse($0) }
+        opp.aiSummary = aiSummary
+        opp.aiSummaryUpdatedAt = aiSummaryUpdatedAt.flatMap { SupabaseDate.parse($0) }
         return opp
     }
 }

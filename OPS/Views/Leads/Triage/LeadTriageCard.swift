@@ -46,6 +46,20 @@ struct LeadTriageCard: View {
     /// Per-card session state (spec §4) — collapsed by default, never persisted.
     @State private var summaryExpanded = false
 
+    // Swipe = stage (spec §4 gestures) — the Job Board grammar in miniature:
+    // drag reveals the destination stage behind the card, ≥40% commits with
+    // a flash-confirm, otherwise snap back. Axis discrimination lives in
+    // DirectionalDragModifier (verbatim Job Board mechanics).
+    @State private var swipeOffset: CGFloat = 0
+    @State private var cardWidth: CGFloat = 0
+    @State private var hasTriggeredSwipeHaptic = false
+    @State private var isCommittingSwipe = false
+    @State private var committedStage: PipelineStage? = nil
+    @State private var committedDirection: SwipeDirection? = nil
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    private enum SwipeDirection { case left, right }
+
     private var isTerminal: Bool { lead.stage.isTerminal }
     private var effectiveBucket: PipelineViewModel.TriageBucket {
         bucket == .all ? viewModel.bucketOf(lead) : bucket
@@ -69,6 +83,40 @@ struct LeadTriageCard: View {
     }
 
     var body: some View {
+        ZStack(alignment: .leading) {
+            // Destination-stage layer fades in behind the dragged card.
+            if swipeOffset > 0, let target = targetStage(.right) {
+                revealLayer(target, direction: .right)
+                    .opacity(revealOpacity)
+            } else if swipeOffset < 0, let target = targetStage(.left) {
+                revealLayer(target, direction: .left)
+                    .opacity(revealOpacity)
+            }
+
+            cardBody
+                .offset(x: reduceMotion ? 0 : swipeOffset)
+                .opacity(cardOpacity)
+                .directionalDrag(
+                    isEnabled: canSwipeAny,
+                    onChanged: { translation in swipeChanged(translation) },
+                    onEnded: { translation in swipeEnded(translation) }
+                )
+
+            // Flash-confirm layer while the stage commit lands.
+            if isCommittingSwipe, let stage = committedStage, let dir = committedDirection {
+                revealLayer(stage, direction: dir)
+            }
+        }
+        .background(
+            GeometryReader { geo in
+                Color.clear
+                    .onAppear { cardWidth = geo.size.width }
+                    .onChange(of: geo.size.width) { _, w in cardWidth = w }
+            }
+        )
+    }
+
+    private var cardBody: some View {
         VStack(alignment: .leading, spacing: 0) {
             VStack(alignment: .leading, spacing: 0) {
                 // Contact + value
@@ -133,6 +181,98 @@ struct LeadTriageCard: View {
             return "\(lead.displayContactName), \(outcome.label)\(tail)"
         }
         return "\(lead.displayContactName), \(lead.stage.displayName), \(chase.label)"
+    }
+
+    // MARK: Swipe = stage (Job Board grammar, spec §4)
+
+    private func targetStage(_ direction: SwipeDirection) -> PipelineStage? {
+        guard !isTerminal else { return nil }
+        switch direction {
+        case .right:
+            return lead.stage.next   // .won commits through onWon, never direct
+        case .left:
+            guard let idx = PipelineStage.openStages.firstIndex(of: lead.stage), idx > 0 else { return nil }
+            return PipelineStage.openStages[idx - 1]
+        }
+    }
+
+    private func canSwipe(_ direction: SwipeDirection) -> Bool {
+        guard !disableSwipe, !isTerminal, let target = targetStage(direction) else { return false }
+        return target == .won ? canConvert : canEdit
+    }
+
+    private var canSwipeAny: Bool { canSwipe(.left) || canSwipe(.right) }
+
+    /// Reveal fades in over the first 40% of the card width — the commit
+    /// threshold — so full opacity means "release to commit".
+    private var revealOpacity: Double {
+        guard cardWidth > 0 else { return 0 }
+        return min(abs(swipeOffset) / (cardWidth * 0.4), 1.0)
+    }
+
+    /// Reduced motion: the card never translates — it fades where the offset
+    /// would have moved it, revealing the destination layer beneath
+    /// (opacity-only fallback, spec §11).
+    private var cardOpacity: Double {
+        if isCommittingSwipe { return 0 }
+        if reduceMotion, swipeOffset != 0 { return 1.0 - (revealOpacity * 0.85) }
+        return 1
+    }
+
+    private func swipeChanged(_ translation: CGFloat) {
+        guard !isCommittingSwipe else { return }
+        let direction: SwipeDirection = translation > 0 ? .right : .left
+        guard canSwipe(direction) else { return }
+        swipeOffset = max(min(translation, cardWidth), -cardWidth)
+        if cardWidth > 0, abs(swipeOffset) / cardWidth >= 0.4, !hasTriggeredSwipeHaptic {
+            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+            hasTriggeredSwipeHaptic = true
+        }
+    }
+
+    private func swipeEnded(_ translation: CGFloat) {
+        guard !isCommittingSwipe else { return }
+        let direction: SwipeDirection = translation > 0 ? .right : .left
+        let pct = cardWidth > 0 ? abs(translation) / cardWidth : 0
+        if pct >= 0.4, canSwipe(direction), let target = targetStage(direction) {
+            committedStage = target
+            committedDirection = direction
+            isCommittingSwipe = true
+            withAnimation(OPSStyle.Animation.standard) { swipeOffset = 0 }
+            // Flash-confirm beat, then commit — the Job Board sequence.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                if target == .won { onWon() } else { onStage(target) }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                    withAnimation(OPSStyle.Animation.standard) {
+                        isCommittingSwipe = false
+                        committedStage = nil
+                        committedDirection = nil
+                    }
+                    hasTriggeredSwipeHaptic = false
+                }
+            }
+        } else {
+            withAnimation(OPSStyle.Animation.standard) { swipeOffset = 0 }
+            hasTriggeredSwipeHaptic = false
+        }
+    }
+
+    private func revealLayer(_ stage: PipelineStage, direction: SwipeDirection) -> some View {
+        let tone = OPSStyle.Colors.pipelineStageColor(for: stage)
+        return HStack {
+            if direction == .left { Spacer() }
+            Text(stage == .won ? "WON →" : stage.displayName)
+                .font(.custom("JetBrainsMono-Medium", size: 11))
+                .tracking(0.9)
+                .textCase(.uppercase)
+                .foregroundColor(tone)
+                .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+            if direction == .right { Spacer() }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(RoundedRectangle(cornerRadius: OPSStyle.Layout.panelRadius, style: .continuous).fill(tone.opacity(0.10)))
+        .overlay(RoundedRectangle(cornerRadius: OPSStyle.Layout.panelRadius, style: .continuous).strokeBorder(tone, lineWidth: 1))
+        .accessibilityHidden(true)
     }
 
     // MARK: Chase strip (spec §2.3)

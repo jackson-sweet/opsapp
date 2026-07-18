@@ -86,16 +86,8 @@ final class PipelineViewModelTests: XCTestCase {
         XCTAssertEqual(vm.activeLeadCount, 2)
     }
 
-    func test_weightedForecastValue_appliesStageProbability() {
-        let vm = PipelineViewModel()
-        // newLead = 10%, quoting = 40%
-        vm.allOpportunities = [
-            makeOpportunity(stage: .newLead, estimatedValue: 1000),    // 100
-            makeOpportunity(stage: .quoting, estimatedValue: 5000),    // 2000
-            makeOpportunity(stage: .won, estimatedValue: 10000)        // excluded (terminal)
-        ]
-        XCTAssertEqual(vm.weightedForecastValue, 100 + 2000, accuracy: 0.01)
-    }
+    // Weighted forecast retired with the 2026-07 Leads redesign — the summary
+    // reads the UNWEIGHTED open pipeline (covered in LeadChaseEngineTests).
 
     func test_staleLeadsCount_respectsPerStageThreshold() {
         let vm = PipelineViewModel()

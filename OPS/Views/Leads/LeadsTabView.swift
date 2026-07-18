@@ -539,7 +539,7 @@ struct LeadsTabView: View {
     }
 
     private var caughtUpHint: String {
-        "\(viewModel.openLeadCount) OPEN · PIPELINE \(BooksFormat.compact(viewModel.weightedForecastValue))"
+        "\(viewModel.openLeadCount) OPEN · PIPELINE \(BooksFormat.compact(viewModel.openPipelineValue))"
     }
 
     /// One unconverted win → straight to convert. Several → a chooser first so

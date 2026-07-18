@@ -72,4 +72,34 @@ final class LeadChaseEngineTests: XCTestCase {
         XCTAssertEqual(ActivityType.textMessage.rawValue, "text_message")
         XCTAssertFalse(ActivityType.textMessage.isSystemGenerated)
     }
+
+    // MARK: - Work-first summary computeds (spec §7)
+
+    func testNeedActionCount() {   // overdue + dueToday + yourMove, never waiting/fresh
+        let overdue = lead(followUp: .now.addingTimeInterval(-2 * 86_400))
+        let dueToday = lead(followUp: .now)
+        let yourMove = lead(direction: "in", lastInbound: .now.addingTimeInterval(-3600))
+        let waiting = lead(direction: "out")
+        let fresh = lead(stage: .newLead)
+        XCTAssertEqual(vm([overdue, dueToday, yourMove, waiting, fresh]).needActionCount, 3)
+    }
+
+    func testOpenPipelineValueUnweighted() {
+        let a = lead(); a.estimatedValue = 10_000
+        let b = lead(); b.estimatedValue = 4_500
+        let won = lead(stage: .won); won.estimatedValue = 99_999
+        let archived = lead(); archived.estimatedValue = 3_000; archived.archivedAt = .now
+        XCTAssertEqual(vm([a, b, won, archived]).openPipelineValue, 14_500)
+    }
+
+    func testWonThisMonthValuePrefersActual() {
+        let wonNow = lead(stage: .won)
+        wonNow.actualCloseDate = .now
+        wonNow.actualValue = 12_000
+        wonNow.estimatedValue = 10_000
+        let wonOld = lead(stage: .won)
+        wonOld.actualCloseDate = Calendar.current.date(byAdding: .month, value: -2, to: .now)
+        wonOld.estimatedValue = 8_000
+        XCTAssertEqual(vm([wonNow, wonOld]).wonThisMonthValue, 12_000)
+    }
 }

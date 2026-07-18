@@ -52,50 +52,37 @@ struct LeadPhotosSection: View {
         return queued + remote
     }
 
+    /// Document-row form (Leads redesign spec §5.9): the PHOTOS row's content
+    /// region — no header, no outer padding; the details document supplies
+    /// the label column. Empty + view-only renders the document's `—` blank.
     var body: some View {
         let items = self.items
         if items.isEmpty && !canManage {
-            EmptyView()
+            Text("—")
+                .font(.custom("Mohave-Medium", size: 14))
+                .foregroundColor(OPSStyle.Colors.textMute)
+        } else if items.isEmpty {
+            // Empty + can manage — one quiet tile-sized affordance.
+            addTile
         } else {
-            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
-                PanelSectionHeader(
-                    label: "PHOTOS",
-                    count: items.isEmpty ? nil : items.count
-                )
-                .padding(.horizontal, OPSStyle.Layout.spacing3_5)
-
-                if items.isEmpty {
-                    // Empty + can manage — one quiet 48pt affordance, not an
-                    // acreage-eating empty state.
-                    SheetCTAButton(
-                        label: "ADD PHOTOS",
-                        icon: "camera",
-                        variant: .outline,
-                        action: onAdd
-                    )
-                    .padding(.horizontal, OPSStyle.Layout.spacing3_5)
-                } else {
-                    ScrollView(.horizontal) {
-                        HStack(spacing: 10) {
-                            if canManage {
-                                addTile
-                            }
-                            ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
-                                Button {
-                                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                                    onTap(items, index)
-                                } label: {
-                                    tile(for: item)
-                                }
-                                .buttonStyle(PlainButtonStyle())
-                                .accessibilityLabel(accessibilityLabel(for: item, index: index))
-                            }
-                        }
-                        .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+            ScrollView(.horizontal) {
+                HStack(spacing: 10) {
+                    if canManage {
+                        addTile
                     }
-                    .scrollIndicators(.hidden)
+                    ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
+                        Button {
+                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                            onTap(items, index)
+                        } label: {
+                            tile(for: item)
+                        }
+                        .buttonStyle(PlainButtonStyle())
+                        .accessibilityLabel(accessibilityLabel(for: item, index: index))
+                    }
                 }
             }
+            .scrollIndicators(.hidden)
         }
     }
 

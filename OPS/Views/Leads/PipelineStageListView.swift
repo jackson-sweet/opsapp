@@ -185,7 +185,7 @@ struct PipelineStageListView: View {
             do {
                 let comeback = try await viewModel.markHandled(opportunityId: lead.id)
                 ToastCenter.shared.present(Toast(
-                    label: "// HANDLED · BACK \(LeadTriageCard.comebackLabel(comeback))",
+                    label: "// HANDLED · BACK \(LeadChaseStrip.comebackLabel(comeback))",
                     tone: .success,
                     autoDismissAfter: 6,
                     action: ToastAction(label: "ADJUST", accessibilityLabel: "Adjust comeback date") {

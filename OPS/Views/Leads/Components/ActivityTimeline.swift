@@ -2,179 +2,261 @@
 //  ActivityTimeline.swift
 //  OPS
 //
-//  Recent activity rail on LeadDetailView. Renders the most-recent 5
-//  activities for the opportunity. Each row:
+//  ONE activity stream on LeadDetailView (Leads redesign spec §5.10) —
+//  activities and stage changes merge-sorted into a single reverse-
+//  chronological rail. Rows:
 //
-//      ┌──┐
-//      │📞│  ↓ Inbound call                                 5D
-//      └──┘  6 min · asked about timing
+//      ↓  Quote question — email               2D  ⌄
+//         └ expanded: the note / email gist (inline, mono-quiet)
+//      ●  Stage: QUOTING → QUOTED              4D
+//      ↑  Text to Helen — text                 5D
 //
-//  Direction prefix (↓ inbound / ↑ outbound) is applied to the title.
-//  Icon tile is tinted oliveTextM for inbound (the only color cue), text2
-//  for outbound / undirected.
+//  Direction glyphs: ↓ steel inbound (their touch — the YOUR MOVE tone),
+//  ↑ olive outbound (your touch landed), type icon otherwise. Rows with a
+//  body unfold inline (150ms, reduced-motion aware). Capped at `maxItems`
+//  with a VIEW ALL → N footer pushing the full history.
 //
 //  Empty state: a single muted `// NO ACTIVITY LOGGED` line inside the
 //  card. Card itself always renders so the section heading stays anchored.
 //
 
 import SwiftUI
+import UIKit
+
+/// One stream entry — an activity or a stage change folded into the rail.
+enum LeadStreamEntry: Identifiable {
+    case activity(Activity)
+    case stage(StageTransition)
+
+    var id: String {
+        switch self {
+        case .activity(let a): return "a-\(a.id)"
+        case .stage(let t):    return "s-\(t.id)"
+        }
+    }
+
+    var date: Date {
+        switch self {
+        case .activity(let a): return a.createdAt
+        case .stage(let t):    return t.transitionedAt
+        }
+    }
+
+    /// Merge-sort both sources newest-first.
+    static func merged(activities: [Activity], transitions: [StageTransition]) -> [LeadStreamEntry] {
+        (activities.map(LeadStreamEntry.activity) + transitions.map(LeadStreamEntry.stage))
+            .sorted { $0.date > $1.date }
+    }
+}
 
 struct ActivityTimeline: View {
-    /// Pre-sorted activities (newest first). Caller is responsible for ordering;
-    /// the view trims to the first `maxItems`.
     let activities: [Activity]
-    var maxItems: Int = 5
+    let transitions: [StageTransition]
+    var maxItems: Int = 6
+    var onViewAll: () -> Void = {}
+
+    /// Inline-expanded rows, per presentation (never persisted).
+    @State private var expanded: Set<String> = []
+
+    private var entries: [LeadStreamEntry] {
+        LeadStreamEntry.merged(activities: activities, transitions: transitions)
+    }
 
     var body: some View {
+        let entries = self.entries
         VStack(alignment: .leading, spacing: 0) {
-            PanelSectionHeader(label: "RECENT ACTIVITY", hint: countHint)
+            PanelSectionHeader(label: "ACTIVITY", count: entries.isEmpty ? nil : entries.count)
                 .padding(.horizontal, OPSStyle.Layout.spacing3_5)
                 .padding(.bottom, 10)
 
-            content
+            content(entries)
                 .commandCard()
                 .padding(.horizontal, OPSStyle.Layout.spacing3_5)
         }
     }
 
-    // MARK: - Card content
-
     @ViewBuilder
-    private var content: some View {
-        if activities.isEmpty {
+    private func content(_ entries: [LeadStreamEntry]) -> some View {
+        if entries.isEmpty {
             EmptyLine(text: "// NO ACTIVITY LOGGED")
         } else {
-            let shown = Array(activities.prefix(maxItems))
+            let shown = Array(entries.prefix(maxItems))
             VStack(spacing: 0) {
-                ForEach(Array(shown.enumerated()), id: \.element.id) { idx, activity in
-                    ActivityRow(activity: activity)
-                    if idx < shown.count - 1 {
+                ForEach(shown) { entry in
+                    LeadStreamRow(
+                        entry: entry,
+                        isExpanded: expanded.contains(entry.id),
+                        onToggle: { toggle(entry.id) }
+                    )
+                    if entry.id != shown.last?.id {
                         Rectangle()
                             .fill(OPSStyle.Colors.surfaceInput)
                             .frame(height: 1)
                             .padding(.horizontal, 14)
                     }
                 }
+
+                if entries.count > maxItems {
+                    Rectangle()
+                        .fill(OPSStyle.Colors.lineSoft)
+                        .frame(height: 1)
+                    Button {
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        onViewAll()
+                    } label: {
+                        HStack(spacing: 6) {
+                            Text("VIEW ALL")
+                            Image(systemName: "arrow.right")
+                                .font(.system(size: 9, weight: .semibold))
+                            Spacer(minLength: 0)
+                            Text("\(entries.count)")
+                                .monospacedDigit()
+                        }
+                        .font(.custom("JetBrainsMono-Medium", size: 9.5))
+                        .tracking(1.2)
+                        .textCase(.uppercase)
+                        .foregroundColor(OPSStyle.Colors.text3)
+                        .padding(.horizontal, 14)
+                        .frame(maxWidth: .infinity, minHeight: OPSStyle.Layout.touchTargetMin)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("View all \(entries.count) activities")
+                }
             }
         }
     }
 
-    // MARK: - Derived
-
-    private var countHint: String? {
-        if activities.isEmpty { return nil }
-        let shown = min(activities.count, maxItems)
-        if activities.count > maxItems {
-            return "\(shown) OF \(activities.count)"
+    private func toggle(_ id: String) {
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        withAnimation(OPSStyle.Animation.curve(OPSStyle.Animation.durationHover)) {
+            if expanded.contains(id) { expanded.remove(id) } else { expanded.insert(id) }
         }
-        return String(format: "%02d", shown)
     }
 }
 
-// MARK: - Row (private)
+// MARK: - Row (shared with LeadActivityHistoryView)
 
-private struct ActivityRow: View {
-    let activity: Activity
+struct LeadStreamRow: View {
+    let entry: LeadStreamEntry
+    let isExpanded: Bool
+    var onToggle: () -> Void = {}
 
     var body: some View {
-        HStack(alignment: .top, spacing: OPSStyle.Layout.spacing2_5) {
-            iconTile
+        switch entry {
+        case .activity(let activity):
+            activityRow(activity)
+        case .stage(let transition):
+            stageRow(transition)
+        }
+    }
 
-            VStack(alignment: .leading, spacing: 2) {
-                Text(titleText)
-                    .font(.custom("Mohave-Medium", size: 14))
-                    .foregroundColor(OPSStyle.Colors.text)
-                    .lineLimit(1)
-                    .truncationMode(.tail)
+    // MARK: Activity row
 
-                if let body = bodyText {
-                    Text(body)
-                        .font(.custom("Mohave-Regular", size: 12.5))
-                        .foregroundColor(OPSStyle.Colors.text3)
-                        .lineLimit(2)
-                        .fixedSize(horizontal: false, vertical: true)
+    @ViewBuilder
+    private func activityRow(_ activity: Activity) -> some View {
+        let body = expandableBody(activity)
+        VStack(alignment: .leading, spacing: 0) {
+            Button {
+                if body != nil { onToggle() }
+            } label: {
+                HStack(alignment: .center, spacing: OPSStyle.Layout.spacing2_5) {
+                    glyph(activity)
+                        .frame(width: 20)
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(titleText(activity))
+                            .font(.custom("Mohave-Medium", size: 14))
+                            .foregroundColor(OPSStyle.Colors.text)
+                            .lineLimit(1)
+                            .truncationMode(.tail)
+
+                        if let metadata = metadataText(activity) {
+                            Text(metadata)
+                                .font(OPSStyle.Typography.metadata)
+                                .foregroundColor(metadataColor(activity))
+                                .lineLimit(1)
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+
+                    Text(Self.ageString(entry.date))
+                        .font(.custom("JetBrainsMono-Regular", size: 9.5))
+                        .foregroundColor(OPSStyle.Colors.textMute)
+                        .kerning(1.0)
+                        .textCase(.uppercase)
+                        .monospacedDigit()
+
+                    if body != nil {
+                        Image(systemName: "chevron.down")
+                            .font(.system(size: 9, weight: .semibold))
+                            .foregroundColor(OPSStyle.Colors.textMute)
+                            .rotationEffect(.degrees(isExpanded ? 180 : 0))
+                    }
                 }
-
-                if let metadata = metadataText {
-                    Text(metadata)
-                        .font(OPSStyle.Typography.metadata)
-                        .foregroundColor(metadataColor)
-                        .lineLimit(1)
-                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, OPSStyle.Layout.spacing2_5)
+                .frame(minHeight: OPSStyle.Layout.touchTargetMin)
+                .contentShape(Rectangle())
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
+            .buttonStyle(.plain)
+            .disabled(body == nil)
+            .accessibilityLabel(accessibilityLabel(activity, hasBody: body != nil))
 
-            Text(ageString)
-                .font(.custom("JetBrainsMono-Regular", size: 9.5))
-                .foregroundColor(OPSStyle.Colors.textMute)
-                .kerning(1.0)
-                .textCase(.uppercase)
-                .monospacedDigit()
+            if isExpanded, let body {
+                Text(body)
+                    .font(.custom("Mohave-Regular", size: 12.5))
+                    .foregroundColor(OPSStyle.Colors.text2)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 14)
+                    .padding(.leading, 20 + OPSStyle.Layout.spacing2_5)
+                    .padding(.bottom, OPSStyle.Layout.spacing2_5)
+                    .transition(.opacity)
+            }
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, OPSStyle.Layout.spacing2_5)
     }
 
-    // MARK: - Visual elements
-
-    private var iconTile: some View {
-        Image(systemName: iconName)
-            .font(.system(size: 13, weight: .regular))
-            .foregroundColor(iconTint)
-            .frame(width: 26, height: 26)
-            .background(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius, style: .continuous)
-                    .fill(OPSStyle.Colors.surfaceInput)
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius, style: .continuous)
-                    .strokeBorder(OPSStyle.Colors.line, lineWidth: 1)
-            )
-    }
-
-    // MARK: - Derived
-
-    private var iconName: String { activity.type.icon }
-
-    private var iconTint: Color {
-        activity.direction == "inbound"
-            ? OPSStyle.Colors.oliveTextM
-            : OPSStyle.Colors.text2
-    }
-
-    /// Title: optional ↓/↑ direction prefix + (subject ?? bodyText ?? type name).
-    private var titleText: String {
-        let prefix: String
+    /// Direction glyph — ↓ steel inbound (their move tone), ↑ olive outbound,
+    /// the type icon otherwise.
+    @ViewBuilder
+    private func glyph(_ activity: Activity) -> some View {
         switch activity.direction {
-        case "inbound":  prefix = "↓ "
-        case "outbound": prefix = "↑ "
-        default:         prefix = ""
+        case "inbound":
+            Text("↓")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundColor(OPSStyle.Colors.opsAccent)
+        case "outbound":
+            Text("↑")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundColor(OPSStyle.Colors.oliveTextM)
+        default:
+            Image(systemName: activity.type.icon)
+                .font(.system(size: 12, weight: .regular))
+                .foregroundColor(OPSStyle.Colors.text3)
         }
+    }
 
-        if let subject = activity.subject, !subject.isEmpty {
-            return prefix + subject
-        }
-        if let body = activity.displayBody, !body.isEmpty {
-            return prefix + body
-        }
-        return prefix + activity.type.rawValue
+    private func titleText(_ activity: Activity) -> String {
+        if let subject = activity.subject, !subject.isEmpty { return subject }
+        if let body = activity.displayBody, !body.isEmpty { return body }
+        return activity.type.rawValue
             .replacingOccurrences(of: "_", with: " ")
             .uppercased()
     }
 
-    /// Body: rendered only if subject was used as title (so we don't duplicate).
-    private var bodyText: String? {
+    /// The inline-expandable body — only when it adds something beyond the
+    /// title line.
+    private func expandableBody(_ activity: Activity) -> String? {
         guard let subject = activity.subject, !subject.isEmpty else { return nil }
         guard let body = activity.displayBody, !body.isEmpty, body != subject else { return nil }
         return body
     }
 
-    /// Metadata micro-line: duration and/or outcome, joined with a middot.
-    /// Renders nothing when neither field is present.
-    private var metadataText: String? {
+    /// Duration and/or outcome, joined with a middot.
+    private func metadataText(_ activity: Activity) -> String? {
         let duration = activity.durationMinutes.flatMap(formatDuration)
         let outcome = activity.outcome.flatMap(formatOutcome)
-
         switch (duration, outcome) {
         case let (.some(d), .some(o)): return "\(d) · \(o)"
         case let (.some(d), .none):    return d
@@ -183,14 +265,11 @@ private struct ActivityRow: View {
         }
     }
 
-    /// Metadata line color: outcome drives it when present (semantic allowlist),
-    /// otherwise neutral text3.
-    private var metadataColor: Color {
+    private func metadataColor(_ activity: Activity) -> Color {
         guard let outcome = activity.outcome else { return OPSStyle.Colors.text3 }
         return outcomeColor(outcome)
     }
 
-    /// "6" -> "6 min", "65" -> "1 hr 5 min".
     private func formatDuration(_ minutes: Int) -> String? {
         guard minutes > 0 else { return nil }
         if minutes < 60 { return "\(minutes) min" }
@@ -200,7 +279,6 @@ private struct ActivityRow: View {
         return "\(hours) hr \(remainder) min"
     }
 
-    /// "no_answer" / "NO ANSWER" -> "No Answer".
     private func formatOutcome(_ raw: String) -> String? {
         let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return nil }
@@ -217,19 +295,83 @@ private struct ActivityRow: View {
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .replacingOccurrences(of: "_", with: " ")
             .lowercased()
-
         let positive: Set<String> = ["connected", "answered", "reached", "spoke"]
         let negative: Set<String> = [
             "no answer", "voicemail", "left voicemail", "declined", "not interested", "no show"
         ]
-
         if positive.contains(normalized) { return OPSStyle.Colors.oliveTextM }
         if negative.contains(normalized) { return OPSStyle.Colors.roseTextM }
         return OPSStyle.Colors.text3
     }
 
-    private var ageString: String {
-        let interval = Date().timeIntervalSince(activity.createdAt)
+    private func accessibilityLabel(_ activity: Activity, hasBody: Bool) -> String {
+        var parts: [String] = []
+        switch activity.direction {
+        case "inbound":  parts.append("Inbound")
+        case "outbound": parts.append("Outbound")
+        default:         break
+        }
+        parts.append(titleText(activity))
+        parts.append(Self.ageString(entry.date).lowercased())
+        if hasBody { parts.append(isExpanded ? "expanded" : "collapsed") }
+        return parts.joined(separator: ", ")
+    }
+
+    // MARK: Stage row (folded-in transition)
+
+    private func stageRow(_ transition: StageTransition) -> some View {
+        HStack(spacing: OPSStyle.Layout.spacing2_5) {
+            Text("●")
+                .font(.system(size: 6))
+                .foregroundColor(OPSStyle.Colors.text3)
+                .frame(width: 20)
+
+            HStack(spacing: 5) {
+                Text("Stage:")
+                    .font(.custom("Mohave-Regular", size: 13))
+                    .foregroundColor(OPSStyle.Colors.text3)
+                if let from = transition.fromStage {
+                    Text(from.shortLabel)
+                        .font(.custom("JetBrainsMono-Regular", size: 9.5))
+                        .fontWeight(.semibold)
+                        .kerning(1.0)
+                        .foregroundColor(OPSStyle.Colors.text3)
+                        .textCase(.uppercase)
+                    Image(systemName: "arrow.right")
+                        .font(.system(size: 9, weight: .regular))
+                        .foregroundColor(OPSStyle.Colors.textMute)
+                }
+                Text(transition.toStage.displayName)
+                    .font(.custom("JetBrainsMono-Regular", size: 9.5))
+                    .fontWeight(.semibold)
+                    .kerning(1.0)
+                    .foregroundColor(OPSStyle.Colors.text2)
+                    .textCase(.uppercase)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            Text(Self.ageString(entry.date))
+                .font(.custom("JetBrainsMono-Regular", size: 9.5))
+                .foregroundColor(OPSStyle.Colors.textMute)
+                .kerning(1.0)
+                .textCase(.uppercase)
+                .monospacedDigit()
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, OPSStyle.Layout.spacing2_5)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(stageAccessibilityLabel(transition))
+    }
+
+    private func stageAccessibilityLabel(_ transition: StageTransition) -> String {
+        let from = transition.fromStage.map { "\($0.displayName) to " } ?? ""
+        return "Stage change, \(from)\(transition.toStage.displayName), \(Self.ageString(entry.date).lowercased())"
+    }
+
+    // MARK: Age
+
+    static func ageString(_ date: Date) -> String {
+        let interval = Date().timeIntervalSince(date)
         if interval < 60      { return "NOW" }
         let mins = Int(interval / 60)
         if mins < 60          { return "\(mins)M" }
@@ -260,73 +402,3 @@ private struct EmptyLine: View {
             .padding(.vertical, 14)
     }
 }
-
-// MARK: - Previews
-
-#if DEBUG
-#Preview("ActivityTimeline / loaded") {
-    ScrollView {
-        VStack(spacing: OPSStyle.Layout.spacing4) {
-            ActivityTimeline(activities: [
-                {
-                    let a = Activity(opportunityId: "p", companyId: "p", type: .email,
-                                     createdAt: Calendar.current.date(byAdding: .day, value: -4, to: Date())!)
-                    a.direction = "outbound"
-                    a.subject = "Quote — 28 sq tear-off"
-                    a.bodyText = "Sent revised pricing with two roof options"
-                    return a
-                }(),
-                {
-                    let a = Activity(opportunityId: "p", companyId: "p", type: .call,
-                                     createdAt: Calendar.current.date(byAdding: .day, value: -5, to: Date())!)
-                    a.direction = "inbound"
-                    a.subject = "Inbound call"
-                    a.bodyText = "Asked about timing"
-                    a.durationMinutes = 6
-                    a.outcome = "connected"
-                    return a
-                }(),
-                {
-                    let a = Activity(opportunityId: "p", companyId: "p", type: .siteVisit,
-                                     createdAt: Calendar.current.date(byAdding: .day, value: -7, to: Date())!)
-                    a.direction = "outbound"
-                    a.subject = "Site visit"
-                    a.bodyText = "Walk + measure · 28 sq @ 4:12 pitch"
-                    a.durationMinutes = 45
-                    return a
-                }(),
-                {
-                    let a = Activity(opportunityId: "p", companyId: "p", type: .call,
-                                     createdAt: Calendar.current.date(byAdding: .day, value: -8, to: Date())!)
-                    a.direction = "outbound"
-                    a.subject = "Follow-up call"
-                    a.durationMinutes = 2
-                    a.outcome = "no_answer"
-                    return a
-                }(),
-                {
-                    let a = Activity(opportunityId: "p", companyId: "p", type: .note,
-                                     createdAt: Calendar.current.date(byAdding: .day, value: -9, to: Date())!)
-                    a.subject = "Internal note"
-                    a.bodyText = "Homeowner mentioned competing quote from BlueSky"
-                    return a
-                }()
-            ])
-        }
-        .padding(.vertical, OPSStyle.Layout.spacing3_5)
-    }
-    .background(OPSStyle.Colors.background)
-    .preferredColorScheme(.dark)
-}
-
-#Preview("ActivityTimeline / empty") {
-    ScrollView {
-        VStack(spacing: OPSStyle.Layout.spacing4) {
-            ActivityTimeline(activities: [])
-        }
-        .padding(.vertical, OPSStyle.Layout.spacing3_5)
-    }
-    .background(OPSStyle.Colors.background)
-    .preferredColorScheme(.dark)
-}
-#endif

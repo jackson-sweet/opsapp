@@ -142,8 +142,18 @@ struct LeadTriageCard: View {
                 }
 
                 // Chase strip / terminal outcome
-                if isTerminal { outcomeStrip.padding(.top, OPSStyle.Layout.spacing2_5) }
-                else { chaseStrip.padding(.top, OPSStyle.Layout.spacing2_5) }
+                if isTerminal {
+                    outcomeStrip.padding(.top, OPSStyle.Layout.spacing2_5)
+                } else {
+                    LeadChaseStrip(
+                        lead: lead,
+                        bucket: effectiveBucket,
+                        canAct: canEdit,
+                        onHandled: onHandled,
+                        onAdjust: onAdjust
+                    )
+                    .padding(.top, OPSStyle.Layout.spacing2_5)
+                }
 
                 // Meta — stage progress · stage chip (status menu) · source
                 metaRow
@@ -180,7 +190,7 @@ struct LeadTriageCard: View {
             let tail = outcome.detail.map { ", \($0)" } ?? ""
             return "\(lead.displayContactName), \(outcome.label)\(tail)"
         }
-        return "\(lead.displayContactName), \(lead.stage.displayName), \(chase.label)"
+        return "\(lead.displayContactName), \(lead.stage.displayName)"
     }
 
     // MARK: Swipe = stage (Job Board grammar, spec §4)
@@ -273,110 +283,6 @@ struct LeadTriageCard: View {
         .background(RoundedRectangle(cornerRadius: OPSStyle.Layout.panelRadius, style: .continuous).fill(tone.opacity(0.10)))
         .overlay(RoundedRectangle(cornerRadius: OPSStyle.Layout.panelRadius, style: .continuous).strokeBorder(tone, lineWidth: 1))
         .accessibilityHidden(true)
-    }
-
-    // MARK: Chase strip (spec §2.3)
-
-    private enum ChaseAction { case handled, adjust }
-
-    /// State copy + tone + the strip's single action, derived from the lead's
-    /// effective bucket. Fresh leads have nothing to flip — strip is
-    /// informational.
-    private var chase: (label: String, tone: Color, action: ChaseAction?) {
-        switch effectiveBucket {
-        case .overdue:
-            return ("→ CHASE · \(max(daysFromFollowUp(), 1))D LATE", OPSStyle.Colors.roseTextM, .handled)
-        case .dueToday:
-            return ("→ DUE TODAY", OPSStyle.Colors.tanTextM, .handled)
-        case .waitingOnYou:
-            return ("→ YOUR MOVE · \(yourMoveAge)", OPSStyle.Colors.opsAccent, .handled)
-        case .waitingOnThem:
-            let back = lead.nextFollowUpAt.map { " · BACK \(Self.comebackLabel($0))" } ?? ""
-            return ("THEIR MOVE\(back)", OPSStyle.Colors.text2, .adjust)
-        case .fresh:
-            return ("NEW · \(freshAge())", OPSStyle.Colors.text2, nil)
-        case .all:
-            return ("OPEN", OPSStyle.Colors.text2, nil)
-        }
-    }
-
-    @ViewBuilder
-    private var chaseStrip: some View {
-        let c = chase
-        if let action = c.action {
-            Button {
-                // Medium impact — flipping the ball is a commit moment (spec §10).
-                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                if action == .handled { onHandled() } else { onAdjust() }
-            } label: {
-                chaseStripBody(c)
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel(chaseAccessibilityLabel(c, action: action))
-        } else {
-            chaseStripBody(c)
-                .accessibilityElement(children: .combine)
-        }
-    }
-
-    private func chaseStripBody(_ c: (label: String, tone: Color, action: ChaseAction?)) -> some View {
-        HStack(spacing: OPSStyle.Layout.spacing2_5) {
-            Text(c.label)
-                .font(.custom("JetBrainsMono-Medium", size: 11))
-                .tracking(0.9)
-                .textCase(.uppercase)
-                .foregroundColor(c.tone)
-                .lineLimit(1)
-                .monospacedDigit()
-            Spacer(minLength: OPSStyle.Layout.spacing2)
-            if let action = c.action {
-                Text(action == .handled ? "HANDLED ✓" : "ADJUST")
-                    .font(.custom("JetBrainsMono-Medium", size: 10))
-                    .tracking(0.8)
-                    .textCase(.uppercase)
-                    .foregroundColor(c.tone)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .background(RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius, style: .continuous).fill(c.tone.opacity(0.12)))
-                    .overlay(RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius, style: .continuous).strokeBorder(c.tone.opacity(0.30), lineWidth: 1))
-                    .fixedSize()
-            }
-        }
-        .padding(.horizontal, 11)
-        .padding(.vertical, 9)
-        .frame(maxWidth: .infinity, minHeight: OPSStyle.Layout.touchTargetMin)
-        .background(RoundedRectangle(cornerRadius: OPSStyle.Layout.sidebarHoverRadius, style: .continuous).fill(c.tone.opacity(0.08)))
-        .overlay(RoundedRectangle(cornerRadius: OPSStyle.Layout.sidebarHoverRadius, style: .continuous).strokeBorder(c.tone.opacity(0.24), lineWidth: 1))
-        .contentShape(Rectangle())
-    }
-
-    private func chaseAccessibilityLabel(_ c: (label: String, tone: Color, action: ChaseAction?), action: ChaseAction) -> String {
-        let verb = action == .handled ? "mark handled" : "adjust the comeback date"
-        return "\(c.label). Double-tap to \(verb)."
-    }
-
-    /// Age of the unanswered inbound — hours under a day, days after.
-    private var yourMoveAge: String {
-        guard let inbound = lead.lastInboundAt else { return "NOW" }
-        let hours = Int(Date().timeIntervalSince(inbound) / 3600)
-        if hours < 1 { return "NOW" }
-        if hours < 24 { return "\(hours)H" }
-        return "\(hours / 24)D"
-    }
-
-    /// TODAY / TMRW / FRI (within the week) / IN ND — the comeback vocabulary
-    /// shared with the HANDLED toast.
-    static func comebackLabel(_ date: Date) -> String {
-        let cal = Calendar.current
-        let days = cal.dateComponents([.day], from: cal.startOfDay(for: Date()), to: cal.startOfDay(for: date)).day ?? 0
-        if days <= 0 { return "TODAY" }
-        if days == 1 { return "TMRW" }
-        if days < 7 {
-            let f = DateFormatter()
-            f.dateFormat = "EEE"
-            return f.string(from: date).uppercased()
-        }
-        return "IN \(days)D"
     }
 
     // MARK: Terminal outcome strip (by-stage drill reuse)
@@ -638,18 +544,6 @@ struct LeadTriageCard: View {
         return nil
     }
 
-    private func daysFromFollowUp() -> Int {
-        guard let due = lead.nextFollowUpAt else { return 0 }
-        let cal = Calendar.current
-        return cal.dateComponents([.day], from: cal.startOfDay(for: due), to: cal.startOfDay(for: Date())).day ?? 0
-    }
-
-    private func freshAge() -> String {
-        let hours = Int(Date().timeIntervalSince(lead.createdAt) / 3600)
-        if hours < 1 { return "NOW" }
-        if hours < 24 { return "\(hours)H" }
-        return "\(hours / 24)D"
-    }
 }
 
 // MARK: - Contact chip button (36pt visual / 44pt hit target)

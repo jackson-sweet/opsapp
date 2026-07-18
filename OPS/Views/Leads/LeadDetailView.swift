@@ -2,51 +2,30 @@
 //  LeadDetailView.swift
 //  OPS
 //
-//  Full record for one lead. Pushed from a triage row tap on LeadsTabView.
-//  Phase 3 of the LEADS tab rebuild — replaces the placeholder that shipped
-//  in Phase 2.
+//  The lead dossier (Leads redesign 2026-07-17, spec §5). Pushed from a
+//  triage row tap on LeadsTabView. Composition (top → bottom):
 //
-//  Composition (top → bottom):
+//      [site map — fixed behind, content scrolls over]   ← LeadMapHeader
+//      ‹ LEADS                              [QUOTED ▾]   ← nav + status chip
+//      // L-XXXXXX · 9D IN STAGE
+//      Roof tear-off, 28 sq                              ← DetailHero (title first)
+//      Helen Calloway · Calloway Homes
+//      1240 Maple Ave
+//      // ASSIGNED TO row
+//      [VALUE | NEXT TOUCH | SOURCE]
+//      [→ YOUR MOVE · 2D            HANDLED ✓]           ← LeadChaseStrip
+//      // SUMMARY · UPDATED 2D AGO   (agent rail)
+//      [CONTACT ▾]                        [⋯]            ← action pair
+//      // WON · NOT CONVERTED   [conditional]
+//      // DETAILS  CLIENT/PROJECT/DECK/PHOTOS/FILES      ← LeadDetailsDocument
+//      // ACTIVITY · N  (one stream, VIEW ALL →)         ← ActivityTimeline
+//      [✎ EDIT]              [MARK WON →]                ← StickyActionBar
 //
-//      Atmosphere(tone: derivedFromStage)
-//      ┌────────────────────────────────────────────────┐
-//      │  ← LEADS                                       │ ← DetailNavBar
-//      ├────────────────────────────────────────────────┤
-//      │  // L-XXXXXX                       9D IN STAGE │
-//      │  [STAGE]   60% WIN PROB                        │
-//      │  Helen Calloway                                │ ← DetailHero
-//      │  Roof tear-off, 28 sq                          │
-//      │  ┌──────┬──────┬──────┐                        │
-//      │  │VALUE │WEIGHT│SOURCE│                        │
-//      │  └──────┴──────┴──────┘                        │
-//      │                                                │
-//      │  [40] Helen Calloway                           │ ← ContactCard
-//      │       (555) … · 1240 Maple Ave                 │
-//      │  [CALL][TEXT][EMAIL][MAP]                      │
-//      │                                                │
-//      │  // WON · NOT CONVERTED   [conditional]        │ ← WonNotConvertedCard
-//      │  Promote this lead into a project.             │
-//      │  [CONVERT → PROJECT]                           │
-//      │                                                │
-//      │  // NEXT FOLLOW-UP                             │ ← FollowUpsCard
-//      │  ● 2D OVERDUE                          AUTO    │
-//      │  Chase quote response                          │
-//      │                                                │
-//      │  // RECENT ACTIVITY                  04        │ ← ActivityTimeline
-//      │  [↓ Inbound call         5D ]                  │
-//      │  …                                             │
-//      │                                                │
-//      │  // STAGE HISTORY                              │ ← StageTimeline
-//      │  14D  NEW LEAD                                 │
-//      │   0D  QUOTING → QUOTED                         │
-//      └────────────────────────────────────────────────┘
-//      [×]   [EDIT]   [MARK WON →]                       ← StickyActionBar
+//  Sticky action bar is hidden when `opportunity.stage.isTerminal`. LOST /
+//  ARCHIVE / DISCARD live in the status chip's menu; EDIT / WON closures
+//  route up to LeadsTabView's `.sheet(item:)`.
 //
-//  Sticky action bar is hidden when `opportunity.stage.isTerminal`.
-//  Action closures route up to LeadsTabView which presents the matching
-//  LeadsSheet (.lost / .edit / .convert) via its `.sheet(item:)` binding.
-//
-//  Plan: docs/superpowers/plans/2026-05-19-leads-tab-rebuild.md §7
+//  Spec: docs/superpowers/specs/2026-07-17-leads-tab-redesign-design.md §5
 //
 
 import SwiftUI
@@ -95,6 +74,24 @@ struct LeadDetailView: View {
     // Status-menu guarded exits (Leads redesign spec §6)
     @State private var archiveConfirm: OPSConfirmConfig?
     @State private var discardTarget: Opportunity?
+
+    // Chase strip on detail (spec §5.6) — a single-lead PipelineViewModel so
+    // markHandled / adjustComeback / bucketOf run the EXACT engine the queue
+    // uses, mutating the same Opportunity instance by reference.
+    @StateObject private var chaseVM = PipelineViewModel()
+    @State private var comebackTarget: Opportunity?
+
+    // CONTACT ▾ + ⋯ pair (spec §5.8)
+    @State private var showingContactDialog = false
+    @State private var showingLogActivity = false
+
+    // Details document (spec §5.9)
+    @State private var isAddingToClient = false
+    @State private var estimateToOpen: Estimate?
+    @State private var isFetchingAttachment = false
+
+    // One activity stream (spec §5.10)
+    @State private var showingActivityHistory = false
 
     init(
         opportunity: Opportunity,
@@ -203,52 +200,61 @@ struct LeadDetailView: View {
                                     }
                                 )
 
-                                ContactCard(
-                                    opportunity: opportunity,
-                                    canLogActivity: canEdit
-                                )
-                                    .padding(.top, OPSStyle.Layout.spacing1)
+                                // Chase strip — the same control as the card (spec §5.6)
+                                if !opportunity.stage.isTerminal {
+                                    LeadChaseStrip(
+                                        lead: opportunity,
+                                        bucket: chaseVM.bucketOf(opportunity),
+                                        canAct: canEdit,
+                                        onHandled: { markHandledFromDetail() },
+                                        onAdjust: { comebackTarget = opportunity }
+                                    )
+                                    .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+                                }
+
+                                // Agent summary — always open on detail (spec §5.7)
+                                if let summary = agentSummary {
+                                    summarySection(summary)
+                                        .padding(.top, 22)
+                                }
+
+                                // CONTACT ▾ + ⋯ action pair (spec §5.8)
+                                actionPair
+                                    .padding(.top, 22)
 
                                 if canConvert && showWonNotConverted {
                                     WonNotConvertedCard(onConvert: onMarkWon)
                                         .padding(.top, 22)
                                 }
 
-                                if let nextFU = nextFollowUp {
-                                    FollowUpsCard(followUp: nextFU)
-                                        .padding(.top, 22)
-                                }
-
-                                if canConvert && !opportunity.stage.isTerminal {
-                                    SiteVisitLaunchCard {
-                                        showingSiteVisitCapture = true
-                                    }
-                                    .padding(.top, 22)
-                                }
-
-                                LeadPhotosSection(
-                                    opportunity: opportunity,
-                                    canManage: canEdit,
-                                    onAdd: { showingAddPhotoDialog = true },
-                                    onTap: { items, index in
+                                LeadDetailsDocument(
+                                    lead: opportunity,
+                                    client: vm.client,
+                                    rosterState: rosterState,
+                                    canEdit: canEdit,
+                                    projectName: linkedProjectName,
+                                    attachments: vm.attachments,
+                                    estimates: vm.estimates,
+                                    isAddingToClient: isAddingToClient,
+                                    onAddToClient: { addContactToClient() },
+                                    onOpenProject: { openLinkedProject() },
+                                    onOpenDeck: { design in deckDesignToOpen = design },
+                                    onCreateDeck: { showingDeckCreationPicker = true },
+                                    onAddPhotos: { showingAddPhotoDialog = true },
+                                    onTapPhoto: { items, index in
                                         photoViewerState = LeadPhotoViewerState(items: items, initialIndex: index)
-                                    }
+                                    },
+                                    onOpenAttachment: { openAttachment($0) },
+                                    onOpenEstimate: { estimateToOpen = $0 }
                                 )
                                 .padding(.top, 22)
 
-                                LeadDeckSection(
-                                    opportunity: opportunity,
-                                    canManage: canEdit,
-                                    onCreate: { showingDeckCreationPicker = true },
-                                    onOpen: { design in deckDesignToOpen = design }
+                                ActivityTimeline(
+                                    activities: vm.activities,
+                                    transitions: vm.stageTransitions,
+                                    onViewAll: { showingActivityHistory = true }
                                 )
                                 .padding(.top, 22)
-
-                                ActivityTimeline(activities: sortedActivities)
-                                    .padding(.top, 22)
-
-                                StageTimeline(transitions: sortedStageTransitions)
-                                    .padding(.top, 22)
                             }
                             .background(OPSStyle.Colors.background)
                         }
@@ -278,7 +284,43 @@ struct LeadDetailView: View {
             },
             onDiscarded: { _ in dismiss() }
         )
+        .sheet(item: $comebackTarget) { lead in
+            ComebackChooserSheet(lead: lead, viewModel: chaseVM)
+        }
+        .sheet(isPresented: $showingLogActivity) {
+            UnifiedLogActivitySheet(viewModel: UnifiedLogActivityViewModel(entry: .leadDetail(opportunity)))
+                .presentationDetents([.large])
+                .presentationDragIndicator(.visible)
+        }
+        .navigationDestination(item: $estimateToOpen) { estimate in
+            EstimateDetailViewDeepLinkWrapper(estimate: estimate, companyId: opportunity.companyId)
+        }
+        .navigationDestination(isPresented: $showingActivityHistory) {
+            LeadActivityHistoryView(
+                activities: vm.activities,
+                transitions: vm.stageTransitions
+            )
+        }
+        .confirmationDialog(
+            "CONTACT",
+            isPresented: $showingContactDialog,
+            titleVisibility: .visible
+        ) {
+            if let phone = opportunity.contactPhone, !phone.isEmpty {
+                Button("CALL \(phone)") { placeCallFromDetail() }
+                Button("TEXT") { touchTextFromDetail() }
+            }
+            if let email = opportunity.contactEmail, !email.isEmpty {
+                Button("EMAIL \(email)") { touchEmailFromDetail() }
+            }
+            Button("CANCEL", role: .cancel) {}
+        }
         .task {
+            chaseVM.setup(
+                companyId: opportunity.companyId,
+                currentUserId: dataController.currentUser?.id
+            )
+            chaseVM.allOpportunities = [opportunity]
             await vm.loadAll()
         }
         .onAppear {
@@ -406,34 +448,300 @@ struct LeadDetailView: View {
         }
     }
 
-    // MARK: - Share lead summary
+    // MARK: - Agent summary (spec §5.7 — always open on detail)
 
-    private var shareButton: some View {
-        Button {
+    private var agentSummary: String? {
+        guard let s = opportunity.aiSummary?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !s.isEmpty else { return nil }
+        return s
+    }
+
+    private func summarySection(_ summary: String) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 6) {
+                HStack(spacing: 0) {
+                    Text("// ").foregroundColor(OPSStyle.Colors.textMute)
+                    Text("SUMMARY").foregroundColor(OPSStyle.Colors.agent)
+                }
+                if let stamp = summaryStamp {
+                    Text("· UPDATED \(stamp)")
+                        .foregroundColor(OPSStyle.Colors.textMute)
+                        .monospacedDigit()
+                }
+                Spacer(minLength: 0)
+            }
+            .font(OPSStyle.Typography.metadata)
+            .kerning(1.6)
+            .textCase(.uppercase)
+
+            HStack(alignment: .top, spacing: 0) {
+                Rectangle()
+                    .fill(OPSStyle.Colors.agentLine)
+                    .frame(width: OPSStyle.Layout.Border.thick)
+                Text(summary)
+                    .font(.custom("Mohave-Regular", size: 13.5))
+                    .foregroundColor(OPSStyle.Colors.text2)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.horizontal, OPSStyle.Layout.spacing2_5)
+                    .padding(.vertical, OPSStyle.Layout.spacing2_5)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(OPSStyle.Colors.agentSoft)
+        }
+        .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Summary\(summaryStamp.map { ", updated \($0.lowercased())" } ?? ""). \(summary)")
+    }
+
+    private var summaryStamp: String? {
+        guard let updated = opportunity.aiSummaryUpdatedAt else { return nil }
+        let interval = Date().timeIntervalSince(updated)
+        if interval < 3600 { return "NOW" }
+        let hours = Int(interval / 3600)
+        if hours < 24 { return "\(hours)H AGO" }
+        return "\(hours / 24)D AGO"
+    }
+
+    // MARK: - CONTACT ▾ + ⋯ pair (spec §5.8)
+
+    private var actionPair: some View {
+        HStack(spacing: OPSStyle.Layout.spacing2) {
+            Button {
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                showingContactDialog = true
+            } label: {
+                HStack(spacing: 6) {
+                    Text("CONTACT")
+                        .font(.custom("CakeMono-Light", size: 13.5))
+                        .kerning(0.27)
+                        .textCase(.uppercase)
+                    Image(systemName: "chevron.down")
+                        .font(.system(size: 10, weight: .semibold))
+                }
+                .foregroundColor(OPSStyle.Colors.text)
+                .frame(maxWidth: .infinity)
+                .frame(height: 48)
+                .background(
+                    RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius, style: .continuous)
+                        .fill(OPSStyle.Colors.surfaceInput)
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius, style: .continuous)
+                        .strokeBorder(OPSStyle.Colors.line, lineWidth: 1)
+                )
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(PlainButtonStyle())
+            .accessibilityLabel("Contact \(opportunity.displayContactName)")
+
+            Menu {
+                if canConvert && !opportunity.stage.isTerminal {
+                    Button {
+                        showingSiteVisitCapture = true
+                    } label: {
+                        Label("START SITE VISIT", systemImage: "camera.viewfinder")
+                    }
+                }
+                if canEdit {
+                    Button {
+                        showingLogActivity = true
+                    } label: {
+                        Label("LOG ACTIVITY", systemImage: "square.and.pencil")
+                    }
+                }
+                Button {
+                    shareLead()
+                } label: {
+                    Label("SHARE LEAD", systemImage: "square.and.arrow.up")
+                }
+            } label: {
+                Group {
+                    if isAssemblingShare {
+                        ProgressView()
+                            .controlSize(.small)
+                            .tint(OPSStyle.Colors.text2)
+                    } else {
+                        Image(systemName: "ellipsis")
+                            .font(.system(size: 15, weight: .regular))
+                            .foregroundColor(OPSStyle.Colors.text2)
+                    }
+                }
+                .frame(width: 48, height: 48)
+                .background(
+                    RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius, style: .continuous)
+                        .fill(OPSStyle.Colors.surfaceInput)
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius, style: .continuous)
+                        .strokeBorder(OPSStyle.Colors.line, lineWidth: 1)
+                )
+                .contentShape(Rectangle())
+            }
+            .accessibilityLabel("More workflows")
+        }
+        .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+    }
+
+    /// CALL — the around-call contract (record intent when editable, dial).
+    private func placeCallFromDetail() {
+        let sanitized = (opportunity.contactPhone ?? "").filter { "0123456789+".contains($0) }
+        guard !sanitized.isEmpty else { return }
+        if PermissionStore.shared.isFeatureEnabled("pipeline"), canEdit {
+            CallLogStore.shared.recordOutbound(
+                opportunityId: opportunity.id,
+                contactName: opportunity.contactName,
+                phone: opportunity.contactPhone ?? sanitized
+            )
+        }
+        guard let url = URL(string: "tel:\(sanitized)") else { return }
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        UIApplication.shared.open(url)
+    }
+
+    /// TEXT / EMAIL — do-and-stamp (same contract as the card); a viewer
+    /// without edit rights gets the conversation without the doomed log write.
+    private func touchTextFromDetail() {
+        guard let phone = opportunity.contactPhone, !phone.isEmpty else { return }
+        if canEdit {
+            LeadQuickTouchLogger.touch(.text, lead: opportunity, companyId: opportunity.companyId,
+                                       userId: dataController.currentUser?.id)
+        } else if let url = URL(string: LeadQuickTouchLogger.smsURLString(phone: phone)) {
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
-            shareLead()
-        } label: {
-            Group {
-                if isAssemblingShare {
-                    ProgressView()
-                        .controlSize(.small)
-                        .tint(OPSStyle.Colors.text2)
-                } else {
-                    Image(systemName: "square.and.arrow.up")
-                        .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .regular))
-                        .foregroundColor(OPSStyle.Colors.text2)
+            UIApplication.shared.open(url)
+        }
+    }
+
+    private func touchEmailFromDetail() {
+        guard let email = opportunity.contactEmail, !email.isEmpty else { return }
+        if canEdit {
+            LeadQuickTouchLogger.touch(.email, lead: opportunity, companyId: opportunity.companyId,
+                                       userId: dataController.currentUser?.id)
+        } else if let url = URL(string: LeadQuickTouchLogger.mailtoURLString(email: email, threadSubject: vm.latestThreadSubject)) {
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            UIApplication.shared.open(url)
+        }
+    }
+
+    /// HANDLED from the detail strip — the queue engine on the single-lead VM,
+    /// so the flip + comeback + toast + reload contract match the card exactly.
+    private func markHandledFromDetail() {
+        guard canEdit else { return }
+        Task {
+            do {
+                let comeback = try await chaseVM.markHandled(opportunityId: opportunity.id)
+                ToastCenter.shared.present(Toast(
+                    label: "// HANDLED · BACK \(LeadChaseStrip.comebackLabel(comeback))",
+                    tone: .success,
+                    autoDismissAfter: 6,
+                    action: ToastAction(label: "ADJUST", accessibilityLabel: "Adjust comeback date") {
+                        comebackTarget = opportunity
+                    }
+                ))
+            } catch {
+                ToastCenter.shared.present(Toast(label: Feedback.Err.saveFailed, tone: .error))
+            }
+        }
+    }
+
+    // MARK: - Details document wiring (spec §5.9)
+
+    private var rosterState: LeadContactRosterState {
+        LeadDetailViewModel.rosterState(
+            contactName: opportunity.contactName,
+            contactEmail: opportunity.contactEmail,
+            contactPhone: opportunity.contactPhone,
+            client: vm.client,
+            subClients: vm.subClients
+        )
+    }
+
+    /// Linked project's title, resolved from the local synced store.
+    private var linkedProjectName: String? {
+        guard let pid = opportunity.projectId, !pid.isEmpty,
+              let context = dataController.modelContext else { return nil }
+        let descriptor = FetchDescriptor<Project>(predicate: #Predicate<Project> { $0.id == pid })
+        return (try? context.fetch(descriptor))?.first?.title
+    }
+
+    /// PROJECT row tap — the app-wide project route (same channel Spotlight
+    /// and notifications use).
+    private func openLinkedProject() {
+        guard let pid = opportunity.projectId, !pid.isEmpty else { return }
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        NotificationCenter.default.post(
+            name: Notification.Name("OpenProjectDetails"),
+            object: nil,
+            userInfo: ["projectId": pid]
+        )
+    }
+
+    /// ADD TO CLIENT — files the lead's person as a sub_client.
+    private func addContactToClient() {
+        guard canEdit, !isAddingToClient else { return }
+        isAddingToClient = true
+        Task {
+            do {
+                try await vm.addContactToClient(
+                    name: opportunity.contactName,
+                    email: opportunity.contactEmail,
+                    phone: opportunity.contactPhone
+                )
+                await MainActor.run {
+                    isAddingToClient = false
+                    UINotificationFeedbackGenerator().notificationOccurred(.success)
+                    ToastCenter.shared.present(Toast(label: "// ADDED TO CLIENT", tone: .success))
+                }
+            } catch {
+                await MainActor.run {
+                    isAddingToClient = false
+                    ToastCenter.shared.present(Toast(label: Feedback.Err.saveFailed, tone: .error))
                 }
             }
-            .frame(
-                width: OPSStyle.Layout.touchTargetMin,
-                height: OPSStyle.Layout.touchTargetMin
-            )
-            .contentShape(Rectangle())
         }
-        .buttonStyle(PlainButtonStyle())
-        .disabled(isAssemblingShare)
-        .accessibilityLabel("Share lead summary")
     }
+
+    /// FILES tap — external attachments open their source; stored ones stream
+    /// through the authenticated ops-web proxy into a temp file, then the
+    /// share sheet (QuickLook-equivalent preview + save/send in one surface).
+    private func openAttachment(_ attachment: LeadAttachment) {
+        if attachment.ingestStatus == "external" {
+            guard let raw = attachment.sourceUrl, let url = URL(string: raw) else { return }
+            UIApplication.shared.open(url)
+            return
+        }
+        guard !isFetchingAttachment else { return }
+        isFetchingAttachment = true
+        Task {
+            defer { isFetchingAttachment = false }
+            do {
+                let token = try await FirebaseAuthService.shared.getIDToken()
+                var comps = URLComponents(
+                    url: AppConfiguration.apiBaseURL.appendingPathComponent("/api/integrations/email/attachment"),
+                    resolvingAgainstBaseURL: false
+                )
+                comps?.queryItems = [URLQueryItem(name: "id", value: attachment.id)]
+                guard let url = comps?.url else { return }
+                var request = URLRequest(url: url)
+                request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+                let (data, response) = try await URLSession.shared.data(for: request)
+                guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
+                    throw URLError(.badServerResponse)
+                }
+                let tempURL = FileManager.default.temporaryDirectory
+                    .appendingPathComponent(attachment.displayName)
+                try data.write(to: tempURL)
+                await MainActor.run {
+                    presentShareSheet([tempURL])
+                }
+            } catch {
+                await MainActor.run {
+                    ToastCenter.shared.present(Toast(label: "// FILE UNAVAILABLE", tone: .error))
+                }
+            }
+        }
+    }
+
+    // MARK: - Share lead summary
 
     private func shareLead() {
         guard !isAssemblingShare else { return }
@@ -699,24 +1007,6 @@ struct LeadDetailView: View {
             && !conversionVisibilityStore.contains(opportunity.id)
     }
 
-    /// Soonest unfinished follow-up (status != .completed), ascending by dueAt.
-    private var nextFollowUp: FollowUp? {
-        vm.followUps
-            .filter { $0.status != .completed }
-            .sorted { $0.dueAt < $1.dueAt }
-            .first
-    }
-
-    /// Activities ordered newest first — ActivityTimeline trims to its maxItems.
-    private var sortedActivities: [Activity] {
-        vm.activities.sorted { $0.createdAt > $1.createdAt }
-    }
-
-    /// Stage transitions ordered oldest first — StageTimeline reads them in
-    /// that order so the chain reads left-to-right top-to-bottom.
-    private var sortedStageTransitions: [StageTransition] {
-        vm.stageTransitions.sorted { $0.transitionedAt < $1.transitionedAt }
-    }
 }
 
 // MARK: - DetailNavBar (private)
@@ -819,58 +1109,8 @@ private struct WonNotConvertedCard: View {
     }
 }
 
-private struct SiteVisitLaunchCard: View {
-    let onStart: () -> Void
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
-            HStack(spacing: 0) {
-                Text("// ")
-                    .foregroundColor(OPSStyle.Colors.textMute)
-                Text("SITE VISIT CAPTURE")
-                    .foregroundColor(OPSStyle.Colors.tanTextM)
-            }
-            .font(OPSStyle.Typography.metadata)
-            .textCase(.uppercase)
-
-            Text("Capture the site packet before project creation: photos, notes, and measurements.")
-                .font(OPSStyle.Typography.body)
-                .foregroundColor(OPSStyle.Colors.text)
-                .lineLimit(2)
-
-            Button(action: {
-                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                onStart()
-            }) {
-                HStack(spacing: OPSStyle.Layout.spacing2) {
-                    Image(systemName: "camera.viewfinder")
-                        .font(.system(size: 15, weight: .semibold))
-                    Text("START VISIT")
-                        .font(OPSStyle.Typography.captionBold)
-                        .textCase(.uppercase)
-                }
-                .foregroundColor(OPSStyle.Colors.invertedText)
-                .frame(maxWidth: .infinity)
-                .frame(height: OPSStyle.Layout.inputHeight)
-                .background(
-                    RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius, style: .continuous)
-                        .fill(OPSStyle.Colors.opsAccent)
-                )
-            }
-            .buttonStyle(PlainButtonStyle())
-            .padding(.top, OPSStyle.Layout.spacing1)
-        }
-        .padding(OPSStyle.Layout.spacing3)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        // Solid command surface + mobile-bright tan edge (see WonNotConvertedCard).
-        .commandCard()
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.panelRadius, style: .continuous)
-                .strokeBorder(OPSStyle.Colors.tanLineM, lineWidth: 1)
-        )
-        .padding(.horizontal, OPSStyle.Layout.spacing3_5)
-    }
-}
+// SiteVisitLaunchCard deleted — START SITE VISIT lives in the ⋯ workflow
+// menu (spec §5.8); the sticky bar's MARK WON keeps the screen's only accent.
 
 // MARK: - Previews
 

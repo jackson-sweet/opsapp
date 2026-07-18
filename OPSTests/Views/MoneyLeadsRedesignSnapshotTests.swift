@@ -363,12 +363,13 @@ final class MoneyLeadsRedesignSnapshotTests: XCTestCase {
         }
     }
 
-    /// The restyled detail cards — DetailHero + ContactCard now sit on the solid
-    /// command surface. Confirms the glass→command swap renders cleanly.
+    /// The dossier hero — title-first with the NEXT TOUCH KPI. (Full detail
+    /// state coverage lands with the redesign snapshot pass.)
     func testRenderLeadDetailComponents() {
         let lead = Opportunity.preview(
             title: "Roof tear-off, 28 sq", contactName: "Helen Calloway",
-            stage: .quoted, estimatedValue: 14_200, daysInStage: 9
+            stage: .quoted, estimatedValue: 14_200, daysInStage: 9,
+            nextFollowUpDaysFromNow: 3
         )
         lead.contactPhone = "(555) 123-4567"
         lead.contactEmail = "helen@example.com"
@@ -376,8 +377,7 @@ final class MoneyLeadsRedesignSnapshotTests: XCTestCase {
         lead.source = "referral"
         snapshot("leads_detail_components") {
             VStack(spacing: OPSStyle.Layout.spacing3) {
-                DetailHero(opportunity: lead)
-                ContactCard(opportunity: lead)
+                DetailHero(opportunity: lead, clientName: "Calloway Homes")
             }
             .padding(.vertical, OPSStyle.Layout.spacing3)
         }

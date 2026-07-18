@@ -87,7 +87,7 @@ struct ComebackChooserSheet: View {
                     .textCase(.uppercase)
                     .foregroundColor(OPSStyle.Colors.text)
                 Spacer()
-                Text(LeadTriageCard.comebackLabel(date))
+                Text(LeadChaseStrip.comebackLabel(date))
                     .font(.custom("JetBrainsMono-Regular", size: 10))
                     .tracking(0.8)
                     .textCase(.uppercase)
@@ -100,7 +100,7 @@ struct ComebackChooserSheet: View {
         }
         .buttonStyle(.plain)
         .disabled(isSaving)
-        .accessibilityLabel("\(label), \(LeadTriageCard.comebackLabel(date))")
+        .accessibilityLabel("\(label), \(LeadChaseStrip.comebackLabel(date))")
     }
 
     private var pickDateRow: some View {

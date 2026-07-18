@@ -18,6 +18,7 @@
 #if DEBUG
 import XCTest
 import SwiftUI
+import SwiftData
 @testable import OPS
 
 @MainActor
@@ -47,12 +48,54 @@ final class MoneyLeadsRedesignSnapshotTests: XCTestCase {
             XCTFail("Failed to render \(name)")
             return
         }
+        attach(name, data: data, size: image.size)
+    }
+
+    /// UIWindow + drawHierarchy render path — for views hosting UIKit-backed
+    /// content (`Menu` renders a yellow unsupported-view placeholder under
+    /// plain ImageRenderer). Same output contract as `snapshot`.
+    private func snapshotHosted<V: View>(_ name: String, width: CGFloat? = nil, @ViewBuilder _ content: () -> V) {
+        let w = width ?? deviceWidth
+        let host = UIHostingController(
+            rootView: content()
+                .frame(width: w)
+                .background(OPSStyle.Colors.background)
+                .environment(\.colorScheme, .dark)
+        )
+        let fitted = host.sizeThatFits(in: CGSize(width: w, height: .greatestFiniteMagnitude))
+        let size = CGSize(width: w, height: max(fitted.height, 10))
+        let window = UIWindow(frame: CGRect(origin: .zero, size: size))
+        // A detached test window never commits to the render server —
+        // drawHierarchy returns blank. Attach to the host app's scene.
+        if let scene = UIApplication.shared.connectedScenes
+            .compactMap({ $0 as? UIWindowScene }).first {
+            window.windowScene = scene
+        }
+        window.rootViewController = host
+        window.makeKeyAndVisible()
+        host.view.frame = window.bounds
+        window.layoutIfNeeded()
+
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 3
+        let image = UIGraphicsImageRenderer(size: size, format: format).image { _ in
+            window.drawHierarchy(in: window.bounds, afterScreenUpdates: true)
+        }
+        window.isHidden = true
+        guard let data = image.pngData() else {
+            XCTFail("Failed to render \(name)")
+            return
+        }
+        attach(name, data: data, size: size)
+    }
+
+    private func attach(_ name: String, data: Data, size: CGSize) {
         let attachment = XCTAttachment(data: data, uniformTypeIdentifier: "public.png")
         attachment.name = "\(name)@3x.png"
         attachment.lifetime = .keepAlways
         add(attachment)
         try? data.write(to: outDir.appendingPathComponent("\(name)@3x.png"))
-        print("📸 SNAPSHOT \(name) (\(Int(image.size.width))×\(Int(image.size.height))pt)")
+        print("📸 SNAPSHOT \(name) (\(Int(size.width))×\(Int(size.height))pt)")
     }
 
     // MARK: - Money
@@ -239,12 +282,16 @@ final class MoneyLeadsRedesignSnapshotTests: XCTestCase {
         }
     }
 
-    // MARK: - Leads
+    // MARK: - Leads (redesign 2026-07-17 — chase console states)
 
     func testRenderLeadsSummary() {
         let vm = PipelineViewModel.previewLoaded()
         snapshot("leads_summary") {
             LeadsSummary(viewModel: vm).padding(.vertical, OPSStyle.Layout.spacing3)
+        }
+        snapshot("leads_summary_zero") {
+            LeadsSummary(viewModel: .previewLoaded(opportunities: []))
+                .padding(.vertical, OPSStyle.Layout.spacing3)
         }
         snapshot("leads_by_stage") {
             LeadsByStageRow(viewModel: vm, onStageTap: { _ in }).padding(.vertical, OPSStyle.Layout.spacing3)
@@ -258,44 +305,75 @@ final class MoneyLeadsRedesignSnapshotTests: XCTestCase {
         }
     }
 
+    /// Every chase-strip state on the rebuilt card: overdue / due today /
+    /// your move / their move (waiting) / fresh — plus source rendering.
     func testRenderLeadTriageCards() {
         let vm = PipelineViewModel.previewLoaded()
         let overdue = Opportunity.preview(
             title: "Roof tear-off — 28 sq", contactName: "Marcus Webb",
-            stage: .quoting, estimatedValue: 14_200, daysInStage: 5, nextFollowUpDaysFromNow: -2
+            stage: .quoting, estimatedValue: 14_200, daysInStage: 5, nextFollowUpDaysFromNow: -3
         )
         let today = Opportunity.preview(
             title: "Window install — 8 units", contactName: "The Hensons",
             stage: .quoted, estimatedValue: 11_800, daysInStage: 3, nextFollowUpDaysFromNow: 0
         )
+        let yourMove = Opportunity.preview(
+            title: "Skylight quote question", contactName: "Aimee Watari",
+            stage: .quoted, estimatedValue: 6_400, daysInStage: 2
+        )
+        yourMove.lastMessageDirection = "in"
+        yourMove.lastInboundAt = Calendar.current.date(byAdding: .day, value: -2, to: Date())
+        let waiting = Opportunity.preview(
+            title: "Gutter replacement — 140 lf", contactName: "Dana Ruiz",
+            stage: .quoted, estimatedValue: 8_600, daysInStage: 4, nextFollowUpDaysFromNow: 3
+        )
+        waiting.source = "referral"
+        waiting.lastMessageDirection = "in"
+        waiting.lastInboundAt = Calendar.current.date(byAdding: .day, value: -4, to: Date())
+        waiting.handledAt = Calendar.current.date(byAdding: .day, value: -1, to: Date())
         let fresh = Opportunity.preview(
             title: "Leak repair — kitchen ceiling", contactName: "Jamie Park",
             stage: .newLead, estimatedValue: 2_200, daysInStage: 0
         )
-        snapshot("leads_triage_cards") {
+        snapshotHosted("leads_triage_cards") {
             VStack(spacing: OPSStyle.Layout.spacing2) {
                 LeadTriageCard(lead: overdue, viewModel: vm, bucket: .overdue)
                 LeadTriageCard(lead: today, viewModel: vm, bucket: .dueToday)
+                LeadTriageCard(lead: yourMove, viewModel: vm, bucket: .waitingOnYou)
+                LeadTriageCard(lead: waiting, viewModel: vm, bucket: .waitingOnThem)
                 LeadTriageCard(lead: fresh, viewModel: vm, bucket: .fresh)
             }
             .padding(OPSStyle.Layout.spacing3_5)
         }
     }
 
-    /// The triage card in the by-stage drill (`bucket: .all`), including a lead
-    /// that carries a SOURCE — confirms the source renders on real data (the
-    /// preview mix carries none, so the queue snapshot never exercises it).
-    func testRenderLeadTriageCardSource() {
+    /// The summary footer band: collapsed, expanded (lavender agent rail),
+    /// and absent (no ai_summary → no band).
+    func testRenderLeadTriageCardBand() {
         let vm = PipelineViewModel.previewLoaded()
-        let sourced = Opportunity.preview(
+        func summarized() -> Opportunity {
+            let o = Opportunity.preview(
+                title: "Window install — 8 units", contactName: "The Hensons",
+                stage: .quoted, estimatedValue: 11_800, daysInStage: 3
+            )
+            o.lastMessageDirection = "in"
+            o.lastInboundAt = Calendar.current.date(byAdding: .day, value: -2, to: Date())
+            o.aiSummary = "Quote sent Tuesday. They asked about triple-pane pricing; the decision lands after the 15th."
+            o.aiSummaryUpdatedAt = Calendar.current.date(byAdding: .day, value: -2, to: Date())
+            return o
+        }
+        let none = Opportunity.preview(
             title: "Gutter replacement — 140 lf", contactName: "Dana Ruiz",
-            stage: .quoted, estimatedValue: 8_600, daysInStage: 4,
-            lastActivityDaysAgo: 6, nextFollowUpDaysFromNow: 3
+            stage: .quoted, estimatedValue: 8_600, daysInStage: 4, nextFollowUpDaysFromNow: 3
         )
-        sourced.source = "referral"
-        snapshot("leads_triage_card_source") {
-            LeadTriageCard(lead: sourced, viewModel: vm, bucket: .all)
-                .padding(OPSStyle.Layout.spacing3_5)
+        snapshotHosted("leads_card_band_states") {
+            VStack(spacing: OPSStyle.Layout.spacing2) {
+                LeadTriageCard(lead: summarized(), viewModel: vm, bucket: .waitingOnYou)
+                LeadTriageCard(lead: summarized(), viewModel: vm, bucket: .waitingOnYou,
+                               summaryInitiallyExpanded: true)
+                LeadTriageCard(lead: none, viewModel: vm, bucket: .all)
+            }
+            .padding(OPSStyle.Layout.spacing3_5)
         }
     }
 
@@ -319,7 +397,7 @@ final class MoneyLeadsRedesignSnapshotTests: XCTestCase {
             stage: .lost, estimatedValue: 26_500, daysInStage: 20, actualCloseDaysAgo: 5
         )
         lost.lostReason = "price"
-        snapshot("leads_triage_cards_terminal") {
+        snapshotHosted("leads_triage_cards_terminal") {
             VStack(spacing: OPSStyle.Layout.spacing2) {
                 LeadTriageCard(lead: wonConverted, viewModel: vm, bucket: .all)
                 LeadTriageCard(lead: wonUnconverted, viewModel: vm, bucket: .all)
@@ -363,23 +441,91 @@ final class MoneyLeadsRedesignSnapshotTests: XCTestCase {
         }
     }
 
-    /// The dossier hero — title-first with the NEXT TOUCH KPI. (Full detail
-    /// state coverage lands with the redesign snapshot pass.)
+    /// The dossier hero: title-first with people + address + NEXT TOUCH, the
+    /// blank fallback chain (no title/value/address → contact name + em
+    /// dashes), and the nav status chips.
     func testRenderLeadDetailComponents() {
-        let lead = Opportunity.preview(
+        let full = Opportunity.preview(
             title: "Roof tear-off, 28 sq", contactName: "Helen Calloway",
             stage: .quoted, estimatedValue: 14_200, daysInStage: 9,
             nextFollowUpDaysFromNow: 3
         )
-        lead.contactPhone = "(555) 123-4567"
-        lead.contactEmail = "helen@example.com"
-        lead.address = "1240 Maple Ave"
-        lead.source = "referral"
-        snapshot("leads_detail_components") {
-            VStack(spacing: OPSStyle.Layout.spacing3) {
-                DetailHero(opportunity: lead, clientName: "Calloway Homes")
+        full.contactPhone = "(555) 123-4567"
+        full.contactEmail = "helen@example.com"
+        full.address = "1240 Maple Ave"
+        full.source = "referral"
+        let blanks = Opportunity.preview(
+            contactName: "Jamie Park", stage: .newLead, daysInStage: 0
+        )
+        snapshot("leads_detail_hero") {
+            VStack(spacing: OPSStyle.Layout.spacing4) {
+                DetailHero(opportunity: full, clientName: "Calloway Homes")
+                DetailHero(opportunity: blanks)
             }
             .padding(.vertical, OPSStyle.Layout.spacing3)
+        }
+        snapshot("leads_status_chips") {
+            HStack(spacing: OPSStyle.Layout.spacing2_5) {
+                StageTag(stage: .quoted, detail: "9D", showsChevron: true)
+                StageTag(stage: .negotiation, showsChevron: true)
+                StageTag(stage: .newLead, detail: "0D", showsChevron: true)
+                StageTag(stage: .won)
+                StageTag(stage: .lost)
+            }
+            .padding(OPSStyle.Layout.spacing3)
+        }
+    }
+
+    /// The dossier document: roster states (ON FILE / ADD TO CLIENT / no
+    /// client) with project + files rows, blanks as em dashes. Deck feature
+    /// rows need SwiftData for their @Query — an in-memory DeckDesign
+    /// container backs the render.
+    func testRenderLeadDetailsDocument() {
+        let lead = Opportunity.preview(
+            title: "Roof tear-off, 28 sq", contactName: "Helen Calloway",
+            stage: .quoted, estimatedValue: 14_200, daysInStage: 9
+        )
+        lead.contactPhone = "(555) 123-4567"
+        lead.contactEmail = "helen@example.com"
+        let client = Client(id: "c1", name: "Calloway Homes")
+        let estimate = Estimate(id: "e1", companyId: "preview", estimateNumber: "EST-0142")
+        estimate.title = "Roof tear-off"
+        estimate.total = 14_200
+        let attachment = LeadAttachment(
+            id: "a1", filename: "roof-photos.pdf", mimeType: "application/pdf",
+            storagePath: "x/y.pdf", sourceUrl: nil, fromEmail: "helen@example.com",
+            ingestStatus: "stored", occurredAt: "2026-07-14T10:00:00Z",
+            createdAt: "2026-07-14T10:00:00Z"
+        )
+        guard let container = try? ModelContainer(
+            for: DeckDesign.self,
+            configurations: ModelConfiguration(isStoredInMemoryOnly: true)
+        ) else {
+            XCTFail("in-memory DeckDesign container failed")
+            return
+        }
+        snapshot("leads_details_document") {
+            VStack(spacing: OPSStyle.Layout.spacing4) {
+                // ON FILE + project + files
+                LeadDetailsDocument(
+                    lead: lead, client: client, rosterState: .onFile, canEdit: true,
+                    projectName: "Calloway roof tear-off",
+                    attachments: [attachment], estimates: [estimate]
+                )
+                // ADD TO CLIENT
+                LeadDetailsDocument(
+                    lead: lead, client: client, rosterState: .notOnFile, canEdit: true,
+                    projectName: nil, attachments: [], estimates: []
+                )
+                // No client — em dashes
+                LeadDetailsDocument(
+                    lead: lead, client: nil, rosterState: .noClient, canEdit: false,
+                    projectName: nil, attachments: [], estimates: []
+                )
+            }
+            .padding(.vertical, OPSStyle.Layout.spacing3)
+            .environmentObject(PermissionStore.previewWithFullAccess())
+            .modelContainer(container)
         }
     }
 }

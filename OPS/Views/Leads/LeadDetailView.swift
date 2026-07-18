@@ -807,7 +807,7 @@ struct LeadDetailView: View {
     private var navScrim: some View {
         if mapCoordinates != nil {
             LinearGradient(
-                colors: [Color.black.opacity(0.45), .clear],
+                colors: [OPSStyle.Colors.background.opacity(0.45), .clear],
                 startPoint: .top,
                 endPoint: .bottom
             )

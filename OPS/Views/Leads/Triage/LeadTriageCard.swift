@@ -43,8 +43,47 @@ struct LeadTriageCard: View {
     var onDiscard: () -> Void = {}
     var disableSwipe: Bool = false
 
-    /// Per-card session state (spec §4) — collapsed by default, never persisted.
-    @State private var summaryExpanded = false
+    /// Per-card session state (spec §4) — collapsed by default, never
+    /// persisted. `summaryInitiallyExpanded` exists for the snapshot harness
+    /// (ImageRenderer captures initial state only); production always starts
+    /// collapsed.
+    @State private var summaryExpanded: Bool
+
+    init(
+        lead: Opportunity,
+        viewModel: PipelineViewModel,
+        bucket: PipelineViewModel.TriageBucket,
+        canEdit: Bool = true,
+        canConvert: Bool = true,
+        onTap: @escaping () -> Void = {},
+        onLog: @escaping () -> Void = {},
+        onHandled: @escaping () -> Void = {},
+        onAdjust: @escaping () -> Void = {},
+        onStage: @escaping (PipelineStage) -> Void = { _ in },
+        onWon: @escaping () -> Void = {},
+        onLost: @escaping () -> Void = {},
+        onArchive: @escaping () -> Void = {},
+        onDiscard: @escaping () -> Void = {},
+        disableSwipe: Bool = false,
+        summaryInitiallyExpanded: Bool = false
+    ) {
+        self.lead = lead
+        self.viewModel = viewModel
+        self.bucket = bucket
+        self.canEdit = canEdit
+        self.canConvert = canConvert
+        self.onTap = onTap
+        self.onLog = onLog
+        self.onHandled = onHandled
+        self.onAdjust = onAdjust
+        self.onStage = onStage
+        self.onWon = onWon
+        self.onLost = onLost
+        self.onArchive = onArchive
+        self.onDiscard = onDiscard
+        self.disableSwipe = disableSwipe
+        _summaryExpanded = State(initialValue: summaryInitiallyExpanded)
+    }
 
     // Swipe = stage (spec §4 gestures) — the Job Board grammar in miniature:
     // drag reveals the destination stage behind the card, ≥40% commits with

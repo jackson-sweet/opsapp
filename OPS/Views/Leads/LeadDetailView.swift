@@ -92,6 +92,10 @@ struct LeadDetailView: View {
     // Share lead summary
     @State private var isAssemblingShare = false
 
+    // Status-menu guarded exits (Leads redesign spec §6)
+    @State private var archiveConfirm: OPSConfirmConfig?
+    @State private var discardTarget: Opportunity?
+
     init(
         opportunity: Opportunity,
         onMarkLost: @escaping () -> Void = {},
@@ -106,7 +110,8 @@ struct LeadDetailView: View {
         self.onConvertLead = onConvertLead
         _vm = StateObject(wrappedValue: LeadDetailViewModel(
             opportunityId: opportunity.id,
-            companyId: opportunity.companyId
+            companyId: opportunity.companyId,
+            clientId: opportunity.clientId
         ))
         _assignmentViewModel = StateObject(
             wrappedValue: LeadAssignmentViewModel(opportunity: opportunity)
@@ -134,89 +139,129 @@ struct LeadDetailView: View {
         }
     }
 
+    /// The map hero needs coordinates — an address string alone can't render
+    /// a map. No coordinates → plain canvas, zero layout shift (spec §5.1).
+    private var mapCoordinates: (lat: Double, lon: Double)? {
+        guard let lat = opportunity.latitude, let lon = opportunity.longitude else { return nil }
+        return (lat, lon)
+    }
+
     var body: some View {
         ZStack(alignment: .bottom) {
             OPSStyle.Colors.background.ignoresSafeArea()
             Atmosphere(tone: atmosphereTone)
 
-            VStack(spacing: 0) {
-                DetailNavBar(
-                    onBack: {
-                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                        dismiss()
-                    },
-                    trailing: { shareButton }
-                )
-
-                ScrollView {
+            ZStack(alignment: .top) {
+                // Layer 1: fixed map background (ProjectDetailsView treatment)
+                if let coords = mapCoordinates {
                     VStack(spacing: 0) {
-                        DetailHero(
-                            opportunity: opportunity,
-                            assigneeName: currentAssigneeName,
-                            canChangeAssignee: canChangeAssignee,
-                            onAssigneeTap: {
-                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                                showingAssignmentPicker = true
-                            }
+                        LeadMapHeaderSection(
+                            latitude: coords.lat,
+                            longitude: coords.lon,
+                            pinLabel: opportunity.displayContactName,
+                            onMapTap: { openDirections() }
                         )
-
-                        ContactCard(
-                            opportunity: opportunity,
-                            canLogActivity: canEdit
-                        )
-                            .padding(.top, OPSStyle.Layout.spacing1)
-
-                        if canConvert && showWonNotConverted {
-                            WonNotConvertedCard(onConvert: onMarkWon)
-                                .padding(.top, 22)
-                        }
-
-                        if let nextFU = nextFollowUp {
-                            FollowUpsCard(followUp: nextFU)
-                                .padding(.top, 22)
-                        }
-
-                        if canConvert && !opportunity.stage.isTerminal {
-                            SiteVisitLaunchCard {
-                                showingSiteVisitCapture = true
-                            }
-                            .padding(.top, 22)
-                        }
-
-                        LeadPhotosSection(
-                            opportunity: opportunity,
-                            canManage: canEdit,
-                            onAdd: { showingAddPhotoDialog = true },
-                            onTap: { items, index in
-                                photoViewerState = LeadPhotoViewerState(items: items, initialIndex: index)
-                            }
-                        )
-                        .padding(.top, 22)
-
-                        LeadDeckSection(
-                            opportunity: opportunity,
-                            canManage: canEdit,
-                            onCreate: { showingDeckCreationPicker = true },
-                            onOpen: { design in deckDesignToOpen = design }
-                        )
-                        .padding(.top, 22)
-
-                        ActivityTimeline(activities: sortedActivities)
-                            .padding(.top, 22)
-
-                        StageTimeline(transitions: sortedStageTransitions)
-                            .padding(.top, 22)
+                        Spacer()
                     }
-                    .padding(.bottom, 200)   // clears the sticky action bar
+                    .ignoresSafeArea(edges: .top)
                 }
-                .scrollIndicators(.hidden)
+
+                // Layer 2: nav + content scrolling over the map
+                VStack(spacing: 0) {
+                    DetailNavBar(
+                        onBack: {
+                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                            dismiss()
+                        },
+                        trailing: { statusChip }
+                    )
+                    .background(navScrim)
+
+                    ScrollView {
+                        VStack(spacing: 0) {
+                            if mapCoordinates != nil {
+                                // Open map area — taps anywhere over the visible
+                                // map launch directions (the spacer sits on top
+                                // of the map layer, so it owns these taps).
+                                Color.clear
+                                    .frame(height: LeadMapHeader.mapHeight - 182)
+                                    .contentShape(Rectangle())
+                                    .onTapGesture { openDirections() }
+
+                                mapScrollGradient
+                            }
+
+                            VStack(spacing: 0) {
+                                DetailHero(
+                                    opportunity: opportunity,
+                                    clientName: vm.client?.name,
+                                    assigneeName: currentAssigneeName,
+                                    canChangeAssignee: canChangeAssignee,
+                                    onAssigneeTap: {
+                                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                                        showingAssignmentPicker = true
+                                    }
+                                )
+
+                                ContactCard(
+                                    opportunity: opportunity,
+                                    canLogActivity: canEdit
+                                )
+                                    .padding(.top, OPSStyle.Layout.spacing1)
+
+                                if canConvert && showWonNotConverted {
+                                    WonNotConvertedCard(onConvert: onMarkWon)
+                                        .padding(.top, 22)
+                                }
+
+                                if let nextFU = nextFollowUp {
+                                    FollowUpsCard(followUp: nextFU)
+                                        .padding(.top, 22)
+                                }
+
+                                if canConvert && !opportunity.stage.isTerminal {
+                                    SiteVisitLaunchCard {
+                                        showingSiteVisitCapture = true
+                                    }
+                                    .padding(.top, 22)
+                                }
+
+                                LeadPhotosSection(
+                                    opportunity: opportunity,
+                                    canManage: canEdit,
+                                    onAdd: { showingAddPhotoDialog = true },
+                                    onTap: { items, index in
+                                        photoViewerState = LeadPhotoViewerState(items: items, initialIndex: index)
+                                    }
+                                )
+                                .padding(.top, 22)
+
+                                LeadDeckSection(
+                                    opportunity: opportunity,
+                                    canManage: canEdit,
+                                    onCreate: { showingDeckCreationPicker = true },
+                                    onOpen: { design in deckDesignToOpen = design }
+                                )
+                                .padding(.top, 22)
+
+                                ActivityTimeline(activities: sortedActivities)
+                                    .padding(.top, 22)
+
+                                StageTimeline(transitions: sortedStageTransitions)
+                                    .padding(.top, 22)
+                            }
+                            .background(OPSStyle.Colors.background)
+                        }
+                        .padding(.bottom, 200)   // clears the sticky action bar
+                    }
+                    .scrollIndicators(.hidden)
+                }
             }
 
             if (canEdit || canConvert) && !opportunity.stage.isTerminal {
                 StickyActionBar(
                     canEdit: canEdit,
                     canConvert: canConvert,
-                    onMarkLost: onMarkLost,
                     onEdit:     onEdit,
                     onMarkWon:  onMarkWon
                 )
@@ -224,6 +269,15 @@ struct LeadDetailView: View {
             }
         }
         .navigationBarHidden(true)
+        .opsConfirm($archiveConfirm)
+        .leadDiscardFlow(
+            target: $discardTarget,
+            perform: { lead in
+                _ = try await OpportunityRepository(companyId: lead.companyId)
+                    .moveToStage(opportunityId: lead.id, to: .discarded, userId: dataController.currentUser?.id)
+            },
+            onDiscarded: { _ in dismiss() }
+        )
         .task {
             await vm.loadAll()
         }
@@ -416,6 +470,136 @@ struct LeadDetailView: View {
                 top = presented
             }
             top?.present(activityVC, animated: true)
+        }
+    }
+
+    // MARK: - Nav chrome (map layering, spec §5.1–5.2)
+
+    /// The status chip — top-right, hosting the shared status menu.
+    private var statusChip: some View {
+        LeadStatusMenu(
+            lead: opportunity,
+            canEdit: canEdit,
+            canConvert: canConvert,
+            onStage: { setStage($0) },
+            onWon: onMarkWon,
+            onLost: onMarkLost,
+            onArchive: { requestArchive() },
+            onDiscard: { discardTarget = opportunity }
+        ) {
+            StageTag(stage: opportunity.stage, showsChevron: canEdit || canConvert)
+                .padding(.vertical, OPSStyle.Layout.spacing2)
+                .contentShape(Rectangle())
+        }
+    }
+
+    /// Legibility scrim behind the nav row while it floats over raw map —
+    /// the photo-scrim treatment; clear when there's no map hero.
+    @ViewBuilder
+    private var navScrim: some View {
+        if mapCoordinates != nil {
+            LinearGradient(
+                colors: [Color.black.opacity(0.45), .clear],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+            .allowsHitTesting(false)
+        } else {
+            Color.clear
+        }
+    }
+
+    /// 90pt bridge from open map to solid content — the exact
+    /// ProjectDetailsView stops.
+    private var mapScrollGradient: some View {
+        LinearGradient(
+            gradient: Gradient(stops: [
+                .init(color: .clear, location: 0),
+                .init(color: OPSStyle.Colors.background.opacity(0.25), location: 0.55),
+                .init(color: OPSStyle.Colors.background.opacity(0.75), location: 0.85),
+                .init(color: OPSStyle.Colors.background, location: 1.0)
+            ]),
+            startPoint: .top,
+            endPoint: .bottom
+        )
+        .frame(height: 90)
+        .allowsHitTesting(false)
+    }
+
+    /// Directions to the site — address string when present, raw coordinates
+    /// otherwise (a map hero can exist on a coordinate-only lead).
+    private func openDirections() {
+        let query: String
+        if let address = opportunity.address, !address.isEmpty {
+            query = address.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
+        } else if let coords = mapCoordinates {
+            query = "\(coords.lat),\(coords.lon)"
+        } else {
+            return
+        }
+        guard let url = URL(string: "https://maps.apple.com/?daddr=\(query)") else { return }
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        UIApplication.shared.open(url)
+    }
+
+    // MARK: - Status-menu mutations
+
+    /// Direct stage pick from the nav chip. The detail has no
+    /// PipelineViewModel — it mutates through the repository and refreshes
+    /// the shared instance via apply(), then posts the reload contract.
+    private func setStage(_ stage: PipelineStage) {
+        guard canEdit, stage != opportunity.stage else { return }
+        Task {
+            do {
+                let repo = OpportunityRepository(companyId: opportunity.companyId)
+                let dto = try await repo.moveToStage(
+                    opportunityId: opportunity.id,
+                    to: stage,
+                    userId: dataController.currentUser?.id
+                )
+                await MainActor.run {
+                    opportunity.apply(dto.toModel())
+                    NotificationCenter.default.post(
+                        name: Notification.Name("LeadUpdatedSuccess"),
+                        object: nil, userInfo: ["leadId": opportunity.id]
+                    )
+                    ToastCenter.shared.present(Feedback.Lead.stageSet)
+                }
+            } catch {
+                await MainActor.run {
+                    ToastCenter.shared.present(Toast(label: Feedback.Err.saveFailed, tone: .error))
+                }
+            }
+        }
+    }
+
+    /// ARCHIVE — guarded by the standardized confirm; an archived lead leaves
+    /// the queue, so the detail pops with it.
+    private func requestArchive() {
+        guard canEdit else { return }
+        archiveConfirm = OPSConfirmConfig(
+            title: "ARCHIVE LEAD?",
+            message: "It leaves the queue. Restore any time from the by-stage list.",
+            verb: "ARCHIVE"
+        ) {
+            Task {
+                do {
+                    try await OpportunityRepository(companyId: opportunity.companyId)
+                        .archive(opportunity.id)
+                    await MainActor.run {
+                        NotificationCenter.default.post(
+                            name: Notification.Name("LeadArchivedSuccess"),
+                            object: nil, userInfo: ["leadId": opportunity.id]
+                        )
+                        ToastCenter.shared.present(Feedback.Lead.archived)
+                        dismiss()
+                    }
+                } catch {
+                    await MainActor.run {
+                        ToastCenter.shared.present(Toast(label: Feedback.Err.saveFailed, tone: .error))
+                    }
+                }
+            }
         }
     }
 

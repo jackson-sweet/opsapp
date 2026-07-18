@@ -160,6 +160,7 @@ struct LeadsPreviewEnvironment: ViewModifier {
             .environmentObject(PermissionStore.previewWithFullAccess())
             .environmentObject(SubscriptionManager.shared)
             .environmentObject(AppState())
+            .environmentObject(LocationManager())
             .preferredColorScheme(.dark)
     }
 }

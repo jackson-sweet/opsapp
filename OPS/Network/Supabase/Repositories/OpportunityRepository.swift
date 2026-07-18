@@ -94,6 +94,23 @@ class OpportunityRepository {
         return rows.first?.subject
     }
 
+    /// FILES rows for the lead detail — email attachments the pipeline
+    /// attributed to this lead. Only actionable rows: `stored` (streamed via
+    /// the authenticated ops-web proxy) and `external` (source_url). Mirrors
+    /// the web inbox listing's reviewable subset; RLS grants lead-scoped
+    /// SELECT via email_attachments_lead_files_select.
+    func fetchEmailAttachments(for opportunityId: String) async throws -> [LeadAttachment] {
+        try await client
+            .from("email_attachments")
+            .select("id, filename, mime_type, storage_path, source_url, from_email, ingest_status, occurred_at, created_at")
+            .eq("opportunity_id", value: opportunityId)
+            .eq("attribution_status", value: "attributed")
+            .in("ingest_status", values: ["stored", "external"])
+            .order("occurred_at", ascending: false)
+            .execute()
+            .value
+    }
+
     func fetchActivities(for opportunityId: String) async throws -> [ActivityDTO] {
         try await client
             .from("activities")

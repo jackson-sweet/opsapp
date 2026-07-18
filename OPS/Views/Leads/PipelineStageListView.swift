@@ -54,6 +54,10 @@ struct PipelineStageListView: View {
     @EnvironmentObject private var permissionStore: PermissionStore
     @Environment(\.dismiss) private var dismiss
     @State private var discardTarget: Opportunity?
+    /// Lead whose comeback date is being adjusted (ComebackChooserSheet).
+    @State private var comebackTarget: Opportunity?
+    /// Pending ARCHIVE confirmation (OPSConfirm).
+    @State private var archiveConfirm: OPSConfirmConfig?
 
     /// This stage's leads — already sorted stale-first by the view model.
     private var leads: [Opportunity] { viewModel.opportunities(in: stage) }
@@ -96,6 +100,10 @@ struct PipelineStageListView: View {
             target: $discardTarget,
             perform: { lead in try await viewModel.discard(opportunityId: lead.id) }
         )
+        .opsConfirm($archiveConfirm)
+        .sheet(item: $comebackTarget) { lead in
+            ComebackChooserSheet(lead: lead, viewModel: viewModel)
+        }
     }
 
     // MARK: - Title
@@ -149,52 +157,81 @@ struct PipelineStageListView: View {
             canConvert: canConvert(lead),
             onTap:     { onLeadTap(lead) },
             onLog:     { onRequestSheet(.log(lead)) },
-            onAdvance: { advance(lead) },
+            onHandled: { markHandled(lead) },
+            onAdjust:  { comebackTarget = lead },
+            onStage:   { stage in setStage(lead, to: stage) },
             onWon:     { onRequestSheet(.convert(lead)) },
-            onLost:    { onRequestSheet(.lost(lead)) }
+            onLost:    { onRequestSheet(.lost(lead)) },
+            onArchive: { requestArchive(lead) },
+            onDiscard: { discardTarget = lead }
         )
         .contextMenu {
             LeadCardContextMenu(
                 lead: lead,
                 canManage: canEdit(lead),
                 onEdit: { onRequestSheet(.edit(lead)) },
-                onArchive: {
-                    Task {
-                        do {
-                            try await viewModel.archive(opportunityId: lead.id)
-                            ToastCenter.shared.present(Feedback.Lead.archived)
-                        } catch {}
-                    }
-                },
+                onArchive: { requestArchive(lead) },
                 onDiscard: { discardTarget = lead }
             )
         }
     }
 
-    // MARK: - Actions
+    // MARK: - Actions (mirror LeadsTabView — one chase grammar everywhere)
 
-    /// Advances a lead to the next stage. No-op for terminal stages — mirrors
-    /// `LeadsTabView.advance`.
-    private func advance(_ lead: Opportunity) {
-        guard !lead.stage.isTerminal, let next = lead.stage.next else { return }
-        if next == .won {
-            guard canConvert(lead) else { return }
-            onRequestSheet(.convert(lead))
-            return
-        }
+    /// HANDLED ✓ — flip the ball; the toast voices the comeback with ADJUST.
+    private func markHandled(_ lead: Opportunity) {
         guard canEdit(lead) else { return }
+        Task {
+            do {
+                let comeback = try await viewModel.markHandled(opportunityId: lead.id)
+                ToastCenter.shared.present(Toast(
+                    label: "// HANDLED · BACK \(LeadTriageCard.comebackLabel(comeback))",
+                    tone: .success,
+                    autoDismissAfter: 6,
+                    action: ToastAction(label: "ADJUST", accessibilityLabel: "Adjust comeback date") {
+                        comebackTarget = lead
+                    }
+                ))
+            } catch {
+                ToastCenter.shared.present(Toast(label: Feedback.Err.saveFailed, tone: .error))
+            }
+        }
+    }
+
+    /// Direct stage pick from the status menu (open stages only).
+    private func setStage(_ lead: Opportunity, to stage: PipelineStage) {
+        guard canEdit(lead), stage != lead.stage else { return }
         Task {
             do {
                 try await viewModel.moveToStage(
                     opportunityId: lead.id,
-                    to: next,
+                    to: stage,
                     userId: dataController.currentUser?.id
                 )
-                ToastCenter.shared.present(Feedback.Lead.stageAdvanced)
+                ToastCenter.shared.present(Feedback.Lead.stageSet)
             } catch {
                 ToastCenter.shared.present(
                     Toast(label: Feedback.Err.saveFailed, tone: .error)
                 )
+            }
+        }
+    }
+
+    /// ARCHIVE — guarded by the standardized confirm (spec §6).
+    private func requestArchive(_ lead: Opportunity) {
+        guard canEdit(lead) else { return }
+        archiveConfirm = OPSConfirmConfig(
+            title: "ARCHIVE LEAD?",
+            message: "It leaves the queue. Restore any time from the by-stage list.",
+            verb: "ARCHIVE"
+        ) {
+            Task {
+                do {
+                    try await viewModel.archive(opportunityId: lead.id)
+                    ToastCenter.shared.present(Feedback.Lead.archived)
+                } catch {
+                    ToastCenter.shared.present(Toast(label: Feedback.Err.saveFailed, tone: .error))
+                }
             }
         }
     }

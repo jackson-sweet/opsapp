@@ -193,6 +193,13 @@ enum OPSStyle {
         static let roseLineM  = Color("Rose").opacity(0.55)
         static let roseTextM  = Color(red: 0.788, green: 0.612, blue: 0.639)   // #C99CA3
 
+        // Agent / AI provenance (DESIGN.md §3) — AI-authored content ONLY.
+        // Badges, agent rails, agent-content fills. Never on body text, never
+        // as a button bg, never on semantic state.
+        static let agent     = Color(red: 138/255, green: 127/255, blue: 184/255)               // #8A7FB8
+        static let agentSoft = Color(red: 138/255, green: 127/255, blue: 184/255).opacity(0.10)
+        static let agentLine = Color(red: 138/255, green: 127/255, blue: 184/255).opacity(0.35)
+
         // Financial
         static let finRevenue     = Color("AccentSecondary")   // #C4A868 revenue / income
         static let finProfit      = Color("StatusSuccess")     // #9DB582 profit

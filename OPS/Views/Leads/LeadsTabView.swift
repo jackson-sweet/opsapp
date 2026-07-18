@@ -73,6 +73,10 @@ struct LeadsTabView: View {
     @State private var footerStage: PipelineStage?
     @State private var activeSiteVisitLead: Opportunity?
     @State private var discardTarget: Opportunity?
+    /// Lead whose comeback date is being adjusted (ComebackChooserSheet).
+    @State private var comebackTarget: Opportunity?
+    /// Pending ARCHIVE confirmation (OPSConfirm).
+    @State private var archiveConfirm: OPSConfirmConfig?
 
     /// Guards the deep-link drain so a single tap resolves once even if both
     /// the `.task` load and the `pendingLeadDeepLinkId` change fire.
@@ -164,6 +168,7 @@ struct LeadsTabView: View {
                         target: $discardTarget,
                         perform: { lead in try await viewModel.discard(opportunityId: lead.id) }
                     )
+                    .opsConfirm($archiveConfirm)
                 }
             }
             .navigationBarHidden(true)
@@ -192,6 +197,9 @@ struct LeadsTabView: View {
             }
             .sheet(item: $activeSheet) { sheet in
                 sheetView(for: sheet)
+            }
+            .sheet(item: $comebackTarget) { lead in
+                ComebackChooserSheet(lead: lead, viewModel: viewModel)
             }
             .fullScreenCover(item: $activeSiteVisitLead) { lead in
                 SiteVisitCaptureView(
@@ -413,23 +421,20 @@ struct LeadsTabView: View {
             canConvert: canConvert(lead),
             onTap:     { detailLead = lead },
             onLog:     { activeSheet = .log(lead) },
-            onAdvance: { advance(lead) },
+            onHandled: { markHandled(lead) },
+            onAdjust:  { comebackTarget = lead },
+            onStage:   { stage in setStage(lead, to: stage) },
             onWon:     { activeSheet = .convert(lead) },
-            onLost:    { activeSheet = .lost(lead) }
+            onLost:    { activeSheet = .lost(lead) },
+            onArchive: { requestArchive(lead) },
+            onDiscard: { discardTarget = lead }
         )
         .contextMenu {
             LeadCardContextMenu(
                 lead: lead,
                 canManage: canEdit(lead),
                 onEdit: { activeSheet = .edit(lead) },
-                onArchive: {
-                    Task {
-                        do {
-                            try await viewModel.archive(opportunityId: lead.id)
-                            ToastCenter.shared.present(Feedback.Lead.archived)
-                        } catch {}
-                    }
-                },
+                onArchive: { requestArchive(lead) },
                 onDiscard: { discardTarget = lead }
             )
         }
@@ -548,26 +553,62 @@ struct LeadsTabView: View {
         }
     }
 
-    private func advance(_ lead: Opportunity) {
-        guard !lead.stage.isTerminal, let next = lead.stage.next else { return }
-        if next == .won {
-            guard canConvert(lead) else { return }
-            activeSheet = .convert(lead)
-            return
-        }
+    // MARK: - Chase actions (Leads redesign spec §2.2 / §6)
+
+    /// HANDLED ✓ — flip the ball, then voice the comeback in the toast with a
+    /// tappable ADJUST escape hatch. The toast is the only ceremony.
+    private func markHandled(_ lead: Opportunity) {
         guard canEdit(lead) else { return }
+        Task {
+            do {
+                let comeback = try await viewModel.markHandled(opportunityId: lead.id)
+                ToastCenter.shared.present(Toast(
+                    label: "// HANDLED · BACK \(LeadTriageCard.comebackLabel(comeback))",
+                    tone: .success,
+                    autoDismissAfter: 6,
+                    action: ToastAction(label: "ADJUST", accessibilityLabel: "Adjust comeback date") {
+                        comebackTarget = lead
+                    }
+                ))
+            } catch {
+                ToastCenter.shared.present(Toast(label: Feedback.Err.saveFailed, tone: .error))
+            }
+        }
+    }
+
+    /// Direct stage pick from the status menu (open stages only — WON always
+    /// routes through the convert sheet).
+    private func setStage(_ lead: Opportunity, to stage: PipelineStage) {
+        guard canEdit(lead), stage != lead.stage else { return }
         Task {
             do {
                 try await viewModel.moveToStage(
                     opportunityId: lead.id,
-                    to: next,
+                    to: stage,
                     userId: dataController.currentUser?.id
                 )
-                ToastCenter.shared.present(Feedback.Lead.stageAdvanced)
+                ToastCenter.shared.present(Feedback.Lead.stageSet)
             } catch {
-                ToastCenter.shared.present(
-                    Toast(label: Feedback.Err.saveFailed, tone: .error)
-                )
+                ToastCenter.shared.present(Toast(label: Feedback.Err.saveFailed, tone: .error))
+            }
+        }
+    }
+
+    /// ARCHIVE — guarded by the standardized confirm (spec §6).
+    private func requestArchive(_ lead: Opportunity) {
+        guard canEdit(lead) else { return }
+        archiveConfirm = OPSConfirmConfig(
+            title: "ARCHIVE LEAD?",
+            message: "It leaves the queue. Restore any time from the by-stage list.",
+            verb: "ARCHIVE"
+        ) {
+            Task {
+                do {
+                    try await viewModel.archive(opportunityId: lead.id)
+                    ToastCenter.shared.present(Feedback.Lead.archived)
+                } catch {
+                    ToastCenter.shared.present(Toast(label: Feedback.Err.saveFailed, tone: .error))
+                }
             }
         }
     }

@@ -65,4 +65,11 @@ final class LeadChaseEngineTests: XCTestCase {
         let d = PipelineViewModel.comebackDate(existing: yesterday, from: .now)
         XCTAssertEqual(d.timeIntervalSinceNow, 3 * 86_400, accuracy: 5)
     }
+
+    // MARK: - text_message activity type (spec §3 — web parity: pipeline.ts TextMessage)
+
+    func testTextMessageActivityType() {
+        XCTAssertEqual(ActivityType.textMessage.rawValue, "text_message")
+        XCTAssertFalse(ActivityType.textMessage.isSystemGenerated)
+    }
 }

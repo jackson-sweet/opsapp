@@ -38,6 +38,13 @@ enum PipelineStage: String, Codable, CaseIterable, Identifiable {
         self == .won || self == .lost || self == .discarded
     }
 
+    /// The six open (non-terminal) stages in funnel order. The stage-progress
+    /// segments, the status menu, and the swipe targets all read this ONE
+    /// list so the funnel can never disagree with itself across surfaces.
+    static let openStages: [PipelineStage] = [
+        .newLead, .qualifying, .quoting, .quoted, .followUp, .negotiation
+    ]
+
     var next: PipelineStage? {
         switch self {
         case .newLead:     return .qualifying

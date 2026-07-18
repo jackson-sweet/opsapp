@@ -283,66 +283,8 @@ struct DetailHero: View {
     }
 }
 
-// MARK: - StageTag (private)
-
-/// The earth-tone stage chip rendered in the hero. Uses mobile-contrast
-/// `-M` token variants for outdoor glare per MOBILE.md §1. Tone selection
-/// follows the LEADS Phase 3 spec:
-///
-///   - .won                                   → olive
-///   - .lost                                  → rose
-///   - .quoted / .followUp / .negotiation     → tan
-///   - .newLead / .qualifying / .quoting      → neutral
-///
-private struct StageTag: View {
-    let stage: PipelineStage
-
-    var body: some View {
-        Text(stage.displayName)
-            .font(.custom("JetBrainsMono-Regular", size: 9.5))
-            .fontWeight(.semibold)
-            .kerning(1.4)
-            .foregroundColor(textColor)
-            .textCase(.uppercase)
-            .padding(.vertical, 3)
-            .padding(.horizontal, 7)
-            .background(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius, style: .continuous)
-                    .fill(fillColor)
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius, style: .continuous)
-                    .strokeBorder(borderColor, lineWidth: 1)
-            )
-    }
-
-    private var fillColor: Color {
-        switch stage {
-        case .won:                                   return OPSStyle.Colors.oliveFillM
-        case .lost:                                  return OPSStyle.Colors.roseFillM
-        case .quoted, .followUp, .negotiation:       return OPSStyle.Colors.tanFillM
-        case .newLead, .qualifying, .quoting, .discarded:  return OPSStyle.Colors.surfaceHover
-        }
-    }
-
-    private var borderColor: Color {
-        switch stage {
-        case .won:                                   return OPSStyle.Colors.oliveLineM
-        case .lost:                                  return OPSStyle.Colors.roseLineM
-        case .quoted, .followUp, .negotiation:       return OPSStyle.Colors.tanLineM
-        case .newLead, .qualifying, .quoting, .discarded:  return OPSStyle.Colors.line
-        }
-    }
-
-    private var textColor: Color {
-        switch stage {
-        case .won:                                   return OPSStyle.Colors.oliveTextM
-        case .lost:                                  return OPSStyle.Colors.roseTextM
-        case .quoted, .followUp, .negotiation:       return OPSStyle.Colors.tanTextM
-        case .newLead, .qualifying, .quoting, .discarded:  return OPSStyle.Colors.text2
-        }
-    }
-}
+// StageTag moved to LeadStatusMenu.swift — it is now the SHARED chip label
+// for both status-menu hosts (detail nav chip + card meta chip).
 
 // MARK: - KvCell (private)
 

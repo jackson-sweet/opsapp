@@ -77,6 +77,23 @@ class OpportunityRepository {
         return rows.first?.opportunityId
     }
 
+    /// Latest email-thread subject for a lead — powers the EMAIL quick action's
+    /// "Re:" compose and the detail CONTACT sheet. Nil when the lead has no
+    /// correspondence.
+    func latestCorrespondenceSubject(for opportunityId: String) async throws -> String? {
+        struct Row: Decodable { let subject: String? }
+        let rows: [Row] = try await client
+            .from("opportunity_correspondence_events")
+            .select("subject")
+            .eq("opportunity_id", value: opportunityId)
+            .not("subject", operator: .is, value: "null")
+            .order("occurred_at", ascending: false)
+            .limit(1)
+            .execute()
+            .value
+        return rows.first?.subject
+    }
+
     func fetchActivities(for opportunityId: String) async throws -> [ActivityDTO] {
         try await client
             .from("activities")

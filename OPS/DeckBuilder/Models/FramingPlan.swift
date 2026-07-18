@@ -1,4 +1,5 @@
 import CoreGraphics
+import CryptoKit
 import Foundation
 
 /// The shared persisted framing contract used by the full Deckset app.
@@ -117,17 +118,79 @@ struct FramingMember: Codable, Equatable, Identifiable {
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        id = (try? container.decodeIfPresent(String.self, forKey: .id)) ?? UUID().uuidString
-        role = try container.decode(FramingRole.self, forKey: .role)
-        start = try container.decode(CGPoint.self, forKey: .start)
-        end = try container.decode(CGPoint.self, forKey: .end)
-        nominalSize = try? container.decodeIfPresent(LumberSize.self, forKey: .nominalSize)
-        plyCount = (try? container.decodeIfPresent(Int.self, forKey: .plyCount)) ?? 1
-        spacingInchesOC = try? container.decodeIfPresent(Double.self, forKey: .spacingInchesOC)
-        species = try? container.decodeIfPresent(WoodSpecies.self, forKey: .species)
-        grade = try? container.decodeIfPresent(LumberGrade.self, forKey: .grade)
-        sizing = try? container.decodeIfPresent(DeckJSONValue.self, forKey: .sizing)
-        locked = (try? container.decodeLegacyBoolIfPresent(forKey: .locked)) ?? false
+        let decodedID = try? container.decode(String.self, forKey: .id)
+        let role = try container.decode(FramingRole.self, forKey: .role)
+        let start = try container.decode(CGPoint.self, forKey: .start)
+        let end = try container.decode(CGPoint.self, forKey: .end)
+        let nominalSize = try? container.decode(LumberSize.self, forKey: .nominalSize)
+        let plyCount = (try? container.decode(Int.self, forKey: .plyCount)) ?? 1
+        let spacingInchesOC = try? container.decode(Double.self, forKey: .spacingInchesOC)
+        let species = try? container.decode(WoodSpecies.self, forKey: .species)
+        let grade = try? container.decode(LumberGrade.self, forKey: .grade)
+        let sizing = try? container.decode(DeckJSONValue.self, forKey: .sizing)
+        let locked = (try? container.decodeLegacyBoolIfPresent(forKey: .locked)) ?? false
+        let resolvedID = decodedID.flatMap { $0.isEmpty ? nil : $0 }
+            ?? Self.stableLegacyIdentifier(
+                role: role,
+                start: start,
+                end: end,
+                nominalSize: nominalSize,
+                plyCount: plyCount,
+                spacingInchesOC: spacingInchesOC,
+                species: species,
+                grade: grade,
+                sizing: sizing,
+                locked: locked
+            )
+
+        self.init(
+            id: resolvedID,
+            role: role,
+            start: start,
+            end: end,
+            nominalSize: nominalSize,
+            plyCount: plyCount,
+            spacingInchesOC: spacingInchesOC,
+            species: species,
+            grade: grade,
+            sizing: sizing,
+            locked: locked
+        )
+    }
+
+    private static func stableLegacyIdentifier(
+        role: FramingRole,
+        start: CGPoint,
+        end: CGPoint,
+        nominalSize: LumberSize?,
+        plyCount: Int,
+        spacingInchesOC: Double?,
+        species: WoodSpecies?,
+        grade: LumberGrade?,
+        sizing: DeckJSONValue?,
+        locked: Bool
+    ) -> String {
+        func bits(_ value: CGFloat) -> String {
+            String(Double(value).bitPattern, radix: 16)
+        }
+
+        let signature = [
+            role.rawValue,
+            bits(start.x),
+            bits(start.y),
+            bits(end.x),
+            bits(end.y),
+            nominalSize?.rawValue ?? "-",
+            String(plyCount),
+            spacingInchesOC.map { String($0.bitPattern, radix: 16) } ?? "-",
+            species?.rawValue ?? "-",
+            grade?.rawValue ?? "-",
+            (try? sizing?.renderedJSONString()) ?? "-",
+            locked ? "1" : "0",
+        ].joined(separator: "|")
+        let digest = SHA256.hash(data: Data(signature.utf8))
+        let token = digest.prefix(12).map { String(format: "%02x", $0) }.joined()
+        return "legacy-\(token)"
     }
 }
 

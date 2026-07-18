@@ -236,4 +236,42 @@ final class FramingPlanCodableTests: XCTestCase {
         XCTAssertNil(drawing.framing)
         XCTAssertNil(drawing.schemaVersion)
     }
+
+    func testMissingFramingMemberIdDecodesDeterministicallyAcrossLoads() throws {
+        let json = """
+        {
+          "vertices": [],
+          "edges": [],
+          "framing": {
+            "members": [{
+              "levelId": "main",
+              "members": [{
+                "role": "beam",
+                "start": [12.5, 24],
+                "end": [132.5, 24],
+                "nominalSize": "2x10",
+                "plyCount": 3
+              }]
+            }],
+            "generationSource": "manual"
+          }
+        }
+        """
+
+        let firstDrawing = try XCTUnwrap(DeckDrawingData.fromJSON(json))
+        let secondDrawing = try XCTUnwrap(DeckDrawingData.fromJSON(json))
+        let emptyIDDrawing = try XCTUnwrap(DeckDrawingData.fromJSON(
+            json.replacingOccurrences(
+                of: #""role": "beam""#,
+                with: #""id": "", "role": "beam""#
+            )
+        ))
+        let first = try XCTUnwrap(firstDrawing.framing?.members.first?.members.first)
+        let second = try XCTUnwrap(secondDrawing.framing?.members.first?.members.first)
+        let emptyID = try XCTUnwrap(emptyIDDrawing.framing?.members.first?.members.first)
+
+        XCTAssertFalse(first.id.isEmpty)
+        XCTAssertEqual(first.id, second.id)
+        XCTAssertEqual(first.id, emptyID.id)
+    }
 }

@@ -1,0 +1,35 @@
+[
+  {
+    "attachments" : [
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "9E29CF30-C411-4059-A93B-457609D51EC6",
+        "deviceName" : "iPhone 17",
+        "exportedFileName" : "668D4BB6-8059-4837-913B-8FAA1348CA94.png",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "framing-2114-03-load-path_0_3E1296E8-F5F0-45C5-88D1-18349D5C3C45.png",
+        "timestamp" : 1784335558.387
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "9E29CF30-C411-4059-A93B-457609D51EC6",
+        "deviceName" : "iPhone 17",
+        "exportedFileName" : "672A7B97-D268-401B-88A0-7393F6B6B0D7.png",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "framing-2114-02-birdseye_0_CDC832AF-6DF8-4D42-90FC-E161328D47BB.png",
+        "timestamp" : 1784335558.349
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "9E29CF30-C411-4059-A93B-457609D51EC6",
+        "deviceName" : "iPhone 17",
+        "exportedFileName" : "EB2A176F-02AA-49A0-BC7C-58F533A865D2.png",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "framing-2114-01-perspective_0_8F25FA0E-3CD5-42B2-83CC-26775E11D220.png",
+        "timestamp" : 1784335558.316
+      }
+    ],
+    "testIdentifier" : "DeckSceneSnapshotTests/testRenderLive2114FramingOverhaul()",
+    "testIdentifierURL" : "test://com.apple.xcode/OPS/OPSTests/DeckSceneSnapshotTests/testRenderLive2114FramingOverhaul"
+  }
+]

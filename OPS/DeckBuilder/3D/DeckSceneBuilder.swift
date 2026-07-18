@@ -71,6 +71,11 @@ struct DeckSceneBuilder {
             return scene
         }
 
+        // Persisted Deckset framing is authoritative. Legacy drawings and
+        // levels whose persisted plan has no member set receive deterministic,
+        // in-memory display framing from the shared topology planner.
+        let displayFraming = DeckFramingPreviewPlanner.resolvedPlan(for: drawingData)
+
         // Calculate scene center for camera targeting
         var allPositions: [CGPoint] = []
         var cameraFrameCenter: CGPoint?
@@ -156,6 +161,10 @@ struct DeckSceneBuilder {
                     elevationM: elevationM,
                     scaleFactor: scaleFactor,
                     level: level,
+                    framing: displayFraming,
+                    framingLevelId: level.id,
+                    framingCenter: sharedCenter,
+                    framingVertices: level.vertices,
                     houseWallCapM: houseWallCapM,
                     surfacesIn3D: surfacesIn3D
                 )
@@ -233,6 +242,10 @@ struct DeckSceneBuilder {
                 elevationM: elevationM,
                 scaleFactor: scaleFactor,
                 level: nil,
+                framing: displayFraming,
+                framingLevelId: "",
+                framingCenter: sharedCenter,
+                framingVertices: drawingData.vertices,
                 surfacesIn3D: surfacesIn3D
             )
         }
@@ -284,19 +297,48 @@ struct DeckSceneBuilder {
             return rootNode
         }
 
+        let displayFraming = DeckFramingPreviewPlanner.resolvedPlan(for: drawingData)
+
         if drawingData.isMultiLevel {
-            // Same shared-centroid fix as `buildScene` — multi-level AR view
-            // also needs every level converted against ONE frame, otherwise
-            // levels stack at the origin in the AR placement scene.
+            // Match the standard scene's topology and coordinate frame. A
+            // level with multiple detected faces may not satisfy `isClosed`
+            // as one graph, but every closed face still belongs in AR.
             var globalUnion: [CGPoint] = []
-            for level in drawingData.levels where level.isClosed {
+            for level in drawingData.levels {
                 globalUnion.append(contentsOf: level.orderedPositions)
+                globalUnion.append(contentsOf: level.detectedSurfaces.flatMap { $0.positions })
+                globalUnion.append(contentsOf: level.vertices.map { $0.position })
+                globalUnion.append(contentsOf: stairFramePositions(
+                    edges: level.edges,
+                    vertices: level.vertices,
+                    polygonVertices: level.orderedPositions,
+                    scaleFactor: scaleFactor,
+                    measurementSystem: drawingData.config.measurementSystem
+                ))
             }
             let sharedBounds = DeckMeshGenerator.boundingRect(for: globalUnion)
             let sharedCenter = CGPoint(x: sharedBounds.midX, y: sharedBounds.midY)
 
-            for (levelIndex, level) in drawingData.levels.enumerated() where level.isClosed {
-                let metersVerts = convertToMeters(
+            for (levelIndex, level) in drawingData.levels.enumerated() {
+                let detected = level.detectedSurfaces
+                guard !detected.isEmpty || level.isClosed else { continue }
+
+                let surfacesIn3D: [SurfaceMesh3D]? = detected.isEmpty ? nil : detected.map { face in
+                    let metersPositions = convertToMeters(
+                        vertices: face.positions,
+                        scaleFactor: scaleFactor,
+                        center: sharedCenter
+                    )
+                    let resolved = resolvedSurfacePresentation(for: face, in: level.surfaces)
+                    return SurfaceMesh3D(
+                        positionsInMeters: metersPositions,
+                        vertexIds: face.vertexIds,
+                        assignedItems: resolved.assignedItems,
+                        color: resolved.color,
+                        boardMaterial: resolved.boardMaterial
+                    )
+                }
+                let primaryFallback = convertToMeters(
                     vertices: level.orderedPositions,
                     scaleFactor: scaleFactor,
                     center: sharedCenter
@@ -310,38 +352,79 @@ struct DeckSceneBuilder {
                 )
                 buildDeckLevel(
                     parent: rootNode,
-                    vertices2D: metersVerts,
+                    vertices2D: primaryFallback,
                     edges: level.edges,
                     vertexPositionsInMetersById: vertexPositions,
                     elevationM: elevationM,
                     scaleFactor: scaleFactor,
                     level: level,
-                    skipHouseWall: true
+                    framing: displayFraming,
+                    framingLevelId: level.id,
+                    framingCenter: sharedCenter,
+                    framingVertices: level.vertices,
+                    skipHouseWall: true,
+                    surfacesIn3D: surfacesIn3D
                 )
             }
             for connection in drawingData.levelConnections {
                 buildLevelConnection(parent: rootNode, connection: connection, drawingData: drawingData, scaleFactor: scaleFactor, center: sharedCenter)
             }
-        } else if drawingData.isClosed {
-            let metersVerts = convertToMeters(vertices: drawingData.orderedPositions, scaleFactor: scaleFactor)
+        } else if !drawingData.detectedSurfaces.isEmpty || drawingData.isClosed {
+            let detected = drawingData.detectedSurfaces
+            var union: [CGPoint] = drawingData.orderedPositions
+            union.append(contentsOf: detected.flatMap { $0.positions })
+            union.append(contentsOf: drawingData.vertices.map { $0.position })
+            union.append(contentsOf: stairFramePositions(
+                edges: drawingData.edges,
+                vertices: drawingData.vertices,
+                polygonVertices: drawingData.orderedPositions,
+                scaleFactor: scaleFactor,
+                measurementSystem: drawingData.config.measurementSystem
+            ))
+            let bounds = DeckMeshGenerator.boundingRect(for: union)
+            let sharedCenter = CGPoint(x: bounds.midX, y: bounds.midY)
+
+            let surfacesIn3D: [SurfaceMesh3D]? = detected.isEmpty ? nil : detected.map { face in
+                let metersPositions = convertToMeters(
+                    vertices: face.positions,
+                    scaleFactor: scaleFactor,
+                    center: sharedCenter
+                )
+                let resolved = resolvedSurfacePresentation(for: face, in: drawingData.surfaces)
+                return SurfaceMesh3D(
+                    positionsInMeters: metersPositions,
+                    vertexIds: face.vertexIds,
+                    assignedItems: resolved.assignedItems,
+                    color: resolved.color,
+                    boardMaterial: resolved.boardMaterial
+                )
+            }
+            let primaryFallback = convertToMeters(
+                vertices: drawingData.orderedPositions,
+                scaleFactor: scaleFactor,
+                center: sharedCenter
+            )
             let elevationFeet = drawingData.renderElevationFeetSingleLevel
             let elevationM = Float(elevationFeet) * feetToMeters
-            let bounds = DeckMeshGenerator.boundingRect(for: drawingData.orderedPositions)
-            let center = CGPoint(x: bounds.midX, y: bounds.midY)
             let vertexPositions = vertexPositionMap(
                 vertices: drawingData.vertices,
                 scaleFactor: scaleFactor,
-                center: center
+                center: sharedCenter
             )
             buildDeckLevel(
                 parent: rootNode,
-                vertices2D: metersVerts,
+                vertices2D: primaryFallback,
                 edges: drawingData.edges,
                 vertexPositionsInMetersById: vertexPositions,
                 elevationM: elevationM,
                 scaleFactor: scaleFactor,
                 level: nil,
-                skipHouseWall: true
+                framing: displayFraming,
+                framingLevelId: "",
+                framingCenter: sharedCenter,
+                framingVertices: drawingData.vertices,
+                skipHouseWall: true,
+                surfacesIn3D: surfacesIn3D
             )
         }
 
@@ -386,6 +469,10 @@ struct DeckSceneBuilder {
         elevationM: Float,
         scaleFactor: Double,
         level: DeckLevel?,
+        framing: FramingPlan,
+        framingLevelId: String,
+        framingCenter: CGPoint,
+        framingVertices: [DeckVertex],
         skipHouseWall: Bool = false,
         houseWallCapM: Float? = nil,  // bug fb007839 — wall cap on multi-level designs
         surfacesIn3D: [SurfaceMesh3D]? = nil  // DECK-NEW-1 — per-surface meshes + materials
@@ -423,10 +510,30 @@ struct DeckSceneBuilder {
             deckGroup.addChildNode(surfaceNode)
         }
 
-        // Support posts + footings under each surface's perimeter so a raised
-        // deck rests on grade instead of floating. No-op for ground-level decks.
-        for surf in surfaces {
-            buildSupportPosts(parent: deckGroup, perimeterMeters: surf.positionsInMeters, deckElevationM: elevationM)
+        // The presence of a level member set is authoritative even when that
+        // set is explicitly empty. Only the old fallback path may draw legacy
+        // perimeter supports/rim joists; resolved framing owns all structure.
+        let hasResolvedFramingSet = framing.members.contains { $0.levelId == framingLevelId }
+        if hasResolvedFramingSet {
+            let framingNode = FramingSceneBuilder.buildFramingNode(
+                framing: framing,
+                levelId: framingLevelId,
+                scaleFactor: scaleFactor,
+                center: framingCenter,
+                deckElevationMeters: elevationM,
+                vertices: framingVertices
+            )
+            deckGroup.addChildNode(framingNode)
+        } else {
+            // Compatibility fallback for callers that provide a plan without
+            // a set for this level. The preview planner normally fills it.
+            for surf in surfaces {
+                buildSupportPosts(
+                    parent: deckGroup,
+                    perimeterMeters: surf.positionsInMeters,
+                    deckElevationM: elevationM
+                )
+            }
         }
 
         // Railing and stairs per edge
@@ -439,8 +546,10 @@ struct DeckSceneBuilder {
             // Rim joists belong on detected-surface boundaries only. Drawing
             // every graph edge made shared interior and stray construction
             // edges read as deck perimeter lines outside the surface.
-            if visibleRimJoistEdgeIds?.contains(edge.id) ?? true ||
-                DeckSurfaceEdgeResolver.carriesVisible3DFeature(edge) {
+            if !hasResolvedFramingSet && (
+                (visibleRimJoistEdgeIds?.contains(edge.id) ?? true) ||
+                DeckSurfaceEdgeResolver.carriesVisible3DFeature(edge)
+            ) {
                 buildRimJoist(parent: deckGroup, start: startPos3D, end: endPos3D, deckElevationM: elevationM)
             }
 

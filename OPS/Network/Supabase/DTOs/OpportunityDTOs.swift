@@ -165,6 +165,7 @@ struct CreateOpportunityDTO: Codable {
     let address: String?
     let estimatedValue: Double?
     let source: String?
+    let sourceThreadKey: String?
     let priority: String?
     let assignedTo: String?
     let expectedCloseDate: String?
@@ -183,6 +184,7 @@ struct CreateOpportunityDTO: Codable {
         address: String? = nil,
         estimatedValue: Double? = nil,
         source: String? = nil,
+        sourceThreadKey: String? = nil,
         priority: String? = nil,
         assignedTo: String? = nil,
         expectedCloseDate: Date? = nil,
@@ -200,6 +202,7 @@ struct CreateOpportunityDTO: Codable {
         self.address = address
         self.estimatedValue = estimatedValue
         self.source = source
+        self.sourceThreadKey = sourceThreadKey
         self.priority = priority
         self.assignedTo = assignedTo
         self.expectedCloseDate = expectedCloseDate.map { SupabaseDate.formatDate($0) }
@@ -219,6 +222,7 @@ struct CreateOpportunityDTO: Codable {
         case address
         case estimatedValue       = "estimated_value"
         case source
+        case sourceThreadKey      = "source_thread_key"
         case priority
         case assignedTo           = "assigned_to"
         case expectedCloseDate    = "expected_close_date"

@@ -10,7 +10,6 @@
 
 import Foundation
 import Contacts
-import SwiftData
 import UIKit
 
 @MainActor
@@ -34,16 +33,18 @@ enum PhoneContactImporter {
         let opportunityId: String?
     }
 
-    /// Full path: create the client (+avatar, +pipeline lead) from a contact
-    /// and return the saved model. Posts the same `ClientCreatedSuccess` toast
-    /// the manual create path posts. Selection / wizard side-effects stay with
-    /// the caller so each surface can react in its own way.
+    /// Full path: create the client (+avatar), durably queue its pipeline lead,
+    /// and return the saved model immediately. Posts the same
+    /// `ClientCreatedSuccess` toast the manual create path posts. Selection /
+    /// wizard side-effects stay with the caller so each surface can react in
+    /// its own way.
     @discardableResult
     static func createClient(
         from contact: CNContact,
         companyId: String,
         dataController: DataController,
-        postSuccessToast: Bool = true
+        postSuccessToast: Bool = true,
+        leadQueue: (any ClientLeadAutocreateQueueing)? = nil
     ) async throws -> ImportResult {
         let name = composeName(from: contact)
         guard !name.isEmpty else { throw ImportError.missingName }
@@ -52,12 +53,28 @@ enum PhoneContactImporter {
         let profileImageUrl = await uploadAvatar(from: contact, clientId: clientId, companyId: companyId)
         let dto = makeClientDTO(from: contact, companyId: companyId, clientId: clientId, profileImageUrl: profileImageUrl)
 
-        _ = try await dataController.createClient(dto: dto)
-        guard let savedClient = dataController.getAllClients(for: companyId).first(where: { $0.id == clientId }) else {
-            throw ImportError.reloadFailed
-        }
+        let savedClient = try await dataController.createClientModel(dto: dto)
 
-        let opportunityId = try await createPipelineLead(for: savedClient, companyId: companyId, dataController: dataController)
+        return finishImport(
+            savedClient: savedClient,
+            companyId: companyId,
+            postSuccessToast: postSuccessToast,
+            leadQueue: leadQueue
+        )
+    }
+
+    /// The client save is the authoritative result. Pipeline delivery is a
+    /// durable secondary operation, so it can never turn a saved contact into
+    /// a false "save failed" state or prevent the project form from selecting
+    /// the new client.
+    static func finishImport(
+        savedClient: Client,
+        companyId: String,
+        postSuccessToast: Bool,
+        leadQueue: (any ClientLeadAutocreateQueueing)? = nil
+    ) -> ImportResult {
+        let resolvedLeadQueue = leadQueue ?? ClientLeadAutocreateQueue.shared
+        resolvedLeadQueue.enqueueAndDrainInBackground(savedClient, companyId: companyId)
 
         if postSuccessToast {
             NotificationCenter.default.post(
@@ -66,13 +83,12 @@ enum PhoneContactImporter {
                 userInfo: [
                     "clientName": savedClient.name,
                     "clientId": savedClient.id,
-                    "leadCreated": true,
-                    "opportunityId": opportunityId
+                    "leadCreated": false
                 ]
             )
         }
 
-        return ImportResult(client: savedClient, opportunityId: opportunityId)
+        return ImportResult(client: savedClient, opportunityId: nil)
     }
 
     // MARK: - Building blocks (also used directly by ProjectFormSheet)
@@ -149,34 +165,4 @@ enum PhoneContactImporter {
         }
     }
 
-    /// Creates the matching pipeline lead so an imported client surfaces in the
-    /// sales pipeline exactly like a manually-created one. Throws so the caller
-    /// does not report a complete import when the lead is missing.
-    @discardableResult
-    static func createPipelineLead(for client: Client, companyId: String, dataController: DataController) async throws -> String {
-        guard let dto = ClientLeadAutocreate.makeOpportunityDTO(for: client, companyId: companyId) else {
-            throw ClientLeadAutocreateError.missingClientName
-        }
-
-        let repository = OpportunityRepository(companyId: companyId)
-        do {
-            let created = try await repository.create(dto)
-            let model = created.toModel()
-            if let context = dataController.modelContext {
-                let oppId = created.id
-                let descriptor = FetchDescriptor<Opportunity>(
-                    predicate: #Predicate<Opportunity> { $0.id == oppId }
-                )
-                let existing = (try? context.fetch(descriptor)) ?? []
-                if existing.isEmpty {
-                    context.insert(model)
-                    try? context.save()
-                }
-            }
-            return created.id
-        } catch {
-            print("[CONTACT_IMPORT] ⚠️ Failed to create matching lead for client \(client.id): \(error)")
-            throw ClientLeadAutocreateError.creationFailed
-        }
-    }
 }

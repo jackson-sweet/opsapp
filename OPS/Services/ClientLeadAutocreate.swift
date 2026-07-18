@@ -15,23 +15,66 @@ enum ClientLeadAutocreate {
     /// Client-created leads default to medium.
     static let schemaAllowedPriority = "medium"
 
+    /// `opportunities` has a live unique constraint on
+    /// `(company_id, source_thread_key)`. A deterministic key makes the
+    /// automatic child write idempotent even when the first response times out
+    /// after the database committed it.
+    static func sourceThreadKey(forClientId clientId: String) -> String {
+        "client-autocreate:\(clientId.lowercased())"
+    }
+
     static func makeOpportunityDTO(for client: Client, companyId: String) -> CreateOpportunityDTO? {
-        let trimmedName = client.name.trimmingCharacters(in: .whitespacesAndNewlines)
+        makeOpportunityDTO(
+            companyId: companyId,
+            clientId: client.id,
+            name: client.name,
+            email: client.email,
+            phoneNumber: client.phoneNumber,
+            address: client.address,
+            notes: client.notes
+        )
+    }
+
+    static func makeOpportunityDTO(
+        for request: PendingClientLeadAutocreate
+    ) -> CreateOpportunityDTO? {
+        makeOpportunityDTO(
+            companyId: request.companyId,
+            clientId: request.clientId,
+            name: request.name,
+            email: request.email,
+            phoneNumber: request.phoneNumber,
+            address: request.address,
+            notes: request.notes
+        )
+    }
+
+    private static func makeOpportunityDTO(
+        companyId: String,
+        clientId: String,
+        name: String,
+        email: String?,
+        phoneNumber: String?,
+        address: String?,
+        notes: String?
+    ) -> CreateOpportunityDTO? {
+        let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedName.isEmpty else { return nil }
 
         return CreateOpportunityDTO(
             companyId: companyId,
             title: "\(trimmedName) — lead",
             contactName: trimmedName,
-            contactEmail: sanitizedOptional(client.email),
-            contactPhone: sanitizedOptional(client.phoneNumber),
-            description: sanitizedOptional(client.notes),
-            address: sanitizedOptional(client.address),
+            contactEmail: sanitizedOptional(email),
+            contactPhone: sanitizedOptional(phoneNumber),
+            description: sanitizedOptional(notes),
+            address: sanitizedOptional(address),
             estimatedValue: nil,
             source: schemaAllowedSource,
+            sourceThreadKey: sourceThreadKey(forClientId: clientId),
             priority: schemaAllowedPriority,
             quoteDeliveryMethod: nil,
-            clientId: client.id
+            clientId: clientId
         )
     }
 
@@ -46,14 +89,11 @@ enum ClientLeadAutocreate {
 
 enum ClientLeadAutocreateError: LocalizedError {
     case missingClientName
-    case creationFailed
 
     var errorDescription: String? {
         switch self {
         case .missingClientName:
             return "Client saved. Pipeline lead needs a client name."
-        case .creationFailed:
-            return "Client saved. Pipeline lead did not create."
         }
     }
 }

@@ -43,6 +43,38 @@ class OpportunityRepository {
             .value
     }
 
+    /// Returns an existing active opportunity linked to a client, if one
+    /// exists. Client-lead delivery calls this before insert so an ambiguous
+    /// timeout cannot create a duplicate lead on retry.
+    func fetchFirstActiveLinked(toClientId clientId: String) async throws -> OpportunityDTO? {
+        let rows: [OpportunityDTO] = try await client
+            .from("opportunities")
+            .select()
+            .eq("company_id", value: companyId)
+            .eq("client_id", value: clientId)
+            .is("deleted_at", value: nil)
+            .order("created_at", ascending: false)
+            .limit(1)
+            .execute()
+            .value
+        return rows.first
+    }
+
+    /// Resolve a durable ingestion key regardless of active/deleted state.
+    /// The database uniquely constrains `(company_id, source_thread_key)`, so
+    /// this is the authoritative readback after an ambiguous insert response.
+    func fetchBySourceThreadKey(_ sourceThreadKey: String) async throws -> OpportunityDTO? {
+        let rows: [OpportunityDTO] = try await client
+            .from("opportunities")
+            .select()
+            .eq("company_id", value: companyId)
+            .eq("source_thread_key", value: sourceThreadKey)
+            .limit(1)
+            .execute()
+            .value
+        return rows.first
+    }
+
     /// Resolve an email-thread id to its linked opportunity id.
     ///
     /// Lead notifications whose `action_url` is `/inbox/<thread-uuid>` carry no

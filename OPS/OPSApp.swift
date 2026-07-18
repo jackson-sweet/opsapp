@@ -157,6 +157,19 @@ struct OPSApp: App {
                     LeadImageService.shared.configure(modelContext: context)
                     Task { await LeadImageService.shared.drain() }
 
+                    // Client-lead queue: the client save is authoritative, and
+                    // its matching pipeline lead retries durably until the
+                    // local-first client is visible to Supabase.
+                    ClientLeadAutocreateQueue.shared.configure(
+                        modelContext: context,
+                        activeCompanyId: { [weak dataController] in
+                            guard let dataController,
+                                  dataController.isAuthenticated else { return nil }
+                            return dataController.currentUser?.companyId
+                        }
+                    )
+                    Task { await ClientLeadAutocreateQueue.shared.drain() }
+
                     // Bridge the model container to non-View singletons
                     // (CalendarMirrorService reaches SwiftData through this).
                     ModelContainerHolder.shared = sharedModelContainer
@@ -236,13 +249,18 @@ struct OPSApp: App {
                     }
                 }
                 .onReceive(NotificationCenter.default.publisher(for: ConnectivityManager.connectivityChangedNotification)) { notification in
-                    // Refresh permissions when connectivity is restored
                     if let state = notification.userInfo?["state"] as? ConnectionState,
-                       state.status != .offline,
-                       permissionStore.isCacheStale(),
-                       let userId = dataController.currentUser?.id {
-                        Task {
-                            await permissionStore.fetchPermissions(userId: userId)
+                       state.status != .offline {
+                        // Retry queued client-to-pipeline delivery as soon as
+                        // usable connectivity returns.
+                        Task { await ClientLeadAutocreateQueue.shared.drain() }
+
+                        // Refresh permissions when connectivity is restored.
+                        if permissionStore.isCacheStale(),
+                           let userId = dataController.currentUser?.id {
+                            Task {
+                                await permissionStore.fetchPermissions(userId: userId)
+                            }
                         }
                     }
                 }
@@ -274,6 +292,10 @@ struct OPSApp: App {
                         // once/60s) so a freshly-published force-update reaches
                         // users on resume, not only on a full relaunch.
                         Task { await updateGate.refresh(userRole: dataController.currentUser?.role, force: false) }
+
+                        // Foreground is another deterministic retry boundary for
+                        // a client lead queued before the app was suspended.
+                        Task { await ClientLeadAutocreateQueue.shared.drain() }
 
                         // Re-link OneSignal on every foreground return to ensure
                         // the device is registered for push notifications.
@@ -317,10 +339,13 @@ struct OPSApp: App {
                     }
                 }
                 .onChange(of: dataController.isAuthenticated) { _, isAuth in
+                    ClientLeadAutocreateQueue.shared.invalidateDeliveryScope()
+
                     // Request notification permission once user is authenticated
                     // (onAppear fires before auth completes, so this catches the transition)
                     if isAuth {
                         notificationManager.requestPermission()
+                        Task { await ClientLeadAutocreateQueue.shared.drain() }
 
                         // Subscribe to Realtime as soon as the user authenticates
                         // while the app is already running (login without a relaunch).
@@ -330,6 +355,12 @@ struct OPSApp: App {
                             let userId = dataController.currentUser?.id
                             Task { await dataController.syncEngine?.ensureRealtime(companyId: companyId, userId: userId) }
                         }
+                    }
+                }
+                .onChange(of: dataController.currentUser?.companyId) { _, _ in
+                    ClientLeadAutocreateQueue.shared.invalidateDeliveryScope()
+                    if dataController.isAuthenticated {
+                        Task { await ClientLeadAutocreateQueue.shared.drain() }
                     }
                 }
                 .onReceive(NotificationCenter.default.publisher(for: ConnectivityManager.connectivityChangedNotification)) { _ in

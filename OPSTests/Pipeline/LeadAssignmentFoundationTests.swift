@@ -798,12 +798,14 @@ final class LeadAssignmentFoundationTests: XCTestCase {
         ]))
     }
 
-    func testMigrationPlanDeclaresARealV16Boundary() throws {
-        XCTAssertEqual(OPSMigrationPlan.schemas.count, 16)
-        XCTAssertEqual(OPSMigrationPlan.stages.count, 15)
+    func testMigrationPlanDeclaresARealAssignmentBoundary() throws {
+        // The assignment + chase boundary lives at V18 after the main-line
+        // reconciliation (V16 = opportunity media, V17 = vinyl color/PO).
+        XCTAssertEqual(OPSMigrationPlan.schemas.count, 18)
+        XCTAssertEqual(OPSMigrationPlan.stages.count, 17)
         XCTAssertEqual(
             String(describing: try XCTUnwrap(OPSMigrationPlan.schemas.last).versionIdentifier),
-            "16.0.0"
+            "18.0.0"
         )
     }
 

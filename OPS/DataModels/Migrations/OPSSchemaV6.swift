@@ -78,7 +78,7 @@ enum OPSSchemaV7: VersionedSchema {
             + OPSSchemaCommon.v3CatalogModels
             + OPSSchemaCommon.v4ReminderModels
             + OPSSchemaCommon.v6ForecastModels
-            + OPSSchemaCommon.v7VinylOrderModels
+            + OPSSchemaCommon.v7ToV16VinylOrderModel
             + [WizardState.self, CalendarMirrorMap.self]
     }
 }
@@ -105,7 +105,7 @@ enum OPSSchemaV8: VersionedSchema {
             + OPSSchemaCommon.v8CatalogModels
             + OPSSchemaCommon.v4ReminderModels
             + OPSSchemaCommon.v6ForecastModels
-            + OPSSchemaCommon.v7VinylOrderModels
+            + OPSSchemaCommon.v7ToV16VinylOrderModel
             + OPSSchemaCommon.v8CatalogSetupModels
             + [WizardState.self, CalendarMirrorMap.self]
     }

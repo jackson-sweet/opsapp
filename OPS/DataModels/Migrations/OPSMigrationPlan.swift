@@ -125,7 +125,8 @@ enum OPSMigrationPlan: SchemaMigrationPlan {
             OPSSchemaV13.self,
             OPSSchemaV14.self,
             OPSSchemaV15.self,
-            OPSSchemaV16.self
+            OPSSchemaV16.self,
+            OPSSchemaV17.self
         ]
     }
 
@@ -145,9 +146,21 @@ enum OPSMigrationPlan: SchemaMigrationPlan {
             addProjectNoteEventKindV12toV13,
             addUnifiedActivityParentsV13toV14,
             addSiteVisitActivityLinkV14toV15,
-            addOpportunityMediaAndDeckLeadV15toV16
+            addOpportunityMediaAndDeckLeadV15toV16,
+            addVinylOrderColorPOV16toV17
         ]
     }
+
+    /// V16 → V17: purely additive — `ProjectVinylOrderMarker` gains nullable
+    /// `vinylColor` / `vinylPO`, projections of the additive
+    /// `projects.vinyl_color` / `vinyl_po` columns (VINYL ORDERS board). The
+    /// frozen V16 marker shape (`OPSSchemaLegacyVinylOrderV16`) preserves
+    /// released fingerprints; lightweight migration defaults both columns to
+    /// nil for historical rows.
+    static let addVinylOrderColorPOV16toV17 = MigrationStage.lightweight(
+        fromVersion: OPSSchemaV16.self,
+        toVersion: OPSSchemaV17.self
+    )
 
     /// V15 → V16: fields that landed after V15 shipped. Opportunity adds an
     /// images array plus nullable latitude/longitude; DeckDesign adds nullable

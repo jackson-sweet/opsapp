@@ -401,7 +401,9 @@ enum VinylCutListTextTemplate {
         }
     }
 
-    private static func replacingTokens(in template: String, replacements: [String: String]) -> String {
+    /// Internal (not private): the bulk-order composer reuses the exact same
+    /// token conventions for its per-job section template.
+    static func replacingTokens(in template: String, replacements: [String: String]) -> String {
         var rendered = template
         for (key, value) in replacements {
             let titleKey = key
@@ -1545,7 +1547,9 @@ enum VinylCutListEngine {
     }
 }
 
-private func vinylFormatInches(_ value: Double) -> String {
+/// Internal (not private): the bulk order wizard renders roll widths with the
+/// same convention as the order sheet's [roll_width] token.
+func vinylFormatInches(_ value: Double) -> String {
     let rounded = (value * 10).rounded() / 10
     if rounded.rounded() == rounded {
         return "\(Int(rounded))\""

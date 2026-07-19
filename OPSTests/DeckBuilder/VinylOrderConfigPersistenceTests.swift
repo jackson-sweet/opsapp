@@ -95,7 +95,7 @@ final class VinylOrderConfigPersistenceTests: XCTestCase {
     // MARK: - Sheet restore resolution
 
     func testRestoredSelectionResolvesPersistedVariant() {
-        let restored = VinylOrderSheet.restoredCatalogSelection(
+        let restored = VinylCatalogSelection.restoredSelection(
             configItemId: "item-1",
             configVariantId: "variant-9",
             configColor: "Slate Grey",
@@ -112,7 +112,7 @@ final class VinylOrderConfigPersistenceTests: XCTestCase {
     /// catalog) must not be restored — the sheet falls back to "select a colour"
     /// rather than silently ordering a dead variant.
     func testRestoredSelectionDropsVariantMissingFromCatalog() {
-        let restored = VinylOrderSheet.restoredCatalogSelection(
+        let restored = VinylCatalogSelection.restoredSelection(
             configItemId: "item-1",
             configVariantId: "variant-dead",
             configColor: "Slate Grey",
@@ -127,7 +127,7 @@ final class VinylOrderConfigPersistenceTests: XCTestCase {
 
     /// Free-text colour (no catalog product configured) restores as plain text.
     func testRestoredSelectionKeepsFreeTextColorWithoutProduct() {
-        let restored = VinylOrderSheet.restoredCatalogSelection(
+        let restored = VinylCatalogSelection.restoredSelection(
             configItemId: nil,
             configVariantId: nil,
             configColor: "Tan",
@@ -143,7 +143,7 @@ final class VinylOrderConfigPersistenceTests: XCTestCase {
     /// A configured product whose catalog item vanished falls back to free-text
     /// colour so the operator's colour note is never lost.
     func testRestoredSelectionFallsBackToFreeTextWhenItemMissing() {
-        let restored = VinylOrderSheet.restoredCatalogSelection(
+        let restored = VinylCatalogSelection.restoredSelection(
             configItemId: "item-gone",
             configVariantId: "variant-9",
             configColor: "Slate Grey",

@@ -132,7 +132,8 @@ struct DeckMaterialsOrderService {
         materials: DeckMaterialsList,
         settings: DeckMaterialsSettings,
         vinylSettings: VinylOrderSettings,
-        confirmed: DeckMaterialsOrderConfirmation? = nil
+        confirmed: DeckMaterialsOrderConfirmation? = nil,
+        po: String? = nil
     ) async throws {
         let now = Date()
         let priorSnapshot = design.drawingData.orderedMaterials
@@ -183,7 +184,8 @@ struct DeckMaterialsOrderService {
             fullRollLengthFeet: confirmation.fullRollLengthFeet,
             orderedRollCount: confirmation.orderMode == .fullRolls ? confirmation.rollCount : nil,
             isOrderedEdited: isOrderedEdited,
-            driftCutGroups: driftGroups
+            driftCutGroups: driftGroups,
+            po: normalized(po)
         )
 
         // (1) Local-first snapshot — the accessor marks needsSync + updatedAt.
@@ -191,7 +193,11 @@ struct DeckMaterialsOrderService {
         next.orderedMaterials = snapshot
         design.drawingData = next
 
-        // (2) Project marker fields. Revert the snapshot if this throws.
+        // (2) Project marker fields — status trio + color/PO in ONE call so the
+        // remote row can never carry a half-written order record. Revert the
+        // snapshot if this throws.
+        let color = normalized(vinylSettings.color)
+        let normalizedPO = normalized(po)
         do {
             try await updateProjectFields(projectId, [
                 ProjectVinylOrderFields.status: .string(ProjectVinylOrderStatus.ordered.rawValue),
@@ -199,7 +205,9 @@ struct DeckMaterialsOrderService {
                 // `projects.vinyl_ordered_by` FKs to auth.users(id), while the app
                 // carries public.users.id / Firebase ids. The snapshot keeps
                 // attribution locally; the synced project marker stays valid.
-                ProjectVinylOrderFields.orderedBy: .null
+                ProjectVinylOrderFields.orderedBy: .null,
+                ProjectVinylOrderFields.color: color.map { .string($0) } ?? .null,
+                ProjectVinylOrderFields.po: normalizedPO.map { .string($0) } ?? .null
             ])
         } catch {
             var revert = design.drawingData
@@ -267,7 +275,10 @@ struct DeckMaterialsOrderService {
             try await updateProjectFields(projectId, [
                 ProjectVinylOrderFields.status: .string(ProjectVinylOrderStatus.notOrdered.rawValue),
                 ProjectVinylOrderFields.orderedAt: .null,
-                ProjectVinylOrderFields.orderedBy: .null
+                ProjectVinylOrderFields.orderedBy: .null,
+                // A cleared job carries no stale order record (spec § 8).
+                ProjectVinylOrderFields.color: .null,
+                ProjectVinylOrderFields.po: .null
             ])
         } catch {
             if let design {
@@ -277,5 +288,12 @@ struct DeckMaterialsOrderService {
             }
             throw error
         }
+    }
+
+    /// Trimmed non-empty string, or nil — the marker columns store real values
+    /// or NULL, never empty strings.
+    private func normalized(_ value: String?) -> String? {
+        let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return trimmed.isEmpty ? nil : trimmed
     }
 }

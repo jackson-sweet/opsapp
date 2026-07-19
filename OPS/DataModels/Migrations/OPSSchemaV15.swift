@@ -43,7 +43,7 @@ enum OPSSchemaV15: VersionedSchema {
             + OPSSchemaCommon.v8CatalogModels
             + OPSSchemaCommon.v4ReminderModels
             + OPSSchemaCommon.v6ForecastModels
-            + OPSSchemaCommon.v7VinylOrderModels
+            + OPSSchemaCommon.v7ToV16VinylOrderModel
             + OPSSchemaCommon.v8CatalogSetupModels
             + OPSSchemaCommon.v9ProjectPhotoModels
             + OPSSchemaCommon.v10StockUnitEventModels

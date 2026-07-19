@@ -242,6 +242,10 @@ struct SupabaseProjectDTO: Codable, Identifiable {
     var vinylOrderStatus: String? = nil
     var vinylOrderedAt: String? = nil
     var vinylOrderedBy: String? = nil
+    /// Ordered vinyl color + supplier PO reference (VINYL ORDERS board).
+    /// Nullable so payloads from before the 2026-07-16 columns still decode.
+    var vinylColor: String? = nil
+    var vinylPO: String? = nil
     /// Server-maintained `projects.updated_at` (bug 70a4d9fd). Read-only
     /// from iOS — Supabase auto-bumps it on every write, so outbound
     /// callers don't pass it. Declared as `var` with a default so the
@@ -271,6 +275,8 @@ struct SupabaseProjectDTO: Codable, Identifiable {
         case vinylOrderStatus = "vinyl_order_status"
         case vinylOrderedAt = "vinyl_ordered_at"
         case vinylOrderedBy = "vinyl_ordered_by"
+        case vinylColor     = "vinyl_color"
+        case vinylPO        = "vinyl_po"
         case updatedAt      = "updated_at"
         case priorityRank   = "priority_rank"
     }

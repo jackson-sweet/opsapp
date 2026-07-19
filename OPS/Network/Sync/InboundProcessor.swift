@@ -911,7 +911,9 @@ final class InboundProcessor {
                     "team_member_ids", "project_images", "deleted_at",
                     ProjectVinylOrderFields.status,
                     ProjectVinylOrderFields.orderedAt,
-                    ProjectVinylOrderFields.orderedBy
+                    ProjectVinylOrderFields.orderedBy,
+                    ProjectVinylOrderFields.color,
+                    ProjectVinylOrderFields.po
                 ],
                 context: context
             )
@@ -1017,6 +1019,12 @@ final class InboundProcessor {
             }
             if acceptedFields.contains(ProjectVinylOrderFields.orderedBy) {
                 existing.orderedBy = dto.vinylOrderedBy
+            }
+            if acceptedFields.contains(ProjectVinylOrderFields.color) {
+                existing.vinylColor = dto.vinylColor
+            }
+            if acceptedFields.contains(ProjectVinylOrderFields.po) {
+                existing.vinylPO = dto.vinylPO
             }
             existing.sourceProjectUpdatedAt = dto.updatedAt.flatMap { SupabaseDate.parse($0) }
             existing.lastSyncedAt = Date()

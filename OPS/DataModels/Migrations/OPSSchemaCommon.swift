@@ -82,6 +82,80 @@ enum OPSSchemaLegacyOpportunityV15 {
     }
 }
 
+/// Opportunity as it stood at V16–V17: images + coordinates present, no
+/// `assignmentVersion` and no chase/summary columns. The live model gained
+/// those at V18 (guarded lead assignment + the Leads chase system), so this
+/// exact stored-property graph keeps the V16/V17 fingerprints stable.
+enum OPSSchemaLegacyOpportunityV17 {
+    @Model
+    final class Opportunity: Identifiable {
+        @Attribute(.unique) var id: String
+        var companyId: String
+        var title: String?
+        var contactName: String
+        var contactEmail: String?
+        var contactPhone: String?
+        var descriptionText: String?
+        var address: String?
+        var stage: PipelineStage
+        var stageEnteredAt: Date
+        var stageManuallySet: Bool
+        var assignedTo: String?
+        var priority: String?
+        var source: String?
+        var quoteDeliveryMethod: QuoteDeliveryMethod?
+        var estimatedValue: Double?
+        var actualValue: Double?
+        var winProbabilityOverride: Int?
+        var expectedCloseDate: Date?
+        var actualCloseDate: Date?
+        var nextFollowUpAt: Date?
+        var lastActivityAt: Date?
+        var projectId: String?
+        var clientId: String?
+        var lostReason: String?
+        var lostNotes: String?
+        var deletedAt: Date?
+        var archivedAt: Date?
+        var tags: [String]
+        var sourceEmailId: String?
+        var images: [String] = []
+        var latitude: Double?
+        var longitude: Double?
+        var correspondenceCount: Int
+        var outboundCount: Int
+        var inboundCount: Int
+        var lastInboundAt: Date?
+        var lastOutboundAt: Date?
+        var lastMessageDirection: String?
+        var createdAt: Date
+        var updatedAt: Date
+
+        init(
+            id: String = UUID().uuidString,
+            companyId: String,
+            contactName: String,
+            stage: PipelineStage = .newLead,
+            stageEnteredAt: Date = Date(),
+            createdAt: Date = Date(),
+            updatedAt: Date = Date()
+        ) {
+            self.id = id
+            self.companyId = companyId
+            self.contactName = contactName
+            self.stage = stage
+            self.stageEnteredAt = stageEnteredAt
+            self.stageManuallySet = false
+            self.tags = []
+            self.correspondenceCount = 0
+            self.outboundCount = 0
+            self.inboundCount = 0
+            self.createdAt = createdAt
+            self.updatedAt = updatedAt
+        }
+    }
+}
+
 /// DeckDesign as it shipped through V15. The live model gained the nullable
 /// `opportunityId` after release, so the pre-addition graph must remain frozen
 /// for every historical schema fingerprint.
@@ -899,8 +973,16 @@ enum OPSSchemaCommon {
         OPSSchemaLegacyOpportunityV15.Opportunity.self
     ]
 
-    /// Opportunity from V16 onward, including images and coordinates.
-    static let v16OpportunityModel: [any PersistentModel.Type] = [
+    /// Opportunity as it stood at V16–V17 — images and coordinates, before the
+    /// guarded-assignment snapshot and the chase/summary columns.
+    static let v16ToV17OpportunityModel: [any PersistentModel.Type] = [
+        OPSSchemaLegacyOpportunityV17.Opportunity.self
+    ]
+
+    /// Opportunity from V18 onward — the live model, including the required
+    /// zero-default `assignmentVersion` and the optional `handledAt` /
+    /// `aiSummary` / `aiSummaryUpdatedAt` chase columns.
+    static let v18OpportunityModel: [any PersistentModel.Type] = [
         Opportunity.self
     ]
 

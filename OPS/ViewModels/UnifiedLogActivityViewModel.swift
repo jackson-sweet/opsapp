@@ -15,9 +15,10 @@
 //      capture), plus call_source/caller_number/call_started_at threaded
 //      into the write.
 //   3. Conditional field visibility (LeadLogActivitySheet) — direction only
-//      for call/email, duration only for call/meeting, outcome for everything
-//      but note — resolved to nil (not just hidden) when the section doesn't
-//      apply, mirroring the exact show-rules the three legacy sheets used.
+//      for call/text/email, duration only for call/meeting, outcome for
+//      everything but note, subject for everything but text — resolved to nil
+//      (not just hidden) when the section doesn't apply, mirroring the exact
+//      show-rules the three legacy sheets used.
 //
 //  Every write goes through ActivityRepository.logActivity — the single
 //  `activities` write path — never OpportunityRepository.logActivity
@@ -308,7 +309,7 @@ final class UnifiedLogActivityViewModel: ObservableObject {
 
     /// DIRECTION only applies to correspondence with an in/out sense.
     var showDirectionField: Bool {
-        selectedType == .call || selectedType == .email
+        selectedType == .call || selectedType == .email || selectedType == .textMessage
     }
 
     /// OUTCOME applies to everything except a plain note.
@@ -319,6 +320,12 @@ final class UnifiedLogActivityViewModel: ObservableObject {
     /// DURATION only applies to time-boxed activities.
     var showDurationField: Bool {
         selectedType == .call || selectedType == .meeting
+    }
+
+    /// SUBJECT applies to everything except a text — texts have no subject
+    /// line; the note body is the message gist.
+    var showSubjectField: Bool {
+        selectedType != .textMessage
     }
 
     // MARK: - Validation
@@ -551,7 +558,6 @@ final class UnifiedLogActivityViewModel: ObservableObject {
         let resolvedPhone = isCreatingNewLead ? newLeadPhone : phoneNumber
         let resolvedEmail = isCreatingNewLead ? newLeadEmail : ""
         let dto = CreateOpportunityDTO(
-            companyId: companyId,
             contactName: trimmedName,
             contactEmail: resolvedEmail.isEmpty ? nil : resolvedEmail,
             contactPhone: resolvedPhone.isEmpty ? nil : resolvedPhone,

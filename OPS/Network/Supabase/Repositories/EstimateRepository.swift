@@ -68,6 +68,20 @@ class EstimateRepository: EstimateAcceptanceClient {
             .value
     }
 
+    /// Estimates quoted against a lead — the FILES section's estimate rows
+    /// on the lead detail (estimates carry `opportunity_id` pre-conversion).
+    func fetchForOpportunity(_ opportunityId: String) async throws -> [EstimateDTO] {
+        try await client
+            .from("estimates")
+            .select()
+            .eq("company_id", value: companyId)
+            .eq("opportunity_id", value: opportunityId)
+            .is("deleted_at", value: nil)
+            .order("created_at", ascending: false)
+            .execute()
+            .value
+    }
+
     /// Fetch every line item belonging to ANY estimate of `opportunityId`.
     /// Two-step query: collect estimate ids for the lead, then pull all
     /// line items in one `IN (...)` call. Used by `LeadConversionService` to

@@ -103,6 +103,17 @@
 //  `opportunityId`. Both models are frozen through V15 and switch to their live
 //  shapes at V16 so released fingerprints remain stable.
 //
+//  V16 → V17 stage: vinyl order marker gains nullable color + PO fields for
+//  the VINYL ORDERS board.
+//
+//  V17 → V18 stage: guarded lead assignment concurrency + chase columns. Adds
+//  the required, defaulted Int64 `Opportunity.assignmentVersion` snapshot and
+//  three optional chase/summary fields (`handledAt`, `aiSummary`,
+//  `aiSummaryUpdatedAt`). Opportunity is version-scoped at this boundary —
+//  the frozen `OPSSchemaLegacyOpportunityV17.Opportunity` (images +
+//  coordinates, no assignment/chase) backs V16–V17; the live model backs
+//  V18+ — so only this boundary widens the fingerprint.
+//
 
 import Foundation
 import SwiftData
@@ -126,7 +137,8 @@ enum OPSMigrationPlan: SchemaMigrationPlan {
             OPSSchemaV14.self,
             OPSSchemaV15.self,
             OPSSchemaV16.self,
-            OPSSchemaV17.self
+            OPSSchemaV17.self,
+            OPSSchemaV18.self
         ]
     }
 
@@ -147,9 +159,21 @@ enum OPSMigrationPlan: SchemaMigrationPlan {
             addUnifiedActivityParentsV13toV14,
             addSiteVisitActivityLinkV14toV15,
             addOpportunityMediaAndDeckLeadV15toV16,
-            addVinylOrderColorPOV16toV17
+            addVinylOrderColorPOV16toV17,
+            addOpportunityAssignmentAndChaseV17toV18
         ]
     }
+
+    /// V17 → V18: additive guarded-assignment snapshot + chase columns.
+    /// Existing leads receive `assignmentVersion = 0` (required, defaulted);
+    /// `handledAt` / `aiSummary` / `aiSummaryUpdatedAt` are new optionals
+    /// defaulting to nil. Opportunity is version-scoped at this boundary
+    /// (frozen `OPSSchemaLegacyOpportunityV17` for V16–V17, live for V18+)
+    /// so released fingerprints stay exact.
+    static let addOpportunityAssignmentAndChaseV17toV18 = MigrationStage.lightweight(
+        fromVersion: OPSSchemaV17.self,
+        toVersion: OPSSchemaV18.self
+    )
 
     /// V16 → V17: purely additive — `ProjectVinylOrderMarker` gains nullable
     /// `vinylColor` / `vinylPO`, projections of the additive

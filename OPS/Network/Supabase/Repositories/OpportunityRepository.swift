@@ -12,6 +12,12 @@ import Foundation
 import Supabase
 
 class OpportunityRepository {
+    enum RPC {
+        static let createGuarded = "create_opportunity_guarded"
+        static let changeAssignment = "change_opportunity_assignment"
+        static let listAssignmentCandidates = "list_opportunity_assignment_candidates"
+    }
+
     private let client: SupabaseClient
     private let companyId: String
 
@@ -103,6 +109,40 @@ class OpportunityRepository {
         return rows.first?.opportunityId
     }
 
+    /// Latest email-thread subject for a lead — powers the EMAIL quick action's
+    /// "Re:" compose and the detail CONTACT sheet. Nil when the lead has no
+    /// correspondence.
+    func latestCorrespondenceSubject(for opportunityId: String) async throws -> String? {
+        struct Row: Decodable { let subject: String? }
+        let rows: [Row] = try await client
+            .from("opportunity_correspondence_events")
+            .select("subject")
+            .eq("opportunity_id", value: opportunityId)
+            .not("subject", operator: .is, value: "null")
+            .order("occurred_at", ascending: false)
+            .limit(1)
+            .execute()
+            .value
+        return rows.first?.subject
+    }
+
+    /// FILES rows for the lead detail — email attachments the pipeline
+    /// attributed to this lead. Only actionable rows: `stored` (streamed via
+    /// the authenticated ops-web proxy) and `external` (source_url). Mirrors
+    /// the web inbox listing's reviewable subset; RLS grants lead-scoped
+    /// SELECT via email_attachments_lead_files_select.
+    func fetchEmailAttachments(for opportunityId: String) async throws -> [LeadAttachment] {
+        try await client
+            .from("email_attachments")
+            .select("id, filename, mime_type, storage_path, source_url, from_email, ingest_status, occurred_at, created_at")
+            .eq("opportunity_id", value: opportunityId)
+            .eq("attribution_status", value: "attributed")
+            .in("ingest_status", values: ["stored", "external"])
+            .order("occurred_at", ascending: false)
+            .execute()
+            .value
+    }
+
     func fetchActivities(for opportunityId: String) async throws -> [ActivityDTO] {
         try await client
             .from("activities")
@@ -133,31 +173,79 @@ class OpportunityRepository {
             .value
     }
 
-    /// Bulk-fetch every stage_transitions row for the company. Used by the
-    /// LEADS hero widget to reconstruct the weighted-forecast baseline 30 days
-    /// ago (Option A — "what it would have been" — per LEADS rebuild polish P1-3).
-    /// Ascending order so consumers can scan chronologically and find the
-    /// latest-on-or-before(date) per opportunity in a single pass.
-    func fetchAllStageTransitions() async throws -> [StageTransitionDTO] {
-        try await client
-            .from("stage_transitions")
-            .select()
-            .eq("company_id", value: companyId)
-            .order("transitioned_at", ascending: true)
+    // MARK: - Create
+
+    func create(_ dto: CreateOpportunityDTO) async throws -> OpportunityDTO {
+        let result: GuardedOpportunityCreateResult = try await client
+            .rpc(
+                RPC.createGuarded,
+                params: GuardedOpportunityCreateParams(opportunity: dto)
+            )
+            .execute()
+            .value
+        guard result.ok else {
+            throw OpportunityRepositoryError.guardedCreateRejected
+        }
+        return result.opportunity
+    }
+
+    /// The only iOS assignment mutation path. The server compares both the
+    /// expected assignee and monotonic assignment version, then returns the
+    /// canonical row snapshot (including conflicts). Callers must render this
+    /// response; this repository never mutates a local Opportunity optimistically.
+    func changeAssignment(
+        opportunityId: String,
+        expectedAssignmentVersion: Int64,
+        expectedAssignedTo: String?,
+        newAssignedTo: String?,
+        source: OpportunityAssignmentSource = .manual,
+        suggestionId: String? = nil,
+        metadata: [String: AnyJSON] = [:]
+    ) async throws -> OpportunityAssignmentChangeResult {
+        let params = try ChangeOpportunityAssignmentParams(
+            opportunityId: opportunityId,
+            expectedAssignmentVersion: expectedAssignmentVersion,
+            expectedAssignedTo: expectedAssignedTo,
+            newAssignedTo: newAssignedTo,
+            source: source,
+            suggestionId: suggestionId,
+            metadata: metadata
+        )
+        return try await client
+            .rpc(RPC.changeAssignment, params: params)
             .execute()
             .value
     }
 
-    // MARK: - Create
+    /// Returns only assignment targets authorized by the guarded server RPC.
+    /// Local `User` rows are display fallbacks, never a picker data source.
+    func listAssignmentCandidates(
+        opportunityId: String
+    ) async throws -> OpportunityAssignmentCandidates {
+        struct Params: Encodable {
+            let p_opportunity_id: String
+        }
 
-    func create(_ dto: CreateOpportunityDTO) async throws -> OpportunityDTO {
-        try await client
-            .from("opportunities")
-            .insert(dto)
-            .select()
-            .single()
+        return try await client
+            .rpc(
+                RPC.listAssignmentCandidates,
+                params: Params(p_opportunity_id: opportunityId)
+            )
             .execute()
             .value
+    }
+
+    /// Refetches the canonical assignment tuple after an optimistic-concurrency
+    /// conflict. The full row fetch retains the existing opportunity RLS gate;
+    /// callers project only the two non-PII fields below.
+    func fetchAssignmentSnapshot(
+        opportunityId: String
+    ) async throws -> OpportunityAssignmentSnapshot {
+        let opportunity = try await fetchOne(opportunityId)
+        return OpportunityAssignmentSnapshot(
+            assignedTo: opportunity.assignedTo,
+            assignmentVersion: opportunity.assignmentVersion
+        )
     }
 
     func logActivity(_ dto: CreateActivityDTO) async throws -> ActivityDTO {
@@ -196,6 +284,7 @@ class OpportunityRepository {
     /// Updates stage + stage_entered_at + stage_manually_set AND inserts a
     /// stage_transitions row in one transaction. Returns the updated opportunity.
     func moveToStage(opportunityId: String, to stage: PipelineStage, userId: String?) async throws -> OpportunityDTO {
+        try Self.validateDirectStageMutation(stage)
         struct RpcParams: Codable {
             let p_opportunity_id: String
             let p_to_stage: String
@@ -213,18 +302,15 @@ class OpportunityRepository {
             .value
     }
 
-    /// Mark won. Sets stage to .won, stores actualValue + actualCloseDate,
-    /// and writes the stage_transitions row via moveToStage.
-    func markWon(opportunityId: String, actualValue: Double?, projectId: String?, userId: String?) async throws -> OpportunityDTO {
-        // First the stage move (writes transition row)
-        _ = try await moveToStage(opportunityId: opportunityId, to: .won, userId: userId)
-
-        // Then patch the won-specific fields
-        var fields = UpdateOpportunityDTO()
-        fields.actualValue = actualValue
-        fields.actualCloseDate = SupabaseDate.formatDate(Date())
-        if let projectId { fields.projectId = projectId }
-        return try await update(opportunityId, fields: fields)
+    /// The won transition is authorization-sensitive: it creates or links the
+    /// project and pins the assignment version in one guarded transaction.
+    /// Keeping this rejection at the repository boundary prevents a future UI
+    /// from accidentally reviving the legacy `move_opportunity_stage('won')`
+    /// escape hatch.
+    static func validateDirectStageMutation(_ stage: PipelineStage) throws {
+        guard stage != .won else {
+            throw OpportunityRepositoryError.guardedConversionRequired
+        }
     }
 
     /// Mark lost. Sets stage to .lost, stores lost_reason + lost_notes + actualCloseDate,
@@ -253,7 +339,7 @@ class OpportunityRepository {
     /// Update via an arbitrary Encodable patch. Used by the edit form's
     /// `EditOpportunityPatch`, whose custom encoder emits explicit nulls so
     /// cleared fields persist. The `fields:` overload (UpdateOpportunityDTO)
-    /// stays the partial-update path for mark-won / mark-lost / archive. (review I-12)
+    /// stays the partial-update path for mark-lost / archive. (review I-12)
     func update<Patch: Encodable>(_ opportunityId: String, patch: Patch) async throws -> OpportunityDTO {
         try await client
             .from("opportunities")
@@ -318,9 +404,24 @@ class OpportunityRepository {
     // MARK: - Deprecated
 
     /// Kept for backward compatibility. Forwards to moveToStage; does NOT
-    /// write actualValue or actualCloseDate. Prefer markWon / markLost.
-    @available(*, deprecated, message: "Use moveToStage / markWon / markLost")
+    /// write actualValue or actualCloseDate. Won is deliberately rejected by
+    /// `moveToStage` and must use the guarded conversion service.
+    @available(*, deprecated, message: "Use moveToStage / markLost; won requires guarded conversion")
     func advanceStage(opportunityId: String, to stage: PipelineStage, lostReason: String? = nil) async throws -> OpportunityDTO {
         try await moveToStage(opportunityId: opportunityId, to: stage, userId: nil)
+    }
+}
+
+enum OpportunityRepositoryError: LocalizedError, Equatable {
+    case guardedCreateRejected
+    case guardedConversionRequired
+
+    var errorDescription: String? {
+        switch self {
+        case .guardedCreateRejected:
+            return "Lead was not created. Refresh and try again."
+        case .guardedConversionRequired:
+            return "Marking a lead won requires guarded project conversion."
+        }
     }
 }

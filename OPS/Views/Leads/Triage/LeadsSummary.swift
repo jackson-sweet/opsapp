@@ -2,9 +2,16 @@
 //  LeadsSummary.swift
 //  OPS
 //
-//  Money & Leads redesign (2026-06-30) — the Leads tab summary block above the
-//  chase queue: a bare weighted-forecast hero, a stage-distribution bar, three
-//  triage count tiles (overdue / due today / waiting), and a velocity readout.
+//  Leads redesign (2026-07-17, spec §7 / mockup leads-top A) — the tab
+//  summary is WORK-FIRST: the hero is the number of leads that need a move
+//  right now, not a forecast. Weighted probability is retired.
+//
+//      N NEED ACTION                       ← rose when overdue, tan when >0
+//      2 OVERDUE · 1 DUE TODAY · 1 YOUR MOVE
+//      [PIPELINE $86K] [OPEN 12] [WON · JUL $22.4K]
+//      [stage distribution bar]
+//
+//  Zero state: 0 NEED ACTION + // ALL QUIET (consistent with LeadsCaughtUp).
 //  All values come straight off `PipelineViewModel`.
 //
 
@@ -13,63 +20,145 @@ import SwiftUI
 struct LeadsSummary: View {
     let viewModel: PipelineViewModel
 
-    private static let openStages: [PipelineStage] = [.newLead, .qualifying, .quoting, .quoted, .followUp, .negotiation]
-
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            forecastHero
+            needActionHero
+            tileRow.padding(.top, OPSStyle.Layout.spacing3)
             stageBar.padding(.top, OPSStyle.Layout.spacing3)
-            triageTiles.padding(.top, OPSStyle.Layout.spacing3)
-            velocityLine.padding(.top, OPSStyle.Layout.spacing2_5)
         }
         .padding(.horizontal, OPSStyle.Layout.spacing3_5)
     }
 
-    // MARK: Forecast hero
+    // MARK: Need-action hero
 
-    private var forecastHero: some View {
-        VStack(alignment: .leading, spacing: 0) {
+    private var buckets: PipelineViewModel.TriageBuckets { viewModel.triageBuckets }
+
+    /// Numeral tone: rose while anything is overdue, tan while anything needs
+    /// action, primary text at zero (all quiet).
+    private var heroTone: Color {
+        if buckets.overdue.count > 0 { return OPSStyle.Colors.roseTextM }
+        if viewModel.needActionCount > 0 { return OPSStyle.Colors.tanTextM }
+        return OPSStyle.Colors.text
+    }
+
+    private var needActionHero: some View {
+        let count = viewModel.needActionCount
+        return VStack(alignment: .leading, spacing: 0) {
+            HStack(alignment: .firstTextBaseline, spacing: 10) {
+                CountUpText(
+                    target: Double(count),
+                    format: { "\(Int($0))" },
+                    font: .custom("Mohave-Light", size: 38),
+                    color: heroTone
+                )
+                Text("NEED ACTION")
+                    .font(.custom("JetBrainsMono-Medium", size: 11))
+                    .tracking(1.4)
+                    .textCase(.uppercase)
+                    .foregroundColor(count > 0 ? heroTone : OPSStyle.Colors.text3)
+            }
+
+            breakdownLine
+                .padding(.top, OPSStyle.Layout.spacing1 + 2)
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(heroAccessibilityLabel)
+    }
+
+    /// `2 OVERDUE · 1 DUE TODAY · 1 YOUR MOVE` — each segment in its bucket
+    /// tone; zero state reads `// ALL QUIET`.
+    @ViewBuilder
+    private var breakdownLine: some View {
+        if viewModel.needActionCount == 0 {
             HStack(spacing: 0) {
                 Text("// ").foregroundColor(OPSStyle.Colors.textMute)
-                Text("WEIGHTED PIPELINE · 30D").foregroundColor(OPSStyle.Colors.text3)
+                Text("ALL QUIET").foregroundColor(OPSStyle.Colors.text3)
             }
-            .font(OPSStyle.Typography.miniLabelBold)
+            .font(OPSStyle.Typography.miniLabel)
             .tracking(1.4)
             .textCase(.uppercase)
-
-            CountUpText(
-                target: viewModel.weightedForecastValue,
-                font: .custom("Mohave-Light", size: 52),
-                color: OPSStyle.Colors.text
-            )
-            .padding(.top, OPSStyle.Layout.spacing1 + 2)
-
-            if let delta = viewModel.forecastDeltaPct {
-                deltaLine(delta)
-                    .padding(.top, OPSStyle.Layout.spacing1 + 3)
+        } else {
+            HStack(spacing: 6) {
+                breakdownSegment(buckets.overdue.count, "OVERDUE", OPSStyle.Colors.roseTextM)
+                breakdownSegment(buckets.dueToday.count, "DUE TODAY", OPSStyle.Colors.tanTextM, leadingDot: buckets.overdue.count > 0)
+                breakdownSegment(
+                    buckets.waitingOnYou.count, "YOUR MOVE", OPSStyle.Colors.opsAccent,
+                    leadingDot: buckets.overdue.count > 0 || buckets.dueToday.count > 0
+                )
             }
         }
     }
 
     @ViewBuilder
-    private func deltaLine(_ pct: Double) -> some View {
-        let up = pct >= 0
-        let color = up ? OPSStyle.Colors.oliveTextM : OPSStyle.Colors.roseTextM
-        // Derive the absolute change from the % so the line reads like the design.
-        let prior = pct == -100 ? 0 : viewModel.weightedForecastValue / (1 + pct / 100)
-        let change = viewModel.weightedForecastValue - prior
-        HStack(spacing: 0) {
-            Text("\(up ? "↑" : "↓") \(abs(Int(pct.rounded())))% · \(up ? "+" : "")\(BooksFormat.compact(change))")
-                .foregroundColor(color)
-            Text("  VS PRIOR")
-                .foregroundColor(OPSStyle.Colors.text3)
+    private func breakdownSegment(_ count: Int, _ label: String, _ tone: Color, leadingDot: Bool = false) -> some View {
+        if count > 0 {
+            HStack(spacing: 6) {
+                if leadingDot {
+                    Text("·")
+                        .foregroundColor(OPSStyle.Colors.textMute)
+                }
+                Text("\(count) \(label)")
+                    .foregroundColor(tone)
+                    .monospacedDigit()
+            }
+            .font(OPSStyle.Typography.miniLabel)
+            .tracking(1.0)
+            .textCase(.uppercase)
         }
-        .font(OPSStyle.Typography.metadata)
-        .tracking(0.4)
-        .monospacedDigit()
     }
 
-    // MARK: Stage distribution bar
+    private var heroAccessibilityLabel: String {
+        let count = viewModel.needActionCount
+        guard count > 0 else { return "0 need action. All quiet." }
+        var parts: [String] = ["\(count) need action"]
+        if buckets.overdue.count > 0 { parts.append("\(buckets.overdue.count) overdue") }
+        if buckets.dueToday.count > 0 { parts.append("\(buckets.dueToday.count) due today") }
+        if buckets.waitingOnYou.count > 0 { parts.append("\(buckets.waitingOnYou.count) your move") }
+        return parts.joined(separator: ", ")
+    }
+
+    // MARK: Tile row — real dollars, no weighting
+
+    private var tileRow: some View {
+        HStack(spacing: OPSStyle.Layout.spacing2) {
+            tile(label: "PIPELINE", value: BooksFormat.compact(viewModel.openPipelineValue), tone: nil)
+            tile(label: "OPEN", value: "\(viewModel.openLeadCount)", tone: nil)
+            tile(label: "WON · \(monthLabel)", value: BooksFormat.compact(viewModel.wonThisMonthValue),
+                 tone: viewModel.wonThisMonthValue > 0 ? OPSStyle.Colors.oliveTextM : nil)
+        }
+    }
+
+    private var monthLabel: String {
+        let f = DateFormatter()
+        f.dateFormat = "MMM"
+        return f.string(from: Date()).uppercased()
+    }
+
+    private func tile(label: String, value: String, tone: Color?) -> some View {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
+            Text(label)
+                .font(.custom("JetBrainsMono-Medium", size: 8.5))
+                .tracking(0.9)
+                .textCase(.uppercase)
+                .foregroundColor(OPSStyle.Colors.text3)
+                .lineLimit(1)
+            Text(value)
+                .font(.custom("JetBrainsMono-Medium", size: 16))
+                .foregroundColor(tone ?? OPSStyle.Colors.text)
+                .monospacedDigit()
+                .lineLimit(1)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .nestedCard()
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(label), \(value)")
+    }
+
+    // MARK: Stage distribution bar (kept as-is)
+
+    private static let openStages = PipelineStage.openStages
 
     private var stageBar: some View {
         let counts = Self.openStages.map { (stage: $0, count: viewModel.count(in: $0)) }
@@ -90,51 +179,5 @@ struct LeadsSummary: View {
         }
         .frame(height: 8)
         .accessibilityHidden(true)
-    }
-
-    // MARK: Triage tiles
-
-    private var triageTiles: some View {
-        let buckets = viewModel.triageBuckets
-        return HStack(spacing: OPSStyle.Layout.spacing2) {
-            triageTile(count: buckets.overdue.count, label: "OVERDUE", tone: OPSStyle.Colors.rose)
-            triageTile(count: buckets.dueToday.count, label: "DUE TODAY", tone: OPSStyle.Colors.tan)
-            triageTile(count: viewModel.waitingCount, label: "WAITING", tone: nil)
-        }
-    }
-
-    private func triageTile(count: Int, label: String, tone: Color?) -> some View {
-        let active = count > 0 && tone != nil
-        let valueColor = active ? tone! : OPSStyle.Colors.text2
-        return VStack(spacing: OPSStyle.Layout.spacing1) {
-            Text("\(count)")
-                .font(.custom("JetBrainsMono-Medium", size: 18))
-                .foregroundColor(valueColor)
-                .monospacedDigit()
-            Text(label)
-                .font(.custom("JetBrainsMono-Medium", size: 8.5))
-                .tracking(0.9)
-                .textCase(.uppercase)
-                .foregroundColor(active ? tone! : OPSStyle.Colors.text3)
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 12)
-        .background(RoundedRectangle(cornerRadius: OPSStyle.Layout.sidebarHoverRadius, style: .continuous)
-            .fill(active ? tone!.opacity(0.10) : OPSStyle.Colors.surfaceInput))
-        .overlay(RoundedRectangle(cornerRadius: OPSStyle.Layout.sidebarHoverRadius, style: .continuous)
-            .strokeBorder(active ? tone!.opacity(0.32) : OPSStyle.Colors.line, lineWidth: 1))
-    }
-
-    // MARK: Velocity
-
-    private var velocityLine: some View {
-        var parts = ["\(viewModel.openLeadCount) OPEN"]
-        if let v = viewModel.avgVelocityDays() { parts.append("AVG VELOCITY \(v)D / STAGE") }
-        return Text(parts.joined(separator: " · "))
-            .font(OPSStyle.Typography.miniLabel)
-            .tracking(0.6)
-            .textCase(.uppercase)
-            .foregroundColor(OPSStyle.Colors.text3)
-            .monospacedDigit()
     }
 }

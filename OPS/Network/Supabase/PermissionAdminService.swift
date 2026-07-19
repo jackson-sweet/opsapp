@@ -15,6 +15,12 @@ struct AdminRoleRow: Codable, Identifiable {
     let id: String
     let name: String
     let hierarchy: Int
+    let isPreset: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case id, name, hierarchy
+        case isPreset = "is_preset"
+    }
 }
 
 struct AdminRolePermissionRow: Codable, Identifiable {
@@ -58,7 +64,7 @@ enum PermissionAdminService {
         let client = SupabaseService.shared.client
         let rows: [AdminRoleRow] = try await client
             .from("roles")
-            .select("id, name, hierarchy")
+            .select("id, name, hierarchy, is_preset")
             .eq("name", value: roleName)
             .execute()
             .value
@@ -79,7 +85,7 @@ enum PermissionAdminService {
         let client = SupabaseService.shared.client
         let rows: [AdminRoleRow] = try await client
             .from("roles")
-            .select("id, name, hierarchy")
+            .select("id, name, hierarchy, is_preset")
             .order("hierarchy", ascending: true)
             .execute()
             .value
@@ -127,85 +133,224 @@ enum PermissionAdminService {
 
     // MARK: - Write Methods
 
-    /// Assign a role to a user (upsert into `user_roles`).
+    /// Assign a role through the guarded backend boundary. Callers that do not
+    /// present the assignment-resolution UI still fail closed if the role
+    /// change would strand assigned leads.
     @MainActor
     static func assignUserRole(userId: String, roleId: String) async throws {
-        let client = SupabaseService.shared.client
-        try await client
-            .from("user_roles")
-            .upsert([
-                "user_id": userId,
-                "role_id": roleId
-            ], onConflict: "user_id")
-            .execute()
-
-        print("[PERMISSION_ADMIN] Assigned role \(roleId) to user \(userId)")
+        let currentRoleId = try await fetchUserRole(userId: userId)?.role_id
+        let payload = try UserRoleMutationRequest(
+            expectedRoleId: currentRoleId,
+            newRoleId: roleId,
+            assignmentResolutions: []
+        )
+        _ = try await replaceUserRole(userId: userId, request: payload)
     }
 
-    /// Set (upsert) a role permission.
+    /// Replace the complete editable role permission set through the guarded
+    /// backend boundary. The endpoint is responsible for actor authorization,
+    /// optimistic permission snapshots, dependency validation, and any lead
+    /// responsibility transfer required by a scope reduction.
     @MainActor
-    static func setRolePermission(roleId: String, permission: String, scope: String) async throws {
-        let client = SupabaseService.shared.client
-        try await client
-            .from("role_permissions")
-            .upsert([
-                "role_id": roleId,
-                "permission": permission,
-                "scope": scope
-            ], onConflict: "role_id,permission")
-            .execute()
+    static func replaceRolePermissions(
+        roleId: String,
+        request payload: RolePermissionMutationRequest
+    ) async throws -> RolePermissionMutationSuccess {
+        let token = try await FirebaseAuthService.shared.getIDToken()
+        let endpoint = AppConfiguration.apiBaseURL
+            .appendingPathComponent("api")
+            .appendingPathComponent("roles")
+            .appendingPathComponent(roleId)
+            .appendingPathComponent("permissions")
+        var request = URLRequest(url: endpoint)
+        request.httpMethod = "PUT"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        request.httpBody = try JSONEncoder().encode(payload)
 
-        print("[PERMISSION_ADMIN] Set role permission: \(permission) = \(scope) for role \(roleId)")
-    }
-
-    /// Remove a role permission.
-    @MainActor
-    static func removeRolePermission(roleId: String, permission: String) async throws {
-        let client = SupabaseService.shared.client
-        try await client
-            .from("role_permissions")
-            .delete()
-            .eq("role_id", value: roleId)
-            .eq("permission", value: permission)
-            .execute()
-
-        print("[PERMISSION_ADMIN] Removed role permission: \(permission) for role \(roleId)")
-    }
-
-    /// Set (upsert) a user-level permission override.
-    @MainActor
-    static func setUserOverride(userId: String, companyId: String, permission: String, scope: String?, granted: Bool) async throws {
-        let client = SupabaseService.shared.client
-        var record: [String: String] = [
-            "user_id": userId,
-            "company_id": companyId,
-            "permission": permission,
-            "granted": granted ? "true" : "false"
-        ]
-        if let scope = scope {
-            record["scope"] = scope
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let http = response as? HTTPURLResponse else {
+            throw PermissionAdminError.invalidResponse
         }
 
-        try await client
-            .from("user_permission_overrides")
-            .upsert(record, onConflict: "user_id,permission")
-            .execute()
+        if (200..<300).contains(http.statusCode) {
+            let result: RolePermissionMutationSuccess
+            do {
+                result = try JSONDecoder().decode(RolePermissionMutationSuccess.self, from: data)
+            } catch {
+                throw PermissionAdminError.invalidResponse
+            }
+            guard result.roleId == roleId,
+                  Set(result.permissions.map(\.permission)).count == result.permissions.count,
+                  result.permissions == result.permissions.sorted(by: { $0.permission < $1.permission }) else {
+                throw PermissionAdminError.invalidResponse
+            }
+            return result
+        }
 
-        print("[PERMISSION_ADMIN] Set user override: \(permission) granted=\(granted) for user \(userId)")
+        if http.statusCode == 409,
+           let conflict = try? JSONDecoder().decode(
+               RolePermissionMutationConflict.self,
+               from: data
+           ) {
+            throw PermissionAdminError.assignmentResolutionRequired(conflict)
+        }
+        if http.statusCode == 409,
+           let conflict = try? JSONDecoder().decode(
+               RolePermissionSnapshotConflict.self,
+               from: data
+           ),
+           conflict.code == "permission_snapshot_mismatch" {
+            throw PermissionAdminError.snapshotChanged(conflict.currentPermissions)
+        }
+        if http.statusCode == 409,
+           let conflict = try? JSONDecoder().decode(
+               PermissionAssignmentResolutionConflict.self,
+               from: data
+           ),
+           conflict.code == "assignment_resolution_conflict" {
+            throw PermissionAdminError.assignmentResolutionChanged
+        }
+
+        let envelope = try? JSONDecoder().decode(PermissionAdminErrorEnvelope.self, from: data)
+        throw PermissionAdminError.requestFailed(
+            envelope?.message ?? "Permission update failed. Try again."
+        )
     }
 
-    /// Remove a user-level permission override.
+    /// Atomically replace the changed portion of a member's permission
+    /// overrides against an exact authoritative snapshot.
     @MainActor
-    static func removeUserOverride(userId: String, permission: String) async throws {
-        let client = SupabaseService.shared.client
-        try await client
-            .from("user_permission_overrides")
-            .delete()
-            .eq("user_id", value: userId)
-            .eq("permission", value: permission)
-            .execute()
+    static func replaceUserPermissionOverrides(
+        userId: String,
+        request payload: UserPermissionOverrideMutationRequest
+    ) async throws -> UserPermissionOverrideMutationSuccess {
+        let (data, response) = try await makeGuardedRequest(
+            path: ["api", "users", userId, "permission-overrides"],
+            body: try JSONEncoder().encode(payload)
+        )
 
-        print("[PERMISSION_ADMIN] Removed user override: \(permission) for user \(userId)")
+        if (200..<300).contains(response.statusCode) {
+            let result: UserPermissionOverrideMutationSuccess
+            do {
+                result = try JSONDecoder().decode(
+                    UserPermissionOverrideMutationSuccess.self,
+                    from: data
+                )
+            } catch {
+                throw PermissionAdminError.invalidResponse
+            }
+            guard result.userId == userId,
+                  Set(result.overrides.map(\.permission)).count == result.overrides.count,
+                  result.overrides.allSatisfy({ !$0.permission.isEmpty }),
+                  result.overrides == result.overrides.sorted(by: {
+                      $0.permission < $1.permission
+                  }) else {
+                throw PermissionAdminError.invalidResponse
+            }
+            return result
+        }
+
+        try throwAssignmentConflictIfPresent(data: data, response: response)
+        if response.statusCode == 409,
+           let conflict = try? JSONDecoder().decode(
+               UserPermissionOverrideSnapshotConflict.self,
+               from: data
+           ),
+           conflict.code == "permission_snapshot_mismatch",
+           Set(conflict.currentOverrides.map(\.permission)).count
+               == conflict.currentOverrides.count,
+           conflict.currentOverrides == conflict.currentOverrides.sorted(by: {
+               $0.permission < $1.permission
+           }) {
+            throw PermissionAdminError.userOverrideSnapshotChanged(
+                conflict.currentOverrides
+            )
+        }
+
+        let envelope = try? JSONDecoder().decode(PermissionAdminErrorEnvelope.self, from: data)
+        throw PermissionAdminError.requestFailed(
+            envelope?.message ?? "Permission update failed. Try again."
+        )
+    }
+
+    /// Atomically replace a member's role against the authoritative role
+    /// snapshot, including any required lead responsibility transfers.
+    @MainActor
+    static func replaceUserRole(
+        userId: String,
+        request payload: UserRoleMutationRequest
+    ) async throws -> UserRoleMutationSuccess {
+        let (data, response) = try await makeGuardedRequest(
+            path: ["api", "users", userId, "role"],
+            body: try JSONEncoder().encode(payload)
+        )
+
+        if (200..<300).contains(response.statusCode) {
+            let result: UserRoleMutationSuccess
+            do {
+                result = try JSONDecoder().decode(UserRoleMutationSuccess.self, from: data)
+            } catch {
+                throw PermissionAdminError.invalidResponse
+            }
+            guard result.userId == userId, !result.legacyRole.isEmpty else {
+                throw PermissionAdminError.invalidResponse
+            }
+            return result
+        }
+
+        try throwAssignmentConflictIfPresent(data: data, response: response)
+        if response.statusCode == 409,
+           let conflict = try? JSONDecoder().decode(UserRoleSnapshotConflict.self, from: data),
+           conflict.code == "permission_snapshot_mismatch" {
+            throw PermissionAdminError.userRoleSnapshotChanged(conflict.currentRoleId)
+        }
+
+        let envelope = try? JSONDecoder().decode(PermissionAdminErrorEnvelope.self, from: data)
+        throw PermissionAdminError.requestFailed(
+            envelope?.message ?? "Role update failed. Try again."
+        )
+    }
+
+    @MainActor
+    private static func makeGuardedRequest(
+        path: [String],
+        body: Data
+    ) async throws -> (Data, HTTPURLResponse) {
+        let token = try await FirebaseAuthService.shared.getIDToken()
+        let endpoint = path.reduce(AppConfiguration.apiBaseURL) { url, component in
+            url.appendingPathComponent(component)
+        }
+        var request = URLRequest(url: endpoint)
+        request.httpMethod = "PUT"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        request.httpBody = body
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let http = response as? HTTPURLResponse else {
+            throw PermissionAdminError.invalidResponse
+        }
+        return (data, http)
+    }
+
+    private static func throwAssignmentConflictIfPresent(
+        data: Data,
+        response: HTTPURLResponse
+    ) throws {
+        guard response.statusCode == 409 else { return }
+        if let conflict = try? JSONDecoder().decode(
+            RolePermissionMutationConflict.self,
+            from: data
+        ) {
+            throw PermissionAdminError.assignmentResolutionRequired(conflict)
+        }
+        if let conflict = try? JSONDecoder().decode(
+            PermissionAssignmentResolutionConflict.self,
+            from: data
+        ), conflict.code == "assignment_resolution_conflict" {
+            throw PermissionAdminError.assignmentResolutionChanged
+        }
     }
 
     // MARK: - Role CRUD
@@ -217,7 +362,7 @@ enum PermissionAdminService {
         let rows: [AdminRoleRow] = try await client
             .from("roles")
             .insert(["name": name, "hierarchy": "\(hierarchy)"])
-            .select("id, name, hierarchy")
+            .select("id, name, hierarchy, is_preset")
             .execute()
             .value
         guard let row = rows.first else {
@@ -230,10 +375,23 @@ enum PermissionAdminService {
     /// Duplicate a role: create new role and copy all permissions from source.
     @MainActor
     static func duplicateRole(sourceRoleId: String, newName: String, hierarchy: Int) async throws -> AdminRoleRow {
-        let newRole = try await createRole(name: newName, hierarchy: hierarchy)
         let sourcePerms = try await fetchRolePermissions(roleId: sourceRoleId)
-        for perm in sourcePerms {
-            try await setRolePermission(roleId: newRole.id, permission: perm.permission, scope: perm.scope)
+        let snapshot = sourcePerms.map {
+            CanonicalRolePermission(permission: $0.permission, scope: $0.scope)
+        }
+        let request = try RolePermissionMutationRequest(
+            expectedPermissions: [],
+            desiredLevels: PermissionEditorPolicy.desiredLevels(from: snapshot),
+            assignmentResolutions: []
+        )
+        let newRole = try await createRole(name: newName, hierarchy: hierarchy)
+        do {
+            _ = try await replaceRolePermissions(roleId: newRole.id, request: request)
+        } catch {
+            // Do not leave a misleading empty duplicate behind when the
+            // guarded replacement rejects the copy.
+            try? await deleteRole(roleId: newRole.id)
+            throw error
         }
         print("[PERMISSION_ADMIN] Duplicated role to '\(newName)' with \(sourcePerms.count) permissions")
         return newRole
@@ -285,12 +443,40 @@ enum PermissionAdminService {
 
     enum PermissionAdminError: LocalizedError {
         case roleNotFound(String)
+        case assignmentResolutionRequired(RolePermissionMutationConflict)
+        case assignmentResolutionChanged
+        case snapshotChanged([CanonicalRolePermission])
+        case userOverrideSnapshotChanged([CanonicalUserPermissionOverride])
+        case userRoleSnapshotChanged(String?)
+        case invalidResponse
+        case requestFailed(String)
 
         var errorDescription: String? {
             switch self {
             case .roleNotFound(let name):
                 return "Role '\(name)' not found in roles table"
+            case .assignmentResolutionRequired:
+                return "Active leads need a new assignee before this access can be reduced."
+            case .assignmentResolutionChanged:
+                return "Lead responsibility changed. Review the current assignments and try again."
+            case .snapshotChanged:
+                return "Permissions changed elsewhere. Refresh and try again."
+            case .userOverrideSnapshotChanged:
+                return "This member's permissions changed elsewhere. Review the current access and try again."
+            case .userRoleSnapshotChanged:
+                return "This member's role changed elsewhere. Review the current role and try again."
+            case .invalidResponse:
+                return "Permission update could not be verified. Refresh and try again."
+            case .requestFailed(let message):
+                return message
             }
         }
     }
+}
+
+private struct PermissionAdminErrorEnvelope: Decodable {
+    let error: String?
+    let code: String?
+
+    var message: String? { error ?? code }
 }

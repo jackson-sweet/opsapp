@@ -65,6 +65,7 @@ struct LeadsTabView: View {
     @EnvironmentObject private var dataController: DataController
     @EnvironmentObject private var permissionStore: PermissionStore
     @EnvironmentObject private var appState: AppState
+    @ObservedObject private var conversionVisibilityStore = LeadConversionVisibilityStore.shared
 
     @State private var selectedBucket: PipelineViewModel.TriageBucket?
     @State private var detailLead: Opportunity?
@@ -72,6 +73,10 @@ struct LeadsTabView: View {
     @State private var footerStage: PipelineStage?
     @State private var activeSiteVisitLead: Opportunity?
     @State private var discardTarget: Opportunity?
+    /// Lead whose comeback date is being adjusted (ComebackChooserSheet).
+    @State private var comebackTarget: Opportunity?
+    /// Pending ARCHIVE confirmation (OPSConfirm).
+    @State private var archiveConfirm: OPSConfirmConfig?
 
     /// Guards the deep-link drain so a single tap resolves once even if both
     /// the `.task` load and the `pendingLeadDeepLinkId` change fire.
@@ -82,7 +87,18 @@ struct LeadsTabView: View {
     }
 
     private var buckets: PipelineViewModel.TriageBuckets { viewModel.triageBuckets }
-    private var canManage: Bool { permissionStore.can("pipeline.manage") }
+    private var leadAccessPolicy: LeadAccessPolicy { permissionStore.leadAccessPolicy }
+    private var canCreate: Bool { leadAccessPolicy.canCreate }
+    private var canConvertAny: Bool { leadAccessPolicy.canConvertAny }
+    private func canEdit(_ lead: Opportunity) -> Bool {
+        leadAccessPolicy.can(.edit, assignedTo: lead.assignedTo)
+    }
+    private func canConvert(_ lead: Opportunity) -> Bool {
+        leadAccessPolicy.can(.convert, assignedTo: lead.assignedTo)
+    }
+    private var convertibleUnconvertedWins: [Opportunity] {
+        buckets.unconvertedWon.filter(canConvert)
+    }
 
     /// The default view is ALL, grouped by urgency. A specific chip flattens to
     /// that bucket; if it empties (last item cleared) we drop back to ALL rather
@@ -106,7 +122,7 @@ struct LeadsTabView: View {
                 VStack(spacing: 0) {
                     AppHeader(
                         headerType: .leads,
-                        onAddLead: canManage ? { activeSheet = .add } : nil
+                        onAddLead: canCreate ? { activeSheet = .add } : nil
                     )
                     .padding(.bottom, OPSStyle.Layout.spacing2)
                     .background(OPSStyle.Colors.background.ignoresSafeArea(edges: .top))
@@ -119,9 +135,9 @@ struct LeadsTabView: View {
                             LeadsByStageRow(viewModel: viewModel, onStageTap: { footerStage = $0 })
                                 .padding(.top, 22)
 
-                            if canManage && !buckets.unconvertedWon.isEmpty {
+                            if !convertibleUnconvertedWins.isEmpty {
                                 LeadsWonNudge(
-                                    count: buckets.unconvertedWon.count,
+                                    count: convertibleUnconvertedWins.count,
                                     totalValue: unconvertedWonValue,
                                     onTap: { presentWonConvert() }
                                 )
@@ -152,6 +168,7 @@ struct LeadsTabView: View {
                         target: $discardTarget,
                         perform: { lead in try await viewModel.discard(opportunityId: lead.id) }
                     )
+                    .opsConfirm($archiveConfirm)
                 }
             }
             .navigationBarHidden(true)
@@ -180,6 +197,9 @@ struct LeadsTabView: View {
             }
             .sheet(item: $activeSheet) { sheet in
                 sheetView(for: sheet)
+            }
+            .sheet(item: $comebackTarget) { lead in
+                ComebackChooserSheet(lead: lead, viewModel: viewModel)
             }
             .fullScreenCover(item: $activeSiteVisitLead) { lead in
                 SiteVisitCaptureView(
@@ -301,9 +321,9 @@ struct LeadsTabView: View {
         case .all:           return "ALL"
         case .overdue:       return "OVERDUE"
         case .dueToday:      return "DUE TODAY"
-        case .waitingOnYou:  return "WAITING ON YOU"
+        case .waitingOnYou:  return "YOUR MOVE"
         case .fresh:         return "FRESH"
-        case .waitingOnThem: return "WAITING ON THEM"
+        case .waitingOnThem: return "WAITING"
         }
     }
 
@@ -385,8 +405,8 @@ struct LeadsTabView: View {
         switch b {
         case .overdue:       return "OVERDUE · CHASE NOW"
         case .dueToday:      return "DUE TODAY"
-        case .waitingOnYou:  return "WAITING ON YOU"
-        case .waitingOnThem: return "WAITING ON THEM"
+        case .waitingOnYou:  return "YOUR MOVE"
+        case .waitingOnThem: return "WAITING"
         case .fresh:         return "FRESH"
         case .all:           return "ALL"
         }
@@ -397,26 +417,24 @@ struct LeadsTabView: View {
             lead: lead,
             viewModel: viewModel,
             bucket: bucket,
-            canManage: canManage,
+            canEdit: canEdit(lead),
+            canConvert: canConvert(lead),
             onTap:     { detailLead = lead },
             onLog:     { activeSheet = .log(lead) },
-            onAdvance: { advance(lead) },
+            onHandled: { markHandled(lead) },
+            onAdjust:  { comebackTarget = lead },
+            onStage:   { stage in setStage(lead, to: stage) },
             onWon:     { activeSheet = .convert(lead) },
-            onLost:    { activeSheet = .lost(lead) }
+            onLost:    { activeSheet = .lost(lead) },
+            onArchive: { requestArchive(lead) },
+            onDiscard: { discardTarget = lead }
         )
         .contextMenu {
             LeadCardContextMenu(
                 lead: lead,
-                canManage: canManage,
+                canManage: canEdit(lead),
                 onEdit: { activeSheet = .edit(lead) },
-                onArchive: {
-                    Task {
-                        do {
-                            try await viewModel.archive(opportunityId: lead.id)
-                            ToastCenter.shared.present(Feedback.Lead.archived)
-                        } catch {}
-                    }
-                },
+                onArchive: { requestArchive(lead) },
                 onDiscard: { discardTarget = lead }
             )
         }
@@ -430,9 +448,9 @@ struct LeadsTabView: View {
         case .add:
             AddLeadSheet(
                 onSaved: { _ in },
-                onStartSiteVisit: { lead in
-                    activeSiteVisitLead = lead
-                }
+                onStartSiteVisit: canConvertAny
+                    ? { lead in activeSiteVisitLead = lead }
+                    : nil
             )
         case .edit(let opp):
             EditLeadSheet(opportunity: opp)
@@ -448,7 +466,7 @@ struct LeadsTabView: View {
                 .presentationDragIndicator(.visible)
         case .wonChooser:
             LeadsWonChooserSheet(
-                leads: buckets.unconvertedWon,
+                leads: convertibleUnconvertedWins,
                 onPick: { lead in
                     // Swap chooser → convert. Drop the chooser first, then
                     // present convert on the next runloop so a single sheet
@@ -515,17 +533,19 @@ struct LeadsTabView: View {
     // MARK: - Helpers
 
     private var unconvertedWonValue: Double {
-        buckets.unconvertedWon.reduce(0) { $0 + ($1.actualValue ?? $1.estimatedValue ?? 0) }
+        convertibleUnconvertedWins.reduce(0) {
+            $0 + ($1.actualValue ?? $1.estimatedValue ?? 0)
+        }
     }
 
     private var caughtUpHint: String {
-        "\(viewModel.openLeadCount) OPEN · PIPELINE \(BooksFormat.compact(viewModel.weightedForecastValue))"
+        "\(viewModel.openLeadCount) OPEN · PIPELINE \(BooksFormat.compact(viewModel.openPipelineValue))"
     }
 
     /// One unconverted win → straight to convert. Several → a chooser first so
     /// the operator sees every open win and picks which to turn into a job.
     private func presentWonConvert() {
-        let wins = buckets.unconvertedWon
+        let wins = convertibleUnconvertedWins
         if wins.count > 1 {
             activeSheet = .wonChooser
         } else if let first = wins.first {
@@ -533,17 +553,63 @@ struct LeadsTabView: View {
         }
     }
 
-    private func advance(_ lead: Opportunity) {
-        guard canManage, !lead.stage.isTerminal, let next = lead.stage.next else { return }
+    // MARK: - Chase actions (Leads redesign spec §2.2 / §6)
+
+    /// HANDLED ✓ — flip the ball, then voice the comeback in the toast with a
+    /// tappable ADJUST escape hatch. The toast is the only ceremony.
+    private func markHandled(_ lead: Opportunity) {
+        guard canEdit(lead) else { return }
+        Task {
+            do {
+                let comeback = try await viewModel.markHandled(opportunityId: lead.id)
+                ToastCenter.shared.present(Toast(
+                    label: "// HANDLED · BACK \(LeadChaseStrip.comebackLabel(comeback))",
+                    tone: .success,
+                    autoDismissAfter: 6,
+                    action: ToastAction(label: "ADJUST", accessibilityLabel: "Adjust comeback date") {
+                        comebackTarget = lead
+                    }
+                ))
+            } catch {
+                ToastCenter.shared.present(Toast(label: Feedback.Err.saveFailed, tone: .error))
+            }
+        }
+    }
+
+    /// Direct stage pick from the status menu (open stages only — WON always
+    /// routes through the convert sheet).
+    private func setStage(_ lead: Opportunity, to stage: PipelineStage) {
+        guard canEdit(lead), stage != lead.stage else { return }
         Task {
             do {
                 try await viewModel.moveToStage(
                     opportunityId: lead.id,
-                    to: next,
+                    to: stage,
                     userId: dataController.currentUser?.id
                 )
-                ToastCenter.shared.present(Feedback.Lead.stageAdvanced)
-            } catch {}
+                ToastCenter.shared.present(Feedback.Lead.stageSet)
+            } catch {
+                ToastCenter.shared.present(Toast(label: Feedback.Err.saveFailed, tone: .error))
+            }
+        }
+    }
+
+    /// ARCHIVE — guarded by the standardized confirm (spec §6).
+    private func requestArchive(_ lead: Opportunity) {
+        guard canEdit(lead) else { return }
+        archiveConfirm = OPSConfirmConfig(
+            title: "ARCHIVE LEAD?",
+            message: "It leaves the queue. Restore any time from the by-stage list.",
+            verb: "ARCHIVE"
+        ) {
+            Task {
+                do {
+                    try await viewModel.archive(opportunityId: lead.id)
+                    ToastCenter.shared.present(Feedback.Lead.archived)
+                } catch {
+                    ToastCenter.shared.present(Toast(label: Feedback.Err.saveFailed, tone: .error))
+                }
+            }
         }
     }
 }

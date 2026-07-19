@@ -42,7 +42,11 @@ enum FeatureFlagService {
     /// the live fetch is unavailable.
     static let staticFlagDefinitions: [String: [String]] = [
         "pipeline": [
+            "pipeline.create",
             "pipeline.view",
+            "pipeline.edit",
+            "pipeline.assign",
+            "pipeline.convert",
             "pipeline.manage",
             "pipeline.configure_stages"
         ],

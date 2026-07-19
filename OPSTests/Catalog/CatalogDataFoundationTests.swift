@@ -174,8 +174,8 @@ final class CatalogDataFoundationTests: XCTestCase {
     func testMigrationPlanStagesHaveModelSetDeltasAcrossAllVersions() {
         let schemas = OPSMigrationPlan.schemas
         // One migration stage per adjacent schema pair — the plan currently spans
-        // V1…V17 (16 stages). Keep in lockstep as new schema versions are added.
-        XCTAssertEqual(OPSMigrationPlan.stages.count, 16)
+        // V1…V18 (17 stages). Keep in lockstep as new schema versions are added.
+        XCTAssertEqual(OPSMigrationPlan.stages.count, 17)
 
         let versionIdentifiers = schemas.map { String(describing: $0.versionIdentifier) }
         XCTAssertEqual(versionIdentifiers, [
@@ -195,7 +195,8 @@ final class CatalogDataFoundationTests: XCTestCase {
             "14.0.0",
             "15.0.0",
             "16.0.0",
-            "17.0.0"
+            "17.0.0",
+            "18.0.0"
         ])
 
         for pair in zip(schemas, schemas.dropFirst()) {

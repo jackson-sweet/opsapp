@@ -836,7 +836,6 @@ final class SiteVisitCaptureViewModel: ObservableObject {
 
             let contactName = draft.contactName.trimmedNilIfEmpty ?? clientName
             let dto = CreateOpportunityDTO(
-                companyId: companyId,
                 title: "\(contactName) site visit",
                 contactName: contactName,
                 contactEmail: draft.preferredEmail.trimmedNilIfEmpty,
@@ -845,7 +844,6 @@ final class SiteVisitCaptureViewModel: ObservableObject {
                 address: draft.address.trimmedNilIfEmpty,
                 source: ClientLeadAutocreate.schemaAllowedSource,
                 priority: ClientLeadAutocreate.schemaAllowedPriority,
-                assignedTo: userId,
                 clientId: client.id
             )
             let created = try await OpportunityRepository(companyId: companyId).create(dto)

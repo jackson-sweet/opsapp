@@ -194,7 +194,6 @@ struct AddLeadSheet: View {
         let clientId = await resolveClientId(companyId: companyId, name: trimmedName)
 
         let dto = CreateOpportunityDTO(
-            companyId: companyId,
             title: form.title.isEmpty ? nil : form.title,
             contactName: trimmedName,
             contactEmail: form.email.isEmpty ? nil : form.email,
@@ -204,7 +203,6 @@ struct AddLeadSheet: View {
             estimatedValue: form.estimatedValueDouble,
             source: form.source,
             priority: form.priority,
-            assignedTo: dataController.currentUser?.id,
             expectedCloseDate: nil,
             quoteDeliveryMethod: nil,
             clientId: clientId,

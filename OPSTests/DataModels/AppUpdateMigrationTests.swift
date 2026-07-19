@@ -78,11 +78,11 @@ final class AppUpdateMigrationTests: XCTestCase {
         )
     }
 
-    func testV15StoreMigratesToV16PreservingOpportunityAndDeckDesign() throws {
+    func testV15StoreMigratesToCurrentPreservingOpportunityAndDeckDesign() throws {
         try assertOpportunityAndDeckDesignMigration(from: OPSSchemaV15.self, sourceLabel: "v15")
     }
 
-    func testV10StoreMigratesToV16PreservingOpportunityAndDeckDesign() throws {
+    func testV10StoreMigratesToCurrentPreservingOpportunityAndDeckDesign() throws {
         try assertOpportunityAndDeckDesignMigration(from: OPSSchemaV10.self, sourceLabel: "v10")
     }
 
@@ -94,7 +94,7 @@ final class AppUpdateMigrationTests: XCTestCase {
     }
 
     func testHostedTestStoreStaysInMemoryWithoutAppGroupStorage() {
-        let schema = Schema(versionedSchema: OPSSchemaV16.self)
+        let schema = Schema(versionedSchema: OPSSchemaV18.self)
         let configuration = OPSModelStore.configuration(
             schema: schema,
             isStoredInMemoryOnly: true
@@ -104,7 +104,7 @@ final class AppUpdateMigrationTests: XCTestCase {
         XCTAssertNil(configuration.groupAppContainerIdentifier)
     }
 
-    func testCopiedDeviceV15StoreMigratesToV16WithoutLosingRows() throws {
+    func testCopiedDeviceV15StoreMigratesToCurrentWithoutLosingRows() throws {
         guard let fixturePath = ProcessInfo.processInfo.environment["OPS_V15_STORE_FIXTURE_DIR"] else {
             throw XCTSkip("Set OPS_V15_STORE_FIXTURE_DIR to run the real-device-store migration proof")
         }
@@ -143,7 +143,7 @@ final class AppUpdateMigrationTests: XCTestCase {
             )
         }
 
-        let currentSchema = Schema(versionedSchema: OPSSchemaV16.self)
+        let currentSchema = Schema(versionedSchema: OPSSchemaV18.self)
         let currentConfiguration = ModelConfiguration(schema: currentSchema, url: storeURL)
         let migrated = try ModelContainer(
             for: currentSchema,
@@ -242,7 +242,7 @@ final class AppUpdateMigrationTests: XCTestCase {
             try context.save()
         }
 
-        let currentSchema = Schema(versionedSchema: OPSSchemaV16.self)
+        let currentSchema = Schema(versionedSchema: OPSSchemaV18.self)
         let currentConfiguration = ModelConfiguration(schema: currentSchema, url: storeURL)
         let migratedContainer = try ModelContainer(
             for: currentSchema,

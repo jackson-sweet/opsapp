@@ -24,6 +24,9 @@ struct CachedPermissions: Codable {
     let blockedByFlags: [String]?
     /// Feature flag slugs that are disabled. Nil = legacy cache (use fail-closed fallback).
     let disabledFlags: [String]?
+    /// Role/override keys observed during the fetch, including explicit revokes.
+    /// Nil = legacy cache, so granular compatibility must fail closed.
+    let explicitPermissionKeys: [String]?
 }
 
 class PermissionStore: ObservableObject {
@@ -37,6 +40,11 @@ class PermissionStore: ObservableObject {
     @Published var roleHierarchy: Int?
     @Published var roleId: String?
     @Published var initialized: Bool = false
+
+    /// Explicit role/override keys, including denied overrides. Required to
+    /// keep legacy pipeline.manage from widening a granular assigned scope or
+    /// an explicit revoke.
+    @Published private(set) var explicitPermissionKeys: Set<String> = []
 
     /// Permissions blocked by disabled feature flags.
     @Published var blockedByFlags: Set<String> = []
@@ -83,6 +91,20 @@ class PermissionStore: ObservableObject {
     /// Use this to gate entire feature groups (e.g., the FAB "Money" section).
     func isFeatureEnabled(_ slug: String) -> Bool {
         return !disabledFlags.contains(slug)
+    }
+
+    /// Canonical row-specific lead policy for view/edit/assign/convert gates.
+    /// Feature-flag-blocked permissions are removed and marked explicit so a
+    /// legacy manage grant can never resurrect them through compatibility.
+    var leadAccessPolicy: LeadAccessPolicy {
+        let availablePermissions = permissions.filter {
+            !blockedByFlags.contains($0.key)
+        }
+        return LeadAccessPolicy(
+            currentUserId: currentUserId,
+            permissions: availablePermissions,
+            explicitPermissionKeys: explicitPermissionKeys.union(blockedByFlags)
+        )
     }
 
     // MARK: - Scope Hierarchy
@@ -134,6 +156,7 @@ class PermissionStore: ObservableObject {
             let failClosed = FeatureFlagService.failClosedResult()
             self.blockedByFlags = failClosed.blockedPermissions
             self.disabledFlags = failClosed.disabledFlags
+            self.explicitPermissionKeys = LeadAccessPolicy.granularPermissionKeys
             return false
         }
 
@@ -142,6 +165,8 @@ class PermissionStore: ObservableObject {
         self.roleHierarchy = cached.roleHierarchy
         self.roleId = cached.roleId
         self.currentUserId = cached.userId
+        self.explicitPermissionKeys = cached.explicitPermissionKeys.map(Set.init)
+            ?? LeadAccessPolicy.granularPermissionKeys
         self.initialized = true
 
         // Restore flag state from cache, or fail closed if legacy cache format
@@ -183,7 +208,8 @@ class PermissionStore: ObservableObject {
             userId: userId,
             fetchedAt: Date(),
             blockedByFlags: Array(blockedByFlags),
-            disabledFlags: Array(disabledFlags)
+            disabledFlags: Array(disabledFlags),
+            explicitPermissionKeys: Array(explicitPermissionKeys)
         )
 
         if let data = try? JSONEncoder().encode(cached) {
@@ -225,6 +251,7 @@ class PermissionStore: ObservableObject {
                 self.roleName = payload.roleName
                 self.roleHierarchy = payload.roleHierarchy
                 self.roleId = payload.roleId
+                self.explicitPermissionKeys = payload.explicitPermissionKeys
 
                 // Cache-first flag resolution: keep the flags we already trust
                 // when the fresh fetch couldn't complete; a fresh result wins.
@@ -288,6 +315,7 @@ class PermissionStore: ObservableObject {
         roleId = nil
         initialized = false
         currentUserId = nil
+        explicitPermissionKeys = LeadAccessPolicy.granularPermissionKeys
         let failClosed = FeatureFlagService.failClosedResult()
         blockedByFlags = failClosed.blockedPermissions
         disabledFlags = failClosed.disabledFlags

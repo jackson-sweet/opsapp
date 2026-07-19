@@ -22,7 +22,6 @@ final class ClientLeadAutocreateTests: XCTestCase {
             ClientLeadAutocreate.makeOpportunityDTO(for: client, companyId: "company-1")
         )
 
-        XCTAssertEqual(dto.companyId, "company-1")
         XCTAssertEqual(dto.contactName, "West Shore Decks")
         XCTAssertEqual(dto.title, "West Shore Decks — lead")
         XCTAssertEqual(dto.source, ClientLeadAutocreate.schemaAllowedSource)
@@ -31,6 +30,11 @@ final class ClientLeadAutocreateTests: XCTestCase {
         XCTAssertEqual(dto.sourceThreadKey, "client-autocreate:client-1")
         XCTAssertEqual(dto.priority, ClientLeadAutocreate.schemaAllowedPriority)
         XCTAssertEqual(dto.priority, "medium")
+
+        let payload = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: JSONEncoder().encode(dto)) as? [String: Any]
+        )
+        XCTAssertFalse(payload.keys.contains("company_id"))
     }
 
     func testClientCreatedLeadPayloadDropsBlankOptionalFields() throws {

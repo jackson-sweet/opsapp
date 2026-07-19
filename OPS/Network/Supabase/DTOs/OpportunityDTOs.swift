@@ -8,6 +8,54 @@
 //
 
 import Foundation
+import Supabase
+
+@propertyWrapper
+struct NonnegativeInt64: Codable, Equatable {
+    private var value: Int64
+
+    var wrappedValue: Int64 { value }
+
+    init(wrappedValue: Int64 = 0) {
+        precondition(wrappedValue >= 0, "Assignment versions cannot be negative")
+        value = wrappedValue
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        let decoded = try container.decode(Int64.self)
+        guard decoded >= 0 else {
+            throw DecodingError.dataCorruptedError(
+                in: container,
+                debugDescription: "Assignment versions cannot be negative"
+            )
+        }
+        value = decoded
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        try container.encode(value)
+    }
+}
+
+extension KeyedDecodingContainer {
+    func decode(_ type: NonnegativeInt64.Type, forKey key: Key) throws -> NonnegativeInt64 {
+        try decodeIfPresent(type, forKey: key) ?? NonnegativeInt64()
+    }
+
+    func decodeRequiredNonnegativeInt64(forKey key: Key) throws -> NonnegativeInt64 {
+        let decoded = try decode(Int64.self, forKey: key)
+        guard decoded >= 0 else {
+            throw DecodingError.dataCorruptedError(
+                forKey: key,
+                in: self,
+                debugDescription: "Assignment versions cannot be negative"
+            )
+        }
+        return NonnegativeInt64(wrappedValue: decoded)
+    }
+}
 
 // MARK: - Opportunity
 
@@ -25,6 +73,7 @@ struct OpportunityDTO: Codable, Identifiable {
     let stageEnteredAt: String
     let stageManuallySet: Bool?
     let assignedTo: String?
+    @NonnegativeInt64 var assignmentVersion: Int64
     let priority: String?
     let source: String?
     let quoteDeliveryMethod: String?
@@ -60,6 +109,10 @@ struct OpportunityDTO: Codable, Identifiable {
     let lastOutboundAt: String?
     let lastMessageDirection: String?
 
+    let handledAt: String?
+    let aiSummary: String?
+    let aiSummaryUpdatedAt: String?
+
     let createdAt: String
     let updatedAt: String
 
@@ -76,6 +129,7 @@ struct OpportunityDTO: Codable, Identifiable {
         case stageEnteredAt       = "stage_entered_at"
         case stageManuallySet     = "stage_manually_set"
         case assignedTo           = "assigned_to"
+        case assignmentVersion    = "assignment_version"
         case priority
         case source
         case quoteDeliveryMethod  = "quote_delivery_method"
@@ -103,6 +157,9 @@ struct OpportunityDTO: Codable, Identifiable {
         case lastInboundAt        = "last_inbound_at"
         case lastOutboundAt       = "last_outbound_at"
         case lastMessageDirection = "last_message_direction"
+        case handledAt            = "handled_at"
+        case aiSummary            = "ai_summary"
+        case aiSummaryUpdatedAt   = "ai_summary_updated_at"
         case createdAt            = "created_at"
         case updatedAt            = "updated_at"
     }
@@ -124,6 +181,7 @@ struct OpportunityDTO: Codable, Identifiable {
         opp.address = address
         opp.stageManuallySet = stageManuallySet ?? false
         opp.assignedTo = assignedTo
+        opp.assignmentVersion = assignmentVersion
         opp.priority = priority
         opp.source = source
         if let m = quoteDeliveryMethod { opp.quoteDeliveryMethod = QuoteDeliveryMethod(rawValue: m) }
@@ -151,13 +209,15 @@ struct OpportunityDTO: Codable, Identifiable {
         opp.lastInboundAt = lastInboundAt.flatMap { SupabaseDate.parse($0) }
         opp.lastOutboundAt = lastOutboundAt.flatMap { SupabaseDate.parse($0) }
         opp.lastMessageDirection = lastMessageDirection
+        opp.handledAt = handledAt.flatMap { SupabaseDate.parse($0) }
+        opp.aiSummary = aiSummary
+        opp.aiSummaryUpdatedAt = aiSummaryUpdatedAt.flatMap { SupabaseDate.parse($0) }
         return opp
     }
 }
 
-struct CreateOpportunityDTO: Codable {
-    let companyId: String
-    let title: String?               // optional — DB trigger backfills from contact_name
+struct CreateOpportunityDTO: Encodable {
+    let title: String
     let contactName: String
     let contactEmail: String?
     let contactPhone: String?
@@ -167,7 +227,6 @@ struct CreateOpportunityDTO: Codable {
     let source: String?
     let sourceThreadKey: String?
     let priority: String?
-    let assignedTo: String?
     let expectedCloseDate: String?
     let quoteDeliveryMethod: String?
     let clientId: String?
@@ -175,7 +234,6 @@ struct CreateOpportunityDTO: Codable {
     let longitude: Double?
 
     init(
-        companyId: String,
         title: String? = nil,
         contactName: String,
         contactEmail: String? = nil,
@@ -186,15 +244,19 @@ struct CreateOpportunityDTO: Codable {
         source: String? = nil,
         sourceThreadKey: String? = nil,
         priority: String? = nil,
-        assignedTo: String? = nil,
         expectedCloseDate: Date? = nil,
         quoteDeliveryMethod: String? = nil,
         clientId: String? = nil,
         latitude: Double? = nil,
         longitude: Double? = nil
     ) {
-        self.companyId = companyId
-        self.title = title
+        let trimmedTitle = title?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedContactName = contactName.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let trimmedTitle, !trimmedTitle.isEmpty {
+            self.title = trimmedTitle
+        } else {
+            self.title = trimmedContactName.isEmpty ? "New lead" : trimmedContactName
+        }
         self.contactName = contactName
         self.contactEmail = contactEmail
         self.contactPhone = contactPhone
@@ -204,7 +266,6 @@ struct CreateOpportunityDTO: Codable {
         self.source = source
         self.sourceThreadKey = sourceThreadKey
         self.priority = priority
-        self.assignedTo = assignedTo
         self.expectedCloseDate = expectedCloseDate.map { SupabaseDate.formatDate($0) }
         self.quoteDeliveryMethod = quoteDeliveryMethod
         self.clientId = clientId
@@ -213,7 +274,6 @@ struct CreateOpportunityDTO: Codable {
     }
 
     enum CodingKeys: String, CodingKey {
-        case companyId            = "company_id"
         case title
         case contactName          = "contact_name"
         case contactEmail         = "contact_email"
@@ -224,7 +284,6 @@ struct CreateOpportunityDTO: Codable {
         case source
         case sourceThreadKey      = "source_thread_key"
         case priority
-        case assignedTo           = "assigned_to"
         case expectedCloseDate    = "expected_close_date"
         case quoteDeliveryMethod  = "quote_delivery_method"
         case clientId             = "client_id"
@@ -233,7 +292,7 @@ struct CreateOpportunityDTO: Codable {
     }
 }
 
-struct UpdateOpportunityDTO: Codable {
+struct UpdateOpportunityDTO: Encodable {
     var title: String?
     var contactName: String?
     var contactEmail: String?
@@ -244,7 +303,6 @@ struct UpdateOpportunityDTO: Codable {
     var actualValue: Double?
     var source: String?
     var priority: String?
-    var assignedTo: String?
     var expectedCloseDate: String?
     var actualCloseDate: String?
     var clientId: String?
@@ -266,7 +324,6 @@ struct UpdateOpportunityDTO: Codable {
         case actualValue          = "actual_value"
         case source
         case priority
-        case assignedTo           = "assigned_to"
         case expectedCloseDate    = "expected_close_date"
         case actualCloseDate      = "actual_close_date"
         case clientId             = "client_id"
@@ -277,6 +334,262 @@ struct UpdateOpportunityDTO: Codable {
         case archivedAt           = "archived_at"
         case deletedAt            = "deleted_at"
     }
+}
+
+// MARK: - Chase-flip patches (Leads redesign 2026-07)
+
+/// Chase-flip patch — always emits both keys (explicit values, no nil-drop)
+/// so handled_at and the comeback land atomically in one PATCH.
+struct MarkHandledPatch: Encodable {
+    let handledAt: String
+    let nextFollowUpAt: String
+    enum CodingKeys: String, CodingKey {
+        case handledAt      = "handled_at"
+        case nextFollowUpAt = "next_follow_up_at"
+    }
+}
+
+/// Comeback-only patch (ADJUST on a waiting lead).
+struct AdjustComebackPatch: Encodable {
+    let nextFollowUpAt: String
+    enum CodingKeys: String, CodingKey { case nextFollowUpAt = "next_follow_up_at" }
+}
+
+// MARK: - Guarded assignment RPC contracts
+
+enum OpportunityAssignmentSource: String, Encodable {
+    case manual
+    case suggestionAccept = "suggestion_accept"
+}
+
+enum OpportunityAssignmentContractError: LocalizedError {
+    case invalidAssignmentVersion
+
+    var errorDescription: String? {
+        "Lead assignment is out of date. Refresh and try again."
+    }
+}
+
+struct GuardedOpportunityCreateParams: Encodable {
+    let opportunity: CreateOpportunityDTO
+    let metadata: [String: AnyJSON]
+
+    init(
+        opportunity: CreateOpportunityDTO,
+        metadata: [String: AnyJSON] = [:]
+    ) {
+        self.opportunity = opportunity
+        self.metadata = metadata
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case opportunity      = "p_opportunity"
+        case assignmentMode   = "p_assignment_mode"
+        case initialAssignedTo = "p_initial_assigned_to"
+        case metadata         = "p_metadata"
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(opportunity, forKey: .opportunity)
+        try container.encode("self", forKey: .assignmentMode)
+        try container.encodeNil(forKey: .initialAssignedTo)
+        try container.encode(metadata, forKey: .metadata)
+    }
+}
+
+struct GuardedOpportunityCreateResult: Decodable {
+    let ok: Bool
+    let conflict: Bool?
+    let opportunity: OpportunityDTO
+    let assignedTo: String?
+    @NonnegativeInt64 var assignmentVersion: Int64
+    let eventId: String?
+
+    enum CodingKeys: String, CodingKey {
+        case ok, conflict, opportunity
+        case assignedTo        = "assigned_to"
+        case assignmentVersion = "assignment_version"
+        case eventId           = "event_id"
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        ok = try container.decode(Bool.self, forKey: .ok)
+        conflict = try container.decodeIfPresent(Bool.self, forKey: .conflict)
+        opportunity = try container.decode(OpportunityDTO.self, forKey: .opportunity)
+        assignedTo = try container.decodeIfPresent(String.self, forKey: .assignedTo)
+        _assignmentVersion = try container.decodeRequiredNonnegativeInt64(
+            forKey: .assignmentVersion
+        )
+        eventId = try container.decodeIfPresent(String.self, forKey: .eventId)
+    }
+}
+
+struct ChangeOpportunityAssignmentParams: Encodable {
+    let opportunityId: String
+    let expectedAssignmentVersion: Int64
+    let expectedAssignedTo: String?
+    let newAssignedTo: String?
+    let source: OpportunityAssignmentSource
+    let suggestionId: String?
+    let metadata: [String: AnyJSON]
+
+    init(
+        opportunityId: String,
+        expectedAssignmentVersion: Int64,
+        expectedAssignedTo: String?,
+        newAssignedTo: String?,
+        source: OpportunityAssignmentSource,
+        suggestionId: String? = nil,
+        metadata: [String: AnyJSON] = [:]
+    ) throws {
+        guard expectedAssignmentVersion >= 0 else {
+            throw OpportunityAssignmentContractError.invalidAssignmentVersion
+        }
+        self.opportunityId = opportunityId
+        self.expectedAssignmentVersion = expectedAssignmentVersion
+        self.expectedAssignedTo = expectedAssignedTo
+        self.newAssignedTo = newAssignedTo
+        self.source = source
+        self.suggestionId = suggestionId
+        self.metadata = metadata
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case opportunityId             = "p_opportunity_id"
+        case expectedAssignmentVersion = "p_expected_assignment_version"
+        case expectedAssignedTo        = "p_expected_assigned_to"
+        case newAssignedTo             = "p_new_assigned_to"
+        case source                    = "p_source"
+        case suggestionId              = "p_suggestion_id"
+        case metadata                  = "p_metadata"
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(opportunityId, forKey: .opportunityId)
+        try container.encode(expectedAssignmentVersion, forKey: .expectedAssignmentVersion)
+        try container.encode(expectedAssignedTo, forKey: .expectedAssignedTo)
+        try container.encode(newAssignedTo, forKey: .newAssignedTo)
+        try container.encode(source, forKey: .source)
+        try container.encode(suggestionId, forKey: .suggestionId)
+        try container.encode(metadata, forKey: .metadata)
+    }
+}
+
+struct OpportunityAssignmentChangeResult: Decodable {
+    let ok: Bool
+    let conflict: Bool
+    let assignedTo: String?
+    @NonnegativeInt64 var assignmentVersion: Int64
+    let eventId: String?
+
+    enum CodingKeys: String, CodingKey {
+        case ok, conflict
+        case assignedTo        = "assigned_to"
+        case assignmentVersion = "assignment_version"
+        case eventId           = "event_id"
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        ok = try container.decode(Bool.self, forKey: .ok)
+        conflict = try container.decode(Bool.self, forKey: .conflict)
+        assignedTo = try container.decodeIfPresent(String.self, forKey: .assignedTo)
+        _assignmentVersion = try container.decodeRequiredNonnegativeInt64(
+            forKey: .assignmentVersion
+        )
+        eventId = try container.decodeIfPresent(String.self, forKey: .eventId)
+    }
+
+    init(
+        ok: Bool,
+        conflict: Bool,
+        assignedTo: String?,
+        assignmentVersion: Int64,
+        eventId: String?
+    ) throws {
+        guard assignmentVersion >= 0 else {
+            throw OpportunityAssignmentContractError.invalidAssignmentVersion
+        }
+        self.ok = ok
+        self.conflict = conflict
+        self.assignedTo = assignedTo
+        _assignmentVersion = NonnegativeInt64(wrappedValue: assignmentVersion)
+        self.eventId = eventId
+    }
+}
+
+// MARK: - Guarded assignment picker contracts
+
+/// One server-approved target returned by
+/// `list_opportunity_assignment_candidates`. The RPC owns company, active-user,
+/// and `pipeline.view:assigned` eligibility; clients must never broaden this
+/// list from their local user cache.
+struct OpportunityAssignmentCandidate: Decodable, Identifiable, Equatable {
+    let id: String
+    let firstName: String?
+    let lastName: String?
+    let profileImageURL: String?
+    let userColor: String?
+
+    var displayName: String {
+        [firstName, lastName]
+            .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+            .joined(separator: " ")
+    }
+
+    init(
+        id: String,
+        firstName: String?,
+        lastName: String?,
+        profileImageURL: String?,
+        userColor: String?
+    ) {
+        self.id = id
+        self.firstName = firstName
+        self.lastName = lastName
+        self.profileImageURL = profileImageURL
+        self.userColor = userColor
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case firstName       = "first_name"
+        case lastName        = "last_name"
+        case profileImageURL = "profile_image_url"
+        case userColor       = "user_color"
+    }
+}
+
+/// The complete guarded picker response. `canUnassign` is actor- and
+/// row-specific; rendering an unassign option from any other signal would
+/// widen assigned-scope authority.
+struct OpportunityAssignmentCandidates: Decodable, Equatable {
+    let canUnassign: Bool
+    let candidates: [OpportunityAssignmentCandidate]
+
+    init(
+        canUnassign: Bool,
+        candidates: [OpportunityAssignmentCandidate]
+    ) {
+        self.canUnassign = canUnassign
+        self.candidates = candidates
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case canUnassign = "can_unassign"
+        case candidates
+    }
+}
+
+/// Minimal authoritative assignment state used only to reconcile an
+/// optimistic-concurrency conflict. It deliberately excludes lead PII.
+struct OpportunityAssignmentSnapshot: Equatable {
+    let assignedTo: String?
+    let assignmentVersion: Int64
 }
 
 // MARK: - Edit-form patch

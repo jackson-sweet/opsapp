@@ -22,7 +22,7 @@ enum OPSSchemaV17: VersionedSchema {
 
     static var models: [any PersistentModel.Type] {
         OPSSchemaCommon.unchangedModels
-            + OPSSchemaCommon.v16OpportunityModel
+            + OPSSchemaCommon.v16ToV17OpportunityModel
             + OPSSchemaCommon.v16DeckDesignModel
             + OPSSchemaCommon.v13ProjectNoteModel
             + OPSSchemaCommon.v15PhotoAnnotationModel

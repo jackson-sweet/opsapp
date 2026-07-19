@@ -2,11 +2,11 @@
 //  StickyActionBar.swift
 //  OPS
 //
-//  Bottom-anchored commit bar on LeadDetailView. Three buttons:
+//  Bottom-anchored commit bar on LeadDetailView. Two buttons (Leads
+//  redesign spec §5.11 — LOST moved into the status menu):
 //
-//      [×]    [EDIT]            [MARK WON →]
+//      [✎ EDIT]            [MARK WON →]
 //
-//  - LOST  : 52×48pt rose-soft square (`onMarkLost`)
 //  - EDIT  : flex 1, 48pt, neutral outlined (`onEdit`)
 //  - WON   : flex 1.5, 48pt, accent-fill, black text (`onMarkWon`)
 //
@@ -24,43 +24,29 @@
 import SwiftUI
 
 struct StickyActionBar: View {
-    let onMarkLost: () -> Void
+    let canEdit: Bool
+    let canConvert: Bool
     let onEdit:     () -> Void
     let onMarkWon:  () -> Void
 
     var body: some View {
         HStack(spacing: OPSStyle.Layout.spacing2) {
-            lostButton
-            actionPair
+            if canEdit && canConvert {
+                actionPair
+            } else if canEdit {
+                editButton
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 48)
+            } else if canConvert {
+                wonButton
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 48)
+            }
         }
         .padding(.horizontal, OPSStyle.Layout.spacing3_5)
         .padding(.top, OPSStyle.Layout.spacing3)
         .padding(.bottom, 14)
         .background(floorGradient)
-    }
-
-    // MARK: - Lost button (fixed 52×48)
-
-    private var lostButton: some View {
-        Button {
-            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-            onMarkLost()
-        } label: {
-            Image(systemName: "xmark")
-                .font(.system(size: 16, weight: .regular))
-                .foregroundColor(OPSStyle.Colors.roseTextM)
-                .frame(width: 52, height: 48)
-                .background(
-                    RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius, style: .continuous)
-                        .fill(OPSStyle.Colors.roseFillM)
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius, style: .continuous)
-                        .strokeBorder(OPSStyle.Colors.roseLineM, lineWidth: 1)
-                )
-        }
-        .buttonStyle(PlainButtonStyle())
-        .accessibilityLabel("Mark lost")
     }
 
     // MARK: - Edit + Won pair (flex 1 : 1.5)
@@ -169,7 +155,8 @@ struct StickyActionBar: View {
         }
 
         StickyActionBar(
-            onMarkLost: {},
+            canEdit: true,
+            canConvert: true,
             onEdit: {},
             onMarkWon: {}
         )

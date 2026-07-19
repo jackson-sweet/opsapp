@@ -301,7 +301,6 @@ struct ActivityTargetPickerView: View {
 
         let repository = OpportunityRepository(companyId: companyId)
         let dto = CreateOpportunityDTO(
-            companyId: companyId,
             contactName: newLeadName.trimmingCharacters(in: .whitespaces),
             contactEmail: newLeadEmail.isEmpty ? nil : newLeadEmail,
             contactPhone: newLeadPhone.isEmpty ? nil : newLeadPhone,

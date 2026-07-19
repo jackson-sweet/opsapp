@@ -2,70 +2,159 @@
 //  DetailHero.swift
 //  OPS
 //
-//  Top hero block on LeadDetailView — surfaces the deal's identity, stage,
-//  and the three numbers a roofing/trades operator decides off (value,
-//  weighted, source) without any taps or scrolling.
+//  Top hero block on LeadDetailView — the dossier head (Leads redesign
+//  spec §5): the job as the header, the people under it, and the three
+//  numbers that matter now. Weighted probability retired.
 //
 //  Composition (top to bottom, no decorative chrome):
 //
-//      // L-XXXXXX                               9D IN STAGE
-//      [STAGE TAG]   60% WIN PROB
-//      Helen Calloway                           ← Cake Mono Light 30
-//      Roof tear-off, 28 sq                     ← Mohave Regular 14, text2
+//      // L-XXXXXX · 9D IN STAGE
+//      Roof tear-off, 28 sq                     ← title-as-header (Cake Mono)
+//      Helen Calloway · Calloway Homes          ← contact · client
+//      1240 Maple Ave                           ← address, plain
+//      // ASSIGNED TO row                       ← exactly as shipped
 //      ┌──────────┬──────────┬──────────┐
-//      │ VALUE    │ WEIGHTED │ SOURCE   │      ← L2 nested card, 3 cols
-//      │ $14.2K   │ $8.5K    │ MANUAL   │
-//      │ ESTIMATED│ @ 60%    │ LEAD ·…  │
+//      │ VALUE    │NEXT TOUCH│ SOURCE   │      ← L2 nested card, 3 cols
+//      │ $14.2K   │ FRI      │ MANUAL   │
+//      │ ESTIMATED│ JUL 21   │ LEAD ·…  │
 //      └──────────┴──────────┴──────────┘
 //
-//  All values trace to OPSStyle tokens. Stage tag uses the mobile-contrast
-//  earth-tone variants (-M) per ops-design-system/project/mobile/MOBILE.md §1.
+//  The stage tag moved to the nav row (LeadStatusMenu host). All values
+//  trace to OPSStyle tokens.
 //
-
 import SwiftUI
 
 struct DetailHero: View {
     let opportunity: Opportunity
+    /// Resolved client name (LeadDetailViewModel.client) — nil until loaded
+    /// or when the lead has no client.
+    let clientName: String?
+    let assigneeName: String
+    let canChangeAssignee: Bool
+    let onAssigneeTap: () -> Void
+
+    init(
+        opportunity: Opportunity,
+        clientName: String? = nil,
+        assigneeName: String = "Unassigned",
+        canChangeAssignee: Bool = false,
+        onAssigneeTap: @escaping () -> Void = {}
+    ) {
+        self.opportunity = opportunity
+        self.clientName = clientName
+        self.assigneeName = assigneeName
+        self.canChangeAssignee = canChangeAssignee
+        self.onAssigneeTap = onAssigneeTap
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             identityBlock
 
+            assigneeRow
+                .padding(.top, OPSStyle.Layout.spacing3)
+
             kpiStrip
-                .padding(.top, 18)
+                .padding(.top, OPSStyle.Layout.spacing2)
         }
         .padding(.horizontal, OPSStyle.Layout.spacing3_5)
         .padding(.top, OPSStyle.Layout.spacing1)
         .padding(.bottom, 18)
     }
 
-    /// Lead identity (id, days-in-stage, stage, win prob, name, title) grouped
-    /// into ONE VoiceOver element so it reads as a coherent unit instead of ~7
+    // MARK: - Assignee
+
+    /// Compact assignment command near the lead identity. It is a button only
+    /// when the row-specific policy permits assignment; everyone else gets the
+    /// same information without a misleading affordance.
+    @ViewBuilder
+    private var assigneeRow: some View {
+        if canChangeAssignee {
+            Button(action: onAssigneeTap) {
+                assigneeRowContent
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Assigned to \(assigneeName). Change assignee")
+        } else {
+            assigneeRowContent
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel("Assigned to \(assigneeName)")
+        }
+    }
+
+    private var assigneeRowContent: some View {
+        HStack(spacing: OPSStyle.Layout.spacing2_5) {
+            Image(systemName: OPSStyle.Icons.teamMember)
+                .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .medium))
+                .foregroundColor(OPSStyle.Colors.text3)
+                .frame(
+                    width: OPSStyle.Layout.touchTargetMin,
+                    height: OPSStyle.Layout.touchTargetMin
+                )
+
+            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
+                Text("// ASSIGNED TO")
+                    .font(OPSStyle.Typography.metadata)
+                    .foregroundColor(OPSStyle.Colors.textMute)
+                    .textCase(.uppercase)
+
+                // Value line renders verbatim — names are content, not chrome.
+                // The // ASSIGNED TO label above keeps its uppercase authority.
+                Text(assigneeName)
+                    .font(OPSStyle.Typography.bodyEmphasis)
+                    .foregroundColor(OPSStyle.Colors.text)
+                    .lineLimit(1)
+            }
+
+            Spacer(minLength: OPSStyle.Layout.spacing2)
+
+            if canChangeAssignee {
+                Image(systemName: OPSStyle.Icons.chevronRight)
+                    .font(.system(size: OPSStyle.Layout.IconSize.xs, weight: .semibold))
+                    .foregroundColor(OPSStyle.Colors.text3)
+            }
+        }
+        .padding(.horizontal, OPSStyle.Layout.spacing2)
+        .frame(minHeight: OPSStyle.Layout.touchTargetStandard)
+        .contentShape(Rectangle())
+        .nestedCard()
+    }
+
+    /// Lead identity (id, days-in-stage, title, people, address) grouped into
+    /// ONE VoiceOver element so it reads as a coherent unit instead of ~6
     /// disjoint fragments. (review W-3)
     private var identityBlock: some View {
         VStack(alignment: .leading, spacing: 0) {
             idRow
                 .padding(.bottom, 10)
 
-            stageRow
-                .padding(.bottom, OPSStyle.Layout.spacing2_5)
-
-            // Hero name — falls back to title if contactName is missing,
-            // then to "Unnamed lead". The detail view never renders blank.
-            Text(displayName)
-                .font(OPSStyle.Typography.screenTitle(for: displayName))
+            // Title as header — the JOB leads the dossier. Fallback chain:
+            // title → description → contact name → "Unnamed lead"; the
+            // detail view never renders blank.
+            Text(heroTitle)
+                .font(OPSStyle.Typography.screenTitle(for: heroTitle))
                 .foregroundColor(OPSStyle.Colors.text)
                 .textCase(.uppercase)
                 .lineLimit(2)
                 .multilineTextAlignment(.leading)
                 .fixedSize(horizontal: false, vertical: true)
 
-            if let title = opportunity.title, !title.isEmpty {
-                Text(title)
+            if let people = peopleSubtitle {
+                Text(people)
                     .font(OPSStyle.Typography.cardBody)
                     .foregroundColor(OPSStyle.Colors.text2)
-                    .lineLimit(2)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
                     .padding(.top, 6)
+            }
+
+            if let address = opportunity.address, !address.isEmpty {
+                Text(address)
+                    .font(.custom("Mohave-Regular", size: 13))
+                    .foregroundColor(OPSStyle.Colors.text3)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                    .padding(.top, 3)
             }
         }
         .accessibilityElement(children: .combine)
@@ -75,54 +164,32 @@ struct DetailHero: View {
     private var identityLabel: String {
         var parts: [String] = [
             "Lead \(displayId)",
-            opportunity.stage.displayName,
-            "\(winProbability) percent win probability",
-            displayName
+            heroTitle
         ]
-        if let title = opportunity.title, !title.isEmpty { parts.append(title) }
+        if let people = peopleSubtitle { parts.append(people) }
+        if let address = opportunity.address, !address.isEmpty { parts.append(address) }
         parts.append("\(opportunity.daysInStage) days in stage")
         return parts.joined(separator: ", ")
     }
 
-    // MARK: - ID + days-in-stage row
+    // MARK: - ID + days-in-stage row (one line)
 
     private var idRow: some View {
-        HStack(alignment: .firstTextBaseline) {
-            HStack(spacing: 0) {
-                Text("// ")
-                    .foregroundColor(OPSStyle.Colors.textMute)
-                Text(displayId)
-                    .foregroundColor(OPSStyle.Colors.text3)
-                    .monospacedDigit()
-            }
-            .font(OPSStyle.Typography.miniLabel)
-            .kerning(1.4)
-            .textCase(.uppercase)
-
-            Spacer(minLength: 12)
-
-            Text("\(opportunity.daysInStage)D IN STAGE")
-                .font(OPSStyle.Typography.nanoLabel)
-                .kerning(1.3)
+        HStack(spacing: 0) {
+            Text("// ")
                 .foregroundColor(OPSStyle.Colors.textMute)
-                .textCase(.uppercase)
-                .monospacedDigit()
-        }
-    }
-
-    // MARK: - Stage tag + win prob
-
-    private var stageRow: some View {
-        HStack(spacing: 10) {
-            StageTag(stage: opportunity.stage)
-
-            Text("\(winProbability)% WIN PROB")
-                .font(OPSStyle.Typography.nanoLabel)
-                .kerning(1.3)
+            Text(displayId)
                 .foregroundColor(OPSStyle.Colors.text3)
-                .textCase(.uppercase)
+                .monospacedDigit()
+            Text(" · ")
+                .foregroundColor(OPSStyle.Colors.textMute)
+            Text("\(opportunity.daysInStage)D IN STAGE")
+                .foregroundColor(OPSStyle.Colors.textMute)
                 .monospacedDigit()
         }
+        .font(OPSStyle.Typography.miniLabel)
+        .kerning(1.4)
+        .textCase(.uppercase)
     }
 
     // MARK: - 3-col KPI strip
@@ -139,9 +206,9 @@ struct DetailHero: View {
             KpiDivider()
 
             KvCell(
-                label: "WEIGHTED",
-                value: estimatedValue.map { _ in Self.formatMoneyCompact(opportunity.weightedValue) } ?? "—",
-                sub: "@ \(winProbability)%",
+                label: "NEXT TOUCH",
+                value: nextTouch.day,
+                sub: nextTouch.date,
                 useMono: false
             )
 
@@ -159,10 +226,40 @@ struct DetailHero: View {
 
     // MARK: - Derived
 
-    private var displayName: String {
+    /// The job leads (spec §5.3): title → description → contact name.
+    private var heroTitle: String {
+        if let t = opportunity.title, !t.isEmpty { return t }
+        if let d = opportunity.descriptionText, !d.isEmpty { return d }
         if !opportunity.contactName.isEmpty { return opportunity.contactName }
-        if let title = opportunity.title, !title.isEmpty { return title }
         return "Unnamed lead"
+    }
+
+    /// "Contact · Client" — the contact drops out when it IS the header
+    /// (nothing else to lead with) or when it mirrors the client name
+    /// (web's mirrorsClient rule); nil hides the line entirely.
+    private var peopleSubtitle: String? {
+        var parts: [String] = []
+        let contact = opportunity.contactName.trimmingCharacters(in: .whitespaces)
+        let client = clientName?.trimmingCharacters(in: .whitespaces) ?? ""
+        let contactMirrorsClient = !client.isEmpty
+            && contact.lowercased() == client.lowercased()
+        if !contact.isEmpty, contact != heroTitle, !contactMirrorsClient {
+            parts.append(contact)
+        }
+        if !client.isEmpty {
+            parts.append(client)
+        }
+        return parts.isEmpty ? nil : parts.joined(separator: " · ")
+    }
+
+    /// NEXT TOUCH cell — weekday short on top, MMM d under, `—` when unset.
+    private var nextTouch: (day: String, date: String) {
+        guard let due = opportunity.nextFollowUpAt else { return ("—", "—") }
+        let dayF = DateFormatter()
+        dayF.dateFormat = "EEE"
+        let dateF = DateFormatter()
+        dateF.dateFormat = "MMM d"
+        return (dayF.string(from: due).uppercased(), dateF.string(from: due).uppercased())
     }
 
     /// "L-AB12CD" — shared lead identifier (Opportunity.shortDisplayId) so the
@@ -178,10 +275,6 @@ struct DetailHero: View {
     private var estimatedValue: Double? {
         guard let v = opportunity.estimatedValue, v > 0 else { return nil }
         return v
-    }
-
-    private var winProbability: Int {
-        opportunity.winProbabilityOverride ?? opportunity.stage.winProbability
     }
 
     private var formattedSource: String {
@@ -207,66 +300,8 @@ struct DetailHero: View {
     }
 }
 
-// MARK: - StageTag (private)
-
-/// The earth-tone stage chip rendered in the hero. Uses mobile-contrast
-/// `-M` token variants for outdoor glare per MOBILE.md §1. Tone selection
-/// follows the LEADS Phase 3 spec:
-///
-///   - .won                                   → olive
-///   - .lost                                  → rose
-///   - .quoted / .followUp / .negotiation     → tan
-///   - .newLead / .qualifying / .quoting      → neutral
-///
-private struct StageTag: View {
-    let stage: PipelineStage
-
-    var body: some View {
-        Text(stage.displayName)
-            .font(OPSStyle.Typography.nanoLabel)
-            .fontWeight(.semibold)
-            .kerning(1.4)
-            .foregroundColor(textColor)
-            .textCase(.uppercase)
-            .padding(.vertical, 3)
-            .padding(.horizontal, 7)
-            .background(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius, style: .continuous)
-                    .fill(fillColor)
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius, style: .continuous)
-                    .strokeBorder(borderColor, lineWidth: 1)
-            )
-    }
-
-    private var fillColor: Color {
-        switch stage {
-        case .won:                                   return OPSStyle.Colors.oliveFillM
-        case .lost:                                  return OPSStyle.Colors.roseFillM
-        case .quoted, .followUp, .negotiation:       return OPSStyle.Colors.tanFillM
-        case .newLead, .qualifying, .quoting, .discarded:  return OPSStyle.Colors.surfaceHover
-        }
-    }
-
-    private var borderColor: Color {
-        switch stage {
-        case .won:                                   return OPSStyle.Colors.oliveLineM
-        case .lost:                                  return OPSStyle.Colors.roseLineM
-        case .quoted, .followUp, .negotiation:       return OPSStyle.Colors.tanLineM
-        case .newLead, .qualifying, .quoting, .discarded:  return OPSStyle.Colors.line
-        }
-    }
-
-    private var textColor: Color {
-        switch stage {
-        case .won:                                   return OPSStyle.Colors.oliveTextM
-        case .lost:                                  return OPSStyle.Colors.roseTextM
-        case .quoted, .followUp, .negotiation:       return OPSStyle.Colors.tanTextM
-        case .newLead, .qualifying, .quoting, .discarded:  return OPSStyle.Colors.text2
-        }
-    }
-}
+// StageTag moved to LeadStatusMenu.swift — it is now the SHARED chip label
+// for both status-menu hosts (detail nav chip + card meta chip).
 
 // MARK: - KvCell (private)
 
@@ -328,7 +363,7 @@ private struct KpiDivider: View {
     var body: some View {
         Rectangle()
             .fill(OPSStyle.Colors.fillNeutralDim)
-            .frame(width: 1)
+            .frame(width: OPSStyle.Layout.Border.standard)
             .frame(maxHeight: .infinity)
     }
 }

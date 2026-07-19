@@ -155,7 +155,6 @@ final class OpportunityImagesMappingTests: XCTestCase {
 
     func test_CreateOpportunityDTO_omitsCoordinatesWhenNil() throws {
         let dto = CreateOpportunityDTO(
-            companyId: "11111111-2222-3333-4444-555555555555",
             contactName: "Helen Calloway"
         )
         let data = try JSONEncoder().encode(dto)
@@ -169,7 +168,6 @@ final class OpportunityImagesMappingTests: XCTestCase {
 
     func test_CreateOpportunityDTO_carriesCoordinatesWhenSet() throws {
         let dto = CreateOpportunityDTO(
-            companyId: "11111111-2222-3333-4444-555555555555",
             contactName: "Helen Calloway",
             latitude: 48.4284,
             longitude: -123.3656

@@ -62,7 +62,6 @@ enum ClientLeadAutocreate {
         guard !trimmedName.isEmpty else { return nil }
 
         return CreateOpportunityDTO(
-            companyId: companyId,
             title: "\(trimmedName) — lead",
             contactName: trimmedName,
             contactEmail: sanitizedOptional(email),

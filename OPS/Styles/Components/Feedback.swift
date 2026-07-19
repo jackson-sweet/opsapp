@@ -334,6 +334,9 @@ enum Feedback {
         static let archived      = Toast(label: "// LEAD ARCHIVED", tone: .warning)
         static let discarded     = Toast(label: "// LEAD DISCARDED", tone: .warning)
         static let stageAdvanced = Toast(label: "// STAGE ADVANCED", tone: .success)
+        /// Direct stage pick from the status menu — can move backward, so the
+        /// copy states the fact, not a direction.
+        static let stageSet      = Toast(label: "// STAGE SET", tone: .success)
     }
 
     // MARK: - Sync

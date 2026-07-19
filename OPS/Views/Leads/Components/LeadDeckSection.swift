@@ -25,10 +25,6 @@ struct LeadDeckSection: View {
     @EnvironmentObject private var permissionStore: PermissionStore
     @Query private var allDesigns: [DeckDesign]
 
-    /// Inline read-only tool state — never mutated (canvas gets showsTools:
-    /// false), same pattern as DeckTabView's inline preview.
-    @StateObject private var toolState = DeckViewerToolState()
-
     @State private var remoteFetchAttempted = false
 
     /// Read from the INJECTED store (LeadDetailView provides it), not the
@@ -43,94 +39,87 @@ struct LeadDeckSection: View {
         DeckDesign.displayCandidate(in: allDesigns, forOpportunityId: opportunity.id)
     }
 
+    /// Document-row form (Leads redesign spec §5.9): the DECK row's content
+    /// region — a compact design line (title + updated stamp + chevron) or
+    /// the START affordance; the details document supplies the label column
+    /// and gates the row on the feature flag. Blueprint preview lives in the
+    /// builder, one tap away — the dossier is rows, not acreage.
     var body: some View {
-        if !featureEnabled {
-            EmptyView()
-        } else if candidate == nil && !canManage {
-            EmptyView()
-        } else {
-            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
-                PanelSectionHeader(label: "DECK DESIGN")
-                    .padding(.horizontal, OPSStyle.Layout.spacing3_5)
-
-                if let design = candidate {
-                    designCard(design)
-                        .padding(.horizontal, OPSStyle.Layout.spacing3_5)
-                } else {
-                    SheetCTAButton(
-                        label: "START DECK DESIGN",
-                        icon: "square.and.pencil",
-                        variant: .outline,
-                        action: onCreate
-                    )
-                    .padding(.horizontal, OPSStyle.Layout.spacing3_5)
-                }
+        Group {
+            if !featureEnabled {
+                EmptyView()
+            } else if let design = candidate {
+                designRow(design)
+            } else if canManage {
+                startAffordance
+            } else {
+                Text("—")
+                    .font(.custom("Mohave-Medium", size: 14))
+                    .foregroundColor(OPSStyle.Colors.textMute)
             }
-            .task(id: opportunity.id) {
-                await selfRepairFetchIfNeeded()
-            }
+        }
+        .task(id: opportunity.id) {
+            await selfRepairFetchIfNeeded()
         }
     }
 
-    // MARK: - Design card
+    // MARK: - Compact design row
 
-    private func designCard(_ design: DeckDesign) -> some View {
+    private func designRow(_ design: DeckDesign) -> some View {
         Button {
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
             onOpen(design)
         } label: {
-            VStack(alignment: .leading, spacing: 0) {
-                // Read-only blueprint. Hit testing off so the tap belongs to
-                // the card — the builder owns interaction.
-                DeckTab2DView(
-                    drawingData: design.drawingData,
-                    toolState: toolState,
-                    showsTools: false
-                )
-                .frame(height: 190)
-                .allowsHitTesting(false)
-                .clipped()
+            HStack(spacing: OPSStyle.Layout.spacing2_5) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(design.title)
+                        .font(.custom("Mohave-Medium", size: 14))
+                        .foregroundColor(OPSStyle.Colors.text)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
 
-                Rectangle()
-                    .fill(OPSStyle.Colors.line)
-                    .frame(height: 1)
-
-                HStack(spacing: 10) {
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text(design.title)
-                            .font(.custom("Mohave-Medium", size: 14))
-                            .foregroundColor(OPSStyle.Colors.text)
-                            .lineLimit(1)
-
-                        Text(updatedStamp(for: design))
-                            .font(OPSStyle.Typography.nanoLabel)
-                            .kerning(1.2)
-                            .foregroundColor(OPSStyle.Colors.textMute)
-                            .textCase(.uppercase)
-                    }
-
-                    Spacer()
-
-                    Image(systemName: "chevron.right")
-                        .font(.system(size: 13, weight: .regular))
+                    Text(updatedStamp(for: design))
+                        .font(.custom("JetBrainsMono-Regular", size: 8.5))
+                        .tracking(0.5)
                         .foregroundColor(OPSStyle.Colors.text3)
+                        .textCase(.uppercase)
                 }
-                .padding(.horizontal, 14)
-                .padding(.vertical, 12)
+
+                Spacer(minLength: 0)
+
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 11, weight: .regular))
+                    .foregroundColor(OPSStyle.Colors.text3)
             }
-            .background(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.panelRadius, style: .continuous)
-                    .fill(OPSStyle.Colors.surfaceInput)
-            )
-            .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.panelRadius, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.panelRadius, style: .continuous)
-                    .strokeBorder(OPSStyle.Colors.line, lineWidth: 1)
-            )
+            .frame(minHeight: OPSStyle.Layout.touchTargetMin)
             .contentShape(Rectangle())
         }
         .buttonStyle(PlainButtonStyle())
         .accessibilityLabel("Open deck design \(design.title)")
+    }
+
+    private var startAffordance: some View {
+        Button {
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            onCreate()
+        } label: {
+            HStack(spacing: 5) {
+                Image(systemName: "plus")
+                    .font(.system(size: 9, weight: .semibold))
+                Text("START DECK DESIGN")
+                    .font(.custom("JetBrainsMono-Medium", size: 9))
+                    .tracking(0.9)
+                    .textCase(.uppercase)
+            }
+            .foregroundColor(OPSStyle.Colors.text2)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 5)
+            .background(RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius, style: .continuous).fill(OPSStyle.Colors.surfaceInput))
+            .overlay(RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius, style: .continuous).strokeBorder(OPSStyle.Colors.line, lineWidth: 1))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(PlainButtonStyle())
+        .accessibilityLabel("Start a deck design")
     }
 
     private func updatedStamp(for design: DeckDesign) -> String {

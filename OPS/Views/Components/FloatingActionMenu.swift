@@ -43,16 +43,18 @@ fileprivate struct FABMenuItem: Identifiable {
     let icon: String
     let label: String
     let permission: String?
+    let authorization: (() -> Bool)?
     let disabledInTutorial: Bool
     let lockedMessage: String?
     let badge: Int?
     let action: () -> Void
 
-    init(id: String, icon: String, label: String, permission: String?, disabledInTutorial: Bool, lockedMessage: String? = nil, badge: Int? = nil, action: @escaping () -> Void) {
+    init(id: String, icon: String, label: String, permission: String?, authorization: (() -> Bool)? = nil, disabledInTutorial: Bool, lockedMessage: String? = nil, badge: Int? = nil, action: @escaping () -> Void) {
         self.id = id
         self.icon = icon
         self.label = label
         self.permission = permission
+        self.authorization = authorization
         self.disabledInTutorial = disabledInTutorial
         self.lockedMessage = lockedMessage
         self.badge = badge
@@ -236,9 +238,18 @@ struct FloatingActionMenu: View {
         guard !hidden.isEmpty else { return false }
         return menuGroups.flatMap(\.items).contains { item in
             guard hidden.contains(item.id) else { return false }
-            if let perm = item.permission { return permissionStore.can(perm) }
-            return true
+            return isAuthorized(item)
         }
+    }
+
+    private func isAuthorized(_ item: FABMenuItem) -> Bool {
+        if let authorization = item.authorization {
+            return authorization()
+        }
+        if let permission = item.permission {
+            return permissionStore.can(permission)
+        }
+        return true
     }
 
     private var canShowFAB: Bool {
@@ -246,6 +257,10 @@ struct FloatingActionMenu: View {
         if appState.isInventorySelectionMode { return false }
         if isScheduleTab { return true }
         if isCatalogTab && hasCatalogAccess { return true }
+        let leadPolicy = permissionStore.leadAccessPolicy
+        if leadPolicy.canCreate || leadPolicy.canEditAny || leadPolicy.canConvertAny {
+            return true
+        }
         return FABPermissionGate.canShowFAB { permissionStore.can($0) }
     }
 
@@ -304,7 +319,8 @@ struct FloatingActionMenu: View {
                     id: "log-activity",
                     icon: "text.bubble",
                     label: "Log Activity",
-                    permission: "pipeline.manage",
+                    permission: "pipeline.edit",
+                    authorization: { permissionStore.leadAccessPolicy.canEditAny },
                     disabledInTutorial: true,
                     action: {
                         showCreateMenu = false
@@ -319,7 +335,8 @@ struct FloatingActionMenu: View {
                     id: "site-visit",
                     icon: "camera.viewfinder",
                     label: "Site Visit",
-                    permission: "pipeline.manage",
+                    permission: "pipeline.convert",
+                    authorization: { permissionStore.leadAccessPolicy.canConvertAny },
                     disabledInTutorial: true,
                     action: {
                         showCreateMenu = false
@@ -409,7 +426,8 @@ struct FloatingActionMenu: View {
                         id: "add-lead",
                         icon: "person.badge.plus",
                         label: "Add Lead",
-                        permission: "pipeline.manage",
+                        permission: "pipeline.create",
+                        authorization: { permissionStore.leadAccessPolicy.canCreate },
                         disabledInTutorial: true,
                         action: {
                             showCreateMenu = false
@@ -586,10 +604,7 @@ struct FloatingActionMenu: View {
     private var allPermittedItems: [(group: FABMenuGroup, items: [FABMenuItem])] {
         menuGroups.compactMap { group in
             let permitted = group.items.filter { item in
-                if let permission = item.permission {
-                    return permissionStore.can(permission)
-                }
-                return true
+                isAuthorized(item)
             }
             guard !permitted.isEmpty else { return nil }
             return (group: group, items: permitted)
@@ -606,8 +621,7 @@ struct FloatingActionMenu: View {
         for groupId in order {
             guard let group = menuGroups.first(where: { $0.id == groupId }) else { continue }
             let permittedItems = group.items.filter { item in
-                if let perm = item.permission { return permissionStore.can(perm) }
-                return true
+                isAuthorized(item)
             }
             guard !permittedItems.isEmpty else { continue }
 
@@ -635,7 +649,7 @@ struct FloatingActionMenu: View {
             guard let group = menuGroups.first(where: { $0.id == groupId }) else { continue }
             let groupItemIds = group.items.compactMap { item -> String? in
                 if hidden.contains(item.id) { return nil }
-                if let perm = item.permission, !permissionStore.can(perm) { return nil }
+                if !isAuthorized(item) { return nil }
                 return item.id
             }
 

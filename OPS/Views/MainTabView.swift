@@ -63,7 +63,8 @@ struct MainTabView: View {
     // flag. When the flag is off, the entire tab is hidden — even for users
     // with the permission.
     private var hasLeadsAccess: Bool {
-        permissionStore.can("pipeline.view") && permissionStore.isFeatureEnabled("pipeline")
+        permissionStore.leadAccessPolicy.canViewAny
+            && permissionStore.isFeatureEnabled("pipeline")
     }
     
     // Observer for fetch active project notifications
@@ -1325,12 +1326,14 @@ struct MainTabView: View {
     /// Around-call lead capture (154cb8a3). If the operator placed a call from
     /// inside OPS and a recent intent is still pending, present the post-call
     /// log prompt pre-filled to that lead. Gated on the same posture as every
-    /// other pipeline-mutating surface (feature on + pipeline.manage); a stale
+    /// other pipeline-mutating surface (feature on + any effective edit scope);
+    /// the known-lead intent itself was recorded only after a row-specific edit
+    /// check in ContactCard. A stale
     /// or already-shown intent is a no-op.
     private func presentPostCallPromptIfNeeded() {
         guard isCaptureSurfaceReady,
               PermissionStore.shared.isFeatureEnabled("pipeline"),
-              PermissionStore.shared.can("pipeline.manage"),
+              PermissionStore.shared.leadAccessPolicy.canEditAny,
               CallCaptureCoordinator.shared.activeRequest == nil else { return }
         guard let pending = CallLogStore.shared.consumeRecent() else { return }
         // Auto-log mode: when the call was placed against a known lead, log it
@@ -1403,10 +1406,10 @@ struct MainTabView: View {
         guard CallCaptureCoordinator.shared.hasQueuedShortcut else { return }
         let ready = isCaptureSurfaceReady
         let feature = PermissionStore.shared.isFeatureEnabled("pipeline")
-        let manage = PermissionStore.shared.can("pipeline.manage")
+        let canEditLead = PermissionStore.shared.leadAccessPolicy.canEditAny
         let free = CallCaptureCoordinator.shared.activeRequest == nil
-        guard ready, feature, manage, free else {
-            print("[CALL_CAPTURE] drain deferred — ready=\(ready) pipeline=\(feature) manage=\(manage) free=\(free)")
+        guard ready, feature, canEditLead, free else {
+            print("[CALL_CAPTURE] drain deferred — ready=\(ready) pipeline=\(feature) edit=\(canEditLead) free=\(free)")
             return
         }
         if CallCaptureCoordinator.shared.consumeQueuedShortcut() {

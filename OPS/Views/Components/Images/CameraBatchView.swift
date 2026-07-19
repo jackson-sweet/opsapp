@@ -464,6 +464,14 @@ private final class CameraPreviewViewController: UIViewController, AVCapturePhot
     /// snapping back to 1x.
     private var baseZoomFactor: CGFloat = 1.0
 
+    /// Bug 56c37df2 — raw zoom factor at which the user-facing "1x" wide
+    /// lens engages. Virtual devices anchor raw factor 1.0 to their
+    /// WIDEST constituent, so on ultra-wide hardware raw 1.0 is the 0.5x
+    /// lens and the wide lens lives at the first switch-over factor.
+    /// Everything user-facing (lens stops, labels, zoom ceiling, launch
+    /// framing) is computed against this baseline.
+    private var wideLensZoomFactor: CGFloat = 1.0
+
     /// Multi-shot debounce. Same defence as SketchCaptureView — refuse a
     /// rapid double-tap while a capture is in flight, plus a short
     /// minimum interval so the camera can't queue 10 shots from one
@@ -520,6 +528,21 @@ private final class CameraPreviewViewController: UIViewController, AVCapturePhot
         }
 
         captureDevice = device
+
+        // Bug 56c37df2 — open at the user-facing 1x wide lens. A virtual
+        // device starts at raw factor 1.0, which on ultra-wide hardware
+        // is the 0.5x lens; the native Camera app opens at 1x, so we do
+        // too.
+        wideLensZoomFactor = Self.wideLensZoomFactor(for: device)
+        if wideLensZoomFactor > device.minAvailableVideoZoomFactor {
+            do {
+                try device.lockForConfiguration()
+                device.videoZoomFactor = wideLensZoomFactor
+                device.unlockForConfiguration()
+            } catch {
+                print("[CameraBatch] Initial zoom lock failed: \(error)")
+            }
+        }
         baseZoomFactor = device.videoZoomFactor
 
         let preview = AVCaptureVideoPreviewLayer(session: session)
@@ -559,14 +582,40 @@ private final class CameraPreviewViewController: UIViewController, AVCapturePhot
         return discovery.devices.first ?? fallback
     }
 
+    /// Bug 56c37df2 — raw zoom factor at which the user-facing "1x" wide
+    /// lens engages. When the widest constituent is the ultra-wide, the
+    /// wide lens takes over at the first switch-over factor (2.0 on every
+    /// ultra-wide iPhone to date). Single-lens and wide+tele devices
+    /// already anchor raw 1.0 to the wide lens.
+    private static func wideLensZoomFactor(for device: AVCaptureDevice) -> CGFloat {
+        guard device.constituentDevices.first?.deviceType == .builtInUltraWideCamera else {
+            return 1
+        }
+        guard let firstSwitchOver = device.virtualDeviceSwitchOverVideoZoomFactors.first
+            .map({ CGFloat(truncating: $0) }),
+            firstSwitchOver > 1 else {
+            // An ultra-wide-first virtual device always reports at least
+            // one switch-over; defend with the universal 2.0 anyway.
+            return 2
+        }
+        return firstSwitchOver
+    }
+
+    /// Digital zoom ceiling — 8x in user-facing magnification, expressed
+    /// as a raw factor and never beyond what the active format supports.
+    private func maxZoomFactor(for device: AVCaptureDevice) -> CGFloat {
+        min(device.activeFormat.videoMaxZoomFactor, 8 * wideLensZoomFactor)
+    }
+
     private func setupLensSelector() {
         guard let device = captureDevice, let shutterButton else { return }
 
         let switchOvers = device.virtualDeviceSwitchOverVideoZoomFactors.map { CGFloat(truncating: $0) }
         lensOptions = CameraLensOptionPlanner.options(
             minZoom: device.minAvailableVideoZoomFactor,
-            maxZoom: min(device.activeFormat.videoMaxZoomFactor, CGFloat(8)),
-            switchOverZoomFactors: switchOvers
+            maxZoom: maxZoomFactor(for: device),
+            switchOverZoomFactors: switchOvers,
+            wideLensZoomFactor: wideLensZoomFactor
         )
         guard lensOptions.count > 1 else { return }
 
@@ -592,7 +641,7 @@ private final class CameraPreviewViewController: UIViewController, AVCapturePhot
             let button = UIButton(type: .system)
             button.tag = index
             button.setTitle(option.label, for: .normal)
-            button.titleLabel?.font = UIFont.monospacedDigitSystemFont(ofSize: 13, weight: .semibold)
+            button.titleLabel?.font = OPSStyle.Typography.uiDataValueMedium()
             button.layer.cornerRadius = CGFloat(OPSStyle.Layout.buttonRadius)
             button.contentEdgeInsets = UIEdgeInsets(
                 top: CGFloat(OPSStyle.Layout.spacing1),
@@ -639,7 +688,7 @@ private final class CameraPreviewViewController: UIViewController, AVCapturePhot
             baseZoomFactor = device.videoZoomFactor
         case .changed:
             let minZoom = device.minAvailableVideoZoomFactor
-            let maxZoom = min(device.activeFormat.videoMaxZoomFactor, CGFloat(8))
+            let maxZoom = maxZoomFactor(for: device)
             let target = max(minZoom, min(baseZoomFactor * gesture.scale, maxZoom))
             applyZoomFactor(target, animated: true)
         case .ended, .cancelled:
@@ -655,7 +704,7 @@ private final class CameraPreviewViewController: UIViewController, AVCapturePhot
         let target = CameraLensOptionPlanner.clamped(
             zoomFactor,
             minZoom: device.minAvailableVideoZoomFactor,
-            maxZoom: min(device.activeFormat.videoMaxZoomFactor, CGFloat(8))
+            maxZoom: maxZoomFactor(for: device)
         )
         do {
             try device.lockForConfiguration()

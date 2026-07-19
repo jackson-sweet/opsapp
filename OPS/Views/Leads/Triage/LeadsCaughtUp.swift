@@ -34,14 +34,14 @@ struct LeadsCaughtUp: View {
                 .padding(.top, OPSStyle.Layout.spacing3)
 
             Text("// \(label)")
-                .font(.custom("JetBrainsMono-Regular", size: 10))
+                .font(OPSStyle.Typography.miniLabel)
                 .tracking(1.6)
                 .textCase(.uppercase)
                 .foregroundColor(OPSStyle.Colors.textMute)
                 .padding(.top, OPSStyle.Layout.spacing2_5)
 
             Text("[ \(hint) ]")
-                .font(.custom("JetBrainsMono-Regular", size: 10))
+                .font(OPSStyle.Typography.miniLabel)
                 .tracking(0.4)
                 .textCase(.uppercase)
                 .foregroundColor(OPSStyle.Colors.text3)

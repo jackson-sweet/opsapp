@@ -526,6 +526,72 @@ final class PerimeterEntryTests: XCTestCase {
         XCTAssertEqual(edge.dimensionSource, .manual)
     }
 
+    // MARK: - Speed-draw dictation preference (bug 722b1606)
+
+    /// Snapshot + restore the persisted preference so these tests never
+    /// leak state into each other or the developer's simulator defaults.
+    private func withCleanDictationDefaults(_ body: () -> Void) {
+        let key = DeckBuilderViewModel.dictateAutoStartKey
+        let previous = UserDefaults.standard.object(forKey: key)
+        UserDefaults.standard.removeObject(forKey: key)
+        defer {
+            if let previous {
+                UserDefaults.standard.set(previous, forKey: key)
+            } else {
+                UserDefaults.standard.removeObject(forKey: key)
+            }
+        }
+        body()
+    }
+
+    func testDictationAutoStartDefaultsOnWithNoStoredPreference() {
+        withCleanDictationDefaults {
+            let viewModel = viewModel(drawingData: DeckDrawingData())
+            XCTAssertTrue(viewModel.dictateAutoStartEnabled)
+            XCTAssertTrue(viewModel.shouldAutoStartDictation)
+        }
+    }
+
+    func testDictationAutoStartPreferencePersistsAcrossViewModels() {
+        withCleanDictationDefaults {
+            let first = viewModel(drawingData: DeckDrawingData())
+            first.setDictateAutoStartPreference(false)
+            XCTAssertFalse(first.shouldAutoStartDictation)
+
+            let second = viewModel(drawingData: DeckDrawingData())
+            XCTAssertFalse(second.dictateAutoStartEnabled)
+            XCTAssertFalse(second.shouldAutoStartDictation)
+        }
+    }
+
+    func testManualStopMutesAutoStartUntilNewWalk() {
+        withCleanDictationDefaults {
+            var data = DeckDrawingData()
+            data.vertices = [DeckVertex(id: "v1", position: CGPoint(x: 0, y: 0))]
+
+            let viewModel = viewModel(drawingData: data)
+            XCTAssertTrue(viewModel.shouldAutoStartDictation)
+
+            viewModel.noteDictationManuallyStopped()
+            XCTAssertFalse(viewModel.shouldAutoStartDictation, "manual stop holds the rest of the walk")
+            XCTAssertTrue(viewModel.dictateAutoStartEnabled, "the persisted preference is untouched")
+
+            viewModel.beginPerimeterEntry(fromVertexId: "v1")
+            XCTAssertTrue(viewModel.shouldAutoStartDictation, "a fresh walk starts clean")
+        }
+    }
+
+    func testReenablingPreferenceClearsSessionMute() {
+        withCleanDictationDefaults {
+            let viewModel = viewModel(drawingData: DeckDrawingData())
+            viewModel.noteDictationManuallyStopped()
+            XCTAssertFalse(viewModel.shouldAutoStartDictation)
+
+            viewModel.setDictateAutoStartPreference(true)
+            XCTAssertTrue(viewModel.shouldAutoStartDictation, "settings flip takes effect on the next length")
+        }
+    }
+
     private func deckDesign(drawingData: DeckDrawingData) -> DeckDesign {
         DeckDesign(
             companyId: "company-1",

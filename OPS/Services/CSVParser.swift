@@ -107,9 +107,14 @@ enum CSVParser {
         let lineNumber: Int
     }
 
-    /// State machine that walks the input one scalar at a time.
+    /// State machine that walks the input one `Character` at a time.
     /// Cheaper than `String.split` because we have to honour quoted
     /// fields (where a comma or newline does NOT terminate the field).
+    ///
+    /// NOTE: Swift `String` iterates by extended grapheme cluster, so a
+    /// CRLF pair arrives as the *single* Character `"\r\n"` — never as
+    /// `"\r"` followed by `"\n"`. Every terminator check below must
+    /// therefore match all three of `"\r\n"`, `"\r"`, and `"\n"`.
     private static func tokenize(_ text: String) throws -> [RawRow] {
         var rows: [RawRow] = []
         var currentValues: [String] = []
@@ -140,10 +145,11 @@ enum CSVParser {
                         continue
                     }
                 } else {
-                    if c == "\n" || c == "\r" {
+                    if c == "\n" || c == "\r" || c == "\r\n" {
                         // Newline inside a quoted field — keep it, bump
                         // line counter for any newline so error
                         // messages still align with the editor's view.
+                        // (A CRLF pair is one Character and one line.)
                         line += 1
                     }
                     currentField.append(c)
@@ -178,28 +184,7 @@ enum CSVParser {
                 continue
             }
 
-            if c == "\r" {
-                // Could be \r\n or lone \r.
-                let next = text.index(after: i)
-                if next < text.endIndex, text[next] == "\n" {
-                    // Skip the \n on the next iteration.
-                    i = next
-                }
-                // Fall through: treat as row terminator.
-                if rowHasContent || !currentField.isEmpty {
-                    currentValues.append(currentField)
-                    rows.append(RawRow(values: currentValues, lineNumber: rowStartLine))
-                }
-                currentValues = []
-                currentField = ""
-                rowHasContent = false
-                line += 1
-                rowStartLine = line
-                i = text.index(after: i)
-                continue
-            }
-
-            if c == "\n" {
+            if c == "\r\n" || c == "\r" || c == "\n" {
                 if rowHasContent || !currentField.isEmpty {
                     currentValues.append(currentField)
                     rows.append(RawRow(values: currentValues, lineNumber: rowStartLine))

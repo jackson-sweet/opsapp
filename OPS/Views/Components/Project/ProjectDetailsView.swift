@@ -32,7 +32,9 @@ struct ProjectDetailsView: View {
     @State private var editingExpense: ExpenseDTO? = nil
     @State private var showNewExpenseSheet = false
     @State private var showingStatusPicker = false
-    @State private var showingNativeCamera = false
+    /// Bug 56c37df2 — PHOTO opens the standardized batch camera
+    /// (same component as site-visit capture).
+    @State private var showingCamera = false
     @State private var showingMeasureCapture = false
     @State private var showingDeckCreationPicker = false
     @State private var deckDesignToOpen: DeckDesign?
@@ -108,8 +110,8 @@ struct ProjectDetailsView: View {
                     .sheet(isPresented: $viewModel.showingImagePicker) {
                         imagePickerContent
                     }
-                    .fullScreenCover(isPresented: $showingNativeCamera) {
-                        nativeCameraContent
+                    .fullScreenCover(isPresented: $showingCamera) {
+                        cameraContent
                     }
                     .fullScreenCover(isPresented: $showingMeasureCapture) {
                         // LiDAR Dimensioned Photo Capture (spec §3.1) — same
@@ -748,7 +750,8 @@ struct ProjectDetailsView: View {
     }
     /// The Deck tab is at the top and being pulled past it (cue-visible window).
     private var isDeckOverscrolling: Bool {
-        !isDeckFullscreen && viewModel.selectedTab == .deck && hasRenderableDeck && deckPull > 1
+        !isDeckFullscreen && viewModel.selectedTab == .deck && hasRenderableDeck
+            && deckViewMode != .materials && deckPull > 1
     }
     private var deckExpandProgress: CGFloat { DeckOverscrollMath.progress(pull: deckPull) }
 
@@ -757,7 +760,13 @@ struct ProjectDetailsView: View {
     /// and open fullscreen (one-shot via `deckPullArmed`); below the threshold the
     /// scroll rubber-bands back on its own. Inert off the Deck tab.
     private func updateDeckPull(_ pull: CGFloat) {
-        guard viewModel.selectedTab == .deck, hasRenderableDeck, !isDeckFullscreen else {
+        // Pull-to-expand is a CANVAS affordance — fullscreen has no materials
+        // form. Gating on the mode also absorbs the content-height collapse
+        // when the tall viewport swaps for the shorter materials card: the
+        // probe reads that reflow as a huge "pull" for a frame and would
+        // otherwise commit fullscreen on a plain segment tap.
+        guard viewModel.selectedTab == .deck, hasRenderableDeck, !isDeckFullscreen,
+              deckViewMode != .materials else {
             if deckPull != 0 { deckPull = 0 }
             deckPullArmed = false
             return
@@ -773,6 +782,10 @@ struct ProjectDetailsView: View {
     }
 
     private func presentDeckFullscreen() {
+        // Fullscreen is a canvas surface; the MATERIALS tab has no fullscreen
+        // form. Land on the 2D plan so the viewer and its 3D/2D control open
+        // in a coherent state.
+        if deckViewMode == .materials { deckViewMode = .twoD }
         withAnimation(reduceMotion ? OPSStyle.Animation.faster : OPSStyle.Animation.standard) {
             isDeckFullscreen = true
         }
@@ -918,7 +931,6 @@ struct ProjectDetailsView: View {
     private var imagePickerContent: some View {
         ImagePicker(
             images: $viewModel.selectedImages,
-            allowsEditing: false,
             selectionLimit: 10,
             onSelectionComplete: {
                 viewModel.showingImagePicker = false
@@ -931,36 +943,24 @@ struct ProjectDetailsView: View {
         )
     }
 
-    private var nativeCameraContent: some View {
-        ImagePicker(
-            images: $viewModel.selectedImages,
-            allowsEditing: false,
-            sourceType: .camera,
-            selectionLimit: 1,
-            onSelectionComplete: {
-                showingNativeCamera = false
-                if !viewModel.selectedImages.isEmpty {
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                        viewModel.addPhotosToProject(tutorialMode: tutorialMode)
-                        NotificationCenter.default.post(
-                            name: Notification.Name("WizardPhotoCaptured"),
-                            object: nil
-                        )
-                    }
-                }
-            }
-        )
+    private var cameraContent: some View {
+        // Bug 56c37df2 — the standardized batch camera (same component
+        // as site-visit capture): live multi-shot, real lens stops, and
+        // library import built into the camera HUD.
+        CameraBatchView { images in
+            showingCamera = false
+            guard !images.isEmpty else { return }
+            viewModel.selectedImages = images
+            viewModel.addPhotosToProject(tutorialMode: tutorialMode)
+            NotificationCenter.default.post(
+                name: Notification.Name("WizardPhotoCaptured"),
+                object: nil
+            )
+        }
     }
 
     private func openProjectPhotoCapture() {
-        viewModel.selectedImages = []
-
-        guard UIImagePickerController.isSourceTypeAvailable(.camera) else {
-            viewModel.showingImagePicker = true
-            return
-        }
-
-        showingNativeCamera = true
+        showingCamera = true
     }
 
     private func openDeckDesignFromActionBar() {
@@ -977,7 +977,6 @@ struct ProjectDetailsView: View {
     private var noteImagePickerContent: some View {
         ImagePicker(
             images: $noteSelectedImages,
-            allowsEditing: false,
             selectionLimit: 5,
             onSelectionComplete: {
                 viewModel.showingNoteImagePicker = false

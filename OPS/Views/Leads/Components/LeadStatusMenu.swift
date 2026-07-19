@@ -122,7 +122,7 @@ struct StageTag: View {
                     .font(.system(size: 7, weight: .semibold))
             }
         }
-        .font(.custom("JetBrainsMono-Regular", size: 9.5))
+        .font(OPSStyle.Typography.nanoLabel)
         .fontWeight(.semibold)
         .kerning(1.4)
         .foregroundColor(textColor)

@@ -238,6 +238,8 @@ extension SupabaseProjectDTO {
             status: resolvedVinylOrderStatus,
             orderedAt: vinylOrderedAt.flatMap { SupabaseDate.parse($0) },
             orderedBy: vinylOrderedBy,
+            vinylColor: vinylColor,
+            vinylPO: vinylPO,
             sourceProjectUpdatedAt: updatedAt.flatMap { SupabaseDate.parse($0) }
         )
     }

@@ -2,12 +2,13 @@
 //  OPSSchemaV16.swift
 //  OPS
 //
-//  Schema version 16.0.0 — guarded lead assignment concurrency.
+//  Schema version 16.0.0 — app-update compatibility boundary.
 //
-//  Opportunity gains one required Int64 assignmentVersion attribute with a
-//  zero default. The V1-V15 shape is frozen separately, so this additive
-//  lightweight boundary changes only V16's persistent fingerprint and keeps
-//  every shipped historical schema exact.
+//  V16 introduces persisted fields that landed after V15 had already shipped:
+//  Opportunity gains images plus latitude/longitude, and DeckDesign gains an
+//  optional opportunityId. V1–V15 retain frozen pre-addition shapes so stores
+//  created by released binaries remain recognizable. The current live models
+//  begin here, making both changes an adjacent lightweight migration.
 //
 
 import Foundation
@@ -18,7 +19,8 @@ enum OPSSchemaV16: VersionedSchema {
 
     static var models: [any PersistentModel.Type] {
         OPSSchemaCommon.unchangedModels
-            + OPSSchemaCommon.v16OpportunityModel
+            + OPSSchemaCommon.v16ToV17OpportunityModel
+            + OPSSchemaCommon.v16DeckDesignModel
             + OPSSchemaCommon.v13ProjectNoteModel
             + OPSSchemaCommon.v15PhotoAnnotationModel
             + OPSSchemaCommon.v13ActivityModel
@@ -28,7 +30,7 @@ enum OPSSchemaV16: VersionedSchema {
             + OPSSchemaCommon.v8CatalogModels
             + OPSSchemaCommon.v4ReminderModels
             + OPSSchemaCommon.v6ForecastModels
-            + OPSSchemaCommon.v7VinylOrderModels
+            + OPSSchemaCommon.v7ToV16VinylOrderModel
             + OPSSchemaCommon.v8CatalogSetupModels
             + OPSSchemaCommon.v9ProjectPhotoModels
             + OPSSchemaCommon.v10StockUnitEventModels

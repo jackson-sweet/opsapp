@@ -57,6 +57,20 @@ enum SpotlightThumbnailRenderer {
         symbolFallback("doc.plaintext.fill", tint: .systemOrange)
     }
 
+    /// Thumbnail for a pipeline lead — the OPS opportunity glyph on the steel-blue
+    /// brand accent (`AccentPrimary` asset-catalog token, resolved at runtime by
+    /// UIKit). Rendered once and cached: unlike the SwiftData entities, leads are
+    /// reconciled into the index on every pipeline refresh, and every lead shares
+    /// this same static glyph — re-rendering it per lead would be wasted work.
+    static func leadThumbnail() -> Data? {
+        cachedLeadThumbnail
+    }
+
+    private static let cachedLeadThumbnail: Data? = symbolFallback(
+        OPSStyle.Icons.opportunity,
+        tint: UIColor(named: "AccentPrimary") ?? .systemBlue
+    )
+
     // MARK: - Private
 
     private static func render(_ image: UIImage) -> Data? {

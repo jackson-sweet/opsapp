@@ -2,8 +2,9 @@
 //  OpportunityAssignmentMigrationTests.swift
 //  OPSTests
 //
-//  Proves the exact V15 Opportunity shape migrates to V16 without a store wipe
-//  and defaults the new assignment concurrency snapshot to zero.
+//  Proves the exact V15 Opportunity shape migrates through the full plan to
+//  the current schema (V18) without a store wipe, defaulting the assignment
+//  concurrency snapshot to zero and the chase/summary columns to nil.
 //
 
 import SwiftData
@@ -26,7 +27,7 @@ final class OpportunityAssignmentMigrationTests: XCTestCase {
         }
     }
 
-    func testV15OpportunityMigratesToV16WithZeroAssignmentVersion() throws {
+    func testV15OpportunityMigratesToCurrentWithZeroAssignmentVersion() throws {
         try autoreleasepool {
             let schema = Schema(versionedSchema: OPSSchemaV15.self)
             let configuration = ModelConfiguration(schema: schema, url: storeURL)
@@ -49,7 +50,7 @@ final class OpportunityAssignmentMigrationTests: XCTestCase {
             try context.save()
         }
 
-        let schema = Schema(versionedSchema: OPSSchemaV16.self)
+        let schema = Schema(versionedSchema: OPSSchemaV18.self)
         let configuration = ModelConfiguration(schema: schema, url: storeURL)
         let container = try ModelContainer(
             for: schema,
@@ -66,6 +67,9 @@ final class OpportunityAssignmentMigrationTests: XCTestCase {
         XCTAssertEqual(lead.assignedTo, "user-jason")
         XCTAssertEqual(lead.estimatedValue, 42_000)
         XCTAssertEqual(lead.assignmentVersion, 0)
+        XCTAssertNil(lead.handledAt)
+        XCTAssertNil(lead.aiSummary)
+        XCTAssertNil(lead.aiSummaryUpdatedAt)
 
         lead.assignmentVersion = 3
         try context.save()

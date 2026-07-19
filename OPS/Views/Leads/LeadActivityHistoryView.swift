@@ -70,7 +70,7 @@ struct LeadActivityHistoryView: View {
                     Image(systemName: "chevron.left")
                         .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .regular))
                     Text("LEAD")
-                        .font(.custom("JetBrainsMono-Regular", size: 10))
+                        .font(OPSStyle.Typography.miniLabel)
                         .fontWeight(.semibold)
                         .kerning(1.4)
                         .textCase(.uppercase)

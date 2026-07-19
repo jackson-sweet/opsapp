@@ -26,6 +26,7 @@ enum OPSSchemaV13: VersionedSchema {
     static var models: [any PersistentModel.Type] {
         OPSSchemaCommon.unchangedModels
             + OPSSchemaCommon.v1ToV15OpportunityModel
+            + OPSSchemaCommon.v1ToV15DeckDesignModel
             + OPSSchemaCommon.v13ProjectNoteModel
             + OPSSchemaCommon.v1ToV14PhotoAnnotationModel
             + OPSSchemaCommon.v1ToV12ActivityModel
@@ -35,7 +36,7 @@ enum OPSSchemaV13: VersionedSchema {
             + OPSSchemaCommon.v8CatalogModels
             + OPSSchemaCommon.v4ReminderModels
             + OPSSchemaCommon.v6ForecastModels
-            + OPSSchemaCommon.v7VinylOrderModels
+            + OPSSchemaCommon.v7ToV16VinylOrderModel
             + OPSSchemaCommon.v8CatalogSetupModels
             + OPSSchemaCommon.v9ProjectPhotoModels
             + OPSSchemaCommon.v10StockUnitEventModels

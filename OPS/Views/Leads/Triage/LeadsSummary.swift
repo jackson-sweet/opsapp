@@ -74,7 +74,7 @@ struct LeadsSummary: View {
                 Text("// ").foregroundColor(OPSStyle.Colors.textMute)
                 Text("ALL QUIET").foregroundColor(OPSStyle.Colors.text3)
             }
-            .font(.custom("JetBrainsMono-Regular", size: 10))
+            .font(OPSStyle.Typography.miniLabel)
             .tracking(1.4)
             .textCase(.uppercase)
         } else {
@@ -101,7 +101,7 @@ struct LeadsSummary: View {
                     .foregroundColor(tone)
                     .monospacedDigit()
             }
-            .font(.custom("JetBrainsMono-Regular", size: 10))
+            .font(OPSStyle.Typography.miniLabel)
             .tracking(1.0)
             .textCase(.uppercase)
         }

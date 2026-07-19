@@ -43,35 +43,31 @@ struct OPSApp: App {
     @State private var realtimeStopTask: Task<Void, Never>?
 
     // Create the model container for SwiftData.
-    // Schema is driven by the LATEST VersionedSchema (currently `OPSSchemaV16`)
+    // Schema is driven by the LATEST VersionedSchema (currently `OPSSchemaV18`)
     // and the container runs `OPSMigrationPlan` on launch so stores written by
     // earlier builds (e.g. pre-`WizardState.id`, pre-catalog, pre-reminders)
     // are migrated in place. **When you add a new VersionedSchema (V7, V8, …),
     // bump this reference to the new latest** — leaving it stale produces the
     // "Duplicate version checksums across stages detected" runtime crash
     // because the migration plan validates from-version/to-version pairs that
-    // overshoot the declared schema. Equivalently: adding a new persistent
-    // property to a live `@Model` that's referenced by any historical
-    // VersionedSchema (e.g. anything in `OPSSchemaCommon.unchangedModels`)
-    // shifts every schema's hash by the same delta — the relative distinctness
-    // between schemas survives only if every adjacent pair (Vn, Vn+1) already
-    // declared a real model-list difference. Mint a new schema version when
-    // the only thing differentiating it is the property add, OR ensure your
-    // schema bump also introduces a new @Model (which is what V6 does via
-    // `v6ForecastModels`).
+    // overshoot the declared schema. Released schemas are immutable: adding a
+    // persistent property to a live `@Model` referenced by any historical
+    // VersionedSchema changes its absolute fingerprint, so installed stores no
+    // longer match even if every adjacent schema remains distinct. Freeze the
+    // released model shape, scope the widened live model to a new schema, add an
+    // adjacent migration stage, and extend the committed checksum fixture.
     //
-    // Error 134504 ("unknown model version") means the on-disk store was created
-    // before this app introduced versioned schemas. SwiftData can't map it to any
-    // schema in the migration plan, so it refuses to open it. We delete the store
-    // and start fresh — Supabase sync will re-hydrate all data on next launch.
+    // Error 134504 ("unknown model version") means the on-disk fingerprint does
+    // not match a schema in the plan. The store may contain valid local-only or
+    // unsynced data, so startup must preserve it and fail visibly rather than
+    // attempting destructive recovery.
     var sharedModelContainer: ModelContainer = {
-        let schema = Schema(versionedSchema: OPSSchemaV16.self)
+        let schema = Schema(versionedSchema: OPSSchemaV18.self)
 
         let isHostedXCTest = ProcessInfo.processInfo.environment["XCTestBundlePath"] != nil
-        let modelConfiguration = ModelConfiguration(
+        let modelConfiguration = OPSModelStore.configuration(
             schema: schema,
-            isStoredInMemoryOnly: isHostedXCTest,
-            allowsSave: true
+            isStoredInMemoryOnly: isHostedXCTest
         )
 
         func makeContainer() throws -> ModelContainer {
@@ -85,16 +81,10 @@ struct OPSApp: App {
         do {
             return try makeContainer()
         } catch {
-            // Pre-versioning stores have no version fingerprint; SwiftData
-            // surfaces this as SwiftDataError (not the underlying CoreData
-            // 134504). Wipe the store and retry — Supabase sync re-hydrates.
-            print("[SWIFTDATA] Container failed (\(error)) — deleting store and retrying")
-            destroyDefaultStore()
-            do {
-                return try makeContainer()
-            } catch {
-                fatalError("Failed to create model container after store reset: \(error.localizedDescription)")
-            }
+            fatalError(
+                "Failed to open SwiftData store at \(modelConfiguration.url.path). "
+                    + "The store was preserved. \(error)"
+            )
         }
     }()
     
@@ -166,6 +156,19 @@ struct OPSApp: App {
                     // waiting for the operator to reopen a lead.
                     LeadImageService.shared.configure(modelContext: context)
                     Task { await LeadImageService.shared.drain() }
+
+                    // Client-lead queue: the client save is authoritative, and
+                    // its matching pipeline lead retries durably until the
+                    // local-first client is visible to Supabase.
+                    ClientLeadAutocreateQueue.shared.configure(
+                        modelContext: context,
+                        activeCompanyId: { [weak dataController] in
+                            guard let dataController,
+                                  dataController.isAuthenticated else { return nil }
+                            return dataController.currentUser?.companyId
+                        }
+                    )
+                    Task { await ClientLeadAutocreateQueue.shared.drain() }
 
                     // Bridge the model container to non-View singletons
                     // (CalendarMirrorService reaches SwiftData through this).
@@ -246,13 +249,18 @@ struct OPSApp: App {
                     }
                 }
                 .onReceive(NotificationCenter.default.publisher(for: ConnectivityManager.connectivityChangedNotification)) { notification in
-                    // Refresh permissions when connectivity is restored
                     if let state = notification.userInfo?["state"] as? ConnectionState,
-                       state.status != .offline,
-                       permissionStore.isCacheStale(),
-                       let userId = dataController.currentUser?.id {
-                        Task {
-                            await permissionStore.fetchPermissions(userId: userId)
+                       state.status != .offline {
+                        // Retry queued client-to-pipeline delivery as soon as
+                        // usable connectivity returns.
+                        Task { await ClientLeadAutocreateQueue.shared.drain() }
+
+                        // Refresh permissions when connectivity is restored.
+                        if permissionStore.isCacheStale(),
+                           let userId = dataController.currentUser?.id {
+                            Task {
+                                await permissionStore.fetchPermissions(userId: userId)
+                            }
                         }
                     }
                 }
@@ -284,6 +292,10 @@ struct OPSApp: App {
                         // once/60s) so a freshly-published force-update reaches
                         // users on resume, not only on a full relaunch.
                         Task { await updateGate.refresh(userRole: dataController.currentUser?.role, force: false) }
+
+                        // Foreground is another deterministic retry boundary for
+                        // a client lead queued before the app was suspended.
+                        Task { await ClientLeadAutocreateQueue.shared.drain() }
 
                         // Re-link OneSignal on every foreground return to ensure
                         // the device is registered for push notifications.
@@ -327,10 +339,13 @@ struct OPSApp: App {
                     }
                 }
                 .onChange(of: dataController.isAuthenticated) { _, isAuth in
+                    ClientLeadAutocreateQueue.shared.invalidateDeliveryScope()
+
                     // Request notification permission once user is authenticated
                     // (onAppear fires before auth completes, so this catches the transition)
                     if isAuth {
                         notificationManager.requestPermission()
+                        Task { await ClientLeadAutocreateQueue.shared.drain() }
 
                         // Subscribe to Realtime as soon as the user authenticates
                         // while the app is already running (login without a relaunch).
@@ -340,6 +355,12 @@ struct OPSApp: App {
                             let userId = dataController.currentUser?.id
                             Task { await dataController.syncEngine?.ensureRealtime(companyId: companyId, userId: userId) }
                         }
+                    }
+                }
+                .onChange(of: dataController.currentUser?.companyId) { _, _ in
+                    ClientLeadAutocreateQueue.shared.invalidateDeliveryScope()
+                    if dataController.isAuthenticated {
+                        Task { await ClientLeadAutocreateQueue.shared.drain() }
                     }
                 }
                 .onReceive(NotificationCenter.default.publisher(for: ConnectivityManager.connectivityChangedNotification)) { _ in
@@ -591,16 +612,6 @@ struct OPSApp: App {
 
 }
 
-
-// Removes the default SwiftData SQLite store and its WAL/SHM sidecars.
-// Called when the store has no version fingerprint and can't be migrated.
-private func destroyDefaultStore() {
-    let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
-    for name in ["default.store", "default.store-wal", "default.store-shm"] {
-        let url = appSupport.appendingPathComponent(name)
-        try? FileManager.default.removeItem(at: url)
-    }
-}
 
 // Function to clear all authentication data on fresh install
 private func clearAllAuthenticationData() {

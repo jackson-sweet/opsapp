@@ -27,7 +27,7 @@ struct ComebackChooserSheet: View {
                 Text("// ").foregroundColor(OPSStyle.Colors.textMute)
                 Text("NEXT TOUCH").foregroundColor(OPSStyle.Colors.text3)
             }
-            .font(.custom("JetBrainsMono-Medium", size: 10))
+            .font(OPSStyle.Typography.miniLabelBold)
             .tracking(1.6)
             .textCase(.uppercase)
             .padding(.horizontal, OPSStyle.Layout.spacing3_5)
@@ -88,7 +88,7 @@ struct ComebackChooserSheet: View {
                     .foregroundColor(OPSStyle.Colors.text)
                 Spacer()
                 Text(LeadChaseStrip.comebackLabel(date))
-                    .font(.custom("JetBrainsMono-Regular", size: 10))
+                    .font(OPSStyle.Typography.miniLabel)
                     .tracking(0.8)
                     .textCase(.uppercase)
                     .foregroundColor(OPSStyle.Colors.text3)

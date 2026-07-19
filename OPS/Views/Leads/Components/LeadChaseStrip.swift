@@ -80,7 +80,7 @@ struct LeadChaseStrip: View {
             Spacer(minLength: OPSStyle.Layout.spacing2)
             if showsAction, let action = c.action {
                 Text(action == .handled ? "HANDLED ✓" : "ADJUST")
-                    .font(.custom("JetBrainsMono-Medium", size: 10))
+                    .font(OPSStyle.Typography.miniLabelBold)
                     .tracking(0.8)
                     .textCase(.uppercase)
                     .foregroundColor(c.tone)

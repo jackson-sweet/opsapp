@@ -42,6 +42,7 @@ enum OPSSchemaV6: VersionedSchema {
     static var models: [any PersistentModel.Type] {
         OPSSchemaCommon.unchangedModels
             + OPSSchemaCommon.v1ToV15OpportunityModel
+            + OPSSchemaCommon.v1ToV15DeckDesignModel
             + OPSSchemaCommon.v1ToV12ProjectNoteModel
             + OPSSchemaCommon.v1ToV14PhotoAnnotationModel
             + OPSSchemaCommon.v1ToV12ActivityModel
@@ -67,6 +68,7 @@ enum OPSSchemaV7: VersionedSchema {
     static var models: [any PersistentModel.Type] {
         OPSSchemaCommon.unchangedModels
             + OPSSchemaCommon.v1ToV15OpportunityModel
+            + OPSSchemaCommon.v1ToV15DeckDesignModel
             + OPSSchemaCommon.v1ToV12ProjectNoteModel
             + OPSSchemaCommon.v1ToV14PhotoAnnotationModel
             + OPSSchemaCommon.v1ToV12ActivityModel
@@ -76,7 +78,7 @@ enum OPSSchemaV7: VersionedSchema {
             + OPSSchemaCommon.v3CatalogModels
             + OPSSchemaCommon.v4ReminderModels
             + OPSSchemaCommon.v6ForecastModels
-            + OPSSchemaCommon.v7VinylOrderModels
+            + OPSSchemaCommon.v7ToV16VinylOrderModel
             + [WizardState.self, CalendarMirrorMap.self]
     }
 }
@@ -93,6 +95,7 @@ enum OPSSchemaV8: VersionedSchema {
     static var models: [any PersistentModel.Type] {
         OPSSchemaCommon.unchangedModels
             + OPSSchemaCommon.v1ToV15OpportunityModel
+            + OPSSchemaCommon.v1ToV15DeckDesignModel
             + OPSSchemaCommon.v1ToV12ProjectNoteModel
             + OPSSchemaCommon.v1ToV14PhotoAnnotationModel
             + OPSSchemaCommon.v1ToV12ActivityModel
@@ -102,7 +105,7 @@ enum OPSSchemaV8: VersionedSchema {
             + OPSSchemaCommon.v8CatalogModels
             + OPSSchemaCommon.v4ReminderModels
             + OPSSchemaCommon.v6ForecastModels
-            + OPSSchemaCommon.v7VinylOrderModels
+            + OPSSchemaCommon.v7ToV16VinylOrderModel
             + OPSSchemaCommon.v8CatalogSetupModels
             + [WizardState.self, CalendarMirrorMap.self]
     }

@@ -212,7 +212,7 @@ private struct ZoomablePhotoPage: View {
                             .font(.system(size: 28))
                             .foregroundColor(OPSStyle.Colors.textMute)
                         Text("// COULD NOT LOAD")
-                            .font(.custom("JetBrainsMono-Regular", size: 10))
+                            .font(OPSStyle.Typography.miniLabel)
                             .kerning(1.4)
                             .foregroundColor(OPSStyle.Colors.textMute)
                     }

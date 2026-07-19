@@ -110,7 +110,8 @@ final class DeckBuilderRegressionTests: XCTestCase {
         XCTAssertNotNil(wallBox)
         let expectedLengthMeters = hypot(144.0, 24.0) / 39.3701
         XCTAssertEqual(Double(wallBox?.length ?? 0), expectedLengthMeters, accuracy: 0.02)
-        XCTAssertEqual(Double(wallBox?.height ?? 0), 8.0 * 0.3048, accuracy: 0.01)
+        // 6' viewer wall — the house face reads without dominating the deck.
+        XCTAssertEqual(Double(wallBox?.height ?? 0), 6.0 * 0.3048, accuracy: 0.01)
     }
 
     func testSceneBuilder_elevatedHouseEdgeAddsGradeWallBelowDeck() throws {
@@ -136,7 +137,8 @@ final class DeckBuilderRegressionTests: XCTestCase {
         let houseBox = try XCTUnwrap(houseWall.geometry as? SCNBox)
         let gradeBox = try XCTUnwrap(gradeWall.geometry as? SCNBox)
 
-        XCTAssertEqual(Double(houseBox.height), 8.0 * 0.3048, accuracy: 0.01)
+        // 6' viewer wall — the house face reads without dominating the deck.
+        XCTAssertEqual(Double(houseBox.height), 6.0 * 0.3048, accuracy: 0.01)
         XCTAssertEqual(Double(gradeBox.height), 3.0 * 0.3048, accuracy: 0.01)
         XCTAssertEqual(gradeWall.position.y, Float(3.0 * 0.3048 / 2.0), accuracy: 0.01)
     }

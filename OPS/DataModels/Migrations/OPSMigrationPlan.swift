@@ -98,10 +98,21 @@
 //  (+ loggedActivityId) backs V15+. This confines the change to this single
 //  boundary instead of rewriting every V11–V14 schema's `SiteVisit` hash.
 //
-//  V15 → V16 stage: guarded lead assignment concurrency. Adds the required,
-//  defaulted Int64 `Opportunity.assignmentVersion` snapshot. Opportunity is
-//  version-scoped so V1–V15 retain their exact shipped fingerprint and only
-//  this boundary widens the live model.
+//  V15 → V16 stage: app-update compatibility. Opportunity gains optional
+//  coordinates plus its images array, and DeckDesign gains nullable
+//  `opportunityId`. Both models are frozen through V15 and switch to their live
+//  shapes at V16 so released fingerprints remain stable.
+//
+//  V16 → V17 stage: vinyl order marker gains nullable color + PO fields for
+//  the VINYL ORDERS board.
+//
+//  V17 → V18 stage: guarded lead assignment concurrency + chase columns. Adds
+//  the required, defaulted Int64 `Opportunity.assignmentVersion` snapshot and
+//  three optional chase/summary fields (`handledAt`, `aiSummary`,
+//  `aiSummaryUpdatedAt`). Opportunity is version-scoped at this boundary —
+//  the frozen `OPSSchemaLegacyOpportunityV17.Opportunity` (images +
+//  coordinates, no assignment/chase) backs V16–V17; the live model backs
+//  V18+ — so only this boundary widens the fingerprint.
 //
 
 import Foundation
@@ -125,7 +136,9 @@ enum OPSMigrationPlan: SchemaMigrationPlan {
             OPSSchemaV13.self,
             OPSSchemaV14.self,
             OPSSchemaV15.self,
-            OPSSchemaV16.self
+            OPSSchemaV16.self,
+            OPSSchemaV17.self,
+            OPSSchemaV18.self
         ]
     }
 
@@ -145,14 +158,40 @@ enum OPSMigrationPlan: SchemaMigrationPlan {
             addProjectNoteEventKindV12toV13,
             addUnifiedActivityParentsV13toV14,
             addSiteVisitActivityLinkV14toV15,
-            addOpportunityAssignmentVersionV15toV16
+            addOpportunityMediaAndDeckLeadV15toV16,
+            addVinylOrderColorPOV16toV17,
+            addOpportunityAssignmentAndChaseV17toV18
         ]
     }
 
-    /// V15 → V16: additive guarded-assignment snapshot. Existing leads receive
-    /// assignmentVersion = 0; all later assignment changes advance it on the
-    /// server and sync the authoritative value back to this local projection.
-    static let addOpportunityAssignmentVersionV15toV16 = MigrationStage.lightweight(
+    /// V17 → V18: additive guarded-assignment snapshot + chase columns.
+    /// Existing leads receive `assignmentVersion = 0` (required, defaulted);
+    /// `handledAt` / `aiSummary` / `aiSummaryUpdatedAt` are new optionals
+    /// defaulting to nil. Opportunity is version-scoped at this boundary
+    /// (frozen `OPSSchemaLegacyOpportunityV17` for V16–V17, live for V18+)
+    /// so released fingerprints stay exact.
+    static let addOpportunityAssignmentAndChaseV17toV18 = MigrationStage.lightweight(
+        fromVersion: OPSSchemaV17.self,
+        toVersion: OPSSchemaV18.self
+    )
+
+    /// V16 → V17: purely additive — `ProjectVinylOrderMarker` gains nullable
+    /// `vinylColor` / `vinylPO`, projections of the additive
+    /// `projects.vinyl_color` / `vinyl_po` columns (VINYL ORDERS board). The
+    /// frozen V16 marker shape (`OPSSchemaLegacyVinylOrderV16`) preserves
+    /// released fingerprints; lightweight migration defaults both columns to
+    /// nil for historical rows.
+    static let addVinylOrderColorPOV16toV17 = MigrationStage.lightweight(
+        fromVersion: OPSSchemaV16.self,
+        toVersion: OPSSchemaV17.self
+    )
+
+    /// V15 → V16: fields that landed after V15 shipped. Opportunity adds an
+    /// images array plus nullable latitude/longitude; DeckDesign adds nullable
+    /// `opportunityId`. Frozen V15 model shapes preserve recognition of stores
+    /// created by released binaries, while the additive/defaulted live shapes
+    /// are inferable as a lightweight transform.
+    static let addOpportunityMediaAndDeckLeadV15toV16 = MigrationStage.lightweight(
         fromVersion: OPSSchemaV15.self,
         toVersion: OPSSchemaV16.self
     )

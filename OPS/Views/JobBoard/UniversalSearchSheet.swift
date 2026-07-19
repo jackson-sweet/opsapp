@@ -51,6 +51,11 @@ struct UniversalSearchSheet: View {
     @StateObject private var invoiceVM = InvoiceViewModel()
     @StateObject private var estimateVM = EstimateViewModel()
 
+    // Leads are network-only — pipeline opportunities are deliberately outside the
+    // SwiftData sync engine, so there's no @Query for them. This VM IS the lead
+    // data source for search; it's loaded on appear when pipeline access is granted.
+    @StateObject private var pipelineVM = PipelineViewModel()
+
     @FocusState private var searchFocused: Bool
     @State private var query: String = ""
 
@@ -82,6 +87,7 @@ struct UniversalSearchSheet: View {
     // active results aren't drowned in old work.
     @State private var showInactiveProjects: Bool = false
     @State private var showInactiveTasks: Bool = false
+    @State private var showInactiveLeads: Bool = false
 
     // Quick-action sheet state (bug 62f9f1f0)
     @State private var schedulingTask: ProjectTask?
@@ -277,27 +283,58 @@ struct UniversalSearchSheet: View {
         }
     }
 
+    // Resolve clientId / projectId → name so money records match on what a user
+    // actually types — a customer or job name — not just the invoice/estimate
+    // number nobody memorizes. Built from the same local stores the search reads.
+    private var clientNameById: [String: String] {
+        Dictionary(allClients.map { ($0.id, $0.name) }, uniquingKeysWith: { first, _ in first })
+    }
+
+    private var projectTitleById: [String: String] {
+        Dictionary(allProjects.map { ($0.id, $0.title) }, uniquingKeysWith: { first, _ in first })
+    }
+
     private var matchingInvoices: [Invoice] {
         guard !query.isEmpty else { return [] }
         let q = query
+        let clients = clientNameById
+        let projects = projectTitleById
         return allLocalInvoices.filter {
-            $0.invoiceNumber.localizedCaseInsensitiveContains(q) ||
-            ($0.title?.localizedCaseInsensitiveContains(q) ?? false)
+            UniversalSearchMatching.matches(invoice: $0, query: q, clientNameById: clients, projectTitleById: projects)
         }
     }
 
     private var matchingEstimates: [Estimate] {
         guard !query.isEmpty else { return [] }
         let q = query
+        let clients = clientNameById
+        let projects = projectTitleById
         return allLocalEstimates.filter {
-            $0.estimateNumber.localizedCaseInsensitiveContains(q) ||
-            ($0.title?.localizedCaseInsensitiveContains(q) ?? false)
+            UniversalSearchMatching.matches(estimate: $0, query: q, clientNameById: clients, projectTitleById: projects)
+        }
+    }
+
+    // Leads live outside SwiftData (pipeline opportunities are network-only), so
+    // they come from the PipelineViewModel loaded on appear rather than a @Query.
+    // Gated on pipeline access; deleted/archived rows are excluded.
+    private var availableOpportunities: [Opportunity] {
+        guard hasPipelineAccess else { return [] }
+        return pipelineVM.allOpportunities.filter { !$0.isDeleted && !$0.isArchived }
+    }
+
+    private var matchingOpportunities: [Opportunity] {
+        guard !query.isEmpty else { return [] }
+        let q = query
+        let clients = clientNameById
+        return availableOpportunities.filter {
+            UniversalSearchMatching.matches(opportunity: $0, query: q, clientNameById: clients)
         }
     }
 
     private var hasResults: Bool {
         !matchingProjects.isEmpty || !matchingTasks.isEmpty ||
         !matchingClients.isEmpty || !matchingUsers.isEmpty ||
+        !matchingOpportunities.isEmpty ||
         !matchingCatalogRows.isEmpty || !matchingInventoryItems.isEmpty || !matchingInvoices.isEmpty ||
         !matchingEstimates.isEmpty
     }
@@ -325,6 +362,17 @@ struct UniversalSearchSheet: View {
 
     private var matchingInactiveTasks: [ProjectTask] {
         matchingTasks.filter { Self.inactiveTaskStatuses.contains($0.status) }
+    }
+
+    // Leads split the same way: active pipeline expanded, terminal deals
+    // (won / lost / discarded) tucked behind a disclosure so dead leads don't
+    // bury the live ones a user is chasing.
+    private var matchingActiveLeads: [Opportunity] {
+        matchingOpportunities.filter { !$0.stage.isTerminal }
+    }
+
+    private var matchingInactiveLeads: [Opportunity] {
+        matchingOpportunities.filter { $0.stage.isTerminal }
     }
 
     // MARK: - Body
@@ -559,6 +607,25 @@ struct UniversalSearchSheet: View {
                     }
                 }
 
+                // Leads — active pipeline expanded; won/lost/discarded tucked
+                // behind a disclosure so dead deals don't bury live ones.
+                if !matchingOpportunities.isEmpty {
+                    searchSection("LEADS", icon: OPSStyle.Icons.opportunity, count: matchingOpportunities.count) {
+                        ForEach(matchingActiveLeads, id: \.id) { lead in
+                            leadRow(lead)
+                        }
+                        inactiveDisclosure(
+                            label: "WON, LOST & DISCARDED",
+                            count: matchingInactiveLeads.count,
+                            isOpen: $showInactiveLeads
+                        ) {
+                            ForEach(matchingInactiveLeads, id: \.id) { lead in
+                                leadRow(lead)
+                            }
+                        }
+                    }
+                }
+
                 // Invoices
                 if !matchingInvoices.isEmpty {
                     searchSection("INVOICES", icon: "doc.text.fill", count: matchingInvoices.count) {
@@ -567,7 +634,7 @@ struct UniversalSearchSheet: View {
                                 icon: "doc.text.fill",
                                 accentColor: invoice.status.isPaid ? OPSStyle.Colors.successStatus : OPSStyle.Colors.primaryAccent,
                                 title: invoice.title ?? "Invoice #\(invoice.invoiceNumber)",
-                                subtitle: formatCurrency(invoice.total),
+                                subtitle: moneyRowSubtitle(clientId: invoice.clientId, total: invoice.total),
                                 pill: SearchPill(
                                     text: invoice.status.displayName.uppercased(),
                                     color: invoice.status.isPaid ? OPSStyle.Colors.successStatus : OPSStyle.Colors.primaryAccent
@@ -587,7 +654,7 @@ struct UniversalSearchSheet: View {
                                 icon: "doc.plaintext.fill",
                                 accentColor: OPSStyle.Colors.primaryAccent,
                                 title: estimate.title ?? "Estimate #\(estimate.estimateNumber)",
-                                subtitle: formatCurrency(estimate.total),
+                                subtitle: moneyRowSubtitle(clientId: estimate.clientId, total: estimate.total),
                                 pill: SearchPill(
                                     text: estimate.status.displayName.uppercased(),
                                     color: OPSStyle.Colors.primaryAccent
@@ -812,6 +879,58 @@ struct UniversalSearchSheet: View {
             quickActions: actions,
             onTap: { selectedDetail = .user(user) }
         )
+    }
+
+    private func leadRow(_ lead: Opportunity) -> some View {
+        var actions: [QuickActionSpec] = []
+        // Call is the killer field action on a lead — one tap from a search hit to
+        // dialing the prospect. Mirrors the client / team rows.
+        if let phone = lead.contactPhone, !phone.isEmpty {
+            actions.append(QuickActionSpec(
+                id: "call",
+                icon: OPSStyle.Icons.phoneFill,
+                accessibilityLabel: "Call lead",
+                tint: OPSStyle.Colors.primaryAccent
+            ) {
+                openTel(phone)
+            })
+        }
+
+        let stageColor = OPSStyle.Colors.pipelineStageColor(for: lead.stage)
+        return SearchResultRow(
+            icon: OPSStyle.Icons.opportunity,
+            accentColor: stageColor,
+            title: leadTitle(lead),
+            subtitle: leadSubtitle(lead),
+            pill: SearchPill(
+                text: lead.stage.shortLabel,
+                color: stageColor
+            ),
+            quickActions: actions,
+            onTap: { navigateToLead(lead) }
+        )
+    }
+
+    // Title prefers the lead's own label; falls back to the contact so a row is
+    // never blank. Subtitle carries the other identity line + value when present.
+    private func leadTitle(_ lead: Opportunity) -> String {
+        if let title = lead.title, !title.isEmpty { return title }
+        return lead.displayContactName
+    }
+
+    private func leadSubtitle(_ lead: Opportunity) -> String? {
+        var parts: [String] = []
+        let hasTitle = !(lead.title ?? "").isEmpty
+        if hasTitle {
+            let contact = lead.displayContactName
+            if !contact.isEmpty { parts.append(contact) }
+        } else if let address = lead.address, !address.isEmpty {
+            parts.append(address)
+        }
+        if let value = lead.estimatedValue, value > 0 {
+            parts.append(formatCurrency(value))
+        }
+        return parts.isEmpty ? nil : parts.joined(separator: " · ")
     }
 
     // MARK: - Inactive Disclosure
@@ -1191,12 +1310,42 @@ struct UniversalSearchSheet: View {
         }
     }
 
+    private func navigateToLead(_ lead: Opportunity) {
+        // Mirror the notification-rail lead deep link: dismiss first, then post so
+        // the LEADS-tab swap + detail push don't race the dismissing search sheet.
+        // MainTabView's handler re-checks pipeline access before opening.
+        dismiss()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+            NotificationCenter.default.post(
+                name: Notification.Name("OpenLeadDetails"),
+                object: nil,
+                userInfo: ["leadId": lead.id]
+            )
+        }
+    }
+
     // MARK: - Helpers
 
     private func loadSupabaseData() {
         guard let companyId = dataController.currentUser?.companyId else { return }
         invoiceVM.setup(companyId: companyId, modelContext: modelContext)
         estimateVM.setup(companyId: companyId, modelContext: modelContext)
+
+        // Leads are network-only, so pull them once on open so search can index
+        // them. Gated on pipeline access so we never fire a pipeline fetch for a
+        // crew that can't see leads. `silent` keeps results popping in — no skeleton.
+        guard hasPipelineAccess else { return }
+        pipelineVM.setup(companyId: companyId, currentUserId: dataController.currentUser?.id)
+        Task { await pipelineVM.loadData(silent: true) }
+    }
+
+    // Money rows lead with the client name (the thing a user searched by), then
+    // the amount — so a hit explains itself instead of showing a bare number.
+    private func moneyRowSubtitle(clientId: String?, total: Double) -> String {
+        if let cid = clientId, let name = clientNameById[cid], !name.isEmpty {
+            return "\(name) · \(formatCurrency(total))"
+        }
+        return formatCurrency(total)
     }
 
     private func formatCurrency(_ amount: Double) -> String {

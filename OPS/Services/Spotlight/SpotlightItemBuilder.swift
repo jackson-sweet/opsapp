@@ -229,6 +229,55 @@ enum SpotlightItemBuilder {
         )
     }
 
+    // MARK: - Lead (Opportunity)
+    //
+    // Pipeline leads are network-only — unlike every other builder here the
+    // source is an in-memory `Opportunity` loaded from `OpportunityRepository`,
+    // never a synced SwiftData row. The title is the human label (contact name,
+    // falling back to the inquiry subject via `displayContactName`); the subtitle
+    // scans stage → street → contact channel; phone/email also ride the native
+    // searchable Spotlight attributes so a query on a number or address surfaces
+    // the lead.
+
+    static func buildLead(_ opportunity: Opportunity) -> CSSearchableItem {
+        let attrs = CSSearchableItemAttributeSet(contentType: UTType.content)
+        let displayTitle = opportunity.displayContactName
+        attrs.title = displayTitle
+        attrs.displayName = displayTitle
+
+        var descParts: [String] = [opportunity.stage.displayName]
+        if let addr = shortAddress(opportunity.address) { descParts.append(addr) }
+        if let phone = opportunity.contactPhone, !phone.isEmpty {
+            descParts.append(phone)
+        } else if let email = opportunity.contactEmail, !email.isEmpty {
+            descParts.append(email)
+        }
+        attrs.contentDescription = descParts.joined(separator: " • ")
+
+        var keywords: [String] = [displayTitle]
+        if !opportunity.contactName.isEmpty { keywords.append(opportunity.contactName) }
+        if let title = opportunity.title, !title.isEmpty { keywords.append(title) }
+        if let address = opportunity.address, !address.isEmpty { keywords.append(address) }
+        keywords.append(opportunity.stage.displayName)
+        attrs.keywords = keywords
+
+        if let phone = opportunity.contactPhone, !phone.isEmpty {
+            attrs.phoneNumbers = [phone]
+        }
+        if let email = opportunity.contactEmail, !email.isEmpty {
+            attrs.emailAddresses = [email]
+        }
+
+        attrs.thumbnailData = SpotlightThumbnailRenderer.leadThumbnail()
+
+        let itemId = SpotlightItemId.make(domain: SpotlightDomain.lead, id: opportunity.id)
+        return CSSearchableItem(
+            uniqueIdentifier: itemId,
+            domainIdentifier: SpotlightDomain.lead,
+            attributeSet: attrs
+        )
+    }
+
     // MARK: - Address Formatting
 
     /// Trim a raw address down to the parts a field user scans for in a Spotlight result:

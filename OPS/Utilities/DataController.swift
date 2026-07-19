@@ -5970,6 +5970,8 @@ class DataController: ObservableObject {
         let hasVinylField = fields.keys.contains(ProjectVinylOrderFields.status)
             || fields.keys.contains(ProjectVinylOrderFields.orderedAt)
             || fields.keys.contains(ProjectVinylOrderFields.orderedBy)
+            || fields.keys.contains(ProjectVinylOrderFields.color)
+            || fields.keys.contains(ProjectVinylOrderFields.po)
         guard hasVinylField else { return }
 
         let marker = localVinylOrderMarker(projectId: projectId, context: context)
@@ -5996,6 +5998,28 @@ class DataController: ObservableObject {
                 marker.orderedBy = value
             case .null:
                 marker.orderedBy = nil
+            default:
+                break
+            }
+        }
+
+        if let rawColor = fields[ProjectVinylOrderFields.color] {
+            switch rawColor {
+            case .string(let value):
+                marker.vinylColor = value
+            case .null:
+                marker.vinylColor = nil
+            default:
+                break
+            }
+        }
+
+        if let rawPO = fields[ProjectVinylOrderFields.po] {
+            switch rawPO {
+            case .string(let value):
+                marker.vinylPO = value
+            case .null:
+                marker.vinylPO = nil
             default:
                 break
             }
@@ -6145,6 +6169,15 @@ class DataController: ObservableObject {
     /// Returns the new client ID.
     @MainActor
     func createClient(dto: SupabaseClientDTO) async throws -> String {
+        try await createClientModel(dto: dto).id
+    }
+
+    /// Creates a client and returns the exact context-managed model that was
+    /// saved. Contact import uses this path so a successful local save can be
+    /// selected immediately without a second fetch that could manufacture a
+    /// false reload failure.
+    @MainActor
+    func createClientModel(dto: SupabaseClientDTO) async throws -> Client {
         guard let context = modelContext else {
             throw NSError(domain: "DataController", code: -1, userInfo: [NSLocalizedDescriptionKey: "Model context not available"])
         }
@@ -6154,9 +6187,13 @@ class DataController: ObservableObject {
         let existingDescriptor = FetchDescriptor<Client>(
             predicate: #Predicate<Client> { $0.id == clientId }
         )
-        let existing = try? context.fetch(existingDescriptor)
+        let existing = try context.fetch(existingDescriptor)
+        let savedClient: Client
 
-        if existing?.isEmpty != false {
+        if let existingClient = existing.first {
+            savedClient = existingClient
+            print("[DataController] ⚠️ Client already exists locally, skipping insert: \(dto.id)")
+        } else {
             // Create local model
             let client = Client(id: dto.id, name: dto.name, email: dto.email, phoneNumber: dto.phoneNumber, address: dto.address, companyId: dto.companyId, notes: dto.notes)
             client.latitude = dto.latitude
@@ -6167,10 +6204,9 @@ class DataController: ObservableObject {
             // Insert locally
             context.insert(client)
             try context.save()
+            savedClient = client
 
             print("[DataController] ✅ Client created locally: \(dto.id)")
-        } else {
-            print("[DataController] ⚠️ Client already exists locally, skipping insert: \(dto.id)")
         }
 
         // Build payload for SyncEngine create
@@ -6194,7 +6230,7 @@ class DataController: ObservableObject {
             changedFields: changedFields
         )
 
-        return dto.id
+        return savedClient
     }
 
     /// Create a new task type - SINGLE SOURCE OF TRUTH

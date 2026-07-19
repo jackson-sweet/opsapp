@@ -181,7 +181,7 @@ struct LeadStreamRow: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
 
                     Text(Self.ageString(entry.date))
-                        .font(.custom("JetBrainsMono-Regular", size: 9.5))
+                        .font(OPSStyle.Typography.nanoLabel)
                         .foregroundColor(OPSStyle.Colors.textMute)
                         .kerning(1.0)
                         .textCase(.uppercase)
@@ -332,7 +332,7 @@ struct LeadStreamRow: View {
                     .foregroundColor(OPSStyle.Colors.text3)
                 if let from = transition.fromStage {
                     Text(from.shortLabel)
-                        .font(.custom("JetBrainsMono-Regular", size: 9.5))
+                        .font(OPSStyle.Typography.nanoLabel)
                         .fontWeight(.semibold)
                         .kerning(1.0)
                         .foregroundColor(OPSStyle.Colors.text3)
@@ -342,7 +342,7 @@ struct LeadStreamRow: View {
                         .foregroundColor(OPSStyle.Colors.textMute)
                 }
                 Text(transition.toStage.displayName)
-                    .font(.custom("JetBrainsMono-Regular", size: 9.5))
+                    .font(OPSStyle.Typography.nanoLabel)
                     .fontWeight(.semibold)
                     .kerning(1.0)
                     .foregroundColor(OPSStyle.Colors.text2)
@@ -351,7 +351,7 @@ struct LeadStreamRow: View {
             .frame(maxWidth: .infinity, alignment: .leading)
 
             Text(Self.ageString(entry.date))
-                .font(.custom("JetBrainsMono-Regular", size: 9.5))
+                .font(OPSStyle.Typography.nanoLabel)
                 .foregroundColor(OPSStyle.Colors.textMute)
                 .kerning(1.0)
                 .textCase(.uppercase)
@@ -393,7 +393,7 @@ private struct EmptyLine: View {
 
     var body: some View {
         Text(text)
-            .font(.custom("JetBrainsMono-Regular", size: 10))
+            .font(OPSStyle.Typography.miniLabel)
             .kerning(1.6)
             .foregroundColor(OPSStyle.Colors.textMute)
             .textCase(.uppercase)

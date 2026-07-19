@@ -412,8 +412,6 @@ struct ClientSheet: View {
                             clientImage = images.first
                         }
                     ),
-                    allowsEditing: true,
-                    sourceType: .photoLibrary,
                     selectionLimit: 1
                 )
             }
@@ -563,7 +561,7 @@ struct ClientSheet: View {
         Task {
             do {
                 if case .create = mode {
-                    // Create new client (and the matching pipeline lead, best-effort)
+                    // Create the client and durably queue its matching pipeline lead.
                     let result = try await createNewClient()
                     let newClient = result.client
                     let leadCreated = result.leadCreated
@@ -660,10 +658,8 @@ struct ClientSheet: View {
         }
     }
     
-    /// Result of the create-client flow. The lead may not be created only when
-    /// the client itself fell back to a pure-local insert (no SyncEngine).
-    /// Opportunity insert failures are surfaced to the user instead of being
-    /// reported as a successful save.
+    /// Result of the create-client flow. The client save completes immediately;
+    /// its matching pipeline lead is delivered by a durable retry queue.
     private struct CreateClientResult {
         let client: Client
         let leadCreated: Bool
@@ -726,88 +722,24 @@ struct ClientSheet: View {
             deletedAt: nil
         )
 
-        let savedClient: Client
+        // DataController is already local-first. Returning its exact managed
+        // model avoids a second-fetch race, and any local persistence failure
+        // remains a real blocking save error instead of an unchecked success.
+        let savedClient = try await dataController.createClientModel(dto: dto)
+        print("[CLIENT_CREATE] ✅ Client created via DataController: \(tempClient.id)")
 
-        do {
-            let _ = try await dataController.createClient(dto: dto)
-            print("[CLIENT_CREATE] ✅ Client created via DataController: \(tempClient.id)")
-
-            // Return the context-managed client inserted by createClient
-            if let created = dataController.getAllClients(for: companyId).first(where: { $0.id == tempClient.id }) {
-                savedClient = created
-            } else {
-                savedClient = tempClient
-            }
-        } catch {
-            print("[CLIENT_CREATE] ⚠️ DataController create failed, inserting locally: \(error)")
-            // Fallback: insert directly so client is at least available locally
-            if let imageURL = profileImageURL { tempClient.profileImageURL = imageURL }
-            tempClient.needsSync = true
-            await MainActor.run {
-                dataController.saveClient(tempClient)
-            }
-            dataController.triggerBackgroundSync()
-            // Skip lead creation when the client itself didn't reach Supabase —
-            // the foreign key would 404 and create a noisy failure. The
-            // background sync will pick the client up before pipeline linking.
-            return CreateClientResult(client: tempClient, leadCreated: false, opportunityId: nil)
-        }
-
-        // Bug 321e65c8 — every new client is automatically tracked in the
-        // pipeline as a "New Lead" so the user can move it through quoting,
-        // follow-up, and won/lost without a separate lead-creation step.
-        let opportunityId = try await createMatchingLead(for: savedClient, companyId: companyId)
+        // Bug 321e65c8 — every new client is tracked in the pipeline. Delivery
+        // is deliberately non-blocking: the client is already saved, and the
+        // queue waits for Supabase parent visibility and retries independently.
+        ClientLeadAutocreateQueue.shared.enqueueAndDrainInBackground(
+            savedClient,
+            companyId: companyId
+        )
         return CreateClientResult(
             client: savedClient,
-            leadCreated: true,
-            opportunityId: opportunityId
+            leadCreated: false,
+            opportunityId: nil
         )
-    }
-
-    /// Creates a Pipeline Opportunity tied to a freshly-saved client.
-    /// Returns the new opportunity id on success. Create failures throw so the
-    /// UI does not report a saved client as fully complete when the pipeline
-    /// lead is missing.
-    ///
-    /// We create the opportunity via Supabase directly (mirrors
-    /// LogActivityViewModel.save()). Opportunities are NOT registered as a
-    /// SyncEntityType, so there's no SyncEngine route — direct API is the
-    /// canonical pattern. Local SwiftData is updated in the same step so the
-    /// pipeline view reflects the new lead immediately.
-    private func createMatchingLead(for client: Client, companyId: String) async throws -> String {
-        guard let dto = ClientLeadAutocreate.makeOpportunityDTO(for: client, companyId: companyId) else {
-            print("[LEAD_AUTOCREATE] Skipping — client has empty name")
-            throw ClientLeadAutocreateError.missingClientName
-        }
-
-        let repository = OpportunityRepository(companyId: companyId)
-        do {
-            let created = try await repository.create(dto)
-            print("[LEAD_AUTOCREATE] ✅ Lead created for client \(client.id): opportunity \(created.id)")
-
-            // Insert into local SwiftData so pipeline UI reflects the lead immediately.
-            // Mirrors the pattern used in LogActivityViewModel.save().
-            await MainActor.run {
-                let model = created.toModel()
-                if let context = dataController.modelContext {
-                    // Avoid duplicate insert if a realtime echo beat us here.
-                    let oppId = created.id
-                    let descriptor = FetchDescriptor<Opportunity>(
-                        predicate: #Predicate<Opportunity> { $0.id == oppId }
-                    )
-                    let existing = (try? context.fetch(descriptor)) ?? []
-                    if existing.isEmpty {
-                        context.insert(model)
-                        try? context.save()
-                    }
-                }
-            }
-
-            return created.id
-        } catch {
-            print("[LEAD_AUTOCREATE] ⚠️ Failed to create lead for client \(client.id): \(error)")
-            throw ClientLeadAutocreateError.creationFailed
-        }
     }
     
     private func updateExistingClient(_ client: Client) async throws {

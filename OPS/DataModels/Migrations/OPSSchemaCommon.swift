@@ -11,6 +11,224 @@
 import Foundation
 import SwiftData
 
+/// Opportunity as it shipped through V15. The live model gained `images`,
+/// `latitude`, and `longitude` after V15 was already on devices. Keeping this
+/// exact stored-property graph prevents that later widening from rewriting the
+/// fingerprint of every released schema.
+enum OPSSchemaLegacyOpportunityV15 {
+    @Model
+    final class Opportunity: Identifiable {
+        @Attribute(.unique) var id: String
+        var companyId: String
+        var title: String?
+        var contactName: String
+        var contactEmail: String?
+        var contactPhone: String?
+        var descriptionText: String?
+        var address: String?
+        var stage: PipelineStage
+        var stageEnteredAt: Date
+        var stageManuallySet: Bool
+        var assignedTo: String?
+        var priority: String?
+        var source: String?
+        var quoteDeliveryMethod: QuoteDeliveryMethod?
+        var estimatedValue: Double?
+        var actualValue: Double?
+        var winProbabilityOverride: Int?
+        var expectedCloseDate: Date?
+        var actualCloseDate: Date?
+        var nextFollowUpAt: Date?
+        var lastActivityAt: Date?
+        var projectId: String?
+        var clientId: String?
+        var lostReason: String?
+        var lostNotes: String?
+        var deletedAt: Date?
+        var archivedAt: Date?
+        var tags: [String]
+        var sourceEmailId: String?
+        var correspondenceCount: Int
+        var outboundCount: Int
+        var inboundCount: Int
+        var lastInboundAt: Date?
+        var lastOutboundAt: Date?
+        var lastMessageDirection: String?
+        var createdAt: Date
+        var updatedAt: Date
+
+        init(
+            id: String = UUID().uuidString,
+            companyId: String,
+            contactName: String,
+            stage: PipelineStage = .newLead,
+            stageEnteredAt: Date = Date(),
+            createdAt: Date = Date(),
+            updatedAt: Date = Date()
+        ) {
+            self.id = id
+            self.companyId = companyId
+            self.contactName = contactName
+            self.stage = stage
+            self.stageEnteredAt = stageEnteredAt
+            self.stageManuallySet = false
+            self.tags = []
+            self.correspondenceCount = 0
+            self.outboundCount = 0
+            self.inboundCount = 0
+            self.createdAt = createdAt
+            self.updatedAt = updatedAt
+        }
+    }
+}
+
+/// Opportunity as it stood at V16–V17: images + coordinates present, no
+/// `assignmentVersion` and no chase/summary columns. The live model gained
+/// those at V18 (guarded lead assignment + the Leads chase system), so this
+/// exact stored-property graph keeps the V16/V17 fingerprints stable.
+enum OPSSchemaLegacyOpportunityV17 {
+    @Model
+    final class Opportunity: Identifiable {
+        @Attribute(.unique) var id: String
+        var companyId: String
+        var title: String?
+        var contactName: String
+        var contactEmail: String?
+        var contactPhone: String?
+        var descriptionText: String?
+        var address: String?
+        var stage: PipelineStage
+        var stageEnteredAt: Date
+        var stageManuallySet: Bool
+        var assignedTo: String?
+        var priority: String?
+        var source: String?
+        var quoteDeliveryMethod: QuoteDeliveryMethod?
+        var estimatedValue: Double?
+        var actualValue: Double?
+        var winProbabilityOverride: Int?
+        var expectedCloseDate: Date?
+        var actualCloseDate: Date?
+        var nextFollowUpAt: Date?
+        var lastActivityAt: Date?
+        var projectId: String?
+        var clientId: String?
+        var lostReason: String?
+        var lostNotes: String?
+        var deletedAt: Date?
+        var archivedAt: Date?
+        var tags: [String]
+        var sourceEmailId: String?
+        var images: [String] = []
+        var latitude: Double?
+        var longitude: Double?
+        var correspondenceCount: Int
+        var outboundCount: Int
+        var inboundCount: Int
+        var lastInboundAt: Date?
+        var lastOutboundAt: Date?
+        var lastMessageDirection: String?
+        var createdAt: Date
+        var updatedAt: Date
+
+        init(
+            id: String = UUID().uuidString,
+            companyId: String,
+            contactName: String,
+            stage: PipelineStage = .newLead,
+            stageEnteredAt: Date = Date(),
+            createdAt: Date = Date(),
+            updatedAt: Date = Date()
+        ) {
+            self.id = id
+            self.companyId = companyId
+            self.contactName = contactName
+            self.stage = stage
+            self.stageEnteredAt = stageEnteredAt
+            self.stageManuallySet = false
+            self.tags = []
+            self.correspondenceCount = 0
+            self.outboundCount = 0
+            self.inboundCount = 0
+            self.createdAt = createdAt
+            self.updatedAt = updatedAt
+        }
+    }
+}
+
+/// DeckDesign as it shipped through V15. The live model gained the nullable
+/// `opportunityId` after release, so the pre-addition graph must remain frozen
+/// for every historical schema fingerprint.
+enum OPSSchemaLegacyDeckDesignV15 {
+    @Model
+    final class DeckDesign: Identifiable {
+        @Attribute(.unique) var id: String
+        var companyId: String
+        var projectId: String?
+        var title: String
+        var drawingDataJSON: String
+        var thumbnailURL: String?
+        var localThumbnailPath: String?
+        var version: Int = 1
+        var createdBy: String?
+        var needsSync: Bool = false
+        var lastSyncedAt: Date?
+        var syncPriority: Int = 1
+        var deletedAt: Date?
+        var createdAt: Date
+        var updatedAt: Date?
+
+        init(
+            id: String = UUID().uuidString,
+            companyId: String,
+            projectId: String? = nil,
+            title: String = "Untitled Deck",
+            drawingDataJSON: String = "{}",
+            createdBy: String? = nil
+        ) {
+            self.id = id
+            self.companyId = companyId
+            self.projectId = projectId
+            self.title = title
+            self.drawingDataJSON = drawingDataJSON
+            self.createdBy = createdBy
+            self.createdAt = Date()
+        }
+    }
+}
+
+/// ProjectVinylOrderMarker as it shipped V7 through V16. The live model gained
+/// `vinylColor` / `vinylPO` (projections of `projects.vinyl_color` /
+/// `vinyl_po`, VINYL ORDERS board 2026-07-16) after V16 was already on
+/// devices, so the pre-widening shape stays frozen for every historical
+/// schema fingerprint.
+enum OPSSchemaLegacyVinylOrderV16 {
+    @Model
+    final class ProjectVinylOrderMarker: Identifiable {
+        @Attribute(.unique) var id: String
+        var statusRaw: String
+        var orderedAt: Date?
+        var orderedBy: String?
+        var sourceProjectUpdatedAt: Date?
+        var lastSyncedAt: Date?
+
+        init(
+            projectId: String,
+            status: ProjectVinylOrderStatus = .notOrdered,
+            orderedAt: Date? = nil,
+            orderedBy: String? = nil,
+            sourceProjectUpdatedAt: Date? = nil
+        ) {
+            self.id = projectId
+            self.statusRaw = status.rawValue
+            self.orderedAt = orderedAt
+            self.orderedBy = orderedBy
+            self.sourceProjectUpdatedAt = sourceProjectUpdatedAt
+            self.lastSyncedAt = nil
+        }
+    }
+}
+
 /// Frozen catalog model shapes used by historical schema stages. These types
 /// are only for SwiftData migration fingerprints; runtime code uses the
 /// top-level models in `DataModels/Supabase/Catalog`.
@@ -702,10 +920,6 @@ enum OPSSchemaCommon {
         OpsContact.self,
 
         // Supabase-backed models
-        // NOTE: Opportunity is intentionally NOT here. V16 adds the required,
-        // defaulted assignmentVersion column. V1-V15 use the exact frozen
-        // pre-assignment shape; V16+ use the live model. See
-        // v1ToV15OpportunityModel / v16OpportunityModel below.
         // NOTE: Activity is intentionally NOT here. Its persistent shape changed
         // at the V13→V14 boundary (opportunityId String → String?, plus new
         // clientId/projectId for unified-activity parents), so it is
@@ -749,7 +963,36 @@ enum OPSSchemaCommon {
         FormSubmission.self,
         LocalPhoto.self,
 
-        // Deck builder
+        // NOTE: Opportunity and DeckDesign are intentionally NOT here. Their
+        // persistent shapes changed after V15 shipped, so both are version-
+        // scoped at the V15→V16 boundary below.
+    ]
+
+    /// Opportunity as shipped through V15, before images and coordinates.
+    static let v1ToV15OpportunityModel: [any PersistentModel.Type] = [
+        OPSSchemaLegacyOpportunityV15.Opportunity.self
+    ]
+
+    /// Opportunity as it stood at V16–V17 — images and coordinates, before the
+    /// guarded-assignment snapshot and the chase/summary columns.
+    static let v16ToV17OpportunityModel: [any PersistentModel.Type] = [
+        OPSSchemaLegacyOpportunityV17.Opportunity.self
+    ]
+
+    /// Opportunity from V18 onward — the live model, including the required
+    /// zero-default `assignmentVersion` and the optional `handledAt` /
+    /// `aiSummary` / `aiSummaryUpdatedAt` chase columns.
+    static let v18OpportunityModel: [any PersistentModel.Type] = [
+        Opportunity.self
+    ]
+
+    /// DeckDesign as shipped through V15, before lead attachment.
+    static let v1ToV15DeckDesignModel: [any PersistentModel.Type] = [
+        OPSSchemaLegacyDeckDesignV15.DeckDesign.self
+    ]
+
+    /// DeckDesign from V16 onward, including nullable `opportunityId`.
+    static let v16DeckDesignModel: [any PersistentModel.Type] = [
         DeckDesign.self
     ]
 
@@ -809,10 +1052,16 @@ enum OPSSchemaCommon {
         RecurringExpense.self
     ]
 
-    /// V7 vinyl-order marker projection. The server fields live on
-    /// `projects`; this local model keeps the marker offline-readable without
-    /// changing the historical `Project` model shape.
-    static let v7VinylOrderModels: [any PersistentModel.Type] = [
+    /// Vinyl-order marker projection as shipped V7 through V16, before
+    /// color/PO. The server fields live on `projects`; this local model keeps
+    /// the marker offline-readable without changing the historical `Project`
+    /// model shape.
+    static let v7ToV16VinylOrderModel: [any PersistentModel.Type] = [
+        OPSSchemaLegacyVinylOrderV16.ProjectVinylOrderMarker.self
+    ]
+
+    /// Vinyl-order marker from V17 onward, including `vinylColor` / `vinylPO`.
+    static let v17VinylOrderModel: [any PersistentModel.Type] = [
         ProjectVinylOrderMarker.self
     ]
 
@@ -837,18 +1086,6 @@ enum OPSSchemaCommon {
     /// table so offcut provenance (source roll ↔ banked offcut) syncs locally.
     static let v10StockUnitEventModels: [any PersistentModel.Type] = [
         CatalogStockUnitEvent.self
-    ]
-
-    /// Opportunity as shipped through V1-V15, before the monotonic assignment
-    /// concurrency column existed.
-    static let v1ToV15OpportunityModel: [any PersistentModel.Type] = [
-        OPSSchemaLegacyOpportunityV15.Opportunity.self
-    ]
-
-    /// Opportunity from V16 onward, including the nonnegative assignmentVersion
-    /// snapshot used by guarded assignment and conversion RPCs.
-    static let v16OpportunityModel: [any PersistentModel.Type] = [
-        Opportunity.self
     ]
 
     /// SiteVisit as it shipped through V1–V10 — frozen, required `opportunityId`.

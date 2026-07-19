@@ -124,32 +124,33 @@ public struct AutoMeasurer {
         // means greater Y (since +Y is down). Distance gate per spec §3.3.
         let openingY = Float(openingBottomMid.y)
         var bestGap: Float = .greatestFiniteMagnitude
-        var bestCentroid: SIMD3<Float>?
         for c in floorCentroids {
             let dy = c.y - openingY
             guard dy > 0, dy <= maxSillGapMetres else { continue }
             if dy < bestGap {
                 bestGap = dy
-                bestCentroid = c
             }
         }
-        guard let floor = bestCentroid else {
+        guard bestGap < .greatestFiniteMagnitude else {
             return (nil, .noFloorMeshNearby)
         }
 
-        // World points: opening bottom midpoint → floor point directly below it.
-        let floorPoint = SIMD3<Double>(Double(floor.x), Double(floor.y), Double(floor.z))
+        // Sill height is the *vertical* drop from the opening's bottom edge
+        // to the floor surface. The euclidean distance to the winning face's
+        // centroid would fold that centroid's lateral offset — a mesh
+        // tessellation artifact — into the reading, inflating it.
+        // World points: opening bottom midpoint → the point directly below
+        // it at the floor's height.
+        let dist = Double(bestGap)
+        let floorPoint = SIMD3<Double>(openingBottomMid.x,
+                                       openingBottomMid.y + dist,
+                                       openingBottomMid.z)
         // Synthesise an image-pixel pair for the sill leader: the bottom-edge
         // midpoint pixel, and the point directly below it on screen.
         let bottomMidPixel = DimensionsData.Point2(
             x: 0.5 * (opening.boundingPolygon[2].x + opening.boundingPolygon[3].x),
             y: 0.5 * (opening.boundingPolygon[2].y + opening.boundingPolygon[3].y)
         )
-
-        let dx = openingBottomMid.x - floorPoint.x
-        let dy = openingBottomMid.y - floorPoint.y
-        let dz = openingBottomMid.z - floorPoint.z
-        let dist = (dx*dx + dy*dy + dz*dz).squareRoot()
 
         let m = DimensionsData.Measurement(
             type: .linear,

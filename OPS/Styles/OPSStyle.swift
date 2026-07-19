@@ -395,6 +395,8 @@ enum OPSStyle {
 
         // Compact UI labels (legacy Kosugi → remapped to JetBrains Mono)
         static let miniLabel = Font.miniLabel
+        static let miniLabelBold = Font.miniLabelBold  // → JetBrains Mono Medium 10pt (micro panel headers)
+        static let nanoLabel = Font.nanoLabel          // → JetBrains Mono Regular 9.5pt (densest micro-label)
         static let microLabel = Font.microLabel
         static let tagLabel = Font.tagLabel
         static let previewLabel = Font.previewLabel
@@ -414,6 +416,15 @@ enum OPSStyle {
         static let headlineMono = SwiftUI.Font.system(size: 24, weight: .bold, design: .monospaced)
         static let titleMono = SwiftUI.Font.system(size: 20, weight: .bold, design: .monospaced)
         static let monoValue = SwiftUI.Font.system(size: 14, weight: .bold, design: .monospaced)
+
+        /// UIKit bridge for `dataValue` — JetBrains Mono Medium for numeric
+        /// labels on UIKit/AVFoundation surfaces SwiftUI fonts can't reach
+        /// (e.g. the camera HUD's lens stops). Defaults to the 13pt data
+        /// value size.
+        static func uiDataValueMedium(size: CGFloat = 13) -> UIFont {
+            UIFont(name: "JetBrainsMono-Medium", size: size)
+                ?? .monospacedDigitSystemFont(ofSize: size, weight: .semibold)
+        }
     }
     
     // MARK: - Layout

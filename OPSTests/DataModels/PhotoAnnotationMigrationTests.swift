@@ -10,7 +10,7 @@
 //  stores; version-scoping (frozen `OPSSchemaLegacyPhotoAnnotation.PhotoAnnotation`
 //  for V1-V14, live for V15+) restores the shipped fingerprint. This test stands
 //  up the exact frozen on-disk shape a shipped device carries, reopens the same
-//  file with the full migration plan + the current (V15) schema, and asserts the
+//  file with the full migration plan + the target V15 schema, and asserts the
 //  row survives with its fields intact and the new columns default for the
 //  historical row — i.e. no NSCocoaErrorDomain 134110 and no store wipe.
 //
@@ -59,8 +59,8 @@ final class PhotoAnnotationMigrationTests: XCTestCase {
             try context.save()
         }
 
-        // 2. Reopen the SAME file with the full migration plan + current (V15)
-        //    schema. This drives V14 -> V15 (adds syncFailureCount + syncParkedAt).
+        // 2. Reopen the SAME file with the full migration plan + target V15
+        //    schema. This isolates V14 -> V15 (adds syncFailureCount + syncParkedAt).
         let v15Schema = Schema(versionedSchema: OPSSchemaV15.self)
         let v15Config = ModelConfiguration(schema: v15Schema, url: storeURL)
         let migrated = try ModelContainer(

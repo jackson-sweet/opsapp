@@ -41,7 +41,7 @@ final class LabelPlacerTests: XCTestCase {
         // Five line midpoints all at the same Y — first lands north,
         // second tries north (collides), tries east, etc.
         let baseX: CGFloat = 150
-        let stepX: CGFloat = 90  // slightly bigger than chip width
+        let stepX: CGFloat = 70  // narrower than the 80pt chip so same-slot neighbours collide
         let y: CGFloat = 500
         let inputs: [LabelPlacer.Input] = (0..<5).map { i in
             let mid = baseX + CGFloat(i) * stepX

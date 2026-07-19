@@ -141,7 +141,7 @@ struct DetailHero: View {
 
             if let people = peopleSubtitle {
                 Text(people)
-                    .font(.custom("Mohave-Regular", size: 14))
+                    .font(OPSStyle.Typography.cardBody)
                     .foregroundColor(OPSStyle.Colors.text2)
                     .lineLimit(1)
                     .truncationMode(.tail)
@@ -187,7 +187,7 @@ struct DetailHero: View {
                 .foregroundColor(OPSStyle.Colors.textMute)
                 .monospacedDigit()
         }
-        .font(.custom("JetBrainsMono-Regular", size: 10))
+        .font(OPSStyle.Typography.miniLabel)
         .kerning(1.4)
         .textCase(.uppercase)
     }
@@ -321,7 +321,7 @@ private struct KvCell: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             Text(label)
-                .font(.custom("JetBrainsMono-Regular", size: 9.5))
+                .font(OPSStyle.Typography.nanoLabel)
                 .fontWeight(.semibold)
                 .kerning(1.26)
                 .foregroundColor(OPSStyle.Colors.text3)
@@ -344,7 +344,7 @@ private struct KvCell: View {
             }
 
             Text(sub)
-                .font(.custom("JetBrainsMono-Regular", size: 9.5))
+                .font(OPSStyle.Typography.nanoLabel)
                 .fontWeight(.semibold)
                 .kerning(1.02)
                 .foregroundColor(OPSStyle.Colors.textMute)

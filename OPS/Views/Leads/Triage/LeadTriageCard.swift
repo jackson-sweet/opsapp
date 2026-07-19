@@ -161,7 +161,7 @@ struct LeadTriageCard: View {
                 // Contact + value
                 HStack(alignment: .firstTextBaseline, spacing: OPSStyle.Layout.spacing2_5) {
                     Text(lead.displayContactName)
-                        .font(.custom("Mohave-Medium", size: 16))
+                        .font(OPSStyle.Typography.bodyBold)
                         .foregroundColor(OPSStyle.Colors.text)
                         .lineLimit(1).truncationMode(.tail)
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -598,7 +598,7 @@ private struct ContactChipButton: View {
     var body: some View {
         Button(action: action) {
             Text(label)
-                .font(.custom("JetBrainsMono-Medium", size: 10))
+                .font(OPSStyle.Typography.miniLabelBold)
                 .tracking(0.8)
                 .textCase(.uppercase)
                 .foregroundColor(OPSStyle.Colors.text2)

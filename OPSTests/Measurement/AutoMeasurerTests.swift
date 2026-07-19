@@ -18,9 +18,13 @@ final class AutoMeasurerTests: XCTestCase {
                       classification cls: MeshFaceSnapshot.Classification,
                       normal n: SIMD3<Float> = SIMD3<Float>(0, 0, -1)) -> [MeshFaceSnapshot] {
         // Build a quad whose plane normal == `n` and centre == `c`. Width is
-        // along the basis perpendicular to `n` and the world up axis.
+        // along the basis perpendicular to `n` and the reference axis. The
+        // world up axis can't seed the basis for horizontal faces (floor /
+        // ceiling: n ∥ up makes the cross product degenerate to zero, and
+        // normalizing that yields NaN vertices) — use +Z for those.
         let up = SIMD3<Float>(0, 1, 0)
-        let right = simd_normalize(simd_cross(up, n))
+        let reference = abs(simd_dot(up, n)) > 0.9 ? SIMD3<Float>(0, 0, 1) : up
+        let right = simd_normalize(simd_cross(reference, n))
         let down  = simd_normalize(simd_cross(n, right))
         let hw = w / 2, hh = h / 2
         let v00 = c - hw * right - hh * down

@@ -155,7 +155,7 @@ struct BooksReviewBatchesLink: View {
                 Text(label)
                 Text("→")
             }
-            .font(.custom("JetBrainsMono-Medium", size: 10))
+            .font(OPSStyle.Typography.miniLabelBold)
             .tracking(1.2)
             .textCase(.uppercase)
             .monospacedDigit()

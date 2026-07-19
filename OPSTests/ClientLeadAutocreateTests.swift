@@ -27,6 +27,7 @@ final class ClientLeadAutocreateTests: XCTestCase {
         XCTAssertEqual(dto.source, ClientLeadAutocreate.schemaAllowedSource)
         XCTAssertEqual(dto.source, "other")
         XCTAssertEqual(dto.clientId, "client-1")
+        XCTAssertEqual(dto.sourceThreadKey, "client-autocreate:client-1")
         XCTAssertEqual(dto.priority, ClientLeadAutocreate.schemaAllowedPriority)
         XCTAssertEqual(dto.priority, "medium")
 

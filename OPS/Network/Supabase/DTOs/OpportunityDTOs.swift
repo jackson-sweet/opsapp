@@ -225,6 +225,7 @@ struct CreateOpportunityDTO: Encodable {
     let address: String?
     let estimatedValue: Double?
     let source: String?
+    let sourceThreadKey: String?
     let priority: String?
     let expectedCloseDate: String?
     let quoteDeliveryMethod: String?
@@ -241,6 +242,7 @@ struct CreateOpportunityDTO: Encodable {
         address: String? = nil,
         estimatedValue: Double? = nil,
         source: String? = nil,
+        sourceThreadKey: String? = nil,
         priority: String? = nil,
         expectedCloseDate: Date? = nil,
         quoteDeliveryMethod: String? = nil,
@@ -262,6 +264,7 @@ struct CreateOpportunityDTO: Encodable {
         self.address = address
         self.estimatedValue = estimatedValue
         self.source = source
+        self.sourceThreadKey = sourceThreadKey
         self.priority = priority
         self.expectedCloseDate = expectedCloseDate.map { SupabaseDate.formatDate($0) }
         self.quoteDeliveryMethod = quoteDeliveryMethod
@@ -279,6 +282,7 @@ struct CreateOpportunityDTO: Encodable {
         case address
         case estimatedValue       = "estimated_value"
         case source
+        case sourceThreadKey      = "source_thread_key"
         case priority
         case expectedCloseDate    = "expected_close_date"
         case quoteDeliveryMethod  = "quote_delivery_method"

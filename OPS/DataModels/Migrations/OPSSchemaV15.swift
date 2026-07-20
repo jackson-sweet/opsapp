@@ -35,7 +35,7 @@ enum OPSSchemaV15: VersionedSchema {
             + OPSSchemaCommon.v1ToV15OpportunityModel
             + OPSSchemaCommon.v1ToV15DeckDesignModel
             + OPSSchemaCommon.v13ProjectNoteModel
-            + OPSSchemaCommon.v15PhotoAnnotationModel
+            + OPSSchemaCommon.v15ToV17PhotoAnnotationModel
             + OPSSchemaCommon.v13ActivityModel
             + OPSSchemaCommon.v14SiteVisitModel
             + OPSSchemaCommon.v4CoreModels

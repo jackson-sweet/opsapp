@@ -907,6 +907,55 @@ enum OPSSchemaLegacyPhotoAnnotation {
     }
 }
 
+/// PhotoAnnotation as it stood at V15–V17: retry-hygiene columns
+/// (`syncFailureCount` / `syncParkedAt`) present, WITHOUT the collaborative-
+/// markup columns. The live model gained `layersData` / `changeLogData` /
+/// `beforeSnapshotURL` / `afterSnapshotURL` / `hiddenAuthorIdsData` at V18
+/// (author-scoped markup layers), so this exact stored-property graph keeps
+/// the V15–V17 fingerprints stable.
+enum OPSSchemaLegacyPhotoAnnotationV17 {
+    @Model
+    final class PhotoAnnotation: Identifiable {
+        @Attribute(.unique) var id: String
+        var projectId: String
+        var companyId: String
+        var photoURL: String
+        var annotationURL: String?
+        var note: String
+        var authorId: String
+        var createdAt: Date
+        var updatedAt: Date?
+        var deletedAt: Date?
+        var renderedPhotoURL: String?
+        var lastSyncedAt: Date?
+        var needsSync: Bool = false
+        var syncFailureCount: Int = 0
+        var syncParkedAt: Date?
+        var localDrawingData: Data?
+        var dimensionsData: Data?
+        var localDepthMapPath: String?
+        var localSidecarPath: String?
+        var localCaptureFinishedAt: Date?
+
+        init(
+            id: String = UUID().uuidString,
+            projectId: String,
+            companyId: String,
+            photoURL: String,
+            authorId: String,
+            createdAt: Date = Date()
+        ) {
+            self.id = id
+            self.projectId = projectId
+            self.companyId = companyId
+            self.photoURL = photoURL
+            self.note = ""
+            self.authorId = authorId
+            self.createdAt = createdAt
+        }
+    }
+}
+
 enum OPSSchemaCommon {
     /// Models present in both V2 and V3 (and unchanged across the V2→V3
     /// boundary). The inventory entities live only in V2; the catalog/product-
@@ -1160,10 +1209,20 @@ enum OPSSchemaCommon {
         OPSSchemaLegacyPhotoAnnotation.PhotoAnnotation.self
     ]
 
-    /// PhotoAnnotation from V15 onward — the live model with the added
-    /// `syncFailureCount` / `syncParkedAt` retry-hygiene columns. Mirror of
-    /// `v13ProjectNoteModel`.
-    static let v15PhotoAnnotationModel: [any PersistentModel.Type] = [
+    /// PhotoAnnotation as it stood at V15–V17 — retry-hygiene columns present,
+    /// WITHOUT the collaborative-markup columns (`layersData`, `changeLogData`,
+    /// `beforeSnapshotURL`, `afterSnapshotURL`, `hiddenAuthorIdsData`). The live
+    /// model gained those at V18 (author-scoped markup layers), so this frozen
+    /// stored-property graph keeps the V15–V17 fingerprints stable. Mirror of
+    /// `v16ToV17OpportunityModel`.
+    static let v15ToV17PhotoAnnotationModel: [any PersistentModel.Type] = [
+        OPSSchemaLegacyPhotoAnnotationV17.PhotoAnnotation.self
+    ]
+
+    /// PhotoAnnotation from V18 onward — the live model, including the
+    /// collaborative-markup layer/change-log/snapshot columns. Mirror of
+    /// `v18OpportunityModel`.
+    static let v18PhotoAnnotationModel: [any PersistentModel.Type] = [
         PhotoAnnotation.self
     ]
 

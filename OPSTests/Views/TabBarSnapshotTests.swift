@@ -17,10 +17,19 @@
 //  rest (Settings hidden) and revealed (Settings shown) states. The snap *feel*
 //  itself is a runtime gesture — confirm that on a simulator.
 //
+//  HARD-WON (2026-07-19, iOS 26.5): UIWindows created by tests — detached OR
+//  scene-attached — never execute PROGRAMMATIC SwiftUI scrolls. Both
+//  `ScrollViewProxy.scrollTo` and `scrollPosition(id:)` silently no-op there
+//  (content lays out, contentOffset never moves), while direct
+//  `UIScrollView.setContentOffset` works and sticks. Any test that asserts a
+//  programmatic scroll actually happened must host the view in the app host's
+//  KEY WINDOW (the real display pipeline) — see `settledLaneState(...)`.
+//  Detached windows remain fine for static pixel captures.
+//
 //  Run:  xcodebuild test -scheme OPS \
-//          -destination 'platform=iOS Simulator,name=iPhone 17' \
+//          -destination 'platform=iOS Simulator,name=iPhone 17,OS=26.5' \
 //          -only-testing:OPSTests/TabBarSnapshotTests \
-//          -derivedDataPath /tmp/ops-tabbar-dd
+//          -clonedSourcePackagesDirPath .spm-local -derivedDataPath .dd
 //
 
 #if DEBUG
@@ -51,12 +60,15 @@ final class TabBarSnapshotTests: XCTestCase {
 
     /// The off-screen overflow that reveals the Settings peek (one tap cell +
     /// divider), matching CustomTabBar's even-spacing geometry.
-    private var revealOffset: CGFloat {
+    private func designedReveal(laneWidth: CGFloat) -> CGFloat {
         let iconW: CGFloat = 28
         let p = CGFloat(adminTabs.count - 1)
-        let gap = max((deviceWidth - p * iconW) / (p + 1), 8)
+        let gap = max((laneWidth - p * iconW) / (p + 1), 8)
         return (iconW + gap) + 1 + gap // cell + dividerWidth + gap
     }
+
+    /// Legacy fixed-width reveal used by the pixel captures below.
+    private var revealOffset: CGFloat { designedReveal(laneWidth: deviceWidth) }
 
     private var outDir: URL {
         let dir = URL(fileURLWithPath: NSTemporaryDirectory())
@@ -73,27 +85,82 @@ final class TabBarSnapshotTests: XCTestCase {
         return nil
     }
 
-    private func renderedTabBarScrollOffset(selectedTab: Int) throws -> CGFloat {
-        let size = CGSize(width: deviceWidth, height: 200)
-        let host = UIHostingController(rootView:
+    // MARK: - Key-window scroll harness
+
+    private final class TabSelectionModel: ObservableObject {
+        @Published var selected: Int
+        init(_ selected: Int) { self.selected = selected }
+    }
+
+    /// Binding-driven wrapper so the late-selection test can flip the tab the
+    /// way a user tap does (a raw `Binding(get:set:)` closure would never
+    /// invalidate the view).
+    private struct LaneHarness: View {
+        @ObservedObject var model: TabSelectionModel
+        let tabs: [TabItem]
+        var body: some View {
             ZStack(alignment: .bottom) {
                 OPSStyle.Colors.background
-                CustomTabBar(selectedTab: .constant(selectedTab), tabs: adminTabs)
+                CustomTabBar(selectedTab: $model.selected, tabs: tabs)
             }
-            .frame(width: size.width, height: size.height)
-            .environment(\.colorScheme, .dark)
+        }
+    }
+
+    private func appKeyWindow() throws -> UIWindow {
+        try XCTUnwrap(
+            UIApplication.shared.connectedScenes
+                .compactMap { $0 as? UIWindowScene }
+                .flatMap { $0.windows }
+                .first { $0.isKeyWindow }
+                ?? UIApplication.shared.connectedScenes
+                    .compactMap { ($0 as? UIWindowScene)?.windows.first }
+                    .first,
+            "The OPS test host app must expose a window for scroll assertions"
         )
+    }
+
+    /// Hosts the real `CustomTabBar` in the app host's key window (the only
+    /// environment where programmatic SwiftUI scrolls execute — see header),
+    /// optionally flips the selection after the initial state settles, then
+    /// polls until the lane reaches its fully-revealed offset or a generous
+    /// deadline proves it never will. No fixed-duration sleeps: the reveal
+    /// animates on the 200ms panel curve, so we wait on the condition itself.
+    /// Restores the app host's UI before returning.
+    private func settledLaneState(initialTab: Int, thenSelect flipTo: Int? = nil) throws -> (offset: CGFloat, contentWidth: CGFloat, laneWidth: CGFloat) {
+        let window = try appKeyWindow()
+        let original = window.rootViewController
+        defer {
+            window.rootViewController = original
+            RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.1))
+        }
+
+        let model = TabSelectionModel(initialTab)
+        let host = UIHostingController(rootView: AnyView(
+            LaneHarness(model: model, tabs: adminTabs)
+                .environment(\.colorScheme, .dark)
+        ))
         host.overrideUserInterfaceStyle = .dark
-        host.view.frame = CGRect(origin: .zero, size: size)
-
-        let window = UIWindow(frame: CGRect(origin: .zero, size: size))
         window.rootViewController = host
-        window.makeKeyAndVisible()
-        host.view.setNeedsLayout()
-        host.view.layoutIfNeeded()
-        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.45))
+        window.layoutIfNeeded()
 
-        return try XCTUnwrap(findScrollView(host.view)).contentOffset.x
+        if let flipTo {
+            // Let the initial (unrevealed) state settle first, like a user tap.
+            RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.3))
+            model.selected = flipTo
+        }
+
+        let scrollView = try XCTUnwrap(findScrollView(host.view))
+        let deadline = Date(timeIntervalSinceNow: 5)
+        while Date() < deadline {
+            let contentWidth = scrollView.contentSize.width
+            let target = max(contentWidth - window.bounds.width, 0)
+            if contentWidth > window.bounds.width,
+               abs(scrollView.contentOffset.x - target) <= 0.5 {
+                break
+            }
+            RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.05))
+        }
+        return (scrollView.contentOffset.x, scrollView.contentSize.width, window.bounds.width)
     }
 
     /// Hosts a real SwiftUI view in a window, lays it out (so a live `ScrollView`
@@ -168,13 +235,38 @@ final class TabBarSnapshotTests: XCTestCase {
     }
 
     func testSettingsSelectionRevealsTrailingTabOnInitialRender() throws {
-        let offset = try renderedTabBarScrollOffset(selectedTab: adminTabs.count - 1)
+        let lane = try settledLaneState(initialTab: adminTabs.count - 1)
+        let fullyRevealed = lane.contentWidth - lane.laneWidth
 
         XCTAssertEqual(
-            offset,
-            revealOffset,
+            lane.offset,
+            fullyRevealed,
             accuracy: 1,
             "An initially selected Settings tab must be scrolled fully into view"
+        )
+        XCTAssertEqual(
+            fullyRevealed,
+            designedReveal(laneWidth: lane.laneWidth),
+            accuracy: 1,
+            "The revealed amount must equal the designed peek group (cell + divider + gap)"
+        )
+    }
+
+    func testSelectingSettingsAfterRenderRevealsTrailingTab() throws {
+        let lane = try settledLaneState(initialTab: 0, thenSelect: adminTabs.count - 1)
+        let fullyRevealed = lane.contentWidth - lane.laneWidth
+
+        XCTAssertEqual(
+            lane.offset,
+            fullyRevealed,
+            accuracy: 1,
+            "Selecting Settings must slide the lane until it is fully in view"
+        )
+        XCTAssertEqual(
+            fullyRevealed,
+            designedReveal(laneWidth: lane.laneWidth),
+            accuracy: 1,
+            "The revealed amount must equal the designed peek group (cell + divider + gap)"
         )
     }
 

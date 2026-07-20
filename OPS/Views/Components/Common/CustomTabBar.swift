@@ -203,6 +203,13 @@ struct CustomTabBar: View {
 private struct PeekSnapBehavior: ScrollTargetBehavior {
     let revealDistance: CGFloat
     func updateTarget(_ target: inout ScrollTarget, context: TargetContext) {
+        // iOS 26 routes PROGRAMMATIC scrolls (ScrollViewProxy.scrollTo) through
+        // custom target behaviors too, passing the target view's own small rect
+        // rather than a viewport-sized destination. Rewriting that rect's
+        // origin re-targets the scroll to a rect that is already on-screen,
+        // silently killing reveal-on-select. Gesture-end targets arrive
+        // viewport-sized; only those are the snap's business.
+        guard abs(target.rect.width - context.containerSize.width) < 0.5 else { return }
         guard revealDistance > 0 else {
             target.rect.origin.x = 0
             return

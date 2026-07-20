@@ -17,8 +17,19 @@ final class DeckSceneSnapshotTests: XCTestCase {
 
     // MARK: - Render + attach
 
-    private func render(_ data: DeckDrawingData, preset: CameraPreset, name: String) {
-        renderView(data, azimuthDeg: preset.azimuth, elevationDeg: preset.elevation, name: name)
+    private func render(
+        _ data: DeckDrawingData,
+        preset: CameraPreset,
+        name: String,
+        calibrated: Bool = false
+    ) {
+        renderView(
+            data,
+            azimuthDeg: preset.azimuth,
+            elevationDeg: preset.elevation,
+            name: name,
+            calibrated: calibrated
+        )
     }
 
     /// Render from an arbitrary orbit angle. `distanceScale` < 1 zooms in;
@@ -31,9 +42,12 @@ final class DeckSceneSnapshotTests: XCTestCase {
         name: String,
         distanceScale: Float = 1.0,
         focus: SCNVector3? = nil,
+        calibrated: Bool = false,
         size: CGSize = CGSize(width: 1200, height: 850)
     ) {
-        let scene = DeckSceneBuilder.buildScene(from: data)
+        let scene = calibrated
+            ? DeckSceneBuilder.buildCalibratedScene(from: data)
+            : DeckSceneBuilder.buildScene(from: data)
         scene.background.contents = UIColor(red: 10/255, green: 10/255, blue: 10/255, alpha: 1)
 
         // Frame the DECK (exclude the ground plane — it dwarfs the bounding box).
@@ -115,6 +129,31 @@ final class DeckSceneSnapshotTests: XCTestCase {
         let multi = Self.multiLevelDeck()
         render(multi, preset: .perspective, name: "05-multi-perspective")
         render(multi, preset: .side, name: "06-multi-side")
+    }
+
+    func testRenderLive2114FramingOverhaul() {
+        let live = Self.live2114FramingDeck()
+        render(
+            live,
+            preset: .perspective,
+            name: "framing-2114-01-perspective",
+            calibrated: true
+        )
+        render(
+            live,
+            preset: .birdsEye,
+            name: "framing-2114-02-birdseye",
+            calibrated: true
+        )
+        renderView(
+            live,
+            azimuthDeg: 215,
+            elevationDeg: 5,
+            name: "framing-2114-03-load-path",
+            distanceScale: 0.8,
+            focus: SCNVector3(0.5, 0.2, 0.45),
+            calibrated: true
+        )
     }
 
     // MARK: - Representative decks
@@ -209,9 +248,52 @@ final class DeckSceneSnapshotTests: XCTestCase {
         return data
     }
 
-    private static func edge(_ id: String, _ s: String, _ e: String, dim: Double, rail: RailingType? = nil) -> DeckEdge {
+    /// Exact geometry from the live 2114 Central Ave design associated with
+    /// bug 6dd8dcac. The persisted drawing has no framing block or scaleFactor,
+    /// so this exercises the legacy topology planner and real scene pipeline.
+    static func live2114FramingDeck() -> DeckDrawingData {
+        var data = DeckDrawingData()
+        data.overallElevation = 5.5
+        data.vertices = [
+            DeckVertex(id: "95EB0302-244C-4BDC-B639-DCD4F0B40B6E", position: CGPoint(x: 2388, y: 2364)),
+            DeckVertex(id: "49EB52D6-28C0-47A8-84E8-9009FE8A85A0", position: CGPoint(x: 2520, y: 2364)),
+            DeckVertex(id: "E8C262FD-081D-4617-BC9F-FC4D2554F017", position: CGPoint(x: 2520, y: 2400)),
+            DeckVertex(id: "1F45EE10-1BAA-4A09-B848-850C20394322", position: CGPoint(x: 2388, y: 2436)),
+            DeckVertex(id: "2CFFDE64-FA51-4D2C-80A6-BEE5447B6A4A", position: CGPoint(x: 2232, y: 2436)),
+            DeckVertex(id: "187AF134-849A-4231-A7D1-FAE177E97E18", position: CGPoint(x: 2520, y: 2436)),
+            DeckVertex(id: "E7DA228A-CBDE-486B-947C-922BEFE1EE70", position: CGPoint(x: 2520, y: 2724)),
+            DeckVertex(id: "2D7C5BDD-EF0A-4233-A5B9-EE3B523A4A09", position: CGPoint(x: 2472, y: 2724)),
+            DeckVertex(id: "6CF06C30-083C-48B4-A0E2-689DA2C55848", position: CGPoint(x: 2472, y: 2916)),
+            DeckVertex(id: "72499BA4-8F0A-4E28-84F2-DC594359C614", position: CGPoint(x: 2232, y: 2916)),
+        ]
+        data.edges = [
+            edge("196B3A15-D5C3-4D7B-883D-DDEDA1CCCC97", "95EB0302-244C-4BDC-B639-DCD4F0B40B6E", "49EB52D6-28C0-47A8-84E8-9009FE8A85A0", dim: 66),
+            edge("31AE48D6-4298-421B-BE4F-27974F959FE2", "49EB52D6-28C0-47A8-84E8-9009FE8A85A0", "E8C262FD-081D-4617-BC9F-FC4D2554F017", dim: 18),
+            edge("9E0337D1-1AB9-49EF-8042-1B5E0F87E969", "95EB0302-244C-4BDC-B639-DCD4F0B40B6E", "1F45EE10-1BAA-4A09-B848-850C20394322", dim: 36),
+            edge("7B91B112-54A5-48D7-92FF-A19869B21F0D", "1F45EE10-1BAA-4A09-B848-850C20394322", "2CFFDE64-FA51-4D2C-80A6-BEE5447B6A4A", dim: 78),
+            edge("232924E5-8EE3-4F61-9A10-427F3AABF30B", "E8C262FD-081D-4617-BC9F-FC4D2554F017", "187AF134-849A-4231-A7D1-FAE177E97E18", dim: 18),
+            edge("F6FCB95B-1124-4307-B2EC-21618AAC4EC3", "187AF134-849A-4231-A7D1-FAE177E97E18", "E7DA228A-CBDE-486B-947C-922BEFE1EE70", dim: 144),
+            edge("4A958E9F-1969-4AA1-8822-AC1A20D4A035", "E7DA228A-CBDE-486B-947C-922BEFE1EE70", "2D7C5BDD-EF0A-4233-A5B9-EE3B523A4A09", dim: 24),
+            edge("C3ACE162-9199-4968-8A26-3A07DB56F1B3", "2D7C5BDD-EF0A-4233-A5B9-EE3B523A4A09", "6CF06C30-083C-48B4-A0E2-689DA2C55848", dim: 96),
+            edge("988C36C0-D25E-4921-8FB3-3DCAF484E93B", "6CF06C30-083C-48B4-A0E2-689DA2C55848", "72499BA4-8F0A-4E28-84F2-DC594359C614", dim: 120, type: .houseEdge),
+            edge("44EA3162-0E6D-46FB-840C-4A8007D1A0FC", "2CFFDE64-FA51-4D2C-80A6-BEE5447B6A4A", "72499BA4-8F0A-4E28-84F2-DC594359C614", dim: 240),
+        ]
+        data.footprint.isClosed = true
+        return data
+    }
+
+    private static func edge(
+        _ id: String,
+        _ s: String,
+        _ e: String,
+        dim: Double,
+        type: EdgeType = .deckEdge,
+        rail: RailingType? = nil
+    ) -> DeckEdge {
         var edge = DeckEdge(id: id, startVertexId: s, endVertexId: e)
         edge.dimension = dim
+        edge.dimensionSource = .scale
+        edge.edgeType = type
         if let rail { edge.railingConfig = RailingConfig(railingType: rail, maxPostSpacing: 48) }
         return edge
     }

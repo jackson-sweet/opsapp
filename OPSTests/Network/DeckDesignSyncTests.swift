@@ -296,6 +296,83 @@ final class DeckDesignSyncTests: XCTestCase {
         XCTAssertFalse(dto.drawingData.vertices.isEmpty)
     }
 
+    func test_SupabaseDeckDesignDTO_roundTripPreservesFramingAndFutureDrawingBlock() throws {
+        let payload = """
+        {
+          "id": "ad67d5c4-ab64-4c29-b01f-2e426dc53992",
+          "company_id": "a612edc0-5c18-4c4d-af97-55b9410dd077",
+          "project_id": "fd7a25b0-3349-4c8c-8f83-92fc59985420",
+          "opportunity_id": null,
+          "title": "Framed deck",
+          "drawing_data": {
+            "schemaVersion": 2,
+            "vertices": [],
+            "edges": [],
+            "framing": {
+              "members": [
+                {
+                  "levelId": "",
+                  "members": [
+                    {
+                      "id": "beam-1",
+                      "role": "beam",
+                      "start": [0, 120],
+                      "end": [144, 120],
+                      "nominalSize": "2x10",
+                      "plyCount": 2,
+                      "spacingInchesOC": 24,
+                      "species": "spf",
+                      "grade": "no2",
+                      "sizing": {"outcome":"pass","utilization":0.75},
+                      "locked": true
+                    }
+                  ]
+                }
+              ],
+              "loadPreset": {
+                "liveLoadPSF": 40,
+                "deadLoadPSF": 10,
+                "snowLoadPSF": 25,
+                "species": "spf",
+                "grade": "no2"
+              },
+              "generationSource": "manual",
+              "generatedAtSchemaVersion": 2
+            },
+            "futureDisplay": {
+              "enabled": true,
+              "mode": "inspection",
+              "threshold": 0.25
+            }
+          },
+          "thumbnail_url": null,
+          "version": 4,
+          "created_by": null,
+          "created_at": "2026-07-17T12:00:00Z",
+          "updated_at": "2026-07-17T12:30:00Z",
+          "deleted_at": null
+        }
+        """
+
+        let inboundObject = try DeckJSONValue.parseObject(from: payload)
+        guard case .object(let inboundDrawing)? = inboundObject["drawing_data"] else {
+            return XCTFail("Fixture drawing_data must be an object")
+        }
+
+        let inboundDTO = try JSONDecoder().decode(SupabaseDeckDesignDTO.self, from: Data(payload.utf8))
+        let localModel = inboundDTO.toModel()
+        let outboundDTO = SupabaseDeckDesignDTO.fromModel(localModel)
+        let outboundData = try JSONEncoder().encode(outboundDTO)
+        let outboundJSON = try XCTUnwrap(String(data: outboundData, encoding: .utf8))
+        let outboundObject = try DeckJSONValue.parseObject(from: outboundJSON)
+        guard case .object(let outboundDrawing)? = outboundObject["drawing_data"] else {
+            return XCTFail("Encoded drawing_data must be an object")
+        }
+
+        XCTAssertEqual(outboundDrawing["framing"], inboundDrawing["framing"])
+        XCTAssertEqual(outboundDrawing["futureDisplay"], inboundDrawing["futureDisplay"])
+    }
+
     func test_DeckFootprint_decodesLegacyNumericClosedState() throws {
         let openPayload = #"{"assignedItems":[],"isClosed":0}"#
         let closedPayload = #"{"assignedItems":[],"isClosed":1}"#

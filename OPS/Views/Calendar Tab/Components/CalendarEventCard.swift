@@ -9,6 +9,31 @@ import SwiftUI
 
 enum DayPosition { case start, middle, end, single }
 
+/// Host-supplied quick actions rendered *inside* the card's single context menu.
+///
+/// Bug 75318af9 — the day canvas used to stack its own `.contextMenu` (Push /
+/// Extend / Cascade / Reschedule) on top of a card that already carried its own
+/// `.contextMenu`. Two context menus on one view: the inner one shadowed the
+/// outer, so the quick actions silently vanished on long-press. The card is now
+/// the *single* owner of its menu — the day canvas injects its actions here
+/// instead of wrapping the card in a second menu, so there is exactly one
+/// long-press menu and nothing can shadow it.
+///
+/// `nil` everywhere except the day canvas: the day-events sheet and month
+/// day-detail render the card's default Reschedule / Update-status menu.
+struct ScheduleCardQuickActions {
+    /// Push (or pull) the task by N days. `days` is the signed offset.
+    let onPush: (Int) -> Void
+    /// Extend the task's span by N days (moves the end, keeps the start).
+    let onExtend: (Int) -> Void
+    /// Push the task by N days AND cascade dependent / crew-shared work.
+    let onCascade: (Int) -> Void
+    /// Open the scheduler sheet to pick a new date.
+    let onReschedule: () -> Void
+    /// Enter bulk-select mode with this task selected.
+    let onSelect: () -> Void
+}
+
 struct CalendarEventCard: View {
     let task: ProjectTask
     let isFirst: Bool
@@ -20,6 +45,11 @@ struct CalendarEventCard: View {
     /// surface). nil elsewhere → the card isn't draggable in that context.
     let dragPayload: RescheduleDragPayload?
     let dragSession: ScheduleDragSession?
+    /// Quick actions injected by the day canvas. When set, the card's single
+    /// context menu becomes the rich Push / Extend / Cascade / Reschedule menu
+    /// (schedulers) or Update-status / Select (crew) — see `ScheduleCardQuickActions`.
+    /// nil elsewhere → the default Reschedule / Update-status menu.
+    let hostQuickActions: ScheduleCardQuickActions?
     @EnvironmentObject private var dataController: DataController
     @EnvironmentObject private var permissionStore: PermissionStore
     @State private var showingReschedule = false
@@ -38,6 +68,7 @@ struct CalendarEventCard: View {
          dayPosition: DayPosition = .single, showLabels: Bool = true,
          dragPayload: RescheduleDragPayload? = nil,
          dragSession: ScheduleDragSession? = nil,
+         hostQuickActions: ScheduleCardQuickActions? = nil,
          onTap: @escaping () -> Void) {
         self.task = task
         self.isFirst = isFirst
@@ -46,6 +77,7 @@ struct CalendarEventCard: View {
         self.showLabels = showLabels
         self.dragPayload = dragPayload
         self.dragSession = dragSession
+        self.hostQuickActions = hostQuickActions
         self.onTap = onTap
     }
 
@@ -227,8 +259,72 @@ struct CalendarEventCard: View {
             enabled: canModify,
             onCommit: { resizeTaskSpan(to: $0) }
         )
+        // Single context menu — the card is the sole owner (bug 75318af9). When the
+        // day canvas injects quick actions, this becomes the rich Push / Extend /
+        // Cascade / Reschedule menu; everywhere else it's the default Reschedule /
+        // Update-status menu. Never stack a second `.contextMenu` on this card.
         .contextMenu {
-            if canModify {
+            if let quickActions = hostQuickActions {
+                if canModify {
+                    Section("Push") {
+                        Button { quickActions.onPush(1) } label: {
+                            Label("+1 Day", systemImage: "arrow.right")
+                        }
+                        Button { quickActions.onPush(2) } label: {
+                            Label("+2 Days", systemImage: "arrow.right")
+                        }
+                        Button { quickActions.onPush(3) } label: {
+                            Label("+3 Days", systemImage: "arrow.right")
+                        }
+                        Button { quickActions.onPush(7) } label: {
+                            Label("+1 Week", systemImage: "arrow.right.to.line")
+                        }
+                    }
+
+                    Section("Extend") {
+                        Button { quickActions.onExtend(1) } label: {
+                            Label("+1 Day", systemImage: "arrow.right.and.line.vertical.and.arrow.left")
+                        }
+                        Button { quickActions.onExtend(2) } label: {
+                            Label("+2 Days", systemImage: "arrow.right.and.line.vertical.and.arrow.left")
+                        }
+                        Button { quickActions.onExtend(3) } label: {
+                            Label("+3 Days", systemImage: "arrow.right.and.line.vertical.and.arrow.left")
+                        }
+                        Button { quickActions.onExtend(7) } label: {
+                            Label("+1 Week", systemImage: "arrow.right.and.line.vertical.and.arrow.left")
+                        }
+                    }
+
+                    Section("Cascade") {
+                        Button { quickActions.onCascade(1) } label: {
+                            Label("+1 Day (+ crew)", systemImage: "arrow.triangle.branch")
+                        }
+                        Button { quickActions.onCascade(2) } label: {
+                            Label("+2 Days (+ crew)", systemImage: "arrow.triangle.branch")
+                        }
+                    }
+
+                    Section {
+                        Button { quickActions.onReschedule() } label: {
+                            Label("Reschedule...", systemImage: "calendar")
+                        }
+                        Button { quickActions.onSelect() } label: {
+                            Label("Select", systemImage: "checkmark.circle")
+                        }
+                    }
+                } else {
+                    // Crew / Unassigned: no schedule mutation — status + bulk-select only.
+                    Button {
+                        showingStatusPicker = true
+                    } label: {
+                        Label("Update status", systemImage: "circle.dashed")
+                    }
+                    Button { quickActions.onSelect() } label: {
+                        Label("Select", systemImage: "checkmark.circle")
+                    }
+                }
+            } else if canModify {
                 Button {
                     showingReschedule = true
                 } label: {

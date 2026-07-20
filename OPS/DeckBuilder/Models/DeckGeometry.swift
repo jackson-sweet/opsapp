@@ -856,6 +856,7 @@ struct DeckDrawingData: Codable {
         try c.encode(levelConnections, forKey: .levelConnections)
         try c.encodeIfPresent(components, forKey: .components)
         try c.encodeIfPresent(materialsSettings, forKey: .materialsSettings)
+        try c.encodeIfPresent(vinylOrderSettings, forKey: .vinylOrderSettings)
         try c.encodeIfPresent(orderedMaterials, forKey: .orderedMaterials)
 
         var dynamic = encoder.container(keyedBy: DeckJSONCodingKey.self)

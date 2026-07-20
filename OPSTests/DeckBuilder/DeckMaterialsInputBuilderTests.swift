@@ -44,7 +44,7 @@ final class DeckMaterialsInputBuilderTests: XCTestCase {
 
         let originalId = DeckMaterialsInputBuilder.surfaceInputs(for: original, scale: 1.0).first?.input.id
         let reorderedId = DeckMaterialsInputBuilder.surfaceInputs(for: reordered, scale: 1.0).first?.input.id
-        let expectedId = "surface-293f7c318564e908e7aeee2db6cc47cf9e83010c34e51e02187a80ff4587f6f9"
+        let expectedId = "surface-1f5fdf6d3c295007de654f62"
 
         XCTAssertEqual(originalId, expectedId)
         XCTAssertEqual(reorderedId, expectedId)

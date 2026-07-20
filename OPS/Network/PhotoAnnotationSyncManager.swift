@@ -90,8 +90,12 @@ class PhotoAnnotationSyncManager {
 
     // MARK: - Save Annotation
 
-    /// Render the drawing to a transparent PNG, upload to S3, and save the record.
-    /// Falls back to storing drawing data locally for offline sync.
+    /// Save the CURRENT USER'S OWN markup layer. Renders the PencilKit drawing to a
+    /// transparent overlay PNG (peers' base) + uploads the editable stroke blob,
+    /// then merges the layer into the shared anchor row SERVER-SIDE via
+    /// upsert_markup_layer (per-author, atomic — never a wholesale overwrite that
+    /// would drop a peer's layer). An empty drawing routes to an author-scoped
+    /// clear. Upload/RPC failures queue the layer locally (needsSync) for the sweep.
     func saveAnnotation(
         drawing: PKDrawing,
         note: String,
@@ -100,272 +104,271 @@ class PhotoAnnotationSyncManager {
         projectId: String,
         companyId: String,
         authorId: String,
+        authorName: String,
         existingAnnotationId: String?,
         modelContext: ModelContext
     ) async throws -> PhotoAnnotation {
-        // Render drawing to transparent PNG
         let pngData = renderDrawingToPNG(drawing: drawing, size: imageSize)
 
-        // Cleared to empty. `renderDrawingToPNG` returns nil when the drawing
-        // has no strokes, so falling through to the upload path would keep the
-        // OLD overlay URL on an existing row (the markup stays visible — the
-        // reported bug) or write a junk empty row on a new one. Treat an empty
-        // save as "remove the markup".
-        if pngData == nil {
-            return try await applyEmptyDrawingClear(
+        // Empty drawing -> author-scoped clear (never clobbers a peer's layer).
+        guard let pngData else {
+            return try await applyAuthorScopedClear(
                 existingAnnotationId: existingAnnotationId,
                 photoURL: photoURL,
                 projectId: projectId,
                 companyId: companyId,
                 authorId: authorId,
+                authorName: authorName,
                 modelContext: modelContext
             )
         }
 
-        // Try to upload to S3
-        var annotationURL: String? = nil
-        if let pngData = pngData {
-            do {
-                annotationURL = try await uploadAnnotationPNG(
-                    data: pngData,
-                    projectId: projectId,
-                    companyId: companyId
-                )
-            } catch {
-                // Auto-bug-reporting (May-12 follow-up): a permanent 4xx
-                // on the presigned-URL flow means the user's annotation
-                // will queue locally forever and never reach S3. We need
-                // to know. Transient errors fall through to the local-save
-                // fallback below — needsSync stays true so the cross-session
-                // sweeper can pick it up later.
-                await AutoBugReporter.shared.reportIfPermanent(
-                    error,
-                    screen: "PhotoAnnotationSyncManager.uploadAnnotationPNG",
-                    suspectedFile: "PhotoAnnotationSyncManager.swift",
-                    summary: "Annotation PNG S3 upload failed for project \(projectId): \(error.localizedDescription)",
-                    metadata: [
-                        "project_id": projectId,
-                        "company_id": companyId,
-                        "byte_count": pngData.count
-                    ]
-                )
-                DebugLogger.shared.log(
-                    "Annotation PNG upload failed, saving locally: \(error)",
-                    level: .warning,
-                    category: "PhotoAnnotationSyncManager"
-                )
-            }
+        // Upload the overlay PNG (the peers' base) + the editable stroke blob.
+        // Best effort — a failure leaves both nil and queues the layer locally.
+        var overlayURL: String?
+        var strokeRef: String?
+        do {
+            overlayURL = try await uploadAnnotationPNG(data: pngData, projectId: projectId, companyId: companyId)
+            strokeRef = try? await MarkupStrokeStore.uploadStroke(drawing, projectId: projectId, companyId: companyId)
+        } catch {
+            await AutoBugReporter.shared.reportIfPermanent(
+                error,
+                screen: "PhotoAnnotationSyncManager.uploadAnnotationPNG",
+                suspectedFile: "PhotoAnnotationSyncManager.swift",
+                summary: "Annotation PNG S3 upload failed for project \(projectId): \(error.localizedDescription)",
+                metadata: ["project_id": projectId, "company_id": companyId, "byte_count": pngData.count]
+            )
+            DebugLogger.shared.log("Annotation PNG upload failed, saving locally: \(error)",
+                                   level: .warning, category: "PhotoAnnotationSyncManager")
         }
 
+        let now = Date()
         let repository = PhotoAnnotationRepository(companyId: companyId)
 
-        if let existingId = existingAnnotationId {
-            if let annotationURL {
-                try await repository.updateAnnotation(existingId, annotationUrl: annotationURL, note: note)
-            }
-
-            // Update local model
-            let descriptor = FetchDescriptor<PhotoAnnotation>(predicate: #Predicate { $0.id == existingId })
-            if let existing = try? modelContext.fetch(descriptor).first {
-                if let annotationURL {
-                    // The repository update above succeeded — reset retry hygiene.
-                    noteSyncSuccess(existing)
-                    existing.annotationURL = annotationURL
-                }
-                existing.note = note
-                existing.updatedAt = Date()
-                existing.localDrawingData = drawing.dataRepresentation()
-                existing.lastSyncedAt = Date()
-                existing.needsSync = annotationURL == nil
-                try? modelContext.save()
-
-                // Cache overlay PNG locally for instant compositing on next load
-                if let pngData = pngData {
-                    _ = ImageFileManager.shared.saveImage(data: pngData, localID: "overlay_\(existingId)")
-                }
-
-                if annotationURL != nil {
-                    // Invalidate the now-stale durable composite so preComposite
-                    // regenerates it from the freshly-uploaded overlay rather
-                    // than serving the pre-edit markup from disk.
-                    ImageFileManager.shared.deleteCompositedImage(forURL: photoURL)
-                    await preCompositeAnnotations(projectId: projectId, modelContext: modelContext)
-                }
-
-                return existing
-            }
-
-            let model = PhotoAnnotation(
-                id: existingId,
-                projectId: projectId,
-                companyId: companyId,
-                photoURL: photoURL,
-                authorId: authorId
-            )
-            model.annotationURL = annotationURL
-            model.note = note
-            model.updatedAt = Date()
-            model.localDrawingData = drawing.dataRepresentation()
-            model.lastSyncedAt = Date()
-            model.needsSync = annotationURL == nil
-            modelContext.insert(model)
-            try? modelContext.save()
-
-            if let pngData = pngData {
-                _ = ImageFileManager.shared.saveImage(data: pngData, localID: "overlay_\(existingId)")
-            }
-
-            if annotationURL != nil {
-                ImageFileManager.shared.deleteCompositedImage(forURL: photoURL)
-                await preCompositeAnnotations(projectId: projectId, modelContext: modelContext)
-            }
-
-            return model
-        }
-
-        // Create new annotation
-        let dto = UpsertPhotoAnnotationDTO(
-            projectId: projectId,
-            companyId: companyId,
-            photoUrl: photoURL,
-            annotationUrl: annotationURL,
-            note: note,
-            authorId: authorId
+        // Resolve / create the shared anchor row (first-creation requires network).
+        let anchor = try await resolveAnchorRow(
+            existingAnnotationId: existingAnnotationId, photoURL: photoURL,
+            projectId: projectId, companyId: companyId, authorId: authorId,
+            note: note, overlayURL: overlayURL, repository: repository, modelContext: modelContext
         )
 
-        let created = try await repository.create(dto)
-        let model = created.toModel()
-        model.localDrawingData = drawing.dataRepresentation()
-        model.lastSyncedAt = Date()
-        model.needsSync = annotationURL == nil
-        modelContext.insert(model)
+        // Build this user's layer + change event.
+        let priorOwn = anchor.ownLayer(userId: authorId)
+        let zIndex = priorOwn?.zIndex ?? ((anchor.layers.map(\.zIndex).max() ?? -1) + 1)
+        let layer = MarkupLayer(
+            layerId: authorId, authorId: authorId, authorName: authorName,
+            overlayUrl: overlayURL, strokeRef: strokeRef, visibleDefault: true,
+            zIndex: zIndex, strokeCount: drawing.strokes.count,
+            createdAt: priorOwn?.createdAt ?? now, updatedAt: now, clearedAt: nil
+        )
+        let event = MarkupChangeEvent(
+            authorId: authorId, authorName: authorName,
+            action: priorOwn == nil ? .added : .edited,
+            strokeDelta: drawing.strokes.count, at: now
+        )
+
+        anchor.note = note
+        anchor.localDrawingData = drawing.dataRepresentation()
+
+        if overlayURL != nil {
+            // Online: merge the layer server-side, then take the merged row.
+            do {
+                let dto = try await repository.upsertLayer(annotationId: anchor.id, layer: layer, changeEvent: event)
+                applyServerRow(dto, to: anchor)
+                // The RPC write landed — reset permanent-failure hygiene.
+                noteSyncSuccess(anchor)
+                if !ProjectPhotoAnnotationDeletePlanner.isLocalOnlyAnnotationID(anchor.id) {
+                    try? await repository.updateNote(anchor.id, note: note)
+                }
+                anchor.needsSync = false
+                anchor.lastSyncedAt = now
+            } catch {
+                mergeLocalLayer(layer, event: event, into: anchor)
+                anchor.needsSync = true
+                let kind = await AutoBugReporter.shared.reportIfPermanent(
+                    error,
+                    screen: "PhotoAnnotationSyncManager.upsertLayer",
+                    suspectedFile: "PhotoAnnotationSyncManager.swift",
+                    summary: "Markup layer upsert failed for \(anchor.id): \(error.localizedDescription)",
+                    metadata: ["annotation_id": anchor.id, "project_id": projectId, "company_id": companyId]
+                )
+                notePermanentFailure(anchor, kind: kind)
+            }
+        } else {
+            // Offline / upload failed: queue the layer locally for the sweep.
+            mergeLocalLayer(layer, event: event, into: anchor)
+            anchor.needsSync = true
+        }
+
         try? modelContext.save()
 
-        // Cache overlay PNG locally for instant compositing on next load
-        if let pngData = pngData {
-            _ = ImageFileManager.shared.saveImage(data: pngData, localID: "overlay_\(created.id)")
+        // Cache the own overlay by URL + refresh the gallery composite.
+        if let url = overlayURL {
+            _ = ImageFileManager.shared.saveImage(data: pngData, localID: MarkupOverlayCompositor.overlayCacheID(forURL: url))
         }
+        ImageFileManager.shared.deleteCompositedImage(forURL: photoURL)
+        await preCompositeAnnotations(projectId: projectId, modelContext: modelContext)
 
-        if annotationURL != nil {
-            ImageFileManager.shared.deleteCompositedImage(forURL: photoURL)
-            await preCompositeAnnotations(projectId: projectId, modelContext: modelContext)
+        return anchor
+    }
+
+    /// Return the shared anchor PhotoAnnotation for this photo, creating it (remote
+    /// insert + local insert) when none exists. First-creation requires network —
+    /// offline throws, matching the pre-collab behaviour (offline EDITS still queue).
+    private func resolveAnchorRow(
+        existingAnnotationId: String?, photoURL: String, projectId: String,
+        companyId: String, authorId: String, note: String, overlayURL: String?,
+        repository: PhotoAnnotationRepository, modelContext: ModelContext
+    ) async throws -> PhotoAnnotation {
+        if let id = existingAnnotationId {
+            let descriptor = FetchDescriptor<PhotoAnnotation>(predicate: #Predicate { $0.id == id })
+            if let existing = try? modelContext.fetch(descriptor).first { return existing }
         }
-
+        let dto = UpsertPhotoAnnotationDTO(
+            projectId: projectId, companyId: companyId, photoUrl: photoURL,
+            annotationUrl: overlayURL, note: note, authorId: authorId
+        )
+        let created = try await repository.create(dto)
+        let model = created.toModel()
+        model.lastSyncedAt = Date()
+        modelContext.insert(model)
         return model
     }
 
-    // MARK: - Cleared Drawing
+    /// Take the server's merged row wholesale after our own RPC write (authoritative).
+    private func applyServerRow(_ dto: PhotoAnnotationDTO, to model: PhotoAnnotation) {
+        model.layersData = dto.layersData
+        model.changeLogData = dto.changeLogData
+        model.annotationURL = dto.annotationUrl
+        model.beforeSnapshotURL = dto.beforeSnapshotUrl
+        model.afterSnapshotURL = dto.afterSnapshotUrl
+        model.deletedAt = dto.deletedAt.flatMap { SupabaseDate.parse($0) }
+        model.updatedAt = dto.updatedAt.flatMap { SupabaseDate.parse($0) } ?? Date()
+    }
 
-    /// Handle a save whose drawing is empty (the user tapped CLEAR, then DONE).
-    /// Reverts the photo to its raw original and, for a pure PencilKit
-    /// annotation, soft-deletes the row so the markup disappears on teammates'
-    /// devices too. A dimensioned capture is preserved (its markup is the
-    /// dimensions, shown via the rendered deliverable — not the source overlay).
-    private func applyEmptyDrawingClear(
+    /// Merge the current user's layer into the LOCAL row (offline path): promote a
+    /// legacy single overlay into its author's layer first (mirrors the RPC seed),
+    /// replace/append the caller's layer, append the event, and recompute the
+    /// legacy scalar + the author-scoped soft-delete state.
+    private func mergeLocalLayer(_ layer: MarkupLayer, event: MarkupChangeEvent, into model: PhotoAnnotation) {
+        var base = model.effectiveMarkupLayers()
+        base.removeAll { $0.layerId == layer.layerId }
+        base.append(layer)
+        model.layers = base.sorted { $0.zIndex < $1.zIndex }
+
+        var log = model.changeLog
+        log.append(event)
+        model.changeLog = log
+
+        model.annotationURL = MarkupLayerMerge.primaryOverlay(model.layers)
+        if MarkupLayerMerge.allCleared(model.layers) && model.dimensionsData == nil {
+            model.deletedAt = Date()
+        } else {
+            model.deletedAt = nil
+        }
+        model.updatedAt = Date()
+    }
+
+    // MARK: - Author-scoped Clear (HARD CORRECTION 3)
+
+    /// Handle a save whose drawing is empty (CLEAR then DONE). Clears ONLY the
+    /// current user's layer via the RPC (sets their `clearedAt`); the whole row
+    /// soft-deletes server-side only when that was the last active layer and no
+    /// dimensioned capture remains. Opening a PEER's row and tapping DONE with no
+    /// marks of your own is a no-op — it never deletes the peer's layer/row.
+    private func applyAuthorScopedClear(
         existingAnnotationId: String?,
         photoURL: String,
         projectId: String,
         companyId: String,
         authorId: String,
+        authorName: String,
         modelContext: ModelContext
     ) async throws -> PhotoAnnotation {
         let existing: PhotoAnnotation? = existingAnnotationId.flatMap { id in
             let descriptor = FetchDescriptor<PhotoAnnotation>(predicate: #Predicate { $0.id == id })
             return try? modelContext.fetch(descriptor).first
         }
-
+        let layers = existing?.effectiveMarkupLayers() ?? []
         let action = AnnotationClearPlanner.plan(
             existingAnnotationId: existingAnnotationId,
-            hasDimensions: existing?.dimensionsData != nil
+            hasDimensions: existing?.dimensionsData != nil,
+            layers: layers,
+            currentUserId: authorId
         )
 
+        func placeholder() -> PhotoAnnotation {
+            PhotoAnnotation(projectId: projectId, companyId: companyId, photoURL: photoURL, authorId: authorId)
+        }
+
         switch action {
-        case .ignore:
-            // Nothing was ever saved — don't create an empty row. Return a
-            // transient, un-persisted placeholder; callers ignore the result.
-            return PhotoAnnotation(
-                projectId: projectId,
-                companyId: companyId,
-                photoURL: photoURL,
-                authorId: authorId
-            )
+        case .ignore, .preserveDimensioned:
+            // Nothing of the current user's to clear (or a dimensioned row with no
+            // own layer). Leave every layer — including peers' — untouched.
+            return existing ?? placeholder()
 
-        case .preserveDimensioned:
-            // Keep the dimensioned row + its dimensions intact.
-            return existing ?? PhotoAnnotation(
-                projectId: projectId,
-                companyId: companyId,
-                photoURL: photoURL,
-                authorId: authorId
-            )
-
-        case .softDelete:
-            guard let existingId = existingAnnotationId else {
-                return PhotoAnnotation(projectId: projectId, companyId: companyId, photoURL: photoURL, authorId: authorId)
-            }
+        case .clearOwnLayer, .softDelete:
+            guard let existing, let id = existingAnnotationId else { return placeholder() }
             let now = Date()
-            if let existing {
-                existing.deletedAt = now
-                existing.updatedAt = now
+            let prior = existing.ownLayer(userId: authorId) ?? layers.first { $0.authorId == authorId }
+            let cleared = MarkupLayer(
+                layerId: authorId, authorId: authorId, authorName: authorName,
+                overlayUrl: nil, strokeRef: nil, visibleDefault: true,
+                zIndex: prior?.zIndex ?? 0, strokeCount: 0,
+                createdAt: prior?.createdAt ?? now, updatedAt: now, clearedAt: now
+            )
+            let event = MarkupChangeEvent(authorId: authorId, authorName: authorName, action: .cleared, strokeDelta: nil, at: now)
+            let repository = PhotoAnnotationRepository(companyId: companyId)
+
+            if ProjectPhotoAnnotationDeletePlanner.isLocalOnlyAnnotationID(id) {
+                mergeLocalLayer(cleared, event: event, into: existing)
                 existing.localDrawingData = nil
-                existing.needsSync = ProjectPhotoAnnotationDeletePlanner.shouldMarkNeedsSyncAfterLocalDelete(
-                    annotationID: existingId
-                )
-                try? modelContext.save()
-            }
-
-            // Drop the local overlay cache + durable composite, and revert the
-            // in-memory display to the raw original so mounted thumbnails/viewers
-            // listening for .annotationsComposited shed the markup immediately.
-            _ = ImageFileManager.shared.deleteImage(localID: "overlay_\(existingId)")
-            ImageFileManager.shared.deleteCompositedImage(forURL: photoURL)
-            let cacheKey = photoURL.hasPrefix("//") ? "https:" + photoURL : photoURL
-            if let raw = ImageFileManager.shared.loadImage(localID: cacheKey) {
-                ImageCache.shared.set(raw, forKey: cacheKey)
+                existing.needsSync = true
             } else {
-                ImageCache.shared.remove(forKey: cacheKey)
-            }
-            NotificationCenter.default.post(name: .annotationsComposited, object: nil)
-
-            // Best-effort remote soft-delete. Local-only ids never reached the
-            // server; the needsSync sweeper retries the rest if this fails.
-            if !ProjectPhotoAnnotationDeletePlanner.isLocalOnlyAnnotationID(existingId) {
                 do {
-                    try await PhotoAnnotationRepository(companyId: companyId).softDelete(existingId)
-                    if let existing {
-                        noteSyncSuccess(existing)
-                        existing.needsSync = false
-                        existing.lastSyncedAt = Date()
-                        try? modelContext.save()
-                    }
+                    let dto = try await repository.upsertLayer(annotationId: id, layer: cleared, changeEvent: event)
+                    applyServerRow(dto, to: existing)
+                    // The RPC write landed — reset permanent-failure hygiene.
+                    noteSyncSuccess(existing)
+                    existing.localDrawingData = nil
+                    existing.needsSync = false
+                    existing.lastSyncedAt = now
                 } catch {
+                    mergeLocalLayer(cleared, event: event, into: existing)
+                    existing.localDrawingData = nil
+                    existing.needsSync = true
                     let kind = await AutoBugReporter.shared.reportIfPermanent(
                         error,
-                        screen: "PhotoAnnotationSyncManager.applyEmptyDrawingClear",
+                        screen: "PhotoAnnotationSyncManager.applyAuthorScopedClear",
                         suspectedFile: "PhotoAnnotationSyncManager.swift",
-                        summary: "Cleared-annotation soft-delete failed for \(existingId): \(error.localizedDescription)",
-                        metadata: [
-                            "annotation_id": existingId,
-                            "project_id": projectId,
-                            "company_id": companyId
-                        ]
+                        summary: "Cleared-layer upsert failed for \(id): \(error.localizedDescription)",
+                        metadata: ["annotation_id": id, "project_id": projectId, "company_id": companyId]
                     )
-                    if let existing {
-                        notePermanentFailure(existing, kind: kind)
-                        try? modelContext.save()
-                    }
-                    DebugLogger.shared.log(
-                        "Cleared-annotation soft-delete failed for \(existingId): \(error)",
-                        level: .warning,
-                        category: "PhotoAnnotationSyncManager"
-                    )
+                    notePermanentFailure(existing, kind: kind)
                 }
             }
+            try? modelContext.save()
 
-            if let existing { return existing }
-            let placeholder = PhotoAnnotation(id: existingId, projectId: projectId, companyId: companyId, photoURL: photoURL, authorId: authorId)
-            placeholder.deletedAt = now
-            return placeholder
+            // Drop my cached overlay; if the whole row is now soft-deleted, revert
+            // the display to the raw original, else re-composite the survivors.
+            if let url = prior?.overlayUrl {
+                _ = ImageFileManager.shared.deleteImage(localID: MarkupOverlayCompositor.overlayCacheID(forURL: url))
+            }
+            _ = ImageFileManager.shared.deleteImage(localID: "overlay_\(id)")
+            ImageFileManager.shared.deleteCompositedImage(forURL: photoURL)
+
+            if existing.deletedAt != nil {
+                let cacheKey = photoURL.hasPrefix("//") ? "https:" + photoURL : photoURL
+                if let raw = ImageFileManager.shared.loadImage(localID: cacheKey) {
+                    ImageCache.shared.set(raw, forKey: cacheKey)
+                } else {
+                    ImageCache.shared.remove(forKey: cacheKey)
+                }
+                NotificationCenter.default.post(name: .annotationsComposited, object: nil)
+            } else {
+                await preCompositeAnnotations(projectId: projectId, modelContext: modelContext)
+            }
+            return existing
         }
     }
 
@@ -506,30 +509,26 @@ class PhotoAnnotationSyncManager {
             // image, so cache misses must fall through to the source URL.
             guard let baseImage = await loadBaseImage(for: plan) else { continue }
 
-            // Load overlay from local cache or download
-            let overlayKey = plan.overlayLocalID(annotationId: annotation.id)
-            var overlayImage: UIImage?
-
-            if let cached = ImageFileManager.shared.loadImage(localID: overlayKey) {
-                overlayImage = cached
-            } else {
-                if let (data, _) = try? await URLSession.shared.data(from: plan.overlayRemoteURL),
-                   let downloaded = UIImage(data: data) {
-                    overlayImage = downloaded
-                    if let pngData = downloaded.pngData() {
-                        _ = ImageFileManager.shared.saveImage(data: pngData, localID: overlayKey)
-                    }
+            // Composite the photo + EVERY active layer's overlay (collaborative
+            // markup) so a thumbnail shows all authors' marks — not just the legacy
+            // single overlay. effectiveMarkupLayers() also covers pre-collab rows
+            // (one synthesized layer from annotation_url), so this one path serves
+            // both. Cached per-overlay by URL via the shared compositor.
+            let activeLayers = annotation.effectiveMarkupLayers()
+                .filter { $0.isActive }
+                .sorted { $0.zIndex < $1.zIndex }
+            var overlays: [UIImage] = []
+            for layer in activeLayers {
+                if let image = await MarkupOverlayCompositor.loadOverlay(for: layer) {
+                    overlays.append(image)
                 }
             }
-
-            guard let overlay = overlayImage else { continue }
+            guard !overlays.isEmpty else { continue }
 
             let originalSize = baseImage.size
-            let renderer = UIGraphicsImageRenderer(size: originalSize)
-            let composited = renderer.image { _ in
-                baseImage.draw(in: CGRect(origin: .zero, size: originalSize))
-                overlay.draw(in: CGRect(origin: .zero, size: originalSize))
-            }
+            guard let composited = MarkupOverlayCompositor.composite(
+                base: baseImage, overlays: overlays, size: originalSize
+            ) else { continue }
 
             ImageCache.shared.set(composited, forKey: cacheKey)
 
@@ -631,7 +630,11 @@ class PhotoAnnotationSyncManager {
 
     // MARK: - Sync Pending
 
-    /// Upload any annotations that were saved locally (offline) and now need to be synced
+    /// Push annotations saved offline (needsSync). The current user's OWN layer is
+    /// merged server-side via upsert_markup_layer — an un-uploaded edit is
+    /// re-rendered + uploaded first; a cleared layer is pushed as-is so the RPC
+    /// re-derives the soft-delete. Pre-collab queued rows (no own layer) keep the
+    /// legacy delete / single-overlay paths.
     func syncPendingAnnotations(modelContext: ModelContext) async {
         let descriptor = FetchDescriptor<PhotoAnnotation>(
             predicate: #Predicate { $0.needsSync == true }
@@ -639,6 +642,8 @@ class PhotoAnnotationSyncManager {
 
         guard let pending = try? modelContext.fetch(descriptor), !pending.isEmpty else { return }
         print("[ANNOTATION SYNC] Found \(pending.count) pending annotations to sync")
+
+        let currentUserId = SupabaseService.shared.currentUserId
 
         for annotation in pending {
             // Park gate: rows the server has permanently rejected
@@ -657,17 +662,72 @@ class PhotoAnnotationSyncManager {
                 }
             }
 
-            if annotation.deletedAt != nil {
-                if ProjectPhotoAnnotationDeletePlanner.isLocalOnlyAnnotationID(annotation.id) {
-                    annotation.needsSync = false
-                    try? modelContext.save()
-                    continue
-                }
+            // Local-only ids never reached the server (offline first-creation isn't
+            // supported) — clear the flag so the queue doesn't spin on them.
+            if ProjectPhotoAnnotationDeletePlanner.isLocalOnlyAnnotationID(annotation.id) {
+                annotation.needsSync = false
+                try? modelContext.save()
+                continue
+            }
 
+            let repo = PhotoAnnotationRepository(companyId: annotation.companyId)
+            let ownLayer = currentUserId.flatMap { uid in annotation.layers.first { $0.layerId == uid } }
+
+            // NEW model — push the current user's own layer through the RPC.
+            if let ownLayer {
                 do {
-                    let repo = PhotoAnnotationRepository(companyId: annotation.companyId)
-                    try await repo.softDelete(annotation.id)
+                    let pushedLayer: MarkupLayer
+                    let event: MarkupChangeEvent
+                    if ownLayer.isActive, ownLayer.overlayUrl == nil, let drawingData = annotation.localDrawingData {
+                        // Un-uploaded edit: re-render, upload overlay + stroke, rebuild.
+                        let drawing = try PKDrawing(data: drawingData)
+                        let size = CGSize(width: 1080, height: 1920)
+                        guard let pngData = renderDrawingToPNG(drawing: drawing, size: size) else { continue }
+                        let overlayURL = try await uploadAnnotationPNG(data: pngData, projectId: annotation.projectId, companyId: annotation.companyId)
+                        let strokeRef = try? await MarkupStrokeStore.uploadStroke(drawing, projectId: annotation.projectId, companyId: annotation.companyId)
+                        _ = ImageFileManager.shared.saveImage(data: pngData, localID: MarkupOverlayCompositor.overlayCacheID(forURL: overlayURL))
+                        pushedLayer = MarkupLayer(
+                            layerId: ownLayer.layerId, authorId: ownLayer.authorId, authorName: ownLayer.authorName,
+                            overlayUrl: overlayURL, strokeRef: strokeRef, visibleDefault: ownLayer.visibleDefault,
+                            zIndex: ownLayer.zIndex, strokeCount: drawing.strokes.count,
+                            createdAt: ownLayer.createdAt, updatedAt: Date(), clearedAt: nil
+                        )
+                        event = MarkupChangeEvent(authorId: ownLayer.authorId, authorName: ownLayer.authorName, action: .edited, strokeDelta: drawing.strokes.count, at: Date())
+                    } else {
+                        // Cleared (or already-uploaded) layer — push as-is.
+                        pushedLayer = ownLayer
+                        event = MarkupChangeEvent(authorId: ownLayer.authorId, authorName: ownLayer.authorName, action: ownLayer.isCleared ? .cleared : .edited, strokeDelta: ownLayer.strokeCount, at: Date())
+                    }
+                    let dto = try await repo.upsertLayer(annotationId: annotation.id, layer: pushedLayer, changeEvent: event)
+                    if !ProjectPhotoAnnotationDeletePlanner.isLocalOnlyAnnotationID(annotation.id) {
+                        try? await repo.updateNote(annotation.id, note: annotation.note)
+                    }
+                    applyServerRow(dto, to: annotation)
+                    // The RPC write landed — reset permanent-failure hygiene.
+                    noteSyncSuccess(annotation)
+                    annotation.needsSync = false
+                    annotation.lastSyncedAt = Date()
+                    try? modelContext.save()
+                    await preCompositeAnnotations(projectId: annotation.projectId, modelContext: modelContext)
+                } catch {
+                    let kind = await AutoBugReporter.shared.reportIfPermanent(
+                        error,
+                        screen: "PhotoAnnotationSyncManager.syncPendingAnnotations",
+                        suspectedFile: "PhotoAnnotationSyncManager.swift",
+                        summary: "Annotation layer retry failed for \(annotation.id): \(error.localizedDescription)",
+                        metadata: ["annotation_id": annotation.id, "project_id": annotation.projectId, "company_id": annotation.companyId]
+                    )
+                    notePermanentFailure(annotation, kind: kind)
+                    try? modelContext.save()
+                    DebugLogger.shared.log("Annotation layer sync retry failed for \(annotation.id): \(error)", level: .warning, category: "PhotoAnnotationSyncManager")
+                }
+                continue
+            }
 
+            // LEGACY fallback — pre-collab queued rows (no own layer).
+            if annotation.deletedAt != nil {
+                do {
+                    try await repo.softDelete(annotation.id)
                     noteSyncSuccess(annotation)
                     annotation.needsSync = false
                     annotation.lastSyncedAt = Date()
@@ -678,39 +738,21 @@ class PhotoAnnotationSyncManager {
                         screen: "PhotoAnnotationSyncManager.syncPendingAnnotations",
                         suspectedFile: "PhotoAnnotationSyncManager.swift",
                         summary: "Annotation delete retry failed for \(annotation.id): \(error.localizedDescription)",
-                        metadata: [
-                            "annotation_id": annotation.id,
-                            "project_id": annotation.projectId,
-                            "company_id": annotation.companyId
-                        ]
+                        metadata: ["annotation_id": annotation.id, "project_id": annotation.projectId, "company_id": annotation.companyId]
                     )
                     notePermanentFailure(annotation, kind: kind)
                     try? modelContext.save()
-                    DebugLogger.shared.log(
-                        "Annotation delete retry failed for \(annotation.id): \(error)",
-                        level: .warning,
-                        category: "PhotoAnnotationSyncManager"
-                    )
+                    DebugLogger.shared.log("Annotation delete retry failed for \(annotation.id): \(error)", level: .warning, category: "PhotoAnnotationSyncManager")
                 }
                 continue
             }
 
             guard let drawingData = annotation.localDrawingData else { continue }
-
             do {
                 let drawing = try PKDrawing(data: drawingData)
-                // Use a reasonable default size for rendering
                 let size = CGSize(width: 1080, height: 1920)
                 guard let pngData = renderDrawingToPNG(drawing: drawing, size: size) else { continue }
-
-                let annotationURL = try await uploadAnnotationPNG(
-                    data: pngData,
-                    projectId: annotation.projectId,
-                    companyId: annotation.companyId
-                )
-
-                // Update remote
-                let repo = PhotoAnnotationRepository(companyId: annotation.companyId)
+                let annotationURL = try await uploadAnnotationPNG(data: pngData, projectId: annotation.projectId, companyId: annotation.companyId)
                 try await repo.updateAnnotation(annotation.id, annotationUrl: annotationURL, note: annotation.note)
 
                 // Update local
@@ -729,19 +771,11 @@ class PhotoAnnotationSyncManager {
                     screen: "PhotoAnnotationSyncManager.syncPendingAnnotations",
                     suspectedFile: "PhotoAnnotationSyncManager.swift",
                     summary: "Annotation retry failed for \(annotation.id): \(error.localizedDescription)",
-                    metadata: [
-                        "annotation_id": annotation.id,
-                        "project_id": annotation.projectId,
-                        "company_id": annotation.companyId
-                    ]
+                    metadata: ["annotation_id": annotation.id, "project_id": annotation.projectId, "company_id": annotation.companyId]
                 )
                 notePermanentFailure(annotation, kind: kind)
                 try? modelContext.save()
-                DebugLogger.shared.log(
-                    "Annotation sync retry failed for \(annotation.id): \(error)",
-                    level: .warning,
-                    category: "PhotoAnnotationSyncManager"
-                )
+                DebugLogger.shared.log("Annotation sync retry failed for \(annotation.id): \(error)", level: .warning, category: "PhotoAnnotationSyncManager")
             }
         }
     }
@@ -816,16 +850,42 @@ enum AnnotationRetryPolicy {
 /// SwiftData or the network.
 enum AnnotationClearPlanner {
     enum Action: Equatable {
-        /// No existing annotation — nothing to remove, don't create an empty row.
+        /// No existing annotation / nothing of the current user's to clear.
         case ignore
         /// Dimensioned capture — preserve the row + its dimensions.
         case preserveDimensioned
-        /// Pure PencilKit annotation — soft-delete the row.
+        /// Pure PencilKit annotation — soft-delete the whole row.
         case softDelete
+        /// Author-scoped — clear only the current user's layer; the row lives on
+        /// because a peer still has an active layer (or it's dimensioned).
+        case clearOwnLayer
     }
 
+    /// Legacy single-author decision (no layers). Retained for the pre-collab
+    /// callers + locked by AnnotationClearPlannerTests.
     static func plan(existingAnnotationId: String?, hasDimensions: Bool) -> Action {
         guard existingAnnotationId != nil else { return .ignore }
         return hasDimensions ? .preserveDimensioned : .softDelete
+    }
+
+    /// Collaborative decision (HARD CORRECTION 3). An empty save clears ONLY the
+    /// current user's layer; the whole-row soft-delete fires only when the last
+    /// active layer is the one being cleared AND there's no dimensioned capture
+    /// to preserve. Opening a PEER's row and tapping DONE with no marks of your
+    /// own resolves to `.ignore` — it must never delete the peer's layer/row.
+    static func plan(
+        existingAnnotationId: String?,
+        hasDimensions: Bool,
+        layers: [MarkupLayer],
+        currentUserId: String
+    ) -> Action {
+        guard existingAnnotationId != nil else { return .ignore }
+        let ownActive = layers.contains { $0.authorId == currentUserId && $0.isActive }
+        if hasDimensions {
+            return ownActive ? .clearOwnLayer : .preserveDimensioned
+        }
+        if !ownActive { return .ignore }
+        let othersActive = layers.contains { $0.authorId != currentUserId && $0.isActive }
+        return othersActive ? .clearOwnLayer : .softDelete
     }
 }

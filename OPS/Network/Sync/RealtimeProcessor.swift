@@ -1965,25 +1965,33 @@ final class RealtimeProcessor: ObservableObject {
             // Annotations don't write SyncOperation rows, so pendingFields
             // can't protect a not-yet-pushed tombstone from a live-row echo —
             // without this guard the pending delete is silently reverted and
-            // never retried (prod 2026-06-24, bugs 452bab04/0415504f).
+            // never retried (prod 2026-06-24, bugs 452bab04/0415504f). The
+            // legacy annotationURL/deletedAt writes moved into
+            // applyInboundMarkup; the guard composes into its flags below.
             let preserveLocalTombstone = PhotoAnnotationMergePolicy.shouldPreserveLocalTombstone(
                 localNeedsSync: existing.needsSync,
                 localDeletedAt: existing.deletedAt,
                 incomingDeletedAt: model.deletedAt
             )
-            if !pendingFields.contains("annotationURL")     { existing.annotationURL = model.annotationURL }
             if !pendingFields.contains("renderedPhotoURL")  { existing.renderedPhotoURL = model.renderedPhotoURL }
             if !pendingFields.contains("note")              { existing.note = model.note }
             if !pendingFields.contains("updatedAt")         { existing.updatedAt = model.updatedAt }
-            if !pendingFields.contains("deletedAt"), !preserveLocalTombstone {
-                existing.deletedAt = model.deletedAt
-            }
             if !pendingFields.contains("dimensions"), let dimensionsData = model.dimensionsData {
                 existing.dimensionsData = dimensionsData
             }
+
+            // Collaborative markup — shared per-layer recency union (see
+            // PhotoAnnotationInboundMarkup), identical across all inbound paths.
+            let unpushedLocalLayer = existing.applyInboundMarkup(
+                model.markupServerState,
+                acceptLegacyAnnotationURL: !pendingFields.contains("annotationURL"),
+                acceptLegacyDeletedAt: !pendingFields.contains("deletedAt"),
+                preserveLocalTombstone: preserveLocalTombstone
+            )
+
             existing.lastSyncedAt = Date()
             if !preserveLocalTombstone {
-                existing.needsSync = false
+                existing.needsSync = unpushedLocalLayer
             }
         } else {
             model.lastSyncedAt = Date()

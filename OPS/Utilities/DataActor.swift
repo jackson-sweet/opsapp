@@ -1424,26 +1424,34 @@ actor DataActor {
             // Annotations don't write SyncOperation rows, so acceptableFields
             // can't protect a not-yet-pushed tombstone from a live-row echo —
             // without this guard the pending delete is silently reverted and
-            // never retried (prod 2026-06-24, bugs 452bab04/0415504f).
+            // never retried (prod 2026-06-24, bugs 452bab04/0415504f). The
+            // legacy annotationURL/deletedAt writes moved into
+            // applyInboundMarkup; the guard composes into its flags below.
             let preserveLocalTombstone = PhotoAnnotationMergePolicy.shouldPreserveLocalTombstone(
                 localNeedsSync: existing.needsSync,
                 localDeletedAt: existing.deletedAt,
                 incomingDeletedAt: dto.deletedAt.flatMap { SupabaseDate.parse($0) }
             )
 
-            if accept.contains("annotationURL") { existing.annotationURL = dto.annotationUrl }
             if accept.contains("renderedPhotoURL") { existing.renderedPhotoURL = dto.renderedPhotoUrl }
             if accept.contains("note") { existing.note = dto.note ?? "" }
             if accept.contains("updatedAt") { existing.updatedAt = dto.updatedAt.flatMap { SupabaseDate.parse($0) } }
-            if accept.contains("deletedAt"), !preserveLocalTombstone {
-                existing.deletedAt = dto.deletedAt.flatMap { SupabaseDate.parse($0) }
-            }
             if accept.contains("dimensions"), let dimensionsData = dto.dimensionsData {
                 existing.dimensionsData = dimensionsData
             }
 
+            // Collaborative markup — shared per-layer recency union (see
+            // PhotoAnnotationInboundMarkup), identical to InboundProcessor /
+            // RealtimeProcessor so the three sync paths cannot drift.
+            let unpushedLocalLayer = existing.applyInboundMarkup(
+                dto.markupServerState,
+                acceptLegacyAnnotationURL: accept.contains("annotationURL"),
+                acceptLegacyDeletedAt: accept.contains("deletedAt"),
+                preserveLocalTombstone: preserveLocalTombstone
+            )
+
             existing.lastSyncedAt = Date()
-            if !hasPendingOperations(entityType: .photoAnnotation, entityId: existing.id), !preserveLocalTombstone {
+            if !hasPendingOperations(entityType: .photoAnnotation, entityId: existing.id), !preserveLocalTombstone, !unpushedLocalLayer {
                 existing.needsSync = false
             }
         } else {

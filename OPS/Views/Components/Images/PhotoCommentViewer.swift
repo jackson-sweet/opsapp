@@ -366,6 +366,7 @@ struct PhotoCommentViewer: View {
                 projectId: projectId,
                 companyId: companyId,
                 authorId: user.id,
+                authorName: user.fullName,
                 existingAnnotationId: existingId,
                 modelContext: modelContext
             )

@@ -89,6 +89,8 @@ class PhotoAnnotationRepository {
             .value
     }
 
+    /// Legacy single-overlay update. Still used by the offline-sweep path until
+    /// the save rewrite (spec step 7) routes everything through `upsertLayer`.
     func updateAnnotation(_ annotationId: String, annotationUrl: String?, note: String) async throws {
         struct AnnotationUpdate: Codable {
             let annotation_url: String?
@@ -110,6 +112,97 @@ class PhotoAnnotationRepository {
         guard !affected.isEmpty else {
             throw AnnotationSyncError.writeNotApplied(annotationId: annotationId)
         }
+    }
+
+    /// Note-only update. annotation_url is now owned by `upsert_markup_layer`
+    /// (per-author layers), so the note is the only shared scalar edited directly.
+    func updateNote(_ annotationId: String, note: String) async throws {
+        struct NoteUpdate: Codable {
+            let note: String
+            let updated_at: String
+        }
+        let payload = NoteUpdate(note: note, updated_at: isoNow())
+        try await client
+            .from("project_photo_annotations")
+            .update(payload)
+            .eq("id", value: annotationId)
+            .execute()
+    }
+
+    // MARK: - Markup layers (collaborative markup, spec 2026-06-23)
+
+    /// Upsert the CALLER'S OWN markup layer through the SECURITY DEFINER
+    /// `upsert_markup_layer` RPC. The server merges the `layers` array by layerId
+    /// and appends the change event ATOMICALLY — never a wholesale `.update().eq(id)`
+    /// (that is last-writer-wins and would drop a peer's just-landed layer). The
+    /// RPC enforces layerId == caller user id, so peers' layers are untouchable.
+    /// Returns the fully-merged server row so the caller can refresh local state.
+    func upsertLayer(
+        annotationId: String,
+        layer: MarkupLayer,
+        changeEvent: MarkupChangeEvent?,
+        beforeSnapshotURL: String? = nil,
+        afterSnapshotURL: String? = nil
+    ) async throws -> PhotoAnnotationDTO {
+        let params = UpsertMarkupLayerParams(
+            p_annotation_id: annotationId,
+            p_layer: Self.anyJSON(from: layer),
+            p_change_event: changeEvent.map(Self.anyJSON(from:)),
+            p_before_url: beforeSnapshotURL,
+            p_after_url: afterSnapshotURL
+        )
+        return try await client
+            .rpc("upsert_markup_layer", params: params)
+            .execute()
+            .value
+    }
+
+    private struct UpsertMarkupLayerParams: Encodable {
+        let p_annotation_id: String
+        let p_layer: AnyJSON
+        let p_change_event: AnyJSON?
+        let p_before_url: String?
+        let p_after_url: String?
+    }
+
+    // Hand-built AnyJSON (NOT JSONSerialization round-tripping) so Bool never
+    // collapses to Int via NSNumber, and the jsonb keys match the RPC exactly.
+    private static func anyJSON(from layer: MarkupLayer) -> AnyJSON {
+        var object: [String: AnyJSON] = [
+            "layerId": .string(layer.layerId),
+            "authorId": .string(layer.authorId),
+            "authorName": .string(layer.authorName),
+            "visibleDefault": .bool(layer.visibleDefault),
+            "zIndex": .integer(layer.zIndex),
+            "createdAt": .string(SupabaseDate.format(layer.createdAt)),
+            "updatedAt": .string(SupabaseDate.format(layer.updatedAt)),
+            "overlayUrl": layer.overlayUrl.map(AnyJSON.string) ?? .null,
+            "strokeRef": layer.strokeRef.map(AnyJSON.string) ?? .null
+        ]
+        if let strokeCount = layer.strokeCount {
+            object["strokeCount"] = .integer(strokeCount)
+        }
+        // Omit clearedAt when nil so the RPC reads `->> 'clearedAt'` as NULL = active.
+        if let clearedAt = layer.clearedAt {
+            object["clearedAt"] = .string(SupabaseDate.format(clearedAt))
+        }
+        return .object(object)
+    }
+
+    private static func anyJSON(from event: MarkupChangeEvent) -> AnyJSON {
+        var object: [String: AnyJSON] = [
+            "eventId": .string(event.eventId),
+            "authorId": .string(event.authorId),
+            "authorName": .string(event.authorName),
+            "action": .string(event.action.rawValue),
+            "at": .string(SupabaseDate.format(event.at)),
+            "beforeSnapshotUrl": event.beforeSnapshotUrl.map(AnyJSON.string) ?? .null,
+            "afterSnapshotUrl": event.afterSnapshotUrl.map(AnyJSON.string) ?? .null
+        ]
+        if let delta = event.strokeDelta {
+            object["strokeDelta"] = .integer(delta)
+        }
+        return .object(object)
     }
 
     // MARK: - Soft Delete

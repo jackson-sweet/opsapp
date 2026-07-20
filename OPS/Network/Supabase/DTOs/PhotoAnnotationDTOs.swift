@@ -20,9 +20,29 @@ struct PhotoAnnotationDTO: Codable, Identifiable {
     let updatedAt: String?
     let deletedAt: String?
     let dimensions: DimensionsJSONValue?
+    // Collaborative markup (spec 2026-06-23). Passthrough JSON so a malformed
+    // jsonb element can never fail the whole inbound annotation decode; the model
+    // accessor decodes resiliently at read time.
+    let layers: DimensionsJSONValue?
+    let changeLog: DimensionsJSONValue?
+    let beforeSnapshotUrl: String?
+    let afterSnapshotUrl: String?
 
     var dimensionsData: Data? {
-        Self.encodeDimensionsData(from: dimensions)
+        Self.encodeJSONValue(dimensions)
+    }
+    var layersData: Data? {
+        Self.encodeJSONValue(layers)
+    }
+    var changeLogData: Data? {
+        Self.encodeJSONValue(changeLog)
+    }
+    /// Resiliently-decoded markup layers from the server row (for the inbound union merge).
+    var layersModel: [MarkupLayer] {
+        MarkupCoding.decodeArray(layersData)
+    }
+    var changeLogModel: [MarkupChangeEvent] {
+        MarkupCoding.decodeArray(changeLogData)
     }
 
     enum CodingKeys: String, CodingKey {
@@ -38,6 +58,10 @@ struct PhotoAnnotationDTO: Codable, Identifiable {
         case updatedAt     = "updated_at"
         case deletedAt     = "deleted_at"
         case dimensions
+        case layers
+        case changeLog          = "change_log"
+        case beforeSnapshotUrl  = "before_snapshot_url"
+        case afterSnapshotUrl   = "after_snapshot_url"
     }
 
     func toModel() -> PhotoAnnotation {
@@ -59,12 +83,17 @@ struct PhotoAnnotationDTO: Codable, Identifiable {
             annotation.deletedAt = SupabaseDate.parse(deletedAt)
         }
         annotation.dimensionsData = dimensionsData
+        annotation.layersData = layersData
+        annotation.changeLogData = changeLogData
+        annotation.beforeSnapshotURL = beforeSnapshotUrl
+        annotation.afterSnapshotURL = afterSnapshotUrl
+        // hiddenAuthorIds is local-only (per-viewer) — never populated from sync.
         return annotation
     }
 
-    private static func encodeDimensionsData(from dimensions: DimensionsJSONValue?) -> Data? {
-        guard let dimensions else { return nil }
-        return try? JSONEncoder().encode(dimensions)
+    private static func encodeJSONValue(_ value: DimensionsJSONValue?) -> Data? {
+        guard let value else { return nil }
+        return try? JSONEncoder().encode(value)
     }
 }
 

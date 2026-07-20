@@ -72,7 +72,9 @@ final class PhotoAnnotationMigrationTests: XCTestCase {
 
         // 3. The pre-existing annotation survives with its fields intact; the new
         //    columns default for the historical row (Int -> 0, Date? -> nil).
-        let annotations = try context.fetch(FetchDescriptor<PhotoAnnotation>())
+        //    V15 is backed by the frozen V15–V17 copy (the live model moved on
+        //    at V18 with the collaborative-markup columns), so fetch that type.
+        let annotations = try context.fetch(FetchDescriptor<OPSSchemaLegacyPhotoAnnotationV17.PhotoAnnotation>())
         XCTAssertEqual(annotations.count, 1, "The V14 annotation row must survive migration.")
         let migratedAnnotation = try XCTUnwrap(annotations.first)
         XCTAssertEqual(migratedAnnotation.id, "anno-v14")
@@ -89,7 +91,7 @@ final class PhotoAnnotationMigrationTests: XCTestCase {
         migratedAnnotation.syncParkedAt = Date(timeIntervalSince1970: 2_000)
         XCTAssertNoThrow(try context.save(), "The widened annotation must persist on the migrated store.")
 
-        let reread = try XCTUnwrap(try context.fetch(FetchDescriptor<PhotoAnnotation>()).first)
+        let reread = try XCTUnwrap(try context.fetch(FetchDescriptor<OPSSchemaLegacyPhotoAnnotationV17.PhotoAnnotation>()).first)
         XCTAssertEqual(reread.syncFailureCount, 3)
         XCTAssertEqual(reread.syncParkedAt, Date(timeIntervalSince1970: 2_000))
     }

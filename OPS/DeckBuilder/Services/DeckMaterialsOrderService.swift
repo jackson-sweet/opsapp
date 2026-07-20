@@ -13,6 +13,18 @@
 import Foundation
 import Supabase
 
+enum DeckMaterialsOrderError: LocalizedError, Equatable {
+    case vinylPlanBlocked(String)
+    case vinylPlanChanged
+
+    var errorDescription: String? {
+        switch self {
+        case .vinylPlanBlocked(let message): return message
+        case .vinylPlanChanged: return "DESIGN CHANGED · REVIEW ORDER"
+        }
+    }
+}
+
 /// The actually-ordered quantities a human confirmed at MARK ORDERED time. The
 /// calculator's suggestion pre-fills every field; each is then nudgeable in the
 /// order-confirm sheet. What the operator confirms here becomes the FROZEN
@@ -123,6 +135,54 @@ struct DeckMaterialsOrderService {
     /// spy on the trio and simulate remote failure.
     let updateProjectFields: (String, [String: AnyJSON]) async throws -> Void
 
+    /// Re-checks a pending confirmation against a fresh whole-design resolve.
+    /// Confirmation can stay open while realtime or local edits change geometry;
+    /// never freeze the captured plan unless every order-driving value still
+    /// matches the current design.
+    static func validateCurrentOrder(
+        currentMaterials: DeckMaterialsList?,
+        currentSettings: DeckMaterialsSettings,
+        currentVinylSettings: VinylOrderSettings,
+        pendingMaterials: DeckMaterialsList,
+        pendingSettings: DeckMaterialsSettings,
+        pendingVinylSettings: VinylOrderSettings
+    ) throws {
+        guard let currentMaterials else {
+            throw DeckMaterialsOrderError.vinylPlanChanged
+        }
+        guard currentMaterials.vinylPlan.isOrderable else {
+            throw DeckMaterialsOrderError.vinylPlanBlocked(
+                currentMaterials.vinylPlan.blockingMessage
+                    ?? VinylCutPlan.wallAlignedTransitionBlocker
+            )
+        }
+
+        let currentConfirmation = DeckMaterialsOrderConfirmation.calculated(
+            from: currentMaterials,
+            settings: currentSettings
+        )
+        let pendingConfirmation = DeckMaterialsOrderConfirmation.calculated(
+            from: pendingMaterials,
+            settings: pendingSettings
+        )
+        guard currentSettings == pendingSettings,
+              currentVinylSettings == pendingVinylSettings,
+              currentMaterials.driftKey == pendingMaterials.driftKey,
+              currentConfirmation == pendingConfirmation else {
+            throw DeckMaterialsOrderError.vinylPlanChanged
+        }
+    }
+
+    /// The Deck Designer edits a value-type drawing copy. Merge only the order
+    /// snapshot written by `markOrdered` so the next designer save retains it
+    /// without replacing newer geometry in that active copy.
+    static func mergeOrderedSnapshot(
+        from design: DeckDesign,
+        into activeDrawing: inout DeckDrawingData
+    ) {
+        activeDrawing.orderedMaterials = design.drawingData.orderedMaterials
+    }
+
     /// Freeze the current materials list into `design.drawingData.orderedMaterials`
     /// and mark the project ordered. Reverts the local snapshot if the marker
     /// write throws.
@@ -135,6 +195,11 @@ struct DeckMaterialsOrderService {
         confirmed: DeckMaterialsOrderConfirmation? = nil,
         po: String? = nil
     ) async throws {
+        guard materials.vinylPlan.isOrderable else {
+            throw DeckMaterialsOrderError.vinylPlanBlocked(
+                materials.vinylPlan.blockingMessage ?? VinylCutPlan.wallAlignedTransitionBlocker
+            )
+        }
         let now = Date()
         let priorSnapshot = design.drawingData.orderedMaterials
 
@@ -153,6 +218,7 @@ struct DeckMaterialsOrderService {
         // full set or a reuse deck false-flags DESIGN CHANGED the instant it is
         // ordered.
         let driftGroups = snapshotGroups(from: materials.vinylPlan.surfaces.flatMap(\.cuts))
+        let directionGeometry = DeckMaterialsDriftKey.directionGeometry(for: materials.vinylPlan)
 
         let snapshot = DeckMaterialsSnapshot(
             orderedAt: now,
@@ -185,7 +251,10 @@ struct DeckMaterialsOrderService {
             orderedRollCount: confirmation.orderMode == .fullRolls ? confirmation.rollCount : nil,
             isOrderedEdited: isOrderedEdited,
             driftCutGroups: driftGroups,
-            po: normalized(po)
+            po: normalized(po),
+            vinylDirectionSurfaces: directionGeometry.surfaces,
+            vinylDirectionRegions: directionGeometry.regions,
+            vinylDirectionTransitions: directionGeometry.transitions
         )
 
         // (1) Local-first snapshot — the accessor marks needsSync + updatedAt.

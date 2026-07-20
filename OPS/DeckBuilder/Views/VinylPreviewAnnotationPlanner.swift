@@ -17,6 +17,14 @@ struct VinylPreviewAnnotationPlan: Equatable {
     let bands: [VinylPreviewBand]
     let houseLabels: [VinylPreviewHouseLabel]
     let leaders: [VinylPreviewLeader]
+    let transitions: [VinylPreviewTransition]
+}
+
+struct VinylPreviewTransition: Equatable {
+    let sourceTransitionId: String
+    let houseEdgeId: String
+    let start: CGPoint
+    let end: CGPoint
 }
 
 struct VinylPreviewBand: Equatable {
@@ -125,6 +133,17 @@ enum VinylPreviewAnnotationPlanner {
         return (dx * dx) + (dy * dy)
     }
 
+    static func regionPolygon(
+        for cut: VinylCutPiece,
+        in surface: VinylSurfaceCutPlan
+    ) -> [CGPoint] {
+        guard let regionId = cut.directionRegionId,
+              let region = surface.directionRegions.first(where: { $0.id == regionId }) else {
+            return surface.positions
+        }
+        return region.polygon
+    }
+
     static func plan(
         surface: VinylSurfaceCutPlan,
         settings: VinylOrderSettings,
@@ -185,7 +204,17 @@ enum VinylPreviewAnnotationPlanner {
         return VinylPreviewAnnotationPlan(
             bands: bands,
             houseLabels: houseLabels,
-            leaders: leaders
+            leaders: leaders,
+            transitions: surface.directionTransitions.flatMap { transition in
+                transition.segments.map { segment in
+                    VinylPreviewTransition(
+                        sourceTransitionId: transition.id,
+                        houseEdgeId: transition.houseEdgeId,
+                        start: segment.start,
+                        end: segment.end
+                    )
+                }
+            }
         )
     }
 

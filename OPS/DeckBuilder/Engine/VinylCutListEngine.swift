@@ -204,13 +204,47 @@ struct VinylOnHandOffcut: Identifiable, Equatable {
     let lengthInches: Double
 }
 
+struct VinylDirectionRegion: Identifiable, Equatable {
+    let id: String
+    let polygon: [CGPoint]
+    let runAngleDegrees: Double
+}
+
+struct VinylSeamSegment: Equatable {
+    let start: CGPoint
+    let end: CGPoint
+}
+
+struct VinylDirectionTransition: Identifiable, Equatable {
+    let id: String
+    let houseEdgeId: String
+    let segments: [VinylSeamSegment]
+    let firstRegionId: String
+    let secondRegionId: String
+}
+
+enum VinylPlanIssue: Equatable {
+    case mixedRunMissingHouseAlignedTransition(surfaceId: String)
+}
+
 struct VinylCutPlan: Equatable {
+    static let wallAlignedTransitionBlocker = "NO HOUSE-WALL SPLIT · LOCK RUN OR MARK WALL"
+
     let settings: VinylOrderSettings
     let surfaces: [VinylSurfaceCutPlan]
     let reuseNotes: [VinylReuseNote]
     /// New remnants this plan yields (excludes banked offcuts that were merely
     /// reused). Empty unless the cut produces a width ≥ `offcutMinWidthInches`.
     let producedOffcuts: [VinylProducedOffcut]
+    let issues: [VinylPlanIssue]
+
+    var isOrderable: Bool {
+        issues.isEmpty
+    }
+
+    var blockingMessage: String? {
+        isOrderable ? nil : Self.wallAlignedTransitionBlocker
+    }
 
     var totalCutAreaSqFt: Double {
         surfaces.reduce(0) { $0 + $1.cutAreaSqFt }
@@ -257,6 +291,7 @@ struct VinylCutPlan: Equatable {
     /// `rolls` (e.g. "3 ROLLS @ 75'") is appended as a ROLLS line when the order
     /// is placed in full-roll mode; nil/empty leaves the note cut-list-identical.
     func orderNotes(projectTitle: String, deckTitle: String, rolls: String? = nil) -> String {
+        guard isOrderable else { return "" }
         var lines: [String] = []
         lines.append("// VINYL ORDER")
         lines.append("PROJECT: \(projectTitle)")
@@ -352,6 +387,7 @@ enum VinylCutListTextTemplate {
         plan: VinylCutPlan,
         rolls: String = ""
     ) -> String {
+        guard plan.isOrderable else { return "" }
         let trimmedMessageTemplate = rawMessageTemplate.trimmingCharacters(in: .whitespacesAndNewlines)
         let messageTemplate = trimmedMessageTemplate.isEmpty ? defaultMessageTemplate : rawMessageTemplate
         let color = plan.settings.color.isEmpty ? "FIELD CONFIRM" : plan.settings.color
@@ -382,6 +418,7 @@ enum VinylCutListTextTemplate {
     }
 
     static func cutLines(for plan: VinylCutPlan, cutTemplate rawCutTemplate: String = defaultCutTemplate) -> [String] {
+        guard plan.isOrderable else { return [] }
         let purchased = plan.surfaces.flatMap(\.purchasedCuts)
         guard !purchased.isEmpty else { return ["—"] }
         let trimmedCutTemplate = rawCutTemplate.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -445,6 +482,7 @@ struct VinylCutPiece: Identifiable, Equatable {
     let bandEndInches: Double
     let runStartInches: Double
     let runEndInches: Double
+    let directionRegionId: String?
     let isPurchased: Bool
     let sourceSurfaceId: String?
     let sourceSurfaceLabel: String?
@@ -479,6 +517,7 @@ struct VinylCutPiece: Identifiable, Equatable {
             bandEndInches: bandEndInches,
             runStartInches: runStartInches,
             runEndInches: runEndInches,
+            directionRegionId: directionRegionId,
             isPurchased: false,
             sourceSurfaceId: surfaceId,
             sourceSurfaceLabel: surfaceLabel
@@ -578,6 +617,7 @@ struct VinylSurfaceCutPlan: Identifiable, Equatable {
     let label: String
     let levelName: String?
     let positions: [CGPoint]
+    let scaleFactor: Double
     let boundingWidthInches: Double
     let boundingHeightInches: Double
     let surfaceAreaSqFt: Double
@@ -595,6 +635,8 @@ struct VinylSurfaceCutPlan: Identifiable, Equatable {
     let cutAreaSqFt: Double
     let cuts: [VinylCutPiece]
     let edges: [VinylOrderSurfaceEdge]
+    let directionRegions: [VinylDirectionRegion]
+    let directionTransitions: [VinylDirectionTransition]
 
     var displayLabel: String {
         if let levelName, !levelName.isEmpty {
@@ -682,6 +724,125 @@ enum VinylCutListEngine {
         let label: String
     }
 
+    /// A direction-transition boundary projected into one candidate's run/cross
+    /// coordinate space. Exterior edge wrap belongs only outside the original
+    /// deck polygon; this boundary identifies the split edge that must stay
+    /// unwrapped while each region is cut independently.
+    private struct ProjectedNoWrapBoundary {
+        private enum RunBoundary {
+            case minimum
+            case maximum
+        }
+
+        private struct Segment {
+            let start: CGPoint
+            let end: CGPoint
+        }
+
+        private let segments: [Segment]
+        private let runBoundary: RunBoundary?
+        let excludesCrossMinimum: Bool
+        let excludesCrossMaximum: Bool
+
+        init?(
+            polygon: [CGPoint],
+            seamSegments: [VinylSeamSegment],
+            scaleFactor: Double,
+            direction: VinylRunDirection
+        ) {
+            guard !polygon.isEmpty, !seamSegments.isEmpty, scaleFactor > 0 else { return nil }
+
+            let projectedSegments = seamSegments.map { segment in
+                Segment(
+                    start: direction.project(CGPoint(
+                        x: Double(segment.start.x) / scaleFactor,
+                        y: Double(segment.start.y) / scaleFactor
+                    )),
+                    end: direction.project(CGPoint(
+                        x: Double(segment.end.x) / scaleFactor,
+                        y: Double(segment.end.y) / scaleFactor
+                    ))
+                )
+            }
+            guard let reference = projectedSegments.first else { return nil }
+
+            let projectedPolygon = polygon.map {
+                direction.project(CGPoint(
+                    x: Double($0.x) / scaleFactor,
+                    y: Double($0.y) / scaleFactor
+                ))
+            }
+            let centroid = CGPoint(
+                x: projectedPolygon.map(\.x).reduce(0, +) / CGFloat(projectedPolygon.count),
+                y: projectedPolygon.map(\.y).reduce(0, +) / CGFloat(projectedPolygon.count)
+            )
+            let deltaRun = Double(reference.end.x - reference.start.x)
+            let deltaCross = Double(reference.end.y - reference.start.y)
+            let epsilon = 0.001
+
+            self.segments = projectedSegments
+            if abs(deltaCross) <= epsilon {
+                let seamCross = Double(reference.start.y)
+                self.runBoundary = nil
+                self.excludesCrossMinimum = Double(centroid.y) > seamCross
+                self.excludesCrossMaximum = Double(centroid.y) < seamCross
+            } else {
+                let lineRunAtCentroid = Double(reference.start.x)
+                    + ((Double(centroid.y - reference.start.y) / deltaCross) * deltaRun)
+                self.runBoundary = Double(centroid.x) > lineRunAtCentroid ? .minimum : .maximum
+                self.excludesCrossMinimum = false
+                self.excludesCrossMaximum = false
+            }
+        }
+
+        func wrapsRunMinimum(rawRun: Double, bandMinimum: Double, bandMaximum: Double) -> Bool {
+            guard runBoundary == .minimum,
+                  let seamRange = seamRunRange(bandMinimum: bandMinimum, bandMaximum: bandMaximum) else {
+                return true
+            }
+            return abs(rawRun - seamRange.minimum) > 0.05
+        }
+
+        func wrapsRunMaximum(rawRun: Double, bandMinimum: Double, bandMaximum: Double) -> Bool {
+            guard runBoundary == .maximum,
+                  let seamRange = seamRunRange(bandMinimum: bandMinimum, bandMaximum: bandMaximum) else {
+                return true
+            }
+            return abs(rawRun - seamRange.maximum) > 0.05
+        }
+
+        private func seamRunRange(
+            bandMinimum: Double,
+            bandMaximum: Double
+        ) -> (minimum: Double, maximum: Double)? {
+            var runs: [Double] = []
+            for segment in segments {
+                let startCross = Double(segment.start.y)
+                let endCross = Double(segment.end.y)
+                let lowCross = max(min(startCross, endCross), bandMinimum)
+                let highCross = min(max(startCross, endCross), bandMaximum)
+                guard highCross >= lowCross - 0.001 else { continue }
+
+                let deltaCross = endCross - startCross
+                if abs(deltaCross) <= 0.001 {
+                    guard startCross >= bandMinimum - 0.001,
+                          startCross <= bandMaximum + 0.001 else { continue }
+                    runs.append(Double(segment.start.x))
+                    runs.append(Double(segment.end.x))
+                    continue
+                }
+
+                let deltaRun = Double(segment.end.x - segment.start.x)
+                for cross in [lowCross, highCross] {
+                    let ratio = (cross - startCross) / deltaCross
+                    runs.append(Double(segment.start.x) + (deltaRun * ratio))
+                }
+            }
+            guard let minimum = runs.min(), let maximum = runs.max() else { return nil }
+            return (minimum, maximum)
+        }
+    }
+
     private struct DirectionCluster {
         var samples: [EdgeDirectionSample]
 
@@ -711,12 +872,44 @@ enum VinylCutListEngine {
         let targetCross: Double
         let coverageCross: Double
         let cuts: [VinylCutPiece]
+        let directionRegions: [VinylDirectionRegion]
+        let directionTransitions: [VinylDirectionTransition]
+        let issues: [VinylPlanIssue]
 
         var cutAreaSqFt: Double {
             cuts.reduce(0) { $0 + $1.fullRollAreaSqFt }
         }
 
         var stripCount: Int { cuts.count }
+
+        func adding(issue: VinylPlanIssue) -> SurfaceCandidate {
+            SurfaceCandidate(
+                surface: surface,
+                width: width,
+                height: height,
+                areaSqIn: areaSqIn,
+                perimeterIn: perimeterIn,
+                resolvedDirection: resolvedDirection,
+                runAxis: runAxis,
+                runAngleDegrees: runAngleDegrees,
+                runDirectionLabel: runDirectionLabel,
+                targetCross: targetCross,
+                coverageCross: coverageCross,
+                cuts: cuts,
+                directionRegions: directionRegions,
+                directionTransitions: directionTransitions,
+                issues: issues + [issue]
+            )
+        }
+    }
+
+    private struct RegionDirectionChoice {
+        let direction: VinylRunDirection
+        let cuts: [VinylCutPiece]
+
+        var cutAreaSqFt: Double {
+            cuts.reduce(0) { $0 + $1.fullRollAreaSqFt }
+        }
     }
 
     private struct OffcutLane {
@@ -755,7 +948,8 @@ enum VinylCutListEngine {
             settings: settings,
             surfaces: plans,
             reuseNotes: reuseNotes(for: plans),
-            producedOffcuts: producedOffcuts
+            producedOffcuts: producedOffcuts,
+            issues: candidates.flatMap(\.issues)
         )
     }
 
@@ -808,43 +1002,25 @@ enum VinylCutListEngine {
             sameDirection = widthwise
         }
 
-        guard settings.direction == .automatic else {
+        if settings.patternMode == .linear {
+            if settings.direction == .automatic, let preferredVisualDirection {
+                return directionalCandidate(
+                    surface: surface,
+                    settings: settings,
+                    width: width,
+                    height: height,
+                    areaSqIn: areaSqIn,
+                    perimeterIn: perimeterIn,
+                    resolvedDirection: .automatic,
+                    runDirection: preferredVisualDirection,
+                    idPrefix: "linear-\(vinylFormatAngleForId(preferredVisualDirection.angleDegrees))"
+                )
+            }
             return sameDirection
         }
 
-        if settings.patternMode == .linear, let preferredVisualDirection {
-            return directionalCandidate(
-                surface: surface,
-                settings: settings,
-                width: width,
-                height: height,
-                areaSqIn: areaSqIn,
-                perimeterIn: perimeterIn,
-                resolvedDirection: .automatic,
-                runDirection: preferredVisualDirection,
-                idPrefix: "linear-\(vinylFormatAngleForId(preferredVisualDirection.angleDegrees))"
-            )
-        }
-
         var baseline = sameDirection
-        if settings.patternMode == .solid,
-           settings.allowsDirectionalChanges,
-           let mixed = mixedAxisCandidate(
-                surface: surface,
-                settings: settings,
-                width: width,
-                height: height,
-                areaSqIn: areaSqIn,
-                perimeterIn: perimeterIn
-           ) {
-            if mixed.cutAreaSqFt == baseline.cutAreaSqFt {
-                baseline = mixed.stripCount < baseline.stripCount ? mixed : baseline
-            } else {
-                baseline = mixed.cutAreaSqFt < baseline.cutAreaSqFt ? mixed : baseline
-            }
-        }
-
-        if settings.patternMode == .solid,
+        if settings.direction == .automatic,
            let angled = bestSolidAngleCandidate(
             surface: surface,
             settings: settings,
@@ -854,9 +1030,45 @@ enum VinylCutListEngine {
             perimeterIn: perimeterIn,
             baseline: baseline
            ) {
-            return angled
+            baseline = angled
+        }
+
+        guard settings.allowsDirectionalChanges else {
+            return baseline
+        }
+
+        let legalMixed = wallAlignedMixedCandidate(
+            surface: surface,
+            settings: settings,
+            width: width,
+            height: height,
+            areaSqIn: areaSqIn,
+            perimeterIn: perimeterIn
+        )
+        if let legalMixed, isBetterCandidate(legalMixed, than: baseline) {
+            return legalMixed
+        }
+
+        if legalMixed == nil,
+           let unconstrainedMixed = unconstrainedMixedAxisCandidate(
+                surface: surface,
+                settings: settings,
+                width: width,
+                height: height,
+                areaSqIn: areaSqIn,
+                perimeterIn: perimeterIn
+           ),
+           isBetterCandidate(unconstrainedMixed, than: baseline) {
+            return baseline.adding(issue: .mixedRunMissingHouseAlignedTransition(surfaceId: surface.id))
         }
         return baseline
+    }
+
+    private static func isBetterCandidate(_ candidate: SurfaceCandidate, than baseline: SurfaceCandidate) -> Bool {
+        if abs(candidate.cutAreaSqFt - baseline.cutAreaSqFt) > 0.01 {
+            return candidate.cutAreaSqFt < baseline.cutAreaSqFt
+        }
+        return candidate.stripCount < baseline.stripCount
     }
 
     private static func axisCandidate(
@@ -903,7 +1115,14 @@ enum VinylCutListEngine {
         runDirection: VinylRunDirection,
         idPrefix: String
     ) -> SurfaceCandidate {
-        let cuts = cutsForPolygon(surface: surface, settings: settings, direction: runDirection, idPrefix: idPrefix)
+        let directionRegionId = "\(surface.id)-region-\(idPrefix)"
+        let cuts = cutsForPolygon(
+            surface: surface,
+            settings: settings,
+            direction: runDirection,
+            idPrefix: idPrefix,
+            directionRegionId: directionRegionId
+        )
         let targetCross = crossSpan(for: surface.positions, scaleFactor: surface.scaleFactor, direction: runDirection) + (settings.edgeWrapInches * 2)
 
         return SurfaceCandidate(
@@ -918,7 +1137,16 @@ enum VinylCutListEngine {
             runDirectionLabel: runDirection.label,
             targetCross: targetCross,
             coverageCross: coverageCross(stripCount: cuts.count, settings: settings),
-            cuts: cuts
+            cuts: cuts,
+            directionRegions: [
+                VinylDirectionRegion(
+                    id: directionRegionId,
+                    polygon: surface.positions,
+                    runAngleDegrees: runDirection.angleDegrees
+                )
+            ],
+            directionTransitions: [],
+            issues: []
         )
     }
 
@@ -963,7 +1191,297 @@ enum VinylCutListEngine {
         return best.cutAreaSqFt < baseline.cutAreaSqFt * 0.95 ? best : nil
     }
 
-    private static func mixedAxisCandidate(
+    private static func wallAlignedMixedCandidate(
+        surface: VinylOrderSurfaceInput,
+        settings: VinylOrderSettings,
+        width: Double,
+        height: Double,
+        areaSqIn: Double,
+        perimeterIn: Double
+    ) -> SurfaceCandidate? {
+        let houseEdges = surface.edges.filter {
+            $0.edgeType == .houseEdge && SnapEngine.distance($0.start, $0.end) > 0.5
+        }
+        guard !houseEdges.isEmpty else { return nil }
+
+        var candidates: [SurfaceCandidate] = []
+        for edge in houseEdges {
+            let split = PolygonSplitter.split(
+                polygon: surface.positions,
+                lineA: edge.start,
+                lineB: edge.end
+            )
+            guard split.didSplit else { continue }
+
+            let seamSegments = interiorTransitionSegments(
+                split.chordSegments,
+                polygon: surface.positions,
+                lineA: edge.start,
+                lineB: edge.end,
+                scaleFactor: surface.scaleFactor
+            )
+            guard !seamSegments.isEmpty else { continue }
+
+            let firstPolygon = simplifiedPolygon(split.sideA)
+            let secondPolygon = simplifiedPolygon(split.sideB)
+            guard firstPolygon.count >= 3, secondPolygon.count >= 3 else { continue }
+            let firstRegionId = "\(surface.id)-wall-\(edge.id)-a"
+            let secondRegionId = "\(surface.id)-wall-\(edge.id)-b"
+            let firstSurface = regionSurface(from: surface, positions: firstPolygon)
+            let secondSurface = regionSurface(from: surface, positions: secondPolygon)
+            let firstChoices = regionDirectionChoices(
+                for: firstSurface,
+                sourceSurface: surface,
+                settings: settings,
+                regionId: firstRegionId,
+                idPrefix: "wall-\(edge.id)-a",
+                nonWrappingSegments: seamSegments
+            )
+            let secondChoices = regionDirectionChoices(
+                for: secondSurface,
+                sourceSurface: surface,
+                settings: settings,
+                regionId: secondRegionId,
+                idPrefix: "wall-\(edge.id)-b",
+                nonWrappingSegments: seamSegments
+            )
+
+            for first in firstChoices {
+                for second in secondChoices where angularDistance(first.direction.angleDegrees, second.direction.angleDegrees) > 2 {
+                    let cuts = first.cuts + second.cuts
+                    guard !cuts.isEmpty else { continue }
+                    candidates.append(
+                        SurfaceCandidate(
+                            surface: surface,
+                            width: width,
+                            height: height,
+                            areaSqIn: areaSqIn,
+                            perimeterIn: perimeterIn,
+                            resolvedDirection: settings.direction,
+                            runAxis: first.direction.runAxis,
+                            runAngleDegrees: first.direction.angleDegrees,
+                            runDirectionLabel: "MIXED",
+                            targetCross: max(width, height) + (settings.edgeWrapInches * 2),
+                            coverageCross: coverageCross(stripCount: cuts.count, settings: settings),
+                            cuts: cuts,
+                            directionRegions: [
+                                VinylDirectionRegion(
+                                    id: firstRegionId,
+                                    polygon: firstPolygon,
+                                    runAngleDegrees: first.direction.angleDegrees
+                                ),
+                                VinylDirectionRegion(
+                                    id: secondRegionId,
+                                    polygon: secondPolygon,
+                                    runAngleDegrees: second.direction.angleDegrees
+                                )
+                            ],
+                            directionTransitions: [
+                                VinylDirectionTransition(
+                                    id: "\(surface.id)-transition-\(edge.id)",
+                                    houseEdgeId: edge.id,
+                                    segments: seamSegments,
+                                    firstRegionId: firstRegionId,
+                                    secondRegionId: secondRegionId
+                                )
+                            ],
+                            issues: []
+                        )
+                    )
+                }
+            }
+        }
+
+        return candidates.min { lhs, rhs in
+            isBetterCandidate(lhs, than: rhs)
+        }
+    }
+
+    private static func simplifiedPolygon(_ polygon: [CGPoint]) -> [CGPoint] {
+        var points: [CGPoint] = []
+        for point in polygon where points.last.map({ SnapEngine.distance($0, point) >= 0.01 }) ?? true {
+            points.append(point)
+        }
+        if points.count > 1,
+           let first = points.first,
+           let last = points.last,
+           SnapEngine.distance(first, last) < 0.01 {
+            points.removeLast()
+        }
+
+        var removed = true
+        while removed, points.count >= 3 {
+            removed = false
+            for index in points.indices {
+                let previous = points[(index - 1 + points.count) % points.count]
+                let current = points[index]
+                let next = points[(index + 1) % points.count]
+                let cross = abs(
+                    Double(current.x - previous.x) * Double(next.y - current.y) -
+                        Double(current.y - previous.y) * Double(next.x - current.x)
+                )
+                let scale = max(
+                    1,
+                    SnapEngine.distance(previous, current) + SnapEngine.distance(current, next)
+                )
+                if cross / scale < 0.01 {
+                    points.remove(at: index)
+                    removed = true
+                    break
+                }
+            }
+        }
+        return points
+    }
+
+    private static func regionSurface(
+        from surface: VinylOrderSurfaceInput,
+        positions: [CGPoint]
+    ) -> VinylOrderSurfaceInput {
+        VinylOrderSurfaceInput(
+            id: surface.id,
+            label: surface.label,
+            levelName: surface.levelName,
+            positions: positions,
+            scaleFactor: surface.scaleFactor
+        )
+    }
+
+    private static func regionDirectionChoices(
+        for region: VinylOrderSurfaceInput,
+        sourceSurface: VinylOrderSurfaceInput,
+        settings: VinylOrderSettings,
+        regionId: String,
+        idPrefix: String,
+        nonWrappingSegments: [VinylSeamSegment]
+    ) -> [RegionDirectionChoice] {
+        let directions: [VinylRunDirection]
+        switch settings.direction {
+        case .automatic:
+            var unique: [VinylRunDirection] = []
+            let proposed = [
+                VinylRunDirection(angleDegrees: 0, label: "MIXED"),
+                VinylRunDirection(angleDegrees: 90, label: "MIXED")
+            ] + edgeDerivedRunDirections(for: sourceSurface).map {
+                VinylRunDirection(angleDegrees: $0.angleDegrees, label: "MIXED")
+            }
+            for direction in proposed where !unique.contains(where: {
+                angularDistance($0.angleDegrees, direction.angleDegrees) <= 2
+            }) {
+                unique.append(direction)
+            }
+            directions = unique
+        case .lengthwise, .widthwise:
+            guard let manual = manualRegionDirection(
+                for: region.positions,
+                layoutDirection: settings.direction
+            ) else { return [] }
+            directions = [manual]
+        }
+
+        return directions.compactMap { direction in
+            let cuts = cutsForPolygon(
+                surface: region,
+                settings: settings,
+                direction: direction,
+                idPrefix: "\(idPrefix)-\(vinylFormatAngleForId(direction.angleDegrees))",
+                directionRegionId: regionId,
+                nonWrappingSegments: nonWrappingSegments
+            )
+            guard !cuts.isEmpty else { return nil }
+            return RegionDirectionChoice(direction: direction, cuts: cuts)
+        }
+    }
+
+    private static func manualRegionDirection(
+        for positions: [CGPoint],
+        layoutDirection: VinylLayoutDirection
+    ) -> VinylRunDirection? {
+        guard positions.count >= 3 else { return nil }
+        let longest = positions.indices
+            .map { index -> (angle: Double, length: Double) in
+                let start = positions[index]
+                let end = positions[(index + 1) % positions.count]
+                let dx = Double(end.x - start.x)
+                let dy = Double(end.y - start.y)
+                return (
+                    angle: normalizedAngle(atan2(dy, dx) * 180 / .pi),
+                    length: sqrt((dx * dx) + (dy * dy))
+                )
+            }
+            .max { $0.length < $1.length }
+        guard let longest, longest.length > 0.01 else { return nil }
+
+        let angle: Double
+        let label: String
+        switch layoutDirection {
+        case .automatic:
+            return nil
+        case .lengthwise:
+            angle = longest.angle
+            label = "LENGTH"
+        case .widthwise:
+            angle = longest.angle + 90
+            label = "WIDTH"
+        }
+        return VinylRunDirection(angleDegrees: angle, label: label)
+    }
+
+    private static func interiorTransitionSegments(
+        _ chords: [PolygonSplitter.ChordSegment],
+        polygon: [CGPoint],
+        lineA: CGPoint,
+        lineB: CGPoint,
+        scaleFactor: Double
+    ) -> [VinylSeamSegment] {
+        let dx = Double(lineB.x - lineA.x)
+        let dy = Double(lineB.y - lineA.y)
+        let length = sqrt((dx * dx) + (dy * dy))
+        guard length > 0.5 else { return [] }
+        let probeDistance = max(0.25, min(2, scaleFactor * 0.25))
+        let normalX = CGFloat((-dy / length) * probeDistance)
+        let normalY = CGFloat((dx / length) * probeDistance)
+
+        // `PolygonSplitter.chords` pairs sorted boundary hits. When the source
+        // house edge itself lies on the polygon boundary, reversing the line can
+        // expose the interior extension that follows that boundary run. Merge
+        // both orientations, then let the two-sided probe reject the exterior
+        // wall segment in either direction.
+        let candidates = chords + PolygonSplitter.chords(
+            polygon: polygon,
+            lineA: lineB,
+            lineB: lineA
+        )
+        var accepted: [VinylSeamSegment] = []
+        for chord in candidates {
+            guard SnapEngine.distance(chord.start, chord.end) > 0.5 else { continue }
+            let midpoint = CGPoint(
+                x: (chord.start.x + chord.end.x) / 2,
+                y: (chord.start.y + chord.end.y) / 2
+            )
+            let firstProbe = CGPoint(x: midpoint.x + normalX, y: midpoint.y + normalY)
+            let secondProbe = CGPoint(x: midpoint.x - normalX, y: midpoint.y - normalY)
+            guard PolygonMath.pointInPolygon(firstProbe, vertices: polygon),
+                  PolygonMath.pointInPolygon(secondProbe, vertices: polygon) else {
+                continue
+            }
+            let duplicate = accepted.contains { segment in
+                (SnapEngine.distance(segment.start, chord.start) < 0.5 &&
+                    SnapEngine.distance(segment.end, chord.end) < 0.5) ||
+                    (SnapEngine.distance(segment.start, chord.end) < 0.5 &&
+                        SnapEngine.distance(segment.end, chord.start) < 0.5)
+            }
+            if !duplicate {
+                accepted.append(VinylSeamSegment(start: chord.start, end: chord.end))
+            }
+        }
+        return accepted
+    }
+
+    /// Detection-only model of the former free rectilinear optimizer. Its cuts
+    /// are never returned to an order. It only tells validation that an unlocked
+    /// turned layout would have won without a legal house-wall transition.
+    private static func unconstrainedMixedAxisCandidate(
         surface: VinylOrderSurfaceInput,
         settings: VinylOrderSettings,
         width: Double,
@@ -1002,7 +1520,14 @@ enum VinylCutListEngine {
             )
             let horizontalArea = horizontal.reduce(0) { $0 + $1.fullRollAreaSqFt }
             let verticalArea = vertical.reduce(0) { $0 + $1.fullRollAreaSqFt }
-            cuts.append(contentsOf: horizontalArea <= verticalArea ? horizontal : vertical)
+            switch settings.direction {
+            case .automatic:
+                cuts.append(contentsOf: horizontalArea <= verticalArea ? horizontal : vertical)
+            case .lengthwise:
+                cuts.append(contentsOf: rect.width >= rect.height ? horizontal : vertical)
+            case .widthwise:
+                cuts.append(contentsOf: rect.width < rect.height ? horizontal : vertical)
+            }
         }
 
         guard Set(cuts.map { Int($0.runAngleDegrees.rounded()) }).count > 1 else { return nil }
@@ -1013,13 +1538,16 @@ enum VinylCutListEngine {
             height: height,
             areaSqIn: areaSqIn,
             perimeterIn: perimeterIn,
-            resolvedDirection: .automatic,
+            resolvedDirection: settings.direction,
             runAxis: cuts.first?.runAxis ?? .horizontal,
             runAngleDegrees: cuts.first?.runAngleDegrees ?? 0,
             runDirectionLabel: "MIXED",
             targetCross: max(width, height) + (settings.edgeWrapInches * 2),
             coverageCross: coverageCross(stripCount: cuts.count, settings: settings),
-            cuts: cuts
+            cuts: cuts,
+            directionRegions: [],
+            directionTransitions: [],
+            issues: []
         )
     }
 
@@ -1029,6 +1557,7 @@ enum VinylCutListEngine {
             label: candidate.surface.label,
             levelName: candidate.surface.levelName,
             positions: candidate.surface.positions,
+            scaleFactor: candidate.surface.scaleFactor,
             boundingWidthInches: candidate.width,
             boundingHeightInches: candidate.height,
             surfaceAreaSqFt: candidate.areaSqIn / 144.0,
@@ -1045,7 +1574,9 @@ enum VinylCutListEngine {
             offcutWidthInches: cuts.map { max(0, $0.rollWidthInches - $0.requiredWidthInches) }.max() ?? 0,
             cutAreaSqFt: cuts.reduce(0) { $0 + $1.fullRollAreaSqFt },
             cuts: cuts,
-            edges: candidate.surface.edges
+            edges: candidate.surface.edges,
+            directionRegions: candidate.directionRegions,
+            directionTransitions: candidate.directionTransitions
         )
     }
 
@@ -1148,7 +1679,9 @@ enum VinylCutListEngine {
         surface: VinylOrderSurfaceInput,
         settings: VinylOrderSettings,
         direction: VinylRunDirection,
-        idPrefix: String
+        idPrefix: String,
+        directionRegionId: String? = nil,
+        nonWrappingSegments: [VinylSeamSegment] = []
     ) -> [VinylCutPiece] {
         let polygon = surface.positions.map {
             CGPoint(x: Double($0.x) / surface.scaleFactor, y: Double($0.y) / surface.scaleFactor)
@@ -1156,8 +1689,15 @@ enum VinylCutListEngine {
         let projectedPolygon = polygon.map(direction.project)
         guard let bounds = bounds(for: projectedPolygon) else { return [] }
 
-        let crossMin = bounds.minY - settings.edgeWrapInches
-        let crossMax = bounds.maxY + settings.edgeWrapInches
+        let noWrapBoundary = ProjectedNoWrapBoundary(
+            polygon: surface.positions,
+            seamSegments: nonWrappingSegments,
+            scaleFactor: surface.scaleFactor,
+            direction: direction
+        )
+
+        let crossMin = bounds.minY - (noWrapBoundary?.excludesCrossMinimum == true ? 0 : settings.edgeWrapInches)
+        let crossMax = bounds.maxY + (noWrapBoundary?.excludesCrossMaximum == true ? 0 : settings.edgeWrapInches)
         let effectiveCoverage = max(1, settings.rollWidthInches - settings.seamOverlapInches)
         let step = min(1.0, effectiveCoverage)
         var best: [VinylCutPiece] = []
@@ -1171,6 +1711,8 @@ enum VinylCutListEngine {
                 settings: settings,
                 direction: direction,
                 idPrefix: idPrefix,
+                directionRegionId: directionRegionId,
+                noWrapBoundary: noWrapBoundary,
                 crossMin: crossMin,
                 crossMax: crossMax,
                 offset: offset
@@ -1191,6 +1733,8 @@ enum VinylCutListEngine {
                 settings: settings,
                 direction: direction,
                 idPrefix: idPrefix,
+                directionRegionId: directionRegionId,
+                noWrapBoundary: noWrapBoundary,
                 crossMin: crossMin,
                 crossMax: crossMax,
                 offset: 0
@@ -1205,6 +1749,8 @@ enum VinylCutListEngine {
         settings: VinylOrderSettings,
         direction: VinylRunDirection,
         idPrefix: String,
+        directionRegionId: String?,
+        noWrapBoundary: ProjectedNoWrapBoundary?,
         crossMin: Double,
         crossMax: Double,
         offset: Double
@@ -1222,8 +1768,18 @@ enum VinylCutListEngine {
             // never bridge a void that spans the band's full width, or the void
             // gets charged as purchased material and waste.
             for (runIndex, run) in runSpansInBand(polygon: polygon, bandMin: bandStart, bandMax: bandEnd).enumerated() {
-                let runStart = run.min - settings.edgeWrapInches
-                let runEnd = run.max + settings.edgeWrapInches
+                let runStartWrap = noWrapBoundary?.wrapsRunMinimum(
+                    rawRun: run.min,
+                    bandMinimum: bandStart,
+                    bandMaximum: bandEnd
+                ) ?? true
+                let runEndWrap = noWrapBoundary?.wrapsRunMaximum(
+                    rawRun: run.max,
+                    bandMinimum: bandStart,
+                    bandMaximum: bandEnd
+                ) ?? true
+                let runStart = run.min - (runStartWrap ? settings.edgeWrapInches : 0)
+                let runEnd = run.max + (runEndWrap ? settings.edgeWrapInches : 0)
                 let length = max(1, runEnd - runStart)
                 cuts.append(VinylCutPiece(
                     id: "\(surface.id)-\(idPrefix)-\(index)-\(runIndex)-\(vinylFormatInches(length))-\(vinylFormatInches(requiredWidth))",
@@ -1240,6 +1796,7 @@ enum VinylCutListEngine {
                     bandEndInches: min(bandEnd, crossMax),
                     runStartInches: runStart,
                     runEndInches: runEnd,
+                    directionRegionId: directionRegionId,
                     isPurchased: true,
                     sourceSurfaceId: nil,
                     sourceSurfaceLabel: nil

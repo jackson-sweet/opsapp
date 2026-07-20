@@ -51,7 +51,13 @@ struct DeckMaterialsSection: View {
                 materialsCard { orderedContent(snapshot) }
             } else if let resolved {
                 if let materials = resolved.materials {
-                    materialsCard { liveContent(materials) }
+                    if let blocker = materials.vinylPlan.blockingMessage {
+                        materialsCard {
+                            banner(text: blocker, color: OPSStyle.Colors.errorStatus)
+                        }
+                    } else {
+                        materialsCard { liveContent(materials) }
+                    }
                 } else if !resolved.vinylInputs.isEmpty {
                     // Vinyl set present but scale unconfirmed.
                     materialsCard { banner(text: "CONFIRM ONE EDGE LENGTH", color: OPSStyle.Colors.warningStatus) }
@@ -523,7 +529,7 @@ struct DeckMaterialsSection: View {
     }
 
     private func defaultSeededVinylSettings(_ data: DeckDrawingData) -> VinylOrderSettings {
-        var settings = VinylOrderSettings.default
+        var settings = data.vinylOrderSettings ?? .default
         if let id = data.config.vinylCatalogItemId?.trimmingCharacters(in: .whitespacesAndNewlines), !id.isEmpty {
             settings.catalogItemId = id
         }

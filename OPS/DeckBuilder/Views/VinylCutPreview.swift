@@ -71,6 +71,7 @@ struct VinylCutPreview: View {
         drawOverlapBands(surface, in: &context, bounds: bounds, origin: origin, scale: scale)
         context.fill(path, with: .color(OPSStyle.Colors.surfaceActive.opacity(0.42)))
         drawCuts(surface, clippedTo: path, in: &context, bounds: bounds, origin: origin, scale: scale)
+        drawDirectionTransitions(surface, in: &context, bounds: bounds, origin: origin, scale: scale)
         context.stroke(path, with: .color(OPSStyle.Colors.secondaryText), lineWidth: OPSStyle.Layout.Border.standard)
         drawHouseEdgeLabels(surface, in: &context, bounds: bounds, origin: origin, scale: scale)
         drawOverlapLeaders(surface, in: &context, bounds: bounds, origin: origin, scale: scale)
@@ -212,12 +213,21 @@ struct VinylCutPreview: View {
     ) {
         guard !surface.cuts.isEmpty else { return }
 
-        var clipped = context
-        clipped.clip(to: clipPath)
-
         for (index, cut) in surface.cuts.enumerated() {
             guard let cutPath = cutPath(for: cut, surface: surface, bounds: bounds, origin: origin, scale: scale) else {
                 continue
+            }
+
+            var clipped = context
+            clipped.clip(to: clipPath)
+            let regionPolygon = VinylPreviewAnnotationPlanner.regionPolygon(for: cut, in: surface)
+            if let regionPath = surfacePath(
+                for: regionPolygon,
+                bounds: bounds,
+                origin: origin,
+                scale: scale
+            ) {
+                clipped.clip(to: regionPath)
             }
 
             let fill = cutFillColor(cut: cut, index: index)
@@ -229,6 +239,30 @@ struct VinylCutPreview: View {
                 .font(OPSStyle.Typography.smallCaption)
                 .foregroundColor(cut.isPurchased ? OPSStyle.Colors.primaryText : OPSStyle.Colors.tan)
             clipped.draw(label, at: labelPoint(for: cut, surface: surface, bounds: bounds, origin: origin, scale: scale), anchor: .center)
+        }
+    }
+
+    private func drawDirectionTransitions(
+        _ surface: VinylSurfaceCutPlan,
+        in context: inout GraphicsContext,
+        bounds: CGRect,
+        origin: CGPoint,
+        scale: CGFloat
+    ) {
+        let annotationPlan = VinylPreviewAnnotationPlanner.plan(
+            surface: surface,
+            settings: plan.settings,
+            viewportScale: scale
+        )
+        for transition in annotationPlan.transitions {
+            var line = Path()
+            line.move(to: map(transition.start, bounds: bounds, origin: origin, scale: scale))
+            line.addLine(to: map(transition.end, bounds: bounds, origin: origin, scale: scale))
+            context.stroke(
+                line,
+                with: .color(OPSStyle.Colors.primaryText),
+                lineWidth: OPSStyle.Layout.Border.standard
+            )
         }
     }
 

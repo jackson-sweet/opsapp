@@ -16,6 +16,47 @@ import XCTest
 
 final class VinylOffcutInventoryTests: XCTestCase {
 
+    // MARK: - Outbound banking freshness
+
+    func testBankingCandidateResolvesOnlyAnUnchangedCurrentOffcut() {
+        let tapped = VinylProducedOffcut(
+            id: "offcut-main-1",
+            sourceSurfaceLabel: "MAIN",
+            widthInches: 12,
+            lengthInches: 144
+        )
+        let identicalCurrent = VinylProducedOffcut(
+            id: tapped.id,
+            sourceSurfaceLabel: "RENAMED SURFACE",
+            widthInches: tapped.widthInches,
+            lengthInches: tapped.lengthInches
+        )
+
+        XCTAssertEqual(
+            VinylOffcutBankingCandidateResolver.resolve(tapped, in: [identicalCurrent]),
+            identicalCurrent,
+            "the current plan's instance must be banked after an identity-and-dimension match"
+        )
+        XCTAssertNil(
+            VinylOffcutBankingCandidateResolver.resolve(
+                tapped,
+                in: [
+                    VinylProducedOffcut(
+                        id: tapped.id,
+                        sourceSurfaceLabel: tapped.sourceSurfaceLabel,
+                        widthInches: 11.5,
+                        lengthInches: tapped.lengthInches
+                    )
+                ]
+            ),
+            "a remnant whose dimensions changed while the action was queued is stale"
+        )
+        XCTAssertNil(
+            VinylOffcutBankingCandidateResolver.resolve(tapped, in: []),
+            "a remnant removed from the current plan must never reach inventory"
+        )
+    }
+
     // MARK: - Engine: produced offcuts + threshold
 
     func testProducedOffcutSurfacedFromLeftoverWidth() {

@@ -73,6 +73,46 @@ final class VinylPreviewAnnotationPlannerTests: XCTestCase {
         XCTAssertLessThanOrEqual(VinylPreviewAnnotationPlanner.houseEdgeLabelFontSize, 8)
     }
 
+    func testMixedPreviewUsesThePlansExactTransitionAndCutRegion() {
+        let surface = mixedVinylSurfacePlan()
+        let preview = VinylPreviewAnnotationPlanner.plan(
+            surface: surface,
+            settings: VinylOrderSettings(
+                color: "",
+                rollWidthInches: 72,
+                seamOverlapInches: 0,
+                edgeWrapInches: 0,
+                direction: .automatic,
+                allowsDirectionalChanges: true
+            ),
+            viewportScale: 1
+        )
+
+        let plannedTransition = try! XCTUnwrap(surface.directionTransitions.first)
+        XCTAssertEqual(preview.transitions.count, 1)
+        XCTAssertEqual(preview.transitions.first?.sourceTransitionId, plannedTransition.id)
+        XCTAssertEqual(preview.transitions.first?.start, plannedTransition.segments.first?.start)
+        XCTAssertEqual(preview.transitions.first?.end, plannedTransition.segments.first?.end)
+
+        let cut = try! XCTUnwrap(surface.cuts.first)
+        let region = try! XCTUnwrap(surface.directionRegions.first { $0.id == cut.directionRegionId })
+        XCTAssertEqual(
+            VinylPreviewAnnotationPlanner.regionPolygon(for: cut, in: surface),
+            region.polygon
+        )
+    }
+
+    func testSingleDirectionPreviewHasNoTransition() {
+        let surface = vinylSurfacePlan()
+        let preview = VinylPreviewAnnotationPlanner.plan(
+            surface: surface,
+            settings: .default,
+            viewportScale: 1
+        )
+
+        XCTAssertTrue(preview.transitions.isEmpty)
+    }
+
     private func vinylSurfacePlan() -> VinylSurfaceCutPlan {
         let surface = VinylOrderSurfaceInput(
             id: "surface",
@@ -118,5 +158,44 @@ final class VinylPreviewAnnotationPlannerTests: XCTestCase {
         )
 
         return VinylCutListEngine.makePlan(surfaces: [surface], settings: .default).surfaces[0]
+    }
+
+    private func mixedVinylSurfacePlan() -> VinylSurfaceCutPlan {
+        let positions = [
+            CGPoint(x: 0, y: 0),
+            CGPoint(x: 300, y: 0),
+            CGPoint(x: 300, y: 70),
+            CGPoint(x: 60, y: 70),
+            CGPoint(x: 60, y: 300),
+            CGPoint(x: 0, y: 300)
+        ]
+        let surface = VinylOrderSurfaceInput(
+            id: "surface",
+            label: "Deck",
+            levelName: nil,
+            positions: positions,
+            scaleFactor: 1,
+            edges: positions.indices.map { index in
+                VinylOrderSurfaceEdge(
+                    id: index == 3 ? "house" : "edge-\(index)",
+                    start: positions[index],
+                    end: positions[(index + 1) % positions.count],
+                    edgeType: index == 3 ? .houseEdge : .deckEdge,
+                    label: nil
+                )
+            }
+        )
+        let plan = VinylCutListEngine.makePlan(
+            surfaces: [surface],
+            settings: VinylOrderSettings(
+                color: "",
+                rollWidthInches: 72,
+                seamOverlapInches: 0,
+                edgeWrapInches: 0,
+                direction: .automatic,
+                allowsDirectionalChanges: true
+            )
+        )
+        return plan.surfaces[0]
     }
 }

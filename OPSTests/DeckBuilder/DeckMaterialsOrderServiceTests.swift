@@ -34,6 +34,81 @@ final class DeckMaterialsOrderServiceTests: XCTestCase {
         )
     }
 
+    private func blockedVinylMaterials() -> (materials: DeckMaterialsList, vinyl: VinylOrderSettings) {
+        let surface = VinylOrderSurfaceInput(
+            id: "blocked",
+            label: "Blocked deck",
+            levelName: nil,
+            positions: [
+                CGPoint(x: 0, y: 0),
+                CGPoint(x: 300, y: 0),
+                CGPoint(x: 300, y: 70),
+                CGPoint(x: 70, y: 70),
+                CGPoint(x: 70, y: 300),
+                CGPoint(x: 0, y: 300)
+            ],
+            scaleFactor: 1,
+            edges: []
+        )
+        let vinyl = VinylOrderSettings(
+            color: "Slate",
+            rollWidthInches: 72,
+            seamOverlapInches: 0,
+            edgeWrapInches: 0,
+            direction: .automatic,
+            allowsDirectionalChanges: true
+        )
+        let materials = DeckMaterialsEngine.compute(
+            vinylInputs: [surface],
+            allDetectedFacesByLevel: [],
+            settings: DeckMaterialsSettings(),
+            vinylSettings: vinyl
+        )
+        return (materials, vinyl)
+    }
+
+    private func wallAlignedVinylMaterials() -> (materials: DeckMaterialsList, vinyl: VinylOrderSettings) {
+        let positions = [
+            CGPoint(x: 0, y: 0),
+            CGPoint(x: 300, y: 0),
+            CGPoint(x: 300, y: 70),
+            CGPoint(x: 60, y: 70),
+            CGPoint(x: 60, y: 300),
+            CGPoint(x: 0, y: 300)
+        ]
+        let surface = VinylOrderSurfaceInput(
+            id: "wall-aligned",
+            label: "Wall aligned deck",
+            levelName: nil,
+            positions: positions,
+            scaleFactor: 1,
+            edges: positions.indices.map { index in
+                VinylOrderSurfaceEdge(
+                    id: index == 3 ? "house" : "edge-\(index)",
+                    start: positions[index],
+                    end: positions[(index + 1) % positions.count],
+                    edgeType: index == 3 ? .houseEdge : .deckEdge,
+                    label: nil
+                )
+            }
+        )
+        let vinyl = VinylOrderSettings(
+            color: "Slate",
+            rollWidthInches: 72,
+            seamOverlapInches: 0,
+            edgeWrapInches: 0,
+            direction: .automatic,
+            allowsDirectionalChanges: true
+        )
+        let materials = DeckMaterialsEngine.compute(
+            vinylInputs: [surface],
+            allDetectedFacesByLevel: [],
+            settings: DeckMaterialsSettings(),
+            vinylSettings: vinyl
+        )
+        return (materials, vinyl)
+    }
+
     /// A rectangular vinyl surface (feet → inches at scale 1) that yields real cut
     /// geometry. `houseEdgeIndex` marks one boundary as a house edge (90 flash);
     /// the rest are open edges (drip + clip).
@@ -151,6 +226,162 @@ final class DeckMaterialsOrderServiceTests: XCTestCase {
             // expected
         }
         XCTAssertNil(design.drawingData.orderedMaterials) // reverted to prior nil
+    }
+
+    func testMarkOrderedRejectsBlockedVinylBeforeSnapshotOrRemoteWrite() async throws {
+        let blocked = blockedVinylMaterials()
+        XCTAssertFalse(blocked.materials.vinylPlan.isOrderable)
+        let design = DeckDesign(companyId: "co-1")
+        var updaterCalls = 0
+        let service = DeckMaterialsOrderService(userId: "user-1") { _, _ in
+            updaterCalls += 1
+        }
+
+        do {
+            try await service.markOrdered(
+                projectId: "proj-1",
+                design: design,
+                materials: blocked.materials,
+                settings: DeckMaterialsSettings(),
+                vinylSettings: blocked.vinyl
+            )
+            XCTFail("expected blocked vinyl geometry to throw")
+        } catch let error as DeckMaterialsOrderError {
+            XCTAssertEqual(
+                error,
+                .vinylPlanBlocked("NO HOUSE-WALL SPLIT · LOCK RUN OR MARK WALL")
+            )
+        }
+
+        XCTAssertNil(design.drawingData.orderedMaterials)
+        XCTAssertEqual(updaterCalls, 0)
+    }
+
+    func testMarkOrderedStoresWallAlignedDirectionGeometryWithoutImmediateDrift() async throws {
+        let aligned = wallAlignedVinylMaterials()
+        XCTAssertTrue(aligned.materials.vinylPlan.isOrderable)
+        XCTAssertFalse(aligned.materials.vinylPlan.surfaces[0].directionTransitions.isEmpty)
+        let design = DeckDesign(companyId: "co-1")
+        let service = DeckMaterialsOrderService(userId: "user-1") { _, _ in }
+
+        try await service.markOrdered(
+            projectId: "proj-1",
+            design: design,
+            materials: aligned.materials,
+            settings: DeckMaterialsSettings(),
+            vinylSettings: aligned.vinyl
+        )
+
+        let snapshot = try XCTUnwrap(design.drawingData.orderedMaterials)
+        XCTAssertFalse(snapshot.vinylDirectionSurfaces?.isEmpty ?? true)
+        XCTAssertFalse(snapshot.vinylDirectionRegions?.isEmpty ?? true)
+        XCTAssertFalse(snapshot.vinylDirectionTransitions?.isEmpty ?? true)
+        XCTAssertEqual(DeckMaterialsDriftKey(snapshot: snapshot), aligned.materials.driftKey)
+    }
+
+    func testValidateCurrentOrderRejectsValidButChangedPlan() throws {
+        let pending = rectMaterials()
+        let current = DeckMaterialsEngine.compute(
+            vinylInputs: [rectSurface(id: "s1", label: "Main", width: 160, height: 240)],
+            allDetectedFacesByLevel: [],
+            settings: DeckMaterialsSettings(),
+            vinylSettings: .default
+        )
+
+        XCTAssertThrowsError(
+            try DeckMaterialsOrderService.validateCurrentOrder(
+                currentMaterials: current,
+                currentSettings: DeckMaterialsSettings(),
+                currentVinylSettings: .default,
+                pendingMaterials: pending,
+                pendingSettings: DeckMaterialsSettings(),
+                pendingVinylSettings: .default
+            )
+        ) { error in
+            XCTAssertEqual(error as? DeckMaterialsOrderError, .vinylPlanChanged)
+        }
+    }
+
+    func testValidateCurrentOrderReturnsGeometryBlockerForNewInvalidPlan() throws {
+        let pending = wallAlignedVinylMaterials()
+        let blocked = blockedVinylMaterials()
+
+        XCTAssertThrowsError(
+            try DeckMaterialsOrderService.validateCurrentOrder(
+                currentMaterials: blocked.materials,
+                currentSettings: DeckMaterialsSettings(),
+                currentVinylSettings: blocked.vinyl,
+                pendingMaterials: pending.materials,
+                pendingSettings: DeckMaterialsSettings(),
+                pendingVinylSettings: pending.vinyl
+            )
+        ) { error in
+            XCTAssertEqual(
+                error as? DeckMaterialsOrderError,
+                .vinylPlanBlocked(VinylCutPlan.wallAlignedTransitionBlocker)
+            )
+        }
+    }
+
+    func testValidateCurrentOrderAcceptsUnchangedPlanAndSettings() throws {
+        let current = wallAlignedVinylMaterials()
+
+        XCTAssertNoThrow(
+            try DeckMaterialsOrderService.validateCurrentOrder(
+                currentMaterials: current.materials,
+                currentSettings: DeckMaterialsSettings(),
+                currentVinylSettings: current.vinyl,
+                pendingMaterials: current.materials,
+                pendingSettings: DeckMaterialsSettings(),
+                pendingVinylSettings: current.vinyl
+            )
+        )
+    }
+
+    func testMergeOrderedSnapshotPreventsActiveDrawingSaveFromErasingIt() async throws {
+        let design = DeckDesign(companyId: "co-1")
+        var activeDrawing = design.drawingData
+        let service = DeckMaterialsOrderService(userId: "user-1") { _, _ in }
+
+        try await service.markOrdered(
+            projectId: "proj-1",
+            design: design,
+            materials: rectMaterials(),
+            settings: DeckMaterialsSettings(),
+            vinylSettings: .default
+        )
+        XCTAssertNil(activeDrawing.orderedMaterials)
+
+        DeckMaterialsOrderService.mergeOrderedSnapshot(
+            from: design,
+            into: &activeDrawing
+        )
+        design.drawingData = activeDrawing
+
+        XCTAssertNotNil(design.drawingData.orderedMaterials)
+    }
+
+    func testMergeClearedSnapshotPreventsActiveDrawingSaveFromRestoringIt() async throws {
+        let design = DeckDesign(companyId: "co-1")
+        let service = DeckMaterialsOrderService(userId: "user-1") { _, _ in }
+        try await service.markOrdered(
+            projectId: "proj-1",
+            design: design,
+            materials: rectMaterials(),
+            settings: DeckMaterialsSettings(),
+            vinylSettings: .default
+        )
+        var activeDrawing = design.drawingData
+        XCTAssertNotNil(activeDrawing.orderedMaterials)
+
+        try await service.clearOrdered(projectId: "proj-1", design: design)
+        DeckMaterialsOrderService.mergeOrderedSnapshot(
+            from: design,
+            into: &activeDrawing
+        )
+        design.drawingData = activeDrawing
+
+        XCTAssertNil(design.drawingData.orderedMaterials)
     }
 
     func testClearOrderedClearsNodeAndSendsNullFields() async throws {

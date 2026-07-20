@@ -2755,7 +2755,11 @@ class DeckBuilderViewModel: ObservableObject {
             let trimmedLabel = surface.label?.trimmingCharacters(in: .whitespacesAndNewlines)
             let label = trimmedLabel.flatMap { $0.isEmpty ? nil : $0 } ?? "Surface \(index + 1)"
             return VinylOrderSurfaceInput(
-                id: surface.id,
+                // Keep the order plan stable when reconciliation first creates
+                // a persisted DeckSurface UUID for unchanged legacy geometry.
+                // Selection still keys off `surface.id` above; plan ownership
+                // keys off the detected face's deterministic geometry ID.
+                id: face.id,
                 label: label,
                 levelName: levelName,
                 positions: face.positions,

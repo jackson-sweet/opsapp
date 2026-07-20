@@ -449,19 +449,25 @@ class ProjectDetailsViewModel: ObservableObject {
         // first (present the confirm sheet). The freeze happens in
         // `confirmVinylOrder` on CONFIRM ORDERED, so both entry points behave
         // identically: MARK ORDERED always means "confirm the actual order".
-        if ordered,
-           let design = resolveDeckDesignForMaterials(),
-           let materials = resolveMaterialsForOrder(design: design) {
-            pendingVinylOrderConfirm = PendingVinylOrderConfirm(
-                design: design,
-                materials: materials,
-                settings: design.drawingData.materialsSettings ?? DeckMaterialsSettings(),
-                vinylSettings: .default,
-                projectId: project.id,
-                projectTitle: project.title,
-                deckTitle: design.title
-            )
-            return
+        if ordered, let design = resolveDeckDesignForMaterials() {
+            let current = resolveCurrentOrder(design: design)
+            if let materials = current.materials {
+                guard materials.vinylPlan.isOrderable else {
+                    networkError = materials.vinylPlan.blockingMessage ?? VinylCutPlan.wallAlignedTransitionBlocker
+                    UINotificationFeedbackGenerator().notificationOccurred(.error)
+                    return
+                }
+                pendingVinylOrderConfirm = PendingVinylOrderConfirm(
+                    design: design,
+                    materials: materials,
+                    settings: current.settings,
+                    vinylSettings: current.vinylSettings,
+                    projectId: project.id,
+                    projectTitle: project.title,
+                    deckTitle: design.title
+                )
+                return
+            }
         }
 
         // No materials resolved (non-vinyl / no scale) or a CLEAR — plain marker.
@@ -482,19 +488,37 @@ class ProjectDetailsViewModel: ObservableObject {
         }
         Task { @MainActor in
             do {
+                guard let currentDesign = resolveDeckDesignForMaterials() else {
+                    throw DeckMaterialsOrderError.vinylPlanChanged
+                }
+                guard currentDesign.id == ctx.design.id else {
+                    throw DeckMaterialsOrderError.vinylPlanChanged
+                }
+                let current = resolveCurrentOrder(design: currentDesign)
+                try DeckMaterialsOrderService.validateCurrentOrder(
+                    currentMaterials: current.materials,
+                    currentSettings: current.settings,
+                    currentVinylSettings: current.vinylSettings,
+                    pendingMaterials: ctx.materials,
+                    pendingSettings: ctx.settings,
+                    pendingVinylSettings: ctx.vinylSettings
+                )
+                guard let currentMaterials = current.materials else {
+                    throw DeckMaterialsOrderError.vinylPlanChanged
+                }
                 try await service.markOrdered(
                     projectId: ctx.projectId,
-                    design: ctx.design,
-                    materials: ctx.materials,
-                    settings: ctx.settings,
-                    vinylSettings: ctx.vinylSettings,
+                    design: currentDesign,
+                    materials: currentMaterials,
+                    settings: current.settings,
+                    vinylSettings: current.vinylSettings,
                     confirmed: confirmed
                 )
                 isUpdatingVinylOrderMarker = false
                 ToastCenter.shared.present(Feedback.saved("vinyl status"))
             } catch {
                 isUpdatingVinylOrderMarker = false
-                networkError = "VINYL STATUS FAILED"
+                networkError = (error as? DeckMaterialsOrderError)?.errorDescription ?? "VINYL STATUS FAILED"
                 print("[PROJECT_DETAILS] Failed to confirm vinyl order: \(error)")
             }
         }
@@ -507,10 +531,19 @@ class ProjectDetailsViewModel: ObservableObject {
         let service = DeckMaterialsOrderService(userId: userId) { pid, fields in
             try await dataController.updateProjectFields(projectId: pid, fields: fields)
         }
-        let design = resolveDeckDesignForMaterials()
         Task { @MainActor in
             do {
                 if ordered {
+                    if let currentDesign = resolveDeckDesignForMaterials(),
+                       let materials = resolveCurrentOrder(design: currentDesign).materials {
+                        guard materials.vinylPlan.isOrderable else {
+                            throw DeckMaterialsOrderError.vinylPlanBlocked(
+                                materials.vinylPlan.blockingMessage
+                                    ?? VinylCutPlan.wallAlignedTransitionBlocker
+                            )
+                        }
+                        throw DeckMaterialsOrderError.vinylPlanChanged
+                    }
                     try await dataController.updateProjectFields(
                         projectId: project.id,
                         fields: [
@@ -520,13 +553,17 @@ class ProjectDetailsViewModel: ObservableObject {
                         ]
                     )
                 } else {
-                    try await service.clearOrdered(projectId: project.id, design: design)
+                    try await service.clearOrdered(
+                        projectId: project.id,
+                        design: resolveDeckDesignForMaterials()
+                    )
                 }
                 isUpdatingVinylOrderMarker = false
                 ToastCenter.shared.present(Feedback.saved("vinyl status"))
             } catch {
                 isUpdatingVinylOrderMarker = false
-                networkError = "VINYL STATUS FAILED"
+                networkError = (error as? DeckMaterialsOrderError)?.errorDescription
+                    ?? "VINYL STATUS FAILED"
                 print("[PROJECT_DETAILS] Failed to update vinyl marker: \(error)")
             }
         }
@@ -542,9 +579,19 @@ class ProjectDetailsViewModel: ObservableObject {
 
     /// Full materials list for the design via the shared detection pipeline, or
     /// nil when there is no vinyl set or the scale can't be resolved.
-    private func resolveMaterialsForOrder(design: DeckDesign) -> DeckMaterialsList? {
-        guard let context = dataController?.modelContext else { return nil }
+    private func resolveCurrentOrder(
+        design: DeckDesign
+    ) -> (
+        materials: DeckMaterialsList?,
+        settings: DeckMaterialsSettings,
+        vinylSettings: VinylOrderSettings
+    ) {
         let data = design.drawingData
+        let settings = data.materialsSettings ?? DeckMaterialsSettings()
+        let vinylSettings = data.vinylOrderSettings ?? .default
+        guard let context = dataController?.modelContext else {
+            return (nil, settings, vinylSettings)
+        }
         let pid = project.id
         let taskDescriptor = FetchDescriptor<ProjectTask>(
             predicate: #Predicate { $0.projectId == pid && $0.deletedAt == nil }
@@ -562,13 +609,14 @@ class ProjectDetailsViewModel: ObservableObject {
         let catalogItems = (try? context.fetch(catalogDescriptor)) ?? []
         let hints = DeckVinylHintBuilder.build(products: products, catalogItems: catalogItems)
 
-        return DeckMaterialsResolver.resolve(
+        let resolved = DeckMaterialsResolver.resolve(
             data: data,
-            settings: data.materialsSettings ?? DeckMaterialsSettings(),
-            vinylSettings: .default,
+            settings: settings,
+            vinylSettings: vinylSettings,
             taskTypeDisplays: taskDisplays,
             vinylHintByProductId: hints
-        ).materials
+        )
+        return (resolved.materials, settings, vinylSettings)
     }
 
     // MARK: - Address

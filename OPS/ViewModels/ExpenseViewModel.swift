@@ -7,6 +7,21 @@
 
 import SwiftUI
 
+enum ExpenseSettingsLoadState: Equatable {
+    case idle
+    case loading
+    case loaded
+    case failed
+}
+
+private enum ExpenseViewModelError: LocalizedError {
+    case repositoryUnavailable
+
+    var errorDescription: String? {
+        "Expense service isn't ready. Close the form and try again."
+    }
+}
+
 @MainActor
 class ExpenseViewModel: ObservableObject {
     @Published var expenses: [ExpenseDTO] = []
@@ -16,6 +31,7 @@ class ExpenseViewModel: ObservableObject {
     /// strip and each card's envelope-phase line.
     @Published var myBatches: [ExpenseBatchDTO] = []
     @Published var settings: ExpenseSettingsDTO? = nil
+    @Published private(set) var settingsLoadState: ExpenseSettingsLoadState = .idle
     @Published var selectedFilter: ExpenseFilter = .all
     @Published var searchText: String = ""
     @Published var isLoading: Bool = false
@@ -34,6 +50,12 @@ class ExpenseViewModel: ObservableObject {
     private let notificationRepo = NotificationRepository()
     /// Debounce for realtime-driven console reloads (`.expenseUpdated` bursts).
     private var realtimeRefreshTask: Task<Void, Never>?
+
+    var hasLoadedSettings: Bool { settingsLoadState == .loaded }
+
+    var submissionRequirements: ExpenseSubmissionRequirements {
+        ExpenseSubmissionRequirements(settings: settings)
+    }
 
     enum ExpenseFilter: String, CaseIterable {
         case all      = "ALL"
@@ -128,10 +150,15 @@ class ExpenseViewModel: ObservableObject {
     }
 
     func setup(companyId: String, currentUserId: String? = nil, currentUserName: String? = nil) {
+        let companyChanged = storedCompanyId != companyId
         storedCompanyId = companyId
         storedUserId = currentUserId
         storedUserName = currentUserName
         repository = ExpenseRepository(companyId: companyId)
+        if companyChanged {
+            settings = nil
+            settingsLoadState = .idle
+        }
     }
 
     /// Update the cached current-user context (used for notification dispatch
@@ -217,19 +244,37 @@ class ExpenseViewModel: ObservableObject {
         return (total, label)
     }
 
-    func loadSettings() async {
-        guard let repo = repository else { return }
+    @discardableResult
+    func loadSettings() async -> Bool {
+        guard let repo = repository else {
+            settingsLoadState = .failed
+            return false
+        }
+        settingsLoadState = .loading
         do {
             settings = try await repo.fetchSettings()
+            settingsLoadState = .loaded
+            self.error = nil
+            return true
         } catch {
+            settingsLoadState = .failed
             if !error.isCancellation { self.error = error.localizedDescription }
+            return false
         }
+    }
+
+    /// Resolve company submission policy before a final submit. A missing row
+    /// is a successful load and uses database defaults; a network failure is
+    /// not treated as permission to submit.
+    func ensureSettingsLoaded() async -> Bool {
+        if hasLoadedSettings { return true }
+        return await loadSettings()
     }
 
     func loadAll() async {
         async let expensesTask: () = loadExpenses()
         async let categoriesTask: () = loadCategories()
-        async let settingsTask: () = loadSettings()
+        async let settingsTask: Bool = loadSettings()
         async let batchesTask: () = loadBatches()
         async let myBatchesTask: () = loadMyBatches()
         _ = await (expensesTask, categoriesTask, settingsTask, batchesTask, myBatchesTask)
@@ -248,96 +293,40 @@ class ExpenseViewModel: ObservableObject {
 
     // MARK: - CRUD
 
-    func createExpense(
-        companyId: String,
-        submittedBy: String,
-        categoryId: String?,
-        merchantName: String?,
-        description: String?,
-        amount: Double,
-        taxAmount: Double?,
-        currency: String?,
-        expenseDate: String?,
-        paymentMethod: String?,
-        receiptImageUrl: String?,
-        receiptThumbnailUrl: String?,
-        ocrRawData: [String: String]?,
-        ocrConfidence: Double?,
-        receiptMissingReason: String? = nil,
-        receiptMissingNote: String? = nil,
-        projectMissingReason: String? = nil,
-        projectMissingNote: String? = nil
-    ) async -> ExpenseDTO? {
+    /// Save one complete expense snapshot. The server returns the canonical
+    /// row only after content, allocations, exception metadata, placement, and
+    /// affected batch totals have all committed.
+    @discardableResult
+    func saveExpenseAtomically(_ command: ExpenseAtomicSaveCommand) async throws -> ExpenseDTO {
+        guard let repo = repository else { throw ExpenseViewModelError.repositoryUnavailable }
+        do {
+            let updated = try await repo.saveAtomically(command)
+            if let index = expenses.firstIndex(where: { $0.id == updated.id }) {
+                expenses[index] = updated
+            } else {
+                expenses.insert(updated, at: 0)
+            }
+            self.error = nil
+            return updated
+        } catch {
+            self.error = error.localizedDescription
+            throw error
+        }
+    }
+
+    /// Read back one expense after an ambiguous network result. This is used to
+    /// distinguish a lost response from a write that never committed.
+    func fetchExpense(_ expenseId: String) async -> ExpenseDTO? {
         guard let repo = repository else { return nil }
-        let dto = CreateExpenseDTO(
-            companyId: companyId,
-            submittedBy: submittedBy,
-            status: "draft",
-            categoryId: categoryId,
-            merchantName: merchantName,
-            description: description,
-            amount: amount,
-            taxAmount: taxAmount,
-            currency: currency,
-            expenseDate: expenseDate,
-            paymentMethod: paymentMethod,
-            receiptImageUrl: receiptImageUrl,
-            receiptThumbnailUrl: receiptThumbnailUrl,
-            receiptMissingReason: receiptMissingReason,
-            receiptMissingNote: receiptMissingNote,
-            projectMissingReason: projectMissingReason,
-            projectMissingNote: projectMissingNote,
-            ocrRawData: ocrRawData,
-            ocrConfidence: ocrConfidence
-        )
         do {
-            let created = try await repo.create(dto)
-            expenses.insert(created, at: 0)
-            ToastCenter.shared.present(Feedback.Expense.saved)
-            return created
+            let expense = try await repo.fetchOne(expenseId)
+            if let idx = expenses.firstIndex(where: { $0.id == expenseId }) {
+                expenses[idx] = expense
+            }
+            self.error = nil
+            return expense
         } catch {
-            self.error = error.localizedDescription
             return nil
-        }
-    }
-
-    /// `silent: true` suppresses the success toast — use for background
-    /// follow-up writes (e.g. receipt URL after upload) that are invisible to
-    /// the user as a distinct save action.
-    func updateExpense(_ expenseId: String, fields: UpdateExpenseDTO, silent: Bool = false) async {
-        guard let repo = repository else { return }
-        do {
-            let updated = try await repo.update(expenseId, fields: fields)
-            if let idx = expenses.firstIndex(where: { $0.id == expenseId }) {
-                expenses[idx] = updated
-            }
-            if !silent {
-                ToastCenter.shared.present(Feedback.Expense.changesSaved)
-            }
-        } catch {
-            self.error = error.localizedDescription
-        }
-    }
-
-    /// Re-file + recompute totals after editing a line that is already in an
-    /// envelope. Clearing batch_id makes the server `place_expense` trigger
-    /// re-file it by its (possibly changed) date and recompute the destination
-    /// envelope total; the previous envelope is recomputed too if the line
-    /// moved. The line keeps its status — no revert to draft, no manual resubmit.
-    func refileEditedExpense(_ expenseId: String, previousBatchId: String?) async {
-        guard let repo = repository else { return }
-        do {
-            try await repo.clearBatchId(expenseId)            // → trigger re-files + recalcs destination
-            let updated = try await repo.fetchOne(expenseId)
-            if let idx = expenses.firstIndex(where: { $0.id == expenseId }) {
-                expenses[idx] = updated
-            }
-            if let prev = previousBatchId, prev != updated.batchId {
-                _ = try? await repo.recalculateBatchTotal(prev)   // old envelope lost a line
-            }
-            ToastCenter.shared.present(Feedback.Expense.changesSaved)
-        } catch {
-            self.error = error.localizedDescription
         }
     }
 
@@ -369,24 +358,6 @@ class ExpenseViewModel: ObservableObject {
 
     // MARK: - Status Actions
 
-    /// Mark a completed expense as submitted. The server `place_expense` trigger
-    /// files it into the right envelope by date; the daily sweep notifies the
-    /// office once per envelope when it sends, and auto-clears under-threshold
-    /// lines. The client no longer batches, notifies per-expense, or
-    /// auto-approves — the server is authoritative.
-    func submitExpense(_ expenseId: String) async {
-        guard let repo = repository else { return }
-        do {
-            let updated = try await repo.updateStatus(expenseId, status: .submitted)
-            if let idx = expenses.firstIndex(where: { $0.id == expenseId }) {
-                expenses[idx] = updated
-            }
-            ToastCenter.shared.present(Feedback.Expense.submitted)
-        } catch {
-            self.error = error.localizedDescription
-        }
-    }
-
     func approveExpense(_ expenseId: String, approvedBy: String) async {
         guard let repo = repository else { return }
         do {
@@ -410,27 +381,6 @@ class ExpenseViewModel: ObservableObject {
                 expenses[idx] = updated
             }
             ToastCenter.shared.present(Feedback.Expense.rejected)
-        } catch {
-            self.error = error.localizedDescription
-        }
-    }
-
-    // MARK: - Allocations
-
-    /// `silent: true` suppresses the success toast — use when allocation
-    /// writes are part of a larger save flow that already toasts its outcome.
-    func setAllocations(_ expenseId: String, allocations: [CreateExpenseAllocationDTO], silent: Bool = false) async {
-        guard let repo = repository else { return }
-        do {
-            try await repo.setAllocations(expenseId, allocations: allocations)
-            // Refresh the expense to get updated allocations
-            let updated = try await repo.fetchOne(expenseId)
-            if let idx = expenses.firstIndex(where: { $0.id == expenseId }) {
-                expenses[idx] = updated
-            }
-            if !silent {
-                ToastCenter.shared.present(Feedback.Expense.allocationsSaved)
-            }
         } catch {
             self.error = error.localizedDescription
         }
@@ -473,6 +423,8 @@ class ExpenseViewModel: ObservableObject {
         do {
             try await repo.upsertSettings(dto)
             settings = dto
+            settingsLoadState = .loaded
+            self.error = nil
             ToastCenter.shared.present(Feedback.Expense.settingsSaved)
         } catch {
             self.error = error.localizedDescription
@@ -510,6 +462,8 @@ class ExpenseViewModel: ObservableObject {
             reviewBatches = batches
             expenses = lines
             settings = loadedSettings
+            settingsLoadState = .loaded
+            self.error = nil
         } catch {
             if !error.isCancellation { self.error = error.localizedDescription }
         }

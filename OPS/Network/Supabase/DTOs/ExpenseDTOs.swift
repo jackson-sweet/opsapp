@@ -89,20 +89,52 @@ struct ExpenseDTO: Codable, Identifiable {
     }
 }
 
-struct CreateExpenseDTO: Codable {
+/// One allocation inside the all-or-nothing expense save RPC. This is a full
+/// replacement snapshot, so `amount` is emitted as JSON null when unset rather
+/// than omitted like a patch field.
+struct ExpenseAtomicAllocationCommand: Encodable, Equatable {
+    let projectId: String
+    let percentage: Double
+    let amount: Double?
+
+    enum CodingKeys: String, CodingKey {
+        case projectId = "project_id"
+        case percentage
+        case amount
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(projectId, forKey: .projectId)
+        try container.encode(percentage, forKey: .percentage)
+        if let amount {
+            try container.encode(amount, forKey: .amount)
+        } else {
+            try container.encodeNil(forKey: .amount)
+        }
+    }
+}
+
+/// Complete desired expense state for `save_expense_atomic`. Every nullable
+/// field is encoded explicitly. The server
+/// therefore distinguishes an intentional clear from a partial patch and can
+/// commit content, allocations, exception metadata, submission, placement,
+/// and both affected batch totals in one database transaction.
+struct ExpenseAtomicSaveCommand: Encodable, Equatable {
+    let requestId: String
+    let expenseId: String
     let companyId: String
     let submittedBy: String
-    let status: String
+    let expectedStatus: String?
+    let expectedUpdatedAt: String?
     let categoryId: String?
     let merchantName: String?
     let description: String?
     let amount: Double
     let taxAmount: Double?
-    /// ISO 4217 code (USD/CAD/etc.). Defaulted from the form's locale-aware
-    /// currency picker. Nil falls back to the column default ('USD').
-    let currency: String?
-    let expenseDate: String?
-    let paymentMethod: String?
+    let currency: String
+    let expenseDate: String
+    let paymentMethod: String
     let receiptImageUrl: String?
     let receiptThumbnailUrl: String?
     let receiptMissingReason: String?
@@ -111,65 +143,174 @@ struct CreateExpenseDTO: Codable {
     let projectMissingNote: String?
     let ocrRawData: [String: String]?
     let ocrConfidence: Double?
+    let allocations: [ExpenseAtomicAllocationCommand]
+    let submit: Bool
+
+    init(
+        requestId: String,
+        expenseId: String,
+        companyId: String,
+        submittedBy: String,
+        expectedStatus: String?,
+        expectedUpdatedAt: String?,
+        categoryId: String?,
+        merchantName: String?,
+        description: String?,
+        amount: Double,
+        taxAmount: Double?,
+        currency: String,
+        expenseDate: String,
+        paymentMethod: String,
+        receiptImageUrl: String?,
+        receiptThumbnailUrl: String?,
+        receiptMissingReason: String?,
+        receiptMissingNote: String?,
+        projectMissingReason: String?,
+        projectMissingNote: String?,
+        ocrRawData: [String: String]?,
+        ocrConfidence: Double?,
+        allocations: [ExpenseAtomicAllocationCommand],
+        submit: Bool
+    ) {
+        self.requestId = requestId
+        self.expenseId = expenseId
+        self.companyId = companyId
+        self.submittedBy = submittedBy
+        self.expectedStatus = expectedStatus
+        self.expectedUpdatedAt = expectedUpdatedAt
+        self.categoryId = categoryId
+        self.merchantName = merchantName
+        self.description = description
+        self.amount = amount
+        self.taxAmount = taxAmount
+        self.currency = currency
+        self.expenseDate = expenseDate
+        self.paymentMethod = paymentMethod
+        let hasReceipt = !(receiptImageUrl?.isEmpty ?? true)
+        self.receiptImageUrl = receiptImageUrl
+        self.receiptThumbnailUrl = hasReceipt ? receiptThumbnailUrl : nil
+
+        self.receiptMissingReason = hasReceipt ? nil : receiptMissingReason
+        self.receiptMissingNote = hasReceipt ? nil : receiptMissingNote
+
+        self.allocations = allocations
+        let hasProject = !allocations.isEmpty
+        self.projectMissingReason = hasProject ? nil : projectMissingReason
+        self.projectMissingNote = hasProject ? nil : projectMissingNote
+        self.ocrRawData = ocrRawData
+        self.ocrConfidence = ocrConfidence
+        self.submit = submit
+    }
 
     enum CodingKeys: String, CodingKey {
-        case companyId            = "company_id"
-        case submittedBy          = "submitted_by"
-        case status
-        case categoryId           = "category_id"
-        case merchantName         = "merchant_name"
+        case requestId             = "request_id"
+        case expenseId             = "expense_id"
+        case companyId             = "company_id"
+        case submittedBy           = "submitted_by"
+        case expectedStatus        = "expected_status"
+        case expectedUpdatedAt     = "expected_updated_at"
+        case categoryId            = "category_id"
+        case merchantName          = "merchant_name"
         case description
         case amount
-        case taxAmount            = "tax_amount"
+        case taxAmount             = "tax_amount"
         case currency
-        case expenseDate          = "expense_date"
-        case paymentMethod        = "payment_method"
-        case receiptImageUrl      = "receipt_image_url"
-        case receiptThumbnailUrl  = "receipt_thumbnail_url"
-        case receiptMissingReason = "receipt_missing_reason"
-        case receiptMissingNote   = "receipt_missing_note"
-        case projectMissingReason = "project_missing_reason"
-        case projectMissingNote   = "project_missing_note"
-        case ocrRawData           = "ocr_raw_data"
-        case ocrConfidence        = "ocr_confidence"
+        case expenseDate           = "expense_date"
+        case paymentMethod         = "payment_method"
+        case receiptImageUrl       = "receipt_image_url"
+        case receiptThumbnailUrl   = "receipt_thumbnail_url"
+        case receiptMissingReason  = "receipt_missing_reason"
+        case receiptMissingNote    = "receipt_missing_note"
+        case projectMissingReason  = "project_missing_reason"
+        case projectMissingNote    = "project_missing_note"
+        case ocrRawData            = "ocr_raw_data"
+        case ocrConfidence         = "ocr_confidence"
+        case allocations
+        case submit
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(requestId, forKey: .requestId)
+        try container.encode(expenseId, forKey: .expenseId)
+        try container.encode(companyId, forKey: .companyId)
+        try container.encode(submittedBy, forKey: .submittedBy)
+        try Self.encodeNullable(expectedStatus, forKey: .expectedStatus, into: &container)
+        try Self.encodeNullable(expectedUpdatedAt, forKey: .expectedUpdatedAt, into: &container)
+        try Self.encodeNullable(categoryId, forKey: .categoryId, into: &container)
+        try Self.encodeNullable(merchantName, forKey: .merchantName, into: &container)
+        try Self.encodeNullable(description, forKey: .description, into: &container)
+        try container.encode(amount, forKey: .amount)
+        try Self.encodeNullable(taxAmount, forKey: .taxAmount, into: &container)
+        try container.encode(currency, forKey: .currency)
+        try container.encode(expenseDate, forKey: .expenseDate)
+        try container.encode(paymentMethod, forKey: .paymentMethod)
+        try Self.encodeNullable(receiptImageUrl, forKey: .receiptImageUrl, into: &container)
+        try Self.encodeNullable(receiptThumbnailUrl, forKey: .receiptThumbnailUrl, into: &container)
+        try Self.encodeNullable(receiptMissingReason, forKey: .receiptMissingReason, into: &container)
+        try Self.encodeNullable(receiptMissingNote, forKey: .receiptMissingNote, into: &container)
+        try Self.encodeNullable(projectMissingReason, forKey: .projectMissingReason, into: &container)
+        try Self.encodeNullable(projectMissingNote, forKey: .projectMissingNote, into: &container)
+        try Self.encodeNullable(ocrRawData, forKey: .ocrRawData, into: &container)
+        try Self.encodeNullable(ocrConfidence, forKey: .ocrConfidence, into: &container)
+        try container.encode(allocations, forKey: .allocations)
+        try container.encode(submit, forKey: .submit)
+    }
+
+    /// Whether two commands describe the same intended database state. The
+    /// request id is deliberately ignored so a failed attempt can reuse its
+    /// ledger entry, while any operator edit receives a fresh request id.
+    func hasSameIntent(as other: ExpenseAtomicSaveCommand) -> Bool {
+        replacingRequestId(with: other.requestId) == other
+    }
+
+    func replacingRequestId(with requestId: String) -> ExpenseAtomicSaveCommand {
+        ExpenseAtomicSaveCommand(
+            requestId: requestId,
+            expenseId: expenseId,
+            companyId: companyId,
+            submittedBy: submittedBy,
+            expectedStatus: expectedStatus,
+            expectedUpdatedAt: expectedUpdatedAt,
+            categoryId: categoryId,
+            merchantName: merchantName,
+            description: description,
+            amount: amount,
+            taxAmount: taxAmount,
+            currency: currency,
+            expenseDate: expenseDate,
+            paymentMethod: paymentMethod,
+            receiptImageUrl: receiptImageUrl,
+            receiptThumbnailUrl: receiptThumbnailUrl,
+            receiptMissingReason: receiptMissingReason,
+            receiptMissingNote: receiptMissingNote,
+            projectMissingReason: projectMissingReason,
+            projectMissingNote: projectMissingNote,
+            ocrRawData: ocrRawData,
+            ocrConfidence: ocrConfidence,
+            allocations: allocations,
+            submit: submit
+        )
+    }
+
+    private static func encodeNullable<T: Encodable>(
+        _ value: T?,
+        forKey key: CodingKeys,
+        into container: inout KeyedEncodingContainer<CodingKeys>
+    ) throws {
+        if let value {
+            try container.encode(value, forKey: key)
+        } else {
+            try container.encodeNil(forKey: key)
+        }
     }
 }
 
-struct UpdateExpenseDTO: Codable {
-    var categoryId: String?
-    var merchantName: String?
-    var description: String?
-    var amount: Double?
-    var taxAmount: Double?
-    var currency: String?
-    var expenseDate: String?
-    var paymentMethod: String?
-    var receiptImageUrl: String?
-    var receiptThumbnailUrl: String?
-    var receiptMissingReason: String?
-    var receiptMissingNote: String?
-    var projectMissingReason: String?
-    var projectMissingNote: String?
-    var status: String?
-    var batchId: String?
+struct ExpenseAtomicSaveParams: Encodable {
+    let command: ExpenseAtomicSaveCommand
 
     enum CodingKeys: String, CodingKey {
-        case categoryId           = "category_id"
-        case merchantName         = "merchant_name"
-        case description
-        case amount
-        case taxAmount            = "tax_amount"
-        case currency
-        case expenseDate          = "expense_date"
-        case paymentMethod        = "payment_method"
-        case receiptImageUrl      = "receipt_image_url"
-        case receiptThumbnailUrl  = "receipt_thumbnail_url"
-        case receiptMissingReason = "receipt_missing_reason"
-        case receiptMissingNote   = "receipt_missing_note"
-        case projectMissingReason = "project_missing_reason"
-        case projectMissingNote   = "project_missing_note"
-        case status
-        case batchId              = "batch_id"
+        case command = "p_command"
     }
 }
 
@@ -184,20 +325,6 @@ struct ExpenseAllocationDTO: Codable, Identifiable {
 
     enum CodingKeys: String, CodingKey {
         case id
-        case expenseId  = "expense_id"
-        case projectId  = "project_id"
-        case percentage
-        case amount
-    }
-}
-
-struct CreateExpenseAllocationDTO: Codable {
-    let expenseId: String
-    let projectId: String
-    let percentage: Double
-    let amount: Double?
-
-    enum CodingKeys: String, CodingKey {
         case expenseId  = "expense_id"
         case projectId  = "project_id"
         case percentage

@@ -449,6 +449,7 @@ enum OPSStyle {
         static let inputHeight: CGFloat = 48.0          // §9 text input height (mobile touch)
         static let bottomCTAHeight: CGFloat = 52.0      // §8 bottom-anchored primary CTA (thumb zone)
         static let chipMinHeight: CGFloat = 36.0        // §4.3 filter / form-picker chip — the one sanctioned sub-44pt target
+        static let formMediaPreviewMaxHeight: CGFloat = 360.0
 
         // MARK: - Corner radius (spec v2 — sharp, tactical, no 999px pills)
         // Prefer the new semantic names (panelRadius, chipRadius, etc.).

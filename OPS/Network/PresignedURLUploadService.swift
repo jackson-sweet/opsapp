@@ -37,6 +37,11 @@ class PresignedURLUploadService {
         let uploadUrl: String
         let publicUrl: String
     }
+
+    private enum ExpenseReceiptVariant: String {
+        case full
+        case thumbnail
+    }
     
     // MARK: - Public Methods
     
@@ -237,16 +242,29 @@ class PresignedURLUploadService {
     /// Upload an expense receipt (full image + thumbnail) using presigned URLs.
     /// Returns (fullUrl, thumbnailUrl); on thumbnail failure the full URL is
     /// returned for both, matching the legacy direct-S3 behavior.
-    func uploadExpenseReceipt(_ image: UIImage, expenseId: String, companyId: String) async throws -> (url: String, thumbnailUrl: String) {
+    func uploadExpenseReceipt(
+        _ image: UIImage,
+        expenseId: String,
+        companyId: String,
+        uploadId: String
+    ) async throws -> (url: String, thumbnailUrl: String) {
         // Full-size receipt (max 2048px, quality 0.85).
         let fullImage = resizeImageIfNeeded(image)
         guard let fullData = fullImage.jpegData(compressionQuality: 0.85) else {
             throw UploadError.invalidResponse
         }
 
-        let timestamp = Date().timeIntervalSince1970
-        let filename = "receipt_\(expenseId)_\(timestamp).jpg"
-        let thumbFilename = "receipt_\(expenseId)_\(timestamp)_thumb.jpg"
+        // The server derives the object key from these UUIDs plus the
+        // authenticated company/user. Client folder/filename values cannot
+        // select or overwrite another operator's receipt.
+        guard let expenseUUID = UUID(uuidString: expenseId),
+              let uploadUUID = UUID(uuidString: uploadId) else {
+            throw UploadError.invalidResponse
+        }
+        let stableExpenseId = expenseUUID.uuidString.lowercased()
+        let stableUploadId = uploadUUID.uuidString.lowercased()
+        let filename = "receipt_\(stableExpenseId)_\(stableUploadId).jpg"
+        let thumbFilename = "receipt_\(stableExpenseId)_\(stableUploadId)_thumb.jpg"
 
         // Receipts render via their stored public URL, so the bucket must grant
         // public-read on `expenses/*` (the legacy direct-S3 path stored receipts
@@ -255,7 +273,12 @@ class PresignedURLUploadService {
         let fullPresign = try await requestPresignedURL(
             filename: filename,
             contentType: "image/jpeg",
-            folder: "expenses/\(companyId)"
+            folder: "expenses/\(companyId)",
+            expenseReceipt: (
+                expenseId: stableExpenseId,
+                uploadId: stableUploadId,
+                variant: .full
+            )
         )
         try await uploadToPresignedURL(
             presignedResponse: fullPresign,
@@ -274,13 +297,41 @@ class PresignedURLUploadService {
             let thumbPresign = try await requestPresignedURL(
                 filename: thumbFilename,
                 contentType: "image/jpeg",
-                folder: "expenses/\(companyId)"
+                folder: "expenses/\(companyId)",
+                expenseReceipt: (
+                    expenseId: stableExpenseId,
+                    uploadId: stableUploadId,
+                    variant: .thumbnail
+                )
             )
-            try await uploadToPresignedURL(
-                presignedResponse: thumbPresign,
-                imageData: thumbData,
-                contentType: "image/jpeg"
-            )
+            do {
+                try await uploadToPresignedURL(
+                    presignedResponse: thumbPresign,
+                    imageData: thumbData,
+                    contentType: "image/jpeg"
+                )
+            } catch {
+                // A timeout can mean S3 accepted the PUT but its response was
+                // lost. Retry the exact deterministic key once so a successful
+                // object is confirmed rather than silently abandoned.
+                switch UploadErrorClassifier.classify(error) {
+                case .transient, .unknown:
+                    do {
+                        try await uploadToPresignedURL(
+                            presignedResponse: thumbPresign,
+                            imageData: thumbData,
+                            contentType: "image/jpeg"
+                        )
+                    } catch {
+                        // The full image remains authoritative. Cleanup is
+                        // best-effort and user-scoped by the delete endpoint.
+                        try? await deleteImage(url: thumbPresign.publicUrl)
+                        return (url: fullPresign.publicUrl, thumbnailUrl: fullPresign.publicUrl)
+                    }
+                case .permanent:
+                    return (url: fullPresign.publicUrl, thumbnailUrl: fullPresign.publicUrl)
+                }
+            }
             return (url: fullPresign.publicUrl, thumbnailUrl: thumbPresign.publicUrl)
         } catch {
             return (url: fullPresign.publicUrl, thumbnailUrl: fullPresign.publicUrl)
@@ -448,7 +499,16 @@ class PresignedURLUploadService {
     }
 
     /// Shared presigned URL request to ops-web
-    private func requestPresignedURL(filename: String, contentType: String, folder: String) async throws -> PresignedURLResponse {
+    private func requestPresignedURL(
+        filename: String,
+        contentType: String,
+        folder: String,
+        expenseReceipt: (
+            expenseId: String,
+            uploadId: String,
+            variant: ExpenseReceiptVariant
+        )? = nil
+    ) async throws -> PresignedURLResponse {
         let idToken: String
         do {
             idToken = try await FirebaseAuthService.shared.getIDToken()
@@ -463,11 +523,20 @@ class PresignedURLUploadService {
         request.setValue("Bearer \(idToken)", forHTTPHeaderField: "Authorization")
 
         var components = URLComponents()
-        components.queryItems = [
+        var queryItems = [
             URLQueryItem(name: "filename", value: filename),
             URLQueryItem(name: "contentType", value: contentType),
             URLQueryItem(name: "folder", value: folder)
         ]
+        if let expenseReceipt {
+            queryItems.append(contentsOf: [
+                URLQueryItem(name: "purpose", value: "expense_receipt"),
+                URLQueryItem(name: "expenseId", value: expenseReceipt.expenseId),
+                URLQueryItem(name: "uploadId", value: expenseReceipt.uploadId),
+                URLQueryItem(name: "variant", value: expenseReceipt.variant.rawValue)
+            ])
+        }
+        components.queryItems = queryItems
         request.httpBody = components.percentEncodedQuery?.data(using: .utf8)
 
         let (data, response) = try await Self.uploadSession.data(for: request)

@@ -10,6 +10,7 @@
 //
 
 import XCTest
+import Supabase
 @testable import OPS
 
 final class AnnotationRetryPolicyTests: XCTestCase {
@@ -67,5 +68,33 @@ final class AnnotationRetryPolicyTests: XCTestCase {
             return XCTFail("writeNotApplied must classify permanent, got \(kind)")
         }
         XCTAssertEqual(code, "PG_0ROWS")
+    }
+
+    func testPostgRESTSchemaCacheRejectionClassifiesPermanent() {
+        let kind = UploadErrorClassifier.classify(
+            PostgrestError(
+                code: "PGRST202",
+                message: "Could not find the function in the schema cache"
+            )
+        )
+
+        guard case .permanent(let code, _) = kind else {
+            return XCTFail("PGRST202 must unlock a definitively rejected save, got \(kind)")
+        }
+        XCTAssertEqual(code, "PG_PGRST202")
+    }
+
+    func testPostgRESTConnectionFailureClassifiesTransient() {
+        let kind = UploadErrorClassifier.classify(
+            PostgrestError(
+                code: "PGRST003",
+                message: "Timed out waiting for a pool connection"
+            )
+        )
+
+        guard case .transient(let reason) = kind else {
+            return XCTFail("PGRST003 must retain the exact retry command, got \(kind)")
+        }
+        XCTAssertEqual(reason, "postgrest_connection_PGRST003")
     }
 }

@@ -54,34 +54,12 @@ class ExpenseRepository {
             .value
     }
 
-    func create(_ dto: CreateExpenseDTO) async throws -> ExpenseDTO {
+    /// Commits the operator's complete expense snapshot through one Postgres
+    /// transaction. The RPC owns nullable clears, allocation replacement,
+    /// submit/refile placement, and source/destination batch totals.
+    func saveAtomically(_ command: ExpenseAtomicSaveCommand) async throws -> ExpenseDTO {
         try await client
-            .from("expenses")
-            .insert(dto)
-            .select("*, expense_project_allocations(*), expense_categories(*)")
-            .single()
-            .execute()
-            .value
-    }
-
-    func update(_ expenseId: String, fields: UpdateExpenseDTO) async throws -> ExpenseDTO {
-        try await client
-            .from("expenses")
-            .update(fields)
-            .eq("id", value: expenseId)
-            .select("*, expense_project_allocations(*), expense_categories(*)")
-            .single()
-            .execute()
-            .value
-    }
-
-    func updateStatus(_ expenseId: String, status: ExpenseStatus) async throws -> ExpenseDTO {
-        try await client
-            .from("expenses")
-            .update(["status": status.rawValue])
-            .eq("id", value: expenseId)
-            .select("*, expense_project_allocations(*), expense_categories(*)")
-            .single()
+            .rpc("save_expense_atomic", params: ExpenseAtomicSaveParams(command: command))
             .execute()
             .value
     }
@@ -137,25 +115,6 @@ class ExpenseRepository {
             )
         } catch {
             print("[ExpenseRepository] Accounting sync trigger failed for \(expenseId): \(error.localizedDescription)")
-        }
-    }
-
-    // MARK: - Allocations
-
-    func setAllocations(_ expenseId: String, allocations: [CreateExpenseAllocationDTO]) async throws {
-        // Delete existing allocations
-        try await client
-            .from("expense_project_allocations")
-            .delete()
-            .eq("expense_id", value: expenseId)
-            .execute()
-
-        // Insert new allocations
-        if !allocations.isEmpty {
-            try await client
-                .from("expense_project_allocations")
-                .insert(allocations)
-                .execute()
         }
     }
 
@@ -338,18 +297,6 @@ class ExpenseRepository {
                 .eq("id", value: id)
                 .execute()
         }
-    }
-
-    /// Clear the batch assignment for an expense (set batch_id to null)
-    func clearBatchId(_ expenseId: String) async throws {
-        struct NullBatch: Encodable {
-            let batch_id: String? = nil
-        }
-        try await client
-            .from("expenses")
-            .update(NullBatch())
-            .eq("id", value: expenseId)
-            .execute()
     }
 
     // MARK: - Always-Bundle Helpers

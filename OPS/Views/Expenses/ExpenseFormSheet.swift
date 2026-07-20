@@ -10,6 +10,32 @@ import SwiftData
 import UIKit
 import VisionKit
 
+private struct StagedExpenseReceipt {
+    let url: String
+    let thumbnailUrl: String
+}
+
+private struct ExpenseReceiptTarget {
+    let url: String?
+    let thumbnailUrl: String?
+}
+
+private struct ExpenseSaveInterruption {
+    enum Kind {
+        case receiptUpload
+        case commitConfirmation
+        case saveRejected
+        case closeRequired
+    }
+
+    let kind: Kind
+    let title: String
+    let message: String
+    let retryLabel: String
+
+    var locksEditing: Bool { kind == .commitConfirmation }
+}
+
 struct ExpenseFormSheet: View {
     @ObservedObject var viewModel: ExpenseViewModel
     var prefilledProjectId: String? = nil
@@ -31,6 +57,8 @@ struct ExpenseFormSheet: View {
     @State private var showImagePicker = false
     @State private var showDocumentScanner = false
     @State private var showReceiptSourceSheet = false
+    @State private var pendingScannerImages: [UIImage] = []
+    @State private var isReplacingReceipt = false
     @State private var isScanning = false
     @State private var ocrUsed = false
     @State private var lastOCRResult: OCRResult? = nil
@@ -38,6 +66,17 @@ struct ExpenseFormSheet: View {
     @State private var isSaving = false
     @State private var validationErrors: [String] = []
     @State private var isViewMode = false
+    @State private var workingExpenseId = UUID().uuidString.lowercased()
+    /// Uploaded receipt URLs retained until the atomic database request is
+    /// confirmed. They are never deleted on an ambiguous network result.
+    @State private var stagedReceipt: StagedExpenseReceipt? = nil
+    @State private var receiptUploadId = UUID().uuidString.lowercased()
+    /// The exact command (including its ledger request id) is reused after an
+    /// ambiguous response. Any operator edit creates a new request id.
+    @State private var pendingAtomicCommand: ExpenseAtomicSaveCommand? = nil
+    @State private var saveInterruption: ExpenseSaveInterruption? = nil
+    @State private var resumeSubmissionAfterReceiptReason = false
+    @State private var showDiscardReceiptDialog = false
 
     // Project picker sheet state
     @State private var showProjectPicker = false
@@ -143,6 +182,10 @@ struct ExpenseFormSheet: View {
         return receiptQueue[queueIndex]
     }
 
+    private var persistedReceiptURL: String? {
+        editing?.receiptImageUrl
+    }
+
     var body: some View {
         NavigationStack {
             ZStack(alignment: .bottom) {
@@ -181,7 +224,7 @@ struct ExpenseFormSheet: View {
                         .padding(.horizontal, OPSStyle.Layout.spacing3_5)
 
                     }
-                    .disabled(isViewMode)
+                    .disabled(isViewMode || isSaving || saveInterruption?.locksEditing == true)
                     .padding(.top, OPSStyle.Layout.spacing2)
                     .padding(.bottom, 120)
                 }
@@ -194,9 +237,10 @@ struct ExpenseFormSheet: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
-                    Button("CANCEL") { dismiss() }
+                    Button("CANCEL") { requestDismiss() }
                         .font(OPSStyle.Typography.bodyBold)
-                        .foregroundColor(OPSStyle.Colors.secondaryText)
+                        .foregroundColor(isSaving ? OPSStyle.Colors.tertiaryText : OPSStyle.Colors.secondaryText)
+                        .disabled(isSaving)
                 }
                 ToolbarItem(placement: .principal) {
                     Text(editing == nil ? "NEW EXPENSE" : (isViewMode ? "EXPENSE" : "EDIT EXPENSE"))
@@ -215,19 +259,19 @@ struct ExpenseFormSheet: View {
                 }
             }
             .sheet(isPresented: $showDocumentScanner) {
-                DocumentScannerView(scannedImages: $receiptQueue) {
-                    queueIndex = 0
+                DocumentScannerView(scannedImages: $pendingScannerImages) {
+                    applySelectedReceipts(pendingScannerImages)
+                    pendingScannerImages = []
                     Task { await runOCR() }
                 }
             }
             .sheet(isPresented: $showImagePicker) {
                 ImagePicker(
                     images: $selectedImages,
-                    selectionLimit: 10,
+                    selectionLimit: editing == nil && !isReplacingReceipt ? 10 : 1,
                     onSelectionComplete: {
-                        receiptQueue = selectedImages
+                        applySelectedReceipts(selectedImages)
                         selectedImages = []
-                        queueIndex = 0
                         Task { await runOCR() }
                     }
                 )
@@ -276,9 +320,21 @@ struct ExpenseFormSheet: View {
                 Button("Choose from Library") { showImagePicker = true }
                 Button("Cancel", role: .cancel) { }
             }
+            .confirmationDialog("LEAVE WITHOUT RETRYING?", isPresented: $showDiscardReceiptDialog, titleVisibility: .visible) {
+                Button("Keep Working", role: .cancel) { }
+                Button("Close Form", role: .destructive) { dismiss() }
+            } message: {
+                Text("Your receipt and changes are still here. Close only if you don't want to retry.")
+            }
             .confirmationDialog("RECEIPT REQUIRED", isPresented: $showReceiptRequiredDialog, titleVisibility: .visible) {
-                Button("Add Receipt Photo") { showReceiptSourceSheet = true }
-                Button("No Receipt Available") { showNoReceiptSheet = true }
+                Button("Add Receipt Photo") {
+                    isReplacingReceipt = false
+                    showReceiptSourceSheet = true
+                }
+                Button("No Receipt Available") {
+                    resumeSubmissionAfterReceiptReason = true
+                    showNoReceiptSheet = true
+                }
                 Button("Cancel", role: .cancel) { }
             } message: {
                 Text("This company requires a receipt to submit.")
@@ -286,11 +342,16 @@ struct ExpenseFormSheet: View {
             .sheet(isPresented: $showNoReceiptSheet) {
                 NoReceiptReasonSheet(
                     selected: noReceiptReason,
-                    note: $noReceiptNote,
-                    onSubmit: { reason in
+                    note: noReceiptNote,
+                    onSubmit: { reason, note in
                         noReceiptReason = reason
+                        noReceiptNote = note
                         showNoReceiptSheet = false
-                        Task { await save(submit: true) }
+                        let shouldResume = resumeSubmissionAfterReceiptReason
+                        resumeSubmissionAfterReceiptReason = false
+                        if shouldResume {
+                            Task { await save(submit: true) }
+                        }
                     }
                 )
             }
@@ -304,9 +365,10 @@ struct ExpenseFormSheet: View {
             .sheet(isPresented: $showNoProjectSheet) {
                 NoProjectReasonSheet(
                     selected: noProjectReason,
-                    note: $noProjectNote,
-                    onSubmit: { reason in
+                    note: noProjectNote,
+                    onSubmit: { reason, note in
                         noProjectReason = reason
+                        noProjectNote = note
                         showNoProjectSheet = false
                         Task { await save(submit: true) }
                     }
@@ -316,6 +378,9 @@ struct ExpenseFormSheet: View {
                 // Load categories if not already loaded
                 if viewModel.categories.isEmpty {
                     Task { await viewModel.loadCategories() }
+                }
+                if !viewModel.hasLoadedSettings {
+                    Task { await viewModel.loadSettings() }
                 }
 
                 if let exp = editing {
@@ -352,6 +417,7 @@ struct ExpenseFormSheet: View {
                     projectAllocations = [(projectId: pid, percentage: "100")]
                 }
             }
+            .interactiveDismissDisabled(isSaving || saveInterruption != nil)
         }
     }
 
@@ -412,15 +478,14 @@ struct ExpenseFormSheet: View {
                 if !isViewMode {
                     HStack(spacing: OPSStyle.Layout.spacing3) {
                         Button {
-                            receiptQueue = []
-                            queueIndex = 0
-                            ocrUsed = false
+                            isReplacingReceipt = true
                             showReceiptSourceSheet = true
                         } label: {
-                            Text("RETAKE PHOTO")
+                            Text("REPLACE PHOTO")
                                 .font(OPSStyle.Typography.captionBold)
-                                .foregroundColor(OPSStyle.Colors.primaryAccent)
+                                .foregroundColor(OPSStyle.Colors.secondaryText)
                         }
+                        .frame(minHeight: OPSStyle.Layout.touchTargetMin)
 
                         if !ocrUsed {
                             Button {
@@ -428,11 +493,49 @@ struct ExpenseFormSheet: View {
                             } label: {
                                 Text("RETRY SCAN")
                                     .font(OPSStyle.Typography.captionBold)
-                                    .foregroundColor(OPSStyle.Colors.primaryAccent)
+                                    .foregroundColor(OPSStyle.Colors.secondaryText)
                             }
+                            .frame(minHeight: OPSStyle.Layout.touchTargetMin)
                         }
                     }
                     .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+                }
+            } else if let receiptURL = persistedReceiptURL, let url = URL(string: receiptURL) {
+                AsyncImage(url: url) { phase in
+                    switch phase {
+                    case .empty:
+                        ProgressView()
+                            .tint(OPSStyle.Colors.loadingSpinner)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: OPSStyle.Layout.touchTargetStandard * 2)
+                    case .success(let image):
+                        image
+                            .resizable()
+                            .scaledToFit()
+                            .frame(maxWidth: .infinity)
+                            .frame(maxHeight: OPSStyle.Layout.formMediaPreviewMaxHeight)
+                    case .failure:
+                        receiptUnavailableState
+                    @unknown default:
+                        receiptUnavailableState
+                    }
+                }
+                .glassSurface()
+                .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+                .accessibilityLabel("Receipt photo")
+
+                if !isViewMode {
+                    Button {
+                        isReplacingReceipt = true
+                        showReceiptSourceSheet = true
+                    } label: {
+                        Text("REPLACE RECEIPT")
+                            .font(OPSStyle.Typography.captionBold)
+                            .foregroundColor(OPSStyle.Colors.secondaryText)
+                            .frame(minHeight: OPSStyle.Layout.touchTargetMin)
+                    }
+                    .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+                    .accessibilityHint("Choose a new receipt photo")
                 }
             } else if isViewMode {
                 // No receipt — show placeholder in view mode
@@ -451,6 +554,7 @@ struct ExpenseFormSheet: View {
             } else {
                 // Add receipt button
                 Button {
+                    isReplacingReceipt = false
                     showReceiptSourceSheet = true
                 } label: {
                     VStack(spacing: OPSStyle.Layout.spacing2) {
@@ -461,7 +565,7 @@ struct ExpenseFormSheet: View {
                             .font(OPSStyle.Typography.captionBold)
                             .foregroundColor(OPSStyle.Colors.secondaryText)
 
-                        if viewModel.settings?.requireReceiptPhoto == true {
+                        if viewModel.submissionRequirements.requireReceiptPhoto {
                             Text("REQUIRED FOR SUBMISSION")
                                 .font(OPSStyle.Typography.smallCaption)
                                 .foregroundColor(OPSStyle.Colors.warningStatus)
@@ -474,7 +578,71 @@ struct ExpenseFormSheet: View {
                 .buttonStyle(PlainButtonStyle())
                 .padding(.horizontal, OPSStyle.Layout.spacing3_5)
             }
+
+            if !hasReceipt, let reason = noReceiptReason {
+                VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
+                    Text("// NO RECEIPT · \(reason.label.uppercased())")
+                        .font(OPSStyle.Typography.smallCaption)
+                        .foregroundColor(OPSStyle.Colors.warningStatus)
+
+                    if !noReceiptNote.isEmpty {
+                        Text(noReceiptNote)
+                            .font(OPSStyle.Typography.body)
+                            .foregroundColor(OPSStyle.Colors.secondaryText)
+                    }
+
+                    if !isViewMode {
+                        Button {
+                            resumeSubmissionAfterReceiptReason = false
+                            showNoReceiptSheet = true
+                        } label: {
+                            Text("CHANGE REASON")
+                                .font(OPSStyle.Typography.captionBold)
+                                .foregroundColor(OPSStyle.Colors.secondaryText)
+                                .frame(minHeight: OPSStyle.Layout.touchTargetMin)
+                        }
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(OPSStyle.Layout.spacing3)
+                .glassSurface()
+                .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+            }
+
+            if let saveInterruption {
+                HStack(alignment: .top, spacing: OPSStyle.Layout.spacing2) {
+                    Image(systemName: OPSStyle.Icons.exclamationmarkCircleFill)
+                        .font(.system(size: OPSStyle.Layout.IconSize.sm))
+                        .foregroundColor(OPSStyle.Colors.errorStatus)
+                    VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
+                        Text(saveInterruption.title)
+                            .font(OPSStyle.Typography.smallCaption)
+                            .foregroundColor(OPSStyle.Colors.errorStatus)
+                        Text(saveInterruption.message)
+                            .font(OPSStyle.Typography.body)
+                            .foregroundColor(OPSStyle.Colors.secondaryText)
+                    }
+                    Spacer()
+                }
+                .padding(OPSStyle.Layout.spacing3)
+                .glassSurface(borderColor: OPSStyle.Colors.errorStatus)
+                .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+                .accessibilityElement(children: .combine)
+            }
         }
+    }
+
+    private var receiptUnavailableState: some View {
+        VStack(spacing: OPSStyle.Layout.spacing2) {
+            Image(systemName: OPSStyle.Icons.exclamationmarkTriangle)
+                .font(.system(size: OPSStyle.Layout.IconSize.xl))
+                .foregroundColor(OPSStyle.Colors.warningStatus)
+            Text("RECEIPT UNAVAILABLE")
+                .font(OPSStyle.Typography.captionBold)
+                .foregroundColor(OPSStyle.Colors.secondaryText)
+        }
+        .frame(maxWidth: .infinity)
+        .frame(height: OPSStyle.Layout.touchTargetStandard * 2)
     }
 
     // MARK: - Details Content (inside ExpandableSection)
@@ -849,7 +1017,7 @@ struct ExpenseFormSheet: View {
                         Button {
                             Task { await saveAndAdvance() }
                         } label: {
-                            Text("SAVE & NEXT (\(remainingReceiptCount) LEFT)")
+                            Text(saveButtonLabel("SAVE & NEXT (\(remainingReceiptCount) LEFT)"))
                                 .font(OPSStyle.Typography.button)
                         }
                         .opsPrimaryButtonStyle()
@@ -857,7 +1025,7 @@ struct ExpenseFormSheet: View {
                         Button {
                             Task { await save(submit: true) }
                         } label: {
-                            Text("ADD")
+                            Text(saveButtonLabel("ADD"))
                                 .font(OPSStyle.Typography.button)
                         }
                         .opsPrimaryButtonStyle()
@@ -887,7 +1055,7 @@ struct ExpenseFormSheet: View {
                             Button {
                                 Task { await save(submit: true) }
                             } label: {
-                                Text("ADD")
+                                Text(saveButtonLabel("ADD"))
                                     .font(OPSStyle.Typography.button)
                             }
                             .opsPrimaryButtonStyle()
@@ -895,7 +1063,7 @@ struct ExpenseFormSheet: View {
                             Button {
                                 Task { await save(submit: true) }
                             } label: {
-                                Text("RESUBMIT")
+                                Text(saveButtonLabel("RESUBMIT"))
                                     .font(OPSStyle.Typography.button)
                             }
                             .opsPrimaryButtonStyle()
@@ -920,7 +1088,7 @@ struct ExpenseFormSheet: View {
                         Button {
                             Task { await save(submit: false) }
                         } label: {
-                            Text("SAVE")
+                            Text(saveButtonLabel("SAVE"))
                                 .font(OPSStyle.Typography.button)
                         }
                         .opsPrimaryButtonStyle()
@@ -928,7 +1096,7 @@ struct ExpenseFormSheet: View {
                         Button {
                             Task { await save(submit: true) }
                         } label: {
-                            Text("RESUBMIT")
+                            Text(saveButtonLabel("RESUBMIT"))
                                 .font(OPSStyle.Typography.button)
                         }
                         .opsPrimaryButtonStyle()
@@ -936,7 +1104,7 @@ struct ExpenseFormSheet: View {
                         Button {
                             Task { await save(submit: true) }
                         } label: {
-                            Text("ADD")
+                            Text(saveButtonLabel("ADD"))
                                 .font(OPSStyle.Typography.button)
                         }
                         .opsPrimaryButtonStyle()
@@ -945,6 +1113,10 @@ struct ExpenseFormSheet: View {
                 }
             }
         }
+    }
+
+    private func saveButtonLabel(_ normalLabel: String) -> String {
+        saveInterruption?.retryLabel ?? normalLabel
     }
 
     // MARK: - Approval Banner
@@ -1041,6 +1213,44 @@ struct ExpenseFormSheet: View {
 
     // MARK: - OCR
 
+    private func requestDismiss() {
+        if saveInterruption != nil {
+            showDiscardReceiptDialog = true
+        } else {
+            dismiss()
+        }
+    }
+
+    /// Apply a completed scanner/library choice without destroying the current
+    /// queue first. A replacement changes only the active receipt; a canceled
+    /// picker never calls this method, so every queued image remains intact.
+    private func applySelectedReceipts(_ images: [UIImage]) {
+        guard let first = images.first else { return }
+
+        if isReplacingReceipt {
+            if receiptQueue.indices.contains(queueIndex) {
+                receiptQueue[queueIndex] = first
+            } else {
+                receiptQueue = [first]
+                queueIndex = 0
+            }
+        } else if editing != nil {
+            receiptQueue = [first]
+            queueIndex = 0
+        } else {
+            receiptQueue = images
+            queueIndex = 0
+        }
+
+        isReplacingReceipt = false
+        ocrUsed = false
+        lastOCRResult = nil
+        stagedReceipt = nil
+        receiptUploadId = UUID().uuidString.lowercased()
+        pendingAtomicCommand = nil
+        saveInterruption = nil
+    }
+
     private func runOCR() async {
         guard !receiptQueue.isEmpty, queueIndex < receiptQueue.count else { return }
         let image = receiptQueue[queueIndex]
@@ -1069,7 +1279,7 @@ struct ExpenseFormSheet: View {
     /// A receipt is present when a new photo is queued or the existing expense
     /// already carries one.
     private var hasReceipt: Bool {
-        !receiptQueue.isEmpty || (editing?.receiptImageUrl != nil)
+        !receiptQueue.isEmpty || persistedReceiptURL != nil
     }
 
     /// A submit needs either a receipt or an explicit no-receipt reason when the
@@ -1079,7 +1289,8 @@ struct ExpenseFormSheet: View {
     private func receiptGatePassed(submit: Bool) -> Bool {
         let passed = ExpenseSubmissionGate.passes(
             submit: submit,
-            required: viewModel.settings?.requireReceiptPhoto == true,
+            policyResolved: viewModel.hasLoadedSettings,
+            required: viewModel.submissionRequirements.requireReceiptPhoto,
             hasArtifact: hasReceipt,
             hasReason: noReceiptReason != nil
         )
@@ -1102,7 +1313,8 @@ struct ExpenseFormSheet: View {
     private func projectGatePassed(submit: Bool) -> Bool {
         let passed = ExpenseSubmissionGate.passes(
             submit: submit,
-            required: viewModel.settings?.requireProjectAssignment == true,
+            policyResolved: viewModel.hasLoadedSettings,
+            required: viewModel.submissionRequirements.requireProjectAssignment,
             hasArtifact: hasProject,
             hasReason: noProjectReason != nil
         )
@@ -1130,6 +1342,11 @@ struct ExpenseFormSheet: View {
         var errors: [String] = []
 
         let amountValue = Double(amount) ?? 0
+        func hasMoreThanTwoDecimalPlaces(_ value: String) -> Bool {
+            let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard let separator = trimmed.firstIndex(of: ".") else { return false }
+            return trimmed.distance(from: trimmed.index(after: separator), to: trimmed.endIndex) > 2
+        }
 
         if merchantName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             errors.append("Merchant name is required")
@@ -1141,6 +1358,8 @@ struct ExpenseFormSheet: View {
             errors.append("Amount cannot be negative")
         } else if amountValue > 10_000 {
             errors.append("Amount exceeds $10,000 limit")
+        } else if hasMoreThanTwoDecimalPlaces(amount) {
+            errors.append("Amount can use up to 2 decimal places")
         }
 
         if let taxValue = Double(taxAmount), taxValue > 0, amountValue > 0 {
@@ -1152,6 +1371,8 @@ struct ExpenseFormSheet: View {
 
         if let taxValue = Double(taxAmount), taxValue < 0 {
             errors.append("Tax cannot be negative")
+        } else if !taxAmount.isEmpty && hasMoreThanTwoDecimalPlaces(taxAmount) {
+            errors.append("Tax can use up to 2 decimal places")
         }
 
         let fiveYearsAgo = Calendar.current.date(byAdding: .year, value: -5, to: Date()) ?? Date()
@@ -1169,8 +1390,13 @@ struct ExpenseFormSheet: View {
         let resolvedAllocations = projectAllocations.filter { !$0.projectId.isEmpty }
         if !resolvedAllocations.isEmpty {
             let total = resolvedAllocations.compactMap { Double($0.percentage) }.reduce(0, +)
-            if abs(total - 100.0) > 0.01 {
+            if !ExpenseAllocationPercentageTotal.isExactlyComplete(
+                resolvedAllocations.map { $0.percentage }
+            ) {
                 errors.append("Project allocations must sum to 100% (currently \(Int(total))%)")
+            }
+            if resolvedAllocations.contains(where: { hasMoreThanTwoDecimalPlaces($0.percentage) }) {
+                errors.append("Project percentages can use up to 2 decimal places")
             }
         }
 
@@ -1186,196 +1412,177 @@ struct ExpenseFormSheet: View {
 
     // MARK: - Save
 
-    /// Performs the save without dismissing. Returns true on success.
-    private func performSave(submit: Bool) async -> Bool {
-        guard validate() else { return false }
-        guard receiptGatePassed(submit: submit) else { return false }
-        guard projectGatePassed(submit: submit) else { return false }
+    /// Uploads the receipt, then commits the complete desired expense state in
+    /// one idempotent database transaction. The caller may close the sheet only
+    /// for `.complete`; an ambiguous response retains the exact command, staged
+    /// URLs, and local image for a safe replay.
+    private func performSave(submit: Bool) async -> ExpenseSaveOutcome {
+        if saveInterruption?.kind == .closeRequired {
+            dismiss()
+            return .failed
+        }
+        guard !isSaving else { return .failed }
         isSaving = true
         defer { isSaving = false }
 
-        let companyId = dataController.currentUser?.companyId ?? ""
-        let userId = dataController.currentUser?.id ?? ""
+        saveInterruption = nil
+        validationErrors = []
+
+        if submit, !viewModel.hasLoadedSettings {
+            guard await viewModel.ensureSettingsLoaded() else {
+                return saveFailure("Couldn't verify company expense rules. Check your connection and try again.")
+            }
+        }
+
+        guard validate() else { return .failed }
+        guard receiptGatePassed(submit: submit) else { return .failed }
+        guard projectGatePassed(submit: submit) else { return .failed }
+
+        guard let companyId = dataController.currentUser?.companyId, !companyId.isEmpty,
+              let userId = dataController.currentUser?.id, !userId.isEmpty else {
+            return saveFailure("Couldn't verify your account. Close the form and try again.")
+        }
+
         let amountValue = Double(amount) ?? 0
         let taxValue = taxAmount.isEmpty ? nil : Double(taxAmount)
-        let dateString = ISO8601DateFormatter().string(from: expenseDate)
+        let dateString = SupabaseDate.formatDate(expenseDate)
         let descriptionValue = expenseDescription.isEmpty ? nil : expenseDescription
+        let expenseId = editing?.id ?? workingExpenseId
 
-        let ocrData = lastOCRResult?.rawDataDict
-        let ocrConfidence = lastOCRResult != nil ? Double(lastOCRResult!.overallConfidence) : nil
+        guard let receiptTarget = await resolveReceiptTarget(
+            expenseId: expenseId,
+            companyId: companyId
+        ) else {
+            return receiptRetryFailure()
+        }
 
-        // No-receipt reason only rides along when there is genuinely no photo;
-        // a real receipt always supersedes a reason.
-        let missingReason = hasReceipt ? nil : noReceiptReason?.code
-        let missingNote = (hasReceipt || noReceiptNote.isEmpty) ? nil : noReceiptNote
-        let missingProjectReason = hasProject ? nil : noProjectReason?.code
-        let missingProjectNote = (hasProject || noProjectNote.isEmpty) ? nil : noProjectNote
+        let allocations = projectAllocations.compactMap { allocation -> ExpenseAtomicAllocationCommand? in
+            guard !allocation.projectId.isEmpty, let percentage = Double(allocation.percentage) else { return nil }
+            return ExpenseAtomicAllocationCommand(
+                projectId: allocation.projectId,
+                percentage: percentage,
+                amount: nil
+            )
+        }
 
-        if let exp = editing {
-            let priorStatus = ExpenseStatus(rawValue: exp.status) ?? .draft
-            let fields = UpdateExpenseDTO(
+        let hasCommittedReceipt = receiptTarget.url != nil
+        let missingReason = hasCommittedReceipt ? nil : noReceiptReason?.code
+        let missingNote = (hasCommittedReceipt || noReceiptNote.isEmpty) ? nil : noReceiptNote
+        let missingProjectReason = allocations.isEmpty ? noProjectReason?.code : nil
+        let missingProjectNote = (!allocations.isEmpty || noProjectNote.isEmpty) ? nil : noProjectNote
+        let ocrData = lastOCRResult?.rawDataDict ?? (receiptImage == nil ? editing?.ocrRawData : nil)
+        let ocrConfidence = lastOCRResult.map { Double($0.overallConfidence) }
+            ?? (receiptImage == nil ? editing?.ocrConfidence : nil)
+
+        func makeCommand(requestId: String) -> ExpenseAtomicSaveCommand {
+            ExpenseAtomicSaveCommand(
+                requestId: requestId,
+                expenseId: expenseId,
+                companyId: companyId,
+                submittedBy: userId,
+                expectedStatus: editing?.status,
+                expectedUpdatedAt: editing?.updatedAt,
                 categoryId: selectedCategoryId,
                 merchantName: merchantName.isEmpty ? nil : merchantName,
                 description: descriptionValue,
                 amount: amountValue,
                 taxAmount: taxValue,
-                currency: selectedCurrency,
+                currency: selectedCurrency.uppercased(),
                 expenseDate: dateString,
                 paymentMethod: paymentMethod.rawValue,
+                receiptImageUrl: receiptTarget.url,
+                receiptThumbnailUrl: receiptTarget.thumbnailUrl,
                 receiptMissingReason: missingReason,
                 receiptMissingNote: missingNote,
                 projectMissingReason: missingProjectReason,
                 projectMissingNote: missingProjectNote,
-                status: nil
-            )
-            await viewModel.updateExpense(exp.id, fields: fields, silent: true)
-
-            // Upload receipt if a new image was captured (not already uploaded).
-            var receiptUploadFailed = false
-            if viewModel.error == nil, !receiptQueue.isEmpty, exp.receiptImageUrl == nil {
-                if queueIndex < receiptQueue.count {
-                    let image = receiptQueue[queueIndex]
-                    do {
-                        let urls = try await PresignedURLUploadService.shared.uploadExpenseReceipt(
-                            image, expenseId: exp.id, companyId: companyId
-                        )
-                        let imageFields = UpdateExpenseDTO(
-                            receiptImageUrl: urls.url,
-                            receiptThumbnailUrl: urls.thumbnailUrl
-                        )
-                        await viewModel.updateExpense(exp.id, fields: imageFields, silent: true)
-                    } catch {
-                        receiptUploadFailed = true
-                        print("[EXPENSE] Receipt upload failed: \(error.localizedDescription)")
-                    }
-                }
-            }
-
-            // Update allocations
-            if viewModel.error == nil {
-                let allocs = projectAllocations.compactMap { alloc -> CreateExpenseAllocationDTO? in
-                    guard !alloc.projectId.isEmpty, let pct = Double(alloc.percentage) else { return nil }
-                    return CreateExpenseAllocationDTO(
-                        expenseId: exp.id,
-                        projectId: alloc.projectId,
-                        percentage: pct,
-                        amount: nil
-                    )
-                }
-                if !allocs.isEmpty {
-                    await viewModel.setAllocations(exp.id, allocations: allocs, silent: true)
-                }
-            }
-
-            // A captured receipt that failed to upload must not finalize without
-            // its photo — surface it and leave the line where it was so the crew
-            // can retry from the line.
-            if receiptUploadFailed {
-                UINotificationFeedbackGenerator().notificationOccurred(.warning)
-                ToastCenter.shared.present(Feedback.Expense.receiptUploadFailed)
-            } else if viewModel.error == nil {
-                // Finalize per the prior status (server-authoritative — no client batching):
-                //  • draft + Add        → submitted; the place_expense trigger files it.
-                //  • rejected + Resubmit → submitted, then re-file into the current open envelope.
-                //  • submitted + Save    → keep submitted; re-file so the envelope total stays live.
-                if submit && priorStatus == .draft {
-                    await viewModel.submitExpense(exp.id)
-                } else if submit && priorStatus == .rejected {
-                    await viewModel.submitExpense(exp.id)
-                    await viewModel.refileEditedExpense(exp.id, previousBatchId: exp.batchId)
-                } else if priorStatus == .submitted {
-                    await viewModel.refileEditedExpense(exp.id, previousBatchId: exp.batchId)
-                }
-            }
-        } else {
-            let created = await viewModel.createExpense(
-                companyId: companyId,
-                submittedBy: userId,
-                categoryId: selectedCategoryId,
-                merchantName: merchantName.isEmpty ? nil : merchantName,
-                description: descriptionValue,
-                amount: amountValue,
-                taxAmount: taxValue,
-                currency: selectedCurrency,
-                expenseDate: dateString,
-                paymentMethod: paymentMethod.rawValue,
-                receiptImageUrl: nil,
-                receiptThumbnailUrl: nil,
                 ocrRawData: ocrData,
                 ocrConfidence: ocrConfidence,
-                receiptMissingReason: missingReason,
-                receiptMissingNote: missingNote,
-                projectMissingReason: missingProjectReason,
-                projectMissingNote: missingProjectNote
+                allocations: allocations,
+                submit: submit
             )
-
-            if let created = created {
-                // Upload receipt image now that we have the expense ID.
-                var receiptUploadFailed = false
-                if !receiptQueue.isEmpty, queueIndex < receiptQueue.count {
-                    let image = receiptQueue[queueIndex]
-                    do {
-                        let urls = try await PresignedURLUploadService.shared.uploadExpenseReceipt(
-                            image, expenseId: created.id, companyId: companyId
-                        )
-                        let imageFields = UpdateExpenseDTO(
-                            receiptImageUrl: urls.url,
-                            receiptThumbnailUrl: urls.thumbnailUrl
-                        )
-                        await viewModel.updateExpense(created.id, fields: imageFields, silent: true)
-                    } catch {
-                        receiptUploadFailed = true
-                        print("[EXPENSE] Receipt upload failed: \(error.localizedDescription)")
-                    }
-                }
-
-                let allocs = projectAllocations.compactMap { alloc -> CreateExpenseAllocationDTO? in
-                    guard !alloc.projectId.isEmpty, let pct = Double(alloc.percentage) else { return nil }
-                    return CreateExpenseAllocationDTO(
-                        expenseId: created.id,
-                        projectId: alloc.projectId,
-                        percentage: pct,
-                        amount: nil
-                    )
-                }
-                if !allocs.isEmpty {
-                    await viewModel.setAllocations(created.id, allocations: allocs, silent: true)
-                }
-
-                // A captured receipt that failed to upload keeps the line a draft
-                // (never submit a receipt-bearing expense without its receipt) —
-                // tell the crew to retry when they have signal.
-                if receiptUploadFailed {
-                    UINotificationFeedbackGenerator().notificationOccurred(.warning)
-                    ToastCenter.shared.present(Feedback.Expense.receiptUploadFailed)
-                } else if submit && viewModel.error == nil {
-                    await viewModel.submitExpense(created.id)
-                }
-            }
         }
 
-        if viewModel.error == nil {
-            // Broadcast so every visible expense list (My Expenses, review
-            // batches) refreshes. The global FAB no longer shares the list's
-            // view model, so this is what keeps a create reflected without a
-            // manual pull-to-refresh.
-            NotificationCenter.default.post(name: .opsExpensesDidChange, object: nil)
+        let candidate = makeCommand(
+            requestId: pendingAtomicCommand?.requestId ?? UUID().uuidString.lowercased()
+        )
+        let command: ExpenseAtomicSaveCommand
+        if let pendingAtomicCommand, pendingAtomicCommand.hasSameIntent(as: candidate) {
+            command = pendingAtomicCommand
+        } else {
+            command = makeCommand(requestId: UUID().uuidString.lowercased())
         }
-        return viewModel.error == nil
+        pendingAtomicCommand = command
+
+        var committed: ExpenseDTO?
+        var atomicError: Error?
+        do {
+            committed = try await viewModel.saveExpenseAtomically(command)
+        } catch {
+            atomicError = error
+            committed = nil
+        }
+        if committed == nil,
+           let observed = await viewModel.fetchExpense(command.expenseId),
+           ExpenseAtomicSaveReadback.matches(command: command, expense: observed) {
+            committed = observed
+        }
+
+        guard let committed else {
+            // A timeout or 5xx can race a committing server transaction. Keep
+            // the exact request id and every uploaded object; replaying the
+            // same command reads the private request ledger without duplicating
+            // allocation or placement side effects.
+            return saveConfirmationFailure(atomicError)
+        }
+
+        if let stagedReceipt, let previous = editing,
+           committed.receiptImageUrl == stagedReceipt.url {
+            deleteSupersededReceiptObjects(previous: previous, replacement: stagedReceipt)
+        }
+        pendingAtomicCommand = nil
+        if committed.receiptImageUrl != nil {
+            noReceiptReason = nil
+            noReceiptNote = ""
+        }
+        if !(committed.allocations ?? []).isEmpty {
+            noProjectReason = nil
+            noProjectNote = ""
+        }
+
+        saveInterruption = nil
+        if submit {
+            ToastCenter.shared.present(Feedback.Expense.submitted)
+        } else if editing == nil {
+            ToastCenter.shared.present(Feedback.Expense.saved)
+        } else {
+            ToastCenter.shared.present(Feedback.Expense.changesSaved)
+        }
+
+        // Broadcast so every visible expense list (My Expenses, review
+        // batches) refreshes. The global FAB no longer shares the list's view
+        // model, so this is what keeps a create reflected without a pull.
+        NotificationCenter.default.post(name: .opsExpensesDidChange, object: nil)
+        return .complete
     }
 
     private func save(submit: Bool) async {
-        let success = await performSave(submit: submit)
-        if success { dismiss() }
+        let outcome = await performSave(submit: submit)
+        if outcome.shouldDismiss { dismiss() }
     }
 
     /// Saves the current receipt as draft and advances to the next receipt in the queue.
     private func saveAndAdvance() async {
-        let success = await performSave(submit: false)
-        guard success else { return }
+        let outcome = await performSave(submit: false)
+        guard outcome == .complete else { return }
 
         // Advance to next receipt
         queueIndex += 1
+        workingExpenseId = UUID().uuidString.lowercased()
+        stagedReceipt = nil
+        receiptUploadId = UUID().uuidString.lowercased()
+        pendingAtomicCommand = nil
+        saveInterruption = nil
 
         // Reset form fields for next receipt (keep allocations if prefilled)
         expenseDescription = ""
@@ -1387,6 +1594,10 @@ struct ExpenseFormSheet: View {
         ocrUsed = false
         lastOCRResult = nil
         validationErrors = []
+        noReceiptReason = nil
+        noReceiptNote = ""
+        noProjectReason = nil
+        noProjectNote = ""
 
         if prefilledProjectId == nil {
             projectAllocations = []
@@ -1395,6 +1606,134 @@ struct ExpenseFormSheet: View {
         // Run OCR on next receipt
         Task { await runOCR() }
     }
+
+    /// Resolve the exact receipt URLs for the atomic command. A selected image
+    /// uploads to deterministic object names once; retries reuse both those
+    /// objects and the same database request id. No database row is created or
+    /// patched before the complete command is ready.
+    private func resolveReceiptTarget(
+        expenseId: String,
+        companyId: String
+    ) async -> ExpenseReceiptTarget? {
+        guard let image = receiptImage else {
+            return ExpenseReceiptTarget(
+                url: editing?.receiptImageUrl,
+                thumbnailUrl: editing?.receiptThumbnailUrl
+            )
+        }
+
+        if stagedReceipt == nil {
+            do {
+                let uploaded = try await PresignedURLUploadService.shared.uploadExpenseReceipt(
+                    image,
+                    expenseId: expenseId,
+                    companyId: companyId,
+                    uploadId: receiptUploadId
+                )
+                stagedReceipt = StagedExpenseReceipt(url: uploaded.url, thumbnailUrl: uploaded.thumbnailUrl)
+            } catch {
+                print("[EXPENSE] Receipt upload failed: \(error.localizedDescription)")
+                return nil
+            }
+        }
+
+        guard let stagedReceipt else { return nil }
+        return ExpenseReceiptTarget(url: stagedReceipt.url, thumbnailUrl: stagedReceipt.thumbnailUrl)
+    }
+
+    private func deleteSupersededReceiptObjects(
+        previous: ExpenseDTO,
+        replacement: StagedExpenseReceipt
+    ) {
+        deleteReceiptObjects(
+            ExpenseReceiptCleanup.supersededURLs(
+                previousImageURL: previous.receiptImageUrl,
+                previousThumbnailURL: previous.receiptThumbnailUrl,
+                replacementImageURL: replacement.url,
+                replacementThumbnailURL: replacement.thumbnailUrl
+            )
+        )
+    }
+
+    private func deleteReceiptObjects(_ urls: [String]) {
+        guard !urls.isEmpty else { return }
+        Task {
+            for url in urls {
+                do {
+                    try await PresignedURLUploadService.shared.deleteImage(url: url)
+                } catch {
+                    print("[EXPENSE] Superseded receipt cleanup failed: \(error.localizedDescription)")
+                }
+            }
+        }
+    }
+
+    private func receiptRetryFailure() -> ExpenseSaveOutcome {
+        saveInterruption = ExpenseSaveInterruption(
+            kind: .receiptUpload,
+            title: "// RECEIPT UPLOAD FAILED",
+            message: "Receipt wasn't uploaded. Your changes are still here. Replace it or try again.",
+            retryLabel: "RETRY RECEIPT"
+        )
+        UINotificationFeedbackGenerator().notificationOccurred(.warning)
+        ToastCenter.shared.present(Feedback.Expense.receiptUploadFailed)
+        return .receiptRetryRequired
+    }
+
+    private func saveConfirmationFailure(_ error: Error?) -> ExpenseSaveOutcome {
+        if let error {
+            print("[EXPENSE] Atomic save wasn't confirmed: \(error.localizedDescription)")
+            let errorKind = UploadErrorClassifier.classify(error)
+            if let rejection = ExpenseAtomicSaveFailurePolicy.rejection(for: errorKind) {
+                // A permanent PostgREST/4xx rejection proves the transaction
+                // rolled back. Release the immutable retry command, unlock the
+                // fields, and clean only this attempt's staged objects. The
+                // selected local image remains so the corrected save can
+                // re-upload to a fresh user-owned deterministic key that the
+                // asynchronous cleanup below cannot race and delete.
+                if let stagedReceipt {
+                    receiptUploadId = ExpenseReceiptRetryIdentity.rotatedUploadID(
+                        after: receiptUploadId
+                    )
+                    deleteReceiptObjects(
+                        ExpenseReceiptCleanup.supersededURLs(
+                            previousImageURL: stagedReceipt.url,
+                            previousThumbnailURL: stagedReceipt.thumbnailUrl,
+                            replacementImageURL: nil,
+                            replacementThumbnailURL: nil
+                        )
+                    )
+                }
+                stagedReceipt = nil
+                pendingAtomicCommand = nil
+                saveInterruption = ExpenseSaveInterruption(
+                    kind: rejection.requiresClose ? .closeRequired : .saveRejected,
+                    title: rejection.title,
+                    message: rejection.message,
+                    retryLabel: rejection.requiresClose ? "CLOSE FORM" : "TRY AGAIN"
+                )
+                UINotificationFeedbackGenerator().notificationOccurred(.error)
+                ToastCenter.shared.present(Feedback.Expense.saveRejected)
+                return .failed
+            }
+        }
+        saveInterruption = ExpenseSaveInterruption(
+            kind: .commitConfirmation,
+            title: "// SAVE NOT CONFIRMED",
+            message: "Your receipt and changes are locked here for a safe retry. Try again or close to reload.",
+            retryLabel: "RETRY SAVE"
+        )
+        UINotificationFeedbackGenerator().notificationOccurred(.warning)
+        ToastCenter.shared.present(Feedback.Expense.saveNotConfirmed)
+        return .failed
+    }
+
+    private func saveFailure(_ message: String) -> ExpenseSaveOutcome {
+        validationErrors = [message]
+        UINotificationFeedbackGenerator().notificationOccurred(.warning)
+        return .failed
+    }
+
 }
 
 extension Notification.Name {
@@ -1881,17 +2220,17 @@ private struct ExpenseCurrencyPickerSheet: View {
 /// missing (and optionally adds a note) so the line still files and the office
 /// sees the reason instead of an unexplained blank. Confirm submits the expense.
 private struct NoReceiptReasonSheet: View {
-    @Binding var note: String
-    let onSubmit: (NoReceiptReason) -> Void
+    let onSubmit: (NoReceiptReason, String) -> Void
 
     @Environment(\.dismiss) private var dismiss
     @State private var selected: NoReceiptReason?
+    @State private var note: String
     @FocusState private var noteFocused: Bool
 
-    init(selected: NoReceiptReason?, note: Binding<String>, onSubmit: @escaping (NoReceiptReason) -> Void) {
-        self._note = note
+    init(selected: NoReceiptReason?, note: String, onSubmit: @escaping (NoReceiptReason, String) -> Void) {
         self.onSubmit = onSubmit
         self._selected = State(initialValue: selected)
+        self._note = State(initialValue: note)
     }
 
     var body: some View {
@@ -1986,7 +2325,7 @@ private struct NoReceiptReasonSheet: View {
         OPSFloatingButtonBar {
             Button {
                 guard let selected else { return }
-                onSubmit(selected)
+                onSubmit(selected, note)
             } label: {
                 Text("SUBMIT WITHOUT RECEIPT")
                     .font(OPSStyle.Typography.button)
@@ -2005,17 +2344,17 @@ private struct NoReceiptReasonSheet: View {
 /// office sees the reason. Confirm submits the expense. Mirrors
 /// NoReceiptReasonSheet.
 private struct NoProjectReasonSheet: View {
-    @Binding var note: String
-    let onSubmit: (NoProjectReason) -> Void
+    let onSubmit: (NoProjectReason, String) -> Void
 
     @Environment(\.dismiss) private var dismiss
     @State private var selected: NoProjectReason?
+    @State private var note: String
     @FocusState private var noteFocused: Bool
 
-    init(selected: NoProjectReason?, note: Binding<String>, onSubmit: @escaping (NoProjectReason) -> Void) {
-        self._note = note
+    init(selected: NoProjectReason?, note: String, onSubmit: @escaping (NoProjectReason, String) -> Void) {
         self.onSubmit = onSubmit
         self._selected = State(initialValue: selected)
+        self._note = State(initialValue: note)
     }
 
     var body: some View {
@@ -2110,7 +2449,7 @@ private struct NoProjectReasonSheet: View {
         OPSFloatingButtonBar {
             Button {
                 guard let selected else { return }
-                onSubmit(selected)
+                onSubmit(selected, note)
             } label: {
                 Text("SUBMIT WITHOUT PROJECT")
                     .font(OPSStyle.Typography.button)

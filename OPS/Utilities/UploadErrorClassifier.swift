@@ -138,6 +138,22 @@ enum UploadErrorClassifier {
             return .unknown(reason: "empty postgres code: \(message)")
         }
 
+        // PostgREST's own error namespace is not a PostgreSQL SQLSTATE. Group
+        // 0 is database connectivity, group 3 is auth/token handling, and
+        // group X is an internal server failure; all three are safe to retry
+        // with the exact command. API-request and schema-cache groups prove
+        // the request was rejected before the RPC could commit, so retaining
+        // a permanently locked form would only trap the operator.
+        if code.hasPrefix("PGRST") {
+            let group = code.dropFirst(5).first
+            switch group {
+            case "0", "3", "X":
+                return .transient(reason: "postgrest_connection_\(code)")
+            default:
+                return .permanent(errorCode: "PG_\(code)", reason: message)
+            }
+        }
+
         let cls = String(code.prefix(2))
         switch cls {
         case "23", "42", "22":

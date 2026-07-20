@@ -19,7 +19,7 @@ struct OPSApp: App {
     init() {
         MapboxConfig.configure()
         #if DEBUG
-        if CatalogSetupQARuntime.isEnabled() {
+        if CatalogSetupQARuntime.isEnabled() || ScheduleLongPressQARuntime.isEnabled() {
             return
         }
         #endif
@@ -97,7 +97,12 @@ struct OPSApp: App {
     @ViewBuilder
     private var rootView: some View {
         #if DEBUG
-        if CatalogSetupQARuntime.isEnabled() {
+        if ScheduleLongPressQARuntime.isEnabled() {
+            ScheduleLongPressQAHost()
+                .environmentObject(dataController)
+                .environmentObject(permissionStore)
+                .preferredColorScheme(.dark)
+        } else if CatalogSetupQARuntime.isEnabled() {
             CatalogSetupQALocalHost()
                 .environmentObject(dataController)
                 .environmentObject(notificationManager)

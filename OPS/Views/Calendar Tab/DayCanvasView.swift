@@ -583,6 +583,24 @@ struct DayPageView: View {
                                              startEpoch: start.timeIntervalSince1970)
             }
             : nil
+        // Quick reschedule actions for the long-press menu. Injected INTO the
+        // card (bug 75318af9) so the card owns a single context menu — never
+        // stack a second `.contextMenu` on the card, which would shadow these.
+        let quickActions = ScheduleCardQuickActions(
+            onPush: { pushTask(task, days: $0) },
+            onExtend: { extendTask(task, days: $0) },
+            onCascade: { pushTaskWithCascade(task, days: $0) },
+            onReschedule: {
+                // Bug f7c663c7 — open the scheduler sheet directly, not the
+                // project details view.
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                contextMenuRescheduleTask = task
+            },
+            onSelect: {
+                enterSelectMode()
+                selectedTaskIds.insert(task.id)
+            }
+        )
         let card = CalendarEventCard(
             task: task,
             isFirst: isFirst,
@@ -591,6 +609,7 @@ struct DayPageView: View {
             showLabels: true,
             dragPayload: payload,
             dragSession: dragSession,
+            hostQuickActions: isOngoing ? nil : quickActions,
             onTap: {
                 if isSelectMode {
                     toggleSelection(task.id)
@@ -647,78 +666,11 @@ struct DayPageView: View {
                             }
                         }
                 )
-                .contextMenu {
-                    Section("Push") {
-                        Button(action: { pushTask(task, days: 1) }) {
-                            Label("+1 Day", systemImage: "arrow.right")
-                        }
-                        Button(action: { pushTask(task, days: 2) }) {
-                            Label("+2 Days", systemImage: "arrow.right")
-                        }
-                        Button(action: { pushTask(task, days: 3) }) {
-                            Label("+3 Days", systemImage: "arrow.right")
-                        }
-                        Button(action: { pushTask(task, days: 7) }) {
-                            Label("+1 Week", systemImage: "arrow.right.to.line")
-                        }
-                    }
-
-                    Section("Extend") {
-                        Button(action: { extendTask(task, days: 1) }) {
-                            Label("+1 Day", systemImage: "arrow.right.and.line.vertical.and.arrow.left")
-                        }
-                        Button(action: { extendTask(task, days: 2) }) {
-                            Label("+2 Days", systemImage: "arrow.right.and.line.vertical.and.arrow.left")
-                        }
-                        Button(action: { extendTask(task, days: 3) }) {
-                            Label("+3 Days", systemImage: "arrow.right.and.line.vertical.and.arrow.left")
-                        }
-                        Button(action: { extendTask(task, days: 7) }) {
-                            Label("+1 Week", systemImage: "arrow.right.and.line.vertical.and.arrow.left")
-                        }
-                    }
-
-                    Section("Cascade") {
-                        Button(action: { pushTaskWithCascade(task, days: 1) }) {
-                            Label("+1 Day (+ crew)", systemImage: "arrow.triangle.branch")
-                        }
-                        Button(action: { pushTaskWithCascade(task, days: 2) }) {
-                            Label("+2 Days (+ crew)", systemImage: "arrow.triangle.branch")
-                        }
-                    }
-
-                    Section {
-                        Button(action: {
-                            // Bug f7c663c7 — Reschedule from quick actions
-                            // must open the scheduler sheet directly, not
-                            // route through ShowCalendarTaskDetails (which
-                            // opens the project details view).
-                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                            contextMenuRescheduleTask = task
-                        }) {
-                            Label("Reschedule...", systemImage: "calendar")
-                        }
-                        Button(action: {
-                            enterSelectMode()
-                            selectedTaskIds.insert(task.id)
-                        }) {
-                            Label("Select", systemImage: "checkmark.circle")
-                        }
-                    }
-                }
         } else {
             // Read-only (Crew / Unassigned lack calendar.edit): no schedule-swipe
-            // gesture and no schedule-mutation context menu. Tap-to-open-details
-            // and bulk-select still work via the "Select" quick action.
+            // gesture. The card's single context menu still offers Update-status +
+            // Select (no schedule mutation) — see CalendarEventCard.hostQuickActions.
             card
-                .contextMenu {
-                    Button(action: {
-                        enterSelectMode()
-                        selectedTaskIds.insert(task.id)
-                    }) {
-                        Label("Select", systemImage: "checkmark.circle")
-                    }
-                }
         }
     }
 

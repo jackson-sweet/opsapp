@@ -33,6 +33,21 @@ enum ProjectTaskComposerLogic {
     static func removing(taskId: UUID, from tasks: [LocalTask]) -> [LocalTask] {
         tasks.filter { $0.id != taskId }
     }
+
+    static func tasksForParentSave(
+        committedTasks: [LocalTask],
+        pendingTask: LocalTask?,
+        pendingTaskIsVisible: Bool = true,
+        validTaskTypeIds: Set<String>
+    ) -> [LocalTask] {
+        guard pendingTaskIsVisible,
+              let pendingTask,
+              validTaskTypeIds.contains(pendingTask.taskTypeId) else {
+            return committedTasks
+        }
+
+        return saving(pendingTask, in: committedTasks)
+    }
 }
 
 /// Shared task-adding surface for project creation and project review.
@@ -52,12 +67,13 @@ struct ProjectTaskComposer: View {
     let onManualAddRequested: (() -> Bool)?
     let onSaveTask: (LocalTask) async throws -> LocalTask
     let onDeleteTask: (LocalTask) async throws -> Void
+    private let externalEditorTask: Binding<LocalTask?>?
 
     @EnvironmentObject private var dataController: DataController
     @Environment(\.modelContext) private var modelContext
     @Query private var allUsers: [User]
 
-    @State private var editorTask: LocalTask?
+    @State private var localEditorTask: LocalTask?
     @State private var sheetTarget: SheetTarget?
     @State private var savingTaskId: UUID?
     @State private var taskPendingDeletion: LocalTask?
@@ -96,7 +112,8 @@ struct ProjectTaskComposer: View {
         addButtonTarget: String? = nil,
         onManualAddRequested: (() -> Bool)? = nil,
         onSaveTask: @escaping (LocalTask) async throws -> LocalTask,
-        onDeleteTask: @escaping (LocalTask) async throws -> Void
+        onDeleteTask: @escaping (LocalTask) async throws -> Void,
+        editorTask: Binding<LocalTask?>? = nil
     ) {
         _tasks = tasks
         self.availableTaskTypes = availableTaskTypes
@@ -110,6 +127,7 @@ struct ProjectTaskComposer: View {
         self.onManualAddRequested = onManualAddRequested
         self.onSaveTask = onSaveTask
         self.onDeleteTask = onDeleteTask
+        self.externalEditorTask = editorTask
     }
 
     var body: some View {
@@ -154,6 +172,17 @@ struct ProjectTaskComposer: View {
             }
         } message: { task in
             Text("Remove \(taskTypeName(for: task)) from this project.")
+        }
+    }
+
+    private var editorTask: LocalTask? {
+        get { externalEditorTask?.wrappedValue ?? localEditorTask }
+        nonmutating set {
+            if let externalEditorTask {
+                externalEditorTask.wrappedValue = newValue
+            } else {
+                localEditorTask = newValue
+            }
         }
     }
 

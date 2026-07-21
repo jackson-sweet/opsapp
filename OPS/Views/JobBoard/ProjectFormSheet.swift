@@ -97,6 +97,7 @@ struct ProjectFormSheet: View {
 
     // Local tasks for multiple task creation
     @State private var localTasks: [LocalTask] = []
+    @State private var pendingComposerTask: LocalTask?
 
     @AppStorage("defaultProjectStatus") private var defaultProjectStatusRaw: String = Status.rfq.rawValue
 
@@ -1699,6 +1700,7 @@ struct ProjectFormSheet: View {
             onDelete: {
                 withAnimation(.accessibleEaseInOut(duration: OPSStyle.Animation.durationPanel)) {
                     localTasks.removeAll()
+                    pendingComposerTask = nil
                     isTasksExpanded = false
                 }
                 #if !targetEnvironment(simulator)
@@ -1723,7 +1725,8 @@ struct ProjectFormSheet: View {
                     return false
                 },
                 onSaveTask: { task in task },
-                onDeleteTask: { _ in }
+                onDeleteTask: { _ in },
+                editorTask: $pendingComposerTask
             )
             .environmentObject(dataController)
         }
@@ -2382,6 +2385,26 @@ struct ProjectFormSheet: View {
     /// Save Anyway.
     private func proceedWithSave() {
         guard !isSaving else { return }
+
+        // A valid task that is still open in the shared composer is part of
+        // this form even if the operator skips the nested Add button and taps
+        // the project's primary save action. Commit that visible draft only
+        // after pre-save validation has cleared, then close the bound editor
+        // so the form and composer cannot diverge or submit it twice.
+        let validTaskTypeIds = Set(availableInlineTaskTypes.map(\.id))
+        let tasksForSave = ProjectTaskComposerLogic.tasksForParentSave(
+            committedTasks: localTasks,
+            pendingTask: pendingComposerTask,
+            pendingTaskIsVisible: isTasksExpanded,
+            validTaskTypeIds: validTaskTypeIds
+        )
+        localTasks = tasksForSave
+        if isTasksExpanded,
+           let pendingComposerTask,
+           validTaskTypeIds.contains(pendingComposerTask.taskTypeId) {
+            self.pendingComposerTask = nil
+        }
+
         isSaving = true
 
         Task {

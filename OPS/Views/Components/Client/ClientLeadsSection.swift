@@ -21,6 +21,10 @@ import UIKit
 
 struct ClientLeadsSection: View {
     let client: Client
+    /// Test-only seam (nil in production): pre-supplied leads bypass the async
+    /// repository load so the section renders deterministically in snapshots,
+    /// mirroring the VinylOrders board's preview seam.
+    var previewLeads: [Opportunity]? = nil
 
     @EnvironmentObject private var dataController: DataController
     @EnvironmentObject private var permissionStore: PermissionStore
@@ -133,7 +137,7 @@ struct ClientLeadsSection: View {
                 }
                 .padding(.vertical, OPSStyle.Layout.spacing2_5)
                 .padding(.horizontal, OPSStyle.Layout.spacing3)
-                .frame(minHeight: 44)
+                .frame(minHeight: OPSStyle.Layout.touchTargetMin)
                 .contentShape(Rectangle())
             }
             .buttonStyle(PlainButtonStyle())
@@ -176,7 +180,7 @@ struct ClientLeadsSection: View {
                         }
                     }
                     .frame(maxWidth: .infinity)
-                    .padding(.vertical, 40)
+                    .padding(.vertical, OPSStyle.Layout.spacing5)
                 }
                 .buttonStyle(PlainButtonStyle())
             } else {
@@ -189,7 +193,7 @@ struct ClientLeadsSection: View {
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
                 }
                 .frame(maxWidth: .infinity)
-                .padding(.vertical, 40)
+                .padding(.vertical, OPSStyle.Layout.spacing5)
             }
         }
     }
@@ -207,7 +211,7 @@ struct ClientLeadsSection: View {
             .buttonStyle(PlainButtonStyle())
         }
         .frame(maxWidth: .infinity)
-        .padding(.vertical, 40)
+        .padding(.vertical, OPSStyle.Layout.spacing5)
     }
 
     // MARK: - Pieces
@@ -253,6 +257,10 @@ struct ClientLeadsSection: View {
     // MARK: - Load
 
     private func loadNow() async {
+        if let previewLeads {
+            vm.apply(previewLeads, clientId: client.id, policy: policy)
+            return
+        }
         await vm.load(companyId: companyId, clientId: client.id, policy: policy)
         if let open = detailLead,
            !vm.openLeads.contains(where: { $0.id == open.id }),

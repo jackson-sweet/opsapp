@@ -62,6 +62,121 @@ struct MoreEventsIndicator: Identifiable {
     let row: Int
 }
 
+/// Pure weekly lane allocator for the month grid. Event rows keep the mobile
+/// 44pt interaction minimum; the compact `+N` lane is reserved only on days
+/// that actually overflow. Replanning to a fixed point keeps multi-day spans
+/// and their overflow indicators collision-free across every covered day.
+struct MonthGridEventSlotPlanner {
+    struct Candidate: Equatable {
+        let id: String
+        let startDayIndex: Int
+        let endDayIndex: Int
+    }
+
+    struct Plan: Equatable {
+        let rowByEventId: [String: Int]
+        let hiddenEventIdsByDay: [[String]]
+        let indicatorDays: Set<Int>
+        let indicatorRow: Int
+    }
+
+    static func plan(
+        candidates: [Candidate],
+        eventIdsByDay: [[String]],
+        cellHeight: CGFloat
+    ) -> Plan {
+        let dayCount = eventIdsByDay.count
+        let availableHeight = max(0, cellHeight - OPSStyle.Layout.monthGridDayHeaderHeight)
+        let indicatorHeight = cellHeight < OPSStyle.Layout.monthGridStandardHeightThreshold
+            ? OPSStyle.Layout.monthGridCompactBadgeHeight
+            : OPSStyle.Layout.monthGridStandardBadgeHeight
+        let normalCapacity = max(
+            1,
+            Int(availableHeight / OPSStyle.Layout.touchTargetMin)
+        )
+        let overflowCapacity = max(
+            1,
+            Int((availableHeight - indicatorHeight) / OPSStyle.Layout.touchTargetMin)
+        )
+
+        var indicatorDays = Set<Int>()
+        var rowByEventId = allocate(
+            candidates: candidates,
+            capacityByDay: Array(repeating: normalCapacity, count: dayCount)
+        )
+
+        // At most `dayCount` new indicator days can be discovered. A fixed-point
+        // pass matters when hiding one multi-day span makes every day it covers
+        // reserve the same collision-free overflow lane.
+        for _ in 0...dayCount {
+            let discoveredDays = Set(eventIdsByDay.indices.filter { dayIndex in
+                eventIdsByDay[dayIndex].contains { rowByEventId[$0] == nil }
+            })
+            let expandedDays = indicatorDays.union(discoveredDays)
+            if expandedDays == indicatorDays {
+                break
+            }
+
+            indicatorDays = expandedDays
+            let capacityByDay = eventIdsByDay.indices.map { dayIndex in
+                indicatorDays.contains(dayIndex) ? overflowCapacity : normalCapacity
+            }
+            rowByEventId = allocate(
+                candidates: candidates,
+                capacityByDay: capacityByDay
+            )
+        }
+
+        let hiddenEventIdsByDay = eventIdsByDay.map { eventIds in
+            var seen = Set<String>()
+            return eventIds.filter { id in
+                guard rowByEventId[id] == nil else { return false }
+                return seen.insert(id).inserted
+            }
+        }
+
+        return Plan(
+            rowByEventId: rowByEventId,
+            hiddenEventIdsByDay: hiddenEventIdsByDay,
+            indicatorDays: indicatorDays,
+            indicatorRow: overflowCapacity
+        )
+    }
+
+    private static func allocate(
+        candidates: [Candidate],
+        capacityByDay: [Int]
+    ) -> [String: Int] {
+        var occupiedRowsByDay = Array(repeating: Set<Int>(), count: capacityByDay.count)
+        var rowByEventId: [String: Int] = [:]
+
+        for candidate in candidates {
+            guard candidate.startDayIndex >= 0,
+                  candidate.endDayIndex >= candidate.startDayIndex,
+                  candidate.endDayIndex < capacityByDay.count else {
+                continue
+            }
+
+            let coveredDays = candidate.startDayIndex...candidate.endDayIndex
+            let rowLimit = coveredDays.map { capacityByDay[$0] }.min() ?? 0
+            guard rowLimit > 0 else { continue }
+
+            for row in 0..<rowLimit {
+                guard coveredDays.allSatisfy({ !occupiedRowsByDay[$0].contains(row) }) else {
+                    continue
+                }
+                rowByEventId[candidate.id] = row
+                for dayIndex in coveredDays {
+                    occupiedRowsByDay[dayIndex].insert(row)
+                }
+                break
+            }
+        }
+
+        return rowByEventId
+    }
+}
+
 class MonthGridCache: ObservableObject {
     @Published var eventsByDate: [String: [ScheduledTaskPreview]] = [:]
     @Published var isLoading = false
@@ -241,6 +356,11 @@ struct MonthGridView: View {
 
     // Long-press / context-menu reschedule state (Bug 70591eb5)
     @State private var rescheduleTarget: RescheduleTarget?
+    @State private var showingCascadePreview = false
+    @State private var pendingCascadePlan: DataController.CascadePlan?
+    @State private var pendingCascadeTask: ProjectTask?
+    @State private var pendingCascadeDays = 0
+    @AppStorage("showCascadePreview") private var showCascadePreviewPref = true
 
     /// Identifiable wrapper so SwiftUI can drive the reschedule sheet from a
     /// `@State` of the task. ProjectTask isn't Identifiable in its model
@@ -338,10 +458,6 @@ struct MonthGridView: View {
         return formatter.string(from: date).uppercased()
     }
 
-    private func eventRowSpacing(for cellHeight: CGFloat) -> CGFloat {
-        return 2
-    }
-
     // MARK: - Long-press / context-menu helpers (Bug 70591eb5)
 
     /// Returns the first visible day of `span` within the supplied `dates`
@@ -352,13 +468,22 @@ struct MonthGridView: View {
         return dates[span.startDayIndex]
     }
 
-    /// Whether the current user may reschedule the task behind this span. Gated
-    /// on calendar.edit, scope-aware (own-scope → only the user's own tasks).
-    /// Non-task spans (personal user events, `userevent:` ids) don't resolve to a
-    /// task and return false — they expose no push / reschedule surface here.
-    private func canEditSchedule(for span: WeekEventSpan) -> Bool {
-        guard let task = dataController.getTask(id: span.eventId) else { return false }
-        return task.canEditSchedule
+    /// Full schedule-action contract for a task badge. Non-task spans and tasks
+    /// outside the user's calendar.edit scope remain read-only.
+    private func scheduleQuickActions(for span: WeekEventSpan) -> ScheduleCardQuickActions? {
+        guard let task = dataController.getTask(id: span.eventId), task.canEditSchedule else {
+            return nil
+        }
+
+        return ScheduleCardQuickActions(
+            onPush: { pushTaskByDays(eventId: task.id, days: $0) },
+            onExtend: { extendTaskByDays(eventId: task.id, days: $0) },
+            onCascade: { prepareCascade(eventId: task.id, days: $0) },
+            onReschedule: {
+                rescheduleTarget = RescheduleTarget(id: task.id, task: task)
+            },
+            onSelect: nil
+        )
     }
 
     /// Build a drag payload for a badge if its event may be rescheduled. Tasks are
@@ -395,12 +520,11 @@ struct MonthGridView: View {
 
     /// Event badges for one week. Extracted from the month-grid body so EventBar's
     /// initializer doesn't inflate that deeply-nested week expression past the
-    /// Swift type-checker's budget. Reschedule (push / pull / pick date) is gated
-    /// per-task on calendar.edit via `canEditSchedule(for:)`.
+    /// Swift type-checker's budget. Schedule actions are gated per-task on
+    /// calendar.edit by `scheduleQuickActions(for:)`.
     @ViewBuilder
     private func eventBars(_ weekSpans: [WeekEventSpan], dates: [Date?], dayWidth: CGFloat) -> some View {
         ForEach(weekSpans) { span in
-            let spanCanModify: Bool = canEditSchedule(for: span)
             EventBar(
                 span: span,
                 cellHeight: cellHeight,
@@ -417,14 +541,7 @@ struct MonthGridView: View {
                         )
                     }
                 },
-                onPushDays: { days in
-                    pushTaskByDays(eventId: span.eventId, days: days)
-                },
-                onOpenReschedule: {
-                    if let task = dataController.getTask(id: span.eventId) {
-                        rescheduleTarget = RescheduleTarget(id: task.id, task: task)
-                    }
-                },
+                quickActions: scheduleQuickActions(for: span),
                 onOpenDayDetails: {
                     // Open the day sheet anchored at the event's first day in the
                     // visible week so the user lands on the same place as a normal
@@ -432,10 +549,12 @@ struct MonthGridView: View {
                     if let firstDate = dates[span.startDayIndex] {
                         sheetDate = IdentifiableDate(date: firstDate)
                     }
-                },
-                canModify: spanCanModify
+                }
             )
-            .offset(x: dayWidth * CGFloat(span.startDayIndex), y: 26 + (CGFloat(span.row) * eventRowHeight(for: cellHeight)))
+            .offset(
+                x: dayWidth * CGFloat(span.startDayIndex),
+                y: OPSStyle.Layout.monthGridDayHeaderHeight + (CGFloat(span.row) * eventRowHeight)
+            )
             .reschedulable(dragPayload(for: span), session: dragSession)
         }
     }
@@ -468,43 +587,79 @@ struct MonthGridView: View {
                 UINotificationFeedbackGenerator().notificationOccurred(.success)
                 ToastCenter.shared.present(Feedback.Task.scheduledFor(start: result.newStart, end: result.newEnd))
             } catch {
-                UINotificationFeedbackGenerator().notificationOccurred(.error)
+                presentScheduleFailure()
             }
         }
     }
 
-    private func eventRowHeight(for cellHeight: CGFloat) -> CGFloat {
-        let badgeHeight: CGFloat = cellHeight < 120 ? 10 : 14
-        return badgeHeight + eventRowSpacing(for: cellHeight)
-    }
+    private func extendTaskByDays(eventId: String, days: Int) {
+        guard let task = dataController.getTask(id: eventId), task.canEditSchedule,
+              let start = task.startDate,
+              let end = task.endDate,
+              let newEnd = Calendar.current.date(byAdding: .day, value: days, to: end) else {
+            return
+        }
 
-    private func maxVisibleSlots(for cellHeight: CGFloat) -> Int {
-        let availableHeight = cellHeight - 26
-        let rowSpacing = eventRowSpacing(for: cellHeight)
-
-        if cellHeight < 120 {
-            // Level 1: base slot height is 10pt
-            let slotHeight: CGFloat = 10
-            return max(4, Int(availableHeight / (slotHeight + rowSpacing / 2)))
-        } else if cellHeight < 180 {
-            // Level 2: base slot height is 14pt
-            let slotHeight: CGFloat = 14
-            return max(4, Int(availableHeight / (slotHeight + rowSpacing / 2)))
-        } else {
-            // Level 3: base slot height is 14pt (tall events use 3 slots = 42pt)
-            let slotHeight: CGFloat = 14
-            return max(6, Int(availableHeight / (slotHeight + rowSpacing / 2)))
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        Task { @MainActor in
+            do {
+                try await dataController.updateTaskSchedule(
+                    task: task,
+                    startDate: start,
+                    endDate: newEnd
+                )
+                UINotificationFeedbackGenerator().notificationOccurred(.success)
+                ToastCenter.shared.present(Feedback.Task.scheduledFor(start: start, end: newEnd))
+            } catch {
+                presentScheduleFailure()
+            }
         }
     }
 
+    private func prepareCascade(eventId: String, days: Int) {
+        guard let task = dataController.getTask(id: eventId), task.canEditSchedule,
+              let plan = dataController.planCascade(for: task, byDays: days) else {
+            return
+        }
+
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        if showCascadePreviewPref && !plan.cascade.changes.isEmpty {
+            pendingCascadePlan = plan
+            pendingCascadeTask = task
+            pendingCascadeDays = days
+            showingCascadePreview = true
+        } else {
+            commitCascade(task: task, plan: plan, days: days)
+        }
+    }
+
+    private func commitCascade(task: ProjectTask, plan: DataController.CascadePlan, days: Int) {
+        Task { @MainActor in
+            guard task.canEditSchedule else {
+                presentScheduleFailure()
+                return
+            }
+            do {
+                try await dataController.pushTaskWithCascade(task, byDays: days)
+                UINotificationFeedbackGenerator().notificationOccurred(.success)
+                ToastCenter.shared.present(
+                    Feedback.Task.scheduledFor(start: plan.pushedNewStart, end: plan.pushedNewEnd)
+                )
+            } catch {
+                presentScheduleFailure()
+            }
+        }
+    }
+
+    private func presentScheduleFailure() {
+        UINotificationFeedbackGenerator().notificationOccurred(.error)
+        ToastCenter.shared.present(Toast(label: Feedback.Err.operationFailed, tone: .error))
+    }
+
+    private var eventRowHeight: CGFloat { OPSStyle.Layout.touchTargetMin }
+
     private func weekSpansForWeek(dates: [Date?], weekIndex: Int) -> ([WeekEventSpan], [MoreEventsIndicator]) {
         let calendar = Calendar.current
-        var spans: [WeekEventSpan] = []
-        var indicators: [MoreEventsIndicator] = []
-        let maxSlots = maxVisibleSlots(for: cellHeight)
-        let isLevel3 = cellHeight >= 180
-
-        var occupiedSlots: [[Bool]] = Array(repeating: Array(repeating: false, count: maxSlots), count: 7)
         var eventsByDay: [[ScheduledTaskPreview]] = Array(repeating: [], count: 7)
 
         for (dayIndex, date) in dates.enumerated() {
@@ -521,13 +676,13 @@ struct MonthGridView: View {
             eventsByDay[dayIndex] = dayEvents
         }
 
-        var processedEvents: Set<String> = []
+        var seenEventIds = Set<String>()
+        var orderedEvents: [ScheduledTaskPreview] = []
+        var plannerCandidates: [MonthGridEventSlotPlanner.Candidate] = []
 
         for dayIndex in 0..<7 {
             for event in eventsByDay[dayIndex] {
-                if processedEvents.contains(event.eventId) {
-                    continue
-                }
+                guard seenEventIds.insert(event.eventId).inserted else { continue }
 
                 var weekStartIndex = -1
                 var weekEndIndex = -1
@@ -544,78 +699,55 @@ struct MonthGridView: View {
                 }
 
                 guard weekStartIndex >= 0 && weekEndIndex >= 0 else { continue }
-
-                // Determine slots needed: single-day events at Level 3 need 3 slots, others need 1
-                let isSingleDay = !event.isMultiDay
-                let slotsNeeded = (isLevel3 && isSingleDay) ? 3 : 1
-
-                var assignedSlot = -1
-                // Reserve last slot for "+N more" indicator
-                for slotIndex in 0..<(maxSlots - 1) {
-                    // Check if we have enough consecutive slots available
-                    if slotIndex + slotsNeeded > maxSlots - 1 {
-                        break  // Not enough room for this event
-                    }
-
-                    var slotsAvailable = true
-                    for slotOffset in 0..<slotsNeeded {
-                        for dayIdx in weekStartIndex...weekEndIndex {
-                            if occupiedSlots[dayIdx][slotIndex + slotOffset] {
-                                slotsAvailable = false
-                                break
-                            }
-                        }
-                        if !slotsAvailable { break }
-                    }
-
-                    if slotsAvailable {
-                        assignedSlot = slotIndex
-                        // Mark all needed slots as occupied
-                        for slotOffset in 0..<slotsNeeded {
-                            for dayIdx in weekStartIndex...weekEndIndex {
-                                occupiedSlots[dayIdx][slotIndex + slotOffset] = true
-                            }
-                        }
-                        break
-                    }
-                }
-
-                if assignedSlot >= 0 {
-                    let isFirstSegment = calendar.isDate(dates[weekStartIndex]!, inSameDayAs: event.startDate)
-                    let isLastSegment = calendar.isDate(dates[weekEndIndex]!, inSameDayAs: event.endDate)
-
-                    spans.append(WeekEventSpan(
-                        id: "\(event.eventId)-\(weekIndex)",
-                        eventId: event.eventId,
-                        title: event.title,
-                        color: event.color,
-                        startDate: event.startDate,
-                        endDate: event.endDate,
-                        startDayIndex: weekStartIndex,
-                        endDayIndex: weekEndIndex,
-                        row: assignedSlot,
-                        isFirstSegment: isFirstSegment,
-                        isLastSegment: isLastSegment,
-                        isSingleDay: isSingleDay,
-                        taskTypeDisplay: event.taskTypeDisplay
-                    ))
-
-                    processedEvents.insert(event.eventId)
-                }
+                orderedEvents.append(event)
+                plannerCandidates.append(.init(
+                    id: event.eventId,
+                    startDayIndex: weekStartIndex,
+                    endDayIndex: weekEndIndex
+                ))
             }
         }
 
-        for dayIndex in 0..<7 {
-            let hiddenEvents = eventsByDay[dayIndex].filter { !processedEvents.contains($0.eventId) }
-            let uniqueHidden = Set(hiddenEvents.map { $0.eventId })
+        let plan = MonthGridEventSlotPlanner.plan(
+            candidates: plannerCandidates,
+            eventIdsByDay: eventsByDay.map { $0.map(\.eventId) },
+            cellHeight: cellHeight
+        )
 
-            if uniqueHidden.count > 0 {
-                indicators.append(MoreEventsIndicator(
-                    dayIndex: dayIndex,
-                    count: uniqueHidden.count,
-                    row: maxSlots - 1
-                ))
+        let candidateById = Dictionary(uniqueKeysWithValues: plannerCandidates.map { ($0.id, $0) })
+        let spans = orderedEvents.compactMap { event -> WeekEventSpan? in
+            guard let candidate = candidateById[event.eventId],
+                  let assignedRow = plan.rowByEventId[event.eventId],
+                  let firstDate = dates[candidate.startDayIndex],
+                  let lastDate = dates[candidate.endDayIndex] else {
+                return nil
             }
+
+            return WeekEventSpan(
+                id: "\(event.eventId)-\(weekIndex)",
+                eventId: event.eventId,
+                title: event.title,
+                color: event.color,
+                startDate: event.startDate,
+                endDate: event.endDate,
+                startDayIndex: candidate.startDayIndex,
+                endDayIndex: candidate.endDayIndex,
+                row: assignedRow,
+                isFirstSegment: calendar.isDate(firstDate, inSameDayAs: event.startDate),
+                isLastSegment: calendar.isDate(lastDate, inSameDayAs: event.endDate),
+                isSingleDay: !event.isMultiDay,
+                taskTypeDisplay: event.taskTypeDisplay
+            )
+        }
+
+        let indicators: [MoreEventsIndicator] = plan.hiddenEventIdsByDay.enumerated().compactMap { entry in
+            let (dayIndex, hiddenIds) = entry
+            guard !hiddenIds.isEmpty else { return nil }
+            return MoreEventsIndicator(
+                dayIndex: dayIndex,
+                count: hiddenIds.count,
+                row: plan.indicatorRow
+            )
         }
 
         return (spans, indicators)
@@ -744,7 +876,10 @@ struct MonthGridView: View {
 
                                                 ForEach(moreIndicators) { indicator in
                                                     MoreEventsIndicatorView(indicator: indicator, cellHeight: cellHeight, dayWidth: dayWidth)
-                                                        .offset(x: dayWidth * CGFloat(indicator.dayIndex), y: 26 + (CGFloat(indicator.row) * eventRowHeight(for: cellHeight)))
+                                                        .offset(
+                                                            x: dayWidth * CGFloat(indicator.dayIndex),
+                                                            y: OPSStyle.Layout.monthGridDayHeaderHeight + (CGFloat(indicator.row) * eventRowHeight)
+                                                        )
                                                         .allowsHitTesting(false)
                                                 }
                                             }
@@ -900,6 +1035,10 @@ struct MonthGridView: View {
             .sheet(item: $rescheduleTarget) { target in
                 MonthGridReschedulePresenter(task: target.task) { newStart, newEnd in
                     Task { @MainActor in
+                        guard target.task.canEditSchedule else {
+                            presentScheduleFailure()
+                            return
+                        }
                         do {
                             try await dataController.updateTaskSchedule(
                                 task: target.task,
@@ -909,13 +1048,30 @@ struct MonthGridView: View {
                             UINotificationFeedbackGenerator().notificationOccurred(.success)
                             ToastCenter.shared.present(Feedback.Task.scheduledFor(start: newStart, end: newEnd))
                         } catch {
-                            UINotificationFeedbackGenerator().notificationOccurred(.error)
+                            presentScheduleFailure()
                         }
                     }
                 } onDismiss: {
                     rescheduleTarget = nil
                 }
                 .environmentObject(dataController)
+            }
+            .sheet(isPresented: $showingCascadePreview) {
+                if let plan = pendingCascadePlan, let task = pendingCascadeTask {
+                    CascadePreviewSheet(
+                        pushedTaskName: task.displayTitle,
+                        pushedTaskOldStart: task.startDate,
+                        pushedTaskNewStart: plan.pushedNewStart,
+                        pushedTaskNewEnd: plan.pushedNewEnd,
+                        cascadeChanges: plan.cascade.changes,
+                        onConfirm: {
+                            commitCascade(task: task, plan: plan, days: pendingCascadeDays)
+                        },
+                        onCancel: { }
+                    )
+                    .environmentObject(dataController)
+                    .presentationDetents([.medium])
+                }
             }
         }
     }
@@ -1284,20 +1440,12 @@ struct EventBar: View {
     let cellHeight: CGFloat
     let dayWidth: CGFloat
 
-    // Optional handlers added for Bug 70591eb5 (push / quick reschedule from
-    // long-press). Defaults keep backwards-compatible callers (e.g. previews
-    // or tutorial mode) working without behaviour change.
+    // Optional handlers keep preview / tutorial callers working without
+    // behavior changes. Editable task spans receive the shared quick-action
+    // contract used by every other calendar surface.
     var onTap: (() -> Void)? = nil
-    var onPushDays: ((Int) -> Void)? = nil
-    var onOpenReschedule: (() -> Void)? = nil
+    var quickActions: ScheduleCardQuickActions? = nil
     var onOpenDayDetails: (() -> Void)? = nil
-
-    // Schedule mutations (push / pull / pick new date) are gated per-task on
-    // calendar.edit (scope-aware). Computed by the parent, which can resolve the
-    // task behind the span; defaults false so non-task spans (personal user
-    // events) and preview / tutorial callers expose no reschedule surface. Crew /
-    // Unassigned never receive a grant.
-    var canModify: Bool = false
 
     private enum DisplayLevel {
         case level1  // < 120: compact dots
@@ -1306,9 +1454,9 @@ struct EventBar: View {
     }
 
     private var displayLevel: DisplayLevel {
-        if cellHeight < 120 {
+        if cellHeight < OPSStyle.Layout.monthGridStandardHeightThreshold {
             return .level1
-        } else if cellHeight < 180 {
+        } else if cellHeight < OPSStyle.Layout.monthGridExpandedHeightThreshold {
             return .level2
         } else {
             return .level3
@@ -1322,7 +1470,9 @@ struct EventBar: View {
 
     // Base slot height (unit height for positioning)
     private var baseSlotHeight: CGFloat {
-        displayLevel == .level1 ? 10 : 14
+        displayLevel == .level1
+            ? OPSStyle.Layout.monthGridCompactBadgeHeight
+            : OPSStyle.Layout.monthGridStandardBadgeHeight
     }
 
     // Actual bar height: tall events are 3x base height
@@ -1345,6 +1495,16 @@ struct EventBar: View {
         Color(hex: span.color) ?? OPSStyle.Colors.primaryAccent
     }
 
+    private var scheduleAccessibilityLabel: String {
+        "\(span.title), \(span.startDate.formatted(date: .abbreviated, time: .omitted)) to \(span.endDate.formatted(date: .abbreviated, time: .omitted))"
+    }
+
+    private var scheduleAccessibilityHint: String {
+        quickActions == nil
+            ? "Tap for day details."
+            : "Tap for day details. Hold for schedule actions."
+    }
+
     var body: some View {
         Group {
             if isTallEvent {
@@ -1359,6 +1519,9 @@ struct EventBar: View {
         .background(eventBackground)
         .padding(.horizontal, 2)
         .padding(.vertical, 1)
+        // Keep the compact month-grid visual while giving every badge its own
+        // non-overlapping, field-usable interaction row.
+        .frame(height: OPSStyle.Layout.touchTargetMin, alignment: .top)
         // Bug 70591eb5: tap forwards to the day sheet (preserving the
         // previous "badge is non-interactive" behaviour) and long-press
         // exposes quick reschedule actions via the system context menu.
@@ -1367,48 +1530,23 @@ struct EventBar: View {
             onTap?()
         }
         .contextMenu {
-            if onPushDays != nil || onOpenReschedule != nil || onOpenDayDetails != nil {
-                // Push / pull are schedule mutations — only for calendar.edit holders.
-                if canModify, let push = onPushDays {
-                    Button {
-                        push(1)
-                    } label: {
-                        Label("Push 1 day", systemImage: "arrow.right")
-                    }
-                    Button {
-                        push(3)
-                    } label: {
-                        Label("Push 3 days", systemImage: "arrow.right.to.line")
-                    }
-                    Button {
-                        push(7)
-                    } label: {
-                        Label("Push 1 week", systemImage: "calendar.badge.plus")
-                    }
-                    Button {
-                        push(-1)
-                    } label: {
-                        Label("Pull back 1 day", systemImage: "arrow.left")
-                    }
-                    Divider()
-                }
-                // "Pick new date…" reschedules — gated on calendar.edit.
-                if canModify, let openReschedule = onOpenReschedule {
-                    Button {
-                        openReschedule()
-                    } label: {
-                        Label("Pick new date…", systemImage: "calendar")
-                    }
+            if quickActions != nil || onOpenDayDetails != nil {
+                if let quickActions {
+                    ScheduleQuickActionMenu(actions: quickActions, includesPullBack: true)
                 }
                 if let openDayDetails = onOpenDayDetails {
                     Button {
                         openDayDetails()
                     } label: {
-                        Label("View details", systemImage: "info.circle")
+                        Label("View details", systemImage: OPSStyle.Icons.info)
                     }
                 }
             }
         }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(scheduleAccessibilityLabel)
+        .accessibilityHint(scheduleAccessibilityHint)
+        .accessibilityAddTraits(.isButton)
     }
 
     // Short event: single line title (Level 1, 2, and multi-day at Level 3)
@@ -1471,10 +1609,10 @@ struct MoreEventsIndicatorView: View {
     let dayWidth: CGFloat
 
     private var badgeHeight: CGFloat {
-        if cellHeight < 120 {
-            return 10
+        if cellHeight < OPSStyle.Layout.monthGridStandardHeightThreshold {
+            return OPSStyle.Layout.monthGridCompactBadgeHeight
         } else {
-            return 14
+            return OPSStyle.Layout.monthGridStandardBadgeHeight
         }
     }
 
@@ -1536,6 +1674,12 @@ struct DayDetailsSheet: View {
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject var dataController: DataController
     @EnvironmentObject var appState: AppState
+    @State private var rescheduleTask: ProjectTask?
+    @State private var showingCascadePreview = false
+    @State private var pendingCascadePlan: DataController.CascadePlan?
+    @State private var pendingCascadeTask: ProjectTask?
+    @State private var pendingCascadeDays = 0
+    @AppStorage("showCascadePreview") private var showCascadePreviewPref = true
 
     private var scheduledTasks: [ProjectTask] {
         // Resolve from the calendar's source of truth — the same path day/week
@@ -1607,6 +1751,7 @@ struct DayDetailsSheet: View {
                                 task: task,
                                 isFirst: index == 0,
                                 isOngoing: false,
+                                hostQuickActions: quickActions(for: task),
                                 onTap: {
                                     handleTaskTap(task)
                                 }
@@ -1640,6 +1785,7 @@ struct DayDetailsSheet: View {
                                     task: task,
                                     isFirst: false,
                                     isOngoing: true,
+                                    hostQuickActions: quickActions(for: task),
                                     onTap: {
                                         handleTaskTap(task)
                                     }
@@ -1696,6 +1842,168 @@ struct DayDetailsSheet: View {
         } // ScrollViewReader
         .background(OPSStyle.Colors.background)
         .presentationDetents([.fraction(0.3), .fraction(0.7), .large])
+        .sheet(item: $rescheduleTask) { task in
+            CalendarSchedulerSheet(
+                isPresented: Binding(
+                    get: { rescheduleTask != nil },
+                    set: { if !$0 { rescheduleTask = nil } }
+                ),
+                itemType: .task(task),
+                currentStartDate: task.startDate,
+                currentEndDate: task.endDate,
+                onScheduleUpdate: { newStart, newEnd in
+                    updateTaskSchedule(task, startDate: newStart, endDate: newEnd)
+                }
+            )
+            .environmentObject(dataController)
+        }
+        .sheet(isPresented: $showingCascadePreview) {
+            if let plan = pendingCascadePlan, let task = pendingCascadeTask {
+                CascadePreviewSheet(
+                    pushedTaskName: task.displayTitle,
+                    pushedTaskOldStart: task.startDate,
+                    pushedTaskNewStart: plan.pushedNewStart,
+                    pushedTaskNewEnd: plan.pushedNewEnd,
+                    cascadeChanges: plan.cascade.changes,
+                    onConfirm: {
+                        commitCascade(task: task, plan: plan, days: pendingCascadeDays)
+                    },
+                    onCancel: { }
+                )
+                .environmentObject(dataController)
+                .presentationDetents([.medium])
+            }
+        }
+    }
+
+    private func quickActions(for task: ProjectTask) -> ScheduleCardQuickActions {
+        ScheduleCardQuickActions(
+            onPush: { pushTask(task, days: $0) },
+            onExtend: { extendTask(task, days: $0) },
+            onCascade: { prepareCascade(task, days: $0) },
+            onReschedule: {
+                guard task.canEditSchedule else {
+                    presentScheduleFailure()
+                    return
+                }
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                rescheduleTask = task
+            },
+            onSelect: nil
+        )
+    }
+
+    private func pushTask(_ task: ProjectTask, days: Int) {
+        guard task.canEditSchedule else { return }
+        let preserveCalendarWeek = days != 0 && days % 7 == 0
+        let result = preserveCalendarWeek
+            ? SchedulingEngine.pushByCalendarWeeks(task: task, weeks: days / 7)
+            : SchedulingEngine.pushByDays(
+                task: task,
+                days: days,
+                skipWeekends: dataController.currentCompanySkipsWeekends
+            )
+
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        Task { @MainActor in
+            do {
+                try await dataController.pushTask(
+                    task,
+                    byDays: days,
+                    preserveCalendarWeeks: preserveCalendarWeek
+                )
+                UINotificationFeedbackGenerator().notificationOccurred(.success)
+                ToastCenter.shared.present(
+                    Feedback.Task.scheduledFor(start: result.newStart, end: result.newEnd)
+                )
+            } catch {
+                presentScheduleFailure()
+            }
+        }
+    }
+
+    private func extendTask(_ task: ProjectTask, days: Int) {
+        guard task.canEditSchedule,
+              let start = task.startDate,
+              let end = task.endDate,
+              let newEnd = Calendar.current.date(byAdding: .day, value: days, to: end) else {
+            return
+        }
+
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        Task { @MainActor in
+            do {
+                try await dataController.updateTaskSchedule(
+                    task: task,
+                    startDate: start,
+                    endDate: newEnd
+                )
+                UINotificationFeedbackGenerator().notificationOccurred(.success)
+                ToastCenter.shared.present(Feedback.Task.scheduledFor(start: start, end: newEnd))
+            } catch {
+                presentScheduleFailure()
+            }
+        }
+    }
+
+    private func prepareCascade(_ task: ProjectTask, days: Int) {
+        guard task.canEditSchedule,
+              let plan = dataController.planCascade(for: task, byDays: days) else {
+            return
+        }
+
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        if showCascadePreviewPref && !plan.cascade.changes.isEmpty {
+            pendingCascadePlan = plan
+            pendingCascadeTask = task
+            pendingCascadeDays = days
+            showingCascadePreview = true
+        } else {
+            commitCascade(task: task, plan: plan, days: days)
+        }
+    }
+
+    private func commitCascade(task: ProjectTask, plan: DataController.CascadePlan, days: Int) {
+        Task { @MainActor in
+            guard task.canEditSchedule else {
+                presentScheduleFailure()
+                return
+            }
+            do {
+                try await dataController.pushTaskWithCascade(task, byDays: days)
+                UINotificationFeedbackGenerator().notificationOccurred(.success)
+                ToastCenter.shared.present(
+                    Feedback.Task.scheduledFor(start: plan.pushedNewStart, end: plan.pushedNewEnd)
+                )
+            } catch {
+                presentScheduleFailure()
+            }
+        }
+    }
+
+    private func updateTaskSchedule(_ task: ProjectTask, startDate: Date, endDate: Date) {
+        guard task.canEditSchedule else {
+            presentScheduleFailure()
+            return
+        }
+        Task { @MainActor in
+            do {
+                try await dataController.updateTaskSchedule(
+                    task: task,
+                    startDate: startDate,
+                    endDate: endDate
+                )
+                UINotificationFeedbackGenerator().notificationOccurred(.success)
+                ToastCenter.shared.present(Feedback.Task.scheduledFor(start: startDate, end: endDate))
+            } catch {
+                presentScheduleFailure()
+            }
+        }
+    }
+
+    private func presentScheduleFailure() {
+        UINotificationFeedbackGenerator().notificationOccurred(.error)
+        ToastCenter.shared.present(Toast(label: Feedback.Err.operationFailed, tone: .error))
     }
 
     private func handleTaskTap(_ task: ProjectTask) {

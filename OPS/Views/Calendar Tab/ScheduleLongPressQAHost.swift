@@ -8,9 +8,13 @@
 //  XCUITest can drive a real long-press and assert the quick-action context menu
 //  actually opens. No auth, no network, no SwiftData store on disk.
 //
-//  Four cards, each independently long-pressable:
+//  Calendar surfaces, each independently long-pressable:
 //    • FIXED  — the shipping day composition: one CalendarEventCard whose single
 //               context menu carries the injected quick actions. Must show them.
+//    • ONGOING— the continuation-day composition used by DayCanvasView. Must keep
+//               the same actions as the first day of the task.
+//    • MONTH DETAIL — the CalendarEventCard composition used inside the month
+//               day-detail sheet. Must keep the same actions as week view.
 //    • BUGGY  — the pre-fix composition kept as a guard: a CalendarEventCard that
 //               owns its own default menu AND is wrapped in a SECOND .contextMenu.
 //               Reproduces the shadow — the quick actions do NOT appear.
@@ -38,7 +42,7 @@ struct ScheduleLongPressQAHost: View {
     @State private var dragSession = ScheduleDragSession()
 
     private static let modelContainer: ModelContainer = {
-        let schema = Schema(versionedSchema: OPSSchemaV16.self)
+        let schema = Schema(versionedSchema: OPSSchemaV18.self)
         let configuration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true, allowsSave: true)
         do {
             return try ModelContainer(for: schema, configurations: [configuration])
@@ -157,6 +161,20 @@ struct ScheduleLongPressQAHost: View {
                         hostQuickActions: quickActions, onTap: {})
                 }
 
+                labeled("ONGOING", id: "qa_card_ongoing") {
+                    // Mirrors the shipping continuation-day composition.
+                    CalendarEventCard(
+                        task: task, isFirst: false, isOngoing: true,
+                        hostQuickActions: quickActions, onTap: {})
+                }
+
+                labeled("MONTH DETAIL", id: "qa_card_month_detail") {
+                    // Mirrors the real card inside DayDetailsSheet.
+                    CalendarEventCard(
+                        task: task, isFirst: true,
+                        hostQuickActions: quickActions, onTap: {})
+                }
+
                 labeled("BUGGY", id: "qa_card_buggy") {
                     // Pre-fix composition: the card owns its default menu AND a second
                     // .contextMenu is stacked on top. This is the shadow bug.
@@ -177,13 +195,12 @@ struct ScheduleLongPressQAHost: View {
 
                 labeled("MONTH", id: "qa_card_month") {
                     EventBar(
-                        span: monthSpan(for: task), cellHeight: 200, dayWidth: 320,
+                        span: monthSpan(for: task),
+                        cellHeight: OPSStyle.Layout.monthGridStandardHeightThreshold,
+                        dayWidth: OPSStyle.Layout.touchTargetMin,
                         onTap: {},
-                        onPushDays: { lastAction = "push \($0)" },
-                        onOpenReschedule: { lastAction = "reschedule" },
-                        onOpenDayDetails: { lastAction = "details" },
-                        canModify: true)
-                        .frame(height: 60)
+                        quickActions: quickActions,
+                        onOpenDayDetails: { lastAction = "details" })
                         .reschedulable(payload(for: task), session: dragSession)
                 }
 
@@ -220,6 +237,14 @@ struct ScheduleLongPressQAHost: View {
 
     @MainActor
     private func prepare() {
+        // Nested system context menus keep reporting animation activity to
+        // XCTest on iOS 26.5. Disable UIKit animation only for menu assertions;
+        // the drag-coexistence test opts back into native animation because its
+        // preview lift is itself the behavior under test.
+        if !ProcessInfo.processInfo.arguments.contains("-OPS_SCHEDULE_QA_KEEP_ANIMATIONS") {
+            UIView.setAnimationsEnabled(false)
+        }
+
         _ = makeTask(in: Self.modelContainer.mainContext)
 
         dataController.isAuthenticated = true

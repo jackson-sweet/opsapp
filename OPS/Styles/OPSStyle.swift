@@ -457,6 +457,11 @@ enum OPSStyle {
         static let bottomCTAHeight: CGFloat = 52.0      // §8 bottom-anchored primary CTA (thumb zone)
         static let chipMinHeight: CGFloat = 36.0        // §4.3 filter / form-picker chip — the one sanctioned sub-44pt target
         static let formMediaPreviewMaxHeight: CGFloat = 360.0
+        static let monthGridDayHeaderHeight: CGFloat = 26.0
+        static let monthGridCompactBadgeHeight: CGFloat = 10.0
+        static let monthGridStandardBadgeHeight: CGFloat = 14.0
+        static let monthGridStandardHeightThreshold: CGFloat = 120.0
+        static let monthGridExpandedHeightThreshold: CGFloat = 180.0
 
         // MARK: - Corner radius (spec v2 — sharp, tactical, no 999px pills)
         // Prefer the new semantic names (panelRadius, chipRadius, etc.).
@@ -683,6 +688,11 @@ enum OPSStyle {
         static let schedule = "calendar.badge.clock"        // THE icon for Scheduling
         static let deadline = "calendar.badge.exclamationmark" // THE icon for Deadlines
         static let duration = "clock.fill"                  // THE icon for Duration/Time
+        static let schedulePush = "arrow.right"             // Move a schedule span forward
+        static let schedulePushWeek = "arrow.right.to.line" // Move a schedule span by a full week
+        static let schedulePull = "arrow.left"              // Move a schedule span backward
+        static let scheduleExtend = "arrow.right.and.line.vertical.and.arrow.left" // Extend only the end date
+        static let scheduleCascade = "arrow.triangle.branch" // Move a task and dependent crew sequence
 
         // Location & Site
         static let jobSite = "location.fill"                // THE icon for Job Sites

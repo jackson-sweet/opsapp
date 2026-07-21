@@ -7,8 +7,10 @@
 //  stacked on the day card. This drives a REAL long-press against the DEBUG QA host
 //  (ScheduleLongPressQAHost) and asserts the quick-action menu actually opens.
 //
-//  Four cards, each long-pressed:
+//  Calendar surfaces, each long-pressed:
 //    • FIXED   — shipping day composition. Quick actions MUST appear.
+//    • ONGOING — a continuation-day card. Same actions MUST appear.
+//    • MONTH DETAIL — a card in the month day-detail sheet. Same actions MUST appear.
 //    • BUGGY   — the pre-fix double-menu composition, kept as a guard. The quick
 //                actions must NOT appear (the inner default menu shadows them).
 //    • MONTH   — the month EventBar (single menu + .draggable). Must appear.
@@ -25,6 +27,9 @@ final class ScheduleLongPressMenuUITests: XCTestCase {
         continueAfterFailure = false
         app = XCUIApplication()
         app.launchArguments = ["-OPS_SCHEDULE_LONGPRESS_QA"]
+        if name.contains("testFixedDayCardStillLiftsIntoRescheduleDrag") {
+            app.launchArguments.append("-OPS_SCHEDULE_QA_KEEP_ANIMATIONS")
+        }
         app.launch()
         XCTAssertTrue(card("qa_card_fixed").waitForExistence(timeout: 20),
                       "QA host did not render its cards")
@@ -40,6 +45,12 @@ final class ScheduleLongPressMenuUITests: XCTestCase {
     private func longPress(_ id: String) {
         let el = card(id)
         XCTAssertTrue(el.waitForExistence(timeout: 5), "\(id) not found")
+        var scrollAttempts = 0
+        while !el.isHittable && scrollAttempts < 5 {
+            app.swipeUp()
+            scrollAttempts += 1
+        }
+        XCTAssertTrue(el.isHittable, "\(id) could not be scrolled on screen")
         el.press(forDuration: 1.3)
     }
 
@@ -63,22 +74,78 @@ final class ScheduleLongPressMenuUITests: XCTestCase {
     /// The FIX: the shipping day card shows the full quick-action menu on long-press.
     func testFixedDayCardShowsQuickActions() {
         longPress("qa_card_fixed")
-        XCTAssertTrue(menuItem("+1 Day (+ crew)").waitForExistence(timeout: 5),
-                      "Cascade quick action missing — the quick actions did not appear on the day card")
-        XCTAssertTrue(menuItem("Reschedule...").exists, "Reschedule quick action missing")
+        XCTAssertTrue(menuItem("Push").waitForExistence(timeout: 5), "Push submenu missing")
+        XCTAssertTrue(menuItem("Extend").exists, "Extend submenu missing")
+        XCTAssertTrue(menuItem("Cascade").exists, "Cascade submenu missing")
+        XCTAssertTrue(menuItem("Pick new date…").waitForExistence(timeout: 5),
+                      "Quick-action menu missing on the day card")
+        XCTAssertTrue(menuItem("Select").exists, "Select quick action missing")
         attachMenuScreenshot("FIXED_day_card_quick_actions")
+        dismissMenu()
+    }
+
+    /// Continuation days are the same scheduled task, so they must expose the
+    /// same quick actions as the task's first day.
+    func testOngoingDayCardShowsQuickActions() {
+        longPress("qa_card_ongoing")
+        XCTAssertTrue(menuItem("Cascade").waitForExistence(timeout: 5),
+                      "Cascade submenu missing on an ongoing day card")
+        XCTAssertTrue(menuItem("Pick new date…").waitForExistence(timeout: 5),
+                      "Reschedule quick action missing on an ongoing day card")
+        attachMenuScreenshot("ONGOING_day_card_quick_actions")
+        dismissMenu()
+    }
+
+    /// Month day details reuse CalendarEventCard and must not silently fall back
+    /// to its one-item default menu.
+    func testMonthDayDetailCardShowsQuickActions() {
+        longPress("qa_card_month_detail")
+        XCTAssertTrue(menuItem("Cascade").waitForExistence(timeout: 5),
+                      "Cascade submenu missing in the month day-detail card")
+        XCTAssertTrue(menuItem("Pick new date…").waitForExistence(timeout: 5),
+                      "Reschedule quick action missing in the month day-detail card")
+        attachMenuScreenshot("MONTH_day_detail_quick_actions")
         dismissMenu()
     }
 
     /// The month EventBar (single menu + .draggable) shows its quick actions —
     /// proves .draggable and .contextMenu coexist on the same view.
     func testMonthEventBarShowsQuickActions() {
+        let monthBar = card("qa_card_month")
+        XCTAssertTrue(monthBar.waitForExistence(timeout: 5), "month EventBar not found")
+        XCTAssertGreaterThanOrEqual(
+            monthBar.frame.height,
+            44,
+            "Month EventBar interaction target is smaller than the mobile minimum"
+        )
         longPress("qa_card_month")
-        XCTAssertTrue(menuItem("Push 1 day").waitForExistence(timeout: 5),
-                      "Push quick action missing on the month EventBar")
-        XCTAssertTrue(menuItem("Pick new date…").exists, "Reschedule quick action missing on month EventBar")
+        XCTAssertTrue(menuItem("Push").waitForExistence(timeout: 5),
+                      "Push submenu missing on the month EventBar")
+        XCTAssertTrue(menuItem("Extend").exists,
+                      "Extend submenu missing on the month EventBar")
+        XCTAssertTrue(menuItem("Cascade").exists,
+                      "Cascade submenu missing on the month EventBar")
+        XCTAssertTrue(menuItem("Pick new date…").waitForExistence(timeout: 5),
+                      "Quick-action menu missing on month EventBar")
         attachMenuScreenshot("MONTH_eventbar_quick_actions")
         dismissMenu()
+    }
+
+    /// Visibility alone is not enough: selecting a menu item must invoke the
+    /// scheduling callback supplied by the host surface.
+    func testQuickActionSelectionReachesSchedulingCallback() {
+        longPress("qa_card_fixed")
+        let cascadeMenu = menuItem("Cascade")
+        XCTAssertTrue(cascadeMenu.waitForExistence(timeout: 5), "Cascade submenu missing")
+        cascadeMenu.tap()
+        let cascade = menuItem("Cascade 2 days")
+        XCTAssertTrue(cascade.waitForExistence(timeout: 5), "Cascade action missing")
+        cascade.tap()
+
+        let lastAction = card("qa_last_action")
+        let callbackLanded = NSPredicate(format: "label CONTAINS %@", "cascade 2")
+        expectation(for: callbackLanded, evaluatedWith: lastAction)
+        waitForExpectations(timeout: 5)
     }
 
     /// Sanity control: a bare single-menu view opens on long-press in this harness.
@@ -118,11 +185,6 @@ final class ScheduleLongPressMenuUITests: XCTestCase {
     /// (A shorter hold + coordinate drag instead slides ACROSS the open menu's
     /// items and never lifts anything — proven by screen recording.)
     func testFixedDayCardStillLiftsIntoRescheduleDrag() {
-        let source = card("qa_card_fixed")
-        let target = card("qa_drop_zone")
-        XCTAssertTrue(source.waitForExistence(timeout: 5), "fixed card not found")
-        XCTAssertTrue(target.waitForExistence(timeout: 5), "drop zone not found")
-
         // The drop zone flattens into ONE accessibility element (shape + overlay
         // text), so the payload text surfaces as the zone's LABEL — there is no
         // separate "qa_drop_result" StaticText in the tree.
@@ -131,19 +193,31 @@ final class ScheduleLongPressMenuUITests: XCTestCase {
 
         // The APP contract is deterministic; the SYNTHESIZED preview-grab is
         // timing-sensitive against the menu's bloom animation, so allow the
-        // synthetic finger a few attempts. The landing requirement itself never
-        // relaxes: the payload must arrive in the drop zone.
+        // synthetic finger a few attempts. Each retry relaunches and reacquires
+        // both elements: dismissing a context menu invalidates XCTest's cached
+        // accessibility element. The landing requirement itself never relaxes.
         var landed = false
         for attempt in 1...3 {
+            let source = card("qa_card_fixed")
+            let target = card("qa_drop_zone")
+            XCTAssertTrue(source.waitForExistence(timeout: 5), "fixed card not found")
+            XCTAssertTrue(target.waitForExistence(timeout: 5), "drop zone not found")
+            XCTAssertTrue(source.isHittable, "fixed card is not hittable on attempt \(attempt)")
+            XCTAssertTrue(target.isHittable, "drop zone is not hittable on attempt \(attempt)")
+
             source.press(forDuration: 1.5, thenDragTo: target)
             let wait = XCTNSPredicateExpectation(predicate: landedPredicate, object: target)
             if XCTWaiter().wait(for: [wait], timeout: 6) == .completed {
                 landed = true
                 break
             }
-            print("drag attempt \(attempt) did not land — dismissing any open menu and retrying")
-            dismissMenu()
-            Thread.sleep(forTimeInterval: 0.5)
+            print("drag attempt \(attempt) did not land — relaunching before retry")
+            if attempt < 3 {
+                app.terminate()
+                app.launch()
+                XCTAssertTrue(card("qa_card_fixed").waitForExistence(timeout: 20),
+                              "QA host did not relaunch for drag retry")
+            }
         }
         XCTAssertTrue(
             landed,

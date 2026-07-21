@@ -451,9 +451,7 @@ struct DayPageView: View {
                 currentStartDate: task.startDate,
                 currentEndDate: task.endDate,
                 onScheduleUpdate: { newStart, newEnd in
-                    Task {
-                        try? await dataController.updateTaskSchedule(task: task, startDate: newStart, endDate: newEnd)
-                    }
+                    updateTaskSchedule(task, startDate: newStart, endDate: newEnd)
                 },
                 onClearDates: {
                     clearTaskDates(task: task)
@@ -499,9 +497,7 @@ struct DayPageView: View {
                     pushedTaskNewEnd: plan.pushedNewEnd,
                     cascadeChanges: plan.cascade.changes,
                     onConfirm: {
-                        Task {
-                            try? await dataController.pushTaskWithCascade(task, byDays: pendingDays)
-                        }
+                        commitCascade(task: task, plan: plan, days: pendingDays)
                     },
                     onCancel: { }
                 )
@@ -609,7 +605,7 @@ struct DayPageView: View {
             showLabels: true,
             dragPayload: payload,
             dragSession: dragSession,
-            hostQuickActions: isOngoing ? nil : quickActions,
+            hostQuickActions: quickActions,
             onTap: {
                 if isSelectMode {
                     toggleSelection(task.id)
@@ -1034,11 +1030,19 @@ struct DayPageView: View {
         guard let start = task.startDate,
               let end = task.endDate,
               let newEnd = Calendar.current.date(byAdding: .day, value: days, to: end) else { return }
-        Task {
-            try? await dataController.updateTaskSchedule(task: task, startDate: start, endDate: newEnd)
+        Task { @MainActor in
+            guard task.canEditSchedule else {
+                presentScheduleFailure()
+                return
+            }
+            do {
+                try await dataController.updateTaskSchedule(task: task, startDate: start, endDate: newEnd)
+                UINotificationFeedbackGenerator().notificationOccurred(.success)
+                postScheduleBanner(task: task, newDate: newEnd, action: "extended to")
+            } catch {
+                presentScheduleFailure()
+            }
         }
-
-        postScheduleBanner(task: task, newDate: newEnd, action: "extended to")
     }
 
     private func pushTask(_ task: ProjectTask, days: Int) {
@@ -1055,11 +1059,23 @@ struct DayPageView: View {
             newStart = SchedulingEngine.pushByDays(task: task, days: days, skipWeekends: dataController.currentCompanySkipsWeekends).newStart
         }
 
-        Task {
-            try? await dataController.pushTask(task, byDays: days, preserveCalendarWeeks: preserveCalendarWeek)
+        Task { @MainActor in
+            guard task.canEditSchedule else {
+                presentScheduleFailure()
+                return
+            }
+            do {
+                try await dataController.pushTask(
+                    task,
+                    byDays: days,
+                    preserveCalendarWeeks: preserveCalendarWeek
+                )
+                UINotificationFeedbackGenerator().notificationOccurred(.success)
+                postScheduleBanner(task: task, newDate: newStart, action: "pushed to")
+            } catch {
+                presentScheduleFailure()
+            }
         }
-
-        postScheduleBanner(task: task, newDate: newStart, action: "pushed to")
     }
 
     private func postScheduleBanner(task: ProjectTask, newDate: Date, action: String) {
@@ -1089,10 +1105,57 @@ struct DayPageView: View {
             pendingDays = days
             showingCascadePreview = true
         } else {
-            Task {
-                try? await dataController.pushTaskWithCascade(task, byDays: days)
+            commitCascade(task: task, plan: plan, days: days)
+        }
+    }
+
+    private func commitCascade(task: ProjectTask, plan: DataController.CascadePlan, days: Int) {
+        Task { @MainActor in
+            guard task.canEditSchedule else {
+                presentScheduleFailure()
+                return
+            }
+            do {
+                try await dataController.pushTaskWithCascade(task, byDays: days)
+                UINotificationFeedbackGenerator().notificationOccurred(.success)
+                ToastCenter.shared.present(
+                    Feedback.Task.scheduledFor(start: plan.pushedNewStart, end: plan.pushedNewEnd)
+                )
+            } catch {
+                presentScheduleFailure()
             }
         }
+    }
+
+    private func updateTaskSchedule(_ task: ProjectTask, startDate: Date, endDate: Date) {
+        guard task.canEditSchedule else {
+            presentScheduleFailure()
+            return
+        }
+        Task { @MainActor in
+            guard task.canEditSchedule else {
+                presentScheduleFailure()
+                return
+            }
+            do {
+                try await dataController.updateTaskSchedule(
+                    task: task,
+                    startDate: startDate,
+                    endDate: endDate
+                )
+                UINotificationFeedbackGenerator().notificationOccurred(.success)
+                ToastCenter.shared.present(
+                    Feedback.Task.scheduledFor(start: startDate, end: endDate)
+                )
+            } catch {
+                presentScheduleFailure()
+            }
+        }
+    }
+
+    private func presentScheduleFailure() {
+        UINotificationFeedbackGenerator().notificationOccurred(.error)
+        ToastCenter.shared.present(Toast(label: Feedback.Err.operationFailed, tone: .error))
     }
 
     // MARK: - Helpers

@@ -19,8 +19,8 @@ enum DayPosition { case start, middle, end, single }
 /// instead of wrapping the card in a second menu, so there is exactly one
 /// long-press menu and nothing can shadow it.
 ///
-/// `nil` everywhere except the day canvas: the day-events sheet and month
-/// day-detail render the card's default Reschedule / Update-status menu.
+/// Every editable schedule surface injects the same contract. Callers that do
+/// not support bulk selection leave `onSelect` nil.
 struct ScheduleCardQuickActions {
     /// Push (or pull) the task by N days. `days` is the signed offset.
     let onPush: (Int) -> Void
@@ -30,8 +30,79 @@ struct ScheduleCardQuickActions {
     let onCascade: (Int) -> Void
     /// Open the scheduler sheet to pick a new date.
     let onReschedule: () -> Void
-    /// Enter bulk-select mode with this task selected.
-    let onSelect: () -> Void
+    /// Enter bulk-select mode with this task selected, when the host supports it.
+    let onSelect: (() -> Void)?
+}
+
+/// One menu definition shared by week cards, month badges, and month day
+/// details. Keeping the labels and action set here prevents one calendar route
+/// from silently losing an action while the others continue to work.
+struct ScheduleQuickActionMenu: View {
+    let actions: ScheduleCardQuickActions
+    var includesPullBack = false
+
+    var body: some View {
+        Menu {
+            Button { actions.onPush(1) } label: {
+                Label("Push 1 day", systemImage: OPSStyle.Icons.schedulePush)
+            }
+            Button { actions.onPush(2) } label: {
+                Label("Push 2 days", systemImage: OPSStyle.Icons.schedulePush)
+            }
+            Button { actions.onPush(3) } label: {
+                Label("Push 3 days", systemImage: OPSStyle.Icons.schedulePush)
+            }
+            Button { actions.onPush(7) } label: {
+                Label("Push 1 week", systemImage: OPSStyle.Icons.schedulePushWeek)
+            }
+            if includesPullBack {
+                Button { actions.onPush(-1) } label: {
+                    Label("Pull back 1 day", systemImage: OPSStyle.Icons.schedulePull)
+                }
+            }
+        } label: {
+            Label("Push", systemImage: OPSStyle.Icons.schedulePush)
+        }
+
+        Menu {
+            Button { actions.onExtend(1) } label: {
+                Label("Extend 1 day", systemImage: OPSStyle.Icons.scheduleExtend)
+            }
+            Button { actions.onExtend(2) } label: {
+                Label("Extend 2 days", systemImage: OPSStyle.Icons.scheduleExtend)
+            }
+            Button { actions.onExtend(3) } label: {
+                Label("Extend 3 days", systemImage: OPSStyle.Icons.scheduleExtend)
+            }
+            Button { actions.onExtend(7) } label: {
+                Label("Extend 1 week", systemImage: OPSStyle.Icons.scheduleExtend)
+            }
+        } label: {
+            Label("Extend", systemImage: OPSStyle.Icons.scheduleExtend)
+        }
+
+        Menu {
+            Button { actions.onCascade(1) } label: {
+                Label("Cascade 1 day", systemImage: OPSStyle.Icons.scheduleCascade)
+            }
+            Button { actions.onCascade(2) } label: {
+                Label("Cascade 2 days", systemImage: OPSStyle.Icons.scheduleCascade)
+            }
+        } label: {
+            Label("Cascade", systemImage: OPSStyle.Icons.scheduleCascade)
+        }
+
+        Divider()
+
+        Button { actions.onReschedule() } label: {
+            Label("Pick new date…", systemImage: OPSStyle.Icons.calendar)
+        }
+        if let onSelect = actions.onSelect {
+            Button { onSelect() } label: {
+                Label("Select", systemImage: OPSStyle.Icons.checkmarkCircle)
+            }
+        }
+    }
 }
 
 struct CalendarEventCard: View {
@@ -266,53 +337,7 @@ struct CalendarEventCard: View {
         .contextMenu {
             if let quickActions = hostQuickActions {
                 if canModify {
-                    Section("Push") {
-                        Button { quickActions.onPush(1) } label: {
-                            Label("+1 Day", systemImage: "arrow.right")
-                        }
-                        Button { quickActions.onPush(2) } label: {
-                            Label("+2 Days", systemImage: "arrow.right")
-                        }
-                        Button { quickActions.onPush(3) } label: {
-                            Label("+3 Days", systemImage: "arrow.right")
-                        }
-                        Button { quickActions.onPush(7) } label: {
-                            Label("+1 Week", systemImage: "arrow.right.to.line")
-                        }
-                    }
-
-                    Section("Extend") {
-                        Button { quickActions.onExtend(1) } label: {
-                            Label("+1 Day", systemImage: "arrow.right.and.line.vertical.and.arrow.left")
-                        }
-                        Button { quickActions.onExtend(2) } label: {
-                            Label("+2 Days", systemImage: "arrow.right.and.line.vertical.and.arrow.left")
-                        }
-                        Button { quickActions.onExtend(3) } label: {
-                            Label("+3 Days", systemImage: "arrow.right.and.line.vertical.and.arrow.left")
-                        }
-                        Button { quickActions.onExtend(7) } label: {
-                            Label("+1 Week", systemImage: "arrow.right.and.line.vertical.and.arrow.left")
-                        }
-                    }
-
-                    Section("Cascade") {
-                        Button { quickActions.onCascade(1) } label: {
-                            Label("+1 Day (+ crew)", systemImage: "arrow.triangle.branch")
-                        }
-                        Button { quickActions.onCascade(2) } label: {
-                            Label("+2 Days (+ crew)", systemImage: "arrow.triangle.branch")
-                        }
-                    }
-
-                    Section {
-                        Button { quickActions.onReschedule() } label: {
-                            Label("Reschedule...", systemImage: "calendar")
-                        }
-                        Button { quickActions.onSelect() } label: {
-                            Label("Select", systemImage: "checkmark.circle")
-                        }
-                    }
+                    ScheduleQuickActionMenu(actions: quickActions)
                 } else {
                     // Crew / Unassigned: no schedule mutation — status + bulk-select only.
                     Button {
@@ -320,8 +345,10 @@ struct CalendarEventCard: View {
                     } label: {
                         Label("Update status", systemImage: "circle.dashed")
                     }
-                    Button { quickActions.onSelect() } label: {
-                        Label("Select", systemImage: "checkmark.circle")
+                    if let onSelect = quickActions.onSelect {
+                        Button { onSelect() } label: {
+                            Label("Select", systemImage: OPSStyle.Icons.checkmarkCircle)
+                        }
                     }
                 }
             } else if canModify {

@@ -16,6 +16,9 @@
 //               Reproduces the shadow — the quick actions do NOT appear.
 //    • MONTH  — the real month EventBar (single menu + .draggable). Must show them.
 //    • CONTROL— a bare view with one .contextMenu. Sanity: long-press works at all.
+//  Plus a DROP zone under FIXED: hold + MOVE on the fixed card must lift into a
+//  native reschedule drag and land its payload there (menu/drag coexistence — the
+//  drag-to-reschedule flow must survive the single-owner menu).
 //
 
 #if DEBUG
@@ -28,6 +31,9 @@ struct ScheduleLongPressQAHost: View {
 
     @State private var isReady = false
     @State private var lastAction = "—"
+    /// Set by the DROP zone when a reschedule payload lands — proves the card
+    /// still lifts into a drag despite owning the (single) context menu.
+    @State private var droppedId = "—"
 
     @State private var dragSession = ScheduleDragSession()
 
@@ -119,6 +125,30 @@ struct ScheduleLongPressQAHost: View {
                     .font(OPSStyle.Typography.caption)
                     .foregroundColor(OPSStyle.Colors.secondaryText)
                     .accessibilityIdentifier("qa_last_action")
+
+                labeled("DROP", id: "qa_drop_zone") {
+                    // Hermetic drop target for the drag-coexistence proof: the
+                    // FIXED card below must long-press+move into a native drag
+                    // and land its RescheduleDragPayload here. Sits ABOVE the
+                    // card because a committed context menu blooms BELOW a
+                    // top-anchored preview — a drop zone under the card gets
+                    // occluded by menu items mid-drag. Records the payload id
+                    // into a label the XCUITest reads.
+                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
+                        .fill(OPSStyle.Colors.cardBackground)
+                        .frame(height: 80)
+                        .overlay(
+                            Text(droppedId == "—" ? "DROP HERE" : "DROPPED::\(droppedId)")
+                                .font(OPSStyle.Typography.bodyEmphasis)
+                                .foregroundColor(OPSStyle.Colors.primaryText)
+                                .accessibilityIdentifier("qa_drop_result")
+                        )
+                        .dropDestination(for: RescheduleDragPayload.self) { payloads, _ in
+                            guard let first = payloads.first else { return false }
+                            droppedId = first.id
+                            return true
+                        }
+                }
 
                 labeled("FIXED", id: "qa_card_fixed") {
                     CalendarEventCard(

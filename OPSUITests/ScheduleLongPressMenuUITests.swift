@@ -104,4 +104,52 @@ final class ScheduleLongPressMenuUITests: XCTestCase {
         attachMenuScreenshot("BUGGY_double_menu_shadow")
         dismissMenu()
     }
+
+    /// Drag/menu COEXISTENCE: the same long-press that owns the single quick-action
+    /// menu must still lift into a native reschedule drag when the finger MOVES
+    /// (hold → menu; hold + MOVE → drag). Drags the fixed card onto the harness
+    /// drop zone and asserts the RescheduleDragPayload actually lands — if the
+    /// single-owner menu had eaten the drag gesture, the drop label never changes.
+    ///
+    /// Gesture shape matters: the synthesized hold commits the context menu with
+    /// its lifted PREVIEW, and the element-based drag then pulls that preview out
+    /// of the menu — iOS's native "drag from a context menu" path. The menu items
+    /// dissolve as the preview moves and the payload rides to the drop zone.
+    /// (A shorter hold + coordinate drag instead slides ACROSS the open menu's
+    /// items and never lifts anything — proven by screen recording.)
+    func testFixedDayCardStillLiftsIntoRescheduleDrag() {
+        let source = card("qa_card_fixed")
+        let target = card("qa_drop_zone")
+        XCTAssertTrue(source.waitForExistence(timeout: 5), "fixed card not found")
+        XCTAssertTrue(target.waitForExistence(timeout: 5), "drop zone not found")
+
+        // The drop zone flattens into ONE accessibility element (shape + overlay
+        // text), so the payload text surfaces as the zone's LABEL — there is no
+        // separate "qa_drop_result" StaticText in the tree.
+        let landedPredicate = NSPredicate(
+            format: "label CONTAINS %@", "DROPPED::qa_longpress_task")
+
+        // The APP contract is deterministic; the SYNTHESIZED preview-grab is
+        // timing-sensitive against the menu's bloom animation, so allow the
+        // synthetic finger a few attempts. The landing requirement itself never
+        // relaxes: the payload must arrive in the drop zone.
+        var landed = false
+        for attempt in 1...3 {
+            source.press(forDuration: 1.5, thenDragTo: target)
+            let wait = XCTNSPredicateExpectation(predicate: landedPredicate, object: target)
+            if XCTWaiter().wait(for: [wait], timeout: 6) == .completed {
+                landed = true
+                break
+            }
+            print("drag attempt \(attempt) did not land — dismissing any open menu and retrying")
+            dismissMenu()
+            Thread.sleep(forTimeInterval: 0.5)
+        }
+        XCTAssertTrue(
+            landed,
+            "The drag never lifted or the payload never dropped across 3 attempts — drag-to-reschedule is broken on the single-menu card"
+        )
+        attachMenuScreenshot("FIXED_day_card_drag_dropped")
+        dismissMenu()
+    }
 }

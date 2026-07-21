@@ -17,9 +17,7 @@ struct TaskCompletionReviewView: View {
     @EnvironmentObject var permissionStore: PermissionStore
     @EnvironmentObject var dataController: DataController
 
-    let tasks: [ProjectTask]
-
-    @State private var reviewedCount: Int = 0
+    @State private var session: TaskReviewSession
     @State private var showBio: Bool = false
     @State private var selectedTask: ProjectTask? = nil
     @State private var showRescheduleSheet: Bool = false
@@ -37,14 +35,18 @@ struct TaskCompletionReviewView: View {
         permissionStore.canEditAnySchedule
     }
 
+    init(tasks: [ProjectTask]) {
+        _session = State(initialValue: TaskReviewSession(tasks: tasks))
+    }
+
     var body: some View {
         ZStack {
             OPSStyle.Colors.background.ignoresSafeArea()
 
             // Full-bleed card stack when actively reviewing
-            if !tasks.isEmpty && !showAllDone {
+            if !session.tasks.isEmpty && !showAllDone {
                 TaskReviewCardStack(
-                    tasks: tasks,
+                    tasks: session.tasks,
                     hasCalendarAccess: hasCalendarAccess,
                     onSwipe: handleSwipe,
                     onTapCard: { task in
@@ -60,7 +62,7 @@ struct TaskCompletionReviewView: View {
                 header
                     .padding(.top, OPSStyle.Layout.spacing2)
 
-                if tasks.isEmpty {
+                if session.tasks.isEmpty {
                     emptyStateView
                 } else if showAllDone {
                     allDoneView
@@ -68,7 +70,7 @@ struct TaskCompletionReviewView: View {
                     Spacer()
 
                     // Counter
-                    Text("\(reviewedCount) OF \(tasks.count) REVIEWED")
+                    Text("\(session.reviewedCount) OF \(session.totalCount) REVIEWED")
                         .font(OPSStyle.Typography.captionBold)
                         .foregroundColor(.white.opacity(0.7))
                         .padding(.horizontal, OPSStyle.Layout.spacing2_5)
@@ -94,20 +96,17 @@ struct TaskCompletionReviewView: View {
                 .presentationDragIndicator(.visible)
             }
         }
-        .sheet(isPresented: $showRescheduleSheet) {
+        .sheet(isPresented: $showRescheduleSheet, onDismiss: {
+            finishPendingReschedule()
+        }) {
             if let task = pendingRescheduleTask {
                 TaskRescheduleSheet(
                     task: task,
                     onRescheduled: {
-                        reviewedCount += 1
-                        NotificationCenter.default.post(name: Notification.Name("WizardTaskSwipedUp"), object: nil)
-                        checkCompletion()
+                        finishPendingReschedule()
                     },
                     onDismiss: {
-                        // User dismissed without rescheduling — still count as reviewed
-                        reviewedCount += 1
-                        NotificationCenter.default.post(name: Notification.Name("WizardTaskSwipedUp"), object: nil)
-                        checkCompletion()
+                        finishPendingReschedule()
                     }
                 )
                 .presentationDetents([.medium])
@@ -117,17 +116,17 @@ struct TaskCompletionReviewView: View {
         .alert("Cancel Task?", isPresented: $showCancelConfirmation) {
             Button("Keep Task", role: .cancel) {
                 // User chose not to cancel — count as reviewed
-                reviewedCount += 1
-                pendingCancelTask = nil
-                checkCompletion()
+                if let task = pendingCancelTask {
+                    pendingCancelTask = nil
+                    finishReview(task)
+                }
             }
             Button("Cancel Task", role: .destructive) {
                 if let task = pendingCancelTask {
                     cancelTask(task)
+                    pendingCancelTask = nil
+                    finishReview(task)
                 }
-                reviewedCount += 1
-                pendingCancelTask = nil
-                checkCompletion()
             }
         } message: {
             Text("This will cancel the task. You can reactivate it later if needed.")
@@ -140,14 +139,14 @@ struct TaskCompletionReviewView: View {
             )
             // Evaluate prerequisites on appear for the first swipe step
             wizardStateManager?.evaluateStepPrerequisites(
-                taskReviewCardCount: max(0, tasks.count - reviewedCount)
+                taskReviewCardCount: session.remainingCount
             )
         }
         .onReceive(NotificationCenter.default.publisher(for: Notification.Name("WizardEvaluatePrerequisites"))) { _ in
             // Re-evaluate with current remaining card count.
             // Handles auto-skip for: swipe steps when cards run out, swipe-up without calendar.edit.
             wizardStateManager?.evaluateStepPrerequisites(
-                taskReviewCardCount: max(0, tasks.count - reviewedCount)
+                taskReviewCardCount: session.remainingCount
             )
         }
         .onDisappear {
@@ -159,7 +158,7 @@ struct TaskCompletionReviewView: View {
             // Wizard system: notify screen dismissed (exit prompt trigger).
             // Delay so step completion notifications process first — mirrors
             // the FABMenu and TeamInvite patterns.
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+            DispatchQueue.main.asyncAfter(deadline: .now() + OPSStyle.Animation.durationHover) {
                 NotificationCenter.default.post(
                     name: Notification.Name("WizardScreenDismissed"),
                     object: nil,
@@ -186,8 +185,8 @@ struct TaskCompletionReviewView: View {
                 Text("TASK REVIEW")
                     .font(OPSStyle.Typography.captionBold)
                     .foregroundColor(OPSStyle.Colors.primaryText)
-                if !tasks.isEmpty {
-                    Text("\(tasks.count) TASK\(tasks.count == 1 ? "" : "S")")
+                if !session.tasks.isEmpty {
+                    Text("\(session.totalCount) TASK\(session.totalCount == 1 ? "" : "S")")
                         .font(OPSStyle.Typography.smallCaption)
                         .foregroundColor(OPSStyle.Colors.secondaryText)
                 }
@@ -340,22 +339,18 @@ struct TaskCompletionReviewView: View {
     }
 
     private var celebrationOpacityAnimation: Animation {
-        reduceMotion
-            ? OPSStyle.Animation.hover.delay(0.3)
-            : .easeOut(duration: 0.4).delay(0.3)
+        OPSStyle.Animation.panel.delay(OPSStyle.Animation.durationStagger)
     }
 
     private var allDoneTransitionAnimation: Animation {
         reduceMotion
-            ? OPSStyle.Animation.hover.delay(0.3)
-            : OPSStyle.Animation.page.delay(0.3)
+            ? OPSStyle.Animation.hover.delay(OPSStyle.Animation.durationStagger)
+            : OPSStyle.Animation.page.delay(OPSStyle.Animation.durationStagger)
     }
 
     // MARK: - Swipe Handlers
 
     private func handleSwipe(_ task: ProjectTask, _ direction: SwipeDirection) {
-        reviewedCount += 1
-
         switch direction {
         case .right:
             // Complete via the canonical path (saves, records a SyncOperation,
@@ -364,30 +359,53 @@ struct TaskCompletionReviewView: View {
             // re-fire the team notification storm, and a RETRY toast on failure
             // instead of silently leaving the task active to reappear next time.
             completeTask(task)
-            NotificationCenter.default.post(name: Notification.Name("WizardTaskSwipedRight"), object: nil)
+            finishReview(task, wizardNotification: "WizardTaskSwipedRight")
         case .left:
             // Skip — no changes
-            NotificationCenter.default.post(name: Notification.Name("WizardTaskSwipedLeft"), object: nil)
-            break
+            finishReview(task, wizardNotification: "WizardTaskSwipedLeft")
         case .up:
             // Reschedule — gated per-task on calendar.edit (own-scope users may
             // reschedule only their own tasks). A swipe-up on a task the user
             // can't reschedule falls through to a no-op skip.
             guard task.canEditSchedule else {
-                NotificationCenter.default.post(name: Notification.Name("WizardTaskSwipedLeft"), object: nil)
-                break
+                finishReview(task, wizardNotification: "WizardTaskSwipedLeft")
+                return
             }
-            // Decrement count, will re-increment on complete/dismiss.
             // WizardTaskSwipedUp is deferred to the reschedule sheet callbacks
             // so the wizard doesn't advance while the sheet is still visible.
-            reviewedCount -= 1
             pendingRescheduleTask = task
             showRescheduleSheet = true
         case .down:
             // Cancel — show confirmation
-            reviewedCount -= 1
             pendingCancelTask = task
             showCancelConfirmation = true
+        }
+    }
+
+    private func finishPendingReschedule() {
+        guard let task = pendingRescheduleTask else { return }
+        pendingRescheduleTask = nil
+        finishReview(task, wizardNotification: "WizardTaskSwipedUp")
+    }
+
+    private func finishReview(_ task: ProjectTask, wizardNotification: String? = nil) {
+        guard session.markReviewed(taskID: task.id) else { return }
+        let remainingCount = session.remainingCount
+
+        if let wizardNotification {
+            NotificationCenter.default.post(
+                name: Notification.Name(wizardNotification),
+                object: nil
+            )
+        }
+
+        // Let a matching completion notification advance first, then evaluate
+        // the new step. If the operator used a different direction, this still
+        // skips an impossible swipe step when the final card is gone.
+        DispatchQueue.main.async {
+            wizardStateManager?.evaluateStepPrerequisites(
+                taskReviewCardCount: remainingCount
+            )
         }
 
         checkCompletion()
@@ -463,7 +481,7 @@ struct TaskCompletionReviewView: View {
     }
 
     private func checkCompletion() {
-        if reviewedCount >= tasks.count {
+        if session.isComplete {
             withAnimation(allDoneTransitionAnimation) {
                 showAllDone = true
             }

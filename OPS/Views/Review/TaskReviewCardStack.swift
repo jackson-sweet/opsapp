@@ -23,9 +23,10 @@ struct TaskReviewCardStack: View {
     @State private var dragOffset: CGSize = .zero
     @State private var dragDirection: SwipeDirection? = nil
     @State private var hasTriggeredThresholdHaptic: Bool = false
-    /// True from the moment a swipe commits until the stack advances 0.3s
-    /// later — locks hit-testing/gesture on the outgoing card so a second drag
-    /// can't fire against the same index while it animates away.
+    @State private var commitOpacity: Double = 1
+    /// True from the moment a swipe commits until the fly-away animation
+    /// completes — locks the outgoing card so a second drag cannot fire against
+    /// the same index.
     @State private var isCommitting: Bool = false
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -33,28 +34,15 @@ struct TaskReviewCardStack: View {
     private let swipeThreshold: CGFloat = 120
     private let maxVisibleCards: Int = 3
 
-    /// Drag-snap / fly-away animation. Springs feel right for the gesture
-    /// rebound; reduce-motion users get a quick ease that still telegraphs
-    /// the result without the bounce.
-    private var dragSettleAnimation: Animation {
-        reduceMotion
-            ? .easeOut(duration: 0.2)
-            : .spring(response: 0.3, dampingFraction: 0.8)
-    }
-
-    /// Stack-shift animation when the top card changes — same tradeoff.
+    /// Stack shift uses the canonical 200ms OPS panel transition.
     private var stackShiftAnimation: Animation {
-        reduceMotion
-            ? .easeOut(duration: 0.25)
-            : .spring(response: 0.4, dampingFraction: 0.7)
+        OPSStyle.Animation.panel
     }
 
-    /// Snap-back when a drag ends below threshold — short and crisp in both
-    /// modes; reduce-motion just drops the springy tail.
-    private var snapBackAnimation: Animation {
-        reduceMotion
-            ? .easeOut(duration: 0.2)
-            : .spring()
+    /// Snap-back uses the canonical interaction transition; Reduce Motion
+    /// removes the transform animation entirely.
+    private var snapBackAnimation: Animation? {
+        reduceMotion ? nil : OPSStyle.Animation.hover
     }
 
     var body: some View {
@@ -88,11 +76,11 @@ struct TaskReviewCardStack: View {
                     .offset(y: yOffset(for: relativeIndex))
                     .offset(index == currentIndex ? dragOffset : .zero)
                     .rotationEffect(index == currentIndex ? dragRotation : .zero)
+                    .opacity(index == currentIndex ? commitOpacity : 1)
                     .zIndex(Double(tasks.count - index))
                     .allowsHitTesting(index == currentIndex && !isCommitting)
                     .gesture(index == currentIndex && !isCommitting ? dragGesture : nil)
-                    .animation(dragSettleAnimation, value: dragOffset)
-                    .animation(stackShiftAnimation, value: currentIndex)
+                    .animation(reduceMotion ? nil : stackShiftAnimation, value: currentIndex)
                     .modifier(WizardTargetModifier(
                         stepIds: index == currentIndex
                             ? ["task_demo_swipe_right", "task_demo_swipe_left", "task_demo_swipe_up"]
@@ -124,7 +112,8 @@ struct TaskReviewCardStack: View {
     }
 
     private var dragRotation: Angle {
-        .degrees(Double(dragOffset.width) / 20)
+        guard !reduceMotion else { return .zero }
+        return .degrees(Double(dragOffset.width) / 20)
     }
 
     private var swipeProgress: CGFloat {
@@ -175,21 +164,27 @@ struct TaskReviewCardStack: View {
     }
 
     private func commitSwipe(_ direction: SwipeDirection) {
-        // Lock the outgoing card so a second gesture can't fire against the
-        // same index during the 0.3s fly-away before currentIndex advances.
+        guard !isCommitting, tasks.indices.contains(currentIndex) else { return }
+
+        // Capture the outgoing task before animation. Parent data updates may
+        // remove it from live Job Board queries as soon as onSwipe runs.
+        let task = tasks[currentIndex]
         isCommitting = true
         let flyAway = flyAwayOffset(for: direction)
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
 
-        withAnimation(.easeIn(duration: 0.25)) {
-            dragOffset = flyAway
-        }
-
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-            let task = tasks[currentIndex]
+        withAnimation(OPSStyle.Animation.hover, completionCriteria: .logicallyComplete) {
+            if reduceMotion {
+                commitOpacity = 0
+            } else {
+                dragOffset = flyAway
+            }
+        } completion: {
+            guard isCommitting else { return }
             currentIndex += 1
             dragOffset = .zero
             dragDirection = nil
+            commitOpacity = 1
             isCommitting = false
             onSwipe(task, direction)
         }

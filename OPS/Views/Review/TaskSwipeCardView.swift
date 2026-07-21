@@ -217,7 +217,7 @@ struct TaskSwipeCardView: View {
         var loaded: [UIImage] = []
         for photoKey in recentPhotos {
             if Task.isCancelled { return }
-            if let img = await loadSingleImage(photoKey) {
+            if let img = await TaskReviewImageLoader.load(photoKey) {
                 loaded.append(img)
             }
         }
@@ -228,29 +228,128 @@ struct TaskSwipeCardView: View {
         heroImages = loaded
         isLoadingImage = false
     }
+}
 
-    private func loadSingleImage(_ photoKey: String) async -> UIImage? {
-        let cacheKey = photoKey.hasPrefix("//") ? "https:" + photoKey : photoKey
+enum TaskReviewImageRendition {
+    static let maxPixelSize: CGFloat = 2_048
 
-        if let cached = ImageCache.shared.get(forKey: cacheKey) {
+    static func sourceCacheKey(for photoKey: String) -> String {
+        photoKey.hasPrefix("//") ? "https:" + photoKey : photoKey
+    }
+
+    static func cacheKey(forSourceKey sourceCacheKey: String) -> String {
+        sourceCacheKey + "#task-review-2048"
+    }
+}
+
+private struct SendableTaskReviewImage: @unchecked Sendable {
+    let value: UIImage
+}
+
+@MainActor
+private enum TaskReviewImageLoader {
+    static func load(_ photoKey: String) async -> UIImage? {
+        let sourceCacheKey = TaskReviewImageRendition.sourceCacheKey(for: photoKey)
+        let cardCacheKey = TaskReviewImageRendition.cacheKey(forSourceKey: sourceCacheKey)
+
+        if let cached = ImageCache.shared.get(forKey: cardCacheKey) {
             return cached
         }
 
-        if let loaded = ImageFileManager.shared.loadImage(localID: photoKey) {
-            ImageCache.shared.set(loaded, forKey: cacheKey)
-            return loaded
+        // The shared source key may contain a full-resolution image used by
+        // zoom, share, and annotation surfaces. Downsample it off-main and
+        // publish only under the review-specific rendition key.
+        if let sourceImage = ImageCache.shared.get(forKey: sourceCacheKey),
+           let cardImage = await downsample(sourceImage) {
+            guard !Task.isCancelled else { return nil }
+            ImageCache.shared.set(cardImage, forKey: cardCacheKey)
+            return cardImage
         }
 
-        guard let url = URL(string: cacheKey) else { return nil }
+        if let diskImage = await loadDiskImage(photoKey) {
+            guard !Task.isCancelled else { return nil }
+            ImageCache.shared.set(diskImage, forKey: cardCacheKey)
+            return diskImage
+        }
+
+        guard let url = URL(string: sourceCacheKey) else { return nil }
 
         do {
-            let (data, _) = try await URLSession.shared.data(from: url)
-            if let img = UIImage(data: data) {
-                ImageCache.shared.set(img, forKey: cacheKey)
-                return img
-            }
+            let (data, response) = try await URLSession.shared.data(from: url)
+            guard !Task.isCancelled,
+                  let response = response as? HTTPURLResponse,
+                  (200..<300).contains(response.statusCode),
+                  let image = await decode(data) else { return nil }
+
+            ImageCache.shared.set(image, forKey: cardCacheKey)
+            return image
         } catch {}
 
         return nil
+    }
+
+    private static func loadDiskImage(_ photoKey: String) async -> UIImage? {
+        let maxPixelSize = TaskReviewImageRendition.maxPixelSize
+        let task = Task.detached(priority: .userInitiated) { () -> SendableTaskReviewImage? in
+            guard !Task.isCancelled else { return nil }
+
+            if let fileURL = ImageFileManager.shared.getFileURL(for: photoKey),
+               let data = try? Data(contentsOf: fileURL),
+               let image = ImageDownsampler.downsample(data: data, maxPixelSize: maxPixelSize) {
+                return SendableTaskReviewImage(value: image)
+            }
+
+            // Preserve ImageFileManager's legacy UserDefaults migration path.
+            guard let image = ImageFileManager.shared.loadImage(localID: photoKey) else {
+                return nil
+            }
+            return SendableTaskReviewImage(
+                value: ImageDownsampler.downsample(image: image, maxPixelSize: maxPixelSize)
+            )
+        }
+
+        return await withTaskCancellationHandler {
+            await task.value?.value
+        } onCancel: {
+            task.cancel()
+        }
+    }
+
+    private static func decode(_ data: Data) async -> UIImage? {
+        let maxPixelSize = TaskReviewImageRendition.maxPixelSize
+        let task = Task.detached(priority: .userInitiated) { () -> SendableTaskReviewImage? in
+            guard !Task.isCancelled,
+                  let image = ImageDownsampler.downsample(
+                    data: data,
+                    maxPixelSize: maxPixelSize
+                  ) else { return nil }
+            return SendableTaskReviewImage(value: image)
+        }
+
+        return await withTaskCancellationHandler {
+            await task.value?.value
+        } onCancel: {
+            task.cancel()
+        }
+    }
+
+    private static func downsample(_ image: UIImage) async -> UIImage? {
+        let maxPixelSize = TaskReviewImageRendition.maxPixelSize
+        let source = SendableTaskReviewImage(value: image)
+        let task = Task.detached(priority: .userInitiated) { () -> SendableTaskReviewImage? in
+            guard !Task.isCancelled else { return nil }
+            return SendableTaskReviewImage(
+                value: ImageDownsampler.downsample(
+                    image: source.value,
+                    maxPixelSize: maxPixelSize
+                )
+            )
+        }
+
+        return await withTaskCancellationHandler {
+            await task.value?.value
+        } onCancel: {
+            task.cancel()
+        }
     }
 }

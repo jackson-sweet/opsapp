@@ -18,9 +18,7 @@ struct UnscheduledTaskReviewView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @EnvironmentObject var dataController: DataController
 
-    let tasks: [ProjectTask]
-
-    @State private var reviewedCount: Int = 0
+    @State private var session: TaskReviewSession
     @State private var currentTopIndex: Int = 0
     @State private var showBio: Bool = false
     @State private var selectedTask: ProjectTask? = nil
@@ -60,8 +58,12 @@ struct UnscheduledTaskReviewView: View {
 
     /// The task currently on top of the card stack
     private var currentTask: ProjectTask? {
-        guard currentTopIndex < tasks.count else { return nil }
-        return tasks[currentTopIndex]
+        guard currentTopIndex < session.tasks.count else { return nil }
+        return session.tasks[currentTopIndex]
+    }
+
+    init(tasks: [ProjectTask]) {
+        _session = State(initialValue: TaskReviewSession(tasks: tasks))
     }
 
     /// Whether the current top task is unassigned
@@ -95,9 +97,9 @@ struct UnscheduledTaskReviewView: View {
             OPSStyle.Colors.background.ignoresSafeArea()
 
             // Full-bleed card stack
-            if !tasks.isEmpty && !showAllDone {
+            if !session.tasks.isEmpty && !showAllDone {
                 TaskReviewCardStack(
-                    tasks: tasks,
+                    tasks: session.tasks,
                     // Swipe-to-schedule is gated on calendar.edit (any grant shows
                     // the affordance; the schedule mutations are gated per-task).
                     // Crew / Unassigned (no grant) review without a schedule swipe.
@@ -131,7 +133,7 @@ struct UnscheduledTaskReviewView: View {
                 header
                     .padding(.top, OPSStyle.Layout.spacing2)
 
-                if tasks.isEmpty {
+                if session.tasks.isEmpty {
                     emptyStateView
                 } else if showAllDone {
                     allDoneView
@@ -139,7 +141,7 @@ struct UnscheduledTaskReviewView: View {
                     Spacer()
 
                     // Counter
-                    Text("\(reviewedCount) OF \(tasks.count) REVIEWED")
+                    Text("\(session.reviewedCount) OF \(session.totalCount) REVIEWED")
                         .font(OPSStyle.Typography.captionBold)
                         .foregroundColor(.white.opacity(0.7))
                         .padding(.horizontal, OPSStyle.Layout.spacing2_5)
@@ -220,9 +222,10 @@ struct UnscheduledTaskReviewView: View {
         }
         .alert("Cancel Task?", isPresented: $showCancelConfirmation) {
             Button("Keep Task", role: .cancel) {
-                reviewedCount += 1
-                pendingCancelTask = nil
-                checkCompletion()
+                if let task = pendingCancelTask {
+                    pendingCancelTask = nil
+                    finishReview(task)
+                }
             }
             Button("Cancel Task", role: .destructive) {
                 if let task = pendingCancelTask {
@@ -234,10 +237,9 @@ struct UnscheduledTaskReviewView: View {
                             print("[UNSCHEDULED_REVIEW] Failed to cancel task: \(error)")
                         }
                     }
+                    pendingCancelTask = nil
+                    finishReview(task)
                 }
-                reviewedCount += 1
-                pendingCancelTask = nil
-                checkCompletion()
             }
         } message: {
             Text("This will cancel the task. You can reactivate it later if needed.")
@@ -303,8 +305,8 @@ struct UnscheduledTaskReviewView: View {
                 Text("UNASSIGNED REVIEW")
                     .font(OPSStyle.Typography.captionBold)
                     .foregroundColor(OPSStyle.Colors.primaryText)
-                if !tasks.isEmpty {
-                    Text("\(tasks.count) TASK\(tasks.count == 1 ? "" : "S")")
+                if !session.tasks.isEmpty {
+                    Text("\(session.totalCount) TASK\(session.totalCount == 1 ? "" : "S")")
                         .font(OPSStyle.Typography.smallCaption)
                         .foregroundColor(OPSStyle.Colors.secondaryText)
                 }
@@ -340,7 +342,7 @@ struct UnscheduledTaskReviewView: View {
             hintPill(icon: "arrow.down", label: "CANCEL", color: OPSStyle.Colors.errorStatus)
         }
         .padding(.horizontal, OPSStyle.Layout.spacing3)
-        .animation(.easeInOut(duration: 0.2), value: currentTopIndex)
+        .animation(OPSStyle.Animation.panel, value: currentTopIndex)
     }
 
     private func formatScheduledRange(start: Date, end: Date) -> String {
@@ -461,17 +463,10 @@ struct UnscheduledTaskReviewView: View {
             let generator = UINotificationFeedbackGenerator()
             generator.notificationOccurred(.success)
 
-            // Crisp ease-out scale for reduce-motion users; the spring keeps
-            // the original celebratory snap for everyone else. The opacity
-            // fade is gentle in both modes so the text "lands" with the
-            // visual rather than ahead of it.
-            let scaleAnimation: Animation = reduceMotion
-                ? .easeOut(duration: 0.25)
-                : .spring(response: 0.5, dampingFraction: 0.6)
-            withAnimation(scaleAnimation) {
+            withAnimation(reduceMotion ? OPSStyle.Animation.hover : OPSStyle.Animation.flip) {
                 celebrationScale = 1.0
             }
-            withAnimation(.easeOut(duration: 0.4).delay(0.3)) {
+            withAnimation(OPSStyle.Animation.panel.delay(OPSStyle.Animation.durationStagger)) {
                 celebrationOpacity = 1.0
             }
         }
@@ -491,14 +486,12 @@ struct UnscheduledTaskReviewView: View {
             } else {
                 // Already assigned — auto-schedule immediately
                 autoScheduleTask(task)
-                reviewedCount += 1
-                checkCompletion()
+                finishReview(task)
             }
 
         case .left:
             // Skip — no changes
-            reviewedCount += 1
-            checkCompletion()
+            finishReview(task)
 
         case .up:
             let isUnassigned = task.getTeamMemberIds().isEmpty
@@ -516,8 +509,7 @@ struct UnscheduledTaskReviewView: View {
             } else {
                 // Assigned — mark complete via canonical path.
                 markTaskComplete(task)
-                reviewedCount += 1
-                checkCompletion()
+                finishReview(task)
             }
 
         case .down:
@@ -592,15 +584,12 @@ struct UnscheduledTaskReviewView: View {
         }
 
         if countsAsReview {
-            reviewedCount += 1
+            finishReview(task)
         }
         pendingAssignTask = nil
         assignPickerCountsAsReview = true
         assignSelectedIds = []
         pickerDidConfirm = false
-        if countsAsReview {
-            checkCompletion()
-        }
     }
 
     private func markTaskComplete(_ task: ProjectTask) {
@@ -799,11 +788,16 @@ struct UnscheduledTaskReviewView: View {
         )
     }
 
+    private func finishReview(_ task: ProjectTask) {
+        guard session.markReviewed(taskID: task.id) else { return }
+        checkCompletion()
+    }
+
     private func checkCompletion() {
-        if reviewedCount >= tasks.count {
-            let transition: Animation = reduceMotion
-                ? .easeInOut(duration: 0.25).delay(0.3)
-                : .spring().delay(0.3)
+        if session.isComplete {
+            let transition = reduceMotion
+                ? OPSStyle.Animation.hover.delay(OPSStyle.Animation.durationStagger)
+                : OPSStyle.Animation.page.delay(OPSStyle.Animation.durationStagger)
             withAnimation(transition) {
                 showAllDone = true
             }

@@ -27,8 +27,21 @@ struct AddLeadSheet: View {
 
     var onSaved: (Opportunity) -> Void = { _ in }
     var onStartSiteVisit: ((Opportunity) -> Void)? = nil
+    private let seedClient: Client?
 
-    @State private var form = LeadForm()
+    @State private var form: LeadForm
+
+    /// `seedClient` pre-fills the form for a lead created from a client's page
+    /// and binds that client's id directly on save (no fuzzy name match).
+    /// Existing call sites keep working via the defaulted parameters.
+    init(seedClient: Client? = nil,
+         onSaved: @escaping (Opportunity) -> Void = { _ in },
+         onStartSiteVisit: ((Opportunity) -> Void)? = nil) {
+        self.seedClient = seedClient
+        self.onSaved = onSaved
+        self.onStartSiteVisit = onStartSiteVisit
+        _form = State(initialValue: seedClient.map { LeadForm(fromClient: $0) } ?? LeadForm())
+    }
     @State private var isSaving = false
     @State private var errorMessage: String?
     @State private var saveAction: AddLeadSaveAction = .saveOnly
@@ -191,7 +204,14 @@ struct AddLeadSheet: View {
         // the web email/lead-engine behavior. Runs BEFORE the opportunity
         // insert so the row lands with client_id set (the convert RPC carries
         // it onto the project). Never blocks the lead: failure → unlinked.
-        let clientId = await resolveClientId(companyId: companyId, name: trimmedName)
+        // From a client's page, bind THAT client's id directly — no fuzzy match,
+        // no duplicate client. Otherwise resolve/create by name as before.
+        let clientId: String?
+        if let seedClient {
+            clientId = seedClient.id
+        } else {
+            clientId = await resolveClientId(companyId: companyId, name: trimmedName)
+        }
 
         let dto = CreateOpportunityDTO(
             title: form.title.isEmpty ? nil : form.title,

@@ -70,6 +70,21 @@ struct LeadForm {
         lastResolvedAddress = opportunity.address
     }
 
+    /// Hydrate from a client for the "new lead from the client page" path —
+    /// prefill the contact fields so the operator only enters the job. The known
+    /// client id is bound by AddLeadSheet, bypassing name-based resolution.
+    init(fromClient client: Client) {
+        contactName = client.name
+        phone = client.phoneNumber ?? ""
+        email = client.email ?? ""
+        address = client.address ?? ""
+        if let lat = client.latitude, let lon = client.longitude {
+            latitude = lat
+            longitude = lon
+            lastResolvedAddress = client.address
+        }
+    }
+
     /// Address text changed. Keep coords only while the text still matches the
     /// string they were resolved for — any divergence (hand edit, clear) nulls
     /// them so the save path writes honest geo.

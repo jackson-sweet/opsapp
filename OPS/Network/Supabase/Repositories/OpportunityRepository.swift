@@ -66,6 +66,21 @@ class OpportunityRepository {
         return rows.first
     }
 
+    /// All non-deleted opportunities linked to a client, across every stage
+    /// (open + terminal). The client Leads section splits open vs. closed in
+    /// memory. Mirror of `fetchFirstActiveLinked` without the `.limit(1)`.
+    func fetchAllLinked(toClientId clientId: String) async throws -> [OpportunityDTO] {
+        try await client
+            .from("opportunities")
+            .select()
+            .eq("company_id", value: companyId)
+            .eq("client_id", value: clientId)
+            .is("deleted_at", value: nil)
+            .order("created_at", ascending: false)
+            .execute()
+            .value
+    }
+
     /// Resolve a durable ingestion key regardless of active/deleted state.
     /// The database uniquely constrains `(company_id, source_thread_key)`, so
     /// this is the authoritative readback after an ambiguous insert response.

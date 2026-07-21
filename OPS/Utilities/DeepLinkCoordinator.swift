@@ -63,6 +63,28 @@ import Foundation
 import SwiftUI
 import UIKit
 
+/// Pure payload routing for push notifications that should open the existing
+/// notification rail. Keeping this decision separate from OneSignal and UIKit
+/// makes the provider contract directly testable.
+enum NotificationRailPushRoute {
+    static let coordinatorEntity = "notifications"
+    static let coordinatorId = "rail"
+
+    private static let notificationScreen = "notifications"
+    private static let quotaNotificationType = "ai_provider_quota"
+
+    static func shouldOpen(screen: String?, type: String?) -> Bool {
+        normalized(screen) == notificationScreen
+            || normalized(type) == quotaNotificationType
+    }
+
+    private static func normalized(_ value: String?) -> String? {
+        value?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+    }
+}
+
 @MainActor
 final class DeepLinkCoordinator: ObservableObject {
 
@@ -75,7 +97,8 @@ final class DeepLinkCoordinator: ObservableObject {
     // MARK: - Model
 
     struct PendingLink: Equatable {
-        /// Entity namespace — "projects", "clients", "tasks", "invoices", "estimates".
+        /// Entity namespace — projects, clients, tasks, invoices, estimates,
+        /// leads, or the notification rail.
         let entity: String
 
         /// Entity-specific ID (Bubble unique identifier).
@@ -258,6 +281,8 @@ final class DeepLinkCoordinator: ObservableObject {
             return (Notification.Name("OpenLeadDetails"), "leadId")
         case "tasks":
             return (Notification.Name("OpenTaskDetails"), "taskId")
+        case "notifications":
+            return (Notification.Name("OpenNotifications"), "notificationRail")
         default:
             return (nil, nil)
         }

@@ -174,4 +174,55 @@ final class LeadNotificationRouteParserTests: XCTestCase {
         )
         XCTAssertNil(route)
     }
+
+    // MARK: - AI provider quota push routing
+
+    func testNotificationsScreenTargetsNotificationRail() {
+        XCTAssertTrue(
+            NotificationRailPushRoute.shouldOpen(
+                screen: "notifications",
+                type: nil
+            )
+        )
+    }
+
+    func testAIProviderQuotaTypeTargetsNotificationRailWithoutScreen() {
+        XCTAssertTrue(
+            NotificationRailPushRoute.shouldOpen(
+                screen: nil,
+                type: "ai_provider_quota"
+            )
+        )
+    }
+
+    func testPlatformHealthDoesNotTargetNotificationRail() {
+        XCTAssertFalse(
+            NotificationRailPushRoute.shouldOpen(
+                screen: "platform_health",
+                type: "platform_health"
+            )
+        )
+    }
+
+    @MainActor
+    func testNotificationRailCoordinatorDispatchesOpenNotifications() {
+        let coordinator = DeepLinkCoordinator.shared
+        coordinator.clear()
+        defer { coordinator.clear() }
+
+        let dispatched = expectation(
+            forNotification: Notification.Name("OpenNotifications"),
+            object: nil
+        ) { notification in
+            XCTAssertEqual(notification.userInfo?["notificationRail"] as? String, "rail")
+            XCTAssertNotNil(
+                notification.userInfo?[DeepLinkCoordinator.deepLinkIdUserInfoKey] as? String
+            )
+            return true
+        }
+
+        coordinator.receive(entity: "notifications", id: "rail", scheme: "push")
+
+        wait(for: [dispatched], timeout: 1.0)
+    }
 }

@@ -926,6 +926,8 @@ struct NotificationListView: View {
     private func notificationIcon(for type: String) -> some View {
         let (iconName, color): (String, Color) = {
             switch type {
+            case "ai_provider_quota":
+                return (OPSStyle.Icons.alert, OPSStyle.Colors.errorStatus)
             case "mention":
                 return (OPSStyle.Icons.mention, OPSStyle.Colors.primaryAccent)
             case "project_note":

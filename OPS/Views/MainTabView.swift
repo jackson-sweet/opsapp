@@ -112,6 +112,9 @@ struct MainTabView: View {
     private let openLeadDetailsObserver = NotificationCenter.default
         .publisher(for: Notification.Name("OpenLeadDetails"))
 
+    private let openNotificationsObserver = NotificationCenter.default
+        .publisher(for: Notification.Name("OpenNotifications"))
+
     private let showAccessDeniedObserver = NotificationCenter.default
         .publisher(for: Notification.Name("ShowAccessDenied"))
 
@@ -608,6 +611,16 @@ struct MainTabView: View {
         }
 
         // MARK: - Push Notification Deep Linking Handlers
+
+        // Open the existing notification rail. DeepLinkCoordinator holds this
+        // intent across cold launch and PIN gating, then this mounted handler
+        // consumes and clears it once presentation is safe.
+        .onReceive(openNotificationsObserver) { notification in
+            appState.showingNotifications = true
+            if notification.userInfo?[DeepLinkCoordinator.deepLinkIdUserInfoKey] != nil {
+                DeepLinkCoordinator.shared.clear()
+            }
+        }
 
         // Handle opening project details from push notification, universal
         // link, or custom-scheme tap. Cancels any in-flight resolution so

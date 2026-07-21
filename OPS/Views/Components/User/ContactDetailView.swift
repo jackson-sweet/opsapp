@@ -220,6 +220,10 @@ struct ContactDetailView: View {
                             .padding(.top, OPSStyle.Layout.spacing3)
                         }
 
+                        // Leads section (clients only, gated on pipeline view) —
+                        // above Projects: potential work over won work.
+                        leadsSection
+
                         // Projects section
                         projectsSection
                             .padding(.horizontal)
@@ -1193,6 +1197,25 @@ struct ContactDetailView: View {
         }
     }
     
+    // MARK: - Leads Section
+
+    /// Client-scoped pipeline leads, shown above Projects for clients whose
+    /// operator can view pipeline. Extracted to a computed property (like
+    /// `projectsSection`) to keep the already-large `body` under the SwiftUI
+    /// type-checker's complexity ceiling.
+    @ViewBuilder
+    private var leadsSection: some View {
+        if isClient, let client = client,
+           permissionStore.leadAccessPolicy.canViewAny {
+            ClientLeadsSection(client: client)
+                .padding(.horizontal)
+                .padding(.top, OPSStyle.Layout.spacing3)
+                .opacity(showFullContact ? 1 : 0)
+                .offset(y: showFullContact ? 0 : 20)
+                .animation(.easeInOut(duration: 0.5).delay(0.3), value: showFullContact)
+        }
+    }
+
     // MARK: - Projects Section
 
     private var projectsSection: some View {

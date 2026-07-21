@@ -487,14 +487,19 @@ class AppDelegate: NSObject, UIApplicationDelegate, OSNotificationLifecycleListe
         print("[PUSH] Lead: \(leadId ?? "none")")
         print("[PUSH] Screen: \(screen ?? "none")")
 
-        // Route based on screen or type. Notification-rail intents go through
-        // the coordinator so cold launch and PIN gating cannot drop the tap.
-        if NotificationRailPushRoute.shouldOpen(
+        // Delivery is not a tap. A visible quota push must never open the rail
+        // on arrival or leave a navigation intent for a later ordinary launch;
+        // OneSignal's explicit onClick callback owns that route.
+        guard NotificationRailPushRoute.shouldNavigateFromDelivery(
             screen: screen,
             type: notificationType
-        ) {
-            openNotificationRailViaCoordinator()
-        } else if let screen = screen {
+        ) else {
+            print("[PUSH] Notification rail delivery recorded; waiting for user tap")
+            return
+        }
+
+        // Preserve the established arrival handling for all other push types.
+        if let screen = screen {
             routeToScreen(screen, projectId: projectId, taskId: taskId, leadId: leadId)
         } else if let type = notificationType {
             routeByType(type, projectId: projectId, taskId: taskId, leadId: leadId, batchId: batchId)

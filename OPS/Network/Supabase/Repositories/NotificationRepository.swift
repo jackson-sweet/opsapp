@@ -9,6 +9,16 @@
 import Foundation
 import Supabase
 
+/// Persistent rows represent unresolved conditions. Reading or navigating from
+/// them must never masquerade as condition recovery.
+enum NotificationReadPolicy {
+    static let nonPersistentPostgrestFilter = "persistent.is.null,persistent.eq.false"
+
+    static func shouldMarkRead(persistent: Bool?) -> Bool {
+        persistent != true
+    }
+}
+
 class NotificationRepository {
     /// Shared instance for call sites that don't need a per-instance repository.
     /// The repo is stateless beyond the Supabase client handle, so sharing
@@ -191,6 +201,7 @@ class NotificationRepository {
             .update(MarkRead(is_read: true))
             .eq("user_id", value: userId)
             .eq("is_read", value: false)
+            .or(NotificationReadPolicy.nonPersistentPostgrestFilter)
             .execute()
     }
 

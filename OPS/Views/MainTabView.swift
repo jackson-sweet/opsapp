@@ -616,6 +616,15 @@ struct MainTabView: View {
         // intent across cold launch and PIN gating, then this mounted handler
         // consumes and clears it once presentation is safe.
         .onReceive(openNotificationsObserver) { notification in
+            let pin = dataController.simplePINManager
+            guard NotificationRailPushRoute.canPresent(
+                sessionAuthenticated: dataController.isAuthenticated,
+                requiresPIN: pin.requiresPIN,
+                pinAuthenticated: pin.isAuthenticated
+            ) else {
+                print("[PUSH_NAVIGATION] Deferring notification rail — authentication required")
+                return
+            }
             appState.showingNotifications = true
             if notification.userInfo?[DeepLinkCoordinator.deepLinkIdUserInfoKey] != nil {
                 DeepLinkCoordinator.shared.clear()

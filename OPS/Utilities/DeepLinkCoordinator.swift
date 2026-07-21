@@ -78,6 +78,23 @@ enum NotificationRailPushRoute {
             || normalized(type) == quotaNotificationType
     }
 
+    /// APNs/OneSignal delivery callbacks describe arrival, not user intent.
+    /// Notification-rail pushes navigate only from the explicit tap callback.
+    static func shouldNavigateFromDelivery(screen: String?, type: String?) -> Bool {
+        !shouldOpen(screen: screen, type: type)
+    }
+
+    /// Sheets render above the PIN overlay, so presentation must wait for both
+    /// the signed-in session and the local PIN gate. The coordinator retains
+    /// the pending intent and replays it after unlock.
+    static func canPresent(
+        sessionAuthenticated: Bool,
+        requiresPIN: Bool,
+        pinAuthenticated: Bool
+    ) -> Bool {
+        sessionAuthenticated && (!requiresPIN || pinAuthenticated)
+    }
+
     private static func normalized(_ value: String?) -> String? {
         value?
             .trimmingCharacters(in: .whitespacesAndNewlines)

@@ -204,6 +204,49 @@ final class LeadNotificationRouteParserTests: XCTestCase {
         )
     }
 
+    func testAIProviderQuotaDeliveryWaitsForUserTap() {
+        XCTAssertFalse(
+            NotificationRailPushRoute.shouldNavigateFromDelivery(
+                screen: "notifications",
+                type: "ai_provider_quota"
+            )
+        )
+    }
+
+    func testNotificationRailPresentationWaitsForPINUnlock() {
+        XCTAssertFalse(
+            NotificationRailPushRoute.canPresent(
+                sessionAuthenticated: true,
+                requiresPIN: true,
+                pinAuthenticated: false
+            )
+        )
+        XCTAssertTrue(
+            NotificationRailPushRoute.canPresent(
+                sessionAuthenticated: true,
+                requiresPIN: true,
+                pinAuthenticated: true
+            )
+        )
+        XCTAssertFalse(
+            NotificationRailPushRoute.canPresent(
+                sessionAuthenticated: false,
+                requiresPIN: false,
+                pinAuthenticated: true
+            )
+        )
+    }
+
+    func testPersistentNotificationsStayUnreadUntilConditionResolution() {
+        XCTAssertFalse(NotificationReadPolicy.shouldMarkRead(persistent: true))
+        XCTAssertTrue(NotificationReadPolicy.shouldMarkRead(persistent: false))
+        XCTAssertTrue(NotificationReadPolicy.shouldMarkRead(persistent: nil))
+        XCTAssertEqual(
+            NotificationReadPolicy.nonPersistentPostgrestFilter,
+            "persistent.is.null,persistent.eq.false"
+        )
+    }
+
     @MainActor
     func testNotificationRailCoordinatorDispatchesOpenNotifications() {
         let coordinator = DeepLinkCoordinator.shared

@@ -21,7 +21,7 @@ struct ClientLeadRow: View {
         HStack(spacing: OPSStyle.Layout.spacing2) {
             Circle()
                 .fill(lead.stage.color)
-                .frame(width: 8, height: 8)
+                .frame(width: OPSStyle.Layout.Indicator.dotMD, height: OPSStyle.Layout.Indicator.dotMD)
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(primaryLabel)
@@ -44,11 +44,11 @@ struct ClientLeadRow: View {
                 .padding(.vertical, OPSStyle.Layout.spacing1)
                 .background(
                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                        .fill(lead.stage.color.opacity(0.1))
+                        .fill(lead.stage.color.opacity(OPSStyle.Layout.Opacity.subtle))
                 )
                 .overlay(
                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                        .stroke(lead.stage.color.opacity(0.3), lineWidth: OPSStyle.Layout.Border.standard)
+                        .stroke(lead.stage.color.opacity(OPSStyle.Layout.Opacity.light), lineWidth: OPSStyle.Layout.Border.standard)
                 )
 
             Image(systemName: "chevron.right")
@@ -57,7 +57,7 @@ struct ClientLeadRow: View {
         }
         .padding(.vertical, OPSStyle.Layout.spacing2_5)
         .padding(.horizontal, OPSStyle.Layout.spacing3)
-        .frame(minHeight: 44)
+        .frame(minHeight: OPSStyle.Layout.touchTargetMin)
         .contentShape(Rectangle())
         .opacity(isHistory ? 0.72 : 1)
     }

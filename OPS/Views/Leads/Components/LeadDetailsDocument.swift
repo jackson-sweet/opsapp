@@ -5,9 +5,10 @@
 //  // DETAILS — the fixed dossier document (Leads redesign spec §5.9).
 //  One L1 card of rows whose ORDER NEVER CHANGES; blanks render `—`:
 //
-//      CLIENT   Calloway Homes
+//      CLIENT   Calloway Homes          →   (opens ContactDetailView)
 //               HELEN — ON FILE            (roster state / ADD TO CLIENT)
-//      PROJECT  Maple Lane porch        →
+//      PROJECT  Maple Lane porch        → ✎  (open; pencil = re-link)
+//      LAST WORD← THEM · 2D — Re: quote     (latest meaningful correspondence)
 //      DECK     Backyard deck v2        →
 //      PHOTOS   [ADD][▦][▦][▦] …
 //      FILES    quote-v2.pdf · EST-0142 …
@@ -15,10 +16,15 @@
 //  58pt mono label column; content region right. The DECK row is omitted
 //  entirely (not `—`) when the deck_builder feature is off — a permanently
 //  dead row for non-deck trades would be noise, and the fixed-order rule
-//  governs state, not feature flags.
+//  governs state, not feature flags. The LAST WORD row is likewise omitted
+//  (not `—`) when the lead has no correspondence yet — silence needs no
+//  monument.
 //
-//  CLIENT is deliberately non-navigating in v1 — iOS has no client detail
-//  push from this context; the row carries the roster state + ADD action.
+//  CLIENT navigates to ContactDetailView — the same canonical contact surface
+//  every other client tap in the app opens (JobBoard card, universal search,
+//  Spotlight). PROJECT is editable behind the pencil: linking is a rare,
+//  deliberate act, so the verb hides off the scan path while row-tap keeps
+//  its expected "open" meaning.
 //
 
 import SwiftUI
@@ -32,9 +38,12 @@ struct LeadDetailsDocument: View {
     let projectName: String?
     let attachments: [LeadAttachment]
     let estimates: [Estimate]
+    var correspondence: LeadCorrespondence? = nil
     var isAddingToClient: Bool = false
     var onAddToClient: () -> Void = {}
+    var onOpenClient: () -> Void = {}
     var onOpenProject: () -> Void = {}
+    var onEditProject: () -> Void = {}
     var onOpenDeck: (DeckDesign) -> Void = { _ in }
     var onCreateDeck: () -> Void = {}
     var onAddPhotos: () -> Void = {}
@@ -58,6 +67,10 @@ struct LeadDetailsDocument: View {
                 clientRow
                 rowDivider
                 projectRow
+                if correspondence != nil {
+                    rowDivider
+                    lastWordRow
+                }
                 if deckFeatureEnabled {
                     rowDivider
                     DocRow(label: "DECK") {
@@ -98,11 +111,28 @@ struct LeadDetailsDocument: View {
     private var clientRow: some View {
         DocRow(label: "CLIENT") {
             VStack(alignment: .leading, spacing: 6) {
-                Text(client?.name ?? "—")
-                    .font(.custom("Mohave-Medium", size: 14))
-                    .foregroundColor(client == nil ? OPSStyle.Colors.textMute : OPSStyle.Colors.text)
-                    .lineLimit(1)
-                    .truncationMode(.tail)
+                if client != nil {
+                    Button(action: onOpenClient) {
+                        HStack(spacing: OPSStyle.Layout.spacing2) {
+                            Text(client?.name ?? "—")
+                                .font(.custom("Mohave-Medium", size: 14))
+                                .foregroundColor(OPSStyle.Colors.text)
+                                .lineLimit(1)
+                                .truncationMode(.tail)
+                            Spacer(minLength: 0)
+                            Image(systemName: "chevron.right")
+                                .font(.system(size: 11, weight: .regular))
+                                .foregroundColor(OPSStyle.Colors.text3)
+                        }
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Open client \(client?.name ?? "")")
+                } else {
+                    Text("—")
+                        .font(.custom("Mohave-Medium", size: 14))
+                        .foregroundColor(OPSStyle.Colors.textMute)
+                }
 
                 rosterLine
             }
@@ -171,28 +201,103 @@ struct LeadDetailsDocument: View {
     private var projectRow: some View {
         DocRow(label: "PROJECT") {
             if let projectName {
-                Button(action: onOpenProject) {
-                    HStack(spacing: OPSStyle.Layout.spacing2) {
-                        Text(projectName)
-                            .font(.custom("Mohave-Medium", size: 14))
-                            .foregroundColor(OPSStyle.Colors.text)
-                            .lineLimit(1)
-                            .truncationMode(.tail)
-                        Spacer(minLength: 0)
-                        Image(systemName: "chevron.right")
-                            .font(.system(size: 11, weight: .regular))
-                            .foregroundColor(OPSStyle.Colors.text3)
+                HStack(spacing: OPSStyle.Layout.spacing2) {
+                    // Row tap keeps its expected meaning: OPEN the project.
+                    Button(action: onOpenProject) {
+                        HStack(spacing: OPSStyle.Layout.spacing2) {
+                            Text(projectName)
+                                .font(.custom("Mohave-Medium", size: 14))
+                                .foregroundColor(OPSStyle.Colors.text)
+                                .lineLimit(1)
+                                .truncationMode(.tail)
+                            Spacer(minLength: 0)
+                            Image(systemName: "chevron.right")
+                                .font(.system(size: 11, weight: .regular))
+                                .foregroundColor(OPSStyle.Colors.text3)
+                        }
+                        .contentShape(Rectangle())
                     }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Open project \(projectName)")
+
+                    // Re-link lives behind the pencil — a rare, deliberate act
+                    // stays off the scan path.
+                    if canEdit {
+                        Button(action: onEditProject) {
+                            Image(systemName: "pencil")
+                                .font(.system(size: 12, weight: .medium))
+                                .foregroundColor(OPSStyle.Colors.text3)
+                                .frame(width: 32, height: 32)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Change linked project")
+                    }
+                }
+            } else if canEdit {
+                Button(action: onEditProject) {
+                    HStack(spacing: 5) {
+                        Image(systemName: "link")
+                            .font(.system(size: 9, weight: .semibold))
+                        Text("LINK PROJECT")
+                            .font(.custom("JetBrainsMono-Medium", size: 9))
+                            .tracking(0.9)
+                            .textCase(.uppercase)
+                    }
+                    .foregroundColor(OPSStyle.Colors.text2)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 5)
+                    .background(RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius, style: .continuous).fill(OPSStyle.Colors.surfaceInput))
+                    .overlay(RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius, style: .continuous).strokeBorder(OPSStyle.Colors.line, lineWidth: 1))
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel("Open project \(projectName)")
+                .accessibilityLabel("Link a project to this lead")
             } else {
                 Text("—")
                     .font(.custom("Mohave-Medium", size: 14))
                     .foregroundColor(OPSStyle.Colors.textMute)
             }
         }
+    }
+
+    // MARK: - LAST WORD
+
+    /// Latest meaningful correspondence, either party — who spoke last, when,
+    /// and about what. Display-only: the full exchange lives in ACTIVITY.
+    @ViewBuilder
+    private var lastWordRow: some View {
+        if let word = correspondence {
+            DocRow(label: "LAST WORD") {
+                // Same anatomy as CLIENT (value line + meta line): the subject
+                // gets the full row width; who-spoke-last + age sit beneath.
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(word.subject?.trimmingCharacters(in: .whitespaces).isEmpty == false
+                         ? word.subject! : "No subject")
+                        .font(.custom("Mohave-Medium", size: 14))
+                        .foregroundColor(OPSStyle.Colors.text)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+
+                    HStack(spacing: 5) {
+                        Image(systemName: word.isInbound ? "arrow.down.left" : "arrow.up.right")
+                            .font(.system(size: 9, weight: .semibold))
+                        Text("\(word.isInbound ? "THEM" : "YOU") · \(Self.stamp(word.occurredAt))")
+                            .font(.custom("JetBrainsMono-Medium", size: 9))
+                            .tracking(0.9)
+                    }
+                    .foregroundColor(word.isInbound ? OPSStyle.Colors.oliveTextM : OPSStyle.Colors.text3)
+                }
+            }
+        }
+    }
+
+    /// Compact age stamp, same dialect as the chase card's summary band.
+    private static func stamp(_ date: Date) -> String {
+        let hours = max(Int(Date().timeIntervalSince(date) / 3600), 0)
+        if hours < 1 { return "NOW" }
+        if hours < 24 { return "\(hours)H AGO" }
+        return "\(hours / 24)D AGO"
     }
 
     // MARK: - FILES

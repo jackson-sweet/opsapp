@@ -143,19 +143,69 @@ class OpportunityRepository {
 
     /// FILES rows for the lead detail — email attachments the pipeline
     /// attributed to this lead. Only actionable rows: `stored` (streamed via
-    /// the authenticated ops-web proxy) and `external` (source_url). Mirrors
-    /// the web inbox listing's reviewable subset; RLS grants lead-scoped
-    /// SELECT via email_attachments_lead_files_select.
+    /// the authenticated ops-web proxy) and `external` (source_url).
+    ///
+    /// `email_attachments` went SERVER-ONLY on 2026-07-20 (migration
+    /// `email_attachment_lead_files_client_access`): the raw table is REVOKEd
+    /// from clients because it carries private bucket keys and provider
+    /// identities. Clients read safe attributed descriptors through this
+    /// sanctioned SECURITY DEFINER RPC, which also enforces lead + mailbox
+    /// visibility server-side. Direct table selects now fail for every user —
+    /// never revert this to `.from("email_attachments")`.
     func fetchEmailAttachments(for opportunityId: String) async throws -> [LeadAttachment] {
         try await client
-            .from("email_attachments")
-            .select("id, filename, mime_type, storage_path, source_url, from_email, ingest_status, occurred_at, created_at")
-            .eq("opportunity_id", value: opportunityId)
-            .eq("attribution_status", value: "attributed")
-            .in("ingest_status", values: ["stored", "external"])
-            .order("occurred_at", ascending: false)
+            .rpc("get_opportunity_lead_files", params: ["p_opportunity_id": opportunityId])
             .execute()
             .value
+    }
+
+    /// Latest MEANINGFUL correspondence event for a lead — either party, noise
+    /// (auto-replies, bounces) excluded. Powers the LAST WORD row on the lead
+    /// document. Reads the correspondence-events projection, the same ledger
+    /// the chase strip's counters are built from.
+    func latestCorrespondence(for opportunityId: String) async throws -> LeadCorrespondence? {
+        struct Row: Decodable {
+            let subject: String?
+            let direction: String?
+            let occurredAt: String?
+            let source: String?
+            enum CodingKeys: String, CodingKey {
+                case subject, direction, source
+                case occurredAt = "occurred_at"
+            }
+        }
+        let rows: [Row] = try await client
+            .from("opportunity_correspondence_events")
+            .select("subject, direction, occurred_at, source")
+            .eq("opportunity_id", value: opportunityId)
+            .eq("is_meaningful", value: true)
+            .order("occurred_at", ascending: false)
+            .limit(1)
+            .execute()
+            .value
+        guard let row = rows.first,
+              let at = row.occurredAt.flatMap({ SupabaseDate.parse($0) }) else { return nil }
+        return LeadCorrespondence(
+            subject: row.subject,
+            direction: row.direction ?? "inbound",
+            occurredAt: at,
+            source: row.source
+        )
+    }
+
+    /// Sets or clears the lead's linked project. A dedicated patch because
+    /// `UpdateOpportunityDTO` omits nil fields entirely — which can never
+    /// UNLINK. This encodes an explicit JSON null when clearing.
+    func updateProjectAssociation(_ opportunityId: String, projectId: String?) async throws -> OpportunityDTO {
+        struct Patch: Encodable {
+            let projectId: String?
+            enum CodingKeys: String, CodingKey { case projectId = "project_id" }
+            func encode(to encoder: Encoder) throws {
+                var c = encoder.container(keyedBy: CodingKeys.self)
+                try c.encode(projectId, forKey: .projectId) // nil → JSON null
+            }
+        }
+        return try await update(opportunityId, patch: Patch(projectId: projectId))
     }
 
     func fetchActivities(for opportunityId: String) async throws -> [ActivityDTO] {

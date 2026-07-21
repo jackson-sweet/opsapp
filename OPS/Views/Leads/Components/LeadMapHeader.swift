@@ -44,17 +44,21 @@ struct LeadMapHeader: View {
             .contentShape(Rectangle())
             .onTapGesture { onMapTap() }
 
-            // Bottom gradient — just enough to cover the Mapbox watermark.
+            // Bottom gradient — fully opaque well before the frame's bottom
+            // edge so the snapshot's baked-in Mapbox watermark/attribution
+            // band can never read through (the old 40pt half-strength fade
+            // let the attribution text bleed at ~60% cover).
             LinearGradient(
                 gradient: Gradient(stops: [
                     .init(color: .clear, location: 0),
-                    .init(color: OPSStyle.Colors.background.opacity(0.6), location: 0.5),
+                    .init(color: OPSStyle.Colors.background.opacity(0.85), location: 0.45),
+                    .init(color: OPSStyle.Colors.background, location: 0.7),
                     .init(color: OPSStyle.Colors.background, location: 1.0)
                 ]),
                 startPoint: .top,
                 endPoint: .bottom
             )
-            .frame(height: 40)
+            .frame(height: 72)
             .allowsHitTesting(false)
         }
         .frame(height: Self.mapHeight)

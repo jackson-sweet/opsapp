@@ -407,6 +407,55 @@ final class MoneyLeadsRedesignSnapshotTests: XCTestCase {
         }
     }
 
+    /// The dossier document's interactive rows (2026-07-20): tappable CLIENT
+    /// with chevron, PROJECT with pencil re-link + LINK PROJECT empty state,
+    /// and the LAST WORD correspondence row (inbound, outbound, and absent —
+    /// no correspondence leaves no row, not a `—`).
+    func testRenderLeadDocumentRows() {
+        let lead = Opportunity.preview(
+            title: "Deck resurface — 320 sq ft", contactName: "Jill Adams",
+            stage: .quoted, estimatedValue: 9_800, daysInStage: 3
+        )
+        let client = Client(id: "qa-client", name: "Adams Property Group")
+        let inbound = LeadCorrespondence(
+            subject: "Re: Deck quote — triple-pane pricing",
+            direction: "inbound",
+            occurredAt: Calendar.current.date(byAdding: .hour, value: -50, to: Date())!,
+            source: "email"
+        )
+        let outbound = LeadCorrespondence(
+            subject: "Updated quote attached",
+            direction: "outbound",
+            occurredAt: Calendar.current.date(byAdding: .hour, value: -3, to: Date())!,
+            source: "email"
+        )
+
+        snapshot("lead_document_rows") {
+            VStack(spacing: OPSStyle.Layout.spacing3) {
+                // Linked project (open + pencil) · THEM last word · tappable client
+                LeadDetailsDocument(
+                    lead: lead, client: client, rosterState: .mirrorsClient,
+                    canEdit: true, projectName: "Adams deck resurface",
+                    attachments: [], estimates: [], correspondence: inbound
+                )
+                // No project → LINK PROJECT chip · YOU last word
+                LeadDetailsDocument(
+                    lead: lead, client: client, rosterState: .mirrorsClient,
+                    canEdit: true, projectName: nil,
+                    attachments: [], estimates: [], correspondence: outbound
+                )
+                // Read-only, nothing linked, silent — the quiet document
+                LeadDetailsDocument(
+                    lead: lead, client: nil, rosterState: .noClient,
+                    canEdit: false, projectName: nil,
+                    attachments: [], estimates: []
+                )
+            }
+            .padding(.vertical, OPSStyle.Layout.spacing3_5)
+            .environmentObject(PermissionStore.shared)
+        }
+    }
+
     /// The won → convert chooser (2+ unconverted wins).
     func testRenderLeadsWonChooser() {
         let wins: [Opportunity] = [
@@ -493,7 +542,7 @@ final class MoneyLeadsRedesignSnapshotTests: XCTestCase {
         estimate.total = 14_200
         let attachment = LeadAttachment(
             id: "a1", filename: "roof-photos.pdf", mimeType: "application/pdf",
-            storagePath: "x/y.pdf", sourceUrl: nil, fromEmail: "helen@example.com",
+            sourceUrl: nil, fromEmail: "helen@example.com",
             ingestStatus: "stored", occurredAt: "2026-07-14T10:00:00Z",
             createdAt: "2026-07-14T10:00:00Z"
         )

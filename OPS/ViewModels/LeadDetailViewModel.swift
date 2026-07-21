@@ -19,17 +19,17 @@ struct LeadAttachment: Decodable, Identifiable, Equatable {
     let id: String
     let filename: String?
     let mimeType: String?
-    let storagePath: String?
     let sourceUrl: String?
     let fromEmail: String?
     let ingestStatus: String
     let occurredAt: String?
     let createdAt: String
 
+    // NOTE: no storage_path — the sanctioned RPC deliberately withholds it
+    // (private bucket key); `stored` rows stream via the ops-web proxy by id.
     enum CodingKeys: String, CodingKey {
         case id, filename
         case mimeType     = "mime_type"
-        case storagePath  = "storage_path"
         case sourceUrl    = "source_url"
         case fromEmail    = "from_email"
         case ingestStatus = "ingest_status"
@@ -45,6 +45,18 @@ struct LeadAttachment: Decodable, Identifiable, Equatable {
     var date: Date? {
         SupabaseDate.parse(occurredAt ?? createdAt)
     }
+}
+
+/// The lead's latest MEANINGFUL correspondence, either party — the LAST WORD
+/// row on the lead document. Direction is the ledger's raw value
+/// ("inbound"/"outbound").
+struct LeadCorrespondence: Equatable {
+    let subject: String?
+    let direction: String
+    let occurredAt: Date
+    let source: String?
+
+    var isInbound: Bool { direction.lowercased() == "inbound" }
 }
 
 /// Where the lead's person stands against the client roster (spec §5.9).
@@ -65,6 +77,7 @@ class LeadDetailViewModel: ObservableObject {
     @Published var attachments: [LeadAttachment] = []
     @Published var estimates: [Estimate] = []
     @Published var latestThreadSubject: String?
+    @Published var latestCorrespondence: LeadCorrespondence?
     @Published var isLoading = false
     @Published var loadError: String? = nil
 
@@ -94,7 +107,8 @@ class LeadDetailViewModel: ObservableObject {
         async let filesTask: () = loadAttachments()
         async let estTask: () = loadEstimates()
         async let subjTask: () = loadThreadSubject()
-        _ = await (actsTask, fusTask, stsTask, rosterTask, filesTask, estTask, subjTask)
+        async let lastWordTask: () = loadLatestCorrespondence()
+        _ = await (actsTask, fusTask, stsTask, rosterTask, filesTask, estTask, subjTask, lastWordTask)
     }
 
     private func loadActivities() async {
@@ -150,6 +164,20 @@ class LeadDetailViewModel: ObservableObject {
             latestThreadSubject = try await repository
                 .latestCorrespondenceSubject(for: opportunityId)
         } catch { print("[LeadDetail] thread subject failed: \(error)") }
+    }
+
+    private func loadLatestCorrespondence() async {
+        do {
+            latestCorrespondence = try await repository
+                .latestCorrespondence(for: opportunityId)
+        } catch { print("[LeadDetail] last word failed: \(error)") }
+    }
+
+    /// Links (or unlinks, with nil) a project to this lead and echoes the
+    /// server's answer back to the caller so local state can follow.
+    func associateProject(_ projectId: String?) async throws -> String? {
+        let dto = try await repository.updateProjectAssociation(opportunityId, projectId: projectId)
+        return dto.projectId
     }
 
     // MARK: - Roster state (pure — mirrors web DealContactRow rules)

@@ -207,7 +207,7 @@ struct JobBoardView: View {
                 showPaymentReview = true
             }
         } message: {
-            Text("Completed projects with outstanding payments will show up here for review.")
+            Text("Completed projects show up here so you can close them out, check balances, and resolve overdue invoices.")
         }
         .alert("Task Review", isPresented: $showTaskReviewIntro) {
             Button("Got It") {
@@ -218,6 +218,7 @@ struct JobBoardView: View {
             Text("Tasks with end dates in the past will show up here so you can complete, reschedule, or cancel them.")
         }
         .onReceive(NotificationCenter.default.publisher(for: Notification.Name("OpenPaymentReview"))) { _ in
+            guard paymentReviewAccessAvailable else { return }
             computeReviewProjects()
             showPaymentReview = true
         }
@@ -226,6 +227,7 @@ struct JobBoardView: View {
             showTaskReview = true
         }
         .onReceive(NotificationCenter.default.publisher(for: Notification.Name("OpenUnscheduledReview"))) { _ in
+            guard unscheduledReviewAccessAvailable else { return }
             computeUnscheduledTasks()
             showUnscheduledReview = true
         }
@@ -253,11 +255,14 @@ struct JobBoardView: View {
     @ViewBuilder private var headerSection: some View {
         AppHeader(
             headerType: .jobBoard,
-            onPaymentReviewTapped: (permissionStore.can("projects.edit") || permissionStore.hasFullAccess("projects.view")) ? {
-                if !UserDefaults.standard.bool(forKey: "review_payment_intro_shown") {
+            onPaymentReviewTapped: paymentReviewAccessAvailable ? {
+                let wizardActive = wizardStateManager?.isActive == true
+                    && wizardStateManager?.currentStep?.id == "open_payment_review"
+                if !wizardActive && !UserDefaults.standard.bool(forKey: "review_payment_intro_shown") {
                     UserDefaults.standard.set(true, forKey: "review_payment_intro_shown")
                     showPaymentReviewIntro = true
                 } else {
+                    UserDefaults.standard.set(true, forKey: "review_payment_intro_shown")
                     computeReviewProjects()
                     showPaymentReview = true
                 }
@@ -283,11 +288,8 @@ struct JobBoardView: View {
             taskReviewBadgeCount: reviewableTaskCount,
             isTaskReviewLocked: isTaskReviewLocked,
             taskReviewLockedMessage: "Complete \(Self.taskReviewThreshold) tasks to unlock task review. You've completed \(completedTaskCount) so far.",
-            onUnscheduledReviewTapped: permissionStore.can("tasks.edit") ? {
-                computeUnscheduledTasks()
-                showUnscheduledReview = true
-            } : nil,
-            unscheduledReviewBadgeCount: permissionStore.can("tasks.edit") ? unscheduledTaskCount : 0
+            onUnscheduledReviewTapped: unscheduledReviewTapped,
+            unscheduledReviewBadgeCount: unscheduledReviewBadge
         )
         .padding(.bottom, OPSStyle.Layout.spacing2)
     }
@@ -549,18 +551,17 @@ struct JobBoardView: View {
     // MARK: - Payment Review
 
     private func computeReviewProjects() {
-        let allProjects = dataController.getProjects()
-        let threshold: Int
-        if let companyId = dataController.currentUser?.companyId,
-           let company = dataController.getCompany(id: companyId) {
-            threshold = company.overdueReviewThresholdDays
-        } else {
-            threshold = 14
-        }
-        let overdue = OverdueProjectDetector.overdueProjects(from: allProjects, thresholdDays: threshold)
-        overdueCount = overdue.count
-        overdueProjects = overdue
-        completedProjects = allProjects.filter { $0.status == .completed && $0.deletedAt == nil }
+        let snapshot = ProjectReviewQuery.snapshot(
+            dataController: dataController,
+            permissionStore: permissionStore
+        )
+        overdueCount = snapshot.count
+        overdueProjects = snapshot.overdueProjects
+        completedProjects = snapshot.completedProjects
+    }
+
+    private var paymentReviewAccessAvailable: Bool {
+        permissionStore.scope(for: "projects.edit") != nil
     }
 
     // MARK: - Task Review
@@ -572,21 +573,23 @@ struct JobBoardView: View {
 
     // MARK: - Unscheduled Task Review
 
-    /// Tap handler for the unscheduled-review entry. Nil when the user holds no
-    /// calendar.edit grant (scheduling is gated on calendar.edit), which hides the
-    /// entry — Crew / Unassigned can't schedule. Extracted from the header
-    /// view-builder so that large expression stays within the type-checker budget.
+    /// This flow contains assignment, completion, cancellation, and scheduling.
+    /// Entry therefore requires task-edit access; each card direction separately
+    /// enforces its row and calendar scope.
     private var unscheduledReviewTapped: (() -> Void)? {
-        guard permissionStore.canEditAnySchedule else { return nil }
+        guard unscheduledReviewAccessAvailable else { return nil }
         return {
             computeUnscheduledTasks()
             showUnscheduledReview = true
         }
     }
 
-    /// Badge count for the unscheduled-review entry — zero without a calendar.edit grant.
     private var unscheduledReviewBadge: Int {
-        permissionStore.canEditAnySchedule ? unscheduledTaskCount : 0
+        unscheduledReviewAccessAvailable ? unscheduledTaskCount : 0
+    }
+
+    private var unscheduledReviewAccessAvailable: Bool {
+        permissionStore.scope(for: "tasks.edit") != nil
     }
 
     private func computeUnscheduledTasks() {

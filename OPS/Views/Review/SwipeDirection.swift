@@ -6,7 +6,7 @@
 import SwiftUI
 
 /// Swipe directions for the project payment review card stack.
-enum SwipeDirection {
+enum SwipeDirection: Hashable, CaseIterable {
     case right   // Close (paid)
     case left    // Skip
     case up      // Send reminder (financial access only)
@@ -68,6 +68,21 @@ struct SwipeActionConfig {
             return SwipeActionConfig(label: "RESCHEDULE", icon: "calendar.badge.clock", color: OPSStyle.Colors.primaryAccent)
         case .down:
             return SwipeActionConfig(label: "CANCEL", icon: "xmark.circle", color: OPSStyle.Colors.errorStatus)
+        }
+    }
+}
+
+/// VoiceOver's Actions rotor identifies review actions by label. When two
+/// physical directions perform the same operation, expose one rotor action so
+/// the operator never hears indistinguishable duplicates.
+enum SwipeAccessibilityActionPolicy {
+    static func uniqueDirections(
+        _ directions: [SwipeDirection],
+        labelForDirection: (SwipeDirection) -> String
+    ) -> [SwipeDirection] {
+        var seenLabels = Set<String>()
+        return directions.filter { direction in
+            seenLabels.insert(labelForDirection(direction)).inserted
         }
     }
 }

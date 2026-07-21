@@ -12,17 +12,16 @@ import Foundation
 struct PaymentReviewWizard: WizardDefinitionProtocol {
     let wizardId = "payment_review"
     let displayName = "PAYMENT REVIEW"
-    let displayDescription = "Close out completed projects in one quick flow. Swipe cards to close, skip, send a payment reminder, or write off bad debt."
+    let displayDescription = "Close out completed projects in one quick flow. Financial actions appear only when a real balance needs attention."
     let bulletPoints = [
-        "Swipe right to close a project as paid",
+        "Swipe right to close a completed project",
         "Swipe left to skip and review later",
-        "Swipe up to send a payment reminder",
-        "Swipe down to write off as bad debt"
+        "Outstanding balances show on the project card"
     ]
     let iconName = "creditcard.circle"
     let triggerType: WizardTriggerType = .contextual
     let minimumTier: WizardAccessTier = .office
-    let requiredPermission: String? = "finances.view"
+    let requiredPermission: String? = "projects.edit"
     let bannerText = "You have completed projects to review — want a quick walkthrough?"
     let estimatedMinutes = 2
 
@@ -63,23 +62,8 @@ struct PaymentReviewWizard: WizardDefinitionProtocol {
             targetScreen: "PaymentReview",
             completionNotification: "WizardProjectSwipedLeft"
         ),
-        // Step 5: Demo swipe up (send reminder)
-        WizardStepDefinition(
-            id: "payment_demo_swipe_up",
-            instruction: "SWIPE UP → SEND REMINDER",
-            description: "Send a payment reminder to the client.",
-            targetScreen: "PaymentReview",
-            completionNotification: "WizardProjectSwipedUp"
-        ),
-        // Step 6: Demo swipe down (write off)
-        WizardStepDefinition(
-            id: "payment_demo_swipe_down",
-            instruction: "SWIPE DOWN → WRITE OFF",
-            description: "Write off outstanding balance as bad debt. You'll confirm before it's final.",
-            targetScreen: "PaymentReview",
-            completionNotification: "WizardProjectSwipedDown"
-        ),
-        // Step 7: Free review — user continues at their own pace
+        // Step 5: Free review — invoice actions are contextual and may not be
+        // present, so the walkthrough never blocks on an unavailable gesture.
         WizardStepDefinition(
             id: "payment_free_review",
             instruction: "YOU'RE ALL SET — KEEP REVIEWING",

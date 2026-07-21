@@ -70,6 +70,13 @@ class DataController: ObservableObject {
             self?.scheduledTasksDidChange.toggle()
         }
     }
+
+    /// One shared refresh signal drives review badges as well as calendar/task
+    /// surfaces. Project-only mutations must publish it too; otherwise Payment
+    /// Review counts remain stale until realtime happens to echo the write.
+    func notifyReviewSourcesChanged() {
+        notifyScheduledTasksChanged()
+    }
     private var hasCompletedInitialConnectionCheck = false // Track if we've done initial setup
     private var lastSyncRestoredAlertTime: Date? // Cooldown to prevent repeated banners
 
@@ -3828,7 +3835,7 @@ class DataController: ObservableObject {
         // Track completion timestamp
         if newStatus == .completed {
             project.completedAt = Date()
-        } else if previousStatus == .completed && newStatus != .completed {
+        } else if previousStatus == .completed && newStatus != .closed {
             project.completedAt = nil
         }
 
@@ -3841,7 +3848,7 @@ class DataController: ObservableObject {
             let formatter = ISO8601DateFormatter()
             formatter.formatOptions = [.withInternetDateTime]
             changedFields["completed_at"] = formatter.string(from: project.completedAt ?? Date())
-        } else if previousStatus == .completed && newStatus != .completed {
+        } else if previousStatus == .completed && newStatus != .closed {
             changedFields["completed_at"] = NSNull()
         }
 
@@ -3907,6 +3914,8 @@ class DataController: ObservableObject {
                 }
             }
         }
+
+        notifyReviewSourcesChanged()
     }
 
     // MARK: - Task Schedule Operations
@@ -6946,6 +6955,70 @@ extension DataController: ScheduleDataProvider {
 
 // MARK: - AutoScheduleManager Convenience
 
+private struct AutoScheduleTaskSnapshot: SchedulableTask, Sendable {
+    let id: String
+    let taskTypeId: String
+    let startDate: Date?
+    let endDate: Date?
+    let duration: Int
+    let effectiveDependencies: [TaskTypeDependency]
+    let displayOrder: Int
+    let schedulingTeamMemberIds: Set<String>
+    let schedulingProjectId: String
+    let schedulingLocked: Bool
+    let schedulingIsActive: Bool
+
+    init(_ task: any SchedulableTask) {
+        id = task.id
+        taskTypeId = task.taskTypeId
+        startDate = task.startDate
+        endDate = task.endDate
+        duration = task.duration
+        effectiveDependencies = task.effectiveDependencies
+        displayOrder = task.displayOrder
+        schedulingTeamMemberIds = task.schedulingTeamMemberIds
+        schedulingProjectId = task.schedulingProjectId
+        schedulingLocked = task.schedulingLocked
+        schedulingIsActive = task.schedulingIsActive
+    }
+}
+
+private struct AutoScheduleSnapshotProvider: ScheduleDataProvider, Sendable {
+    let projectTasks: [AutoScheduleTaskSnapshot]
+    let scheduledCommitments: [AutoScheduleTaskSnapshot]
+    let coordinates: [String: ProjectCoordinate]
+
+    struct ProjectCoordinate: Sendable {
+        let latitude: Double
+        let longitude: Double
+    }
+
+    func tasksForProject(_ projectId: String) -> [any SchedulableTask] {
+        projectTasks.filter { $0.schedulingProjectId == projectId }
+    }
+
+    func allScheduledTasksForMembers(
+        _ memberIds: Set<String>,
+        from date: Date
+    ) -> [any SchedulableTask] {
+        let calendar = Calendar.current
+        let start = calendar.startOfDay(for: date)
+        return scheduledCommitments.filter { task in
+            guard let taskStart = task.startDate else { return false }
+            let taskEnd = task.endDate ?? taskStart
+            return calendar.startOfDay(for: taskEnd) >= start
+                && !task.schedulingTeamMemberIds.isDisjoint(with: memberIds)
+        }
+    }
+
+    func coordinatesForProject(_ projectId: String) -> (lat: Double, lng: Double)? {
+        guard let coordinate = coordinates[projectId] else { return nil }
+        return (coordinate.latitude, coordinate.longitude)
+    }
+
+    func priorityDateForProject(_ projectId: String) -> Date? { nil }
+}
+
 extension DataController {
     /// Build a ScheduleRequest with current company constraints
     func buildScheduleConstraints() -> ScheduleConstraints {
@@ -6965,6 +7038,65 @@ extension DataController {
             constraints: constraints
         )
         return AutoScheduleManager.schedule(request: request, provider: self)
+    }
+
+    /// Snapshot SwiftData-backed scheduling inputs on the main actor, then run
+    /// the 365-day availability search on a detached worker. The review card
+    /// remains responsive while large-company calendars are evaluated.
+    @MainActor
+    func autoScheduleSingleTaskAsync(
+        _ task: any SchedulableTask,
+        teamMemberIds: Set<String>,
+        anchorDate: Date = Date()
+    ) async -> SchedulePlan {
+        let taskSnapshot = AutoScheduleTaskSnapshot(task)
+        let projectSnapshots = getTasksForProject(task.schedulingProjectId)
+            .map(AutoScheduleTaskSnapshot.init)
+        let commitmentSnapshots = getScheduledTasksForMembers(
+            memberIds: teamMemberIds,
+            from: anchorDate
+        ).map(AutoScheduleTaskSnapshot.init)
+
+        let relevantProjectIDs = Set(
+            projectSnapshots.map(\.schedulingProjectId)
+                + commitmentSnapshots.map(\.schedulingProjectId)
+                + [task.schedulingProjectId]
+        )
+        let coordinatePairs = getAllProjects().compactMap { project -> (
+            String,
+            AutoScheduleSnapshotProvider.ProjectCoordinate
+        )? in
+            guard relevantProjectIDs.contains(project.id),
+                  let latitude = project.latitude,
+                  let longitude = project.longitude,
+                  latitude != 0 || longitude != 0 else {
+                return nil
+            }
+            return (
+                project.id,
+                .init(latitude: latitude, longitude: longitude)
+            )
+        }
+        let provider = AutoScheduleSnapshotProvider(
+            projectTasks: projectSnapshots,
+            scheduledCommitments: commitmentSnapshots,
+            coordinates: Dictionary(uniqueKeysWithValues: coordinatePairs)
+        )
+        let constraints = buildScheduleConstraints()
+
+        return await Task.detached(priority: .userInitiated) {
+            AutoScheduleManager.schedule(
+                request: ScheduleRequest(
+                    mode: .single(
+                        task: taskSnapshot,
+                        teamMemberIds: teamMemberIds
+                    ),
+                    anchorDate: anchorDate,
+                    constraints: constraints
+                ),
+                provider: provider
+            )
+        }.value
     }
 
     /// Auto-schedule all unscheduled tasks in a project

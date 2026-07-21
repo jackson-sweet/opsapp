@@ -94,7 +94,35 @@ struct AutoScheduleManager {
         var conflicts: [ScheduleConflict] = []
 
         // Pass 1: Dependency floor
-        let projectTasks = provider.tasksForProject(task.schedulingProjectId)
+        var projectTasks = provider.tasksForProject(task.schedulingProjectId)
+        if !projectTasks.contains(where: { $0.id == task.id }) {
+            projectTasks.append(task)
+        }
+        let circularTaskTypeIDs = circularTaskTypes(
+            in: projectTasks.filter(\.schedulingIsActive)
+        )
+        if circularTaskTypeIDs.contains(task.taskTypeId) {
+            conflicts.append(ScheduleConflict(
+                id: task.id,
+                type: .circularDependency,
+                message: "Circular task dependency prevents scheduling"
+            ))
+            return SchedulePlan(
+                placements: [],
+                conflicts: conflicts,
+                metadata: ScheduleMetadata(
+                    totalGapDays: 0,
+                    proximityGroupsFound: 0,
+                    weatherDependentTaskCount: 0,
+                    weatherDeferrals: 0,
+                    downstreamUnscheduledCount: countDownstreamUnscheduled(
+                        task: task,
+                        projectTasks: projectTasks
+                    ),
+                    warnings: warnings
+                )
+            )
+        }
         let dependencyFloor = calculateDependencyFloor(
             for: task,
             allProjectTasks: projectTasks,
@@ -146,14 +174,35 @@ struct AutoScheduleManager {
         let existingCommitments = provider.allScheduledTasksForMembers(teamMemberIds, from: dependencyFloor)
 
         // Find first available contiguous window
-        let slot = findAvailableSlot(
+        guard let slot = findAvailableSlot(
             memberIds: teamMemberIds,
             duration: effectiveDuration,
             from: dependencyFloor,
             existingCommitments: existingCommitments,
             constraints: constraints,
             calendar: calendar
-        )
+        ) else {
+            conflicts.append(ScheduleConflict(
+                id: task.id,
+                type: .noAvailableWindow,
+                message: "No open crew window was found in the next 365 days"
+            ))
+            return SchedulePlan(
+                placements: [],
+                conflicts: conflicts,
+                metadata: ScheduleMetadata(
+                    totalGapDays: 0,
+                    proximityGroupsFound: 0,
+                    weatherDependentTaskCount: 0,
+                    weatherDeferrals: 0,
+                    downstreamUnscheduledCount: countDownstreamUnscheduled(
+                        task: task,
+                        projectTasks: projectTasks
+                    ),
+                    warnings: warnings
+                )
+            )
+        }
 
         let endDate = Self.endDate(from: slot, duration: effectiveDuration, skipWeekends: constraints.skipWeekends, calendar: calendar)
 
@@ -215,7 +264,7 @@ struct AutoScheduleManager {
         constraints: ScheduleConstraints,
         provider: ScheduleDataProvider,
         state: inout RunState
-    ) {
+    ) -> Bool {
         let calendar = Calendar.current
 
         let teamMemberIds = task.schedulingTeamMemberIds
@@ -284,7 +333,7 @@ struct AutoScheduleManager {
                 startDate: startDate, endDate: endDate,
                 teamMemberIds: teamMemberIds, projectId: projectId
             ))
-            return
+            return true
         }
 
         // Get existing + already-placed commitments for these members
@@ -307,14 +356,21 @@ struct AutoScheduleManager {
             }
         }
 
-        let slot = findAvailableSlot(
+        guard let slot = findAvailableSlot(
             memberIds: teamMemberIds,
             duration: effectiveDuration,
             from: dependencyFloor,
             existingCommitments: existingCommitments,
             constraints: constraints,
             calendar: calendar
-        )
+        ) else {
+            state.conflicts.append(ScheduleConflict(
+                id: task.id,
+                type: .noAvailableWindow,
+                message: "No open crew window was found in the next 365 days"
+            ))
+            return false
+        }
 
         let endDate = Self.endDate(from: slot, duration: effectiveDuration, skipWeekends: constraints.skipWeekends, calendar: calendar)
 
@@ -343,6 +399,7 @@ struct AutoScheduleManager {
             startDate: slot, endDate: endDate,
             teamMemberIds: teamMemberIds, projectId: projectId
         ))
+        return true
     }
 
     // MARK: - Batch Scheduling
@@ -379,9 +436,37 @@ struct AutoScheduleManager {
 
             // Topological sort within project
             let sorted = SchedulingEngine.topologicalSort(tasks: unscheduled)
+            let circularTaskTypeIDs = circularTaskTypes(in: unscheduled)
+            // A descendant may sort before the unresolved cycle because Kahn's
+            // algorithm cannot drain either node. Seed the unavailable set up
+            // front so descendants are blocked regardless of fallback order,
+            // while unrelated branches remain schedulable.
+            var unavailableTaskTypeIDs = circularTaskTypeIDs
 
             for task in sorted {
-                placeNext(
+                if circularTaskTypeIDs.contains(task.taskTypeId) {
+                    state.conflicts.append(ScheduleConflict(
+                        id: task.id,
+                        type: .circularDependency,
+                        message: "Circular task dependency prevents scheduling"
+                    ))
+                    continue
+                }
+
+                let blockedByUnavailableDependency = task.effectiveDependencies.contains {
+                    unavailableTaskTypeIDs.contains($0.dependsOnTaskTypeId)
+                }
+                if blockedByUnavailableDependency {
+                    state.conflicts.append(ScheduleConflict(
+                        id: task.id,
+                        type: .dependencyUnavailable,
+                        message: "A predecessor could not be scheduled"
+                    ))
+                    unavailableTaskTypeIDs.insert(task.taskTypeId)
+                    continue
+                }
+
+                let didPlace = placeNext(
                     task,
                     dependencyVisibleTasks: projectTasks,
                     anchor: anchor,
@@ -389,6 +474,9 @@ struct AutoScheduleManager {
                     provider: provider,
                     state: &state
                 )
+                if !didPlace {
+                    unavailableTaskTypeIDs.insert(task.taskTypeId)
+                }
             }
         }
 
@@ -407,6 +495,55 @@ struct AutoScheduleManager {
                 warnings: state.warnings
             )
         )
+    }
+
+    /// Returns only the task types that participate in a dependency cycle.
+    /// Types that merely depend on a cycle are intentionally excluded; the
+    /// batch loop reports those as `.dependencyUnavailable` instead.
+    private static func circularTaskTypes(
+        in tasks: [any SchedulableTask]
+    ) -> Set<String> {
+        let taskTypeIDs = Set(tasks.map(\.taskTypeId))
+        var dependenciesByType: [String: Set<String>] = [:]
+
+        for task in tasks {
+            let localDependencies = task.effectiveDependencies
+                .map(\.dependsOnTaskTypeId)
+                .filter { taskTypeIDs.contains($0) }
+            dependenciesByType[task.taskTypeId, default: []]
+                .formUnion(localDependencies)
+        }
+
+        // 1 = currently on the DFS stack, 2 = fully visited.
+        var visitState: [String: Int] = [:]
+        var stack: [String] = []
+        var stackIndex: [String: Int] = [:]
+        var circular = Set<String>()
+
+        func visit(_ taskTypeID: String) {
+            visitState[taskTypeID] = 1
+            stackIndex[taskTypeID] = stack.count
+            stack.append(taskTypeID)
+
+            for predecessor in (dependenciesByType[taskTypeID] ?? []).sorted() {
+                if visitState[predecessor] == nil {
+                    visit(predecessor)
+                } else if visitState[predecessor] == 1,
+                          let cycleStart = stackIndex[predecessor] {
+                    circular.formUnion(stack[cycleStart...])
+                }
+            }
+
+            _ = stack.popLast()
+            stackIndex[taskTypeID] = nil
+            visitState[taskTypeID] = 2
+        }
+
+        for taskTypeID in taskTypeIDs.sorted() where visitState[taskTypeID] == nil {
+            visit(taskTypeID)
+        }
+
+        return circular
     }
 
     // MARK: - Pass 1: Dependency Floor
@@ -448,7 +585,7 @@ struct AutoScheduleManager {
         existingCommitments: [any SchedulableTask],
         constraints: ScheduleConstraints,
         calendar: Calendar
-    ) -> Date {
+    ) -> Date? {
         // Build a set of booked days for each member
         var bookedDays: [String: Set<Date>] = [:]
         for memberId in memberIds {
@@ -524,8 +661,7 @@ struct AutoScheduleManager {
             scannedDays += 1
         }
 
-        // Fallback: if no slot found in 365 days, return the start date
-        return calendar.startOfDay(for: startDate)
+        return nil
     }
 
     // MARK: - Pass 3: Geographic Grouping
@@ -589,14 +725,14 @@ struct AutoScheduleManager {
         guard targetDate > primaryStart else { return nil }
 
         // Verify team availability at the alternative date
-        let altSlot = findAvailableSlot(
+        guard let altSlot = findAvailableSlot(
             memberIds: teamMemberIds,
             duration: duration,
             from: targetDate,
             existingCommitments: existingCommitments,
             constraints: constraints,
             calendar: calendar
-        )
+        ) else { return nil }
 
         let deferralDays = calendar.dateComponents([.day], from: primaryStart, to: altSlot).day ?? 0
         guard deferralDays > 0 else { return nil }

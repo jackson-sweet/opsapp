@@ -18,6 +18,9 @@ struct CalendarSchedulerSheet: View {
     let onScheduleUpdate: (Date, Date) -> Void
     let onClearDates: (() -> Void)?
     let preselectedTeamMemberIds: Set<String>?  // Optional pre-selected team members for filtering
+    /// Legacy callers persist synchronously and can celebrate on confirmation.
+    /// Authoritative async callers disable this and own feedback after server ACK.
+    let emitsSuccessFeedbackOnConfirm: Bool
 
     @Environment(\.modelContext) private var modelContext
     @Environment(\.tutorialMode) private var tutorialMode
@@ -62,7 +65,8 @@ struct CalendarSchedulerSheet: View {
          currentEndDate: Date?,
          onScheduleUpdate: @escaping (Date, Date) -> Void,
          onClearDates: (() -> Void)? = nil,
-         preselectedTeamMemberIds: Set<String>? = nil) {
+         preselectedTeamMemberIds: Set<String>? = nil,
+         emitsSuccessFeedbackOnConfirm: Bool = true) {
 
         self._isPresented = isPresented
         self.itemType = itemType
@@ -71,6 +75,7 @@ struct CalendarSchedulerSheet: View {
         self.onScheduleUpdate = onScheduleUpdate
         self.onClearDates = onClearDates
         self.preselectedTeamMemberIds = preselectedTeamMemberIds
+        self.emitsSuccessFeedbackOnConfirm = emitsSuccessFeedbackOnConfirm
 
         // Initialize with current dates or today
         let startDate = currentStartDate ?? Date()
@@ -1155,9 +1160,12 @@ struct CalendarSchedulerSheet: View {
     }
 
     private func handleConfirmSchedule() {
-        // Apply the schedule change
-        let generator = UINotificationFeedbackGenerator()
-        generator.notificationOccurred(.success)
+        // Async authoritative flows own the success moment after server ACK.
+        // Legacy synchronous callers retain the existing immediate feedback.
+        if emitsSuccessFeedbackOnConfirm {
+            let generator = UINotificationFeedbackGenerator()
+            generator.notificationOccurred(.success)
+        }
 
         onScheduleUpdate(selectedStartDate, selectedEndDate)
         isPresented = false

@@ -27,6 +27,7 @@ enum AutoScheduleFailureRecovery {
         case .noCrewAssigned:
             return .assignCrew
         case .noAvailableWindow,
+             .dependencyUnavailable,
              .missingProjectCoordinates,
              .deactivatedCrewMember,
              .circularDependency:
@@ -43,6 +44,8 @@ enum AutoScheduleFailureRecovery {
         switch conflict.type {
         case .noAvailableWindow:
             return "NO SLOT FOUND — SCHEDULE MANUALLY"
+        case .dependencyUnavailable:
+            return "PREDECESSOR NEEDS SCHEDULING FIRST"
         case .noCrewAssigned:
             return "CREW MISSING — ASSIGN CREW"
         case .missingProjectCoordinates:

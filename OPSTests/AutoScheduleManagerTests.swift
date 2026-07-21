@@ -410,4 +410,300 @@ final class AutoScheduleManagerTests: XCTestCase {
         XCTAssertTrue(plan.placements.isEmpty)
         XCTAssertTrue(plan.conflicts.isEmpty)
     }
+
+    func testG8_FullyBookedSearchWindowReturnsNoPlacement() {
+        let monday = anchorMonday
+        let endOfCommitment = plusDays(400, monday)
+
+        let existingTask = MockTask(
+            id: "existing-1", taskTypeId: "type-a",
+            startDate: monday, endDate: endOfCommitment, duration: 401,
+            teamMemberIds: ["jake"], projectId: "project-other"
+        )
+        let newTask = MockTask(
+            id: "new-1", taskTypeId: "type-b", duration: 1,
+            teamMemberIds: ["jake"], projectId: "project-1"
+        )
+        let provider = MockScheduleDataProvider(
+            allTasks: [existingTask],
+            projectCoordinates: [:],
+            projectPriorities: [:]
+        )
+        let constraints = ScheduleConstraints(
+            skipWeekends: false, preciseScheduling: false,
+            schedulingWindow: .companyHours(open: "08:00", close: "17:00"),
+            proximityRadiusKm: 15.0, weatherConstraints: nil
+        )
+        let request = ScheduleRequest(
+            mode: .single(task: newTask, teamMemberIds: ["jake"]),
+            anchorDate: monday,
+            constraints: constraints
+        )
+
+        let plan = AutoScheduleManager.schedule(request: request, provider: provider)
+
+        XCTAssertTrue(plan.placements.isEmpty)
+        XCTAssertTrue(plan.conflicts.contains {
+            $0.id == "new-1" && $0.type == .noAvailableWindow
+        })
+    }
+
+    func testG9_DependentTaskDoesNotScheduleWhenPredecessorHasNoSlot() {
+        let monday = anchorMonday
+        let booking = MockTask(
+            id: "existing",
+            taskTypeId: "existing-type",
+            startDate: monday,
+            endDate: plusDays(400, monday),
+            duration: 401,
+            teamMemberIds: ["jake"],
+            projectId: "other-project"
+        )
+        let predecessor = MockTask(
+            id: "predecessor",
+            taskTypeId: "framing",
+            teamMemberIds: ["jake"],
+            projectId: "project-1"
+        )
+        let dependent = MockTask(
+            id: "dependent",
+            taskTypeId: "finishing",
+            dependencies: [
+                TaskTypeDependency(
+                    dependsOnTaskTypeId: "framing",
+                    overlapPercentage: 0,
+                    overlapMode: "after_end"
+                )
+            ],
+            teamMemberIds: ["maria"],
+            projectId: "project-1"
+        )
+        let provider = MockScheduleDataProvider(
+            allTasks: [booking, predecessor, dependent],
+            projectCoordinates: [:],
+            projectPriorities: [:]
+        )
+        let constraints = ScheduleConstraints(
+            skipWeekends: false,
+            preciseScheduling: false,
+            schedulingWindow: .companyHours(open: "08:00", close: "17:00"),
+            proximityRadiusKm: 15,
+            weatherConstraints: nil
+        )
+
+        let plan = AutoScheduleManager.schedule(
+            request: ScheduleRequest(
+                mode: .projectBatch(projectId: "project-1"),
+                anchorDate: monday,
+                constraints: constraints
+            ),
+            provider: provider
+        )
+
+        XCTAssertTrue(plan.placements.isEmpty)
+        XCTAssertTrue(plan.conflicts.contains {
+            $0.id == "predecessor" && $0.type == .noAvailableWindow
+        })
+        XCTAssertTrue(plan.conflicts.contains {
+            $0.id == "dependent" && $0.type == .dependencyUnavailable
+        })
+    }
+
+    func testG10_DirectCircularDependencyEmitsConflictAndDoesNotPlaceEitherTask() {
+        let framing = MockTask(
+            id: "framing",
+            taskTypeId: "framing",
+            dependencies: [
+                TaskTypeDependency(
+                    dependsOnTaskTypeId: "finishing",
+                    overlapPercentage: 0,
+                    overlapMode: "after_end"
+                )
+            ],
+            teamMemberIds: ["jake"],
+            projectId: "project-1"
+        )
+        let finishing = MockTask(
+            id: "finishing",
+            taskTypeId: "finishing",
+            dependencies: [
+                TaskTypeDependency(
+                    dependsOnTaskTypeId: "framing",
+                    overlapPercentage: 0,
+                    overlapMode: "after_end"
+                )
+            ],
+            teamMemberIds: ["maria"],
+            projectId: "project-1"
+        )
+        let provider = MockScheduleDataProvider(
+            allTasks: [framing, finishing],
+            projectCoordinates: [:],
+            projectPriorities: [:]
+        )
+
+        let plan = AutoScheduleManager.schedule(
+            request: ScheduleRequest(
+                mode: .projectBatch(projectId: "project-1"),
+                anchorDate: anchorMonday,
+                constraints: ScheduleConstraints(
+                    skipWeekends: false,
+                    preciseScheduling: false,
+                    schedulingWindow: .companyHours(open: "08:00", close: "17:00"),
+                    proximityRadiusKm: 15,
+                    weatherConstraints: nil
+                )
+            ),
+            provider: provider
+        )
+
+        XCTAssertTrue(plan.placements.isEmpty)
+        XCTAssertEqual(
+            Set(plan.conflicts.filter { $0.type == .circularDependency }.map(\.id)),
+            ["framing", "finishing"]
+        )
+    }
+
+    func testG11_SingleTaskInCircularDependencyEmitsConflict() {
+        let framing = MockTask(
+            id: "framing",
+            taskTypeId: "framing",
+            dependencies: [
+                TaskTypeDependency(dependsOnTaskTypeId: "finishing", overlapPercentage: 0)
+            ],
+            teamMemberIds: ["jake"],
+            projectId: "project-1"
+        )
+        let finishing = MockTask(
+            id: "finishing",
+            taskTypeId: "finishing",
+            dependencies: [
+                TaskTypeDependency(dependsOnTaskTypeId: "framing", overlapPercentage: 0)
+            ],
+            teamMemberIds: ["maria"],
+            projectId: "project-1"
+        )
+        let provider = MockScheduleDataProvider(
+            allTasks: [framing, finishing],
+            projectCoordinates: [:],
+            projectPriorities: [:]
+        )
+
+        let plan = AutoScheduleManager.schedule(
+            request: ScheduleRequest(
+                mode: .single(task: framing, teamMemberIds: ["jake"]),
+                anchorDate: anchorMonday,
+                constraints: ScheduleConstraints(
+                    skipWeekends: false,
+                    preciseScheduling: false,
+                    schedulingWindow: .companyHours(open: "08:00", close: "17:00"),
+                    proximityRadiusKm: 15,
+                    weatherConstraints: nil
+                )
+            ),
+            provider: provider
+        )
+
+        XCTAssertTrue(plan.placements.isEmpty)
+        XCTAssertTrue(plan.conflicts.contains {
+            $0.id == "framing" && $0.type == .circularDependency
+        })
+    }
+
+    func testG12_TransitiveCycleDoesNotBlockIndependentBranch() {
+        let cyclicA = MockTask(
+            id: "cycle-a",
+            taskTypeId: "cycle-a",
+            dependencies: [
+                TaskTypeDependency(dependsOnTaskTypeId: "cycle-c", overlapPercentage: 0)
+            ],
+            teamMemberIds: ["a"],
+            projectId: "project-1"
+        )
+        let cyclicB = MockTask(
+            id: "cycle-b",
+            taskTypeId: "cycle-b",
+            dependencies: [
+                TaskTypeDependency(dependsOnTaskTypeId: "cycle-a", overlapPercentage: 0)
+            ],
+            teamMemberIds: ["b"],
+            projectId: "project-1"
+        )
+        let cyclicC = MockTask(
+            id: "cycle-c",
+            taskTypeId: "cycle-c",
+            dependencies: [
+                TaskTypeDependency(dependsOnTaskTypeId: "cycle-b", overlapPercentage: 0)
+            ],
+            teamMemberIds: ["c"],
+            projectId: "project-1"
+        )
+        let blockedDescendant = MockTask(
+            id: "blocked-descendant",
+            taskTypeId: "blocked-descendant",
+            dependencies: [
+                TaskTypeDependency(dependsOnTaskTypeId: "cycle-c", overlapPercentage: 0)
+            ],
+            teamMemberIds: ["d"],
+            projectId: "project-1"
+        )
+        let independentRoot = MockTask(
+            id: "independent-root",
+            taskTypeId: "independent-root",
+            teamMemberIds: ["e"],
+            projectId: "project-1"
+        )
+        let independentChild = MockTask(
+            id: "independent-child",
+            taskTypeId: "independent-child",
+            dependencies: [
+                TaskTypeDependency(
+                    dependsOnTaskTypeId: "independent-root",
+                    overlapPercentage: 0,
+                    overlapMode: "after_end"
+                )
+            ],
+            teamMemberIds: ["f"],
+            projectId: "project-1"
+        )
+        let provider = MockScheduleDataProvider(
+            allTasks: [
+                cyclicA,
+                cyclicB,
+                cyclicC,
+                blockedDescendant,
+                independentRoot,
+                independentChild
+            ],
+            projectCoordinates: [:],
+            projectPriorities: [:]
+        )
+
+        let plan = AutoScheduleManager.schedule(
+            request: ScheduleRequest(
+                mode: .projectBatch(projectId: "project-1"),
+                anchorDate: anchorMonday,
+                constraints: ScheduleConstraints(
+                    skipWeekends: false,
+                    preciseScheduling: false,
+                    schedulingWindow: .companyHours(open: "08:00", close: "17:00"),
+                    proximityRadiusKm: 15,
+                    weatherConstraints: nil
+                )
+            ),
+            provider: provider
+        )
+
+        XCTAssertEqual(
+            Set(plan.conflicts.filter { $0.type == .circularDependency }.map(\.id)),
+            ["cycle-a", "cycle-b", "cycle-c"]
+        )
+        XCTAssertTrue(plan.conflicts.contains {
+            $0.id == "blocked-descendant" && $0.type == .dependencyUnavailable
+        })
+        XCTAssertEqual(
+            Set(plan.placements.map(\.id)),
+            ["independent-root", "independent-child"]
+        )
+    }
 }

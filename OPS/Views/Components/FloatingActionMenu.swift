@@ -568,7 +568,10 @@ struct FloatingActionMenu: View {
                     id: "unassigned-review",
                     icon: "calendar.badge.exclamationmark",
                     label: "Unassigned Review",
-                    permission: "tasks.edit",
+                    permission: nil,
+                    authorization: {
+                        permissionStore.scope(for: "tasks.edit") != nil
+                    },
                     disabledInTutorial: true,
                     badge: unassignedReviewCount > 0 ? unassignedReviewCount : nil,
                     action: {
@@ -580,7 +583,10 @@ struct FloatingActionMenu: View {
                     id: "payment-review",
                     icon: "rectangle.stack.fill",
                     label: "Completion Review",
-                    permission: "projects.edit",
+                    permission: nil,
+                    authorization: {
+                        permissionStore.scope(for: "projects.edit") != nil
+                    },
                     disabledInTutorial: true,
                     lockedMessage: isPaymentReviewLocked ? "Complete \(paymentReviewThreshold) projects to unlock payment review. You've completed \(completedProjectCount) so far." : nil,
                     badge: completionReviewCount > 0 ? completionReviewCount : nil,
@@ -946,7 +952,9 @@ struct FloatingActionMenu: View {
 
         cachedTaskReviewCount = cachedIsTaskReviewLocked ? 0 : computeFABReviewableTasks().count
         cachedUnassignedCount = computeFABIncompleteTasks().count
-        cachedCompletionReviewCount = cachedIsPaymentReviewLocked ? 0 : (computeFABOverdueProjects().count + computeFABCompletedProjects().count)
+        cachedCompletionReviewCount = cachedIsPaymentReviewLocked
+            ? 0
+            : computeFABPaymentSnapshot().count
     }
 
     // MARK: - Review Badge Count
@@ -1177,19 +1185,18 @@ struct FloatingActionMenu: View {
     }
 
     private func computeFABOverdueProjects() -> [Project] {
-        let allProjects = dataController.getProjects()
-        let threshold: Int
-        if let companyId = dataController.currentUser?.companyId,
-           let company = dataController.getCompany(id: companyId) {
-            threshold = company.overdueReviewThresholdDays
-        } else {
-            threshold = 14
-        }
-        return OverdueProjectDetector.overdueProjects(from: allProjects, thresholdDays: threshold)
+        computeFABPaymentSnapshot().overdueProjects
     }
 
     private func computeFABCompletedProjects() -> [Project] {
-        return dataController.getProjects().filter { $0.status == .completed && $0.deletedAt == nil }
+        computeFABPaymentSnapshot().completedProjects
+    }
+
+    private func computeFABPaymentSnapshot() -> ProjectReviewSnapshot {
+        ProjectReviewQuery.snapshot(
+            dataController: dataController,
+            permissionStore: permissionStore
+        )
     }
 
     private func computeFABIncompleteTasks() -> [ProjectTask] {

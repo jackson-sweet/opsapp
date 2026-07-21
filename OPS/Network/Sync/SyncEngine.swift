@@ -1362,6 +1362,115 @@ final class SyncEngine {
         }
     }
 
+    /// Reconciles queued offline project-status writes after a separate
+    /// authoritative RPC commits a newer status.
+    ///
+    /// Rewrites only the status field in every nonterminal stored operation so
+    /// mixed payloads keep their unrelated edits. A trailing operation repairs
+    /// any request that was already decoded and in flight when this runs.
+    @discardableResult
+    func supersedeProjectStatus(entityID: String, with status: String) -> Bool {
+        guard let modelContext else { return false }
+        let canonicalID = entityID.lowercased()
+        let descriptor = FetchDescriptor<SyncOperation>()
+
+        do {
+            let operations = try modelContext.fetch(descriptor)
+            for operation in operations where
+                operation.entityType == SyncEntityType.project.rawValue
+                    && operation.entityId.lowercased() == canonicalID
+                    && ["pending", "inProgress", "failed"].contains(operation.status)
+            {
+                guard let payload = Self.payload(
+                    operation.payload,
+                    settingStatus: status
+                ) else { continue }
+                operation.payload = payload
+                var fields = Set(operation.getChangedFields())
+                fields.insert("status")
+                operation.changedFields = fields.sorted().joined(separator: ",")
+            }
+            try modelContext.save()
+        } catch {
+            print("[SYNC_ENGINE] Failed to supersede project status: \(error)")
+            return false
+        }
+
+        return recordOperation(
+            entityType: .project,
+            entityId: canonicalID,
+            operationType: "update",
+            changedFields: ["status": status],
+            priority: 0
+        ) != nil
+    }
+
+    /// Reconciles queued offline task writes after an authoritative review RPC
+    /// commits newer server fields. Existing mixed payloads retain unrelated
+    /// local edits; the priority-zero tail repairs a request that was already
+    /// decoded and in flight when the RPC completed.
+    @discardableResult
+    func supersedeProjectTaskFields(
+        entityID: String,
+        with authoritativeFields: [String: Any]
+    ) -> Bool {
+        guard let modelContext,
+              !authoritativeFields.isEmpty,
+              JSONSerialization.isValidJSONObject(authoritativeFields) else {
+            return false
+        }
+        let canonicalID = entityID.lowercased()
+        let descriptor = FetchDescriptor<SyncOperation>()
+
+        do {
+            let operations = try modelContext.fetch(descriptor)
+            for operation in operations where
+                operation.entityType == SyncEntityType.projectTask.rawValue
+                    && operation.entityId.lowercased() == canonicalID
+                    && ["pending", "inProgress", "failed"].contains(operation.status)
+            {
+                guard let payload = Self.payload(
+                    operation.payload,
+                    overlaying: authoritativeFields
+                ) else { continue }
+                operation.payload = payload
+                var fields = Set(operation.getChangedFields())
+                fields.formUnion(authoritativeFields.keys)
+                operation.changedFields = fields.sorted().joined(separator: ",")
+            }
+            try modelContext.save()
+        } catch {
+            print("[SYNC_ENGINE] Failed to supersede project task fields: \(error)")
+            return false
+        }
+
+        return recordOperation(
+            entityType: .projectTask,
+            entityId: canonicalID,
+            operationType: "update",
+            changedFields: authoritativeFields,
+            priority: 0
+        ) != nil
+    }
+
+    nonisolated static func payload(
+        _ data: Data,
+        settingStatus status: String
+    ) -> Data? {
+        payload(data, overlaying: ["status": status])
+    }
+
+    nonisolated static func payload(
+        _ data: Data,
+        overlaying fields: [String: Any]
+    ) -> Data? {
+        guard var object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            return nil
+        }
+        fields.forEach { object[$0.key] = $0.value }
+        return try? JSONSerialization.data(withJSONObject: object)
+    }
+
     // MARK: - Cancel
 
     /// Cancels (deletes) a single pending sync operation.

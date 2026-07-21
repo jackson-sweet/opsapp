@@ -10,6 +10,7 @@ import SwiftData
 struct ProjectBioSheet: View {
     let project: Project
     let showFinancialInfo: Bool
+    let financialSummary: PaymentReviewFinancialSummary?
     let onDismiss: () -> Void
 
     @Query private var allUsers: [User]
@@ -231,17 +232,40 @@ struct ProjectBioSheet: View {
         VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
             sectionHeader("INVOICING")
 
-            // Placeholder -- will wire to actual invoice data
-            HStack(spacing: OPSStyle.Layout.spacing4) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("STATUS")
-                        .font(OPSStyle.Typography.smallCaption)
-                        .foregroundColor(OPSStyle.Colors.tertiaryText)
-                    Text("\u{2014}")
-                        .font(OPSStyle.Typography.bodyBold)
-                        .foregroundColor(OPSStyle.Colors.primaryText)
+            if let summary = financialSummary {
+                HStack(spacing: OPSStyle.Layout.spacing4) {
+                    financialMetric(
+                        label: "BALANCE",
+                        value: summary.unresolvedBalance.formatted(
+                            .currency(code: summary.currencyCode)
+                                .precision(.fractionLength(2))
+                        )
+                    )
+                    financialMetric(
+                        label: "OUTSTANDING",
+                        value: "\(summary.outstandingInvoiceCount)"
+                    )
+                    financialMetric(
+                        label: "OVERDUE",
+                        value: "\(summary.overdueInvoiceCount)"
+                    )
                 }
+            } else {
+                Text("BALANCE DATA UNAVAILABLE")
+                    .font(OPSStyle.Typography.smallCaption)
+                    .foregroundColor(OPSStyle.Colors.warningStatus)
             }
+        }
+    }
+
+    private func financialMetric(label: String, value: String) -> some View {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
+            Text(label)
+                .font(OPSStyle.Typography.smallCaption)
+                .foregroundColor(OPSStyle.Colors.tertiaryText)
+            Text(value)
+                .font(OPSStyle.Typography.dataValue)
+                .foregroundColor(OPSStyle.Colors.primaryText)
         }
     }
 

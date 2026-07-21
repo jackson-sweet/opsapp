@@ -79,8 +79,8 @@ enum ReviewThresholdService {
             await syncStack(
                 stack: .paymentReview,
                 count: paymentReviewCount,
-                title: "PAYMENTS SITTING",
-                body: "\(paymentReviewCount) closed. Collect.",
+                title: "CLOSEOUTS WAITING",
+                body: "\(paymentReviewCount) completed. Review and close out.",
                 userId: userId,
                 companyId: companyId,
                 repo: repo
@@ -167,26 +167,7 @@ enum ReviewThresholdService {
     }
 
     private static func computePaymentReviewCount(dataController: DataController) -> Int {
-        let allProjects = dataController.getProjects()
-
-        let threshold: Int
-        if let companyId = dataController.currentUser?.companyId,
-           let company = dataController.getCompany(id: companyId) {
-            threshold = company.overdueReviewThresholdDays
-        } else {
-            threshold = 14
-        }
-
-        let overdueCount = OverdueProjectDetector.overdueProjects(
-            from: allProjects,
-            thresholdDays: threshold
-        ).count
-
-        let completedCount = allProjects.filter {
-            $0.status == .completed && $0.deletedAt == nil
-        }.count
-
-        return overdueCount + completedCount
+        ProjectReviewQuery.snapshot(dataController: dataController).count
     }
 
     private static func computeUnscheduledReviewCount(dataController: DataController) -> Int {

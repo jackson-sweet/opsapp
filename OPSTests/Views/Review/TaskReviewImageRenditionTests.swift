@@ -17,7 +17,7 @@ final class TaskReviewImageRenditionTests: XCTestCase {
         let reviewKey = TaskReviewImageRendition.cacheKey(forSourceKey: sourceKey)
 
         XCTAssertNotEqual(reviewKey, sourceKey)
-        XCTAssertEqual(reviewKey, sourceKey + "#task-review-2048")
+        XCTAssertEqual(reviewKey, sourceKey + "#review-card-2048")
     }
 
     func testProtocolRelativePhotoUsesSameNormalizedSourceKey() {
@@ -32,6 +32,19 @@ final class TaskReviewImageRenditionTests: XCTestCase {
         XCTAssertEqual(
             TaskReviewImageRendition.cacheKey(forSourceKey: protocolRelative),
             TaskReviewImageRendition.cacheKey(forSourceKey: absolute)
+        )
+    }
+
+    func testProjectAndTaskCardsShareTheSameReviewRenditionKey() {
+        let source = "https://example.com/project-photo.jpg"
+
+        XCTAssertEqual(
+            ReviewCardImageRendition.cacheKey(forSourceKey: source),
+            TaskReviewImageRendition.cacheKey(forSourceKey: source)
+        )
+        XCTAssertTrue(
+            ReviewCardImageRendition.cacheKey(forSourceKey: source)
+                .hasSuffix("#review-card-2048")
         )
     }
 }

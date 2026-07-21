@@ -27,7 +27,7 @@ struct ScheduleRequest {
     let constraints: ScheduleConstraints
 }
 
-struct ScheduleConstraints {
+struct ScheduleConstraints: Sendable {
     let skipWeekends: Bool
     let preciseScheduling: Bool
     let schedulingWindow: SchedulingWindow
@@ -47,7 +47,7 @@ struct ScheduleConstraints {
     }
 }
 
-enum SchedulingWindow {
+enum SchedulingWindow: Sendable {
     case companyHours(open: String, close: String)
     case custom(open: String, close: String)
     case daylight(bufferMinutes: Int)
@@ -108,12 +108,12 @@ enum SchedulingWindow {
     }
 }
 
-struct WeatherConstraints {
+struct WeatherConstraints: Sendable {
     let isWeatherDependent: Bool
     let requiredConditions: [WeatherCondition]
 }
 
-enum WeatherCondition {
+enum WeatherCondition: Sendable {
     case dry
     case noWind
     case aboveFreezing
@@ -122,7 +122,7 @@ enum WeatherCondition {
 
 // MARK: - Output Types
 
-struct SchedulePlan {
+struct SchedulePlan: Sendable {
     let placements: [TaskPlacement]
     let conflicts: [ScheduleConflict]
     let metadata: ScheduleMetadata
@@ -130,7 +130,7 @@ struct SchedulePlan {
     static let empty = SchedulePlan(placements: [], conflicts: [], metadata: .empty)
 }
 
-struct TaskPlacement: Identifiable {
+struct TaskPlacement: Identifiable, Sendable {
     let id: String
     let taskTypeId: String
     let startDate: Date
@@ -140,7 +140,7 @@ struct TaskPlacement: Identifiable {
     let alternative: AlternativePlacement?
 }
 
-struct AlternativePlacement {
+struct AlternativePlacement: Sendable {
     let startDate: Date
     let endDate: Date
     let startTime: Date?
@@ -152,26 +152,27 @@ struct AlternativePlacement {
     let benefitingCrewMemberIds: Set<String>
 }
 
-enum AlternativeReason {
+enum AlternativeReason: Sendable {
     case geographicGrouping
     case weatherDeferral
 }
 
-struct ScheduleConflict: Identifiable {
+struct ScheduleConflict: Identifiable, Sendable {
     let id: String
     let type: ConflictType
     let message: String
 }
 
-enum ConflictType {
+enum ConflictType: Sendable {
     case noAvailableWindow
+    case dependencyUnavailable
     case circularDependency
     case noCrewAssigned
     case missingProjectCoordinates
     case deactivatedCrewMember
 }
 
-struct ScheduleMetadata {
+struct ScheduleMetadata: Sendable {
     let totalGapDays: Int
     let proximityGroupsFound: Int
     let weatherDependentTaskCount: Int

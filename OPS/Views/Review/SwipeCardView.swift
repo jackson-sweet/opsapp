@@ -11,7 +11,7 @@ import SwiftUI
 struct SwipeCardView: View {
     let project: Project
     let daysSinceCompleted: Int
-    let showFinancialInfo: Bool
+    let financialSummary: PaymentReviewFinancialSummary?
     let onTap: () -> Void
 
     @State private var heroImages: [UIImage] = []
@@ -66,6 +66,40 @@ struct SwipeCardView: View {
                 Text(project.effectiveClientName.uppercased())
                     .font(OPSStyle.Typography.caption)
                     .foregroundColor(.white.opacity(0.7))
+
+                if let financialSummary {
+                    if financialSummary.hasOutstandingInvoices {
+                        Text(financialSummary.outstandingBalance.formatted(
+                            .currency(code: financialSummary.currencyCode)
+                                .precision(.fractionLength(2))
+                        ))
+                            .font(OPSStyle.Typography.monoValue)
+                            .foregroundColor(.white)
+
+                        Text("\(financialSummary.outstandingInvoiceCount) OUTSTANDING · \(financialSummary.overdueInvoiceCount) OVERDUE")
+                            .font(OPSStyle.Typography.smallCaption)
+                            .foregroundColor(.white.opacity(0.7))
+                    } else if financialSummary.hasUnresolvedInvoices {
+                        Text(financialSummary.unresolvedBalance.formatted(
+                            .currency(code: financialSummary.currencyCode)
+                                .precision(.fractionLength(2))
+                        ))
+                            .font(OPSStyle.Typography.monoValue)
+                            .foregroundColor(.white)
+
+                        Text("INVOICE NEEDS RESOLUTION")
+                            .font(OPSStyle.Typography.smallCaption)
+                            .foregroundColor(OPSStyle.Colors.warningStatus)
+                    } else {
+                        Text("NO OUTSTANDING BALANCE")
+                            .font(OPSStyle.Typography.smallCaption)
+                            .foregroundColor(OPSStyle.Colors.successStatus)
+                    }
+                } else {
+                    Text("BALANCE UNAVAILABLE")
+                        .font(OPSStyle.Typography.smallCaption)
+                        .foregroundColor(OPSStyle.Colors.warningStatus)
+                }
             }
             .padding(OPSStyle.Layout.spacing3_5)
             .padding(.bottom, 100)
@@ -157,7 +191,7 @@ struct SwipeCardView: View {
         var loaded: [UIImage] = []
         for photoKey in recentPhotos {
             if Task.isCancelled { return }
-            if let img = await loadSingleImage(photoKey) {
+            if let img = await ReviewCardImageLoader.load(photoKey) {
                 loaded.append(img)
             }
         }
@@ -169,28 +203,4 @@ struct SwipeCardView: View {
         isLoadingImage = false
     }
 
-    private func loadSingleImage(_ photoKey: String) async -> UIImage? {
-        let cacheKey = photoKey.hasPrefix("//") ? "https:" + photoKey : photoKey
-
-        if let cached = ImageCache.shared.get(forKey: cacheKey) {
-            return cached
-        }
-
-        if let loaded = ImageFileManager.shared.loadImage(localID: photoKey) {
-            ImageCache.shared.set(loaded, forKey: cacheKey)
-            return loaded
-        }
-
-        guard let url = URL(string: cacheKey) else { return nil }
-
-        do {
-            let (data, _) = try await URLSession.shared.data(from: url)
-            if let img = UIImage(data: data) {
-                ImageCache.shared.set(img, forKey: cacheKey)
-                return img
-            }
-        } catch {}
-
-        return nil
-    }
 }

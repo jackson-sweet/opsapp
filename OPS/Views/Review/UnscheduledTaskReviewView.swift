@@ -17,6 +17,7 @@ struct UnscheduledTaskReviewView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @EnvironmentObject var dataController: DataController
+    private let reviewRepository = UnscheduledReviewRepository()
 
     @State private var session: TaskReviewSession
     @State private var currentTopIndex: Int = 0
@@ -26,9 +27,12 @@ struct UnscheduledTaskReviewView: View {
     @State private var pendingCancelTask: ProjectTask? = nil
     @State private var showCrewPicker: Bool = false
     @State private var pendingAssignTask: ProjectTask? = nil
-    @State private var assignPickerCountsAsReview: Bool = true
     @State private var manualScheduleTask: ProjectTask? = nil
     @State private var assignSelectedIds: Set<String> = []
+    @State private var assignmentBaselineIds: Set<String> = []
+    @State private var pendingSwipeTaskID: String? = nil
+    @State private var pendingSwipeResolution: ((Bool) -> Void)? = nil
+    @State private var manualScheduleWriteInFlight: Bool = false
     /// Bug 040e4482 — true only after the operator explicitly taps DONE in
     /// the crew picker. Drag-to-dismiss leaves this false so we treat the
     /// gesture as a back-out instead of silently applying whatever rows the
@@ -40,11 +44,11 @@ struct UnscheduledTaskReviewView: View {
     /// Full User objects so the crew picker shows real profile photos.
     @State private var fetchedTeamMembers: [User] = []
 
-    private enum RetryAction {
-        case autoSchedule
-        case assignCrew
-        case manualSchedule
-        case markComplete
+    private enum AutoScheduleOutcome {
+        case succeeded
+        case requiresManualSchedule
+        case failed
+        case denied
     }
 
     private var activeTeamMembers: [User] {
@@ -74,22 +78,38 @@ struct UnscheduledTaskReviewView: View {
     private func openCrewPicker(
         for task: ProjectTask,
         selectedIds: Set<String>,
-        countsAsReview: Bool
+        resolution: @escaping (Bool) -> Void
     ) {
+        holdResolution(for: task, resolution: resolution)
         pendingAssignTask = task
         assignSelectedIds = selectedIds
-        assignPickerCountsAsReview = countsAsReview
+        assignmentBaselineIds = Set(task.getTeamMemberIds())
         pickerDidConfirm = false
         showCrewPicker = true
     }
 
-    private func retryAction(for recoveryAction: AutoScheduleFailureRecoveryAction?) -> RetryAction {
-        switch recoveryAction {
-        case .assignCrew:
-            return .assignCrew
-        case .manualSchedule, .none:
-            return .manualSchedule
-        }
+    private var reviewAccessPolicy: UnscheduledReviewAccessPolicy {
+        UnscheduledReviewAccessPolicy(
+            currentUserID: dataController.currentUser?.id,
+            taskEditScope: ReviewPermissionScope(
+                PermissionStore.shared.scope(for: "tasks.edit")
+            ),
+            canAssignTasks: PermissionStore.shared.hasFullAccess("tasks.assign"),
+            taskStatusScope: ReviewPermissionScope(
+                PermissionStore.shared.scope(for: "tasks.change_status")
+            ),
+            calendarEditScope: ReviewPermissionScope(
+                PermissionStore.shared.scope(for: "calendar.edit")
+            )
+        )
+    }
+
+    private func reviewState(for task: ProjectTask) -> UnscheduledReviewTaskState {
+        UnscheduledReviewTaskState(
+            taskTeamMemberIDs: task.getTeamMemberIds(),
+            projectTeamMemberIDs: task.project?.getTeamMemberIds() ?? [],
+            isScheduled: task.startDate != nil
+        )
     }
 
     var body: some View {
@@ -100,11 +120,10 @@ struct UnscheduledTaskReviewView: View {
             if !session.tasks.isEmpty && !showAllDone {
                 TaskReviewCardStack(
                     tasks: session.tasks,
-                    // Swipe-to-schedule is gated on calendar.edit (any grant shows
-                    // the affordance; the schedule mutations are gated per-task).
-                    // Crew / Unassigned (no grant) review without a schedule swipe.
-                    hasCalendarAccess: PermissionStore.shared.canEditAnySchedule,
-                    onSwipe: handleSwipe,
+                    // This flow has a per-direction policy below; the legacy
+                    // global calendar gate does not apply here.
+                    hasCalendarAccess: true,
+                    onSwipe: { _, _ in },
                     onTapCard: { task in
                         selectedTask = task
                         showBio = true
@@ -123,6 +142,20 @@ struct UnscheduledTaskReviewView: View {
                         } else {
                             return ("UNASSIGNED", OPSStyle.Colors.warningStatus)
                         }
+                    },
+                    swipeResolutionProvider: handleSwipe,
+                    directionAllowedProvider: { task, direction in
+                        reviewAccessPolicy.allows(direction, task: reviewState(for: task))
+                    },
+                    onBlockedSwipe: { _, _ in
+                        UINotificationFeedbackGenerator().notificationOccurred(.warning)
+                        ToastCenter.shared.present(
+                            Toast(label: "// ACTION NOT AVAILABLE FOR THIS TASK", tone: .warning)
+                        )
+                    },
+                    onAdvance: { task, _ in
+                        currentTopIndex += 1
+                        finishReview(task)
                     }
                 )
                 .ignoresSafeArea()
@@ -203,7 +236,9 @@ struct UnscheduledTaskReviewView: View {
                 onConfirm: { pickerDidConfirm = true }
             )
         }
-        .sheet(item: $manualScheduleTask) { task in
+        .sheet(item: $manualScheduleTask, onDismiss: {
+            handleManualScheduleDismiss()
+        }) { task in
             CalendarSchedulerSheet(
                 isPresented: Binding(
                     get: { manualScheduleTask != nil },
@@ -216,29 +251,23 @@ struct UnscheduledTaskReviewView: View {
                     manuallySchedule(task, startDate: start, endDate: end)
                 },
                 onClearDates: nil,
-                preselectedTeamMemberIds: Set(task.getTeamMemberIds())
+                preselectedTeamMemberIds: Set(task.getTeamMemberIds()),
+                emitsSuccessFeedbackOnConfirm: false
             )
             .environmentObject(dataController)
         }
         .alert("Cancel Task?", isPresented: $showCancelConfirmation) {
             Button("Keep Task", role: .cancel) {
-                if let task = pendingCancelTask {
-                    pendingCancelTask = nil
-                    finishReview(task)
-                }
+                pendingCancelTask = nil
+                resolvePendingSwipe(false)
             }
             Button("Cancel Task", role: .destructive) {
                 if let task = pendingCancelTask {
-                    // Canonical path — saves, records SyncOperation, pushes.
                     Task {
-                        do {
-                            try await dataController.updateTaskStatus(task: task, to: .cancelled)
-                        } catch {
-                            print("[UNSCHEDULED_REVIEW] Failed to cancel task: \(error)")
-                        }
+                        let didCancel = await cancelTask(task)
+                        resolvePendingSwipe(didCancel)
                     }
                     pendingCancelTask = nil
-                    finishReview(task)
                 }
             }
         } message: {
@@ -323,26 +352,37 @@ struct UnscheduledTaskReviewView: View {
 
     private var directionHints: some View {
         HStack(spacing: OPSStyle.Layout.spacing2_5) {
-            hintPill(icon: "arrow.left", label: "SKIP", color: OPSStyle.Colors.tertiaryText)
+            if let task = currentTask {
+                let state = reviewState(for: task)
 
-            // Right hint changes based on current card
-            if currentTaskIsUnassigned {
-                hintPill(icon: "arrow.right", label: "ASSIGN", color: OPSStyle.Colors.primaryAccent)
-            } else {
-                hintPill(icon: "arrow.right", label: "SCHEDULE", color: OPSStyle.Colors.successStatus)
+                if reviewAccessPolicy.allows(.left, task: state) {
+                    hintPill(icon: "arrow.left", label: "SKIP", color: OPSStyle.Colors.tertiaryText)
+                }
+                if reviewAccessPolicy.allows(.right, task: state) {
+                    hintPill(
+                        icon: "arrow.right",
+                        label: currentTaskIsUnassigned ? "ASSIGN" : "SCHEDULE",
+                        color: currentTaskIsUnassigned
+                            ? OPSStyle.Colors.primaryAccent
+                            : OPSStyle.Colors.successStatus
+                    )
+                }
+                if reviewAccessPolicy.allows(.up, task: state) {
+                    hintPill(
+                        icon: "arrow.up",
+                        label: currentTaskIsUnassigned ? "ASSIGN" : "COMPLETE",
+                        color: currentTaskIsUnassigned
+                            ? OPSStyle.Colors.primaryAccent
+                            : OPSStyle.Colors.successStatus
+                    )
+                }
+                if reviewAccessPolicy.allows(.down, task: state) {
+                    hintPill(icon: "arrow.down", label: "CANCEL", color: OPSStyle.Colors.errorStatus)
+                }
             }
-
-            // Up hint changes based on current card
-            if currentTaskIsUnassigned {
-                hintPill(icon: "arrow.up", label: "ASSIGN", color: OPSStyle.Colors.primaryAccent)
-            } else {
-                hintPill(icon: "arrow.up", label: "COMPLETE", color: OPSStyle.Colors.successStatus)
-            }
-
-            hintPill(icon: "arrow.down", label: "CANCEL", color: OPSStyle.Colors.errorStatus)
         }
         .padding(.horizontal, OPSStyle.Layout.spacing3)
-        .animation(OPSStyle.Animation.panel, value: currentTopIndex)
+        .animation(reduceMotion ? nil : OPSStyle.Animation.panel, value: currentTopIndex)
     }
 
     private func formatScheduledRange(start: Date, end: Date) -> String {
@@ -463,192 +503,273 @@ struct UnscheduledTaskReviewView: View {
             let generator = UINotificationFeedbackGenerator()
             generator.notificationOccurred(.success)
 
-            withAnimation(reduceMotion ? OPSStyle.Animation.hover : OPSStyle.Animation.flip) {
+            if reduceMotion {
                 celebrationScale = 1.0
-            }
-            withAnimation(OPSStyle.Animation.panel.delay(OPSStyle.Animation.durationStagger)) {
                 celebrationOpacity = 1.0
+            } else {
+                withAnimation(OPSStyle.Animation.flip) {
+                    celebrationScale = 1.0
+                }
+                withAnimation(OPSStyle.Animation.panel.delay(OPSStyle.Animation.durationStagger)) {
+                    celebrationOpacity = 1.0
+                }
             }
         }
     }
 
     // MARK: - Swipe Handlers
 
-    private func handleSwipe(_ task: ProjectTask, _ direction: SwipeDirection) {
-        currentTopIndex += 1
+    private func handleSwipe(
+        _ task: ProjectTask,
+        _ direction: SwipeDirection,
+        resolution: @escaping (Bool) -> Void
+    ) {
+        guard task.status == .active else {
+            presentTerminalTaskState(task)
+            resolution(true)
+            return
+        }
+
+        let state = reviewState(for: task)
+        guard reviewAccessPolicy.allows(direction, task: state) else {
+            presentActionDenied()
+            resolution(false)
+            return
+        }
 
         switch direction {
-        case .right:
-            let isUnassigned = task.getTeamMemberIds().isEmpty
-            if isUnassigned {
-                // Task has no crew — open picker, then auto-schedule after assignment
-                openCrewPicker(for: task, selectedIds: [], countsAsReview: true)
-            } else {
-                // Already assigned — auto-schedule immediately
-                autoScheduleTask(task)
-                finishReview(task)
-            }
-
         case .left:
-            // Skip — no changes
-            finishReview(task)
+            resolution(true)
 
-        case .up:
-            let isUnassigned = task.getTeamMemberIds().isEmpty
-            if isUnassigned {
-                // No crew yet — open picker so user can assign. After the
-                // picker resolves, the dismiss handler auto-schedules the
-                // task so the operator's "resolve this card" intent is
-                // honored end-to-end instead of leaving the task assigned
-                // but still unscheduled.
+        case .right:
+            if state.isUnassigned {
                 openCrewPicker(
                     for: task,
                     selectedIds: Set(task.getTeamMemberIds()),
-                    countsAsReview: true
+                    resolution: resolution
                 )
             } else {
-                // Assigned — mark complete via canonical path.
-                markTaskComplete(task)
-                finishReview(task)
+                Task {
+                    let outcome = await autoScheduleTask(task)
+                    handleAutoScheduleOutcome(
+                        outcome,
+                        for: task,
+                        resolution: resolution
+                    )
+                }
+            }
+
+        case .up:
+            if state.isUnassigned {
+                openCrewPicker(
+                    for: task,
+                    selectedIds: Set(task.getTeamMemberIds()),
+                    resolution: resolution
+                )
+            } else {
+                Task {
+                    resolution(await markTaskComplete(task))
+                }
             }
 
         case .down:
-            // Cancel — show confirmation
+            holdResolution(for: task, resolution: resolution)
             pendingCancelTask = task
             showCancelConfirmation = true
         }
     }
 
-    /// Called when crew picker is dismissed
-    private func handleCrewPickerDismiss() {
-        guard let task = pendingAssignTask else { return }
-        let countsAsReview = assignPickerCountsAsReview
-
-        // Bug 040e4482 — only commit the picker selections when the operator
-        // explicitly tapped DONE. Drag-to-dismiss is a back-out gesture; the
-        // ephemeral row taps the user made while exploring should not turn
-        // into a silent crew assignment + auto-schedule. Swipe-opened
-        // pickers still count the card as reviewed; retry-opened pickers
-        // keep the original review count intact.
-        let confirmed = pickerDidConfirm
-        let selectionsToApply = confirmed ? assignSelectedIds : Set<String>()
-
-        if !selectionsToApply.isEmpty {
-            // Apply crew assignment, then auto-schedule when the task still
-            // has no dates. The card has been bumped from the review stack
-            // either way — the operator's intent is "resolve this," so we
-            // finish the job rather than leaving the task assigned but
-            // still unscheduled.
-            let shouldAutoSchedule = task.startDate == nil
-            Task {
-                try? await dataController.updateTaskTeamMembers(
-                    task: task,
-                    memberIds: Array(selectionsToApply)
-                )
-
-                if shouldAutoSchedule {
-                    await MainActor.run {
-                        autoScheduleTask(task)
-                    }
-                }
-            }
-        } else if confirmed {
-            // Operator hit DONE with no selections — explicit no-op. Surface
-            // a toast so the swipe has a visible effect instead of feeling
-            // like the gesture was swallowed.
-            let capturedTask = task
-            let capturedCounts = countsAsReview
-            ToastCenter.shared.present(
-                Toast(
-                    label: "// NO CREW SELECTED — TASK LEFT UNASSIGNED",
-                    tone: .warning,
-                    autoDismissAfter: capturedCounts ? 6 : 0,
-                    action: capturedCounts ? nil : ToastAction(label: "ASSIGN CREW") {
-                        openCrewPicker(for: capturedTask, selectedIds: Set(capturedTask.getTeamMemberIds()), countsAsReview: false)
-                    }
-                )
-            )
-            UINotificationFeedbackGenerator().notificationOccurred(.warning)
-        } else if !countsAsReview {
-            let capturedTask = task
-            ToastCenter.shared.present(
-                Toast(
-                    label: "// CREW MISSING — ASSIGN CREW",
-                    tone: .error,
-                    autoDismissAfter: 0,
-                    action: ToastAction(label: "ASSIGN CREW") {
-                        openCrewPicker(for: capturedTask, selectedIds: Set(capturedTask.getTeamMemberIds()), countsAsReview: false)
-                    }
-                )
-            )
-        }
-
-        if countsAsReview {
-            finishReview(task)
-        }
-        pendingAssignTask = nil
-        assignPickerCountsAsReview = true
-        assignSelectedIds = []
-        pickerDidConfirm = false
+    private func holdResolution(
+        for task: ProjectTask,
+        resolution: @escaping (Bool) -> Void
+    ) {
+        pendingSwipeTaskID = task.id
+        pendingSwipeResolution = resolution
     }
 
-    private func markTaskComplete(_ task: ProjectTask) {
-        // Canonical path — persists status, records SyncOperation, fires
-        // team-completion notifications, tracks analytics. Haptic semantics
-        // demand the success notification fire only after the write
-        // actually succeeds; an optimistic success buzz followed by an
-        // error toast is worse than no buzz at all.
-        let taskTitle = task.displayTitle
+    private func resolvePendingSwipe(_ didSucceed: Bool) {
+        let resolution = pendingSwipeResolution
+        pendingSwipeResolution = nil
+        pendingSwipeTaskID = nil
+        resolution?(didSucceed)
+    }
 
-        // Bug adc0feb3 — realtime sync may have completed this task between
-        // the operator opening the review and swiping the card. Skip the
-        // canonical path entirely; firing it again would re-emit team
-        // notifications, push, and analytics for a state change that didn't
-        // actually happen on this device.
-        if task.status == .completed {
-            UIImpactFeedbackGenerator(style: .light).impactOccurred()
-            ToastCenter.shared.present(Feedback.Task.alreadyComplete(taskTitle))
+    /// Apply the picker delta to the latest task assignment, then complete any
+    /// permitted scheduling work before the card is allowed to advance.
+    private func handleCrewPickerDismiss() {
+        guard let task = pendingAssignTask else { return }
+
+        let confirmed = pickerDidConfirm
+        let baseline = assignmentBaselineIds
+        let selected = assignSelectedIds
+
+        pendingAssignTask = nil
+        assignSelectedIds = []
+        assignmentBaselineIds = []
+        pickerDidConfirm = false
+
+        guard pendingSwipeTaskID == task.id else {
+            resolvePendingSwipe(false)
+            return
+        }
+
+        guard task.status == .active else {
+            presentTerminalTaskState(task)
+            resolvePendingSwipe(true)
+            return
+        }
+
+        guard confirmed else {
+            UINotificationFeedbackGenerator().notificationOccurred(.warning)
+            ToastCenter.shared.present(
+                Toast(label: "// CREW UNCHANGED", tone: .warning)
+            )
+            resolvePendingSwipe(false)
+            return
+        }
+
+        guard !selected.isEmpty else {
+            UINotificationFeedbackGenerator().notificationOccurred(.warning)
+            ToastCenter.shared.present(
+                Toast(label: "// SELECT AT LEAST ONE CREW MEMBER", tone: .warning)
+            )
+            resolvePendingSwipe(false)
             return
         }
 
         Task {
             do {
-                try await dataController.updateTaskStatus(task: task, to: .completed)
-                await MainActor.run {
+                let committedIDs = try await reviewRepository.assignCrew(
+                    taskID: task.id,
+                    baseline: baseline,
+                    selected: selected
+                )
+                try applyAuthoritativeCrew(committedIDs, to: task)
+
+                guard task.startDate == nil else {
                     UINotificationFeedbackGenerator().notificationOccurred(.success)
-                    ToastCenter.shared.present(Feedback.Task.completedTask(taskTitle))
+                    ToastCenter.shared.present(
+                        Toast(label: "// CREW ASSIGNED", tone: .success)
+                    )
+                    resolvePendingSwipe(true)
+                    return
                 }
-            } catch {
-                print("[UNSCHEDULED_REVIEW] Failed to mark task complete: \(error)")
-                let capturedTask = task
-                await MainActor.run {
-                    UINotificationFeedbackGenerator().notificationOccurred(.error)
+
+                let updatedState = reviewState(for: task)
+                guard reviewAccessPolicy.canSchedule(updatedState) else {
+                    UINotificationFeedbackGenerator().notificationOccurred(.success)
                     ToastCenter.shared.present(
                         Toast(
-                            label: "// COULDN'T MARK COMPLETE — TRY AGAIN",
-                            tone: .error,
-                            autoDismissAfter: 0,
-                            action: ToastAction(label: "RETRY") {
-                                markTaskComplete(capturedTask)
-                            }
+                            label: "// CREW ASSIGNED — SCHEDULE ACCESS NEEDED",
+                            tone: .warning
                         )
                     )
+                    resolvePendingSwipe(true)
+                    return
                 }
+
+                let outcome = await autoScheduleTask(task)
+                handlePendingAutoScheduleOutcome(outcome, for: task)
+            } catch {
+                print("[UNSCHEDULED_REVIEW] Failed to assign crew: \(error)")
+                UINotificationFeedbackGenerator().notificationOccurred(.error)
+                ToastCenter.shared.present(
+                    Toast(
+                        label: "// CREW ASSIGNMENT FAILED — SWIPE TO RETRY",
+                        tone: .error,
+                        autoDismissAfter: 0
+                    )
+                )
+                resolvePendingSwipe(false)
             }
         }
     }
 
-    private func autoScheduleTask(_ task: ProjectTask) {
-        guard task.canEditSchedule else {
-            presentScheduleDenied()
-            return
+    private func markTaskComplete(_ task: ProjectTask) async -> Bool {
+        let taskTitle = task.displayTitle
+
+        if task.status == .completed {
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            ToastCenter.shared.present(Feedback.Task.alreadyComplete(taskTitle))
+            return true
         }
-        // Bug adc0feb3 — realtime sync can land a schedule on the task
-        // between the operator opening this review and swiping the card.
-        // Re-running the scheduler here would overwrite the dates that
-        // just arrived (the operator never saw them). Treat the swipe as
-        // a confirm of the already-applied schedule instead.
-        if let existingStart = task.startDate, let existingEnd = task.endDate {
+        if task.status == .cancelled {
+            UINotificationFeedbackGenerator().notificationOccurred(.warning)
+            ToastCenter.shared.present(
+                Toast(label: "// TASK ALREADY CANCELLED", tone: .warning)
+            )
+            return true
+        }
+
+        do {
+            try await reviewRepository.complete(taskID: task.id)
+            try applyAuthoritativeStatus(.completed, to: task)
+            UINotificationFeedbackGenerator().notificationOccurred(.success)
+            ToastCenter.shared.present(Feedback.Task.completedTask(taskTitle))
+            return true
+        } catch {
+            print("[UNSCHEDULED_REVIEW] Failed to mark task complete: \(error)")
+            UINotificationFeedbackGenerator().notificationOccurred(.error)
+            ToastCenter.shared.present(
+                Toast(
+                    label: "// COMPLETION FAILED — SWIPE TO RETRY",
+                    tone: .error,
+                    autoDismissAfter: 0
+                )
+            )
+            return false
+        }
+    }
+
+    private func cancelTask(_ task: ProjectTask) async -> Bool {
+        if task.status == .cancelled {
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            ToastCenter.shared.present(
+                Toast(label: "// TASK ALREADY CANCELLED", tone: .success)
+            )
+            return true
+        }
+        if task.status == .completed {
+            UINotificationFeedbackGenerator().notificationOccurred(.warning)
+            ToastCenter.shared.present(Feedback.Task.alreadyComplete(task.displayTitle))
+            return true
+        }
+
+        do {
+            try await reviewRepository.cancel(taskID: task.id)
+            try applyAuthoritativeStatus(.cancelled, to: task)
+            UINotificationFeedbackGenerator().notificationOccurred(.success)
+            ToastCenter.shared.present(
+                Toast(label: "// TASK CANCELLED", tone: .success)
+            )
+            return true
+        } catch {
+            print("[UNSCHEDULED_REVIEW] Failed to cancel task: \(error)")
+            UINotificationFeedbackGenerator().notificationOccurred(.error)
+            ToastCenter.shared.present(
+                Toast(
+                    label: "// CANCELLATION FAILED — SWIPE TO RETRY",
+                    tone: .error,
+                    autoDismissAfter: 0
+                )
+            )
+            return false
+        }
+    }
+
+    private func autoScheduleTask(_ task: ProjectTask) async -> AutoScheduleOutcome {
+        guard task.status == .active else {
+            presentTerminalTaskState(task)
+            return .succeeded
+        }
+
+        guard reviewAccessPolicy.canSchedule(reviewState(for: task)) else {
+            presentScheduleDenied()
+            return .denied
+        }
+
+        if let existingStart = task.startDate {
+            let existingEnd = task.endDate ?? existingStart
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
             ToastCenter.shared.present(
                 Toast(
@@ -656,136 +777,277 @@ struct UnscheduledTaskReviewView: View {
                     tone: .success
                 )
             )
-            return
+            return .succeeded
         }
 
-        let plan = dataController.autoScheduleSingleTask(
+        let plannedCrew = Set(task.getTeamMemberIds())
+        let plan = await dataController.autoScheduleSingleTaskAsync(
             task,
-            teamMemberIds: Set(task.getTeamMemberIds()),
+            teamMemberIds: plannedCrew,
             anchorDate: Date()
         )
 
-        // If the scheduler couldn't place the task, keep the recovery in-flow
-        // instead of leaving the operator with a dead-end error toast.
-        guard let placement = plan.placements.first else {
-            let recoveryAction = retryAction(
-                for: AutoScheduleFailureRecovery.recoveryAction(for: plan)
+        // The calculation runs off-main. Revalidate every input that could
+        // change through realtime before attempting the compare-and-set write.
+        guard task.status == .active else {
+            presentTerminalTaskState(task)
+            return .succeeded
+        }
+        guard task.deletedAt == nil,
+              task.project?.status.isActive == true else {
+            ToastCenter.shared.present(
+                Toast(label: "// TASK NO LONGER AVAILABLE", tone: .warning)
             )
-            let capturedTask = task
-            let failureMessage = AutoScheduleFailureRecovery.message(for: plan)
-            let capturedRecovery = recoveryAction
+            return .succeeded
+        }
+        guard task.startDate == nil else {
+            let existingEnd = task.endDate ?? task.startDate!
             ToastCenter.shared.present(
                 Toast(
-                    label: failureMessage,
-                    tone: .error,
-                    autoDismissAfter: 0,
-                    action: ToastAction(label: capturedRecovery == .assignCrew ? "ASSIGN CREW" : "SCHEDULE") {
-                        switch capturedRecovery {
-                        case .assignCrew:
-                            openCrewPicker(for: capturedTask, selectedIds: Set(capturedTask.getTeamMemberIds()), countsAsReview: false)
-                        case .manualSchedule:
-                            manualScheduleTask = capturedTask
-                        default:
-                            autoScheduleTask(capturedTask)
-                        }
-                    }
+                    label: "// ALREADY SCHEDULED \(formatScheduledRange(start: task.startDate!, end: existingEnd))",
+                    tone: .success
                 )
             )
-            UINotificationFeedbackGenerator().notificationOccurred(.error)
-            return
+            return .succeeded
+        }
+        guard Set(task.getTeamMemberIds()) == plannedCrew,
+              reviewAccessPolicy.canSchedule(reviewState(for: task)) else {
+            presentScheduleDenied()
+            return .denied
         }
 
-        let capturedStart = placement.startDate
-        let capturedEnd = placement.endDate
-
-        // Canonical path — saves context, computes duration, records the
-        // SyncOperation, and fires schedule-change notifications to team
-        // members. Haptic fires after the write so the buzz reflects what
-        // actually happened, not what we hoped would happen.
-        Task {
-            do {
-                try await dataController.updateTaskSchedule(
-                    task: task,
-                    startDate: capturedStart,
-                    endDate: capturedEnd,
-                    // Auto-schedule: the SCHEDULER picked this date, not the
-                    // operator, so keep cascade auto-tracking intact. (Manual
-                    // scheduling via CalendarSchedulerSheet keeps the default
-                    // manualEdit: true, which locks the task as intended.)
-                    manualEdit: false
+        guard let placement = plan.placements.first else {
+            UINotificationFeedbackGenerator().notificationOccurred(.warning)
+            ToastCenter.shared.present(
+                Toast(
+                    label: AutoScheduleFailureRecovery.message(for: plan),
+                    tone: .warning
                 )
-                await MainActor.run {
-                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                    ToastCenter.shared.present(Feedback.Task.scheduledFor(start: capturedStart, end: capturedEnd))
-                }
-            } catch {
-                print("[UNSCHEDULED_REVIEW] Failed to auto-schedule task: \(error)")
-                let capturedTask = task
-                await MainActor.run {
-                    UINotificationFeedbackGenerator().notificationOccurred(.error)
-                    ToastCenter.shared.present(
-                        Toast(
-                            label: "// SCHEDULE FAILED — TRY AGAIN",
-                            tone: .error,
-                            autoDismissAfter: 0,
-                            action: ToastAction(label: "RETRY") {
-                                autoScheduleTask(capturedTask)
-                            }
-                        )
-                    )
-                }
-            }
+            )
+            return .requiresManualSchedule
+        }
+
+        do {
+            let commit = try await reviewRepository.schedule(
+                taskID: task.id,
+                expectedCrew: plannedCrew,
+                startDate: placement.startDate,
+                endDate: placement.endDate,
+                scheduleLocked: false
+            )
+            try applyAuthoritativeSchedule(
+                startDate: commit.startDate,
+                endDate: commit.endDate,
+                to: task,
+                scheduleLocked: false
+            )
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            ToastCenter.shared.present(
+                Feedback.Task.scheduledFor(
+                    start: placement.startDate,
+                    end: placement.endDate
+                )
+            )
+            return .succeeded
+        } catch {
+            print("[UNSCHEDULED_REVIEW] Failed to auto-schedule task: \(error)")
+            UINotificationFeedbackGenerator().notificationOccurred(.error)
+            ToastCenter.shared.present(
+                Toast(
+                    label: "// SCHEDULE FAILED — SWIPE TO RETRY",
+                    tone: .error,
+                    autoDismissAfter: 0
+                )
+            )
+            return .failed
+        }
+    }
+
+    private func handleAutoScheduleOutcome(
+        _ outcome: AutoScheduleOutcome,
+        for task: ProjectTask,
+        resolution: @escaping (Bool) -> Void
+    ) {
+        switch outcome {
+        case .succeeded:
+            resolution(true)
+        case .requiresManualSchedule:
+            holdResolution(for: task, resolution: resolution)
+            manualScheduleTask = task
+        case .failed, .denied:
+            resolution(false)
+        }
+    }
+
+    private func handlePendingAutoScheduleOutcome(
+        _ outcome: AutoScheduleOutcome,
+        for task: ProjectTask
+    ) {
+        switch outcome {
+        case .succeeded:
+            resolvePendingSwipe(true)
+        case .requiresManualSchedule:
+            manualScheduleTask = task
+        case .failed, .denied:
+            resolvePendingSwipe(false)
         }
     }
 
     private func manuallySchedule(_ task: ProjectTask, startDate: Date, endDate: Date) {
-        guard task.canEditSchedule else {
-            presentScheduleDenied()
+        guard task.status == .active else {
+            presentTerminalTaskState(task)
+            resolvePendingSwipe(true)
             return
         }
+
+        guard reviewAccessPolicy.canSchedule(reviewState(for: task)) else {
+            presentScheduleDenied()
+            resolvePendingSwipe(false)
+            return
+        }
+
+        manualScheduleWriteInFlight = true
         Task {
             do {
-                try await dataController.updateTaskSchedule(
-                    task: task,
+                let committed = try await reviewRepository.schedule(
+                    taskID: task.id,
+                    expectedCrew: Set(task.getTeamMemberIds()),
                     startDate: startDate,
-                    endDate: endDate
+                    endDate: endDate,
+                    scheduleLocked: true
                 )
-                await MainActor.run {
-                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                    ToastCenter.shared.present(Feedback.Task.scheduledFor(start: startDate, end: endDate))
-                }
+                try applyAuthoritativeSchedule(
+                    startDate: committed.startDate,
+                    endDate: committed.endDate,
+                    to: task,
+                    scheduleLocked: true
+                )
+                manualScheduleWriteInFlight = false
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                ToastCenter.shared.present(
+                    Feedback.Task.scheduledFor(start: startDate, end: endDate)
+                )
+                resolvePendingSwipe(true)
             } catch {
                 print("[UNSCHEDULED_REVIEW] Failed to manually schedule task: \(error)")
-                let capturedTask = task
-                let capturedStart = startDate
-                let capturedEnd = endDate
-                await MainActor.run {
-                    UINotificationFeedbackGenerator().notificationOccurred(.error)
-                    ToastCenter.shared.present(
-                        Toast(
-                            label: "// SCHEDULE FAILED — TRY AGAIN",
-                            tone: .error,
-                            autoDismissAfter: 0,
-                            action: ToastAction(label: "RETRY") {
-                                manuallySchedule(capturedTask, startDate: capturedStart, endDate: capturedEnd)
-                            }
-                        )
+                manualScheduleWriteInFlight = false
+                UINotificationFeedbackGenerator().notificationOccurred(.error)
+                ToastCenter.shared.present(
+                    Toast(
+                        label: "// SCHEDULE FAILED — SWIPE TO RETRY",
+                        tone: .error,
+                        autoDismissAfter: 0
                     )
-                }
+                )
+                resolvePendingSwipe(false)
             }
         }
     }
 
-    /// The schedule affordance is shown to anyone holding any calendar.edit
-    /// grant (canEditAnySchedule), but the actual write is gated per-task on
-    /// canEditSchedule — own/assigned-scope operators may only schedule tasks
-    /// they're on. Without this, the swipe was a silent dead-end: the card flew
-    /// away, got counted reviewed, and nothing happened. Tell the operator.
+    private func handleManualScheduleDismiss() {
+        guard pendingSwipeResolution != nil, !manualScheduleWriteInFlight else { return }
+        resolvePendingSwipe(false)
+    }
+
+    @MainActor
+    private func applyAuthoritativeCrew(
+        _ memberIDs: [String],
+        to task: ProjectTask
+    ) throws {
+        guard dataController.syncEngine?.supersedeProjectTaskFields(
+            entityID: task.id,
+            with: ["team_member_ids": memberIDs]
+        ) == true else {
+            throw UnscheduledReviewRepositoryError.invalidResponse
+        }
+        let memberSet = Set(memberIDs.map { $0.lowercased() })
+        task.setTeamMemberIds(memberIDs)
+        task.teamMembers = fetchedTeamMembers.filter {
+            memberSet.contains($0.id.lowercased())
+        }
+        task.needsSync = false
+        try modelContext.save()
+        dataController.notifyReviewSourcesChanged()
+    }
+
+    @MainActor
+    private func applyAuthoritativeStatus(
+        _ status: TaskStatus,
+        to task: ProjectTask
+    ) throws {
+        guard dataController.syncEngine?.supersedeProjectTaskFields(
+            entityID: task.id,
+            with: ["status": status.rawValue]
+        ) == true else {
+            throw UnscheduledReviewRepositoryError.invalidResponse
+        }
+        task.status = status
+        task.needsSync = false
+        try modelContext.save()
+        dataController.notifyReviewSourcesChanged()
+    }
+
+    @MainActor
+    private func applyAuthoritativeSchedule(
+        startDate: Date,
+        endDate: Date,
+        to task: ProjectTask,
+        scheduleLocked: Bool
+    ) throws {
+        let duration = max(
+            1,
+            (Calendar.current.dateComponents(
+                [.day],
+                from: startDate,
+                to: endDate
+            ).day ?? 0) + 1
+        )
+        guard dataController.syncEngine?.supersedeProjectTaskFields(
+            entityID: task.id,
+            with: [
+                "start_date": SupabaseDate.format(startDate),
+                "end_date": SupabaseDate.format(endDate),
+                "duration": duration,
+                "schedule_locked": scheduleLocked,
+            ]
+        ) == true else {
+            throw UnscheduledReviewRepositoryError.invalidResponse
+        }
+        task.startDate = startDate
+        task.endDate = endDate
+        task.duration = duration
+        task.scheduleLocked = scheduleLocked
+        task.needsSync = false
+        try modelContext.save()
+        dataController.notifyReviewSourcesChanged()
+        Task { @MainActor in
+            await CalendarMirrorService.shared.mirrorEvent(
+                opsId: task.id,
+                source: .projectTask
+            )
+        }
+    }
+
+    private func presentActionDenied() {
+        UINotificationFeedbackGenerator().notificationOccurred(.warning)
+        ToastCenter.shared.present(
+            Toast(label: "// ACTION NOT AVAILABLE FOR THIS TASK", tone: .warning)
+        )
+    }
+
     private func presentScheduleDenied() {
         UINotificationFeedbackGenerator().notificationOccurred(.warning)
         ToastCenter.shared.present(
             Toast(label: "// CAN'T SCHEDULE — NOT ASSIGNED TO YOU", tone: .warning)
         )
+    }
+
+    private func presentTerminalTaskState(_ task: ProjectTask) {
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        let label = task.status == .completed
+            ? "// TASK ALREADY COMPLETE"
+            : "// TASK ALREADY CANCELLED"
+        ToastCenter.shared.present(Toast(label: label, tone: .success))
     }
 
     private func finishReview(_ task: ProjectTask) {
@@ -795,10 +1057,11 @@ struct UnscheduledTaskReviewView: View {
 
     private func checkCompletion() {
         if session.isComplete {
-            let transition = reduceMotion
-                ? OPSStyle.Animation.hover.delay(OPSStyle.Animation.durationStagger)
-                : OPSStyle.Animation.page.delay(OPSStyle.Animation.durationStagger)
-            withAnimation(transition) {
+            withAnimation(
+                reduceMotion
+                    ? nil
+                    : OPSStyle.Animation.page.delay(OPSStyle.Animation.durationStagger)
+            ) {
                 showAllDone = true
             }
         }

@@ -21,7 +21,7 @@ import Foundation
 ///   - `autoCreate`   — when a task of `dependsOnTaskTypeId` is created,
 ///                      auto-create a task of this type (the owning type)
 ///   - `inheritCrew`  — copy the predecessor's team_member_ids onto the spawn
-struct TaskTypeDependency: Codable, Equatable, Hashable {
+struct TaskTypeDependency: Codable, Equatable, Hashable, Sendable {
     /// The task type ID that this task depends on (predecessor)
     let dependsOnTaskTypeId: String
 

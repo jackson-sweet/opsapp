@@ -217,7 +217,7 @@ struct TaskSwipeCardView: View {
         var loaded: [UIImage] = []
         for photoKey in recentPhotos {
             if Task.isCancelled { return }
-            if let img = await TaskReviewImageLoader.load(photoKey) {
+            if let img = await ReviewCardImageLoader.load(photoKey) {
                 loaded.append(img)
             }
         }
@@ -230,7 +230,7 @@ struct TaskSwipeCardView: View {
     }
 }
 
-enum TaskReviewImageRendition {
+enum ReviewCardImageRendition {
     static let maxPixelSize: CGFloat = 2_048
 
     static func sourceCacheKey(for photoKey: String) -> String {
@@ -238,7 +238,21 @@ enum TaskReviewImageRendition {
     }
 
     static func cacheKey(forSourceKey sourceCacheKey: String) -> String {
-        sourceCacheKey + "#task-review-2048"
+        sourceCacheKey + "#review-card-2048"
+    }
+}
+
+/// Compatibility name retained for the focused regression suite and any
+/// downstream callers. Project and task cards now consume one rendition.
+enum TaskReviewImageRendition {
+    static let maxPixelSize = ReviewCardImageRendition.maxPixelSize
+
+    static func sourceCacheKey(for photoKey: String) -> String {
+        ReviewCardImageRendition.sourceCacheKey(for: photoKey)
+    }
+
+    static func cacheKey(forSourceKey sourceCacheKey: String) -> String {
+        ReviewCardImageRendition.cacheKey(forSourceKey: sourceCacheKey)
     }
 }
 
@@ -247,10 +261,10 @@ private struct SendableTaskReviewImage: @unchecked Sendable {
 }
 
 @MainActor
-private enum TaskReviewImageLoader {
+enum ReviewCardImageLoader {
     static func load(_ photoKey: String) async -> UIImage? {
-        let sourceCacheKey = TaskReviewImageRendition.sourceCacheKey(for: photoKey)
-        let cardCacheKey = TaskReviewImageRendition.cacheKey(forSourceKey: sourceCacheKey)
+        let sourceCacheKey = ReviewCardImageRendition.sourceCacheKey(for: photoKey)
+        let cardCacheKey = ReviewCardImageRendition.cacheKey(forSourceKey: sourceCacheKey)
 
         if let cached = ImageCache.shared.get(forKey: cardCacheKey) {
             return cached
@@ -289,7 +303,7 @@ private enum TaskReviewImageLoader {
     }
 
     private static func loadDiskImage(_ photoKey: String) async -> UIImage? {
-        let maxPixelSize = TaskReviewImageRendition.maxPixelSize
+        let maxPixelSize = ReviewCardImageRendition.maxPixelSize
         let task = Task.detached(priority: .userInitiated) { () -> SendableTaskReviewImage? in
             guard !Task.isCancelled else { return nil }
 
@@ -316,7 +330,7 @@ private enum TaskReviewImageLoader {
     }
 
     private static func decode(_ data: Data) async -> UIImage? {
-        let maxPixelSize = TaskReviewImageRendition.maxPixelSize
+        let maxPixelSize = ReviewCardImageRendition.maxPixelSize
         let task = Task.detached(priority: .userInitiated) { () -> SendableTaskReviewImage? in
             guard !Task.isCancelled,
                   let image = ImageDownsampler.downsample(
@@ -334,7 +348,7 @@ private enum TaskReviewImageLoader {
     }
 
     private static func downsample(_ image: UIImage) async -> UIImage? {
-        let maxPixelSize = TaskReviewImageRendition.maxPixelSize
+        let maxPixelSize = ReviewCardImageRendition.maxPixelSize
         let source = SendableTaskReviewImage(value: image)
         let task = Task.detached(priority: .userInitiated) { () -> SendableTaskReviewImage? in
             guard !Task.isCancelled else { return nil }

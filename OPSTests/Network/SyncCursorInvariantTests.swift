@@ -40,6 +40,55 @@ final class SyncCursorInvariantTests: XCTestCase {
         XCTAssertEqual(result, [.deckDesign, .client])
     }
 
+    func test_projectStatusSupersessionPreservesUnrelatedPayloadFields() throws {
+        let original = try JSONSerialization.data(
+            withJSONObject: [
+                "status": "completed",
+                "title": "Keep this edit",
+            ]
+        )
+
+        let rewritten = try XCTUnwrap(
+            SyncEngine.payload(original, settingStatus: "closed")
+        )
+        let payload = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: rewritten) as? [String: String]
+        )
+
+        XCTAssertEqual(payload["status"], "closed")
+        XCTAssertEqual(payload["title"], "Keep this edit")
+    }
+
+    func test_projectTaskSupersessionOverlaysOnlyAuthoritativeFields() throws {
+        let original = try JSONSerialization.data(
+            withJSONObject: [
+                "status": "active",
+                "team_member_ids": ["stale-crew"],
+                "task_notes": "Keep this edit",
+            ]
+        )
+
+        let rewritten = try XCTUnwrap(
+            SyncEngine.payload(
+                original,
+                overlaying: [
+                    "status": "completed",
+                    "team_member_ids": ["authoritative-crew"],
+                ]
+            )
+        )
+        let payload = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: rewritten) as? [String: Any]
+        )
+
+        XCTAssertEqual(payload["status"] as? String, "completed")
+        XCTAssertEqual(
+            payload["team_member_ids"] as? [String],
+            ["authoritative-crew"]
+        )
+        XCTAssertEqual(payload["task_notes"] as? String, "Keep this edit")
+    }
+
     // MARK: - One-time cursor recovery (poisoned 3.0.3 schedule cursors)
 
     /// Builds an isolated UserDefaults suite so the recovery gating can be

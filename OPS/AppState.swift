@@ -338,16 +338,13 @@ class AppState: ObservableObject {
     /// Check for overdue projects on app launch and schedule a local notification if needed.
     /// Should be called after initial data sync completes.
     func checkOverdueProjects(dataController: DataController) {
-        let allProjects = dataController.getProjects()
         let companyId = dataController.currentUser?.companyId
         let company: Company? = companyId.flatMap { dataController.getCompany(id: $0) }
-        let threshold = company?.overdueReviewThresholdDays ?? 14
         let frequency = company?.overdueReminderFrequencyDays ?? 7
 
-        let overdueCount = OverdueProjectDetector.overdueProjects(
-            from: allProjects,
-            thresholdDays: threshold
-        ).count
+        let overdueCount = ProjectReviewQuery.snapshot(
+            dataController: dataController
+        ).overdueProjects.count
 
         NotificationManager.shared.checkAndSchedulePaymentReviewNotifications(
             overdueCount: overdueCount,

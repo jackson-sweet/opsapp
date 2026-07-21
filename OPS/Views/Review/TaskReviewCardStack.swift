@@ -18,6 +18,15 @@ struct TaskReviewCardStack: View {
     var taskActionConfigProvider: ((ProjectTask, SwipeDirection) -> SwipeActionConfig)? = nil
     var blockedDirections: Set<SwipeDirection> = []
     var badgeProvider: ((ProjectTask) -> (text: String, color: Color)?)? = nil
+    /// Optional authoritative action gate. When present, the card stays put and
+    /// remains locked until the action reports success. A failure restores the
+    /// card so the operator can retry.
+    var swipeResolutionProvider: ((ProjectTask, SwipeDirection, @escaping (Bool) -> Void) -> Void)? = nil
+    /// Per-row permission and state gate. When absent the legacy Task Review
+    /// calendar rule remains in force.
+    var directionAllowedProvider: ((ProjectTask, SwipeDirection) -> Bool)? = nil
+    var onBlockedSwipe: ((ProjectTask, SwipeDirection) -> Void)? = nil
+    var onAdvance: ((ProjectTask, SwipeDirection) -> Void)? = nil
 
     @State private var currentIndex: Int = 0
     @State private var dragOffset: CGSize = .zero
@@ -28,6 +37,7 @@ struct TaskReviewCardStack: View {
     /// completes — locks the outgoing card so a second drag cannot fire against
     /// the same index.
     @State private var isCommitting: Bool = false
+    @State private var activeCommitID: UUID? = nil
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -59,7 +69,9 @@ struct TaskReviewCardStack: View {
                             badgeOverride: badgeProvider?(tasks[index])
                         )
 
-                        if index == currentIndex, let direction = dragDirection {
+                        if index == currentIndex,
+                           let direction = dragDirection,
+                           isDirectionAllowed(direction, for: tasks[index]) {
                             let config = taskActionConfigProvider?(tasks[index], direction) ?? actionConfigProvider(direction)
                             SwipeStampOverlay(
                                 direction: direction,
@@ -80,6 +92,20 @@ struct TaskReviewCardStack: View {
                     .zIndex(Double(tasks.count - index))
                     .allowsHitTesting(index == currentIndex && !isCommitting)
                     .gesture(index == currentIndex && !isCommitting ? dragGesture : nil)
+                    .accessibilityHidden(index != currentIndex)
+                    .accessibilityElement(children: .combine)
+                    .accessibilityLabel(tasks[index].displayTitle)
+                    .accessibilityValue(accessibilityValue(for: tasks[index], index: index))
+                    .accessibilityHint("Open the Actions rotor for available review actions")
+                    .accessibilityActions {
+                        ForEach(accessibilityDirections(for: tasks[index], index: index), id: \.self) { direction in
+                            let config = taskActionConfigProvider?(tasks[index], direction)
+                                ?? actionConfigProvider(direction)
+                            Button(config.label) {
+                                requestSwipe(direction, for: tasks[index])
+                            }
+                        }
+                    }
                     .animation(reduceMotion ? nil : stackShiftAnimation, value: currentIndex)
                     .modifier(WizardTargetModifier(
                         stepIds: index == currentIndex
@@ -127,12 +153,20 @@ struct TaskReviewCardStack: View {
         DragGesture()
             .onChanged { value in
                 dragOffset = value.translation
-                dragDirection = computeDirection(from: value.translation)
+                let direction = computeDirection(from: value.translation)
+                dragDirection = direction
                 let magnitude = max(abs(value.translation.width), abs(value.translation.height))
-                if magnitude >= swipeThreshold && !hasTriggeredThresholdHaptic {
+                let directionIsAllowed = direction.map {
+                    guard tasks.indices.contains(currentIndex) else { return false }
+                    return isDirectionAllowed($0, for: tasks[currentIndex])
+                } ?? false
+
+                if directionIsAllowed,
+                   magnitude >= swipeThreshold,
+                   !hasTriggeredThresholdHaptic {
                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
                     hasTriggeredThresholdHaptic = true
-                } else if magnitude < swipeThreshold {
+                } else if !directionIsAllowed || magnitude < swipeThreshold {
                     hasTriggeredThresholdHaptic = false
                 }
             }
@@ -143,13 +177,14 @@ struct TaskReviewCardStack: View {
                 let magnitude = max(abs(translation.width), abs(translation.height))
 
                 if magnitude > swipeThreshold, let dir = direction {
-                    // Block UP swipe without calendar access (legacy behavior)
-                    let effectiveBlocked = blockedDirections.union(hasCalendarAccess ? [] : [.up])
-                    if effectiveBlocked.contains(dir) {
+                    guard tasks.indices.contains(currentIndex) else { return }
+                    let task = tasks[currentIndex]
+                    if !isDirectionAllowed(dir, for: task) {
                         withAnimation(snapBackAnimation) {
                             dragOffset = .zero
                             dragDirection = nil
                         }
+                        onBlockedSwipe?(task, dir)
                         return
                     }
 
@@ -169,10 +204,71 @@ struct TaskReviewCardStack: View {
         // Capture the outgoing task before animation. Parent data updates may
         // remove it from live Job Board queries as soon as onSwipe runs.
         let task = tasks[currentIndex]
+        guard isDirectionAllowed(direction, for: task) else {
+            onBlockedSwipe?(task, direction)
+            return
+        }
         isCommitting = true
-        let flyAway = flyAwayOffset(for: direction)
+        let commitID = UUID()
+        activeCommitID = commitID
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
 
+        if let swipeResolutionProvider {
+            swipeResolutionProvider(task, direction) { didSucceed in
+                Task { @MainActor in
+                    resolveSwipe(
+                        didSucceed,
+                        task: task,
+                        direction: direction,
+                        commitID: commitID,
+                        invokesLegacyHandler: false
+                    )
+                }
+            }
+        } else {
+            resolveSwipe(
+                true,
+                task: task,
+                direction: direction,
+                commitID: commitID,
+                invokesLegacyHandler: true
+            )
+        }
+    }
+
+    private func requestSwipe(_ direction: SwipeDirection, for task: ProjectTask) {
+        guard tasks.indices.contains(currentIndex), tasks[currentIndex].id == task.id else { return }
+        guard isDirectionAllowed(direction, for: task) else {
+            onBlockedSwipe?(task, direction)
+            return
+        }
+        commitSwipe(direction)
+    }
+
+    private func resolveSwipe(
+        _ didSucceed: Bool,
+        task: ProjectTask,
+        direction: SwipeDirection,
+        commitID: UUID,
+        invokesLegacyHandler: Bool
+    ) {
+        guard isCommitting, activeCommitID == commitID else { return }
+        // Consume this resolver immediately. Network callbacks and sheet
+        // dismissal callbacks can race; only the first result may move or
+        // restore the frozen outgoing card.
+        activeCommitID = nil
+
+        guard didSucceed else {
+            withAnimation(snapBackAnimation) {
+                dragOffset = .zero
+                dragDirection = nil
+                commitOpacity = 1
+            }
+            isCommitting = false
+            return
+        }
+
+        let flyAway = flyAwayOffset(for: direction)
         withAnimation(OPSStyle.Animation.hover, completionCriteria: .logicallyComplete) {
             if reduceMotion {
                 commitOpacity = 0
@@ -186,7 +282,10 @@ struct TaskReviewCardStack: View {
             dragDirection = nil
             commitOpacity = 1
             isCommitting = false
-            onSwipe(task, direction)
+            if invokesLegacyHandler {
+                onSwipe(task, direction)
+            }
+            onAdvance?(task, direction)
         }
     }
 
@@ -211,6 +310,47 @@ struct TaskReviewCardStack: View {
         case .up:    return CGSize(width: 0, height: -700)
         case .down:  return CGSize(width: 0, height: 700)
         }
+    }
+
+    private func isDirectionAllowed(_ direction: SwipeDirection, for task: ProjectTask) -> Bool {
+        if let directionAllowedProvider {
+            return directionAllowedProvider(task, direction)
+        }
+        let effectiveBlocked = blockedDirections.union(hasCalendarAccess ? [] : [.up])
+        return !effectiveBlocked.contains(direction)
+    }
+
+    private func accessibilityDirections(for task: ProjectTask, index: Int) -> [SwipeDirection] {
+        guard index == currentIndex, !isCommitting else { return [] }
+        let allowedDirections = SwipeDirection.allCases.filter {
+            isDirectionAllowed($0, for: task)
+        }
+        return SwipeAccessibilityActionPolicy.uniqueDirections(
+            allowedDirections,
+            labelForDirection: { direction in
+                (
+                    taskActionConfigProvider?(task, direction)
+                        ?? actionConfigProvider(direction)
+                ).label
+            }
+        )
+    }
+
+    private func accessibilityValue(for task: ProjectTask, index: Int) -> String {
+        let status: String
+        if let badge = badgeProvider?(task)?.text {
+            status = badge
+        } else {
+            switch scheduleStatus(for: task) {
+            case .unscheduled:
+                status = "Unscheduled"
+            case .unassigned:
+                status = "Unassigned"
+            case .scheduledDaysAgo(let days):
+                status = "Scheduled \(days) days ago"
+            }
+        }
+        return "Card \(index + 1) of \(tasks.count). \(status)"
     }
 
     // MARK: - Helpers

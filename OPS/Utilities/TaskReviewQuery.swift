@@ -44,6 +44,31 @@ enum TaskReviewQuery {
         return []
     }
 
+    /// Mutation-scoped rows for Unassigned Review. Live project_tasks RLS
+    /// accepts tasks.edit=all, or tasks.edit=assigned when the operator is on
+    /// the task or its project. A view-only grant must never produce an
+    /// actionable review card.
+    static func editableTasks(dataController: DataController) -> [ProjectTask] {
+        let allTasks = dataController.getAllTasks()
+        switch PermissionStore.shared.scope(for: "tasks.edit") {
+        case "all":
+            return allTasks
+        case "assigned":
+            guard let userID = dataController.currentUser?.id.lowercased() else {
+                return []
+            }
+            return allTasks.filter { task in
+                task.getTeamMemberIds().contains {
+                    $0.lowercased() == userID
+                } || (task.project?.getTeamMemberIds().contains {
+                    $0.lowercased() == userID
+                } ?? false)
+            }
+        default:
+            return []
+        }
+    }
+
     /// Overdue-completion review queue: active, non-deleted tasks whose
     /// scheduled completion (endDate, falling back to startDate) is before the
     /// end of today. Sorted oldest-first to match the review stack ordering.
@@ -74,12 +99,32 @@ enum TaskReviewQuery {
     /// hasn't synced locally (`?? false`) — is not schedulable work and must not
     /// be surfaced as a "loose end". Mirrors `isJobBoardTaskListVisible`.
     static func unscheduledReviewTasks(dataController: DataController) -> [ProjectTask] {
-        return scopedTasks(dataController: dataController)
+        let policy = UnscheduledReviewAccessPolicy(
+            currentUserID: dataController.currentUser?.id,
+            taskEditScope: ReviewPermissionScope(
+                PermissionStore.shared.scope(for: "tasks.edit")
+            ),
+            canAssignTasks: PermissionStore.shared.hasFullAccess("tasks.assign"),
+            taskStatusScope: ReviewPermissionScope(
+                PermissionStore.shared.scope(for: "tasks.change_status")
+            ),
+            calendarEditScope: ReviewPermissionScope(
+                PermissionStore.shared.scope(for: "calendar.edit")
+            )
+        )
+
+        return editableTasks(dataController: dataController)
             .filter { task in
-                task.status == .active
+                let state = UnscheduledReviewTaskState(
+                    taskTeamMemberIDs: task.getTeamMemberIds(),
+                    projectTeamMemberIDs: task.project?.getTeamMemberIds() ?? [],
+                    isScheduled: task.startDate != nil
+                )
+                return task.status == .active
                     && task.deletedAt == nil
                     && (task.project?.status.isActive ?? false)
                     && (task.startDate == nil || task.getTeamMemberIds().isEmpty)
+                    && policy.hasAvailableMutation(for: state)
             }
             .sorted { ($0.project?.title ?? "") < ($1.project?.title ?? "") }
     }

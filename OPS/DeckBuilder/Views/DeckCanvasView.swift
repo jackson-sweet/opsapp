@@ -759,7 +759,13 @@ struct DeckCanvasView: View {
         context.fill(sp, with: .color(OPSStyle.Colors.warningStatus.opacity(0.08)))
         let outline = scaledSize(1.5, min: 1, max: 3)
         context.stroke(sp, with: .color(OPSStyle.Colors.warningStatus.opacity(0.4)), lineWidth: outline)
-        let tc = connection.stairConfig.treadCount ?? 5
+        // Tread count + rail run from the shared source: rise derives from
+        // the two levels' resolved heights, so the label tracks height edits
+        // exactly like the rendered stair does. No hardcoded fallback count —
+        // a degenerate connection (no positive drop) draws its footprint but
+        // makes no tread/rail claims.
+        let railInfo = viewModel.drawingData.stairRailInfo(for: connection)
+        let tc = railInfo?.treadCount ?? connection.stairConfig.treadCount ?? 0
         guard tc > 1 else { return }
         let treadStroke = scaledSize(1, min: 0.75, max: 2)
         for i in 1..<min(tc, 20) {
@@ -771,7 +777,13 @@ struct DeckCanvasView: View {
         }
         let lx = (p1.x + p3.x) / 2, ly = (p1.y + p3.y) / 2
         let labelFont = scaledSize(9, min: 7, max: 14)
-        context.draw(Text("\(tc) treads").font(.system(size: labelFont, weight: .medium, design: .monospaced))
+        let labelText: String
+        if let railInfo {
+            labelText = "\(railInfo.treadCount) treads · \(DimensionEngine.formatImperial(railInfo.railRunInches)) rail"
+        } else {
+            labelText = "\(tc) treads"
+        }
+        context.draw(Text(labelText).font(.system(size: labelFont, weight: .medium, design: .monospaced))
             .foregroundColor(OPSStyle.Colors.warningStatus.opacity(0.6)), at: CGPoint(x: lx, y: ly))
     }
 
@@ -985,13 +997,22 @@ struct DeckCanvasView: View {
             context.stroke(treadPath, with: .color(OPSStyle.Colors.warningStatus.opacity(0.25)), lineWidth: treadStroke)
         }
 
-        // Label: tread count + run
+        // Label: tread count + rail run. The rail figure is the stair
+        // triangle's hypotenuse (rise over horizontal run) — the length a
+        // stair railing follows — via the shared DeckStairRailInfo source so
+        // every 2D surface prints the same number. Falls back to the
+        // horizontal run only if rail info can't resolve (no rise anywhere).
         let labelX = (baseStart.x + farEnd.x) / 2
         let labelY = (baseStart.y + farEnd.y) / 2
-        let runLabel = DimensionEngine.formatImperial(totalRunInches)
+        let labelText: String
+        if let railInfo = viewModel.drawingData.stairRailInfo(for: edge) {
+            labelText = "\(railInfo.treadCount) treads · \(DimensionEngine.formatImperial(railInfo.railRunInches)) rail"
+        } else {
+            labelText = "\(tc) treads · \(DimensionEngine.formatImperial(totalRunInches))"
+        }
         let labelFont = scaledSize(9, min: 7, max: 15)
         context.draw(
-            Text("\(tc) treads · \(runLabel)")
+            Text(labelText)
                 .font(.system(size: labelFont, weight: .semibold, design: .monospaced))
                 .foregroundColor(OPSStyle.Colors.warningStatus.opacity(0.7)),
             at: CGPoint(x: labelX, y: labelY)

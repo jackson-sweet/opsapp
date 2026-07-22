@@ -461,7 +461,8 @@ struct DeckTab2DView: View {
             config: config,
             treadCount: treadCount,
             scaleFactor: drawingData.effectiveScaleFactor,
-            measurementSystem: drawingData.config.measurementSystem
+            measurementSystem: drawingData.config.measurementSystem,
+            totalRiseInches: drawingData.stairTotalRiseInches(for: edge)
         ) else { return }
 
         var rectPath = Path()
@@ -610,19 +611,57 @@ struct DeckTab2DView: View {
         context.stroke(path, with: .color(level.displayColor.swiftUIColor.opacity(0.08)), lineWidth: 1)
     }
 
+    /// Render a level-connection stair with the same full geometry + labels
+    /// as edge stairs (rectangle, tread lines, WIDTH/RUN/RAIL chips). The
+    /// previous 16pt dashed dot was the same easy-to-miss problem bug
+    /// a046a041 fixed for edge stairs. Rise derives from the two levels'
+    /// resolved heights via the shared rail-info source, so the printed rail
+    /// run tracks height edits exactly like the rendered stair.
     private func drawLevelConnection(context: GraphicsContext, connection: LevelConnection) {
         guard let upperLevel = drawingData.levels.first(where: { $0.id == connection.upperLevelId }),
               let upperEdge = upperLevel.edges.first(where: { $0.id == connection.upperEdgeId }),
               let uStart = upperLevel.vertex(byId: upperEdge.startVertexId),
               let uEnd = upperLevel.vertex(byId: upperEdge.endVertexId) else { return }
 
-        let midX = (uStart.position.x + uEnd.position.x) / 2
-        let midY = (uStart.position.y + uEnd.position.y) / 2
+        let riseInches = drawingData.elevationDifference(
+            upperLevelId: connection.upperLevelId,
+            lowerLevelId: connection.lowerLevelId
+        )
+        let treadCount = drawingData.stairRailInfo(for: connection)?.treadCount
+            ?? connection.stairConfig.treadCount
+            ?? 0
+        guard treadCount > 0,
+              let plan = DeckStairRenderPlanner.plan(
+                edgeStart: uStart.position,
+                edgeEnd: uEnd.position,
+                polygonVertices: upperLevel.orderedPositions,
+                config: connection.stairConfig,
+                treadCount: treadCount,
+                scaleFactor: drawingData.effectiveScaleFactor,
+                measurementSystem: drawingData.config.measurementSystem,
+                totalRiseInches: (riseInches ?? 0) > 0 ? riseInches : nil
+              ) else { return }
 
-        let stairIcon = Path(ellipseIn: CGRect(x: midX - 8, y: midY - 8, width: 16, height: 16))
-        context.fill(stairIcon, with: .color(OPSStyle.Colors.warningStatus.opacity(0.2)))
-        context.stroke(stairIcon, with: .color(OPSStyle.Colors.warningStatus.opacity(0.5)),
-                       style: StrokeStyle(lineWidth: 1, dash: [3, 3]))
+        var rectPath = Path()
+        rectPath.move(to: plan.baseStart)
+        rectPath.addLine(to: plan.baseEnd)
+        rectPath.addLine(to: plan.farEnd)
+        rectPath.addLine(to: plan.farStart)
+        rectPath.closeSubpath()
+
+        context.fill(rectPath, with: .color(OPSStyle.Colors.tanSoft))
+        context.stroke(rectPath, with: .color(OPSStyle.Colors.tanLine), lineWidth: OPSStyle.Layout.Border.standard)
+
+        for line in plan.treadLines {
+            var tp = Path()
+            tp.move(to: line.start)
+            tp.addLine(to: line.end)
+            context.stroke(tp, with: .color(OPSStyle.Colors.tanLine.opacity(0.75)), lineWidth: OPSStyle.Layout.Border.standard)
+        }
+
+        for label in plan.dimensionLabels {
+            drawStairDimensionLabel(context: context, label: label)
+        }
     }
 
     private func drawPoolOverlay(context: GraphicsContext, diameterInches: Double, scaleFactor: Double) {

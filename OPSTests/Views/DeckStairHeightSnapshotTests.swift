@@ -152,6 +152,60 @@ final class DeckStairHeightSnapshotTests: XCTestCase {
         )
     }
 
+    // MARK: - 2D stair labels (treads + rail run)
+
+    func testRenderStairRailLabels2D() {
+        // 7. Edge stair in the read-only 2D viewer — WIDTH/RUN chips plus the
+        //    new RAIL chip (30" rise over 40" run → 50" rail, the stair
+        //    triangle's hypotenuse).
+        var single = DeckDrawingData()
+        single.scaleFactor = 1.0
+        single.overallElevation = 2.5
+        single.vertices = [
+            DeckVertex(id: "v1", position: CGPoint(x: 60, y: 120)),
+            DeckVertex(id: "v2", position: CGPoint(x: 300, y: 120)),
+            DeckVertex(id: "v3", position: CGPoint(x: 300, y: 320)),
+            DeckVertex(id: "v4", position: CGPoint(x: 60, y: 320)),
+        ]
+        var stairEdge = DeckEdge(id: "e1", startVertexId: "v1", endVertexId: "v2")
+        stairEdge.stairConfig = StairConfig(width: 96, runPerTread: 10, treadCount: 4, totalRiseInches: 30)
+        single.edges = [
+            stairEdge,
+            DeckEdge(id: "e2", startVertexId: "v2", endVertexId: "v3"),
+            DeckEdge(id: "e3", startVertexId: "v3", endVertexId: "v4"),
+            DeckEdge(id: "e4", startVertexId: "v4", endVertexId: "v1"),
+        ]
+        snapshot(
+            "07-2d-edge-stair-rail-label",
+            view: DeckTab2DView(drawingData: single, toolState: DeckViewerToolState())
+        )
+
+        // 8. Connection stair in the 2D viewer — full stair geometry + chips
+        //    (was a 16pt dot with no label). Rise derives from the levels'
+        //    heights: 5' − 2' 6" = 30" drop.
+        var multi = DeckDrawingData()
+        multi.scaleFactor = 1.0
+        var lower = squareLevel(idPrefix: "a", name: "Level 1", originX: 40, sortOrder: 0)
+        lower.elevation = 2.5
+        var upper = squareLevel(idPrefix: "b", name: "Level 2", originX: 220, sortOrder: 1)
+        upper.elevation = 5.0
+        multi.levels = [lower, upper]
+        multi.levelConnections = [
+            LevelConnection(
+                upperLevelId: upper.id,
+                lowerLevelId: lower.id,
+                // Bottom edge — its outward perpendicular points into empty
+                // canvas below the square, so the stair draws on-screen.
+                upperEdgeId: "be3",
+                stairConfig: StairConfig(width: 96, runPerTread: 10, treadCount: 4)
+            )
+        ]
+        snapshot(
+            "08-2d-connection-stair-rail-label",
+            view: DeckTab2DView(drawingData: multi, toolState: DeckViewerToolState())
+        )
+    }
+
     // MARK: - Height sheet
 
     func testRenderHeightSheetScopes() {

@@ -31,11 +31,79 @@ struct DeckStairDimensionLabel: Equatable {
     enum Kind: Equatable {
         case width
         case run
+        case rail
     }
 
     let kind: Kind
     let text: String
     let position: CGPoint
+}
+
+/// Tread count + sloped rail run for one stair — the shared source for every
+/// 2D stair label. The rail run is the stair triangle's hypotenuse (total
+/// rise over total horizontal run): the length a stair railing actually
+/// follows, which is what a railing order is measured by.
+struct DeckStairRailInfo: Equatable {
+    let treadCount: Int
+    let railRunInches: Double
+}
+
+extension DeckDrawingData {
+    /// Total rise (inches) a fixed-rise stair on `edge` spans: the stored
+    /// rise when the user set one, else the owning context's resolved render
+    /// height — the same fallback the 3D scene uses, so labels and geometry
+    /// never disagree.
+    func stairTotalRiseInches(for edge: DeckEdge) -> Double? {
+        guard let config = edge.stairConfig else { return nil }
+        if let stored = config.totalRiseInches, stored > 0 { return stored }
+        if isMultiLevel {
+            for (index, level) in levels.enumerated() where level.edge(byId: edge.id) != nil {
+                return renderElevationFeet(for: level, levelIndex: index) * 12.0
+            }
+            return nil
+        }
+        return renderElevationFeetSingleLevel * 12.0
+    }
+
+    /// Rail info for a fixed-rise stair on `edge`, or nil when the edge
+    /// carries no stair.
+    func stairRailInfo(for edge: DeckEdge) -> DeckStairRailInfo? {
+        guard let config = edge.stairConfig,
+              let riseInches = stairTotalRiseInches(for: edge), riseInches > 0 else { return nil }
+        let treadCount = config.treadCount
+            ?? StairConfig.calculateTreadCount(totalRise: riseInches, risePerStep: config.risePerStep)
+        guard treadCount > 0 else { return nil }
+        return DeckStairRailInfo(
+            treadCount: treadCount,
+            railRunInches: StairConfig.stringerLength(
+                totalRise: riseInches,
+                treadCount: treadCount,
+                runPerTread: config.runPerTread
+            )
+        )
+    }
+
+    /// Rail info for a level-connection stair. Rise derives from the two
+    /// levels' resolved heights (the connection's live geometry), so the
+    /// label tracks height edits exactly like the rendered stair does.
+    func stairRailInfo(for connection: LevelConnection) -> DeckStairRailInfo? {
+        guard let riseInches = elevationDifference(
+            upperLevelId: connection.upperLevelId,
+            lowerLevelId: connection.lowerLevelId
+        ), riseInches > 0 else { return nil }
+        let config = connection.stairConfig
+        let treadCount = config.treadCount
+            ?? StairConfig.calculateTreadCount(totalRise: riseInches, risePerStep: config.risePerStep)
+        guard treadCount > 0 else { return nil }
+        return DeckStairRailInfo(
+            treadCount: treadCount,
+            railRunInches: StairConfig.stringerLength(
+                totalRise: riseInches,
+                treadCount: treadCount,
+                runPerTread: config.runPerTread
+            )
+        )
+    }
 }
 
 enum DeckStairRenderPlanner {
@@ -47,7 +115,8 @@ enum DeckStairRenderPlanner {
         config: StairConfig,
         treadCount: Int,
         scaleFactor: Double,
-        measurementSystem: MeasurementSystem
+        measurementSystem: MeasurementSystem,
+        totalRiseInches: Double? = nil
     ) -> DeckStairRenderPlan? {
         let dx = end.x - start.x
         let dy = end.y - start.y
@@ -134,7 +203,7 @@ enum DeckStairRenderPlanner {
         let runLabelPoint = midpoint(baseStart, farStart)
             .offset(by: CGVector(dx: -edgeUnit.dx, dy: -edgeUnit.dy), distance: lateralLabelInset)
 
-        let labels = [
+        var labels = [
             DeckStairDimensionLabel(
                 kind: .width,
                 text: "WIDTH \(DimensionEngine.format(widthInches, system: measurementSystem))",
@@ -146,6 +215,26 @@ enum DeckStairRenderPlanner {
                 position: runLabelPoint
             )
         ]
+
+        // Rail run — the stair triangle's hypotenuse (rise over horizontal
+        // run), the length a stair railing follows. Emitted only when the
+        // caller knows the rise; mirrored on the flank opposite the RUN chip.
+        if let totalRiseInches, totalRiseInches > 0 {
+            let railRunInches = StairConfig.stringerLength(
+                totalRise: totalRiseInches,
+                treadCount: treadCount,
+                runPerTread: config.runPerTread
+            )
+            let railLabelPoint = midpoint(baseEnd, farEnd)
+                .offset(by: edgeUnit, distance: lateralLabelInset)
+            labels.append(
+                DeckStairDimensionLabel(
+                    kind: .rail,
+                    text: "RAIL \(DimensionEngine.format(railRunInches, system: measurementSystem))",
+                    position: railLabelPoint
+                )
+            )
+        }
 
         return DeckStairRenderPlan(
             baseStart: baseStart,

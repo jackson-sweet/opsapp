@@ -254,6 +254,56 @@ final class DeckStairLevelHeightTests: XCTestCase {
         XCTAssertNil(vm.drawingData.levels[1].edge(byId: "be2")?.stairConfig)
     }
 
+    // MARK: - Rail run labels (2D)
+
+    func testStairRailInfo_edgeStair_usesStoredRiseHypotenuse() {
+        var data = multiLevelData()
+        // 30" rise, 4 treads × 10" run = 40" → 30-40-50 triangle: rail = 50".
+        data.levels[1].edges[0].stairConfig = StairConfig(
+            width: 48, runPerTread: 10, treadCount: 4, totalRiseInches: 30
+        )
+
+        let info = data.stairRailInfo(for: data.levels[1].edges[0])
+        XCTAssertEqual(info?.treadCount, 4)
+        XCTAssertEqual(info?.railRunInches ?? 0, 50.0, accuracy: 0.001)
+    }
+
+    func testStairRailInfo_edgeStair_fallsBackToContextHeightWhenNoStoredRise() {
+        var data = DeckDrawingData()
+        data.overallElevation = 2.5   // 30" — with 4 × 10" treads → rail 50"
+        data.vertices = [
+            DeckVertex(id: "v1", position: CGPoint(x: 0, y: 0)),
+            DeckVertex(id: "v2", position: CGPoint(x: 144, y: 0)),
+        ]
+        var edge = DeckEdge(id: "e1", startVertexId: "v1", endVertexId: "v2")
+        edge.stairConfig = StairConfig(width: 48, runPerTread: 10, treadCount: 4)
+        data.edges = [edge]
+
+        let info = data.stairRailInfo(for: data.edges[0])
+        XCTAssertEqual(info?.railRunInches ?? 0, 50.0, accuracy: 0.001)
+    }
+
+    func testStairRailInfo_connection_derivesFromResolvedLevelHeights() {
+        var data = multiLevelData()
+        data.levels[0].elevation = 2.5
+        data.levels[1].elevation = 5.0   // 30" drop
+        let connection = LevelConnection(
+            upperLevelId: data.levels[1].id,
+            lowerLevelId: data.levels[0].id,
+            upperEdgeId: "be1",
+            stairConfig: StairConfig(width: 48, runPerTread: 10)   // treadCount nil → derived
+        )
+        data.levelConnections = [connection]
+
+        let info = data.stairRailInfo(for: connection)
+        XCTAssertEqual(info?.treadCount, 4, "30\" at 7.5\"/step derives 4 treads")
+        XCTAssertEqual(info?.railRunInches ?? 0, 50.0, accuracy: 0.001)
+
+        // Same-height levels have no drop — no tread/rail claims.
+        data.levels[1].elevation = 2.5
+        XCTAssertNil(data.stairRailInfo(for: connection))
+    }
+
     // MARK: - Connected stairs track height edits
 
     func testSetLevelElevation_recalculatesConnectionTreadCounts() {

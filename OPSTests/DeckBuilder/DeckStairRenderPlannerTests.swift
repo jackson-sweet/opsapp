@@ -35,6 +35,37 @@ final class DeckStairRenderPlannerTests: XCTestCase {
         )
     }
 
+    func testPlanAddsRailLabelWhenRiseIsKnown() {
+        // 30" rise over 4 treads × 10" run = 40" → 30-40-50 triangle: the
+        // rail run (hypotenuse — what a stair railing follows) is exactly 50".
+        let plan = DeckStairRenderPlanner.plan(
+            edgeStart: CGPoint(x: 0, y: 0),
+            edgeEnd: CGPoint(x: 120, y: 0),
+            polygonVertices: [
+                CGPoint(x: 0, y: 0),
+                CGPoint(x: 120, y: 0),
+                CGPoint(x: 120, y: 96),
+                CGPoint(x: 0, y: 96)
+            ],
+            config: StairConfig(width: 48, runPerTread: 10, treadCount: 4),
+            treadCount: 4,
+            scaleFactor: 1,
+            measurementSystem: .imperial,
+            totalRiseInches: 30
+        )
+
+        XCTAssertEqual(
+            plan?.dimensionLabels.map(\.text),
+            ["WIDTH 4'", "RUN 3' 4\"", "RAIL 4' 2\""]
+        )
+        XCTAssertEqual(plan?.dimensionLabels.last?.kind, .rail)
+        // The rail chip's position is part of the frame so zoom-to-fit never
+        // crops it.
+        if let plan {
+            XCTAssertTrue(plan.framePoints.contains(where: { $0 == plan.dimensionLabels.last?.position }))
+        }
+    }
+
     func testPlanHonorsAlignmentOffsetAndFlipDirection() {
         let plan = DeckStairRenderPlanner.plan(
             edgeStart: CGPoint(x: 0, y: 0),

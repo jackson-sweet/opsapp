@@ -88,7 +88,6 @@ struct LeadDetailView: View {
     // Details document (spec §5.9)
     @State private var isAddingToClient = false
     @State private var showingClientDetail = false
-    @State private var showingProjectPicker = false
     @State private var estimateToOpen: Estimate?
     @State private var isFetchingAttachment = false
 
@@ -238,6 +237,7 @@ struct LeadDetailView: View {
                                     client: vm.client,
                                     rosterState: rosterState,
                                     canEdit: canEdit,
+                                    canMatchProject: canConvert && showWonNotConverted,
                                     projectName: linkedProjectName,
                                     attachments: vm.attachments,
                                     estimates: vm.estimates,
@@ -249,9 +249,9 @@ struct LeadDetailView: View {
                                         showingClientDetail = true
                                     },
                                     onOpenProject: { openLinkedProject() },
-                                    onEditProject: {
+                                    onMatchProject: {
                                         UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                                        showingProjectPicker = true
+                                        onMarkWon()
                                     },
                                     onOpenDeck: { design in deckDesignToOpen = design },
                                     onCreateDeck: { showingDeckCreationPicker = true },
@@ -409,32 +409,8 @@ struct LeadDetailView: View {
                     .environmentObject(permissionStore)
             }
         }
-        // PROJECT row pencil → link/unlink an existing project.
-        .sheet(isPresented: $showingProjectPicker) {
-            LeadProjectPickerSheet(
-                currentProjectId: opportunity.projectId,
-                onSelect: { newProjectId in
-                    Task { await changeProjectAssociation(to: newProjectId) }
-                }
-            )
-        }
         .fullScreenCover(item: $deckDesignToOpen) { design in
             deckBuilder(design: design)
-        }
-    }
-
-    /// Writes the new association, echoes the server's answer into the local
-    /// lead, and confirms with the standard commit haptic.
-    private func changeProjectAssociation(to newProjectId: String?) async {
-        do {
-            let confirmed = try await vm.associateProject(newProjectId)
-            opportunity.projectId = confirmed
-            UINotificationFeedbackGenerator().notificationOccurred(.success)
-        } catch {
-            print("[LeadDetail] project association failed: \(error)")
-            ToastCenter.shared.present(
-                Toast(label: "// PROJECT LINK FAILED — RETRY", tone: .error)
-            )
         }
     }
 

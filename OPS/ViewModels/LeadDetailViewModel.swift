@@ -173,13 +173,6 @@ class LeadDetailViewModel: ObservableObject {
         } catch { print("[LeadDetail] last word failed: \(error)") }
     }
 
-    /// Links (or unlinks, with nil) a project to this lead and echoes the
-    /// server's answer back to the caller so local state can follow.
-    func associateProject(_ projectId: String?) async throws -> String? {
-        let dto = try await repository.updateProjectAssociation(opportunityId, projectId: projectId)
-        return dto.projectId
-    }
-
     // MARK: - Roster state (pure — mirrors web DealContactRow rules)
 
     /// Where the lead's person stands against the roster. Mirrors the web's

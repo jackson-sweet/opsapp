@@ -177,6 +177,272 @@ final class LeadAssignmentFoundationTests: XCTestCase {
         )
     }
 
+    func testConversionPreflightRoutesOnlyEligibleDuplicateCandidatesToMatch() {
+        let matchCandidate = ConvertToProjectSheet.RelatedProjectRef(
+            id: "project-match",
+            title: "3998 Holland Ave",
+            address: "3998 Holland Ave, Victoria bc",
+            status: nil,
+            isLikelyDuplicate: true
+        )
+        let reviewOnlyProject = ConvertToProjectSheet.RelatedProjectRef(
+            id: "project-review",
+            title: "Other client project",
+            address: "12 Douglas St",
+            status: .accepted,
+            isLikelyDuplicate: false
+        )
+        let rejectedStaleCandidate = ConvertToProjectSheet.RelatedProjectRef(
+            id: "project-stale",
+            title: "Already linked project",
+            address: "3998 Holland Ave, Victoria bc",
+            status: .accepted,
+            isLikelyDuplicate: true,
+            isMatchAvailable: false
+        )
+
+        XCTAssertEqual(matchCandidate.interaction, .match)
+        XCTAssertEqual(matchCandidate.actionLabel, "MATCH")
+        XCTAssertEqual(reviewOnlyProject.interaction, .open)
+        XCTAssertNil(reviewOnlyProject.actionLabel)
+        XCTAssertEqual(rejectedStaleCandidate.interaction, .open)
+        XCTAssertEqual(rejectedStaleCandidate.actionLabel, "REVIEW")
+    }
+
+    func testCandidateProjectMustBeUnlinkedOrAlreadyBelongToThisLead() {
+        XCTAssertTrue(LeadConversionService.projectLinkIsAvailable(
+            opportunityId: nil,
+            opportunityRef: nil,
+            leadId: "lead-current"
+        ))
+        XCTAssertTrue(LeadConversionService.projectLinkIsAvailable(
+            opportunityId: "lead-current",
+            opportunityRef: "lead-current",
+            leadId: "lead-current"
+        ))
+        XCTAssertFalse(LeadConversionService.projectLinkIsAvailable(
+            opportunityId: "lead-other",
+            opportunityRef: "lead-other",
+            leadId: "lead-current"
+        ))
+        XCTAssertFalse(LeadConversionService.projectLinkIsAvailable(
+            opportunityId: "lead-current",
+            opportunityRef: "lead-other",
+            leadId: "lead-current"
+        ))
+    }
+
+    func testSelectedExistingProjectBecomesTheGuardedConversionTarget() {
+        let create = ConvertToProjectSheet.SubmissionTarget(selectedProjectId: nil)
+        let match = ConvertToProjectSheet.SubmissionTarget(
+            selectedProjectId: "project-existing"
+        )
+        let emptySelection = ConvertToProjectSheet.SubmissionTarget(
+            selectedProjectId: "   "
+        )
+
+        XCTAssertNil(create.linkToProjectId)
+        XCTAssertEqual(create.primaryLabel, "CREATE PROJECT")
+        XCTAssertTrue(create.showsProjectIdentityFields)
+        XCTAssertEqual(match.linkToProjectId, "project-existing")
+        XCTAssertEqual(match.primaryLabel, "MATCH PROJECT")
+        XCTAssertFalse(match.showsProjectIdentityFields)
+        XCTAssertNil(emptySelection.linkToProjectId)
+        XCTAssertEqual(emptySelection.primaryLabel, "CREATE PROJECT")
+        XCTAssertTrue(emptySelection.showsProjectIdentityFields)
+    }
+
+    func testConversionCannotCommitBeforeAHealthyAuthoritativePreflight() {
+        XCTAssertFalse(ConvertToProjectSheet.canCommitConversion(
+            hasLoadedPreflight: false,
+            preflightFailed: false,
+            isSaving: false,
+            requiresMatchReviewRefresh: false,
+            hasLikelyDuplicate: false,
+            hasSelectedMatch: false
+        ))
+        XCTAssertFalse(ConvertToProjectSheet.canCommitConversion(
+            hasLoadedPreflight: true,
+            preflightFailed: true,
+            isSaving: false,
+            requiresMatchReviewRefresh: false,
+            hasLikelyDuplicate: false,
+            hasSelectedMatch: false
+        ))
+        XCTAssertFalse(ConvertToProjectSheet.canCommitConversion(
+            hasLoadedPreflight: true,
+            preflightFailed: false,
+            isSaving: false,
+            requiresMatchReviewRefresh: true,
+            hasLikelyDuplicate: false,
+            hasSelectedMatch: false
+        ))
+        XCTAssertFalse(ConvertToProjectSheet.canCommitConversion(
+            hasLoadedPreflight: true,
+            preflightFailed: false,
+            isSaving: false,
+            requiresMatchReviewRefresh: false,
+            hasLikelyDuplicate: true,
+            hasSelectedMatch: false
+        ))
+        XCTAssertTrue(ConvertToProjectSheet.canCommitConversion(
+            hasLoadedPreflight: true,
+            preflightFailed: false,
+            isSaving: false,
+            requiresMatchReviewRefresh: false,
+            hasLikelyDuplicate: true,
+            hasSelectedMatch: true
+        ))
+        XCTAssertTrue(ConvertToProjectSheet.canCommitConversion(
+            hasLoadedPreflight: true,
+            preflightFailed: false,
+            isSaving: false,
+            requiresMatchReviewRefresh: false,
+            hasLikelyDuplicate: false,
+            hasSelectedMatch: false
+        ))
+    }
+
+    func testPreflightCreationBlockerStopsUnsafeCreateWithAnActionableReason() throws {
+        let addressPreflight = try JSONDecoder().decode(
+            ConversionPreflight.self,
+            from: Data("""
+            {
+              "existing_linked_project": null,
+              "duplicate_candidates": [],
+              "other_client_projects": [],
+              "creation_blocker": "address_required",
+              "suggested_name": "New project",
+              "already_converted": false,
+              "project_accessible": false,
+              "assignment_version": 4
+            }
+            """.utf8)
+        )
+
+        let reviewPreflight = try JSONDecoder().decode(
+            ConversionPreflight.self,
+            from: Data("""
+            {
+              "existing_linked_project": null,
+              "duplicate_candidates": [],
+              "other_client_projects": [],
+              "creation_blocker": "project_review_required",
+              "suggested_name": "New project",
+              "already_converted": false,
+              "project_accessible": false,
+              "assignment_version": 4
+            }
+            """.utf8)
+        )
+
+        XCTAssertEqual(addressPreflight.creationBlocker, .addressRequired)
+        XCTAssertEqual(reviewPreflight.creationBlocker, .projectReviewRequired)
+        XCTAssertFalse(ConvertToProjectSheet.canCommitConversion(
+            hasLoadedPreflight: true,
+            preflightFailed: false,
+            isSaving: false,
+            requiresMatchReviewRefresh: false,
+            hasLikelyDuplicate: false,
+            hasSelectedMatch: false,
+            creationBlocker: addressPreflight.creationBlocker
+        ))
+        XCTAssertFalse(ConvertToProjectSheet.canCommitConversion(
+            hasLoadedPreflight: true,
+            preflightFailed: false,
+            isSaving: false,
+            requiresMatchReviewRefresh: false,
+            hasLikelyDuplicate: false,
+            hasSelectedMatch: false,
+            creationBlocker: reviewPreflight.creationBlocker
+        ))
+        XCTAssertTrue(ConvertToProjectSheet.shouldStopCreateAfterAddressRecheck(
+            creationBlocker: reviewPreflight.creationBlocker
+        ))
+        XCTAssertFalse(ConvertToProjectSheet.shouldStopCreateAfterAddressRecheck(
+            creationBlocker: nil
+        ))
+    }
+
+    func testEditedCreateAddressInvalidatesTheAuthoritativePreflight() {
+        XCTAssertTrue(ConvertToProjectSheet.createAddressNeedsRecheck(
+            address: "3998 Holland Ave, Victoria bc",
+            verifiedFingerprint: nil
+        ))
+
+        let verified = ConvertToProjectSheet.createAddressFingerprint(
+            "3998 Holland Ave, Victoria bc"
+        )
+        XCTAssertFalse(ConvertToProjectSheet.createAddressNeedsRecheck(
+            address: "3998 Holland Ave, Victoria bc",
+            verifiedFingerprint: verified
+        ))
+        XCTAssertTrue(ConvertToProjectSheet.createAddressNeedsRecheck(
+            address: "4000 Holland Ave, Victoria bc",
+            verifiedFingerprint: verified
+        ))
+    }
+
+    func testProjectLinkGuardFailuresBecomeARefreshableMatchError() {
+        let serverErrors = [
+            "project_link_unavailable",
+            "project_link_unavailable: matching_project_link_conflict",
+            "project_link_ambiguous",
+            "linked project belongs to another opportunity",
+            "link target project already belongs to another opportunity",
+            "link target project legacy mirror belongs to another opportunity",
+            "opportunity is already linked to another project",
+            "opportunity project mirrors disagree",
+        ]
+
+        for message in serverErrors {
+            let rawError = NSError(domain: message, code: 1)
+            guard let mapped = LeadConversionService.mapRPCError(rawError) as? LeadConversionError,
+                  case .projectLinkUnavailable = mapped else {
+                return XCTFail("Expected project-link guard mapping for \(message)")
+            }
+        }
+
+        XCTAssertEqual(
+            LeadConversionError.projectLinkUnavailable.errorDescription,
+            "The project changed and must be reviewed before matching."
+        )
+    }
+
+    func testLinkedProjectRowSurvivesBeforeTheProjectTitleHydrates() {
+        XCTAssertEqual(
+            LeadDetailsDocument.projectRowPresentation(
+                projectId: "project-linked",
+                projectName: nil,
+                stage: .won,
+                canMatchProject: true
+            ),
+            .linked(label: "LINKED PROJECT")
+        )
+        XCTAssertEqual(
+            LeadDetailsDocument.projectRowPresentation(
+                projectId: nil,
+                projectName: nil,
+                stage: .won,
+                canMatchProject: true
+            ),
+            .match
+        )
+        XCTAssertEqual(
+            LeadDetailsDocument.projectRowPresentation(
+                projectId: nil,
+                projectName: nil,
+                stage: .won,
+                canMatchProject: false
+            ),
+            .empty
+        )
+        XCTAssertEqual(
+            LeadDetailsDocument.projectActionMinimumHeight,
+            OPSStyle.Layout.touchTargetMin
+        )
+    }
+
     func testConversionResultParsesAssignmentSnapshotAndProjectAccessGuard() throws {
         let result = try JSONDecoder().decode(
             ConvertOpportunityResult.self,

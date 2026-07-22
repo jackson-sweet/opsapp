@@ -32,6 +32,18 @@
 import Foundation
 import Supabase
 
+private struct MatchCandidateProjectLinkRow: Decodable {
+    let id: String
+    let opportunityId: String?
+    let opportunityRef: String?
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case opportunityId = "opportunity_id"
+        case opportunityRef = "opportunity_ref"
+    }
+}
+
 struct ConvertOpportunityParams: Encodable {
     let companyId: String
     let opportunityId: String
@@ -188,6 +200,51 @@ final class LeadConversionService {
         }
     }
 
+    /// Preflight duplicate heuristics intentionally find same-address rows,
+    /// including rows whose project relationship changed concurrently. Before
+    /// the UI promotes one to MATCH, re-read both canonical project mirrors in
+    /// one RLS-scoped query and fail closed unless the project is unlinked (or
+    /// already belongs to this exact lead).
+    func matchableCandidateProjectIds(
+        for lead: Opportunity,
+        candidates: [PreflightCandidate]
+    ) async throws -> Set<String> {
+        let projectIds = Array(Set(candidates.map(\.projectId).filter { !$0.isEmpty }))
+        guard !projectIds.isEmpty else { return [] }
+
+        let rows: [MatchCandidateProjectLinkRow] = try await client
+            .from("projects")
+            .select("id, opportunity_id, opportunity_ref")
+            .eq("company_id", value: companyId)
+            .in("id", values: projectIds)
+            .is("deleted_at", value: nil)
+            .execute()
+            .value
+
+        return Set(rows.compactMap { row in
+            Self.projectLinkIsAvailable(
+                opportunityId: row.opportunityId,
+                opportunityRef: row.opportunityRef,
+                leadId: lead.id
+            ) ? row.id.lowercased() : nil
+        })
+    }
+
+    nonisolated static func projectLinkIsAvailable(
+        opportunityId: String?,
+        opportunityRef: String?,
+        leadId: String
+    ) -> Bool {
+        let normalizedLeadId = leadId.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !normalizedLeadId.isEmpty else { return false }
+
+        let linkedLeadIds = [opportunityId, opportunityRef].compactMap { value -> String? in
+            let normalized = value?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            return normalized?.isEmpty == false ? normalized : nil
+        }
+        return linkedLeadIds.allSatisfy { $0 == normalizedLeadId }
+    }
+
     // MARK: - Unified convert transaction (RPC-backed)
 
     /// THE convert transaction. Calls the unified `convert_opportunity_to_project`
@@ -270,16 +327,28 @@ final class LeadConversionService {
     // MARK: - Error mapping
 
     /// Translates the Postgres exception codes raised by the RPC into typed
-    /// Swift errors. The RPC raises `opportunity_not_found` (SQLSTATE P0002)
-    /// and `access_denied` (SQLSTATE 42501); everything else passes through
-    /// as the original Supabase error.
-    private static func mapRPCError(_ error: Error) -> Error {
+    /// Swift errors. Kept internal so the live error-contract mapping remains
+    /// directly regression-testable.
+    nonisolated static func mapRPCError(_ error: Error) -> Error {
         let description = String(describing: error)
         if description.contains("opportunity_not_found") {
             return LeadConversionError.opportunityNotFound
         }
         if description.contains("access_denied") {
             return LeadConversionError.accessDenied
+        }
+        if description.contains("project_link_unavailable")
+            || description.contains("project_link_ambiguous")
+            || description.contains("belongs to another opportunity")
+            || description.contains("opportunity is already linked to another project")
+            || description.contains("opportunity project mirrors disagree") {
+            return LeadConversionError.projectLinkUnavailable
+        }
+        if description.contains("invalid_assignment_snapshot") {
+            return LeadConversionError.assignmentChanged
+        }
+        if description.contains("opportunity_client_snapshot_mismatch") {
+            return LeadConversionError.leadChanged
         }
         return error
     }
@@ -336,6 +405,9 @@ enum LeadConversionError: LocalizedError {
     case assignmentChanged
     /// The stage or another guarded lead snapshot changed after sheet load.
     case leadChanged
+    /// The selected project changed, disappeared, or no longer satisfies the
+    /// server's guarded evidence/link contract.
+    case projectLinkUnavailable
     /// The server did not provide enough authoritative fields to prove commit.
     case unverifiedResult
 
@@ -349,6 +421,8 @@ enum LeadConversionError: LocalizedError {
             return "Lead assignment changed. Refresh before converting."
         case .leadChanged:
             return "Lead changed. Refresh before converting."
+        case .projectLinkUnavailable:
+            return "The project changed and must be reviewed before matching."
         case .unverifiedResult:
             return "Conversion could not be verified. Refresh before trying again."
         }
@@ -367,6 +441,10 @@ struct ConversionPreflight: Decodable {
     let duplicateCandidates: [PreflightCandidate]
     /// Other live projects under the same client.
     let otherClientProjects: [PreflightClientProject]
+    /// Why a nil-target create is unsafe even though no selectable candidate
+    /// can be shown. The sheet turns this into a corrective action instead of
+    /// offering a conversion that the final transaction must reject.
+    let creationBlocker: ConversionPreflightCreationBlocker?
     /// `derive_project_name(address, client)` base preview (no `#N` suffix).
     let suggestedName: String?
     /// Recovery signal for a prior committed conversion. When the linked
@@ -383,6 +461,7 @@ struct ConversionPreflight: Decodable {
         case existingLinkedProject = "existing_linked_project"
         case duplicateCandidates   = "duplicate_candidates"
         case otherClientProjects   = "other_client_projects"
+        case creationBlocker       = "creation_blocker"
         case suggestedName         = "suggested_name"
         case alreadyConverted      = "already_converted"
         case projectAccessible     = "project_accessible"
@@ -394,11 +473,25 @@ struct ConversionPreflight: Decodable {
         existingLinkedProject = try c.decodeIfPresent(PreflightLinkedProject.self, forKey: .existingLinkedProject)
         duplicateCandidates = try c.decodeIfPresent([PreflightCandidate].self, forKey: .duplicateCandidates) ?? []
         otherClientProjects = try c.decodeIfPresent([PreflightClientProject].self, forKey: .otherClientProjects) ?? []
+        creationBlocker = try c.decodeIfPresent(
+            ConversionPreflightCreationBlocker.self,
+            forKey: .creationBlocker
+        )
         suggestedName = try c.decodeIfPresent(String.self, forKey: .suggestedName)
         alreadyConverted = try c.decodeIfPresent(Bool.self, forKey: .alreadyConverted) ?? false
         projectAccessible = try c.decodeIfPresent(Bool.self, forKey: .projectAccessible) ?? false
         assignmentVersion = try c.decodeIfPresent(Int64.self, forKey: .assignmentVersion)
     }
+}
+
+enum ConversionPreflightCreationBlocker: String, Decodable, Equatable {
+    /// Another active project exists for this client, but the lead has no
+    /// address with which to prove whether it is the same job.
+    case addressRequired = "address_required"
+    /// An active same-address project exists but cannot be offered as a safe
+    /// MATCH target (access, link ownership, or mirror integrity requires an
+    /// administrator to resolve it).
+    case projectReviewRequired = "project_review_required"
 }
 
 /// The project this opportunity already converted to (DUPLICATE-EXISTS state).

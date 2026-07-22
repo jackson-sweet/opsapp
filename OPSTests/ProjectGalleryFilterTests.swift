@@ -60,4 +60,24 @@ final class ProjectGalleryFilterTests: XCTestCase {
         XCTAssertFalse(photo("u", source: "in_progress", deletedAt: Date()).isGalleryEligible,
                        "soft-deleted photos are never gallery-eligible")
     }
+
+    @MainActor
+    func test_galleryMergeState_suppressesCanonicalTombstonesAndNonGalleryRows() throws {
+        let container = try makeContainer()
+        _ = container
+        let rows = [
+            photo("https://x/deleted.jpg", source: "in_progress", deletedAt: Date()),
+            photo("//x/deck.jpg", source: "deck_design"),
+            photo("https://x/active.jpg", source: "in_progress"),
+            photo("//x/active.jpg", source: "in_progress", deletedAt: Date()),
+        ]
+
+        let state = rows.galleryMergeState()
+
+        XCTAssertEqual(state.eligibleDates.map(\.url), ["https://x/active.jpg"])
+        XCTAssertEqual(state.excludedURLIdentities, [
+            "https://x/deck.jpg",
+            "https://x/deleted.jpg",
+        ])
+    }
 }

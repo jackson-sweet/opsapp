@@ -100,6 +100,25 @@ final class GalleryOrderingTests: XCTestCase {
         XCTAssertEqual(ordered, ["https://x/dup.jpg"])
     }
 
+    func testProtocolRelativeAliasesDeduplicateAndCanonicalTombstonesSuppressCSV() {
+        let csv = [
+            "//x/photo.jpg",
+            "https://x/photo.jpg",
+            "//x/deleted.jpg",
+        ]
+        let rows: [(url: String, date: Date)] = [
+            ("https://x/photo.jpg", epoch(1_000)),
+        ]
+
+        let ordered = GalleryOrdering.orderedNewestFirst(
+            csvURLs: csv,
+            syncedPhotoDates: rows,
+            excludedURLIdentities: ["https://x/deleted.jpg"]
+        )
+
+        XCTAssertEqual(ordered, ["//x/photo.jpg"])
+    }
+
     func testTiedDatesKeepStableOrder() {
         let csv: [String] = []
         let rows: [(url: String, date: Date)] = [

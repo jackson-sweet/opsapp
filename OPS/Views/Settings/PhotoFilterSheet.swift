@@ -6,6 +6,11 @@
 import SwiftUI
 import SwiftData
 
+struct PhotoUploaderFilterOption: Identifiable, Equatable {
+    let id: String
+    let name: String
+}
+
 struct PhotoFilterSheet: View {
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var dataController: DataController
@@ -17,23 +22,9 @@ struct PhotoFilterSheet: View {
     @Binding var projectIds: Set<String>
 
     let allProjects: [Project]
-    let allAnnotations: [PhotoAnnotation]
+    let uploaders: [PhotoUploaderFilterOption]
 
     @State private var projectSearchText = ""
-
-    // Derived data
-    private var uploaders: [(id: String, name: String)] {
-        let authorIds = Set(allAnnotations.compactMap { $0.authorId.isEmpty ? nil : $0.authorId })
-        guard let companyId = dataController.currentUser?.companyId else { return [] }
-        let teamMembers = dataController.getTeamMembers(companyId: companyId)
-
-        return authorIds.compactMap { authorId in
-            if let user = teamMembers.first(where: { $0.id == authorId }) {
-                return (id: authorId, name: user.fullName)
-            }
-            return nil
-        }.sorted { $0.name < $1.name }
-    }
 
     private var taskTypes: [TaskType] {
         guard let companyId = dataController.currentUser?.companyId,

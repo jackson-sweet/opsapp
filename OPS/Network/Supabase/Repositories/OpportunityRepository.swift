@@ -193,21 +193,6 @@ class OpportunityRepository {
         )
     }
 
-    /// Sets or clears the lead's linked project. A dedicated patch because
-    /// `UpdateOpportunityDTO` omits nil fields entirely — which can never
-    /// UNLINK. This encodes an explicit JSON null when clearing.
-    func updateProjectAssociation(_ opportunityId: String, projectId: String?) async throws -> OpportunityDTO {
-        struct Patch: Encodable {
-            let projectId: String?
-            enum CodingKeys: String, CodingKey { case projectId = "project_id" }
-            func encode(to encoder: Encoder) throws {
-                var c = encoder.container(keyedBy: CodingKeys.self)
-                try c.encode(projectId, forKey: .projectId) // nil → JSON null
-            }
-        }
-        return try await update(opportunityId, patch: Patch(projectId: projectId))
-    }
-
     func fetchActivities(for opportunityId: String) async throws -> [ActivityDTO] {
         try await client
             .from("activities")

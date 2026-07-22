@@ -407,14 +407,19 @@ final class MoneyLeadsRedesignSnapshotTests: XCTestCase {
         }
     }
 
-    /// The dossier document's interactive rows (2026-07-20): tappable CLIENT
-    /// with chevron, PROJECT with pencil re-link + LINK PROJECT empty state,
+    /// The dossier document's interactive rows (2026-07-22): tappable CLIENT
+    /// with chevron, linked PROJECT open-only + guarded MATCH PROJECT state,
     /// and the LAST WORD correspondence row (inbound, outbound, and absent —
     /// no correspondence leaves no row, not a `—`).
     func testRenderLeadDocumentRows() {
-        let lead = Opportunity.preview(
+        let linkedLead = Opportunity.preview(
             title: "Deck resurface — 320 sq ft", contactName: "Jill Adams",
-            stage: .quoted, estimatedValue: 9_800, daysInStage: 3
+            stage: .won, estimatedValue: 9_800, daysInStage: 3
+        )
+        linkedLead.projectId = "qa-linked-project"
+        let unlinkedLead = Opportunity.preview(
+            title: "Deck resurface — 320 sq ft", contactName: "Jill Adams",
+            stage: .won, estimatedValue: 9_800, daysInStage: 3
         )
         let client = Client(id: "qa-client", name: "Adams Property Group")
         let inbound = LeadCorrespondence(
@@ -432,21 +437,21 @@ final class MoneyLeadsRedesignSnapshotTests: XCTestCase {
 
         snapshot("lead_document_rows") {
             VStack(spacing: OPSStyle.Layout.spacing3) {
-                // Linked project (open + pencil) · THEM last word · tappable client
+                // Linked project (open only) · THEM last word · tappable client
                 LeadDetailsDocument(
-                    lead: lead, client: client, rosterState: .mirrorsClient,
-                    canEdit: true, projectName: "Adams deck resurface",
+                    lead: linkedLead, client: client, rosterState: .mirrorsClient,
+                    canEdit: true, canMatchProject: false, projectName: "Adams deck resurface",
                     attachments: [], estimates: [], correspondence: inbound
                 )
-                // No project → LINK PROJECT chip · YOU last word
+                // Won + unconverted → guarded MATCH PROJECT · YOU last word
                 LeadDetailsDocument(
-                    lead: lead, client: client, rosterState: .mirrorsClient,
-                    canEdit: true, projectName: nil,
+                    lead: unlinkedLead, client: client, rosterState: .mirrorsClient,
+                    canEdit: true, canMatchProject: true, projectName: nil,
                     attachments: [], estimates: [], correspondence: outbound
                 )
                 // Read-only, nothing linked, silent — the quiet document
                 LeadDetailsDocument(
-                    lead: lead, client: nil, rosterState: .noClient,
+                    lead: unlinkedLead, client: nil, rosterState: .noClient,
                     canEdit: false, projectName: nil,
                     attachments: [], estimates: []
                 )

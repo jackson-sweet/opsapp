@@ -7,7 +7,8 @@
 //
 //      CLIENT   Calloway Homes          →   (opens ContactDetailView)
 //               HELEN — ON FILE            (roster state / ADD TO CLIENT)
-//      PROJECT  Maple Lane porch        → ✎  (open; pencil = re-link)
+//      PROJECT  Maple Lane porch          →  (open only once linked)
+//      PROJECT  MATCH PROJECT                (won + unconverted only)
 //      LAST WORD← THEM · 2D — Re: quote     (latest meaningful correspondence)
 //      DECK     Backyard deck v2        →
 //      PHOTOS   [ADD][▦][▦][▦] …
@@ -22,9 +23,10 @@
 //
 //  CLIENT navigates to ContactDetailView — the same canonical contact surface
 //  every other client tap in the app opens (JobBoard card, universal search,
-//  Spotlight). PROJECT is editable behind the pencil: linking is a rare,
-//  deliberate act, so the verb hides off the scan path while row-tap keeps
-//  its expected "open" meaning.
+//  Spotlight). A linked PROJECT always opens and is never directly re-linked.
+//  A won, unconverted lead routes MATCH PROJECT through the canonical guarded
+//  conversion sheet so every mirrored relationship and conversion artifact
+//  moves in one atomic transaction.
 //
 
 import SwiftUI
@@ -35,6 +37,7 @@ struct LeadDetailsDocument: View {
     let client: Client?
     let rosterState: LeadContactRosterState
     let canEdit: Bool
+    var canMatchProject: Bool = false
     let projectName: String?
     let attachments: [LeadAttachment]
     let estimates: [Estimate]
@@ -43,13 +46,38 @@ struct LeadDetailsDocument: View {
     var onAddToClient: () -> Void = {}
     var onOpenClient: () -> Void = {}
     var onOpenProject: () -> Void = {}
-    var onEditProject: () -> Void = {}
+    var onMatchProject: () -> Void = {}
     var onOpenDeck: (DeckDesign) -> Void = { _ in }
     var onCreateDeck: () -> Void = {}
     var onAddPhotos: () -> Void = {}
     var onTapPhoto: (_ items: [LeadPhotoItem], _ index: Int) -> Void = { _, _ in }
     var onOpenAttachment: (LeadAttachment) -> Void = { _ in }
     var onOpenEstimate: (Estimate) -> Void = { _ in }
+
+    enum ProjectRowPresentation: Equatable {
+        case linked(label: String)
+        case match
+        case empty
+    }
+
+    static let projectActionMinimumHeight = OPSStyle.Layout.touchTargetMin
+
+    static func projectRowPresentation(
+        projectId: String?,
+        projectName: String?,
+        stage: PipelineStage,
+        canMatchProject: Bool
+    ) -> ProjectRowPresentation {
+        if let projectId,
+           !projectId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            let name = projectName?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            return .linked(label: name.isEmpty ? "LINKED PROJECT" : name)
+        }
+        if canMatchProject && stage == .won {
+            return .match
+        }
+        return .empty
+    }
 
     @EnvironmentObject private var permissionStore: PermissionStore
 
@@ -200,60 +228,63 @@ struct LeadDetailsDocument: View {
 
     private var projectRow: some View {
         DocRow(label: "PROJECT") {
-            if let projectName {
-                HStack(spacing: OPSStyle.Layout.spacing2) {
-                    // Row tap keeps its expected meaning: OPEN the project.
-                    Button(action: onOpenProject) {
-                        HStack(spacing: OPSStyle.Layout.spacing2) {
-                            Text(projectName)
-                                .font(.custom("Mohave-Medium", size: 14))
-                                .foregroundColor(OPSStyle.Colors.text)
-                                .lineLimit(1)
-                                .truncationMode(.tail)
-                            Spacer(minLength: 0)
-                            Image(systemName: "chevron.right")
-                                .font(.system(size: 11, weight: .regular))
-                                .foregroundColor(OPSStyle.Colors.text3)
-                        }
-                        .contentShape(Rectangle())
+            switch Self.projectRowPresentation(
+                projectId: lead.projectId,
+                projectName: projectName,
+                stage: lead.stage,
+                canMatchProject: canMatchProject
+            ) {
+            case .linked(let label):
+                // Row tap keeps its expected meaning: OPEN the committed link.
+                Button(action: onOpenProject) {
+                    HStack(spacing: OPSStyle.Layout.spacing2) {
+                        Text(label)
+                            .font(.custom("Mohave-Medium", size: 14))
+                            .foregroundColor(OPSStyle.Colors.text)
+                            .lineLimit(1)
+                            .truncationMode(.tail)
+                        Spacer(minLength: 0)
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: OPSStyle.Layout.IconSize.xs, weight: .regular))
+                            .foregroundColor(OPSStyle.Colors.text3)
                     }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("Open project \(projectName)")
-
-                    // Re-link lives behind the pencil — a rare, deliberate act
-                    // stays off the scan path.
-                    if canEdit {
-                        Button(action: onEditProject) {
-                            Image(systemName: "pencil")
-                                .font(.system(size: 12, weight: .medium))
-                                .foregroundColor(OPSStyle.Colors.text3)
-                                .frame(width: 32, height: 32)
-                                .contentShape(Rectangle())
-                        }
-                        .buttonStyle(.plain)
-                        .accessibilityLabel("Change linked project")
-                    }
+                    .frame(
+                        maxWidth: .infinity,
+                        minHeight: Self.projectActionMinimumHeight,
+                        alignment: .leading
+                    )
+                    .contentShape(Rectangle())
                 }
-            } else if canEdit {
-                Button(action: onEditProject) {
-                    HStack(spacing: 5) {
+                .buttonStyle(.plain)
+                .accessibilityLabel("Open project \(label)")
+            case .match:
+                Button(action: onMatchProject) {
+                    HStack(spacing: OPSStyle.Layout.spacing1) {
                         Image(systemName: "link")
-                            .font(.system(size: 9, weight: .semibold))
-                        Text("LINK PROJECT")
-                            .font(.custom("JetBrainsMono-Medium", size: 9))
+                            .font(.system(size: OPSStyle.Layout.IconSize.xs, weight: .semibold))
+                        Text("MATCH PROJECT")
+                            .font(OPSStyle.Typography.miniLabelBold)
                             .tracking(0.9)
                             .textCase(.uppercase)
                     }
                     .foregroundColor(OPSStyle.Colors.text2)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 5)
+                    .padding(.horizontal, OPSStyle.Layout.spacing2)
+                    .padding(.vertical, OPSStyle.Layout.spacing1)
                     .background(RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius, style: .continuous).fill(OPSStyle.Colors.surfaceInput))
-                    .overlay(RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius, style: .continuous).strokeBorder(OPSStyle.Colors.line, lineWidth: 1))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius, style: .continuous)
+                            .strokeBorder(OPSStyle.Colors.line, lineWidth: OPSStyle.Layout.Border.standard)
+                    )
+                    .frame(
+                        maxWidth: .infinity,
+                        minHeight: Self.projectActionMinimumHeight,
+                        alignment: .leading
+                    )
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel("Link a project to this lead")
-            } else {
+                .accessibilityLabel("Match this lead to an existing project")
+            case .empty:
                 Text("—")
                     .font(.custom("Mohave-Medium", size: 14))
                     .foregroundColor(OPSStyle.Colors.textMute)

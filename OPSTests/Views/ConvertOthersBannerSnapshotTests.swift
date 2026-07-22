@@ -90,7 +90,10 @@ final class ConvertOthersBannerSnapshotTests: XCTestCase {
 
     /// Related-project refs shaped like real preflight output: a couple of
     /// likely-duplicate candidates first, then the rest of the client's book.
-    private func refs(_ count: Int) -> [ConvertToProjectSheet.RelatedProjectRef] {
+    private func refs(
+        _ count: Int,
+        unavailableMatchId: String? = nil
+    ) -> [ConvertToProjectSheet.RelatedProjectRef] {
         let titles = [
             "1240 Maple Ave", "Calloway rear deck", "1240 Maple Ave garage",
             "Glass rail retrofit", "Front porch rebuild", "Cedar pergola",
@@ -104,7 +107,8 @@ final class ConvertOthersBannerSnapshotTests: XCTestCase {
                 title: titles[i % titles.count],
                 address: nil,
                 status: statuses[i % statuses.count],
-                isLikelyDuplicate: i < 2
+                isLikelyDuplicate: i < 2,
+                isMatchAvailable: i < 2 ? "ref-\(i)" != unavailableMatchId : false
             )
         }
     }
@@ -112,10 +116,19 @@ final class ConvertOthersBannerSnapshotTests: XCTestCase {
     /// Banner in its real context — the exact scroll subtree the sheet builds
     /// (ScrollView → leading VStack → `spacing3_5` horizontal padding), so the
     /// header's line-breaking behaves as it does in the app.
-    private func banner(_ count: Int) -> some View {
+    private func banner(
+        _ count: Int,
+        selectedProjectId: String? = nil,
+        unavailableMatchId: String? = nil
+    ) -> some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
-                ConvertToProjectSheet.ClientOthersBanner(projects: refs(count), onOpen: { _ in })
+                ConvertToProjectSheet.ClientOthersBanner(
+                    projects: refs(count, unavailableMatchId: unavailableMatchId),
+                    selectedProjectId: selectedProjectId,
+                    onOpen: { _ in },
+                    onMatch: { _ in }
+                )
             }
             .padding(.horizontal, OPSStyle.Layout.spacing3_5)
             .padding(.top, OPSStyle.Layout.spacing3)
@@ -137,6 +150,22 @@ final class ConvertOthersBannerSnapshotTests: XCTestCase {
     /// Singular copy path.
     func testRenderBannerOneOther() {
         snapshot("convert_banner_01", width: 393, height: 200) { banner(1) }
+    }
+
+    /// A selected duplicate must read as a committed choice before the final
+    /// MATCH PROJECT action is tapped.
+    func testRenderBannerSelectedMatch() {
+        snapshot("convert_banner_selected", width: 393, height: 240) {
+            banner(3, selectedProjectId: "ref-0")
+        }
+    }
+
+    /// A row rejected by the locked RPC remains visible for review but cannot
+    /// immediately return as an actionable MATCH candidate.
+    func testRenderBannerRejectedMatch() {
+        snapshot("convert_banner_rejected", width: 393, height: 240) {
+            banner(3, unavailableMatchId: "ref-0")
+        }
     }
 
     /// Defensive ceiling — a 3-digit count must still hold one line.

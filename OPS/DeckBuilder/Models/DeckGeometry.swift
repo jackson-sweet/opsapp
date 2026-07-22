@@ -1141,10 +1141,16 @@ struct DeckDrawingData: Codable {
         }
     }
 
-    /// Elevation difference between two levels in inches
+    /// Elevation difference between two levels in inches. Resolves each
+    /// level's height through the same explicit → per-vertex → stair →
+    /// staggered ladder the renderers use (`renderElevationFeet`), so the
+    /// difference exists whenever both levels exist — not only after both
+    /// have an explicit `elevation`. Raw `elevation` is nil on most saved
+    /// levels, and gating on it silently dropped connection stairs from
+    /// estimates, catalog component rows, and the connect flow.
     func elevationDifference(upperLevelId: String, lowerLevelId: String) -> Double? {
-        guard let upper = level(byId: upperLevelId)?.elevation,
-              let lower = level(byId: lowerLevelId)?.elevation else { return nil }
+        guard let upper = resolvedElevationFeet(forLevelId: upperLevelId),
+              let lower = resolvedElevationFeet(forLevelId: lowerLevelId) else { return nil }
         return (upper - lower) * 12.0  // feet to inches
     }
 
@@ -1152,30 +1158,28 @@ struct DeckDrawingData: Codable {
 
     /// Uniform render elevation (in feet) for one level of a multi-level
     /// design. The 3D scene draws each level's surface as a single flat
-    /// polygon, so it needs ONE representative height per level — and the
-    /// deck builder stores that height in more than one place depending on
-    /// how the user entered it. Reading `level.elevation` alone is the bug:
-    /// it is only ever written by `migrateToMultiLevel` (level 0) and
-    /// `LevelConnectionSheet` (stair wiring), so any level the user never
-    /// connected stays nil and the renderer collapses it onto a flat 2.5'.
-    /// Live data confirms this — every saved multi-level design has
-    /// `elevation: null` on every level.
+    /// polygon, so it needs ONE representative height per level. The HEIGHT
+    /// tool writes `level.elevation` for the selected level, so on drawings
+    /// touched since that fix step 1 resolves; the later steps keep every
+    /// older drawing (where `elevation` is null on all levels) rendering
+    /// sensibly.
     ///
     /// Resolution order:
-    /// 1. `level.elevation` — the explicit uniform per-level height.
+    /// 1. `level.elevation` — the explicit uniform per-level height, written
+    ///    by the HEIGHT tool for the selected level. Always wins: an explicit
+    ///    height must never move because a stair was edited.
     /// 2. The average of the level's per-vertex `elevation` values — the
-    ///    "sloped" elevation mode and single-vertex height edits write here.
+    ///    "sloped" elevation mode and single-corner height edits write here.
     /// 3. An attached stair's total rise — a stair spans grade up to the deck
     ///    surface, so its rise IS this level's elevation when the user never
     ///    entered one. Adopt it before the arbitrary staggered default.
     /// 4. A staggered height — `base + levelIndex × 2.5'` — so levels never
     ///    collapse onto one another when no per-level height was recorded.
-    ///    `base` is `overallElevation` when set: in multi-level mode the
-    ///    elevation editor only exposes a single overall-height field, so
-    ///    the user's typed height lands there rather than on any level.
-    ///    Staggering off that base — instead of using it flat for every
-    ///    level — is what both honors the user's input AND keeps the levels
-    ///    visually separated.
+    ///    `base` is `overallElevation` when set (legacy multi-level drawings
+    ///    saved before the level-scoped HEIGHT tool stored the typed height
+    ///    there). Staggering off that base — instead of using it flat for
+    ///    every level — is what both honors the user's input AND keeps the
+    ///    levels visually separated.
     func renderElevationFeet(for level: DeckLevel, levelIndex: Int) -> Double {
         if let elevation = level.elevation { return elevation }
         let vertexElevations = level.vertices.compactMap { $0.elevation }

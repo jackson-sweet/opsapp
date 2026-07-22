@@ -159,7 +159,6 @@ class DeckBuilderViewModel: ObservableObject {
     // MARK: - Multi-Level State
 
     @Published var activeLevelIndex: Int = 0
-    @Published var showingLevelConnectionSheet: Bool = false
 
     // MARK: - Autosave (bug 2b1f1a9e)
 
@@ -206,10 +205,13 @@ class DeckBuilderViewModel: ObservableObject {
     var isMultiLevel: Bool { drawingData.isMultiLevel }
     var levelCount: Int { drawingData.levels.count }
     var canAddLevel: Bool { !drawingData.isMultiLevel || drawingData.levels.count < 3 }
+    /// Two closed levels are enough to connect — heights resolve through the
+    /// render ladder even before the user sets them explicitly, so gating on a
+    /// non-nil `elevation` just hid the CONNECT entry point on real drawings
+    /// (saved levels almost never carried one).
     var canConnectLevels: Bool {
         drawingData.levels.count >= 2 &&
-        drawingData.levels.filter({ $0.isClosed }).count >= 2 &&
-        drawingData.levels.contains(where: { $0.elevation != nil })
+        drawingData.levels.filter({ $0.isClosed }).count >= 2
     }
 
     // MARK: - Active Level Routing
@@ -871,47 +873,195 @@ class DeckBuilderViewModel: ObservableObject {
         hapticLight()
     }
 
+    /// Sets a level's uniform height. This is THE height write for the
+    /// selected level — it must never touch any other level, and it clears the
+    /// level's per-vertex elevations so the uniform value is the single source
+    /// of truth (stale per-vertex values would otherwise silently win or lose
+    /// depending on the renderer's resolution order).
     func setLevelElevation(at index: Int, elevation: Double) {
         guard index < drawingData.levels.count else { return }
         pushUndo("set level elevation")
         drawingData.levels[index].elevation = elevation
+        drawingData.levels[index].perVertexElevation = false
+        for i in drawingData.levels[index].vertices.indices {
+            drawingData.levels[index].vertices[i].elevation = nil
+        }
+        recalculateConnections(involvingLevelAt: index)
+        save()
+    }
 
-        // Auto-recalculate any connections involving this level
-        let levelId = drawingData.levels[index].id
-        for i in drawingData.levelConnections.indices {
-            let conn = drawingData.levelConnections[i]
-            if conn.upperLevelId == levelId || conn.lowerLevelId == levelId {
-                if let diff = drawingData.elevationDifference(upperLevelId: conn.upperLevelId, lowerLevelId: conn.lowerLevelId) {
-                    drawingData.levelConnections[i].stairConfig.treadCount = StairConfig.calculateTreadCount(totalRise: diff)
-                }
+    /// Applies per-corner heights to one level in a single undoable action,
+    /// clearing the uniform height so the slope actually renders (an explicit
+    /// `elevation` outranks per-vertex values in the resolution ladder).
+    func applyLevelSlopedElevations(at index: Int, heights: [String: Double], source: ElevationSource = .manual) {
+        guard index < drawingData.levels.count, !heights.isEmpty else { return }
+        pushUndo("set sloped elevation")
+        for i in drawingData.levels[index].vertices.indices {
+            if let feet = heights[drawingData.levels[index].vertices[i].id] {
+                drawingData.levels[index].vertices[i].elevation = feet
+                drawingData.levels[index].vertices[i].elevationSource = source
             }
+        }
+        drawingData.levels[index].perVertexElevation = true
+        drawingData.levels[index].elevation = nil
+        recalculateConnections(involvingLevelAt: index)
+        save()
+    }
+
+    /// Uniform deck height for a single-level drawing, atomically: sets the
+    /// overall elevation and clears per-vertex values so the two stores can't
+    /// disagree about what the deck's height is.
+    func applyUniformDeckElevation(_ feet: Double) {
+        pushUndo("set deck height")
+        drawingData.overallElevation = feet
+        for i in drawingData.vertices.indices {
+            drawingData.vertices[i].elevation = nil
         }
         save()
     }
 
-    func connectLevels(upperLevelId: String, lowerLevelId: String, upperEdgeId: String, stairWidth: Double) {
-        guard let diff = drawingData.elevationDifference(upperLevelId: upperLevelId, lowerLevelId: lowerLevelId) else { return }
+    /// Per-corner heights for a single-level drawing, atomically: writes the
+    /// corners and clears the overall elevation (which would otherwise
+    /// override the slope at render time).
+    func applySlopedDeckElevations(heights: [String: Double], source: ElevationSource = .manual) {
+        guard !heights.isEmpty else { return }
+        pushUndo("set sloped deck height")
+        for i in drawingData.vertices.indices {
+            if let feet = heights[drawingData.vertices[i].id] {
+                drawingData.vertices[i].elevation = feet
+                drawingData.vertices[i].elevationSource = source
+            }
+        }
+        drawingData.overallElevation = nil
+        save()
+    }
+
+    /// Sets one corner's height as a single undoable action, clearing the
+    /// uniform height that would otherwise override it (level's `elevation`
+    /// in multi-level, `overallElevation` in single-level). This is the
+    /// selected-vertex path from the toolbar's Elevation action.
+    func setVertexHeightBreakingUniform(_ vertexId: String, elevation: Double, source: ElevationSource = .manual) {
+        guard var vertex = activeVertex(byId: vertexId) else { return }
+        pushUndo("set corner height")
+        vertex.elevation = elevation
+        vertex.elevationSource = source
+        activeUpdateVertex(vertex)
+        if isMultiLevel, activeLevelIndex < drawingData.levels.count {
+            drawingData.levels[activeLevelIndex].elevation = nil
+            drawingData.levels[activeLevelIndex].perVertexElevation = true
+            recalculateConnections(involvingLevelAt: activeLevelIndex)
+        } else {
+            drawingData.overallElevation = nil
+        }
+        save()
+    }
+
+    /// Re-derives the tread count of every connection touching the level at
+    /// `index` from the current resolved heights, so connected stairs track
+    /// height edits instead of freezing at the count they were created with.
+    private func recalculateConnections(involvingLevelAt index: Int) {
+        guard index < drawingData.levels.count else { return }
+        let levelId = drawingData.levels[index].id
+        for i in drawingData.levelConnections.indices {
+            let conn = drawingData.levelConnections[i]
+            guard conn.upperLevelId == levelId || conn.lowerLevelId == levelId else { continue }
+            if let diff = drawingData.elevationDifference(upperLevelId: conn.upperLevelId, lowerLevelId: conn.lowerLevelId),
+               diff > 0 {
+                drawingData.levelConnections[i].stairConfig.treadCount = StairConfig.calculateTreadCount(
+                    totalRise: diff,
+                    risePerStep: drawingData.levelConnections[i].stairConfig.risePerStep
+                )
+            }
+        }
+    }
+
+    /// The level connection whose stair descends from the given edge, if any.
+    func connection(forEdgeId edgeId: String) -> LevelConnection? {
+        drawingData.levelConnections.first { $0.upperEdgeId == edgeId }
+    }
+
+    /// Connects two levels with a stair descending from `upperEdgeId` (an
+    /// edge of the upper level, spec § 7.1). The tread count derives from the
+    /// levels' resolved height difference and re-syncs whenever either height
+    /// changes. Replaces any prior connection on that edge, and clears any
+    /// fixed-rise stair on it — an edge carries ONE stair, either connected
+    /// (level-tracking) or fixed-rise, never both.
+    func connectLevels(upperLevelId: String, lowerLevelId: String, upperEdgeId: String, stairConfig: StairConfig) {
+        // The height difference must be measured WITHOUT the fixed-rise stair
+        // this connection replaces: that stair's rise can be what the upper
+        // level's implicit height derives from, and a connection defined by
+        // the stair it deletes would commit a rise its own commit invalidates.
+        guard let diff = Self.elevationDifferenceExcludingEdgeStair(
+            in: drawingData,
+            upperLevelId: upperLevelId,
+            lowerLevelId: lowerLevelId,
+            excludedEdgeId: upperEdgeId
+        ), diff > 0 else { return }
 
         pushUndo("connect levels")
-        let treadCount = StairConfig.calculateTreadCount(totalRise: diff)
-        let stairConfig = StairConfig(
-            width: stairWidth,
-            treadCount: treadCount
-        )
+        var config = stairConfig
+        config.treadCount = StairConfig.calculateTreadCount(totalRise: diff, risePerStep: config.risePerStep)
+        // A connected stair's rise IS the level difference — never a stored
+        // constant that could go stale when a level height changes.
+        config.totalRiseInches = nil
         let connection = LevelConnection(
             upperLevelId: upperLevelId,
             lowerLevelId: lowerLevelId,
             upperEdgeId: upperEdgeId,
-            stairConfig: stairConfig
+            stairConfig: config
         )
+        drawingData.levelConnections.removeAll { $0.upperEdgeId == upperEdgeId }
+        if var edge = activeEdge(byId: upperEdgeId), edge.stairConfig != nil {
+            edge.stairConfig = nil
+            activeUpdateEdge(edge)
+        }
         drawingData.levelConnections.append(connection)
         hapticSuccess()
         save()
     }
 
+    /// Resolved level height difference (inches) computed on a probe copy of
+    /// the drawing with one edge's fixed-rise stair removed. Used by
+    /// `connectLevels` and the stair sheet's Level-mode preview so the drop
+    /// they show/commit is the drop that will exist AFTER the replaced stair
+    /// is gone.
+    static func elevationDifferenceExcludingEdgeStair(
+        in data: DeckDrawingData,
+        upperLevelId: String,
+        lowerLevelId: String,
+        excludedEdgeId: String
+    ) -> Double? {
+        var probe = data
+        for levelIndex in probe.levels.indices {
+            if let edgeIndex = probe.levels[levelIndex].edges.firstIndex(where: { $0.id == excludedEdgeId }) {
+                probe.levels[levelIndex].edges[edgeIndex].stairConfig = nil
+            }
+        }
+        if let edgeIndex = probe.edges.firstIndex(where: { $0.id == excludedEdgeId }) {
+            probe.edges[edgeIndex].stairConfig = nil
+        }
+        return probe.elevationDifference(upperLevelId: upperLevelId, lowerLevelId: lowerLevelId)
+    }
+
     func removeConnection(_ connectionId: String) {
         pushUndo("remove connection")
         drawingData.levelConnections.removeAll { $0.id == connectionId }
+        hapticMedium()
+        save()
+    }
+
+    /// Removes whatever stair the edge carries — fixed-rise config,
+    /// level connection, or both — in one undoable action.
+    func removeStairs(edgeId: String) {
+        let hasConnection = drawingData.levelConnections.contains { $0.upperEdgeId == edgeId }
+        let hasEdgeStair = activeEdge(byId: edgeId)?.stairConfig != nil
+        guard hasConnection || hasEdgeStair else { return }
+        pushUndo("remove stairs")
+        drawingData.levelConnections.removeAll { $0.upperEdgeId == edgeId }
+        if var edge = activeEdge(byId: edgeId), edge.stairConfig != nil {
+            edge.stairConfig = nil
+            activeUpdateEdge(edge)
+        }
         hapticMedium()
         save()
     }
@@ -2601,6 +2751,12 @@ class DeckBuilderViewModel: ObservableObject {
         pushUndo("set stairs")
         edge.stairConfig = config
         activeUpdateEdge(edge)
+        // An edge carries ONE stair. Committing a fixed-rise stair replaces
+        // any level connection that was descending from this edge.
+        if config != nil {
+            drawingData.levelConnections.removeAll { $0.upperEdgeId == edgeId }
+        }
+        hapticMedium()
         save()
     }
 
@@ -2847,28 +3003,11 @@ class DeckBuilderViewModel: ObservableObject {
         return drawingData.vertex(byId: id)
     }
 
-    // MARK: - Vertex Properties
-
-    func setVertexElevation(_ vertexId: String, elevation: Double, source: ElevationSource = .manual) {
-        guard var vertex = activeVertex(byId: vertexId) else { return }
-        pushUndo("set elevation")
-        vertex.elevation = elevation
-        vertex.elevationSource = source
-        activeUpdateVertex(vertex)
-        save()
-    }
-
-    func setOverallElevation(_ elevation: Double) {
-        pushUndo("set overall elevation")
-        drawingData.overallElevation = elevation
-        save()
-    }
-
-    func clearOverallElevation() {
-        pushUndo("clear overall elevation")
-        drawingData.overallElevation = nil
-        save()
-    }
+    // Height writes live in Level Management: `setLevelElevation` /
+    // `applyLevelSlopedElevations` for multi-level, `applyUniformDeckElevation`
+    // / `applySlopedDeckElevations` for single-level, and
+    // `setVertexHeightBreakingUniform` for one corner — each atomic, each
+    // scoped to exactly one target, each clearing the store it overrides.
 
     // MARK: - Footprint / Surface Properties
 

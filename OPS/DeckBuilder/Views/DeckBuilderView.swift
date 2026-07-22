@@ -289,9 +289,6 @@ struct DeckBuilderView: View {
         .sheet(isPresented: $viewModel.showingPropertySheet) {
             PropertySheetView(viewModel: viewModel)
         }
-        .sheet(isPresented: $viewModel.showingLevelConnectionSheet) {
-            LevelConnectionSheet(viewModel: viewModel)
-        }
         .sheet(isPresented: $showingTemplatePicker) {
             TemplatePickerView(
                 initialTab: 0,

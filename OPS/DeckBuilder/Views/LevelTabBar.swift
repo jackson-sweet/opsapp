@@ -15,10 +15,13 @@ struct LevelTabBar: View {
                     levelTab(level: level, index: index)
                 }
 
-                // Connect levels button (Add Level moved to toolbar)
+                // Connect levels button (Add Level moved to toolbar) — opens
+                // the stair sheet in Level mode with its edge picker, the same
+                // surface an edge tap reaches. One stair flow, two doors.
                 if viewModel.canConnectLevels {
                     Button {
-                        viewModel.showingLevelConnectionSheet = true
+                        viewModel.editingEdgeId = nil
+                        viewModel.showingStairConfig = true
                     } label: {
                         HStack(spacing: OPSStyle.Layout.spacing1) {
                             Image(systemName: "arrow.up.arrow.down")

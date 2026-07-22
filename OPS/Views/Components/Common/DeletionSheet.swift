@@ -14,6 +14,50 @@ enum ReassignmentMode: String, CaseIterable {
     case individual = "Individual"
 }
 
+struct DeletionSheetSelection: Equatable {
+    let reassignments: [String: String]
+    let deletions: Set<String>
+}
+
+enum DeletionSheetSelectionResolver {
+    static func resolve(
+        mode: ReassignmentMode,
+        childIds: [String],
+        bulkSelectedItem: String?,
+        bulkDeleteAll: Bool,
+        individualReassignments: [String: String],
+        individualDeletions: Set<String>
+    ) -> DeletionSheetSelection {
+        let validChildIds = Set(childIds)
+
+        switch mode {
+        case .bulk:
+            if bulkDeleteAll {
+                return DeletionSheetSelection(
+                    reassignments: [:],
+                    deletions: validChildIds
+                )
+            }
+
+            guard let bulkSelectedItem else {
+                return DeletionSheetSelection(reassignments: [:], deletions: [])
+            }
+
+            let reassignments = childIds.reduce(into: [String: String]()) {
+                assignments, childId in
+                assignments[childId] = bulkSelectedItem
+            }
+            return DeletionSheetSelection(reassignments: reassignments, deletions: [])
+
+        case .individual:
+            return DeletionSheetSelection(
+                reassignments: individualReassignments.filter { validChildIds.contains($0.key) },
+                deletions: individualDeletions.intersection(validChildIds)
+            )
+        }
+    }
+}
+
 /// Generic deletion sheet supporting cascading deletions with reassignment options
 ///
 /// Usage Example (Client Deletion):
@@ -321,6 +365,15 @@ struct DeletionSheet<Item, ChildItem, ReassignmentItem>: View {
     }
 
     private func performDeletion() {
+        let selection = DeletionSheetSelectionResolver.resolve(
+            mode: reassignmentMode,
+            childIds: childItems.map(getChildId),
+            bulkSelectedItem: bulkSelectedItem,
+            bulkDeleteAll: bulkDeleteAll,
+            individualReassignments: reassignments,
+            individualDeletions: itemsToDelete
+        )
+
         // Call optional callback
         onDeletionStarted?()
 
@@ -335,7 +388,7 @@ struct DeletionSheet<Item, ChildItem, ReassignmentItem>: View {
 
         Task {
             do {
-                try await onDelete(item, reassignments, itemsToDelete)
+                try await onDelete(item, selection.reassignments, selection.deletions)
 
                 // Only dismiss if we didn't already (callback case)
                 if onDeletionStarted == nil {

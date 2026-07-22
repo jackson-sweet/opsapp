@@ -1364,7 +1364,7 @@ actor DataActor {
                 entityType: .projectPhoto,
                 entityId: id,
                 fields: [
-                    "url", "thumbnailURL", "renderedURL", "source", "caption",
+                    "url", "thumbnailURL", "renderedURL", "source", "uploadedBy", "caption",
                     "isClientVisible", "takenAt", "updatedAt", "deletedAt"
                 ]
             )
@@ -1373,6 +1373,7 @@ actor DataActor {
             if accept.contains("thumbnailURL") { existing.thumbnailURL = dto.thumbnailURL }
             if accept.contains("renderedURL") { existing.renderedURL = dto.renderedURL }
             if accept.contains("source") { existing.source = dto.source ?? existing.source }
+            existing.applyInboundUploader(dto.uploadedBy, isProtected: !accept.contains("uploadedBy"))
             if accept.contains("caption") { existing.caption = dto.caption }
             if accept.contains("isClientVisible") { existing.isClientVisible = dto.isClientVisible ?? existing.isClientVisible }
             if accept.contains("takenAt") { existing.takenAt = dto.takenAt.flatMap { SupabaseDate.parse($0) } }

@@ -9,20 +9,24 @@
 //
 
 import SwiftUI
+import SwiftData
 
 struct PhotoStorageManagementView: View {
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var dataController: DataController
     @ObservedObject private var downloadManager = PhotoDownloadManager.shared
+    @Query private var allProjectPhotos: [ProjectPhoto]
 
     let allPhotoItems: [PhotoItem]
     let allProjects: [Project]
+    private let usesEnrichedPhotoItems: Bool
 
     /// Standard entry point from AllPhotosGalleryView, which already has the
-    /// enriched PhotoItem list (with annotations, authors, etc).
+    /// enriched PhotoItem list (with upload attribution and annotations).
     init(allPhotoItems: [PhotoItem], allProjects: [Project]) {
         self.allPhotoItems = allPhotoItems
         self.allProjects = allProjects
+        self.usesEnrichedPhotoItems = true
     }
 
     /// Lightweight entry point for the notification-rail auto-navigate path.
@@ -31,6 +35,7 @@ struct PhotoStorageManagementView: View {
     init(allProjects: [Project]) {
         self.allProjects = allProjects
         self.allPhotoItems = []
+        self.usesEnrichedPhotoItems = false
     }
 
     // MARK: - State
@@ -69,9 +74,31 @@ struct PhotoStorageManagementView: View {
 
     // MARK: - Derived
 
+    /// One gallery contract for both entry points. The All Photos path reuses
+    /// its already-enriched items; notification deep links merge the reactive
+    /// canonical rows with the legacy CSV so synced-only photos and tombstones
+    /// are handled identically.
+    private var galleryURLsByProject: [String: [String]] {
+        if usesEnrichedPhotoItems {
+            return Dictionary(grouping: allPhotoItems, by: \.projectId)
+                .mapValues { $0.map(\.url) }
+        }
+
+        let rowsByProject = Dictionary(grouping: allProjectPhotos, by: \.projectId)
+        var result: [String: [String]] = [:]
+        for project in allProjects {
+            let rows = (rowsByProject[project.id] ?? [])
+                .filter { $0.companyId == project.companyId }
+            result[project.id] = project.mergedGalleryImageURLs(syncedPhotos: rows)
+        }
+        return result
+    }
+
     private var projectsWithPhotosPayload: [(projectUpdatedAt: Date, photoURLs: [String])] {
-        allProjects.compactMap { project in
-            let urls = project.getProjectImages().filter { $0.contains("://") || $0.hasPrefix("//") }
+        let urlsByProject = galleryURLsByProject
+        return allProjects.compactMap { project in
+            let sourceURLs = urlsByProject[project.id] ?? []
+            let urls = sourceURLs.filter { $0.contains("://") || $0.hasPrefix("//") }
             guard !urls.isEmpty else { return nil }
             let score = max(
                 project.startDate ?? .distantPast,
@@ -517,8 +544,9 @@ struct PhotoStorageManagementView: View {
             let title: String
             let photos: [String]
         }
+        let urlsByProject = galleryURLsByProject
         let snapshots: [ProjectSnapshot] = allProjects.compactMap { project in
-            let photos = project.getProjectImages()
+            let photos = urlsByProject[project.id] ?? []
             guard !photos.isEmpty else { return nil }
             return ProjectSnapshot(id: project.id, title: project.title, photos: photos)
         }

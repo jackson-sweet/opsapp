@@ -1944,6 +1944,7 @@ final class RealtimeProcessor: ObservableObject {
             if !pendingFields.contains("thumbnailURL")    { existing.thumbnailURL = model.thumbnailURL }
             if !pendingFields.contains("renderedURL")     { existing.renderedURL = model.renderedURL }
             if !pendingFields.contains("source")          { existing.source = model.source }
+            existing.applyInboundUploader(model.uploadedBy, isProtected: pendingFields.contains("uploadedBy"))
             if !pendingFields.contains("caption")         { existing.caption = model.caption }
             if !pendingFields.contains("isClientVisible") { existing.isClientVisible = model.isClientVisible }
             if !pendingFields.contains("takenAt")         { existing.takenAt = model.takenAt }

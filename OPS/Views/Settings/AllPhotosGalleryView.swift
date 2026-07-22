@@ -8,14 +8,15 @@ import SwiftData
 
 // MARK: - Photo Metadata
 
-/// Enriched photo data combining URL with annotation metadata
+/// Enriched photo data combining a gallery URL with canonical upload metadata.
 struct PhotoItem: Identifiable {
     let id: String  // url string
     let url: String
     let projectId: String
     let projectTitle: String
-    let date: Date
-    let authorId: String?
+    let date: Date?
+    let uploaderId: String?
+    let uploaderName: String?
     let note: String?
     /// Pre-computed lowercased blob of every project field the user might
     /// search against (title, client name, address, description, notes,
@@ -36,12 +37,19 @@ struct PhotoItem: Identifiable {
     }()
 
     var monthKey: String {
-        Self.monthKeyFormatter.string(from: date)
+        guard let date else { return "0000-00" }
+        return Self.monthKeyFormatter.string(from: date)
     }
 
     var monthLabel: String {
-        Self.monthLabelFormatter.string(from: date).uppercased()
+        guard let date else { return "DATE UNAVAILABLE" }
+        return Self.monthLabelFormatter.string(from: date).uppercased()
     }
+}
+
+private struct PhotoUploaderDirectoryKey: Hashable {
+    let companyId: String
+    let userId: String
 }
 
 /// Month group for timeline organization
@@ -64,7 +72,9 @@ struct AllPhotosGalleryView: View {
     @EnvironmentObject private var dataController: DataController
     @EnvironmentObject private var appState: AppState
     @Query private var allProjects: [Project]
+    @Query private var allProjectPhotos: [ProjectPhoto]
     @Query private var allAnnotations: [PhotoAnnotation]
+    @Query private var allUsers: [User]
     @ObservedObject private var downloadManager = PhotoDownloadManager.shared
 
     // UI State
@@ -96,39 +106,64 @@ struct AllPhotosGalleryView: View {
 
     // MARK: - Computed Data
 
-    /// Build enriched photo items from all projects + annotations
+    /// Build enriched photo items from canonical project_photos rows, retaining
+    /// legacy CSV-only URLs as an unattributed fallback.
     private var allPhotoItems: [PhotoItem] {
-        let annotationMap = Dictionary(grouping: allAnnotations.filter { $0.deletedAt == nil }, by: { $0.photoURL })
+        let photosByProjectId = Dictionary(grouping: allProjectPhotos, by: \.projectId)
+        let resolver = PhotoGalleryMetadataResolver(
+            projectPhotos: allProjectPhotos,
+            annotations: allAnnotations
+        )
+        let uploaderDirectory = Dictionary(
+            allUsers.compactMap { user -> (PhotoUploaderDirectoryKey, String)? in
+                guard let companyId = user.companyId,
+                      let userId = ProjectPhotoUploaderIdentity.canonicalUserID(user.id) else {
+                    return nil
+                }
+                let name = user.fullName.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !name.isEmpty else { return nil }
+                return (PhotoUploaderDirectoryKey(companyId: companyId, userId: userId), name)
+            },
+            uniquingKeysWith: { first, _ in first }
+        )
 
         return allProjects
             .filter { $0.deletedAt == nil }
             .flatMap { project -> [PhotoItem] in
                 let haystack = Self.buildSearchHaystack(for: project)
-                return project.getProjectImages().map { url in
-                    let annotation = annotationMap[url]?.first(where: { $0.projectId == project.id }) ?? annotationMap[url]?.first
-                    let noteText = annotation?.note.isEmpty == false ? annotation?.note : nil
+                let projectPhotos = (photosByProjectId[project.id] ?? [])
+                    .filter { $0.companyId == project.companyId }
+                return project.mergedGalleryImageURLs(syncedPhotos: projectPhotos).map { url in
+                    let metadata = resolver.metadata(
+                        projectId: project.id,
+                        companyId: project.companyId,
+                        url: url,
+                        legacyFallbackDate: project.startDate ?? project.createdAt
+                    )
+                    let uploaderName = metadata.uploaderId.flatMap {
+                        uploaderDirectory[PhotoUploaderDirectoryKey(companyId: project.companyId, userId: $0)]
+                    }
                     // Fold the photo's annotation note into the haystack
                     // so a comment typed on one specific photo is still
                     // searchable alongside the project-level fields.
                     let perPhotoHaystack: String
-                    if let noteText = noteText {
-                        perPhotoHaystack = haystack + " " + noteText.lowercased()
-                    } else {
-                        perPhotoHaystack = haystack
-                    }
+                    perPhotoHaystack = [haystack, metadata.note, uploaderName]
+                        .compactMap { $0?.lowercased() }
+                        .joined(separator: " ")
                     return PhotoItem(
                         id: "\(project.id)-\(url)",
                         url: url,
                         projectId: project.id,
                         projectTitle: project.title,
-                        date: annotation?.createdAt ?? project.startDate ?? Date(),
-                        authorId: annotation?.authorId,
-                        note: noteText,
+                        date: metadata.date,
+                        uploaderId: metadata.uploaderId,
+                        uploaderName: uploaderName,
+                        note: metadata.note,
                         searchHaystack: perPhotoHaystack
                     )
                 }
             }
-            .sorted { $0.date > $1.date }
+            .sorted { ($0.date ?? .distantPast) > ($1.date ?? .distantPast) }
     }
 
     /// Collect every project field worth searching for the photo gallery's
@@ -166,20 +201,28 @@ struct AllPhotosGalleryView: View {
 
         // Uploader filter
         if !filterUploaderIds.isEmpty {
-            items = items.filter { item in
-                guard let authorId = item.authorId else { return false }
-                return filterUploaderIds.contains(authorId)
+            items = items.filter {
+                PhotoGalleryMetadataResolver.matchesUploader(
+                    $0.uploaderId,
+                    selectedIds: filterUploaderIds
+                )
             }
         }
 
         // Date range filter
         if let from = filterDateFrom {
-            items = items.filter { $0.date >= from }
+            items = items.filter { item in
+                guard let date = item.date else { return false }
+                return date >= from
+            }
         }
         if let to = filterDateTo {
             // Use end-of-day so photos from the selected day are included
             let endOfDay = Calendar.current.date(bySettingHour: 23, minute: 59, second: 59, of: to) ?? to
-            items = items.filter { $0.date <= endOfDay }
+            items = items.filter { item in
+                guard let date = item.date else { return false }
+                return date <= endOfDay
+            }
         }
 
         // Task type filter (project-level: show photos from projects with matching task type)
@@ -211,7 +254,7 @@ struct AllPhotosGalleryView: View {
             PhotoMonthGroup(
                 id: key,
                 label: photos.first?.monthLabel ?? key,
-                photos: photos.sorted { $0.date > $1.date }
+                photos: photos.sorted { ($0.date ?? .distantPast) > ($1.date ?? .distantPast) }
             )
         }
         .sorted { $0.id > $1.id }  // Most recent month first
@@ -233,6 +276,18 @@ struct AllPhotosGalleryView: View {
 
     private var allPhotoURLs: [String] {
         allPhotoItems.map { $0.url }
+    }
+
+    private var uploaderFilterOptions: [PhotoUploaderFilterOption] {
+        var namesById: [String: String] = [:]
+        for item in allPhotoItems {
+            guard let uploaderId = item.uploaderId,
+                  let uploaderName = item.uploaderName else { continue }
+            namesById[uploaderId] = uploaderName
+        }
+        return namesById
+            .map { PhotoUploaderFilterOption(id: $0.key, name: $0.value) }
+            .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
     }
 
     // MARK: - Body
@@ -325,7 +380,7 @@ struct AllPhotosGalleryView: View {
                 taskTypeIds: $filterTaskTypeIds,
                 projectIds: $filterProjectIds,
                 allProjects: allProjects.filter { $0.deletedAt == nil },
-                allAnnotations: allAnnotations.filter { $0.deletedAt == nil }
+                uploaders: uploaderFilterOptions
             )
             .environmentObject(dataController)
         }

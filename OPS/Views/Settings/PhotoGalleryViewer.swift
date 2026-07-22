@@ -10,7 +10,6 @@ struct PhotoGalleryViewer: View {
     let initialIndex: Int
     let onDismiss: () -> Void
 
-    @EnvironmentObject private var dataController: DataController
     @EnvironmentObject private var appState: AppState
     @ObservedObject private var downloadManager = PhotoDownloadManager.shared
     @State private var currentIndex: Int
@@ -144,6 +143,16 @@ struct PhotoGalleryViewer: View {
 
     private func metadataPanel(_ photo: PhotoItem) -> some View {
         let isLocal = downloadManager.isOnDevice(photo.url)
+        let uploaderLabel: String
+        if let uploaderName = photo.uploaderName {
+            uploaderLabel = "Uploaded by \(uploaderName)"
+        } else if photo.uploaderId != nil {
+            uploaderLabel = "Uploaded by unknown user"
+        } else {
+            uploaderLabel = "Uploader unavailable"
+        }
+        let dateLabel = photo.date?.formatted(date: .long, time: .shortened)
+            ?? "Date unavailable"
 
         return VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2_5) {
             // Drag handle
@@ -164,14 +173,11 @@ struct PhotoGalleryViewer: View {
             // Project
             infoRow(icon: OPSStyle.Icons.project, label: photo.projectTitle)
 
-            // Uploader
-            if let authorId = photo.authorId, !authorId.isEmpty {
-                let uploaderName = lookupUserName(authorId)
-                infoRow(icon: OPSStyle.Icons.person, label: uploaderName ?? "Unknown")
-            }
+            // Canonical project_photos uploader (never the annotation author)
+            infoRow(icon: OPSStyle.Icons.person, label: uploaderLabel)
 
             // Date
-            infoRow(icon: "calendar", label: photo.date.formatted(date: .long, time: .shortened))
+            infoRow(icon: "calendar", label: dateLabel)
 
             // Note
             if let note = photo.note {
@@ -282,11 +288,6 @@ struct PhotoGalleryViewer: View {
         }
     }
 
-    private func lookupUserName(_ userId: String) -> String? {
-        guard let companyId = dataController.currentUser?.companyId else { return nil }
-        let members = dataController.getTeamMembers(companyId: companyId)
-        return members.first(where: { $0.id == userId })?.fullName
-    }
 }
 
 // MARK: - Zoomable Photo View

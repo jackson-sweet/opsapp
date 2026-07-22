@@ -69,3 +69,29 @@ class ProjectPhoto: Identifiable {
         self.createdAt = createdAt
     }
 }
+
+enum ProjectPhotoUploaderIdentity {
+    /// `project_photos.uploaded_by` is the canonical `public.users.id` UUID
+    /// serialized as text. Normalize before matching so casing and accidental
+    /// transport whitespace cannot break attribution, and reject every other
+    /// identity namespace rather than exposing an opaque value in the UI.
+    static func canonicalUserID(_ rawValue: String?) -> String? {
+        guard let rawValue else { return nil }
+        let trimmed = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let uuid = UUID(uuidString: trimmed) else { return nil }
+        return uuid.uuidString.lowercased()
+    }
+}
+
+extension ProjectPhoto {
+    /// Applies server-owned attribution while respecting a pending local field.
+    /// Invalid/blank inbound identities never erase a valid local attribution;
+    /// the next valid pull or realtime event can still heal a stale row.
+    func applyInboundUploader(_ rawValue: String?, isProtected: Bool) {
+        guard !isProtected,
+              let canonicalID = ProjectPhotoUploaderIdentity.canonicalUserID(rawValue) else {
+            return
+        }
+        uploadedBy = canonicalID
+    }
+}

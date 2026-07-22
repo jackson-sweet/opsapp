@@ -19,6 +19,16 @@ import SwiftData
 
 // MARK: - Gallery Ordering
 
+/// Stable identity for photo URLs that are equivalent throughout the app.
+/// Legacy project CSVs may store a protocol-relative URL while the canonical
+/// `project_photos` row stores the same resource with an HTTPS scheme.
+enum GalleryPhotoURLIdentity {
+    static func canonical(_ rawURL: String) -> String {
+        let trimmed = rawURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.hasPrefix("//") ? "https:\(trimmed)" : trimmed
+    }
+}
+
 /// Newest-first ordering for the project photo gallery (bug e7ef2c88 — new
 /// photos were inserting mid-list). A photo's sort date is resolved, in order:
 ///   1. the synced `project_photos` row date (`takenAt ?? createdAt`), when present
@@ -65,25 +75,44 @@ enum GalleryOrdering {
     /// (and the undated tail) keep their incoming CSV-then-synced order.
     static func orderedNewestFirst(
         csvURLs: [String],
-        syncedPhotoDates: [(url: String, date: Date)]
+        syncedPhotoDates: [(url: String, date: Date)],
+        excludedURLIdentities: Set<String> = []
     ) -> [String] {
+        let excludedIdentities = Set(excludedURLIdentities.map(GalleryPhotoURLIdentity.canonical))
         let rowDateByURL = Dictionary(
-            syncedPhotoDates.filter { !$0.url.isEmpty }.map { ($0.url, $0.date) },
+            syncedPhotoDates.compactMap { entry -> (String, Date)? in
+                let identity = GalleryPhotoURLIdentity.canonical(entry.url)
+                guard !identity.isEmpty, !excludedIdentities.contains(identity) else { return nil }
+                return (identity, entry.date)
+            },
             uniquingKeysWith: { first, _ in first }
         )
 
-        // Preserve first-seen order across CSV then synced-only URLs; dedupe.
+        // Preserve first-seen order across CSV then synced-only URLs; dedupe by
+        // canonical identity while retaining the first display URL.
         var order: [String] = []
         var seen = Set<String>()
-        for url in csvURLs where !url.isEmpty && seen.insert(url).inserted {
-            order.append(url)
+        for rawURL in csvURLs {
+            let displayURL = rawURL.trimmingCharacters(in: .whitespacesAndNewlines)
+            let identity = GalleryPhotoURLIdentity.canonical(displayURL)
+            guard !identity.isEmpty,
+                  !excludedIdentities.contains(identity),
+                  seen.insert(identity).inserted else { continue }
+            order.append(displayURL)
         }
-        for entry in syncedPhotoDates where !entry.url.isEmpty && seen.insert(entry.url).inserted {
-            order.append(entry.url)
+        for entry in syncedPhotoDates {
+            let displayURL = entry.url.trimmingCharacters(in: .whitespacesAndNewlines)
+            let identity = GalleryPhotoURLIdentity.canonical(displayURL)
+            guard !identity.isEmpty,
+                  !excludedIdentities.contains(identity),
+                  seen.insert(identity).inserted else { continue }
+            order.append(displayURL)
         }
 
         func sortDate(for url: String) -> Date {
-            rowDateByURL[url] ?? timestamp(fromURL: url) ?? .distantPast
+            rowDateByURL[GalleryPhotoURLIdentity.canonical(url)]
+                ?? timestamp(fromURL: url)
+                ?? .distantPast
         }
 
         // enumerated() index as the tiebreaker keeps the sort stable across the
@@ -119,6 +148,30 @@ extension Sequence where Element == ProjectPhoto {
     func galleryURLs() -> [String] {
         filter { $0.isGalleryEligible }.map { $0.url }
     }
+
+    /// Merge inputs derived from every canonical row, including tombstones.
+    /// An ineligible row suppresses a stale legacy CSV alias unless another
+    /// active real-photo row still owns the same canonical URL identity.
+    func galleryMergeState() -> ProjectPhotoGalleryMergeState {
+        let rows = Array(self)
+        let eligible = rows.filter { $0.isGalleryEligible }
+        let eligibleIdentities = Set(eligible.map { GalleryPhotoURLIdentity.canonical($0.url) })
+        let excludedIdentities = Set(
+            rows.filter { !$0.isGalleryEligible }
+                .map { GalleryPhotoURLIdentity.canonical($0.url) }
+                .filter { !$0.isEmpty }
+        ).subtracting(eligibleIdentities)
+
+        return ProjectPhotoGalleryMergeState(
+            eligibleDates: eligible.map { ($0.url, $0.takenAt ?? $0.createdAt) },
+            excludedURLIdentities: excludedIdentities
+        )
+    }
+}
+
+struct ProjectPhotoGalleryMergeState {
+    let eligibleDates: [(url: String, date: Date)]
+    let excludedURLIdentities: Set<String>
 }
 
 extension Project {
@@ -126,23 +179,23 @@ extension Project {
     /// unioned with the legacy CSV, ordered by capture date (bug e7ef2c88).
     /// Deduped by URL; empty strings and non-gallery / soft-deleted rows dropped.
     func mergedGalleryImageURLs(syncedPhotos: [ProjectPhoto]) -> [String] {
-        let dates: [(url: String, date: Date)] = syncedPhotos
-            .filter { $0.isGalleryEligible }
-            .map { ($0.url, $0.takenAt ?? $0.createdAt) }
+        let state = syncedPhotos.galleryMergeState()
         return GalleryOrdering.orderedNewestFirst(
             csvURLs: getProjectImages(),
-            syncedPhotoDates: dates
+            syncedPhotoDates: state.eligibleDates,
+            excludedURLIdentities: state.excludedURLIdentities
         )
     }
 
     /// Convenience overload that fetches live `ProjectPhoto` rows for this
-    /// project (excluding soft-deleted) from `context`, then merges newest-first.
+    /// project from `context`, then merges newest-first. Tombstones are fetched
+    /// intentionally so a failed legacy CSV delete cannot resurrect a photo.
     /// Used where a reactive `@Query` isn't available — the cold-start fallback
     /// carousel and the full-screen viewer's one-shot present.
     func mergedGalleryImageURLs(using context: ModelContext) -> [String] {
         let pid = id
         let descriptor = FetchDescriptor<ProjectPhoto>(
-            predicate: #Predicate { $0.projectId == pid && $0.deletedAt == nil }
+            predicate: #Predicate { $0.projectId == pid }
         )
         let photos = (try? context.fetch(descriptor)) ?? []
         return mergedGalleryImageURLs(syncedPhotos: photos)

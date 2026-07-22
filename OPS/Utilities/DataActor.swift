@@ -3922,10 +3922,6 @@ actor DataActor {
 
     // MARK: - Outbound Push
 
-    /// Maximum retry count before an operation is marked as permanently failed.
-    /// Mirrors OutboundProcessor.maxRetries.
-    private static let maxOutboundRetries = 20
-
     /// Fetches all pending SyncOperations, coalesces them, and pushes each to Supabase.
     /// Operations in backoff or with unmet dependencies are skipped.
     ///
@@ -4091,6 +4087,7 @@ actor DataActor {
             // app killed mid-flight, etc. Mark the op completed instead of
             // retrying forever against a server that already has the row.
             // See `errorIndicatesPrimaryKeyViolation` for the detection contract.
+            // MUST run before disposition routing — a 23505 classifies permanent.
             if operation.operationType == "create",
                errorIndicatesPrimaryKeyViolation(error) {
                 try? modelContext.transaction {
@@ -4105,17 +4102,30 @@ actor DataActor {
                 return
             }
 
-            if case .authExpired = classified {
-                try? modelContext.transaction {
-                    operation.lastError = classified.localizedDescription
-                    operation.status = "failed"
-                }
-                print("[DataActor] Auth expired — stopping sync for \(operation.entityType) \(operation.entityId)")
+            // Classify + apply the SHARED failure policy (single source of truth
+            // for the state transition — mirrored byte-for-byte with
+            // OutboundProcessor). Permanent rejections park immediately (no retry
+            // consumed); transient failures keep the existing retry budget; auth
+            // routes to the existing re-auth branch.
+            let disposition = SyncErrorClassifier.disposition(for: error)
+            var outcome: SyncFailureOutcome = .retryScheduled(retryCount: operation.retryCount)
+            try? modelContext.transaction {
+                outcome = SyncOperationFailurePolicy.apply(
+                    disposition,
+                    to: operation,
+                    errorDescription: classified.localizedDescription
+                )
+            }
 
-                // AnalyticsService is @MainActor — hop for the track call.
-                let retryCount = operation.retryCount
-                let entityType = operation.entityType
-                let operationType = operation.operationType
+            // Snapshot for the @MainActor analytics hop.
+            let retryCount = operation.retryCount
+            let entityType = operation.entityType
+            let operationType = operation.operationType
+            let errorDescription = classified.localizedDescription
+
+            switch outcome {
+            case .authExpired:
+                print("[DataActor] Auth expired — stopping sync for \(operation.entityType) \(operation.entityId)")
                 await MainActor.run {
                     AnalyticsService.shared.track(
                         eventType: .error,
@@ -4129,27 +4139,24 @@ actor DataActor {
                     )
                     NotificationCenter.default.post(name: .syncAuthExpired, object: nil)
                 }
-                throw error
-            }
 
-            try? modelContext.transaction {
-                operation.lastError = classified.localizedDescription
-                operation.retryCount += 1
-                if operation.retryCount >= Self.maxOutboundRetries {
-                    operation.status = "failed"
-                } else {
-                    operation.status = "pending"
+            case .parked:
+                print("[DataActor] Parked \(operation.entityType) \(operation.entityId) — server rejected it (permanent); will not auto-retry: \(errorDescription)")
+                await MainActor.run {
+                    AnalyticsService.shared.track(
+                        eventType: .error,
+                        eventName: "sync_parked",
+                        properties: [
+                            "error_type": errorDescription,
+                            "retry_count": retryCount,
+                            "entity_type": entityType,
+                            "operation_type": operationType
+                        ]
+                    )
                 }
-            }
 
-            if operation.retryCount >= Self.maxOutboundRetries {
-                print("[DataActor] Permanently failed \(operation.entityType) \(operation.entityId) after \(operation.retryCount) retries")
-
-                // AnalyticsService is @MainActor — hop for the track call.
-                let retryCount = operation.retryCount
-                let entityType = operation.entityType
-                let operationType = operation.operationType
-                let errorDescription = classified.localizedDescription
+            case .exhausted:
+                print("[DataActor] Permanently failed \(operation.entityType) \(operation.entityId) after \(retryCount) retries")
                 await MainActor.run {
                     AnalyticsService.shared.track(
                         eventType: .error,
@@ -4162,8 +4169,9 @@ actor DataActor {
                         ]
                     )
                 }
-            } else {
-                print("[DataActor] Retry \(operation.retryCount)/\(Self.maxOutboundRetries) for \(operation.entityType) \(operation.entityId): \(classified.localizedDescription)")
+
+            case .retryScheduled:
+                print("[DataActor] Retry \(retryCount)/\(SyncOperationFailurePolicy.maxRetries) for \(operation.entityType) \(operation.entityId): \(errorDescription)")
             }
 
             throw error

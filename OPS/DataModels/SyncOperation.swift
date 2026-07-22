@@ -19,6 +19,15 @@ final class SyncOperation {
     var createdAt: Date
     var retryCount: Int = 0
     var lastAttemptedAt: Date?
+    /// Lifecycle status. One of:
+    /// - `pending`    — queued, eligible for the next outbound push.
+    /// - `inProgress` — currently being pushed (set immediately before the network call).
+    /// - `completed`  — server confirmed; eligible for cleanup after 24h.
+    /// - `failed`     — transient failures exhausted the retry budget (20). Recoverable:
+    ///                  the launch / reconnect re-enqueue sweep resets it to `pending`.
+    /// - `parked`     — a permanent server rejection (4xx / data / integrity / syntax).
+    ///                  NEVER auto-retried. Only an explicit user Retry (→ `pending`,
+    ///                  retryCount 0) or Discard moves it. See `SyncErrorClassifier`.
     var status: String = "pending"
     var lastError: String?
 
@@ -65,6 +74,7 @@ final class SyncOperation {
     var isPending: Bool { status == "pending" }
     var isInProgress: Bool { status == "inProgress" }
     var isFailed: Bool { status == "failed" }
+    var isParked: Bool { status == "parked" }
     var isCompleted: Bool { status == "completed" }
     var canRetry: Bool { retryCount < 20 }
 

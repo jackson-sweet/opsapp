@@ -16,8 +16,6 @@ import Supabase
 @MainActor
 final class OutboundProcessor {
 
-    /// Maximum retry count before an operation is marked as permanently failed.
-    private let maxRetries = 20
     private let projectTaskSyncingFactory: (String) -> ProjectTaskSyncing
 
     init(projectTaskSyncingFactory: @escaping (String) -> ProjectTaskSyncing = { TaskRepository(companyId: $0) }) {
@@ -262,6 +260,7 @@ final class OutboundProcessor {
             // app killed mid-flight, etc. Mark the op completed instead of
             // retrying forever against a server that already has the row.
             // See `errorIndicatesPrimaryKeyViolation` for the detection contract.
+            // MUST run before disposition routing — a 23505 classifies permanent.
             if operation.operationType == "create",
                errorIndicatesPrimaryKeyViolation(error) {
                 operation.status = "completed"
@@ -271,14 +270,20 @@ final class OutboundProcessor {
                 return
             }
 
-            operation.lastError = classified.localizedDescription
+            // Classify + apply the SHARED failure policy (single source of truth
+            // for the state transition — mirrored byte-for-byte with DataActor).
+            // Permanent rejections park immediately (no retry consumed); transient
+            // failures keep the existing retry budget; auth routes to re-auth.
+            let disposition = SyncErrorClassifier.disposition(for: error)
+            let outcome = SyncOperationFailurePolicy.apply(
+                disposition,
+                to: operation,
+                errorDescription: classified.localizedDescription
+            )
 
-            // Auth errors: don't retry, post notification for re-authentication
-            if case .authExpired = classified {
-                operation.status = "failed"
+            switch outcome {
+            case .authExpired:
                 print("[OutboundProcessor] Auth expired — stopping sync for \(operation.entityType) \(operation.entityId)")
-
-                // Track auth-expired sync failure
                 AnalyticsService.shared.track(
                     eventType: .error,
                     eventName: "sync_failed",
@@ -289,22 +294,28 @@ final class OutboundProcessor {
                         "operation_type": operation.operationType
                     ]
                 )
-
                 await MainActor.run {
                     NotificationCenter.default.post(
                         name: .syncAuthExpired,
                         object: nil
                     )
                 }
-                throw error
-            }
 
-            operation.retryCount += 1
-            if operation.retryCount >= maxRetries {
-                operation.status = "failed"
+            case .parked:
+                print("[OutboundProcessor] Parked \(operation.entityType) \(operation.entityId) — server rejected it (permanent); will not auto-retry: \(classified.localizedDescription)")
+                AnalyticsService.shared.track(
+                    eventType: .error,
+                    eventName: "sync_parked",
+                    properties: [
+                        "error_type": classified.localizedDescription,
+                        "retry_count": operation.retryCount,
+                        "entity_type": operation.entityType,
+                        "operation_type": operation.operationType
+                    ]
+                )
+
+            case .exhausted:
                 print("[OutboundProcessor] Permanently failed \(operation.entityType) \(operation.entityId) after \(operation.retryCount) retries")
-
-                // Track permanent sync failure
                 AnalyticsService.shared.track(
                     eventType: .error,
                     eventName: "sync_failed",
@@ -315,9 +326,9 @@ final class OutboundProcessor {
                         "operation_type": operation.operationType
                     ]
                 )
-            } else {
-                operation.status = "pending"
-                print("[OutboundProcessor] Retry \(operation.retryCount)/\(maxRetries) for \(operation.entityType) \(operation.entityId): \(classified.localizedDescription)")
+
+            case .retryScheduled:
+                print("[OutboundProcessor] Retry \(operation.retryCount)/\(SyncOperationFailurePolicy.maxRetries) for \(operation.entityType) \(operation.entityId): \(classified.localizedDescription)")
             }
 
             throw error

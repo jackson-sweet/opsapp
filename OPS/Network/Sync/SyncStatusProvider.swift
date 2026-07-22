@@ -65,9 +65,9 @@ final class SyncStatusProvider {
             pendingDescriptor.sortBy = [SortDescriptor(\.createdAt, order: .forward)]
             let pendingOps = try context.fetch(pendingDescriptor)
 
-            // --- Failed operations ---
+            // --- Failed operations (parked included — recoverable from the panel) ---
             let failedPredicate = #Predicate<SyncOperation> { op in
-                op.status == "failed"
+                op.status == "failed" || op.status == "parked"
             }
             var failedDescriptor = FetchDescriptor<SyncOperation>(predicate: failedPredicate)
             failedDescriptor.sortBy = [SortDescriptor(\.createdAt, order: .forward)]
@@ -120,7 +120,7 @@ final class SyncStatusProvider {
         do {
             let targetId = operationId
             let predicate = #Predicate<SyncOperation> { op in
-                op.id == targetId && op.status == "failed"
+                op.id == targetId && (op.status == "failed" || op.status == "parked")
             }
             var descriptor = FetchDescriptor<SyncOperation>(predicate: predicate)
             descriptor.fetchLimit = 1
@@ -143,7 +143,7 @@ final class SyncStatusProvider {
 
         do {
             let predicate = #Predicate<SyncOperation> { op in
-                op.status == "failed"
+                op.status == "failed" || op.status == "parked"
             }
             let descriptor = FetchDescriptor<SyncOperation>(predicate: predicate)
             let failedOps = try context.fetch(descriptor)
@@ -172,6 +172,10 @@ final class SyncStatusProvider {
         case "inProgress":
             itemStatus = .syncing
         case "failed":
+            itemStatus = .failed
+        case "parked":
+            // parked maps to .failed for the existing panel; the PENDING WORK
+            // screen distinguishes it by reading op.status directly.
             itemStatus = .failed
         case "completed":
             itemStatus = .completed

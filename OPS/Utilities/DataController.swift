@@ -211,6 +211,15 @@ class DataController: ObservableObject {
                         print("[SYNC] 🔄 Connection active - triggering background sync (no alert)")
                     }
 
+                    // SYNC RECOVERY: on a genuine reconnect (was offline → back
+                    // online, not a wifi↔cellular hop), give stranded in-flight and
+                    // failed work a fresh retry budget BEFORE the drain so it ships
+                    // now instead of waiting for the next relaunch. parked ops stay
+                    // parked (only user Retry/Discard moves those).
+                    if wasDisconnected {
+                        self.syncEngine.reenqueueRecoverableOperations()
+                    }
+
                     // Trigger sync via SyncEngine
                     await self.syncEngine.triggerSync()
                 }

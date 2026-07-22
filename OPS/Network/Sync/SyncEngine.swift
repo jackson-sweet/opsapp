@@ -47,6 +47,17 @@ final class SyncEngine {
     /// sync completion time can skip that row forever.
     private let deltaOverlapWindow: TimeInterval = 300
 
+    /// An `inProgress` op older than this (or with a nil lastAttemptedAt) was
+    /// stranded by an app kill mid-push; the launch / connectivity-restore
+    /// re-enqueue sweep resets it to `pending`. PK-violation idempotency makes a
+    /// replayed create safe.
+    private let inProgressStalenessWindow: TimeInterval = 300
+
+    /// The recoverable re-enqueue sweep runs at most ONCE per launch (plus on
+    /// connectivity-restore). This gate keeps the 180s retry timer — which drains
+    /// via pushPending — from ever resurrecting failed ops on a loop.
+    private var hasSweptRecoverableThisLaunch = false
+
     // MARK: - Processors
 
     private var outboundProcessor: OutboundProcessor?
@@ -213,6 +224,17 @@ final class SyncEngine {
             Task { @MainActor [weak self] in
                 await self?.handlePermissionChange()
             }
+        }
+
+        // SYNC RECOVERY: resurrect work stranded by an app kill (inProgress) or a
+        // spent retry budget (failed) once per launch so it ships this session
+        // instead of sitting invisible. Runs regardless of pending count — a device
+        // with ONLY failed/inProgress ops (no pending) never triggers a startup
+        // push, so this is the correct home for the once-per-launch sweep (NOT
+        // pushPending, which the 180s timer also drives). parked ops stay parked.
+        if !hasSweptRecoverableThisLaunch {
+            hasSweptRecoverableThisLaunch = true
+            reenqueueRecoverableOperations()
         }
 
         // Refresh the pending count on configure
@@ -1359,6 +1381,61 @@ final class SyncEngine {
         } catch {
             print("[SYNC_ENGINE] Failed to fetch failed operations: \(error)")
             return []
+        }
+    }
+
+    /// Re-enqueues recoverable sync operations at launch and on connectivity-restore
+    /// (SYNC RECOVERY spec §3). NOT called by the 180s retry timer.
+    ///
+    /// - `inProgress` ops stranded by an app kill (lastAttemptedAt nil or older than
+    ///   `inProgressStalenessWindow`) → `pending`, retryCount left intact. The
+    ///   PK-violation idempotency guard makes a replayed create safe.
+    /// - `failed` ops (they exhausted their retry budget) → `pending`, retryCount
+    ///   reset to 0, `lastError` PRESERVED — a fresh retry budget per session
+    ///   ("restart retries by default").
+    /// - `parked` ops are LEFT UNTOUCHED. A permanent server rejection never
+    ///   auto-retries; only an explicit user Retry or Discard moves it.
+    func reenqueueRecoverableOperations() {
+        guard let modelContext else { return }
+
+        let staleCutoff = Date().addingTimeInterval(-inProgressStalenessWindow)
+        let inProgressDescriptor = FetchDescriptor<SyncOperation>(
+            predicate: #Predicate<SyncOperation> { $0.status == "inProgress" }
+        )
+        let failedDescriptor = FetchDescriptor<SyncOperation>(
+            predicate: #Predicate<SyncOperation> { $0.status == "failed" }
+        )
+
+        var revivedInProgress = 0
+        var revivedFailed = 0
+        do {
+            let inProgressOps = try modelContext.fetch(inProgressDescriptor)
+            let failedOps = try modelContext.fetch(failedDescriptor)
+
+            try modelContext.transaction {
+                for op in inProgressOps {
+                    // A fresh in-flight op (recent lastAttemptedAt) is left alone;
+                    // only nil or stale ones are crash-stranded.
+                    if let last = op.lastAttemptedAt, last >= staleCutoff { continue }
+                    op.status = "pending"
+                    revivedInProgress += 1
+                }
+                for op in failedOps {
+                    op.status = "pending"
+                    op.retryCount = 0
+                    // lastError PRESERVED so the recovery screen still shows why it
+                    // failed last session.
+                    revivedFailed += 1
+                }
+            }
+        } catch {
+            print("[SYNC_ENGINE] reenqueueRecoverableOperations failed: \(error)")
+            return
+        }
+
+        if revivedInProgress + revivedFailed > 0 {
+            print("[SYNC_ENGINE] Re-enqueue sweep: \(revivedInProgress) stranded in-flight + \(revivedFailed) failed → pending (parked untouched)")
+            refreshPendingCount()
         }
     }
 

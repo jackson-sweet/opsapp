@@ -74,8 +74,8 @@ struct SyncStatusIndicator: View {
                 .foregroundColor(tone)
                 .tracking(0.8)
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 6)
+        .padding(.horizontal, OPSStyle.Layout.spacing2)
+        .padding(.vertical, OPSStyle.Layout.spacing1)
         .background(Capsule().fill(tone.opacity(0.15)))
         .overlay(Capsule().strokeBorder(tone.opacity(0.55), lineWidth: OPSStyle.Layout.Border.standard))
     }
@@ -112,8 +112,8 @@ struct SyncStatusIndicator: View {
                 .foregroundColor(OPSStyle.Colors.primaryText)
                 .tracking(0.8)
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 6)
+        .padding(.horizontal, OPSStyle.Layout.spacing2)
+        .padding(.vertical, OPSStyle.Layout.spacing1)
         .background(Capsule().fill(OPSStyle.Colors.background.opacity(0.95)))
         .overlay(Capsule().strokeBorder(OPSStyle.Colors.primaryAccent.opacity(0.4), lineWidth: OPSStyle.Layout.Border.standard))
     }

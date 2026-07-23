@@ -30,6 +30,14 @@ class DeckBuilderViewModel: ObservableObject {
     /// Subsequent edits enqueue updates instead. Persists across app launches
     /// implicitly via `lastSyncedAt` on the model — see `enqueueDeckDesignSync`.
     private var hasEnqueuedCreate: Bool = false
+    /// True once this builder session has recorded the lead link for
+    /// `deckDesign.id` — either inline on the create (a legal linked INSERT) or
+    /// via a dedicated `linkOpportunity` op on the first link-bearing update.
+    /// Session-scoped: prevents re-emitting a redundant (idempotent) link op on
+    /// every subsequent save. Starts false so a design synced by an OLDER build
+    /// (whose create stripped the link, leaving a server orphan) self-heals on
+    /// its first edit here.
+    private var hasEnqueuedLink: Bool = false
 
     // MARK: - Drawing State
 
@@ -3608,9 +3616,13 @@ class DeckBuilderViewModel: ObservableObject {
             }
             // Lead link (same non-nil rule as project_id): a deck drawn on a
             // lead ships its opportunity_id on the create so every other
-            // device — and the convert RPC's re-parent — can see it.
+            // device — and the convert RPC's re-parent — can see it. A linked
+            // INSERT is legal (the reparent guard trigger fires on UPDATE only),
+            // so the link rides the create and needs no separate linkOpportunity
+            // op this session.
             if let opportunityId = deckDesign.opportunityId, !opportunityId.isEmpty {
                 payload["opportunity_id"] = opportunityId
+                hasEnqueuedLink = true
             }
             if let thumbnail = deckDesign.thumbnailURL, !thumbnail.isEmpty {
                 payload["thumbnail_url"] = thumbnail
@@ -3646,11 +3658,6 @@ class DeckBuilderViewModel: ObservableObject {
             if let projectId = deckDesign.projectId, !projectId.isEmpty {
                 payload["project_id"] = projectId
             }
-            // Same delivery rule for the lead link — non-nil only, so a
-            // stale-nil device can never unlink a lead's deck.
-            if let opportunityId = deckDesign.opportunityId, !opportunityId.isEmpty {
-                payload["opportunity_id"] = opportunityId
-            }
             if let thumbnail = deckDesign.thumbnailURL, !thumbnail.isEmpty {
                 payload["thumbnail_url"] = thumbnail
             }
@@ -3661,6 +3668,26 @@ class DeckBuilderViewModel: ObservableObject {
                 changedFields: payload,
                 priority: 1
             )
+
+            // The lead link NEVER rides an update payload — the server's reparent
+            // guard trigger rejects any PATCH of opportunity_id (42501). A deck that
+            // carries a local lead link travels it via a dedicated, server-guarded
+            // linkOpportunity op instead. This also heals decks created by an OLDER
+            // build whose create stripped the link (server row still an orphan): the
+            // RPC is idempotent (already_linked → success), and a different-lead
+            // conflict parks visibly (23514). Emitted once per session (hasEnqueuedLink).
+            if let opportunityId = deckDesign.opportunityId,
+               !opportunityId.isEmpty,
+               !hasEnqueuedLink {
+                syncEngine.recordOperation(
+                    entityType: .deckDesign,
+                    entityId: deckDesign.id,
+                    operationType: "linkOpportunity",
+                    changedFields: ["opportunity_id": opportunityId.lowercased()],
+                    priority: 1
+                )
+                hasEnqueuedLink = true
+            }
         }
     }
 

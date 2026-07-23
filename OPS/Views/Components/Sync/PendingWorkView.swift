@@ -375,8 +375,7 @@ struct PendingWorkScreen: View {
         let hadAttention = inventory.attentionCount > 0
 
         // Reset every recoverable op (failed AND parked) to a fresh pending
-        // budget — mirrors SyncStatusProvider.retryAllFailed, which now covers
-        // parked. Then re-enqueue crash-stranded in-flight ops.
+        // budget, then re-enqueue crash-stranded in-flight ops.
         resetRecoverableOperations()
         dataController.syncEngine.reenqueueRecoverableOperations()
 

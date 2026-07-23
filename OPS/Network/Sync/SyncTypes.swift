@@ -124,28 +124,6 @@ struct ConnectionState {
     )
 }
 
-// MARK: - Sync Status (UI)
-
-enum SyncItemStatus: String {
-    case pending
-    case syncing
-    case completed
-    case failed
-    case waiting
-}
-
-struct SyncStatusItem: Identifiable {
-    let id: UUID
-    let entityType: String
-    let entityId: String
-    let operationType: String
-    let description: String
-    let status: SyncItemStatus
-    let progress: Double?
-    let error: String?
-    let timestamp: Date
-}
-
 // MARK: - Sync Entity Type Registry
 
 enum SyncEntityType: String, CaseIterable {

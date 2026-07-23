@@ -533,6 +533,7 @@
 				"${DWARF_DSYM_FOLDER_PATH}/${DWARF_DSYM_FILE_NAME}/Contents/Resources/DWARF/${TARGET_NAME}",
 				"$(TARGET_BUILD_DIR)/$(INFOPLIST_PATH)",
 				"$(SRCROOT)/OPS/GoogleService-Info.plist",
+				"$(SRCROOT)/.spm-local/checkouts/firebase-ios-sdk/Crashlytics",
 			);
 			name = "Upload Symbols to Crashlytics";
 			outputFileListPaths = (
@@ -541,7 +542,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "# Only upload dSYMs during archive builds — Debug builds don't generate dSYMs.\n# -gsp passes the plist path explicitly so the Firebase run binary doesn't have\n# to discover GOOGLE_APP_ID via the build environment (which Xcode 16's\n# PBXFileSystemSynchronizedRootGroup doesn't expose to ScriptBuildPhases the\n# way the legacy file references did). Belt-and-suspenders with the inputPaths\n# entry above so Xcode also declares the plist as a build dependency.\nif [ \"$ACTION\" = \"install\" ]; then\n  \"${BUILD_DIR%/Build/*}/SourcePackages/checkouts/firebase-ios-sdk/Crashlytics/run\" -gsp \"${SRCROOT}/OPS/GoogleService-Info.plist\"\nfi\n";
+			shellScript = "# Only upload dSYMs during archive builds — Debug builds don't generate dSYMs.\n# -gsp passes the plist path explicitly so the Firebase run binary doesn't have\n# to discover GOOGLE_APP_ID via the build environment (which Xcode 16's\n# PBXFileSystemSynchronizedRootGroup doesn't expose to ScriptBuildPhases the\n# way the legacy file references did). Belt-and-suspenders with the inputPaths\n# entry above so Xcode also declares the plist as a build dependency.\nif [ \"$ACTION\" = \"install\" ]; then\n  crashlytics_run=\"${BUILD_DIR%/Build/*}/SourcePackages/checkouts/firebase-ios-sdk/Crashlytics/run\"\n  if [ ! -x \"$crashlytics_run\" ]; then\n    crashlytics_run=\"${SRCROOT}/.spm-local/checkouts/firebase-ios-sdk/Crashlytics/run\"\n  fi\n  if [ ! -x \"$crashlytics_run\" ]; then\n    echo \"error: Crashlytics upload tool not found in Xcode or worktree package checkouts\" >&2\n    exit 1\n  fi\n  \"$crashlytics_run\" -gsp \"${SRCROOT}/OPS/GoogleService-Info.plist\"\nfi\n";
 		};
 /* End PBXShellScriptBuildPhase section */
 

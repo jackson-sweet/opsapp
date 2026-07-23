@@ -822,12 +822,14 @@ final class SiteVisitCaptureViewModel: ObservableObject {
         isCommittingIdentity = true
         defer { isCommittingIdentity = false }
 
+        var upsertedClient: Client?
         do {
             let client = try await upsertClientFromIdentityDraft(
                 draft,
                 clientName: clientName,
                 dataController: dataController
             )
+            upsertedClient = client
             try await createMissingSubContacts(
                 from: draft,
                 client: client,
@@ -843,6 +845,7 @@ final class SiteVisitCaptureViewModel: ObservableObject {
                 description: draft.notes.trimmedNilIfEmpty,
                 address: draft.address.trimmedNilIfEmpty,
                 source: ClientLeadAutocreate.schemaAllowedSource,
+                sourceThreadKey: ClientLeadAutocreate.sourceThreadKey(forClientId: client.id),
                 priority: ClientLeadAutocreate.schemaAllowedPriority,
                 clientId: client.id
             )
@@ -859,12 +862,24 @@ final class SiteVisitCaptureViewModel: ObservableObject {
         } catch {
             // The capture packet and identity draft are already persisted
             // locally — only the server-side lead create failed. Reassure
-            // instead of alarm: the operator retries CREATE LEAD when signal
-            // returns, with nothing re-entered and nothing lost. (Opportunity
-            // has no offline write queue, so this cannot auto-retry on
-            // reconnect — that would require opportunity sync infrastructure.)
+            // instead of alarm: nothing re-entered, nothing lost. The lead
+            // delivery is handed to ClientLeadAutocreateQueue, which retries it
+            // durably (classify → backoff → park) across app launches and, on
+            // success, binds this draft + visit to the delivered lead. The direct
+            // DTO above and the queued retry share a source_thread_key, so they
+            // reconcile to one lead and can never duplicate.
             draft.touch()
             saveContext()
+
+            // Only enqueue when the client upsert actually landed — a failure
+            // before that point has no client to attach a lead to.
+            if let client = upsertedClient {
+                ClientLeadAutocreateQueue.shared.enqueueAndDrainInBackground(
+                    client,
+                    companyId: companyId
+                )
+            }
+
             errorMessage = isLikelyOfflineError(error)
                 ? "NO SIGNAL · DRAFT SAVED · RETRY WHEN ONLINE"
                 : "LEAD CREATE FAILED · DRAFT SAVED · RETRY"

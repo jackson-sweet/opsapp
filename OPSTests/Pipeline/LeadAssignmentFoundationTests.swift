@@ -1067,11 +1067,16 @@ final class LeadAssignmentFoundationTests: XCTestCase {
     func testMigrationPlanDeclaresARealAssignmentBoundary() throws {
         // The assignment + chase boundary lives at V18 after the main-line
         // reconciliation (V16 = opportunity media, V17 = vinyl color/PO).
-        XCTAssertEqual(OPSMigrationPlan.schemas.count, 18)
-        XCTAssertEqual(OPSMigrationPlan.stages.count, 17)
+        // V19 is a later additive lead-ownership boundary and must not move it.
+        XCTAssertEqual(OPSMigrationPlan.schemas.count, 19)
+        XCTAssertEqual(OPSMigrationPlan.stages.count, 18)
+        let versions = OPSMigrationPlan.schemas.map {
+            String(describing: $0.versionIdentifier)
+        }
+        XCTAssertEqual(versions.firstIndex(of: "18.0.0"), 17)
         XCTAssertEqual(
             String(describing: try XCTUnwrap(OPSMigrationPlan.schemas.last).versionIdentifier),
-            "18.0.0"
+            "19.0.0"
         )
     }
 

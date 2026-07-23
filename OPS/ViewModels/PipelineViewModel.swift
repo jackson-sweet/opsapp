@@ -294,6 +294,30 @@ class PipelineViewModel: ObservableObject {
         return comeback
     }
 
+    /// YOUR MOVE — correct ownership without rewriting correspondence history.
+    func markOperatorActionRequired(opportunityId: String) async throws {
+        guard let repo = repository else {
+            throw NSError(domain: "Pipeline", code: 0)
+        }
+        // The database trigger replaces this sentinel with its own clock and
+        // returns the authoritative row, preventing device skew from corrupting
+        // newest-event ordering.
+        let dto = try await repo.update(
+            opportunityId,
+            patch: MarkOperatorActionRequiredPatch(
+                operatorActionRequiredAt: SupabaseDate.format(Date())
+            )
+        )
+        if let idx = allOpportunities.firstIndex(where: { $0.id == opportunityId }) {
+            allOpportunities[idx].apply(dto.toModel())
+        }
+        NotificationCenter.default.post(
+            name: Notification.Name("LeadUpdatedSuccess"),
+            object: nil,
+            userInfo: ["leadId": opportunityId]
+        )
+    }
+
     /// ADJUST — reschedule when this lead resurfaces.
     func adjustComeback(opportunityId: String, to date: Date) async throws {
         guard let repo = repository else { return }
@@ -335,13 +359,31 @@ class PipelineViewModel: ObservableObject {
         }
     }
 
-    /// YOUR MOVE = last recorded touch was theirs AND the operator has not
-    /// declared it handled since. A newer inbound after a flip re-arms it.
+    /// YOUR MOVE is resolved from the newest correspondence or manual ownership
+    /// signal. Manual corrections win exact ties; when inbound and outbound
+    /// timestamps tie, the server's direction breaks the tie.
     nonisolated static func isAwaitingReply(_ opp: Opportunity) -> Bool {
-        guard opp.stage != .newLead, opp.lastMessageDirection == "in" else { return false }
-        guard let handled = opp.handledAt else { return true }
-        guard let inbound = opp.lastInboundAt else { return false }
-        return inbound > handled
+        guard opp.stage != .newLead else { return false }
+
+        let timestamps = [
+            opp.lastInboundAt,
+            opp.lastOutboundAt,
+            opp.handledAt,
+            opp.operatorActionRequiredAt
+        ].compactMap { $0 }
+        guard let latest = timestamps.max() else {
+            return opp.lastMessageDirection == "in"
+        }
+
+        if opp.operatorActionRequiredAt == latest { return true }
+        if opp.handledAt == latest { return false }
+
+        let inboundIsLatest = opp.lastInboundAt == latest
+        let outboundIsLatest = opp.lastOutboundAt == latest
+        if inboundIsLatest && outboundIsLatest {
+            return opp.lastMessageDirection == "in"
+        }
+        return inboundIsLatest
     }
 
     enum UrgencyTone {
@@ -414,7 +456,7 @@ class PipelineViewModel: ObservableObject {
                 }
             }
 
-            // YOUR MOVE — their touch is last and not declared handled.
+            // YOUR MOVE — newest correspondence/manual signal requires action.
             // newLead routes to .fresh instead.
             if Self.isAwaitingReply(opp) {
                 waitingOnYou.append(opp)

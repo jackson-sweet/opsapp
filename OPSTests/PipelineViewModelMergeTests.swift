@@ -58,6 +58,10 @@ final class PipelineViewModelMergeTests: XCTestCase {
         lastInboundAt: Date? = nil,
         lastOutboundAt: Date? = nil,
         lastMessageDirection: String? = nil,
+        handledAt: Date? = nil,
+        operatorActionRequiredAt: Date? = nil,
+        aiSummary: String? = nil,
+        aiSummaryUpdatedAt: Date? = nil,
         createdAt: Date = Date(timeIntervalSince1970: 1_000_000),
         updatedAt: Date = Date(timeIntervalSince1970: 1_000_000)
     ) -> Opportunity {
@@ -101,6 +105,10 @@ final class PipelineViewModelMergeTests: XCTestCase {
         opp.lastInboundAt = lastInboundAt
         opp.lastOutboundAt = lastOutboundAt
         opp.lastMessageDirection = lastMessageDirection
+        opp.handledAt = handledAt
+        opp.operatorActionRequiredAt = operatorActionRequiredAt
+        opp.aiSummary = aiSummary
+        opp.aiSummaryUpdatedAt = aiSummaryUpdatedAt
         return opp
     }
 
@@ -166,6 +174,9 @@ final class PipelineViewModelMergeTests: XCTestCase {
         let d8 = Date(timeIntervalSince1970: 2_700_000)
         let d9 = Date(timeIntervalSince1970: 2_800_000)
         let d10 = Date(timeIntervalSince1970: 2_900_000)
+        let d11 = Date(timeIntervalSince1970: 3_000_000)
+        let d12 = Date(timeIntervalSince1970: 3_100_000)
+        let d13 = Date(timeIntervalSince1970: 3_200_000)
 
         let source = makeOpportunity(
             id: "source",                       // must NOT be copied
@@ -204,8 +215,12 @@ final class PipelineViewModelMergeTests: XCTestCase {
             lastInboundAt: d8,
             lastOutboundAt: d9,
             lastMessageDirection: "in",
+            handledAt: d10,
+            operatorActionRequiredAt: d11,
+            aiSummary: "Fresh summary",
+            aiSummaryUpdatedAt: d12,
             createdAt: d10,
-            updatedAt: d1
+            updatedAt: d13
         )
 
         target.apply(source)
@@ -224,12 +239,16 @@ final class PipelineViewModelMergeTests: XCTestCase {
         XCTAssertEqual(target.outboundCount, 5)
         XCTAssertEqual(target.lastInboundAt, d8)
         XCTAssertEqual(target.lastOutboundAt, d9)
+        XCTAssertEqual(target.handledAt, d10)
+        XCTAssertEqual(target.operatorActionRequiredAt, d11)
+        XCTAssertEqual(target.aiSummary, "Fresh summary")
+        XCTAssertEqual(target.aiSummaryUpdatedAt, d12)
         XCTAssertEqual(target.estimatedValue, 12_345)
         XCTAssertEqual(target.actualValue, 11_000)
         XCTAssertEqual(target.projectId, "project-fresh")
         XCTAssertEqual(target.archivedAt, d7)
         XCTAssertEqual(target.deletedAt, d6)
-        XCTAssertEqual(target.updatedAt, d1)
+        XCTAssertEqual(target.updatedAt, d13)
         XCTAssertEqual(target.stageManuallySet, true)
         XCTAssertEqual(target.priority, "high")
         XCTAssertEqual(target.winProbabilityOverride, 65)
@@ -262,11 +281,13 @@ final class PipelineViewModelMergeTests: XCTestCase {
         let target = makeOpportunity(
             id: "t",
             nextFollowUpAt: Date(timeIntervalSince1970: 5_000_000),
-            lastMessageDirection: "in"
+            lastMessageDirection: "in",
+            operatorActionRequiredAt: Date(timeIntervalSince1970: 5_100_000)
         )
         let source = makeOpportunity(id: "t")   // both fields nil
         target.apply(source)
         XCTAssertNil(target.nextFollowUpAt)
         XCTAssertNil(target.lastMessageDirection)
+        XCTAssertNil(target.operatorActionRequiredAt)
     }
 }

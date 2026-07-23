@@ -156,6 +156,85 @@ enum OPSSchemaLegacyOpportunityV17 {
     }
 }
 
+/// Opportunity exactly as it shipped at V18: images/coordinates, guarded
+/// assignment, and the first chase/summary fields are present, but the later
+/// `operatorActionRequiredAt` ownership-correction signal is not. Freezing this
+/// graph prevents that additive V19 field from rewriting V18's released
+/// fingerprint.
+enum OPSSchemaLegacyOpportunityV18 {
+    @Model
+    final class Opportunity: Identifiable {
+        @Attribute(.unique) var id: String
+        var companyId: String
+        var title: String?
+        var contactName: String
+        var contactEmail: String?
+        var contactPhone: String?
+        var descriptionText: String?
+        var address: String?
+        var stage: PipelineStage
+        var stageEnteredAt: Date
+        var stageManuallySet: Bool
+        var assignedTo: String?
+        var assignmentVersion: Int64 = 0
+        var priority: String?
+        var source: String?
+        var quoteDeliveryMethod: QuoteDeliveryMethod?
+        var estimatedValue: Double?
+        var actualValue: Double?
+        var winProbabilityOverride: Int?
+        var expectedCloseDate: Date?
+        var actualCloseDate: Date?
+        var nextFollowUpAt: Date?
+        var lastActivityAt: Date?
+        var projectId: String?
+        var clientId: String?
+        var lostReason: String?
+        var lostNotes: String?
+        var deletedAt: Date?
+        var archivedAt: Date?
+        var tags: [String]
+        var sourceEmailId: String?
+        var images: [String] = []
+        var latitude: Double?
+        var longitude: Double?
+        var correspondenceCount: Int
+        var outboundCount: Int
+        var inboundCount: Int
+        var lastInboundAt: Date?
+        var lastOutboundAt: Date?
+        var lastMessageDirection: String?
+        var handledAt: Date?
+        var aiSummary: String?
+        var aiSummaryUpdatedAt: Date?
+        var createdAt: Date
+        var updatedAt: Date
+
+        init(
+            id: String = UUID().uuidString,
+            companyId: String,
+            contactName: String,
+            stage: PipelineStage = .newLead,
+            stageEnteredAt: Date = Date(),
+            createdAt: Date = Date(),
+            updatedAt: Date = Date()
+        ) {
+            self.id = id
+            self.companyId = companyId
+            self.contactName = contactName
+            self.stage = stage
+            self.stageEnteredAt = stageEnteredAt
+            self.stageManuallySet = false
+            self.tags = []
+            self.correspondenceCount = 0
+            self.outboundCount = 0
+            self.inboundCount = 0
+            self.createdAt = createdAt
+            self.updatedAt = updatedAt
+        }
+    }
+}
+
 /// DeckDesign as it shipped through V15. The live model gained the nullable
 /// `opportunityId` after release, so the pre-addition graph must remain frozen
 /// for every historical schema fingerprint.
@@ -1028,10 +1107,15 @@ enum OPSSchemaCommon {
         OPSSchemaLegacyOpportunityV17.Opportunity.self
     ]
 
-    /// Opportunity from V18 onward — the live model, including the required
-    /// zero-default `assignmentVersion` and the optional `handledAt` /
-    /// `aiSummary` / `aiSummaryUpdatedAt` chase columns.
+    /// Opportunity exactly as released at V18 — guarded assignment plus the
+    /// first chase/summary fields, before `operatorActionRequiredAt`.
     static let v18OpportunityModel: [any PersistentModel.Type] = [
+        OPSSchemaLegacyOpportunityV18.Opportunity.self
+    ]
+
+    /// Opportunity from V19 onward — the live model, including the nullable
+    /// `operatorActionRequiredAt` ownership-correction signal.
+    static let v19OpportunityModel: [any PersistentModel.Type] = [
         Opportunity.self
     ]
 

@@ -3,7 +3,7 @@
 //  OPS
 //
 //  Pipeline deal — Supabase-backed.
-//  Schema parity with public.opportunities (47 cols). Phase 1 defers AI/location/images.
+//  Schema parity with public.opportunities. Phase 1 defers AI/location/images.
 //
 
 import SwiftData
@@ -73,11 +73,13 @@ class Opportunity: Identifiable {
     var lastOutboundAt: Date?
     var lastMessageDirection: String?
 
-    // Chase flip + agent summary (Leads redesign 2026-07). `handledAt` is the
-    // operator's "handled — their move now" declaration; a newer lastInboundAt
-    // re-flips the lead to YOUR MOVE. `aiSummary` is written by the web agent;
-    // iOS renders it with the `aiSummaryUpdatedAt` freshness stamp.
+    // Chase ownership + agent summary (Leads redesign 2026-07). `handledAt`
+    // declares "their move"; `operatorActionRequiredAt` corrects the lead to
+    // "your move." Correspondence and manual signals are ordered by timestamp.
+    // `aiSummary` is written by the web agent; iOS renders it with the
+    // `aiSummaryUpdatedAt` freshness stamp.
     var handledAt: Date?
+    var operatorActionRequiredAt: Date?
     var aiSummary: String?
     var aiSummaryUpdatedAt: Date?
 
@@ -189,6 +191,7 @@ class Opportunity: Identifiable {
         lastMessageDirection = other.lastMessageDirection
 
         handledAt = other.handledAt
+        operatorActionRequiredAt = other.operatorActionRequiredAt
         aiSummary = other.aiSummary
         aiSummaryUpdatedAt = other.aiSummaryUpdatedAt
 

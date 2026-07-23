@@ -13,6 +13,9 @@ import UIKit
 
 @MainActor
 enum LeadQuickTouchLogger {
+    /// Messages/Mail backgrounds OPS before the log returns. Keep UNDO
+    /// available until the operator comes back and explicitly dismisses it.
+    static let undoToastAutoDismissAfter: TimeInterval = 0
 
     // MARK: - URL composition (pure, unit-tested)
 
@@ -44,7 +47,7 @@ enum LeadQuickTouchLogger {
     /// Open the conversation and stamp the touch. Fact-only — no note, ever
     /// (spec §3). Fails soft: if the log write fails (offline), the compose
     /// still opened; show the error toast and move on.
-    static func touch(_ mode: Mode, lead: Opportunity, companyId: String, userId: String?) {
+    static func touch(_ mode: Mode, lead: Opportunity, companyId: String) {
         let name = lead.displayContactName
         switch mode {
         case .text:
@@ -52,7 +55,7 @@ enum LeadQuickTouchLogger {
                   let url = URL(string: smsURLString(phone: phone)) else { return }
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
             UIApplication.shared.open(url)
-            log(type: .textMessage, subject: "Text to \(name)", lead: lead, companyId: companyId, userId: userId,
+            log(type: .textMessage, subject: "Text to \(name)", lead: lead, companyId: companyId,
                 toastLabel: "// TEXT LOGGED — \(name.uppercased())")
         case .email:
             guard let email = lead.contactEmail, !email.isEmpty else { return }
@@ -65,8 +68,9 @@ enum LeadQuickTouchLogger {
                 if let url = URL(string: mailtoURLString(email: email, threadSubject: subject)) {
                     _ = await UIApplication.shared.open(url)
                 }
-                log(type: .email, subject: subject.map(replySubject(from:)) ?? "Email to \(name)",
-                    lead: lead, companyId: companyId, userId: userId,
+                log(type: .emailCompose,
+                    subject: subject.map(replySubject(from:)) ?? "Email to \(name)",
+                    lead: lead, companyId: companyId,
                     toastLabel: "// EMAIL LOGGED — \(name.uppercased())")
             }
         }
@@ -89,22 +93,78 @@ enum LeadQuickTouchLogger {
     }
 
     private static func log(type: ActivityType, subject: String, lead: Opportunity,
-                            companyId: String, userId: String?, toastLabel: String) {
+                            companyId: String, toastLabel: String) {
         Task { @MainActor in
             do {
-                let created = try await ActivityRepository(companyId: companyId).logActivity(
-                    target: .opportunity(lead), type: type, subject: subject,
-                    direction: "outbound", createdBy: userId)
-                NotificationCenter.default.post(name: Notification.Name("LeadActivityLoggedSuccess"),
-                                                object: nil, userInfo: ["leadId": lead.id])
+                let opportunityRepository = OpportunityRepository(companyId: companyId)
+                // One command ID survives a response-loss retry. The database
+                // replays the original rows instead of creating a second touch.
+                let requestId = UUID().uuidString.lowercased()
+                let result: LogOpportunityQuickTouchResult
+                do {
+                    result = try await opportunityRepository.logQuickTouch(
+                        requestId: requestId,
+                        opportunityId: lead.id,
+                        type: type,
+                        subject: subject
+                    )
+                } catch {
+                    result = try await opportunityRepository.logQuickTouch(
+                        requestId: requestId,
+                        opportunityId: lead.id,
+                        type: type,
+                        subject: subject
+                    )
+                }
+                guard result.opportunity.handledAt != nil else {
+                    throw NSError(domain: "LeadQuickTouch", code: 1)
+                }
+                lead.apply(result.opportunity.toModel())
+                NotificationCenter.default.post(
+                    name: Notification.Name("LeadActivityLoggedSuccess"),
+                    object: nil,
+                    userInfo: ["leadId": lead.id]
+                )
                 ToastCenter.shared.present(Toast(
-                    label: toastLabel, tone: .success, autoDismissAfter: 6,
+                    label: toastLabel,
+                    tone: .success,
+                    autoDismissAfter: undoToastAutoDismissAfter,
                     action: ToastAction(label: "UNDO", accessibilityLabel: "Undo logged touch") {
                         Task { @MainActor in
-                            try? await OpportunityRepository(companyId: companyId).deleteActivity(created.id)
-                            NotificationCenter.default.post(name: Notification.Name("LeadActivityLoggedSuccess"),
-                                                            object: nil, userInfo: ["leadId": lead.id])
-                            ToastCenter.shared.present(Toast(label: "// TOUCH REMOVED", tone: .warning))
+                            do {
+                                let opportunityRepository =
+                                    OpportunityRepository(companyId: companyId)
+                                let restored: OpportunityDTO
+                                do {
+                                    restored = try await opportunityRepository
+                                        .undoQuickTouch(
+                                            activityId: result.activity.id,
+                                            opportunityId: lead.id
+                                        )
+                                } catch {
+                                    // The server retains a consumed receipt, so
+                                    // a lost-response retry returns current state
+                                    // without applying the reversal twice.
+                                    restored = try await opportunityRepository
+                                        .undoQuickTouch(
+                                            activityId: result.activity.id,
+                                            opportunityId: lead.id
+                                        )
+                                }
+                                lead.apply(restored.toModel())
+                                NotificationCenter.default.post(
+                                    name: Notification.Name("LeadActivityLoggedSuccess"),
+                                    object: nil,
+                                    userInfo: ["leadId": lead.id]
+                                )
+                                ToastCenter.shared.present(
+                                    Toast(label: "// TOUCH REMOVED", tone: .warning)
+                                )
+                            } catch {
+                                ToastCenter.shared.present(
+                                    Toast(label: Feedback.Err.saveFailed, tone: .error)
+                                )
+                            }
                         }
                     }))
             } catch {

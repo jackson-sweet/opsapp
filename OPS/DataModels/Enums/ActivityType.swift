@@ -10,6 +10,7 @@ import Foundation
 enum ActivityType: String, Codable, CaseIterable {
     case note             = "note"
     case email            = "email"
+    case emailCompose     = "email_compose"
     case call             = "call"
     case meeting          = "meeting"
     case textMessage      = "text_message"   // web parity: pipeline.ts TextMessage
@@ -28,7 +29,8 @@ enum ActivityType: String, Codable, CaseIterable {
     var icon: String {
         switch self {
         case .note:             return "note.text"
-        case .email:            return "envelope.fill"
+        case .email, .emailCompose:
+            return "envelope.fill"
         case .call:             return "phone.fill"
         case .meeting:          return "person.2.fill"
         case .textMessage:      return "message.fill"

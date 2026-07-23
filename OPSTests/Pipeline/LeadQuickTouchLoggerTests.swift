@@ -12,6 +12,10 @@ import XCTest
 
 @MainActor
 final class LeadQuickTouchLoggerTests: XCTestCase {
+    func testUndoRemainsAvailableAfterReturningFromMessagesOrMail() {
+        XCTAssertEqual(LeadQuickTouchLogger.undoToastAutoDismissAfter, 0)
+    }
+
     func testSmsURL() {
         XCTAssertEqual(LeadQuickTouchLogger.smsURLString(phone: "(555) 123-4567"), "sms:5551234567")
     }

@@ -118,6 +118,17 @@ class LeadDetailViewModel: ObservableObject {
         } catch { print("[LeadDetail] activities failed: \(error)") }
     }
 
+    func reloadActivities() async {
+        await loadActivities()
+    }
+
+    nonisolated static func activityNotificationTargets(
+        _ notification: Notification,
+        opportunityId: String
+    ) -> Bool {
+        notification.userInfo?["leadId"] as? String == opportunityId
+    }
+
     private func loadFollowUps() async {
         do {
             let dtos = try await repository.fetchFollowUps(for: opportunityId)

@@ -16,6 +16,8 @@ class OpportunityRepository {
         static let createGuarded = "create_opportunity_guarded"
         static let changeAssignment = "change_opportunity_assignment"
         static let listAssignmentCandidates = "list_opportunity_assignment_candidates"
+        static let logQuickTouch = "log_opportunity_quick_touch"
+        static let undoQuickTouch = "undo_opportunity_quick_touch"
     }
 
     private let client: SupabaseClient
@@ -396,6 +398,47 @@ class OpportunityRepository {
             .update(patch)
             .eq("id", value: opportunityId)
             .select()
+            .single()
+            .execute()
+            .value
+    }
+
+    /// Insert the activity and advance ownership under one opportunity lock.
+    /// The RPC returns both authoritative rows or rolls both writes back.
+    func logQuickTouch(
+        requestId: String,
+        opportunityId: String,
+        type: ActivityType,
+        subject: String
+    ) async throws -> LogOpportunityQuickTouchResult {
+        try await client
+            .rpc(
+                RPC.logQuickTouch,
+                params: LogOpportunityQuickTouchParams(
+                    requestId: requestId,
+                    opportunityId: opportunityId,
+                    type: type.rawValue,
+                    subject: subject
+                )
+            )
+            .execute()
+            .value
+    }
+
+    /// Reverse the activity and restore its exact pre-touch ownership snapshot
+    /// only if the touch marker is still newest. The server owns the undo token.
+    func undoQuickTouch(
+        activityId: String,
+        opportunityId: String
+    ) async throws -> OpportunityDTO {
+        try await client
+            .rpc(
+                RPC.undoQuickTouch,
+                params: UndoOpportunityQuickTouchParams(
+                    activityId: activityId,
+                    opportunityId: opportunityId
+                )
+            )
             .single()
             .execute()
             .value

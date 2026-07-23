@@ -31,20 +31,20 @@ struct DeckCanvasView: View {
 
     @State private var canvasScale: CGFloat = 1.0
     @State private var canvasOffset: CGSize = .zero
+    @State private var workspace = DeckCanvasWorkspace()
+    @State private var workspaceNeedsOffsetReconciliation = false
     @State private var drawingStarted = false
     @State private var hasInitializedOffset = false
     @State private var perimeterWheelHighlightedDirection: PerimeterDirection?
     @State private var perimeterLongPressDidBeginEntry = false
     @State private var perimeterLongPressFallbackPoint: CGPoint?
     @State private var perimeterLongPressWheelCenter: CGPoint?
+    @State private var isReorientingPerimeterDraft = false
 
     // Drives the auto-pan when the user drags toward the viewport edge.
     // Lives on the view so its timer is torn down with the view.
     @StateObject private var edgePan = EdgePanController()
     @StateObject private var viewportSnap = ViewportSnapAnimator()
-
-    // 4800 × 4800 pt workspace ≈ 400' × 400'
-    private let canvasSize: CGFloat = 4800
 
     /// Width of the auto-pan zone along each viewport edge (canvas-untransformed pt).
     /// Thumb-sized so a finger naturally driven to the edge engages the pan, and so
@@ -102,6 +102,36 @@ struct DeckCanvasView: View {
         return snapPt * multiplier
     }
 
+    /// Every world-space point that should keep the session workspace open.
+    /// Committed geometry and live previews share the same expansion policy so
+    /// no interaction can cross an invisible, fixed boundary. The workspace is
+    /// view state only; these coordinates are never translated or rewritten.
+    private var workspaceContentPoints: [CGPoint] {
+        var points = viewModel.drawingData.allVertices.map(\.position)
+        points.append(contentsOf: DeckCanvasWorkspaceExtentResolver.stairPoints(in: viewModel.drawingData))
+
+        if case .drawing(_, let startPosition, let currentEnd) = viewModel.drawingMode {
+            points.append(startPosition)
+            points.append(currentEnd)
+        }
+        if let preview = viewModel.perimeterDraftPreview {
+            points.append(preview.start)
+            points.append(preview.end)
+        }
+        if let preview = viewModel.pendingPastePreview {
+            points.append(contentsOf: preview.vertices.map(\.position))
+        }
+
+        return points
+    }
+
+    private var hasActiveWorkspaceManipulation: Bool {
+        DeckCanvasWorkspaceInteractionPolicy.isDirectManipulationActive(
+            drawingMode: viewModel.drawingMode,
+            isReorientingPerimeterDraft: isReorientingPerimeterDraft
+        )
+    }
+
     var body: some View {
         GeometryReader { geometry in
             let allowsCanvasContentGestures = DeckCanvasGesturePolicy.allowsCanvasContentGestures(for: viewModel.perimeterEntry)
@@ -137,6 +167,15 @@ struct DeckCanvasView: View {
                     scale: $canvasScale,
                     offset: $canvasOffset,
                     isDrawing: viewModel.drawingMode != .idle,
+                    constrainOffset: { proposed, scale in
+                        workspace.constrainedOffset(
+                            proposed,
+                            scale: scale,
+                            viewportSize: geometry.size,
+                            minimumVisibleLength: CGFloat(OPSStyle.Layout.touchTargetMin),
+                            centerWhenWorkspaceFits: !hasActiveWorkspaceManipulation
+                        )
+                    },
                     onInteractingChange: { isInteracting in
                         guard !isInteracting,
                               case .enteringLength = viewModel.perimeterEntry,
@@ -161,20 +200,51 @@ struct DeckCanvasView: View {
             )
             .simultaneousGesture(longPressGesture(size: geometry.size))
             .onAppear {
+                var initialWorkspace = workspace
+                initialWorkspace.expand(toInclude: workspaceContentPoints)
+                workspace = initialWorkspace
                 if !hasInitializedOffset {
                     hasInitializedOffset = true
-                    centerViewportOnGeometry(viewportSize: geometry.size)
+                    centerViewportOnGeometry(
+                        viewportSize: geometry.size,
+                        workspace: initialWorkspace
+                    )
                 }
                 wireEdgePan(viewportSize: geometry.size)
+            }
+            .onChange(of: workspaceContentPoints) { _, points in
+                expandWorkspace(toInclude: points, viewportSize: geometry.size)
             }
             .onChange(of: geometry.size) { _, newSize in
                 // GeometryReader can re-fire on rotation / split-view; keep the
                 // controller's notion of viewport in lockstep so edge zones don't
                 // drift after a layout change.
+                viewportSnap.stop()
+                canvasOffset = workspace.constrainedOffset(
+                    canvasOffset,
+                    scale: canvasScale,
+                    viewportSize: newSize,
+                    minimumVisibleLength: CGFloat(OPSStyle.Layout.touchTargetMin)
+                )
+                workspaceNeedsOffsetReconciliation = false
                 wireEdgePan(viewportSize: newSize)
             }
+            .onChange(of: viewModel.drawingMode) { _, mode in
+                guard mode == .idle else { return }
+                reconcileWorkspaceOffsetIfReady(viewportSize: geometry.size)
+            }
+            .onChange(of: viewModel.pendingPastePreview) { _, preview in
+                guard preview == nil else { return }
+                reconcileWorkspaceOffsetIfReady(viewportSize: geometry.size)
+            }
             .onChange(of: viewModel.perimeterEntry) { _, entry in
+                if !DeckCanvasGesturePolicy.allowsPerimeterDraftReorientation(for: entry) {
+                    isReorientingPerimeterDraft = false
+                }
                 if let anchor = entry.activeAnchor {
+                    guard DeckCanvasWorkspaceInteractionPolicy.shouldCenterPerimeterAnchor(
+                        isReorientingPerimeterDraft: isReorientingPerimeterDraft
+                    ) else { return }
                     if case .choosingDirection = entry,
                        perimeterLongPressWheelCenter != nil {
                         return
@@ -182,6 +252,7 @@ struct DeckCanvasView: View {
                     centerViewport(on: anchor.position, viewportSize: geometry.size)
                 } else {
                     perimeterWheelHighlightedDirection = nil
+                    reconcileWorkspaceOffsetIfReady(viewportSize: geometry.size)
                 }
                 if case .choosingDirection = entry {
                     return
@@ -196,9 +267,15 @@ struct DeckCanvasView: View {
     /// `canvasScale`, viewport size, and drawingMode.
     private func wireEdgePan(viewportSize: CGSize) {
         edgePan.getCanvasOffset = { canvasOffset }
-        edgePan.setCanvasOffset = {
+        edgePan.setCanvasOffset = { proposed in
             viewportSnap.stop()
-            canvasOffset = $0
+            canvasOffset = workspace.constrainedOffset(
+                proposed,
+                scale: canvasScale,
+                viewportSize: viewportSize,
+                minimumVisibleLength: CGFloat(OPSStyle.Layout.touchTargetMin),
+                centerWhenWorkspaceFits: !hasActiveWorkspaceManipulation
+            )
         }
         edgePan.viewportSize = { viewportSize }
         edgePan.edgeZone = Self.edgePanZone
@@ -235,6 +312,37 @@ struct DeckCanvasView: View {
         }
     }
 
+    private func expandWorkspace(toInclude points: [CGPoint], viewportSize: CGSize) {
+        var expanded = workspace
+        guard expanded.expand(toInclude: points) else { return }
+        workspace = expanded
+        if hasActiveWorkspaceManipulation {
+            workspaceNeedsOffsetReconciliation = true
+        } else {
+            canvasOffset = expanded.constrainedOffset(
+                canvasOffset,
+                scale: canvasScale,
+                viewportSize: viewportSize,
+                minimumVisibleLength: CGFloat(OPSStyle.Layout.touchTargetMin)
+            )
+            workspaceNeedsOffsetReconciliation = false
+        }
+        wireEdgePan(viewportSize: viewportSize)
+    }
+
+    private func reconcileWorkspaceOffsetIfReady(viewportSize: CGSize) {
+        guard workspaceNeedsOffsetReconciliation,
+              !hasActiveWorkspaceManipulation else { return }
+        canvasOffset = workspace.constrainedOffset(
+            canvasOffset,
+            scale: canvasScale,
+            viewportSize: viewportSize,
+            minimumVisibleLength: CGFloat(OPSStyle.Layout.touchTargetMin)
+        )
+        workspaceNeedsOffsetReconciliation = false
+        wireEdgePan(viewportSize: viewportSize)
+    }
+
     // MARK: - Canvas Content
 
     private var canvasContent: some View {
@@ -248,10 +356,8 @@ struct DeckCanvasView: View {
             context.translateBy(x: canvasOffset.width, y: canvasOffset.height)
             context.scaleBy(x: canvasScale, y: canvasScale)
 
-            // drawGrid intentionally receives the world-space canvas extents so
-            // its visible-rect culling math (lines ~260-263) operates on world
-            // coordinates the same way it always did.
-            drawGrid(context: context, size: CGSize(width: canvasSize, height: canvasSize))
+            drawWorkspaceFill(context: context)
+            drawGrid(context: context, viewportSize: size)
 
             if viewModel.isMultiLevel {
                 for (index, level) in viewModel.drawingData.levels.enumerated() {
@@ -349,6 +455,10 @@ struct DeckCanvasView: View {
             if case .lassoing(let points) = viewModel.drawingMode, points.count >= 2 {
                 drawLassoPath(context: context, points: points)
             }
+
+            // Draw last so the workspace edge remains legible with the grid on
+            // or off and cannot disappear beneath deck geometry.
+            drawWorkspaceBoundary(context: context)
         }
     }
 
@@ -425,27 +535,47 @@ struct DeckCanvasView: View {
         )
     }
 
-    // MARK: - Grid (visible region only)
+    // MARK: - Workspace + Grid (visible region only)
 
-    private func drawGrid(context: GraphicsContext, size: CGSize) {
-        guard viewModel.drawingData.config.gridVisible else { return }
-        let visMinX = max(0, -canvasOffset.width / canvasScale)
-        let visMinY = max(0, -canvasOffset.height / canvasScale)
-        let vpW = UIScreen.main.bounds.width / canvasScale
-        let vpH = UIScreen.main.bounds.height / canvasScale
-        let visMaxX = min(size.width, visMinX + vpW + gridSpacing)
-        let visMaxY = min(size.height, visMinY + vpH + gridSpacing)
+    private func drawWorkspaceFill(context: GraphicsContext) {
+        context.fill(
+            Path(workspace.bounds),
+            with: .color(OPSStyle.Colors.surfaceInput)
+        )
+    }
 
-        let startCol = max(0, Int(floor(visMinX / gridSpacing)))
-        let endCol = min(Int(size.width / gridSpacing), Int(ceil(visMaxX / gridSpacing)))
-        let startRow = max(0, Int(floor(visMinY / gridSpacing)))
-        let endRow = min(Int(size.height / gridSpacing), Int(ceil(visMaxY / gridSpacing)))
+    private func drawWorkspaceBoundary(context: GraphicsContext) {
+        context.stroke(
+            Path(workspace.bounds),
+            with: .color(OPSStyle.Colors.inputFieldBorderFocus),
+            lineWidth: OPSStyle.Layout.Border.thick / canvasScale
+        )
+    }
+
+    private func drawGrid(context: GraphicsContext, viewportSize: CGSize) {
+        guard viewModel.drawingData.config.gridVisible,
+              gridSpacing.isFinite,
+              gridSpacing > 0 else { return }
+
+        let visibleBounds = workspace.visibleWorldRect(
+            viewportSize: viewportSize,
+            scale: canvasScale,
+            offset: canvasOffset
+        )
+        .insetBy(dx: -gridSpacing, dy: -gridSpacing)
+        .intersection(workspace.bounds)
+
+        guard !visibleBounds.isNull, !visibleBounds.isEmpty else { return }
+
+        let startCol = Int(floor(visibleBounds.minX / gridSpacing))
+        let endCol = Int(ceil(visibleBounds.maxX / gridSpacing))
+        let startRow = Int(floor(visibleBounds.minY / gridSpacing))
+        let endRow = Int(ceil(visibleBounds.maxY / gridSpacing))
 
         guard startCol <= endCol, startRow <= endRow else { return }
 
         // Dots at grid intersections — not lines
         let dotRadius = scaledSize(1.0, min: 0.5, max: 2.0)
-        let dotColor = Color.white.opacity(0.12)
         var dotPath = Path()
         for col in startCol...endCol {
             let x = CGFloat(col) * gridSpacing
@@ -455,7 +585,9 @@ struct DeckCanvasView: View {
                                               width: dotRadius * 2, height: dotRadius * 2))
             }
         }
-        context.fill(dotPath, with: .color(dotColor))
+        var clippedContext = context
+        clippedContext.clip(to: Path(workspace.bounds))
+        clippedContext.fill(dotPath, with: .color(OPSStyle.Colors.line))
     }
 
     // MARK: - Footprint
@@ -889,88 +1021,37 @@ struct DeckCanvasView: View {
     /// Bug d2a899e6 — stair width uses the same prescale fallback as the rest of the
     /// canvas so width-on-screen matches the rest of the drawing before scale is set.
     private func drawStairIndicator(context: GraphicsContext, start: CGPoint, end: CGPoint, edge: DeckEdge) {
-        guard let config = edge.stairConfig, let tc = config.treadCount, tc > 0 else { return }
-        let dx = end.x - start.x, dy = end.y - start.y
-        let edgeLen = sqrt(dx * dx + dy * dy)
-        guard edgeLen > 0 else { return }
+        guard let config = edge.stairConfig,
+              let treadCount = config.treadCount,
+              treadCount > 0 else { return }
 
-        // Edge direction (unit vectors)
-        let edgeNx = dx / edgeLen, edgeNy = dy / edgeLen
-
-        // Outward perpendicular — points away from the deck surface so stairs
-        // land on the empty side of the edge. Falls back to CCW perpendicular
-        // for open polygons / sketches without a closed footprint.
         let activePolygon: [CGPoint]
         if viewModel.isMultiLevel, let level = viewModel.activeLevel {
             activePolygon = level.orderedPositions
         } else {
             activePolygon = viewModel.drawingData.orderedPositions
         }
-        let outward = PolygonMath.outwardPerpendicular(
+
+        // The editor and workspace envelope deliberately share this planner.
+        // Alignment offsets are resolved once, so rendered stairs can never
+        // project beyond the bounds that the workspace derived for them.
+        guard let plan = DeckStairRenderPlanner.plan(
             edgeStart: start,
             edgeEnd: end,
-            polygonVertices: activePolygon
-        )
-        // Apply flip toggle so the user can override on edges where the heuristic
-        // is wrong (e.g. against a fence the renderer can't infer).
-        let perpUnitX = config.flipDirection ? -outward.x : outward.x
-        let perpUnitY = config.flipDirection ? -outward.y : outward.y
-
-        // Stair width in canvas points — use the same prescale fallback as the
-        // canvas grid / dimension labels so stairs render at the same visual
-        // scale as the rest of the drawing before the user calibrates.
-        let renderScale: Double
-        if let s = viewModel.drawingData.scaleFactor, s > 0 {
-            renderScale = s
-        } else {
-            renderScale = DeckBuilderViewModel.prescaleFallbackScale
-        }
-        let stairWidthCanvas = min(CGFloat(config.width) * CGFloat(renderScale), edgeLen)
-
-        // Stair run depth in canvas points (totalRun = treadCount * runPerTread)
-        let totalRunInches = Double(tc) * config.runPerTread
-        let stairDepthCanvas = CGFloat(totalRunInches) * CGFloat(renderScale)
-
-        // Position along the edge based on alignment + offset
-        let offsetCanvas = CGFloat(config.offset) * CGFloat(renderScale)
-        let gapTotal = edgeLen - stairWidthCanvas
-        let stairStartT: CGFloat  // fraction along edge where stair begins
-        switch config.alignment {
-        case .left:
-            stairStartT = offsetCanvas / edgeLen
-        case .center:
-            stairStartT = (gapTotal / 2 + offsetCanvas) / edgeLen
-        case .right:
-            stairStartT = (gapTotal - offsetCanvas) / edgeLen
-        }
-
-        // Four corners of the stair rectangle. perpUnitX/Y are Double (from
-        // PolygonMath.outwardPerpendicular) — bridge to CGFloat for canvas math.
-        let perpCGX = CGFloat(perpUnitX)
-        let perpCGY = CGFloat(perpUnitY)
-        let baseStart = CGPoint(
-            x: start.x + edgeNx * edgeLen * stairStartT,
-            y: start.y + edgeNy * edgeLen * stairStartT
-        )
-        let baseEnd = CGPoint(
-            x: baseStart.x + edgeNx * stairWidthCanvas,
-            y: baseStart.y + edgeNy * stairWidthCanvas
-        )
-        let farStart = CGPoint(
-            x: baseStart.x + perpCGX * stairDepthCanvas,
-            y: baseStart.y + perpCGY * stairDepthCanvas
-        )
-        let farEnd = CGPoint(
-            x: baseEnd.x + perpCGX * stairDepthCanvas,
-            y: baseEnd.y + perpCGY * stairDepthCanvas
-        )
+            polygonVertices: activePolygon,
+            config: config,
+            treadCount: treadCount,
+            scaleFactor: viewModel.drawingData.effectiveScaleFactor,
+            measurementSystem: viewModel.drawingData.config.measurementSystem,
+            totalRiseInches: viewModel.drawingData.stairTotalRiseInches(for: edge)
+        ) else { return }
 
         // Stair outline rectangle
         var rectPath = Path()
-        rectPath.move(to: baseStart)
-        rectPath.addLine(to: baseEnd)
-        rectPath.addLine(to: farEnd)
-        rectPath.addLine(to: farStart)
+        rectPath.move(to: plan.baseStart)
+        rectPath.addLine(to: plan.baseEnd)
+        rectPath.addLine(to: plan.farEnd)
+        rectPath.addLine(to: plan.farStart)
         rectPath.closeSubpath()
 
         // Hatched fill + outline — outline scales with zoom
@@ -981,19 +1062,10 @@ struct DeckCanvasView: View {
 
         // Tread lines (perpendicular to stair run direction, evenly spaced)
         let treadStroke = scaledSize(1, min: 0.75, max: 2)
-        for i in 1..<min(tc, 30) {
-            let t = CGFloat(i) / CGFloat(tc)
-            let treadBase = CGPoint(
-                x: baseStart.x + perpCGX * stairDepthCanvas * t,
-                y: baseStart.y + perpCGY * stairDepthCanvas * t
-            )
-            let treadEnd = CGPoint(
-                x: baseEnd.x + perpCGX * stairDepthCanvas * t,
-                y: baseEnd.y + perpCGY * stairDepthCanvas * t
-            )
+        for tread in plan.treadLines {
             var treadPath = Path()
-            treadPath.move(to: treadBase)
-            treadPath.addLine(to: treadEnd)
+            treadPath.move(to: tread.start)
+            treadPath.addLine(to: tread.end)
             context.stroke(treadPath, with: .color(OPSStyle.Colors.warningStatus.opacity(0.25)), lineWidth: treadStroke)
         }
 
@@ -1002,13 +1074,14 @@ struct DeckCanvasView: View {
         // stair railing follows — via the shared DeckStairRailInfo source so
         // every 2D surface prints the same number. Falls back to the
         // horizontal run only if rail info can't resolve (no rise anywhere).
-        let labelX = (baseStart.x + farEnd.x) / 2
-        let labelY = (baseStart.y + farEnd.y) / 2
+        let labelX = (plan.baseStart.x + plan.farEnd.x) / 2
+        let labelY = (plan.baseStart.y + plan.farEnd.y) / 2
         let labelText: String
         if let railInfo = viewModel.drawingData.stairRailInfo(for: edge) {
             labelText = "\(railInfo.treadCount) treads · \(DimensionEngine.formatImperial(railInfo.railRunInches)) rail"
         } else {
-            labelText = "\(tc) treads · \(DimensionEngine.formatImperial(totalRunInches))"
+            let totalRunInches = Double(treadCount) * config.runPerTread
+            labelText = "\(treadCount) treads · \(DimensionEngine.formatImperial(totalRunInches))"
         }
         let labelFont = scaledSize(9, min: 7, max: 15)
         context.draw(
@@ -1288,7 +1361,7 @@ struct DeckCanvasView: View {
 
     // MARK: - Dimension Labels (offset from line with dark pill)
 
-    private func drawDimensionLabel(context: GraphicsContext, edge: DeckEdge, vertexLookup: (String) -> DeckVertex?, canvasSize: CGSize) {
+    private func drawDimensionLabel(context: GraphicsContext, edge: DeckEdge, vertexLookup: (String) -> DeckVertex?, canvasSize viewportSize: CGSize) {
         guard let dim = edge.dimension,
               let start = vertexLookup(edge.startVertexId),
               let end = vertexLookup(edge.endVertexId) else { return }
@@ -1320,20 +1393,17 @@ struct DeckCanvasView: View {
         let pillH = scaledSize(20, min: 14, max: 28)
         let cr = scaledSize(4, min: 2, max: 6)
 
-        // Clamp label into the visible canvas region (in canvas/world space).
-        // The previous code compared canvas-space label positions against
-        // viewport-space bounds (canvasSize.width is viewport width, e.g.
-        // 390pt, while rawLabelX is in world coords, e.g. 2400pt). That
-        // caused every label to be pinned near the left edge of the canvas,
-        // making them invisible when the viewport was centered on the canvas.
-        // Fix: convert the viewport edges to canvas/world space using the
-        // current pan/scale, then clamp there. Bug 3.
+        // Clamp the label into the real visible world region. Negative workspace
+        // coordinates remain valid after the session canvas expands leftward.
         let halfPill = pillW / 2
         let edgeBuffer: CGFloat = 16 / canvasScale   // viewport px → canvas units
-        let canvasVisMinX = max(0, -canvasOffset.width / canvasScale)
-        let canvasVisMaxX = (canvasSize.width - canvasOffset.width) / canvasScale
-        let minX = canvasVisMinX + halfPill + edgeBuffer
-        let maxX = max(minX, canvasVisMaxX - halfPill - edgeBuffer)
+        let visibleBounds = workspace.visibleWorldRect(
+            viewportSize: viewportSize,
+            scale: canvasScale,
+            offset: canvasOffset
+        )
+        let minX = visibleBounds.minX + halfPill + edgeBuffer
+        let maxX = max(minX, visibleBounds.maxX - halfPill - edgeBuffer)
         let labelX = min(max(rawLabelX, minX), maxX)
 
         let pillRect = CGRect(x: labelX - pillW / 2, y: labelY - pillH / 2, width: pillW, height: pillH)
@@ -1524,14 +1594,24 @@ struct DeckCanvasView: View {
 
     // MARK: - Viewport Centering
 
-    /// Center the viewport on existing geometry, or on the canvas center if no geometry.
-    private func centerViewportOnGeometry(viewportSize: CGSize) {
+    /// Center the viewport on existing geometry, or on the workspace if empty.
+    private func centerViewportOnGeometry(
+        viewportSize: CGSize,
+        workspace targetWorkspace: DeckCanvasWorkspace? = nil
+    ) {
+        workspaceNeedsOffsetReconciliation = false
+        let targetWorkspace = targetWorkspace ?? workspace
         let allVerts = viewModel.drawingData.allVertices
         guard !allVerts.isEmpty else {
-            // No geometry — center on canvas midpoint
-            canvasOffset = CGSize(
-                width: (viewportSize.width - canvasSize) / 2,
-                height: (viewportSize.height - canvasSize) / 2
+            let proposed = CGSize(
+                width: viewportSize.width / 2 - targetWorkspace.bounds.midX * canvasScale,
+                height: viewportSize.height / 2 - targetWorkspace.bounds.midY * canvasScale
+            )
+            canvasOffset = targetWorkspace.constrainedOffset(
+                proposed,
+                scale: canvasScale,
+                viewportSize: viewportSize,
+                minimumVisibleLength: CGFloat(OPSStyle.Layout.touchTargetMin)
             )
             return
         }
@@ -1553,13 +1633,20 @@ struct DeckCanvasView: View {
         canvasScale = fitScale
 
         // Offset so geometry center maps to viewport center
-        canvasOffset = CGSize(
+        let proposed = CGSize(
             width: viewportSize.width / 2 - geoCenterX * fitScale,
             height: viewportSize.height / 2 - geoCenterY * fitScale
+        )
+        canvasOffset = targetWorkspace.constrainedOffset(
+            proposed,
+            scale: fitScale,
+            viewportSize: viewportSize,
+            minimumVisibleLength: CGFloat(OPSStyle.Layout.touchTargetMin)
         )
     }
 
     private func centerViewport(on point: CGPoint, viewportSize: CGSize) {
+        workspaceNeedsOffsetReconciliation = false
         let nextOffset = CGSize(
             width: viewportSize.width / 2 - point.x * canvasScale,
             height: viewportSize.height / 2 - point.y * canvasScale
@@ -1570,16 +1657,22 @@ struct DeckCanvasView: View {
             duration: OPSStyle.Animation.durationPanel,
             reduceMotion: OPSStyle.Animation.reduceMotion
         ) { next in
-            canvasOffset = next
+            canvasOffset = workspace.constrainedOffset(
+                next,
+                scale: canvasScale,
+                viewportSize: viewportSize,
+                minimumVisibleLength: CGFloat(OPSStyle.Layout.touchTargetMin)
+            )
         }
     }
 
     // MARK: - Coordinate Conversion
 
     private func screenPoint(fromCanvas point: CGPoint) -> CGPoint {
-        CGPoint(
-            x: point.x * canvasScale + canvasOffset.width,
-            y: point.y * canvasScale + canvasOffset.height
+        workspace.screenPoint(
+            fromWorld: point,
+            scale: canvasScale,
+            offset: canvasOffset
         )
     }
 
@@ -1592,18 +1685,11 @@ struct DeckCanvasView: View {
         )
     }
 
-    private func canvasPoint(from location: CGPoint, in size: CGSize) -> CGPoint {
-        // Clamp to the canvas workspace so vertices created from the gesture
-        // can't drift to (7200, 6800) when the user pinches way out and taps
-        // beyond the canvas edge. Off-workspace vertices render invisible but
-        // still count toward perimeter / area.
-        let raw = CGPoint(
-            x: (location.x - canvasOffset.width) / canvasScale,
-            y: (location.y - canvasOffset.height) / canvasScale
-        )
-        return CGPoint(
-            x: min(max(0, raw.x), canvasSize),
-            y: min(max(0, raw.y), canvasSize)
+    private func canvasPoint(from location: CGPoint, in _: CGSize) -> CGPoint {
+        workspace.worldPoint(
+            fromScreen: location,
+            scale: canvasScale,
+            offset: canvasOffset
         )
     }
 
@@ -1751,13 +1837,43 @@ struct DeckCanvasView: View {
     private func perimeterDraftReorientationGesture(size: CGSize) -> some Gesture {
         DragGesture(minimumDistance: 10)
             .onChanged { value in
+                isReorientingPerimeterDraft = true
+                applyPerimeterReorientationCameraAction(
+                    DeckCanvasWorkspaceInteractionPolicy.perimeterReorientationCameraAction(
+                        phase: .changed,
+                        activeAnchor: viewModel.perimeterEntry.activeAnchor
+                    ),
+                    viewportSize: size
+                )
                 let point = canvasPoint(from: value.location, in: size)
                 _ = viewModel.reorientPerimeterDraft(toward: point)
             }
             .onEnded { value in
                 let point = canvasPoint(from: value.location, in: size)
                 _ = viewModel.reorientPerimeterDraft(toward: point)
+                isReorientingPerimeterDraft = false
+                applyPerimeterReorientationCameraAction(
+                    DeckCanvasWorkspaceInteractionPolicy.perimeterReorientationCameraAction(
+                        phase: .ended,
+                        activeAnchor: viewModel.perimeterEntry.activeAnchor
+                    ),
+                    viewportSize: size
+                )
             }
+    }
+
+    private func applyPerimeterReorientationCameraAction(
+        _ action: DeckCanvasPerimeterReorientationCameraAction,
+        viewportSize: CGSize
+    ) {
+        switch action {
+        case .stopCurrentMotion:
+            viewportSnap.stop()
+        case .centerOn(let point):
+            centerViewport(on: point, viewportSize: viewportSize)
+        case .reconcileWorkspace:
+            reconcileWorkspaceOffsetIfReady(viewportSize: viewportSize)
+        }
     }
 
     // MARK: - Long Press Gesture
@@ -1990,38 +2106,19 @@ final class EdgePanController: ObservableObject {
               let viewport = viewportSize?(),
               viewport.width > 0, viewport.height > 0 else { return }
 
-        // Press is the depth of the finger into the edge zone, in [-1, 1] per axis.
-        // 0 means outside the zone, ±1 means right at the viewport boundary.
-        var pressX: CGFloat = 0
-        var pressY: CGFloat = 0
-        if location.x < edgeZone {
-            pressX = -(1 - location.x / edgeZone)
-        } else if location.x > viewport.width - edgeZone {
-            pressX = 1 - (viewport.width - location.x) / edgeZone
-        }
-        if location.y < edgeZone {
-            pressY = -(1 - location.y / edgeZone)
-        } else if location.y > viewport.height - edgeZone {
-            pressY = 1 - (viewport.height - location.y) / edgeZone
-        }
-        guard pressX != 0 || pressY != 0 else { return }
-
-        // Ease the pan velocity so the very corner doesn't slingshot. Squaring
-        // turns the linear depth into a gentler ramp (0 → 0, 0.5 → 0.25, 1 → 1).
-        let easedX = pressX * abs(pressX)
-        let easedY = pressY * abs(pressY)
-
-        // Finger pressing toward +X (right edge) should reveal more of the canvas
-        // to the right, which means the canvas's offset.width must DECREASE
-        // (canvas content shifts left to expose its right side under the finger).
-        // Same logic applies to the Y axis.
-        let dx = -easedX * maxSpeed * CGFloat(Self.tickInterval)
-        let dy = -easedY * maxSpeed * CGFloat(Self.tickInterval)
+        let delta = DeckCanvasPanPolicy.delta(
+            for: location,
+            viewportSize: viewport,
+            edgeZone: edgeZone,
+            maxSpeed: maxSpeed,
+            interval: Self.tickInterval
+        )
+        guard delta != .zero else { return }
 
         guard let getOffset = getCanvasOffset, let setOffset = setCanvasOffset else { return }
         var offset = getOffset()
-        offset.width += dx
-        offset.height += dy
+        offset.width += delta.width
+        offset.height += delta.height
         setOffset(offset)
 
         // Re-emit the drawing update so the in-progress line/marquee/vertex
@@ -2061,6 +2158,9 @@ struct CanvasGestureView: UIViewRepresentable {
     @Binding var scale: CGFloat
     @Binding var offset: CGSize
     var isDrawing: Bool
+    /// Keeps the host's workspace recoverable without imposing a policy on
+    /// read-only canvas consumers.
+    var constrainOffset: (CGSize, CGFloat) -> CGSize = { offset, _ in offset }
     /// Reports `true` on gesture begin and `false` (debounced) on end so a host
     /// can fade overlays during pan/zoom. Defaults to no-op — the editor passes
     /// nothing and is unaffected.
@@ -2086,6 +2186,7 @@ struct CanvasGestureView: UIViewRepresentable {
     func updateUIView(_ uiView: GesturePassthroughView, context: Context) {
         context.coordinator.scaleBinding = $scale
         context.coordinator.offsetBinding = $offset
+        context.coordinator.constrainOffset = constrainOffset
         context.coordinator.onInteractingChange = onInteractingChange
         context.coordinator.onInteractionBegan = onInteractionBegan
         context.coordinator.pinchGesture?.isEnabled = !isDrawing
@@ -2096,6 +2197,7 @@ struct CanvasGestureView: UIViewRepresentable {
     class Coordinator: NSObject {
         var scaleBinding: Binding<CGFloat>
         var offsetBinding: Binding<CGSize>
+        var constrainOffset: (CGSize, CGFloat) -> CGSize = { offset, _ in offset }
         var onInteractingChange: (Bool) -> Void = { _ in }
         var onInteractionBegan: () -> Void = {}
         weak var pinchGesture: UIPinchGestureRecognizer?
@@ -2147,7 +2249,7 @@ struct CanvasGestureView: UIViewRepresentable {
                     newOffset.height = mid.y - ratio * (mid.y - newOffset.height)
                 }
 
-                offsetBinding.wrappedValue = newOffset
+                offsetBinding.wrappedValue = constrainOffset(newOffset, newScale)
                 scaleBinding.wrappedValue = newScale
 
             case .ended, .cancelled:

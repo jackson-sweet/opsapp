@@ -319,7 +319,12 @@ final class ClientLeadAutocreateQueue: ClientLeadAutocreateQueueing {
     /// attempt, capped at 900s (15 min) — `min(60 · 2^min(attempts,4), 900)`.
     /// The slow drain timer plus this backoff make an attempt cap unnecessary; a
     /// permanent rejection parks (never retries) rather than burning a budget.
-    static func backoffInterval(attempts: Int) -> TimeInterval {
+    ///
+    /// `nonisolated`: pure math with no actor state, so it is safe to call from
+    /// any context. This keeps ONE backoff formula as the single source of truth —
+    /// `RecoveryInventory` reuses it to compute a request's next-eligible instant
+    /// without duplicating the window.
+    nonisolated static func backoffInterval(attempts: Int) -> TimeInterval {
         min(60 * pow(2.0, Double(min(attempts, 4))), 900)
     }
 

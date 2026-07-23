@@ -853,6 +853,13 @@ final class SyncEngine {
         // drains in this very pass.
         enqueueStrandedDeckDesignLinks()
 
+        // One-time server-orphan heal for deck→lead links (RC3): records a
+        // guarded linkOpportunity op for every locally-linked design whose
+        // server row may still be an orphan (older builds stripped the link).
+        // Idempotent + gated by a UserDefaults flag, so it drains in this pass
+        // exactly once per device.
+        enqueueDeckDesignLinkBackfillOnce()
+
         let pending = getPendingOperations()
         guard !pending.isEmpty else {
             print("[SYNC_ENGINE] No pending operations to push")
@@ -1019,6 +1026,71 @@ final class SyncEngine {
                 deferPush: true
             )
         }
+    }
+
+    /// One-time server-orphan heal for deck→lead links (RC3). Before the
+    /// linked-INSERT fix, every deck create/update stripped opportunity_id, so a
+    /// deck drawn on a lead reached the server with opportunity_id NULL — an orphan
+    /// the reparent guard trigger then blocked from ever being PATCHed. This sweep,
+    /// gated once by UserDefaults `deckDesignLinkBackfill.v1`, records a guarded
+    /// `linkOpportunity` op for every local design that carries a lead link
+    /// (`opportunityId != nil`, not deleted) and has no open link op already. The
+    /// RPC is idempotent (`already_linked` → success) and a different-lead conflict
+    /// parks visibly, so it is safe on any device state; the flag flips true only
+    /// after a clean pass so a mid-sweep interruption retries instead of skipping.
+    func enqueueDeckDesignLinkBackfillOnce() {
+        let defaults = UserDefaults.standard
+        guard !defaults.bool(forKey: "deckDesignLinkBackfill.v1") else { return }
+        guard let modelContext else { return }
+
+        let linked: [DeckDesign]
+        do {
+            linked = try modelContext.fetch(
+                FetchDescriptor<DeckDesign>(
+                    predicate: #Predicate { $0.opportunityId != nil && $0.deletedAt == nil }
+                )
+            )
+        } catch {
+            print("[SYNC_ENGINE] Deck link backfill fetch failed: \(error)")
+            return
+        }
+
+        for design in linked {
+            guard let opportunityId = design.opportunityId, !opportunityId.isEmpty else { continue }
+            guard !hasOpenLinkOperation(entityId: design.id) else { continue }
+
+            print("[SYNC_ENGINE] Deck link backfill: recording linkOpportunity for \(design.id) → \(opportunityId)")
+            _ = recordOperation(
+                entityType: .deckDesign,
+                entityId: design.id,
+                operationType: "linkOpportunity",
+                changedFields: ["opportunity_id": opportunityId.lowercased()],
+                deferPush: true
+            )
+        }
+
+        // Flip the one-time flag only after a clean pass (no fetch failure) — a
+        // mid-sweep crash must retry rather than silently skip designs.
+        defaults.set(true, forKey: "deckDesignLinkBackfill.v1")
+    }
+
+    /// True if a pending/inProgress `linkOpportunity` op already exists for this
+    /// deck design — stops the backfill stacking a duplicate link op on a design
+    /// the recorder (or a prior backfill attempt) already enqueued.
+    private func hasOpenLinkOperation(entityId: String) -> Bool {
+        guard let modelContext else { return false }
+        let idLower = entityId.lowercased()
+        let idUpper = entityId.uppercased()
+        let deckType = SyncEntityType.deckDesign.rawValue
+        let descriptor = FetchDescriptor<SyncOperation>(
+            predicate: #Predicate { op in
+                op.entityType == deckType &&
+                op.operationType == "linkOpportunity" &&
+                (op.entityId == idLower || op.entityId == idUpper || op.entityId == entityId) &&
+                (op.status == "pending" || op.status == "inProgress")
+            }
+        )
+        return ((try? modelContext.fetchCount(descriptor)) ?? 0) > 0
     }
 
     /// True if a pending or in-flight SyncOperation already exists for this entity.

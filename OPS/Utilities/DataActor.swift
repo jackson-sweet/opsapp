@@ -4386,8 +4386,32 @@ actor DataActor {
             _ = try await repo.create(dto)
 
         case "update":
-            let fields = payloadToAnyJSON(sanitizedPayload)
+            // The reparent guard trigger (trg_deck_designs_guard_opportunity_reparent)
+            // rejects any PATCH that carries opportunity_id (42501). The lead link
+            // travels ONLY via the dedicated "linkOpportunity" op below — never an
+            // update payload — so strip it here as a defense against any legacy or
+            // stray update op that still carries it.
+            var updatePayload = sanitizedPayload
+            updatePayload.removeValue(forKey: "opportunity_id")
+            let fields = payloadToAnyJSON(updatePayload)
             try await repo.updateFields(entityId, fields: fields)
+
+        case "linkOpportunity":
+            // Server-guarded orphan→lead link (link_deck_design_to_opportunity_guarded).
+            // already_linked:true is an idempotent success; a different lead raises
+            // 23514 and a missing row P0002 — both classify permanent → the op parks.
+            // A missing/garbage payload can't be fixed by retry, so throw encodingFailed
+            // (also permanent → parks) rather than burning the retry budget.
+            guard let rawOpportunityId = payload["opportunity_id"] as? String,
+                  !rawOpportunityId.isEmpty else {
+                throw SyncError.encodingFailed(
+                    detail: "linkOpportunity for deckDesign \(entityId) missing opportunity_id"
+                )
+            }
+            _ = try await repo.linkToOpportunity(
+                designId: entityId,
+                opportunityId: rawOpportunityId.lowercased()
+            )
 
         case "delete":
             try await repo.softDelete(entityId)
@@ -4485,6 +4509,10 @@ actor DataActor {
     ///   - "delete" discards all preceding creates/updates for the same entity
     ///   - Multiple "update"s → merge changedFields, keep latest payload, produce
     ///     one operation
+    ///   - "linkOpportunity" (deckDesign) merges INTO a create in the same group
+    ///     (the create legally carries opportunity_id for a linked INSERT); with no
+    ///     create present it is peeled out to execute standalone, never merged into
+    ///     the all-updates survivor (which would lose the link or the edit).
     ///
     /// Superseded ops are mutated to status="completed"; callers must wrap in
     /// `modelContext.transaction { }` so those mutations persist.
@@ -4499,8 +4527,9 @@ actor DataActor {
 
         var result: [SyncOperation] = []
 
-        for (_, ops) in groups {
-            guard !ops.isEmpty else { continue }
+        for (_, groupOps) in groups {
+            guard !groupOps.isEmpty else { continue }
+            var ops = groupOps
 
             if ops.count == 1 {
                 result.append(ops[0])
@@ -4515,6 +4544,21 @@ actor DataActor {
                 }
                 result.append(deleteOp)
                 continue
+            }
+
+            // linkOpportunity (deckDesign) is only safe to merge INTO a create,
+            // whose payload legally carries opportunity_id for a linked INSERT. In
+            // an all-updates group a merged link would either lose opportunity_id to
+            // the update path's strip (lost link) or drop the survivor's edit fields
+            // when the link handler runs (lost edit). With no create in the group,
+            // peel every link op out to execute standalone — the RPC is idempotent.
+            if !ops.contains(where: { $0.operationType == "create" }) {
+                let linkOps = ops.filter { $0.operationType == "linkOpportunity" }
+                if !linkOps.isEmpty {
+                    result.append(contentsOf: linkOps)
+                    ops.removeAll { $0.operationType == "linkOpportunity" }
+                    if ops.isEmpty { continue }
+                }
             }
 
             // Create present — merge subsequent updates in.
@@ -4686,7 +4730,7 @@ actor DataActor {
     ]
 
     private static let validDeckDesignColumns: Set<String> = [
-        "id", "company_id", "project_id", "title", "drawing_data",
+        "id", "company_id", "project_id", "opportunity_id", "title", "drawing_data",
         "thumbnail_url", "version", "created_by",
         "deleted_at", "created_at", "updated_at"
     ]

@@ -120,6 +120,37 @@ class DeckDesignRepository {
             .execute()
     }
 
+    // MARK: - Link to Opportunity (server-guarded)
+
+    /// Attaches an ORPHAN deck design (`opportunity_id IS NULL`) to a lead.
+    ///
+    /// A direct PATCH of `opportunity_id` is blocked server-side by the reparent
+    /// guard trigger; this RPC mints the reparent token inside the transaction,
+    /// so it is the ONLY legal path to attach an existing design to a lead. It is
+    /// idempotent: re-linking to the SAME lead returns `already_linked:true`
+    /// (callers treat that as success), while a DIFFERENT lead raises SQLSTATE
+    /// 23514 and a missing/foreign/deleted row raises 42501/P0002 — all permanent,
+    /// so the outbound op parks rather than looping.
+    func linkToOpportunity(
+        designId: String,
+        opportunityId: String
+    ) async throws -> DeckDesignLinkResult {
+        struct Params: Encodable {
+            let p_design_id: String
+            let p_target_opportunity_id: String
+        }
+        return try await client
+            .rpc(
+                "link_deck_design_to_opportunity_guarded",
+                params: Params(
+                    p_design_id: designId,
+                    p_target_opportunity_id: opportunityId
+                )
+            )
+            .execute()
+            .value
+    }
+
     // MARK: - Update Fields
 
     func updateFields(_ id: String, fields: [String: AnyJSON]) async throws {
@@ -151,4 +182,33 @@ class DeckDesignRepository {
 
 private func isoNow() -> String {
     ISO8601DateFormatter().string(from: Date())
+}
+
+/// Decoded result of `link_deck_design_to_opportunity_guarded`.
+///
+/// The RPC returns jsonb `{ok, already_linked, design_id, opportunity_id}`.
+/// `alreadyLinked` is true when the design was already attached to the requested
+/// lead (an idempotent retry) — callers treat it as success. Every field is
+/// decoded defensively so a future server-shape drift degrades to `ok:false`
+/// instead of throwing a decode error that would misclassify as transient.
+struct DeckDesignLinkResult: Decodable {
+    let ok: Bool
+    let alreadyLinked: Bool
+    let designId: String?
+    let opportunityId: String?
+
+    enum CodingKeys: String, CodingKey {
+        case ok
+        case alreadyLinked = "already_linked"
+        case designId      = "design_id"
+        case opportunityId = "opportunity_id"
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        ok = try container.decodeIfPresent(Bool.self, forKey: .ok) ?? false
+        alreadyLinked = try container.decodeIfPresent(Bool.self, forKey: .alreadyLinked) ?? false
+        designId = try container.decodeIfPresent(String.self, forKey: .designId)
+        opportunityId = try container.decodeIfPresent(String.self, forKey: .opportunityId)
+    }
 }

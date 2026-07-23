@@ -204,7 +204,7 @@ struct PendingWorkLinkPicker: View {
                     )
             }
             .padding(.horizontal, OPSStyle.Layout.spacing3_5)
-            .padding(.vertical, 14)
+            .padding(.vertical, OPSStyle.Layout.spacing2_5)
             .frame(minHeight: 44)
             .contentShape(Rectangle())
         }

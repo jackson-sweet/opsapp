@@ -58,7 +58,7 @@ struct SyncStatusPanel: View {
             Spacer()
 
             Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
-                .font(.system(size: 12, weight: .medium))
+                .font(.system(size: OPSStyle.Layout.IconSize.xs, weight: .medium))
                 .foregroundColor(OPSStyle.Colors.secondaryText)
         }
         .contentShape(Rectangle())
@@ -123,7 +123,7 @@ struct SyncStatusPanel: View {
                 } label: {
                     HStack(spacing: 6) {
                         Image(systemName: "arrow.clockwise")
-                            .font(.system(size: 12, weight: .medium))
+                            .font(.system(size: OPSStyle.Layout.IconSize.xs, weight: .medium))
                         Text("RETRY ALL (\(failed.count))")
                             .font(OPSStyle.Typography.smallCaption)
                     }
@@ -176,7 +176,7 @@ struct SyncStatusPanel: View {
                 .foregroundColor(OPSStyle.Colors.tertiaryText)
 
             if operation.status == "failed" {
-                actionButton(system: "arrow.clockwise", tint: OPSStyle.Colors.primaryAccent, glyphSize: 12) {
+                actionButton(system: "arrow.clockwise", tint: OPSStyle.Colors.primaryAccent, glyphSize: OPSStyle.Layout.IconSize.xs) {
                     onRetry(operation)
                 }
             }

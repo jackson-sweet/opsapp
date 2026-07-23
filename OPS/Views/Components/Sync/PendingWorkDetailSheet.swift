@@ -93,7 +93,7 @@ struct PendingWorkDetailSheet: View {
     private func detailLineRow(_ line: DetailLine) -> some View {
         HStack(spacing: 10) {
             Image(systemName: PendingWorkVisuals.glyphName(line.tone))
-                .font(.system(size: 12, weight: .medium))
+                .font(.system(size: OPSStyle.Layout.IconSize.xs, weight: .medium))
                 .foregroundColor(PendingWorkVisuals.toneColor(line.tone))
                 .frame(width: 16, height: 16)
 

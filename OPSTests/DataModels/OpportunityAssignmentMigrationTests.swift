@@ -3,8 +3,8 @@
 //  OPSTests
 //
 //  Proves the exact V15 Opportunity shape migrates through the full plan to
-//  the current schema (V18) without a store wipe, defaulting the assignment
-//  concurrency snapshot to zero and the chase/summary columns to nil.
+//  the current schema (V19) without a store wipe, defaulting the assignment
+//  concurrency snapshot to zero and the chase/summary/ownership columns to nil.
 //
 
 import SwiftData
@@ -50,7 +50,7 @@ final class OpportunityAssignmentMigrationTests: XCTestCase {
             try context.save()
         }
 
-        let schema = Schema(versionedSchema: OPSSchemaV18.self)
+        let schema = Schema(versionedSchema: OPSSchemaV19.self)
         let configuration = ModelConfiguration(schema: schema, url: storeURL)
         let container = try ModelContainer(
             for: schema,
@@ -68,6 +68,7 @@ final class OpportunityAssignmentMigrationTests: XCTestCase {
         XCTAssertEqual(lead.estimatedValue, 42_000)
         XCTAssertEqual(lead.assignmentVersion, 0)
         XCTAssertNil(lead.handledAt)
+        XCTAssertNil(lead.operatorActionRequiredAt)
         XCTAssertNil(lead.aiSummary)
         XCTAssertNil(lead.aiSummaryUpdatedAt)
 

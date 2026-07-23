@@ -111,8 +111,13 @@
 //  three optional chase/summary fields (`handledAt`, `aiSummary`,
 //  `aiSummaryUpdatedAt`). Opportunity is version-scoped at this boundary —
 //  the frozen `OPSSchemaLegacyOpportunityV17.Opportunity` (images +
-//  coordinates, no assignment/chase) backs V16–V17; the live model backs
-//  V18+ — so only this boundary widens the fingerprint.
+//  coordinates, no assignment/chase) backs V16–V17; the frozen released V18
+//  shape backs V18 — so only this boundary widens the fingerprint.
+//
+//  V18 → V19 stage: reversible lead ownership correction. Opportunity gains
+//  nullable `operatorActionRequiredAt`, the explicit "this is my move" event.
+//  The exact released V18 Opportunity graph is frozen under
+//  `OPSSchemaLegacyOpportunityV18`; the widened live model starts at V19.
 //
 
 import Foundation
@@ -138,7 +143,8 @@ enum OPSMigrationPlan: SchemaMigrationPlan {
             OPSSchemaV15.self,
             OPSSchemaV16.self,
             OPSSchemaV17.self,
-            OPSSchemaV18.self
+            OPSSchemaV18.self,
+            OPSSchemaV19.self
         ]
     }
 
@@ -160,16 +166,25 @@ enum OPSMigrationPlan: SchemaMigrationPlan {
             addSiteVisitActivityLinkV14toV15,
             addOpportunityMediaAndDeckLeadV15toV16,
             addVinylOrderColorPOV16toV17,
-            addOpportunityAssignmentAndChaseV17toV18
+            addOpportunityAssignmentAndChaseV17toV18,
+            addOpportunityActionRequiredV18toV19
         ]
     }
+
+    /// V18 → V19: additive lead-ownership correction signal. Existing leads
+    /// receive nil; the frozen V18 Opportunity shape preserves the released
+    /// checksum while V19 registers the widened live model.
+    static let addOpportunityActionRequiredV18toV19 = MigrationStage.lightweight(
+        fromVersion: OPSSchemaV18.self,
+        toVersion: OPSSchemaV19.self
+    )
 
     /// V17 → V18: additive guarded-assignment snapshot + chase columns.
     /// Existing leads receive `assignmentVersion = 0` (required, defaulted);
     /// `handledAt` / `aiSummary` / `aiSummaryUpdatedAt` are new optionals
     /// defaulting to nil. Opportunity is version-scoped at this boundary
-    /// (frozen `OPSSchemaLegacyOpportunityV17` for V16–V17, live for V18+)
-    /// so released fingerprints stay exact.
+    /// (frozen `OPSSchemaLegacyOpportunityV17` for V16–V17, frozen released
+    /// V18 shape at V18) so released fingerprints stay exact.
     static let addOpportunityAssignmentAndChaseV17toV18 = MigrationStage.lightweight(
         fromVersion: OPSSchemaV17.self,
         toVersion: OPSSchemaV18.self

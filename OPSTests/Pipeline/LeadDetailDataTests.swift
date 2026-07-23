@@ -81,4 +81,37 @@ final class LeadDetailDataTests: XCTestCase {
                 client: nil, subClients: []),
             .noClient)
     }
+
+    func testActivityRefreshTargetsOnlyTheOpenLead() {
+        let matching = Notification(
+            name: Notification.Name("LeadActivityLoggedSuccess"),
+            userInfo: ["leadId": "lead-1"]
+        )
+        let other = Notification(
+            name: Notification.Name("LeadActivityLoggedSuccess"),
+            userInfo: ["leadId": "lead-2"]
+        )
+        let missing = Notification(
+            name: Notification.Name("LeadActivityLoggedSuccess")
+        )
+
+        XCTAssertTrue(
+            LeadDetailViewModel.activityNotificationTargets(
+                matching,
+                opportunityId: "lead-1"
+            )
+        )
+        XCTAssertFalse(
+            LeadDetailViewModel.activityNotificationTargets(
+                other,
+                opportunityId: "lead-1"
+            )
+        )
+        XCTAssertFalse(
+            LeadDetailViewModel.activityNotificationTargets(
+                missing,
+                opportunityId: "lead-1"
+            )
+        )
+    }
 }

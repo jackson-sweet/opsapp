@@ -110,6 +110,7 @@ struct OpportunityDTO: Codable, Identifiable {
     let lastMessageDirection: String?
 
     let handledAt: String?
+    let operatorActionRequiredAt: String?
     let aiSummary: String?
     let aiSummaryUpdatedAt: String?
 
@@ -158,6 +159,7 @@ struct OpportunityDTO: Codable, Identifiable {
         case lastOutboundAt       = "last_outbound_at"
         case lastMessageDirection = "last_message_direction"
         case handledAt            = "handled_at"
+        case operatorActionRequiredAt = "operator_action_required_at"
         case aiSummary            = "ai_summary"
         case aiSummaryUpdatedAt   = "ai_summary_updated_at"
         case createdAt            = "created_at"
@@ -210,6 +212,7 @@ struct OpportunityDTO: Codable, Identifiable {
         opp.lastOutboundAt = lastOutboundAt.flatMap { SupabaseDate.parse($0) }
         opp.lastMessageDirection = lastMessageDirection
         opp.handledAt = handledAt.flatMap { SupabaseDate.parse($0) }
+        opp.operatorActionRequiredAt = operatorActionRequiredAt.flatMap { SupabaseDate.parse($0) }
         opp.aiSummary = aiSummary
         opp.aiSummaryUpdatedAt = aiSummaryUpdatedAt.flatMap { SupabaseDate.parse($0) }
         return opp
@@ -346,6 +349,44 @@ struct MarkHandledPatch: Encodable {
     enum CodingKeys: String, CodingKey {
         case handledAt      = "handled_at"
         case nextFollowUpAt = "next_follow_up_at"
+    }
+}
+
+struct LogOpportunityQuickTouchParams: Encodable {
+    let requestId: String
+    let opportunityId: String
+    let type: String
+    let subject: String
+
+    enum CodingKeys: String, CodingKey {
+        case requestId     = "p_request_id"
+        case opportunityId = "p_opportunity_id"
+        case type          = "p_type"
+        case subject       = "p_subject"
+    }
+}
+
+struct LogOpportunityQuickTouchResult: Decodable {
+    let activity: ActivityDTO
+    let opportunity: OpportunityDTO
+}
+
+/// Manual ownership correction — declares that the operator must act next.
+/// The database replaces this client sentinel with its own clock.
+struct MarkOperatorActionRequiredPatch: Encodable {
+    let operatorActionRequiredAt: String
+    enum CodingKeys: String, CodingKey {
+        case operatorActionRequiredAt = "operator_action_required_at"
+    }
+}
+
+struct UndoOpportunityQuickTouchParams: Encodable {
+    let activityId: String
+    let opportunityId: String
+
+    enum CodingKeys: String, CodingKey {
+        case activityId    = "p_activity_id"
+        case opportunityId = "p_opportunity_id"
     }
 }
 

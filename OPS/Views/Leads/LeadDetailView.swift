@@ -344,6 +344,17 @@ struct LeadDetailView: View {
             }
             Task { await LeadImageService.shared.drain() }
         }
+        .onReceive(
+            NotificationCenter.default.publisher(
+                for: Notification.Name("LeadActivityLoggedSuccess")
+            )
+        ) { notification in
+            guard LeadDetailViewModel.activityNotificationTargets(
+                notification,
+                opportunityId: opportunity.id
+            ) else { return }
+            Task { await vm.reloadActivities() }
+        }
         .fullScreenCover(isPresented: $showingSiteVisitCapture) {
             SiteVisitCaptureView(
                 opportunity: opportunity,
@@ -627,8 +638,11 @@ struct LeadDetailView: View {
     private func touchTextFromDetail() {
         guard let phone = opportunity.contactPhone, !phone.isEmpty else { return }
         if canEdit {
-            LeadQuickTouchLogger.touch(.text, lead: opportunity, companyId: opportunity.companyId,
-                                       userId: dataController.currentUser?.id)
+            LeadQuickTouchLogger.touch(
+                .text,
+                lead: opportunity,
+                companyId: opportunity.companyId
+            )
         } else if let url = URL(string: LeadQuickTouchLogger.smsURLString(phone: phone)) {
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
             UIApplication.shared.open(url)
@@ -638,8 +652,11 @@ struct LeadDetailView: View {
     private func touchEmailFromDetail() {
         guard let email = opportunity.contactEmail, !email.isEmpty else { return }
         if canEdit {
-            LeadQuickTouchLogger.touch(.email, lead: opportunity, companyId: opportunity.companyId,
-                                       userId: dataController.currentUser?.id)
+            LeadQuickTouchLogger.touch(
+                .email,
+                lead: opportunity,
+                companyId: opportunity.companyId
+            )
         } else if let url = URL(string: LeadQuickTouchLogger.mailtoURLString(email: email, threadSubject: vm.latestThreadSubject)) {
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
             UIApplication.shared.open(url)

@@ -100,16 +100,32 @@ struct LeadChaseStrip: View {
     }
 
     private func accessibilityLabel(_ c: (label: String, tone: Color, action: Action?), action: Action) -> String {
-        let verb = action == .handled ? "mark handled" : "adjust the comeback date"
+        let verb = action == .handled
+            ? "mark handled"
+            : "adjust ownership or the next touch date"
         return "\(c.label). Double-tap to \(verb)."
     }
 
     // MARK: - Ages & vocabulary
 
-    /// Age of the unanswered inbound — hours under a day, days after.
+    /// Age of the newest event that put the lead in YOUR MOVE.
     private var yourMoveAge: String {
-        guard let inbound = lead.lastInboundAt else { return "NOW" }
-        let hours = Int(Date().timeIntervalSince(inbound) / 3600)
+        Self.yourMoveAge(
+            lastInboundAt: lead.lastInboundAt,
+            operatorActionRequiredAt: lead.operatorActionRequiredAt
+        )
+    }
+
+    static func yourMoveAge(
+        lastInboundAt: Date?,
+        operatorActionRequiredAt: Date?,
+        now: Date = Date()
+    ) -> String {
+        let reference = [lastInboundAt, operatorActionRequiredAt]
+            .compactMap { $0 }
+            .max()
+        guard let reference else { return "NOW" }
+        let hours = Int(now.timeIntervalSince(reference) / 3600)
         if hours < 1 { return "NOW" }
         if hours < 24 { return "\(hours)H" }
         return "\(hours / 24)D"

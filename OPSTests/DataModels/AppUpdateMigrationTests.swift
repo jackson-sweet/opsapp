@@ -37,6 +37,21 @@ final class AppUpdateMigrationTests: XCTestCase {
         )
     }
 
+    func testReleasedV18DoesNotReferenceWidenedLiveOpportunity() {
+        XCTAssertFalse(
+            contains(Opportunity.self, in: OPSSchemaV18.self),
+            "V18 must keep the Opportunity shape released before operatorActionRequiredAt was added"
+        )
+        XCTAssertTrue(
+            contains(OPSSchemaLegacyOpportunityV18.Opportunity.self, in: OPSSchemaV18.self),
+            "V18 must register its frozen released Opportunity shape"
+        )
+        XCTAssertTrue(
+            contains(Opportunity.self, in: OPSSchemaV19.self),
+            "V19 must register the widened live Opportunity"
+        )
+    }
+
     func testAppUpdateChangesHaveMigrationBoundaryAfterV15() {
         XCTAssertGreaterThan(
             OPSMigrationPlan.schemas.count,
@@ -86,6 +101,86 @@ final class AppUpdateMigrationTests: XCTestCase {
         try assertOpportunityAndDeckDesignMigration(from: OPSSchemaV10.self, sourceLabel: "v10")
     }
 
+    func testV18StoreMigratesToV19PreservingOpportunityAndAddingActionRequiredTimestamp() throws {
+        let handledAt = Date(timeIntervalSince1970: 2_100_000)
+        let summaryUpdatedAt = Date(timeIntervalSince1970: 2_200_000)
+
+        try autoreleasepool {
+            let sourceSchema = Schema(versionedSchema: OPSSchemaV18.self)
+            let sourceConfiguration = ModelConfiguration(schema: sourceSchema, url: storeURL)
+            let sourceContainer = try ModelContainer(
+                for: sourceSchema,
+                configurations: sourceConfiguration
+            )
+            let context = ModelContext(sourceContainer)
+
+            let opportunity = OPSSchemaLegacyOpportunityV18.Opportunity(
+                id: "lead-v18",
+                companyId: "company-1",
+                contactName: "Helen Calloway",
+                stage: .quoted,
+                stageEnteredAt: Date(timeIntervalSince1970: 2_000_000),
+                createdAt: Date(timeIntervalSince1970: 1_900_000),
+                updatedAt: Date(timeIntervalSince1970: 2_300_000)
+            )
+            opportunity.title = "South deck replacement"
+            opportunity.assignedTo = "user-helen"
+            opportunity.assignmentVersion = 7
+            opportunity.images = ["https://cdn.ops.test/v18-lead.jpg"]
+            opportunity.latitude = 48.4284
+            opportunity.longitude = -123.3656
+            opportunity.lastInboundAt = Date(timeIntervalSince1970: 2_050_000)
+            opportunity.lastMessageDirection = "in"
+            opportunity.handledAt = handledAt
+            opportunity.aiSummary = "Quote sent. Waiting on measurements."
+            opportunity.aiSummaryUpdatedAt = summaryUpdatedAt
+            context.insert(opportunity)
+            try context.save()
+        }
+
+        let targetSchema = Schema(versionedSchema: OPSSchemaV19.self)
+        let targetConfiguration = ModelConfiguration(schema: targetSchema, url: storeURL)
+        let migratedContainer = try ModelContainer(
+            for: targetSchema,
+            migrationPlan: OPSMigrationPlan.self,
+            configurations: targetConfiguration
+        )
+        let context = ModelContext(migratedContainer)
+
+        let migrated = try XCTUnwrap(
+            try context.fetch(FetchDescriptor<Opportunity>()).first
+        )
+        XCTAssertEqual(migrated.id, "lead-v18")
+        XCTAssertEqual(migrated.title, "South deck replacement")
+        XCTAssertEqual(migrated.assignedTo, "user-helen")
+        XCTAssertEqual(migrated.assignmentVersion, 7)
+        XCTAssertEqual(migrated.images, ["https://cdn.ops.test/v18-lead.jpg"])
+        XCTAssertEqual(migrated.latitude, 48.4284)
+        XCTAssertEqual(migrated.longitude, -123.3656)
+        XCTAssertEqual(migrated.lastMessageDirection, "in")
+        XCTAssertEqual(migrated.handledAt, handledAt)
+        XCTAssertEqual(migrated.aiSummary, "Quote sent. Waiting on measurements.")
+        XCTAssertEqual(migrated.aiSummaryUpdatedAt, summaryUpdatedAt)
+        XCTAssertNil(
+            migrated.operatorActionRequiredAt,
+            "The additive V19 timestamp must default to nil for V18 rows"
+        )
+
+        let actionRequiredAt = Date(timeIntervalSince1970: 2_400_000)
+        migrated.operatorActionRequiredAt = actionRequiredAt
+        try context.save()
+
+        let rereadContext = ModelContext(migratedContainer)
+        let reread = try XCTUnwrap(
+            try rereadContext.fetch(FetchDescriptor<Opportunity>()).first
+        )
+        XCTAssertEqual(
+            reread.operatorActionRequiredAt,
+            actionRequiredAt,
+            "The V19 timestamp must persist after the migration"
+        )
+    }
+
     func testProductionStoreConfigurationPinsThePrimaryAppGroup() {
         XCTAssertEqual(
             OPSModelStore.appGroupIdentifier(isStoredInMemoryOnly: false),
@@ -94,7 +189,7 @@ final class AppUpdateMigrationTests: XCTestCase {
     }
 
     func testHostedTestStoreStaysInMemoryWithoutAppGroupStorage() {
-        let schema = Schema(versionedSchema: OPSSchemaV18.self)
+        let schema = Schema(versionedSchema: OPSSchemaV19.self)
         let configuration = OPSModelStore.configuration(
             schema: schema,
             isStoredInMemoryOnly: true
@@ -143,7 +238,7 @@ final class AppUpdateMigrationTests: XCTestCase {
             )
         }
 
-        let currentSchema = Schema(versionedSchema: OPSSchemaV18.self)
+        let currentSchema = Schema(versionedSchema: OPSSchemaV19.self)
         let currentConfiguration = ModelConfiguration(schema: currentSchema, url: storeURL)
         let migrated = try ModelContainer(
             for: currentSchema,
@@ -242,7 +337,7 @@ final class AppUpdateMigrationTests: XCTestCase {
             try context.save()
         }
 
-        let currentSchema = Schema(versionedSchema: OPSSchemaV18.self)
+        let currentSchema = Schema(versionedSchema: OPSSchemaV19.self)
         let currentConfiguration = ModelConfiguration(schema: currentSchema, url: storeURL)
         let migratedContainer = try ModelContainer(
             for: currentSchema,
@@ -263,6 +358,10 @@ final class AppUpdateMigrationTests: XCTestCase {
         XCTAssertEqual(opportunity.images, [], "New collection defaults empty for historical rows")
         XCTAssertNil(opportunity.latitude, "New latitude defaults nil for historical rows")
         XCTAssertNil(opportunity.longitude, "New longitude defaults nil for historical rows")
+        XCTAssertNil(
+            opportunity.operatorActionRequiredAt,
+            "New ownership-correction timestamp defaults nil for historical rows"
+        )
 
         let decks = try context.fetch(FetchDescriptor<DeckDesign>())
         XCTAssertEqual(decks.count, 1)

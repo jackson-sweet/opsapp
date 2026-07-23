@@ -481,8 +481,11 @@ struct LeadTriageCard: View {
     private func touchText() {
         guard hasPhone else { return }
         if canEdit {
-            LeadQuickTouchLogger.touch(.text, lead: lead, companyId: lead.companyId,
-                                       userId: dataController.currentUser?.id)
+            LeadQuickTouchLogger.touch(
+                .text,
+                lead: lead,
+                companyId: lead.companyId
+            )
         } else if let url = URL(string: LeadQuickTouchLogger.smsURLString(phone: lead.contactPhone ?? "")) {
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
             UIApplication.shared.open(url)
@@ -492,8 +495,11 @@ struct LeadTriageCard: View {
     private func touchEmail() {
         guard hasEmail else { return }
         if canEdit {
-            LeadQuickTouchLogger.touch(.email, lead: lead, companyId: lead.companyId,
-                                       userId: dataController.currentUser?.id)
+            LeadQuickTouchLogger.touch(
+                .email,
+                lead: lead,
+                companyId: lead.companyId
+            )
         } else if let url = URL(string: LeadQuickTouchLogger.mailtoURLString(email: lead.contactEmail ?? "", threadSubject: nil)) {
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
             UIApplication.shared.open(url)

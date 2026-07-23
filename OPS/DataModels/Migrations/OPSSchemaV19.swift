@@ -1,30 +1,24 @@
 //
-//  OPSSchemaV18.swift
+//  OPSSchemaV19.swift
 //  OPS
 //
-//  Schema version 18.0.0 — guarded lead assignment concurrency + chase columns.
+//  Schema version 19.0.0 — reversible lead ownership correction.
 //
-//  Opportunity gains the required, zero-default Int64 `assignmentVersion`
-//  snapshot (guarded assignment / conversion RPC concurrency) and three
-//  optional Leads-chase fields: `handledAt` (operator's "handled — their
-//  move" declaration), `aiSummary`, and `aiSummaryUpdatedAt`. V16–V17 retain
-//  the frozen pre-widening shape (`OPSSchemaLegacyOpportunityV17`) so stores
-//  created by released binaries remain recognizable. The V18 stored shape
-//  begins here, making the change an adjacent lightweight migration: the
-//  snapshot defaults to zero and the chase columns default to nil for
-//  historical rows. That exact shape is frozen for V18; V19 owns the next
-//  additive Opportunity field.
+//  Opportunity gains the optional `operatorActionRequiredAt` event timestamp.
+//  V18 retains its frozen released shape (`OPSSchemaLegacyOpportunityV18`) so
+//  installed stores remain recognizable. The widened live Opportunity begins
+//  here; historical rows receive nil through an adjacent lightweight migration.
 //
 
 import Foundation
 import SwiftData
 
-enum OPSSchemaV18: VersionedSchema {
-    static var versionIdentifier: Schema.Version { Schema.Version(18, 0, 0) }
+enum OPSSchemaV19: VersionedSchema {
+    static var versionIdentifier: Schema.Version { Schema.Version(19, 0, 0) }
 
     static var models: [any PersistentModel.Type] {
         OPSSchemaCommon.unchangedModels
-            + OPSSchemaCommon.v18OpportunityModel
+            + OPSSchemaCommon.v19OpportunityModel
             + OPSSchemaCommon.v16DeckDesignModel
             + OPSSchemaCommon.v13ProjectNoteModel
             + OPSSchemaCommon.v18PhotoAnnotationModel

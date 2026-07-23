@@ -31,6 +31,7 @@ struct SettingsView: View {
         case productsServices, integrations, projectSettings
         case whatsNew, reportIssue, developerDashboard
         case allPhotos, myExpenses, reviewExpenses
+        case pendingWork
         case permissions
         case tutorialExperience, tutorialV2
         case wizardManagement
@@ -50,6 +51,10 @@ struct SettingsView: View {
     }
 
     @State private var activeDestination: SettingsDestination?
+
+    // Live count of unsynced/draft/orphan work for the DATA › PENDING WORK row
+    // (SYNC RECOVERY · T6). `—` when zero.
+    @State private var pendingWorkCount: Int = 0
 
     // Bug e33aa336 — when a search result targets a specific section inside
     // a sub-page, this value holds the section identifier until the sub-page
@@ -310,6 +315,14 @@ struct SettingsView: View {
 
                             // Data section
                             settingsSection(title: "DATA") {
+                                pendingWorkRow
+                                    .onAppear(perform: refreshPendingWorkCount)
+                                    .onReceive(NotificationCenter.default.publisher(for: .opsLeadsDidChange)) { _ in
+                                        refreshPendingWorkCount()
+                                    }
+
+                                sectionDivider
+
                                 settingsRow(
                                     icon: "photo.on.rectangle.angled",
                                     title: "Photos",
@@ -579,6 +592,9 @@ struct SettingsView: View {
                 TrashView()
                     .environmentObject(dataController)
             }
+        case .pendingWork:
+            PendingWorkScreen(leading: .back("SETTINGS"))
+                .environmentObject(dataController)
         case .myExpenses:
             NavigationStack {
                 MyExpensesView()
@@ -998,6 +1014,46 @@ struct SettingsView: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(PlainButtonStyle())
+    }
+
+    // MARK: - Pending Work Row (SYNC RECOVERY · T6)
+
+    /// DATA row into the PENDING WORK recovery screen, with a live trailing mono
+    /// count of unsynced / draft / orphan work (`—` when nothing is pending).
+    private var pendingWorkRow: some View {
+        Button(action: { activeDestination = .pendingWork }) {
+            HStack(spacing: 14) {
+                Image(systemName: "arrow.triangle.2.circlepath")
+                    .font(.system(size: OPSStyle.Layout.IconSize.md))
+                    .foregroundColor(OPSStyle.Colors.secondaryText)
+                    .frame(width: 28, alignment: .center)
+
+                Text("Pending Work")
+                    .font(OPSStyle.Typography.body)
+                    .foregroundColor(OPSStyle.Colors.primaryText)
+
+                Spacer()
+
+                Text(pendingWorkCount > 0 ? "\(pendingWorkCount)" : "—")
+                    .font(OPSStyle.Typography.dataValue)
+                    .foregroundColor(pendingWorkCount > 0 ? OPSStyle.Colors.secondaryText : OPSStyle.Colors.tertiaryText)
+
+                Image(systemName: OPSStyle.Icons.chevronRight)
+                    .font(.system(size: OPSStyle.Layout.IconSize.sm))
+                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+            }
+            .padding(.vertical, 14)
+            .padding(.horizontal, OPSStyle.Layout.spacing3)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(PlainButtonStyle())
+    }
+
+    private func refreshPendingWorkCount() {
+        guard let context = dataController.modelContext else { return }
+        let inventory = RecoveryInventory.load(from: context, queue: ClientLeadAutocreateQueue.shared)
+        pendingWorkCount = inventory.attention.count + inventory.sending.count
+            + inventory.drafts.count + inventory.unlinked.count
     }
 
     // MARK: - Gated Row (feature-flagged)

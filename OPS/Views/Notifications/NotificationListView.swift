@@ -255,6 +255,8 @@ struct NotificationListView: View {
     @State private var notifications: [NotificationDTO] = []
     @State private var isLoading = true
     @State private var showingOlder = false
+    // VIEW ALL → PENDING WORK recovery screen (SYNC RECOVERY · T6)
+    @State private var showPendingWork = false
     @State private var filter: NotificationFilter = .unread
     @State private var expandedId: String? = nil
 
@@ -341,9 +343,20 @@ struct NotificationListView: View {
                                     .padding(.bottom, OPSStyle.Layout.spacing2_5)
                             }
 
-                            // Sync status section — shows pending/failed operations
-                            SyncStatusSection()
-                                .environmentObject(dataController)
+                            // Sync status section — shows pending/failed operations.
+                            // VIEW ALL escalates the compact panel to PENDING WORK.
+                            VStack(spacing: 0) {
+                                SyncStatusSection()
+                                    .environmentObject(dataController)
+
+                                if syncHasWork {
+                                    pendingWorkViewAllLink
+                                }
+                            }
+                            .fullScreenCover(isPresented: $showPendingWork) {
+                                PendingWorkScreen(leading: .close)
+                                    .environmentObject(dataController)
+                            }
 
                             if filteredNotifications.isEmpty {
                                 emptyState
@@ -589,6 +602,40 @@ struct NotificationListView: View {
             }
         }
         .padding(.bottom, OPSStyle.Layout.spacing3)
+    }
+
+    // MARK: - Pending Work escalation (SYNC RECOVERY · T6)
+
+    /// True when the compact sync panel has something worth expanding into the
+    /// full PENDING WORK screen — pending/failed ops or queued lead deliveries.
+    private var syncHasWork: Bool {
+        // `syncEngine` is an implicitly-unwrapped optional; a bare `let` binding
+        // loses the auto-unwrap, so read through optional chaining with a
+        // zero/empty default — a not-yet-configured engine reads as no work.
+        let pendingCount = dataController.syncEngine?.pendingOperationCount ?? 0
+        let hasFailed = !(dataController.syncEngine?.getFailedOperations().isEmpty ?? true)
+        return pendingCount > 0 || hasFailed || ClientLeadAutocreateQueue.shared.pendingCount > 0
+    }
+
+    /// Right-aligned footer link under the sync panel → PENDING WORK.
+    private var pendingWorkViewAllLink: some View {
+        Button {
+            showPendingWork = true
+        } label: {
+            HStack(spacing: OPSStyle.Layout.spacing1) {
+                Text("VIEW ALL")
+                    .font(OPSStyle.Typography.miniLabelBold)
+                    .tracking(0.8)
+                Image(systemName: "arrow.right")
+                    .font(.system(size: 10, weight: .semibold))
+            }
+            .foregroundColor(OPSStyle.Colors.secondaryText)
+            .frame(maxWidth: .infinity, alignment: .trailing)
+            .frame(minHeight: 44)
+            .padding(.horizontal, OPSStyle.Layout.spacing3)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
     }
 
     private func sectionHeader(_ title: String, count: Int, showReadAll: Bool = false) -> some View {

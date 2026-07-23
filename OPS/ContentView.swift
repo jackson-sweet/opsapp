@@ -601,6 +601,9 @@ struct PINGatedView: View {
     // this view shows the role-aware dismissable overlay via `updateGate`.
     @State private var hasCheckedForAppMessage = false
 
+    // Sync-restored toast → PENDING WORK recovery screen (SYNC RECOVERY · T6)
+    @State private var showPendingWorkFromToast = false
+
     // State for task creation success message
     @State private var showTaskCreatedMessage = false
     @State private var createdTaskTypeName: String = ""
@@ -826,7 +829,7 @@ struct PINGatedView: View {
                         }
                 }
 
-                // Sync restored notification
+                // Sync restored notification — tap VIEW to open PENDING WORK
                 PushInMessage(
                     isPresented: Binding(
                         get: { dataController.showSyncRestoredAlert },
@@ -835,9 +838,15 @@ struct PINGatedView: View {
                     title: "SYNCING \(dataController.pendingSyncCount) ITEM\(dataController.pendingSyncCount == 1 ? "" : "S")...",
                     subtitle: "Connection restored",
                     type: .info,
-                    autoDismissAfter: 4.0
+                    autoDismissAfter: 4.0,
+                    actionLabel: "VIEW",
+                    onAction: { showPendingWorkFromToast = true }
                 )
                 .zIndex(2)
+                .fullScreenCover(isPresented: $showPendingWorkFromToast) {
+                    PendingWorkScreen(leading: .close)
+                        .environmentObject(dataController)
+                }
 
                 // Task created success notification
                 PushInMessage(

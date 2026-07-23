@@ -163,4 +163,134 @@ enum SyncStatusCopy {
     private static func needWord(_ count: Int) -> String {
         count == 1 ? "needs" : "need"
     }
+
+    // MARK: - PENDING WORK recovery screen (SYNC RECOVERY · T6)
+    //
+    // Every user-facing string on the PENDING WORK recovery screen (spec §4/§5)
+    // lands HERE — the same chokepoint rule as the panel above, so a field user
+    // never sees a raw column name or Postgres error, and the copy is unit-tested
+    // like the panel's. Final wording is the plan's FINAL COPY BLOCK, verbatim.
+    // The block stays clock-free: the view precomputes `secondsUntilRetry` from
+    // `nextEligibleAt − now` (floored to 1s) and hands it in, so these functions
+    // are deterministic and testable without a clock.
+    enum PendingWork {
+
+        // Screen + section headers (UPPERCASE authority; `//` prefix is the
+        // section voice).
+        static let screenTitle = "PENDING WORK"
+        static let sectionAttention = "// NEEDS ATTENTION"
+        static let sectionSending = "// SENDING"
+        static let sectionDrafts = "// DRAFTS"
+        static let sectionUnlinked = "// NOT LINKED"
+
+        // Empty (zero) state — hero glyph + label (MOBILE.md §10).
+        static let emptyHero = "—"
+        static let emptyLabel = "// NOTHING PENDING · ALL CHANGES SAVED"
+
+        // Row status lines (sentence case — the existing SyncStatusCopy register).
+        static let parkedRow = "Server said no — held here"
+        static let offlineRow = "Waiting for signal"
+        static let orphanRow = "Not linked to a job or lead"
+        static let draftRow = "Not sent yet — open to finish"
+
+        /// Backoff countdown line. `n` is always a whole second, floored to 1 so
+        /// the operator never sees "next in 0s". Rendered in mono at the call site.
+        static func backoffRow(seconds: Int) -> String {
+            "Retrying — next in \(max(1, seconds))s"
+        }
+
+        // Detail sheet — parked error block.
+        static let parkedDetailLabel = "SYS :: REJECTED BY SERVER"
+        static let parkedDetailBody = "Your copy is safe on this phone. Retry now or export it."
+
+        // Actions, labels, confirms.
+        static let linkAction = "LINK"
+        static let linkPickerTitle = "LINK TO"
+        static let exportAction = "EXPORT"
+        static let discardConfirmTitle = "DESTRUCTIVE. NO UNDO."
+        static let discardConfirmBody = "Deletes this work from this phone. It was never sent."
+
+        /// Share-sheet summary title. `name` is the work's display name.
+        static func exportTitle(name: String) -> String { "OPS EXPORT — \(name)" }
+
+        /// Floating RETRY ALL CTA — matches the existing panel's `RETRY ALL (n)`.
+        static func retryAllButton(count: Int) -> String { "RETRY ALL (\(count))" }
+
+        /// Sync-pill attention badge — `<n> NEED A LOOK` (count in mono).
+        static func pillBadge(count: Int) -> String { "\(count) NEED A LOOK" }
+
+        // Row titles — the piece of WORK, named like a human action. The name
+        // is data; the prefix is the copy (chokepoint rule).
+
+        /// Loose lead-delivery row — "Lead · <name>" (falls back to "New lead"
+        /// when the client carries no name).
+        static func leadTitle(name: String) -> String {
+            let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+            return trimmed.isEmpty ? "New lead" : "Lead · \(trimmed)"
+        }
+
+        /// Queued-photo row title — "N photo" / "N photos".
+        static func photosTitle(count: Int) -> String {
+            "\(count) photo\(count == 1 ? "" : "s")"
+        }
+
+        /// Site-visit bundle / draft title — the capture's display name, or a
+        /// plain "Site visit" when the operator never named it.
+        static func draftTitle(displayName: String) -> String {
+            let trimmed = displayName.trimmingCharacters(in: .whitespacesAndNewlines)
+            return trimmed.isEmpty ? "Site visit" : trimmed
+        }
+
+        /// Orphan deck-design title — the design's title, or "Deck design".
+        static func orphanTitle(title: String) -> String {
+            let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
+            return trimmed.isEmpty ? "Deck design" : trimmed
+        }
+
+        /// Bundle member-strip glyph label — CLIENT / LEAD / DECK / PHOTOS.
+        static func memberLabel(_ role: RecoveryMemberRole) -> String {
+            switch role {
+            case .client:        return "CLIENT"
+            case .lead:          return "LEAD"
+            case .deck:          return "DECK"
+            case .photos:        return "PHOTOS"
+            case .other(let s):  return s.uppercased()
+            }
+        }
+
+        /// THE resolver: a recovery item's raw state → one plain line + tone.
+        /// Ordering encodes precedence — a permanent rejection reads as held, a
+        /// live save reads as saving, an offline error reads as waiting-for-signal
+        /// (more honest than a countdown that can't fire), a non-offline backoff
+        /// shows its countdown, then failed/queued fall through to their lines.
+        /// `secondsUntilRetry` is nil unless the item is actively counting down.
+        static func statusLine(
+            statusRaw: String,
+            lastError: String?,
+            secondsUntilRetry: Int?
+        ) -> (text: String, tone: SyncStatusTone) {
+            switch statusRaw {
+            case "parked":     return (parkedRow, .stuck)
+            case "inProgress": return ("Saving…", .syncing)
+            default:           break
+            }
+            if isOffline(lastError) { return (offlineRow, .waiting) }
+            if let seconds = secondsUntilRetry, seconds > 0 {
+                return (backoffRow(seconds: seconds), .waiting)
+            }
+            switch statusRaw {
+            case "failed": return ("Couldn't save yet", .attention)
+            default:       return ("Waiting to sync", .waiting)   // pending / local
+            }
+        }
+
+        /// Network-class error detection — the same vocabulary the panel's
+        /// `specificFailure` uses so "Waiting for signal" reads identically here.
+        private static func isOffline(_ raw: String?) -> Bool {
+            guard let raw = raw?.lowercased(), !raw.isEmpty else { return false }
+            return raw.contains("network") || raw.contains("offline")
+                || raw.contains("connection") || raw.contains("timed out")
+                || raw.contains("timeout") || raw.contains("internet")
+        }
+    }
 }

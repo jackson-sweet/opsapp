@@ -309,6 +309,7 @@ final class MoneyLeadsRedesignSnapshotTests: XCTestCase {
     /// your move / their move (waiting) / fresh — plus source rendering.
     func testRenderLeadTriageCards() {
         let vm = PipelineViewModel.previewLoaded()
+        vm.setup(companyId: "preview-company", currentUserId: "preview-user")
         let overdue = Opportunity.preview(
             title: "Roof tear-off — 28 sq", contactName: "Marcus Webb",
             stage: .quoting, estimatedValue: 14_200, daysInStage: 5, nextFollowUpDaysFromNow: -3
@@ -317,6 +318,8 @@ final class MoneyLeadsRedesignSnapshotTests: XCTestCase {
             title: "Window install — 8 units", contactName: "The Hensons",
             stage: .quoted, estimatedValue: 11_800, daysInStage: 3, nextFollowUpDaysFromNow: 0
         )
+        overdue.contactEmail = "marcus@example.com"
+        today.contactEmail = "hensons@example.com"
         let yourMove = Opportunity.preview(
             title: "Skylight quote question", contactName: "Aimee Watari",
             stage: .quoted, estimatedValue: 6_400, daysInStage: 2

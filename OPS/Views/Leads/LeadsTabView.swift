@@ -422,6 +422,7 @@ struct LeadsTabView: View {
             onTap:     { detailLead = lead },
             onLog:     { activeSheet = .log(lead) },
             onHandled: { markHandled(lead) },
+            onSendFollowUp: { sendFollowUp(lead) },
             onAdjust:  { comebackTarget = lead },
             onStage:   { stage in setStage(lead, to: stage) },
             onWon:     { activeSheet = .convert(lead) },
@@ -573,6 +574,21 @@ struct LeadsTabView: View {
             } catch {
                 ToastCenter.shared.present(Toast(label: Feedback.Err.saveFailed, tone: .error))
             }
+        }
+    }
+
+    /// SEND FOLLOW-UP — one tap sends the stock reply through the connected
+    /// mailbox. The view model advances the lead only from the server's
+    /// provider-confirmed canonical response.
+    private func sendFollowUp(_ lead: Opportunity) {
+        guard canEdit(lead), viewModel.canSendFollowUp(for: lead) else { return }
+        Task {
+            let outcome = await viewModel.sendFollowUp(opportunityId: lead.id)
+            ToastCenter.shared.present(
+                Feedback.Lead.followUpResult(outcome) {
+                    comebackTarget = lead
+                }
+            )
         }
     }
 

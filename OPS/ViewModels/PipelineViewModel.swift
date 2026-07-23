@@ -16,6 +16,10 @@ class PipelineViewModel: ObservableObject {
     @Published var isLoading: Bool = false
     @Published var loadError: String? = nil
     @Published var selectedStage: PipelineStage = .newLead
+    @Published private(set) var followUpInFlightLeadIDs: Set<String> = []
+    @Published private(set) var followUpReconcilingLeadIDs: Set<String> = []
+    @Published private(set) var followUpUnknownLeadIDs: Set<String> = []
+    @Published private(set) var followUpUnavailableLeadIDs: Set<String> = []
 
     /// Identity of the operator whose pipeline this is. Used by in-court
     /// computations to scope "ball in your court" leads to the current user.
@@ -24,6 +28,30 @@ class PipelineViewModel: ObservableObject {
 
     private var repository: OpportunityRepository?
     private var companyId: String?
+    private let followUpService: LeadFollowUpServiceProtocol
+
+    enum FollowUpProgress: Equatable {
+        case idle
+        case sending
+        case syncing
+        case unknown
+    }
+
+    enum FollowUpActionOutcome {
+        case sent(comebackAt: Date?)
+        case syncing
+        case unknown
+        case unavailable
+        case rejected
+        case busy
+        case signatureRequired
+        case permissionDenied
+        case networkError
+    }
+
+    init(followUpService: LeadFollowUpServiceProtocol? = nil) {
+        self.followUpService = followUpService ?? LeadFollowUpService.shared
+    }
 
     // MARK: - Setup
 
@@ -114,6 +142,12 @@ class PipelineViewModel: ObservableObject {
             let oppDtos = try await repo.fetchAll()
             allOpportunities = Self.merge(existing: allOpportunities,
                                           incoming: oppDtos.map { $0.toModel() })
+            // A canonical refresh is the retry boundary for transient
+            // mailbox/thread/signature availability. The durable request key
+            // still prevents a second provider send if the prior result was
+            // ambiguous.
+            followUpUnavailableLeadIDs.removeAll()
+            reconcileFollowUpProgressWithLoadedLeads()
             hasLoadedOnce = true
             // Keep the incoming-call caller-ID directory fresh (154cb8a3).
             // No-op unless the operator has the toggle on.
@@ -292,6 +326,167 @@ class PipelineViewModel: ObservableObject {
         NotificationCenter.default.post(name: Notification.Name("LeadUpdatedSuccess"),
                                         object: nil, userInfo: ["leadId": opportunityId])
         return comeback
+    }
+
+    // MARK: - One-tap follow-up
+
+    /// Local eligibility controls whether a due/overdue strip offers the
+    /// server-backed stock reply or falls back to HANDLED. The server remains
+    /// authoritative for mailbox, thread, recipient, signature, and newest
+    /// message safety.
+    func canSendFollowUp(for opportunity: Opportunity) -> Bool {
+        guard [.quoted, .followUp, .negotiation].contains(opportunity.stage),
+              !Self.isAwaitingReply(opportunity),
+              !followUpUnavailableLeadIDs.contains(opportunity.id),
+              companyId?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false,
+              currentUserId?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false,
+              let email = opportunity.contactEmail else {
+            return false
+        }
+        return !email.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    func followUpProgress(for opportunityId: String) -> FollowUpProgress {
+        if followUpInFlightLeadIDs.contains(opportunityId) { return .sending }
+        if followUpUnknownLeadIDs.contains(opportunityId) { return .unknown }
+        if followUpReconcilingLeadIDs.contains(opportunityId) { return .syncing }
+        return .idle
+    }
+
+    /// Sends the standardized reply through the connected mailbox. No local
+    /// lead state advances until the API returns the canonical opportunity
+    /// after provider-confirmed delivery and lifecycle reconciliation.
+    func sendFollowUp(opportunityId: String) async -> FollowUpActionOutcome {
+        guard let opportunity = allOpportunities.first(where: { $0.id == opportunityId }),
+              canSendFollowUp(for: opportunity) else {
+            followUpUnavailableLeadIDs.insert(opportunityId)
+            return .unavailable
+        }
+
+        switch followUpProgress(for: opportunityId) {
+        case .sending:
+            return .busy
+        case .syncing:
+            return .syncing
+        case .unknown:
+            return .unknown
+        case .idle:
+            break
+        }
+
+        followUpInFlightLeadIDs.insert(opportunityId)
+        defer { followUpInFlightLeadIDs.remove(opportunityId) }
+
+        guard let companyId, let currentUserId else {
+            followUpUnavailableLeadIDs.insert(opportunityId)
+            return .unavailable
+        }
+        let scope = LeadFollowUpAttemptScope(
+            companyId: companyId,
+            actorUserId: currentUserId,
+            nextFollowUpAt: opportunity.nextFollowUpAt,
+            handledAt: opportunity.handledAt,
+            lastOutboundAt: opportunity.lastOutboundAt
+        )
+
+        switch await followUpService.sendFollowUp(
+            opportunityId: opportunityId,
+            scope: scope
+        ) {
+        case .reconciled(let canonicalDTO, let comebackAt):
+            if let index = allOpportunities.firstIndex(where: { $0.id == opportunityId }) {
+                allOpportunities[index].apply(canonicalDTO.toModel())
+            }
+            followUpReconcilingLeadIDs.remove(opportunityId)
+            followUpUnknownLeadIDs.remove(opportunityId)
+            followUpUnavailableLeadIDs.remove(opportunityId)
+            NotificationCenter.default.post(
+                name: Notification.Name("LeadUpdatedSuccess"),
+                object: nil,
+                userInfo: ["leadId": opportunityId]
+            )
+            return .sent(comebackAt: comebackAt)
+
+        case .reconciledReceipt(let comebackAt):
+            followUpReconcilingLeadIDs.remove(opportunityId)
+            followUpUnknownLeadIDs.remove(opportunityId)
+            followUpUnavailableLeadIDs.remove(opportunityId)
+            scheduleRefresh(debounce: .zero)
+            NotificationCenter.default.post(
+                name: Notification.Name("LeadUpdatedSuccess"),
+                object: nil,
+                userInfo: ["leadId": opportunityId]
+            )
+            return .sent(comebackAt: comebackAt)
+
+        case .providerAcceptedPending:
+            followUpUnknownLeadIDs.remove(opportunityId)
+            followUpReconcilingLeadIDs.insert(opportunityId)
+            return .syncing
+
+        case .deliveryUnknown:
+            followUpReconcilingLeadIDs.remove(opportunityId)
+            followUpUnknownLeadIDs.insert(opportunityId)
+            return .unknown
+
+        case .alreadyInProgress:
+            followUpReconcilingLeadIDs.remove(opportunityId)
+            followUpUnknownLeadIDs.insert(opportunityId)
+            scheduleRefresh(debounce: .zero)
+            return .unknown
+
+        case .unavailable:
+            followUpUnavailableLeadIDs.insert(opportunityId)
+            return .unavailable
+
+        case .rejected:
+            return .rejected
+
+        case .busy:
+            return .busy
+
+        case .signatureRequired:
+            followUpUnavailableLeadIDs.insert(opportunityId)
+            return .signatureRequired
+
+        case .permissionDenied:
+            followUpUnavailableLeadIDs.insert(opportunityId)
+            return .permissionDenied
+
+        case .networkError:
+            return .networkError
+        }
+    }
+
+    /// A realtime/foreground refresh clears a pending indicator only after the
+    /// canonical row proves that the lead moved forward. This avoids treating
+    /// a transport timeout as delivery while still letting background
+    /// reconciliation finish the interaction without reopening the screen.
+    func reconcileFollowUpProgressWithLoadedLeads(now: Date = Date()) {
+        let unresolved = followUpReconcilingLeadIDs.union(followUpUnknownLeadIDs)
+        for opportunityId in unresolved {
+            guard let opportunity = allOpportunities.first(where: { $0.id == opportunityId }) else {
+                continue
+            }
+
+            // A newer inbound message is canonical even when the send receipt
+            // is still reconciling. Yield to YOUR MOVE immediately so stale
+            // transport state never masks the customer's reply.
+            if Self.isAwaitingReply(opportunity) {
+                followUpReconcilingLeadIDs.remove(opportunityId)
+                followUpUnknownLeadIDs.remove(opportunityId)
+                continue
+            }
+
+            guard opportunity.lastMessageDirection == "out",
+                  opportunity.handledAt != nil,
+                  let comeback = opportunity.nextFollowUpAt,
+                  comeback > now else {
+                continue
+            }
+            followUpReconcilingLeadIDs.remove(opportunityId)
+            followUpUnknownLeadIDs.remove(opportunityId)
+        }
     }
 
     /// YOUR MOVE — correct ownership without rewriting correspondence history.

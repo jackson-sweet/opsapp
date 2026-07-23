@@ -211,7 +211,10 @@ struct LeadDetailView: View {
                                         lead: opportunity,
                                         bucket: chaseVM.bucketOf(opportunity),
                                         canAct: canEdit,
+                                        canSendFollowUp: chaseVM.canSendFollowUp(for: opportunity),
+                                        followUpProgress: chaseVM.followUpProgress(for: opportunity.id),
                                         onHandled: { markHandledFromDetail() },
+                                        onSendFollowUp: { sendFollowUpFromDetail() },
                                         onAdjust: { comebackTarget = opportunity }
                                     )
                                     .padding(.horizontal, OPSStyle.Layout.spacing3_5)
@@ -681,6 +684,20 @@ struct LeadDetailView: View {
             } catch {
                 ToastCenter.shared.present(Toast(label: Feedback.Err.saveFailed, tone: .error))
             }
+        }
+    }
+
+    /// Provider-backed one-tap follow-up. The detail view shares the queue's
+    /// exact send, reconciliation, comeback, and feedback contract.
+    private func sendFollowUpFromDetail() {
+        guard canEdit, chaseVM.canSendFollowUp(for: opportunity) else { return }
+        Task {
+            let outcome = await chaseVM.sendFollowUp(opportunityId: opportunity.id)
+            ToastCenter.shared.present(
+                Feedback.Lead.followUpResult(outcome) {
+                    comebackTarget = opportunity
+                }
+            )
         }
     }
 

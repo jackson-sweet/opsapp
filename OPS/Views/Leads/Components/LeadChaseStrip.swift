@@ -6,8 +6,8 @@
 //  two hosts: the triage card and the lead detail. State left, action chip
 //  right:
 //
-//      → CHASE · 3D LATE        [HANDLED ✓]     rose    (overdue)
-//      → DUE TODAY              [HANDLED ✓]     tan
+//      → CHASE · 3D LATE        [SEND FOLLOW-UP] rose    (eligible quote)
+//      → DUE TODAY              [SEND FOLLOW-UP] tan     (eligible quote)
 //      → YOUR MOVE · 2D         [HANDLED ✓]     steel
 //      THEIR MOVE · BACK FRI    [ADJUST]        neutral (waiting)
 //      NEW · 2H                                 neutral (informational)
@@ -25,10 +25,17 @@ struct LeadChaseStrip: View {
     /// `PipelineViewModel.bucketOf`).
     let bucket: PipelineViewModel.TriageBucket
     var canAct: Bool = true
+    var canSendFollowUp: Bool = false
+    var followUpProgress: PipelineViewModel.FollowUpProgress = .idle
     var onHandled: () -> Void = {}
+    var onSendFollowUp: () -> Void = {}
     var onAdjust: () -> Void = {}
 
-    enum Action { case handled, adjust }
+    enum Action: Equatable {
+        case handled
+        case sendFollowUp
+        case adjust
+    }
 
     var body: some View {
         let c = chase
@@ -36,11 +43,19 @@ struct LeadChaseStrip: View {
             Button {
                 // Medium impact — flipping the ball is a commit moment (spec §10).
                 UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                if action == .handled { onHandled() } else { onAdjust() }
+                switch action {
+                case .handled:
+                    onHandled()
+                case .sendFollowUp:
+                    onSendFollowUp()
+                case .adjust:
+                    onAdjust()
+                }
             } label: {
                 stripBody(c, showsAction: true)
             }
             .buttonStyle(.plain)
+            .disabled(action == .sendFollowUp && followUpProgress != .idle)
             .accessibilityLabel(accessibilityLabel(c, action: action))
         } else {
             stripBody(c, showsAction: false)
@@ -53,18 +68,69 @@ struct LeadChaseStrip: View {
     private var chase: (label: String, tone: Color, action: Action?) {
         switch bucket {
         case .overdue:
-            return ("→ CHASE · \(max(daysFromFollowUp(), 1))D LATE", OPSStyle.Colors.roseTextM, .handled)
+            return (
+                "→ CHASE · \(max(daysFromFollowUp(), 1))D LATE",
+                OPSStyle.Colors.roseTextM,
+                Self.action(for: bucket, canSendFollowUp: canSendFollowUp)
+            )
         case .dueToday:
-            return ("→ DUE TODAY", OPSStyle.Colors.tanTextM, .handled)
+            return (
+                "→ DUE TODAY",
+                OPSStyle.Colors.tanTextM,
+                Self.action(for: bucket, canSendFollowUp: canSendFollowUp)
+            )
         case .waitingOnYou:
-            return ("→ YOUR MOVE · \(yourMoveAge)", OPSStyle.Colors.opsAccent, .handled)
+            return (
+                "→ YOUR MOVE · \(yourMoveAge)",
+                OPSStyle.Colors.opsAccent,
+                Self.action(for: bucket, canSendFollowUp: canSendFollowUp)
+            )
         case .waitingOnThem:
             let back = lead.nextFollowUpAt.map { " · BACK \(Self.comebackLabel($0))" } ?? ""
-            return ("THEIR MOVE\(back)", OPSStyle.Colors.text2, .adjust)
+            return (
+                "THEIR MOVE\(back)",
+                OPSStyle.Colors.text2,
+                Self.action(for: bucket, canSendFollowUp: canSendFollowUp)
+            )
         case .fresh:
             return ("NEW · \(freshAge())", OPSStyle.Colors.text2, nil)
         case .all:
             return ("OPEN", OPSStyle.Colors.text2, nil)
+        }
+    }
+
+    static func action(
+        for bucket: PipelineViewModel.TriageBucket,
+        canSendFollowUp: Bool
+    ) -> Action? {
+        switch bucket {
+        case .overdue, .dueToday:
+            return canSendFollowUp ? .sendFollowUp : .handled
+        case .waitingOnYou:
+            return .handled
+        case .waitingOnThem:
+            return .adjust
+        case .fresh, .all:
+            return nil
+        }
+    }
+
+    static func actionLabel(
+        for action: Action,
+        progress: PipelineViewModel.FollowUpProgress
+    ) -> String {
+        switch action {
+        case .handled:
+            return "HANDLED ✓"
+        case .sendFollowUp:
+            switch progress {
+            case .idle:    return "SEND FOLLOW-UP"
+            case .sending: return "SENDING…"
+            case .syncing: return "SYNCING…"
+            case .unknown: return "CHECK EMAIL"
+            }
+        case .adjust:
+            return "ADJUST"
         }
     }
 
@@ -79,7 +145,10 @@ struct LeadChaseStrip: View {
                 .monospacedDigit()
             Spacer(minLength: OPSStyle.Layout.spacing2)
             if showsAction, let action = c.action {
-                Text(action == .handled ? "HANDLED ✓" : "ADJUST")
+                Text(Self.actionLabel(
+                    for: action,
+                    progress: followUpProgress
+                ))
                     .font(OPSStyle.Typography.miniLabelBold)
                     .tracking(0.8)
                     .textCase(.uppercase)
@@ -100,9 +169,19 @@ struct LeadChaseStrip: View {
     }
 
     private func accessibilityLabel(_ c: (label: String, tone: Color, action: Action?), action: Action) -> String {
-        let verb = action == .handled
-            ? "mark handled"
-            : "adjust ownership or the next touch date"
+        if action == .sendFollowUp, followUpProgress != .idle {
+            return "\(c.label). \(Self.actionLabel(for: action, progress: followUpProgress))."
+        }
+
+        let verb: String
+        switch action {
+        case .handled:
+            verb = "mark handled"
+        case .sendFollowUp:
+            verb = "send the standard follow-up email"
+        case .adjust:
+            verb = "adjust ownership or the next touch date"
+        }
         return "\(c.label). Double-tap to \(verb)."
     }
 

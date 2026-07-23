@@ -209,6 +209,76 @@ final class LeadChaseEngineTests: XCTestCase {
         XCTAssertEqual(d.timeIntervalSinceNow, 3 * 86_400, accuracy: 5)
     }
 
+    // MARK: - One-tap follow-up action
+
+    func testDueLeadOffersFollowUpWhenProviderSendIsEligible() {
+        XCTAssertEqual(
+            LeadChaseStrip.action(for: .dueToday, canSendFollowUp: true),
+            .sendFollowUp
+        )
+    }
+
+    func testOverdueLeadOffersFollowUpWhenProviderSendIsEligible() {
+        XCTAssertEqual(
+            LeadChaseStrip.action(for: .overdue, canSendFollowUp: true),
+            .sendFollowUp
+        )
+    }
+
+    func testDueLeadFallsBackToHandledWhenFollowUpIsUnavailable() {
+        XCTAssertEqual(
+            LeadChaseStrip.action(for: .dueToday, canSendFollowUp: false),
+            .handled
+        )
+    }
+
+    func testYourMoveNeverOffersStockFollowUp() {
+        XCTAssertEqual(
+            LeadChaseStrip.action(for: .waitingOnYou, canSendFollowUp: true),
+            .handled
+        )
+    }
+
+    func testDueLeadWithNewerInboundNeverOffersStockFollowUp() {
+        let now = Date()
+        let l = lead(
+            direction: "in",
+            lastInbound: now,
+            followUp: now
+        )
+        l.contactEmail = "crystal@example.com"
+        let model = vm([l])
+
+        XCTAssertEqual(model.bucketOf(l), .dueToday)
+        XCTAssertFalse(model.canSendFollowUp(for: l))
+        XCTAssertEqual(
+            LeadChaseStrip.action(
+                for: model.bucketOf(l),
+                canSendFollowUp: model.canSendFollowUp(for: l)
+            ),
+            .handled
+        )
+    }
+
+    func testFollowUpActionVoicesSendingState() {
+        XCTAssertEqual(
+            LeadChaseStrip.actionLabel(for: .sendFollowUp, progress: .idle),
+            "SEND FOLLOW-UP"
+        )
+        XCTAssertEqual(
+            LeadChaseStrip.actionLabel(for: .sendFollowUp, progress: .sending),
+            "SENDING…"
+        )
+        XCTAssertEqual(
+            LeadChaseStrip.actionLabel(for: .sendFollowUp, progress: .syncing),
+            "SYNCING…"
+        )
+        XCTAssertEqual(
+            LeadChaseStrip.actionLabel(for: .sendFollowUp, progress: .unknown),
+            "CHECK EMAIL"
+        )
+    }
+
     // MARK: - text_message activity type (spec §3 — web parity: pipeline.ts TextMessage)
 
     func testTextMessageActivityType() {

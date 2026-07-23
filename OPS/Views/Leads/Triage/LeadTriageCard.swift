@@ -35,6 +35,7 @@ struct LeadTriageCard: View {
     var onTap: () -> Void = {}
     var onLog: () -> Void = {}                 // ✎ full sheet
     var onHandled: () -> Void = {}             // strip button (yourMove/overdue/dueToday)
+    var onSendFollowUp: () -> Void = {}         // due/overdue provider-backed stock reply
     var onAdjust: () -> Void = {}              // strip button (waiting) — opens date chooser
     var onStage: (PipelineStage) -> Void = { _ in }  // status menu stage pick
     var onWon: () -> Void = {}
@@ -58,6 +59,7 @@ struct LeadTriageCard: View {
         onTap: @escaping () -> Void = {},
         onLog: @escaping () -> Void = {},
         onHandled: @escaping () -> Void = {},
+        onSendFollowUp: @escaping () -> Void = {},
         onAdjust: @escaping () -> Void = {},
         onStage: @escaping (PipelineStage) -> Void = { _ in },
         onWon: @escaping () -> Void = {},
@@ -75,6 +77,7 @@ struct LeadTriageCard: View {
         self.onTap = onTap
         self.onLog = onLog
         self.onHandled = onHandled
+        self.onSendFollowUp = onSendFollowUp
         self.onAdjust = onAdjust
         self.onStage = onStage
         self.onWon = onWon
@@ -188,7 +191,10 @@ struct LeadTriageCard: View {
                         lead: lead,
                         bucket: effectiveBucket,
                         canAct: canEdit,
+                        canSendFollowUp: viewModel.canSendFollowUp(for: lead),
+                        followUpProgress: viewModel.followUpProgress(for: lead.id),
                         onHandled: onHandled,
+                        onSendFollowUp: onSendFollowUp,
                         onAdjust: onAdjust
                     )
                     .padding(.top, OPSStyle.Layout.spacing2_5)

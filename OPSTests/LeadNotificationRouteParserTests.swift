@@ -34,7 +34,7 @@ final class LeadNotificationRouteParserTests: XCTestCase {
     }
 
     func testLifecycleTypesDetected() {
-        for t in ["lead_created", "lead_updated", "lead_follow_up_due",
+        for t in ["lead_created", "lead_updated", "lead_follow_up_due", "lead_follow_up_sent",
                   "opportunity_created", "opportunity_updated", "opportunity_follow_up_due",
                   "pipeline_complete"] {
             XCTAssertTrue(

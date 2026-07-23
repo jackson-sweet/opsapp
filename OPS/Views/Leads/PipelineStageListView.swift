@@ -158,6 +158,7 @@ struct PipelineStageListView: View {
             onTap:     { onLeadTap(lead) },
             onLog:     { onRequestSheet(.log(lead)) },
             onHandled: { markHandled(lead) },
+            onSendFollowUp: { sendFollowUp(lead) },
             onAdjust:  { comebackTarget = lead },
             onStage:   { stage in setStage(lead, to: stage) },
             onWon:     { onRequestSheet(.convert(lead)) },
@@ -195,6 +196,20 @@ struct PipelineStageListView: View {
             } catch {
                 ToastCenter.shared.present(Toast(label: Feedback.Err.saveFailed, tone: .error))
             }
+        }
+    }
+
+    /// Provider-backed stock reply for a due/overdue lead. No optimistic
+    /// HANDLED mutation: the canonical server result owns the visible move.
+    private func sendFollowUp(_ lead: Opportunity) {
+        guard canEdit(lead), viewModel.canSendFollowUp(for: lead) else { return }
+        Task {
+            let outcome = await viewModel.sendFollowUp(opportunityId: lead.id)
+            ToastCenter.shared.present(
+                Feedback.Lead.followUpResult(outcome) {
+                    comebackTarget = lead
+                }
+            )
         }
     }
 

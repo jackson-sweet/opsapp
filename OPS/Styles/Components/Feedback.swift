@@ -339,6 +339,95 @@ enum Feedback {
         /// Direct stage pick from the status menu — can move backward, so the
         /// copy states the fact, not a direction.
         static let stageSet      = Toast(label: "// STAGE SET", tone: .success)
+        static let followUpSyncing = Toast(
+            label: "// FOLLOW-UP SENT · SYNCING",
+            tone: .success,
+            autoDismissAfter: 6
+        )
+        static let followUpSentWithoutComeback = Toast(
+            label: "// FOLLOW-UP SENT",
+            tone: .success,
+            autoDismissAfter: 6
+        )
+        static let followUpStatusUnknown = Toast(
+            label: "// SEND STATUS UNKNOWN · CHECK EMAIL",
+            tone: .warning,
+            autoDismissAfter: 0
+        )
+        static let followUpUnavailable = Toast(
+            label: "// FOLLOW-UP UNAVAILABLE · USE EMAIL",
+            tone: .warning,
+            autoDismissAfter: 6
+        )
+        static let followUpRejected = Toast(
+            label: "// FOLLOW-UP FAILED · TRY AGAIN",
+            tone: .error
+        )
+        static let followUpBusy = Toast(
+            label: "// MAILBOX BUSY · TRY AGAIN",
+            tone: .warning
+        )
+        static let followUpSignatureRequired = Toast(
+            label: "// EMAIL SIGNATURE REQUIRED",
+            tone: .warning,
+            autoDismissAfter: 6
+        )
+        static let followUpPermissionDenied = Toast(
+            label: "// FOLLOW-UP NOT ALLOWED",
+            tone: .error
+        )
+        static let followUpNetworkError = Toast(
+            label: "// OFFLINE · TRY AGAIN",
+            tone: .warning
+        )
+
+        static func followUpSent(
+            backLabel: String,
+            adjust: @escaping () -> Void
+        ) -> Toast {
+            Toast(
+                label: "// FOLLOW-UP SENT · BACK \(backLabel)",
+                tone: .success,
+                autoDismissAfter: 6,
+                action: ToastAction(
+                    label: "ADJUST",
+                    accessibilityLabel: "Adjust comeback date",
+                    handler: adjust
+                )
+            )
+        }
+
+        static func followUpResult(
+            _ outcome: PipelineViewModel.FollowUpActionOutcome,
+            adjust: @escaping () -> Void
+        ) -> Toast {
+            switch outcome {
+            case .sent(let comebackAt):
+                guard let comebackAt else {
+                    return followUpSentWithoutComeback
+                }
+                return followUpSent(
+                    backLabel: LeadChaseStrip.comebackLabel(comebackAt),
+                    adjust: adjust
+                )
+            case .syncing:
+                return followUpSyncing
+            case .unknown:
+                return followUpStatusUnknown
+            case .unavailable:
+                return followUpUnavailable
+            case .rejected:
+                return followUpRejected
+            case .busy:
+                return followUpBusy
+            case .signatureRequired:
+                return followUpSignatureRequired
+            case .permissionDenied:
+                return followUpPermissionDenied
+            case .networkError:
+                return followUpNetworkError
+            }
+        }
     }
 
     // MARK: - Sync

@@ -30,9 +30,14 @@ enum ShareImageProcessor {
         guard AppGroupConfig.ensureInboxDirectory() != nil else { return [] }
         var staged: [String] = []
         for provider in imageProviders(in: items) {
-            let result: String? = await autoreleasepoolAsync {
-                guard let data = await loadImageData(from: provider),
-                      let jpeg = downscaledJPEG(from: data) else { return nil }
+            guard let data = await loadImageData(from: provider) else {
+                continue
+            }
+            // No autorelease pool can span an `await`. Load asynchronously first,
+            // then bound all decoded-image/thumbnail work inside a real synchronous
+            // pool so each image is released before the next provider starts.
+            let result: String? = autoreleasepool {
+                guard let jpeg = downscaledJPEG(from: data) else { return nil }
                 return write(jpeg)
             }
             if let name = result { staged.append(name) }
@@ -94,10 +99,4 @@ enum ShareImageProcessor {
         return name
     }
 
-    /// `autoreleasepool` doesn't span `await`, so we drain manually around the
-    /// async unit of work to keep peak memory bounded per image.
-    private static func autoreleasepoolAsync<T>(_ body: () async -> T) async -> T {
-        let value = await body()
-        return value
-    }
 }

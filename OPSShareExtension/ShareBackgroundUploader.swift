@@ -8,20 +8,22 @@
 //  reach the project even if OPS is never opened.
 //
 //  This is a bonus path on top of the durable queue: the app's drain is the
-//  guaranteed backstop, and the endpoint is idempotent by jobId (the app's drain
-//  detects an endpoint-filed job and skips it), so this can never duplicate.
+//  guaranteed backstop, and both paths use the same endpoint + jobId, so an
+//  overlap is the same operation rather than a second, random-key upload.
 //  Failures here (offline / expired token / endpoint not yet deployed) are silent
 //  — those jobs simply land when OPS is next opened.
 //
 
 import Foundation
+import os
 
 final class ShareBackgroundUploader: NSObject, URLSessionDelegate {
     static let shared = ShareBackgroundUploader()
 
-    /// Mirrors `AppConfiguration.apiBaseURL` in the app target (the extension
-    /// can't import it). Keep in sync.
-    private static let shareEndpoint = "https://app.opsapp.co/api/uploads/share-photo"
+    private let log = Logger(
+        subsystem: "co.opsapp.ops.share",
+        category: "background-upload"
+    )
 
     private lazy var session: URLSession = {
         let config = URLSessionConfiguration.background(withIdentifier: AppGroupConfig.backgroundSessionIdentifier)
@@ -40,21 +42,32 @@ final class ShareBackgroundUploader: NSObject, URLSessionDelegate {
     /// Starts a background POST of the inbox file to the share-photo endpoint.
     /// Survives the extension being dismissed. iOS holds the transfer and retries
     /// it across connectivity changes on its own.
-    func startUpload(fileURL: URL, projectId: String, jobId: String, idToken: String) {
-        guard var components = URLComponents(string: Self.shareEndpoint) else { return }
-        components.queryItems = [
-            URLQueryItem(name: "projectId", value: projectId),
-            URLQueryItem(name: "jobId", value: jobId),
-        ]
-        guard let url = components.url else { return }
-
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.setValue("image/jpeg", forHTTPHeaderField: "Content-Type")
-        request.setValue("Bearer \(idToken)", forHTTPHeaderField: "Authorization")
+    @discardableResult
+    func startUpload(
+        fileURL: URL,
+        projectId: String,
+        jobId: String,
+        takenAt: Date,
+        idToken: String
+    ) -> Bool {
+        let request: URLRequest
+        do {
+            request = try SharePhotoEndpoint.makeRequest(
+                projectId: projectId,
+                jobId: jobId,
+                takenAt: takenAt,
+                bearerToken: idToken
+            )
+        } catch {
+            log.error(
+                "instant request rejected before upload for \(jobId, privacy: .public): \(error.localizedDescription, privacy: .public)"
+            )
+            return false
+        }
 
         let task = session.uploadTask(with: request, fromFile: fileURL)
         task.taskDescription = jobId
         task.resume()
+        return true
     }
 }

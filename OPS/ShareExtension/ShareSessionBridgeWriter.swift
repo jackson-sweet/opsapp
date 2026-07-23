@@ -68,14 +68,13 @@ enum ShareSessionBridgeWriter {
         ShareSessionBridgeStore.write(bridge)
     }
 
-    /// Clears the bridge on logout and discards any captured-but-unfinalized
-    /// share photos, so a different account signing in next can never inherit
-    /// the previous user's queued uploads.
+    /// Clears extension-visible session data on logout. Durable photo jobs stay
+    /// queued under their original uploader ID: the coordinator will not process
+    /// them for a different account, and the original account can safely resume
+    /// after signing back in. Deleting them here would turn a confirmed share
+    /// into silent data loss during an offline/in-flight upload.
     static func clearForLogout() {
         ShareSessionBridgeStore.clear()
-        for job in ShareUploadManifestStore.allJobs() {
-            ShareUploadManifestStore.remove(id: job.id)
-        }
     }
 
     // MARK: - Project list

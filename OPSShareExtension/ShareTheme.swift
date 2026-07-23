@@ -34,6 +34,8 @@ enum ShareTheme {
         static let textMute = SwiftUI.Color(red: 0x6A / 255, green: 0x6A / 255, blue: 0x6A / 255)
         /// #9DB582 — olive, success.
         static let success = SwiftUI.Color(red: 0x9D / 255, green: 0xB5 / 255, blue: 0x82 / 255)
+        /// #B58289 — muted rose, destructive/error state.
+        static let error = SwiftUI.Color(red: 0xB5 / 255, green: 0x82 / 255, blue: 0x89 / 255)
 
         /// Input field fill (white @ 4%).
         static let surfaceInput = SwiftUI.Color.white.opacity(0.04)
@@ -48,6 +50,7 @@ enum ShareTheme {
     // MARK: - Spacing (OPSStyle.Layout)
 
     enum Spacing {
+        static let none: CGFloat = 0
         static let s1: CGFloat = 4
         static let s2: CGFloat = 8
         static let s2_5: CGFloat = 12
@@ -73,6 +76,43 @@ enum ShareTheme {
         static let touchStandard: CGFloat = 56
         static let touchLarge: CGFloat = 64
         static let cta: CGFloat = 56
+        static let outcomeCircle: CGFloat = 72
+        static let outcomeGlyph: CGFloat = 30
+        static let messageGlyph: CGFloat = 44
+        static let smallGlyph: CGFloat = 16
+        static let selectionControl: CGFloat = 22
+        static let selectionGlyph: CGFloat = 12
+    }
+
+    enum Border {
+        static let hairline: CGFloat = 1
+        static let selected: CGFloat = 1.5
+    }
+
+    enum Opacity {
+        static let semanticSoft: Double = 0.12
+    }
+
+    // MARK: - Motion
+
+    enum Motion {
+        /// OPS's single deceleration curve. State changes are quick and settled;
+        /// never spring or bounce.
+        static let state = SwiftUI.Animation.timingCurve(
+            0.22,
+            1,
+            0.36,
+            1,
+            duration: 0.2
+        )
+        static let press = SwiftUI.Animation.timingCurve(
+            0.22,
+            1,
+            0.36,
+            1,
+            duration: 0.15
+        )
+        static let pressedScale: CGFloat = 0.98
     }
 
     // MARK: - Typography (Mohave / JetBrains Mono / Cake Mono)
@@ -88,5 +128,24 @@ enum ShareTheme {
         /// JetBrains Mono — numbers, [brackets], micro labels.
         static func mono(_ size: CGFloat = 13) -> SwiftUI.Font { .custom("JetBrainsMono-Regular", size: size) }
         static func monoMedium(_ size: CGFloat = 12) -> SwiftUI.Font { .custom("JetBrainsMono-Medium", size: size) }
+
+        // Semantic picker roles. Screen code never invents font sizes.
+        static let headerTitle = title(20)
+        static let headerMetadata = monoMedium(11)
+        static let cancelAction = body(15)
+        static let searchBody = body(16)
+        static let statusMetadata = mono(13)
+        static let outcomeTitle = title(24)
+        static let messageTitle = title(18)
+        static let rowTitle = bodyBold(16)
+        static let rowMetadata = mono(12)
+        static let primaryAction = buttonLabel(14)
+        static let errorLabel = monoMedium(10)
+        static let errorMessage = bodyLight(14)
+    }
+
+    enum Tracking {
+        /// MOBILE.md error label: 0.14em at 10pt.
+        static let errorLabel: CGFloat = 1.4
     }
 }

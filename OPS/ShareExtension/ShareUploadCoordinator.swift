@@ -3,23 +3,29 @@
 //  OPS
 //
 //  App-side drainer for the "Add to OPS" share extension. The extension only
-//  saves captured photos into the shared App Group queue; the app uploads each
-//  through its proven pipeline (PresignedURLUploadService + SharePhotoFinalizer)
-//  and removes the job once it lands.
+//  saves captured photos into the shared App Group queue; the app retries the
+//  same idempotent server request the extension may have started, then removes
+//  the job once the server confirms storage, filing, and notification.
 //
 //  Reliability contract: **a shared photo always reaches its project.** Bytes are
 //  persisted on the device the instant they're shared, so nothing is lost. The
 //  drain runs on every app foreground, on a Darwin nudge from the extension, and
 //  when connectivity is restored — uploading when online and leaving the queue
-//  untouched when offline. Idempotent: a photo's S3 URL is persisted before
-//  finalize, so a finalize retry never re-uploads (no duplicate), and the
-//  finalizer dedups both project_images and project_photos.
+//  untouched when offline. Both paths address the deterministic job ID, so an
+//  extension/app race can only repeat the same operation. Deployed legacy jobs
+//  that already carry an uploaded URL retain their old finalize-only path.
 //
 
 import Foundation
 import os
 
 final class ShareUploadCoordinator: NSObject {
+    enum AttemptAction: Equatable {
+        case upload
+        case reportRecovery
+        case reported
+    }
+
     static let shared = ShareUploadCoordinator()
 
     private let log = Logger(subsystem: "co.opsapp.ops.share", category: "drain")
@@ -74,8 +80,18 @@ final class ShareUploadCoordinator: NSObject {
 
     @MainActor
     private func drainPass() async {
-        let jobs = ShareUploadManifestStore.allJobs()
+        let jobs = ShareUploadManifestStore.recoverableJobs()
         guard !jobs.isEmpty else { return }
+
+        // Rebuild the mutable fast-path from the immutable recovery ledger. This
+        // is a no-op when every row is already present and makes later attempt
+        // updates durable after a prior manifest write was lost.
+        let indexResult = ShareUploadManifestStore.append(jobs)
+        if indexResult != .committed {
+            log.error(
+                "drain: mutable manifest index remains unavailable; recovery ledger stays authoritative"
+            )
+        }
 
         // Offline → leave everything queued; the connectivity-restored hook
         // re-drains. (When connectivity is unknown, attempt anyway.)
@@ -84,19 +100,47 @@ final class ShareUploadCoordinator: NSObject {
             return
         }
 
-        // Defense-in-depth: drop jobs for projects the user can no longer edit —
-        // but only when the permission set is actually loaded.
-        if PermissionStore.shared.initialized && !PermissionStore.shared.can("projects.edit") {
-            log.info("drain: dropping \(jobs.count, privacy: .public) job(s) — projects.edit not granted")
-            for job in jobs { ShareUploadManifestStore.remove(id: job.id) }
+        guard let currentUserId = UserDefaults.standard.string(
+            forKey: "currentUserId"
+        ), !currentUserId.isEmpty else {
+            log.info("drain: retaining \(jobs.count, privacy: .public) job(s) — no signed-in user")
             return
         }
 
-        log.info("drain: \(jobs.count, privacy: .public) job(s) to upload")
-        let byProject = Dictionary(grouping: jobs, by: { $0.projectId })
-        for (_, projectJobs) in byProject {
+        let groups = Self.drainGroups(jobs, currentUserId: currentUserId)
+        guard !groups.isEmpty else {
+            log.info("drain: retaining \(jobs.count, privacy: .public) job(s) owned by another account")
+            return
+        }
+        log.info("drain: \(groups.flatMap { $0 }.count, privacy: .public) current-account job(s) to upload")
+        for projectJobs in groups {
             await drainProject(projectJobs)
         }
+    }
+
+    /// Filters before grouping so retained jobs from another signed-in account
+    /// can never block or contaminate the current account's work for the same
+    /// project. Company is part of the key for users who switch company context.
+    static func drainGroups(
+        _ jobs: [ShareUploadJob],
+        currentUserId: String
+    ) -> [[ShareUploadJob]] {
+        struct Key: Hashable {
+            let uploadedBy: String
+            let companyId: String
+            let projectId: String
+        }
+
+        let current = jobs.filter { $0.uploadedBy == currentUserId }
+        return Array(
+            Dictionary(grouping: current) {
+                Key(
+                    uploadedBy: $0.uploadedBy,
+                    companyId: $0.companyId,
+                    projectId: $0.projectId
+                )
+            }.values
+        )
     }
 
     @MainActor
@@ -105,79 +149,77 @@ final class ShareUploadCoordinator: NSObject {
 
         // Account-switch guard: never finalize a previous user's queued photo under
         // a newly signed-in session. If the signed-in user no longer matches the
-        // job's uploader, these photos belong to a logged-out account (whose queue
-        // was cleared on logout) — abandon this drain.
+        // job's uploader, these photos belong to another/logged-out account.
+        // Retain them so the original account can safely resume.
         guard isCurrentUser(reference.uploadedBy) else {
             log.info("drain: skipping project \(reference.projectId, privacy: .public) — uploader is not the signed-in user")
             return
         }
 
-        // The instant endpoint (the extension's background POST) may already have
-        // filed some of these jobs. It's idempotent by jobId, so detect those and
-        // clear them — never double-upload what the server already has.
-        let alreadyFiled = await Self.endpointFiledJobIds(projectId: reference.projectId)
-
-        // (jobId, url) for every photo whose bytes are on S3 and ready to finalize.
-        var resolved: [(jobId: String, url: String)] = []
+        // Deployed jobs from the previous pipeline may already carry a random S3
+        // URL. Those must re-finalize that exact URL; uploading them through the
+        // deterministic endpoint would create a second photo.
+        var legacyResolved: [(jobId: String, url: String)] = []
 
         for job in jobs {
-            // Already uploaded on a prior pass (finalize must have failed) —
-            // re-finalize the SAME URL, never re-upload.
             if let url = job.uploadedURL {
-                resolved.append((job.id, url))
+                legacyResolved.append((job.id, url))
                 continue
             }
 
-            // The server already filed this one via the instant endpoint.
-            if alreadyFiled.contains(job.id) {
-                log.info("drain: job \(job.id, privacy: .public) already filed by instant endpoint — clearing")
-                ShareUploadManifestStore.remove(id: job.id)
+            switch Self.actionForAttemptCount(job.attempts) {
+            case .reported:
+                continue
+            case .reportRecovery:
+                await reportParkedJob(job)
+                continue
+            case .upload:
+                break
+            }
+
+            guard let fileURL = job.fileURL,
+                  FileManager.default.fileExists(atPath: fileURL.path) else {
+                log.error("drain: bytes already missing for job \(job.id, privacy: .public); clearing unrecoverable manifest row")
+                _ = ShareUploadManifestStore.remove(id: job.id)
                 continue
             }
 
-            // Parked: repeatedly failed to upload for a permanent-looking reason.
-            // We KEEP the bytes (never lose a photo) but stop retrying.
-            if job.attempts >= ShareUploadManifestStore.maxAttempts {
-                continue
+            guard isCurrentUser(job.uploadedBy) else {
+                log.info("drain: retaining job \(job.id, privacy: .public) — account changed")
+                return
             }
 
-            guard let fileURL = job.fileURL, let data = try? Data(contentsOf: fileURL) else {
-                log.error("drain: bytes missing for job \(job.id, privacy: .public); dropping")
-                ShareUploadManifestStore.remove(id: job.id)
-                continue
-            }
-
-            let folder = "projects/\(job.companyId)/\(job.projectId)"
             do {
-                let url = try await PresignedURLUploadService.shared.uploadImageData(
-                    data, filename: job.fileName, folder: folder
-                )
-                // Durably record the URL on the job, and ONLY finalize if it stuck.
-                // If the manifest write is lost, a later pass would re-upload and
-                // mint a SECOND, different S3 URL (the presign endpoint generates a
-                // unique key each time) — a duplicate photo no dedup can catch. So
-                // we never finalize a URL we couldn't persist; the bytes stay queued
-                // and we retry (an unfinalized URL is just an orphaned S3 object).
-                if persistUploadedURL(url, jobId: job.id) {
-                    resolved.append((job.id, url))
-                    log.info("drain: uploaded job \(job.id, privacy: .public)")
+                let url = try await SharePhotoEndpointUploader.upload(job)
+                if ShareUploadManifestStore.remove(id: job.id) {
+                    log.info(
+                        "drain: endpoint confirmed and cleared \(job.id, privacy: .public) at \(url.absoluteString, privacy: .private)"
+                    )
                 } else {
-                    log.error("drain: could not persist URL for \(job.id, privacy: .public) — deferring finalize, will retry")
+                    // Server work is complete. A failed local clear is safe: the
+                    // same deterministic request will be retried next pass.
+                    log.error("drain: endpoint confirmed \(job.id, privacy: .public), but local queue clear failed — safe retry retained")
                 }
             } catch {
-                if Self.isTransientError(error) {
-                    // Offline / backend / auth-refresh blip — retry forever, never
-                    // count against the budget. A photo must never be lost to a
-                    // temporary outage.
+                if (error as? SharePhotoEndpointUploader.UploadError) == .accountChanged {
+                    log.info("drain: retaining \(job.id, privacy: .public) — account changed during token refresh")
+                    return
+                }
+                if SharePhotoEndpointUploader.isTransient(error) {
                     log.info("drain: transient failure uploading \(job.id, privacy: .public) — will retry: \(error.localizedDescription, privacy: .public)")
                 } else {
                     let attempts = job.attempts + 1
-                    ShareUploadManifestStore.update(id: job.id) { $0.attempts = attempts }
+                    let persisted = ShareUploadManifestStore.update(id: job.id) {
+                        $0.attempts = attempts
+                    }
+                    if !persisted {
+                        log.error("drain: could not persist attempt count for \(job.id, privacy: .public) — bytes retained")
+                    }
                     if attempts >= ShareUploadManifestStore.maxAttempts {
-                        // Permanent-looking failure repeated too many times. PARK
-                        // the job — keep the bytes on disk (never delete a photo)
-                        // but stop retrying. Future drains skip it.
-                        log.error("drain: parking job \(job.id, privacy: .public) after \(attempts, privacy: .public) permanent failures — bytes kept, not deleted")
+                        log.error("drain: parking job \(job.id, privacy: .public) after \(attempts, privacy: .public) permanent failures — bytes kept and operator recovery requested")
+                        var parkedJob = job
+                        parkedJob.attempts = attempts
+                        await reportParkedJob(parkedJob)
                     } else {
                         log.error("drain: upload failed for \(job.id, privacy: .public) (attempt \(attempts, privacy: .public)): \(error.localizedDescription, privacy: .public)")
                     }
@@ -185,7 +227,7 @@ final class ShareUploadCoordinator: NSObject {
             }
         }
 
-        guard !resolved.isEmpty else { return }
+        guard !legacyResolved.isEmpty else { return }
 
         // Re-check the account didn't switch during the uploads above.
         guard isCurrentUser(reference.uploadedBy) else {
@@ -194,15 +236,17 @@ final class ShareUploadCoordinator: NSObject {
         }
 
         let landed = await SharePhotoFinalizer.finalize(
-            publicURLs: resolved.map { $0.url },
+            publicURLs: legacyResolved.map { $0.url },
             projectId: reference.projectId,
             companyId: reference.companyId,
             projectTitle: reference.projectTitle,
             uploadedBy: reference.uploadedBy
         )
-        log.info("drain: finalize \(landed ? "ok" : "FAILED", privacy: .public) for project \(reference.projectId, privacy: .public) — \(resolved.count, privacy: .public) photo(s)")
+        log.info("drain: legacy finalize \(landed ? "ok" : "FAILED", privacy: .public) for project \(reference.projectId, privacy: .public) — \(legacyResolved.count, privacy: .public) photo(s)")
         if landed {
-            for r in resolved { ShareUploadManifestStore.remove(id: r.jobId) }
+            for result in legacyResolved {
+                _ = ShareUploadManifestStore.remove(id: result.jobId)
+            }
         }
         // If finalize FAILED, jobs stay queued WITH their uploadedURL set, so the
         // next drain re-finalizes the same URLs (idempotent) without re-uploading.
@@ -217,71 +261,38 @@ final class ShareUploadCoordinator: NSObject {
         return UserDefaults.standard.string(forKey: "currentUserId") == userId
     }
 
-    /// Durably records the uploaded S3 URL on the job, verifying the cross-process
-    /// manifest write actually stuck. Returns false if it could not be persisted —
-    /// in which case the caller must NOT finalize the URL (a later re-upload would
-    /// mint a different URL, i.e. a duplicate photo).
-    private func persistUploadedURL(_ url: String, jobId: String) -> Bool {
-        for _ in 0..<3 {
-            ShareUploadManifestStore.update(id: jobId) { $0.uploadedURL = url }
-            if ShareUploadManifestStore.allJobs().first(where: { $0.id == jobId })?.uploadedURL == url {
-                return true
-            }
+    static func actionForAttemptCount(_ attempts: Int) -> AttemptAction {
+        if attempts < ShareUploadManifestStore.maxAttempts {
+            return .upload
         }
-        return false
+        if attempts == ShareUploadManifestStore.maxAttempts {
+            return .reportRecovery
+        }
+        return .reported
     }
 
-    /// Job ids the instant share-photo endpoint has already filed for a project —
-    /// their `project_photos` URL filename is `share-{jobId}.jpg`. Used to skip
-    /// jobs the extension's background POST already landed (idempotent dedup).
-    private static func endpointFiledJobIds(projectId: String) async -> Set<String> {
-        struct Row: Decodable { let url: String }
-        guard let rows: [Row] = try? await SupabaseService.shared.client
-            .from("project_photos")
-            .select("url")
-            .eq("project_id", value: projectId)
-            .execute()
-            .value
-        else { return [] }
-
-        var ids = Set<String>()
-        for row in rows {
-            let name = (row.url as NSString).lastPathComponent
-            guard name.hasPrefix("share-"), name.hasSuffix(".jpg") else { continue }
-            let id = String(name.dropFirst(6).dropLast(4)) // "share-" = 6, ".jpg" = 4
-            if !id.isEmpty { ids.insert(id) }
+    @MainActor
+    private func reportParkedJob(_ job: ShareUploadJob) async {
+        guard await SharePhotoRecoveryReporter.report(job) else {
+            log.error(
+                "drain: recovery notification not yet acknowledged for \(job.id, privacy: .public); will retry"
+            )
+            return
         }
-        return ids
+        let persisted = ShareUploadManifestStore.update(id: job.id) {
+            $0.attempts = ShareUploadManifestStore.maxAttempts + 1
+        }
+        if persisted {
+            log.error(
+                "drain: \(job.id, privacy: .public) parked with an operator recovery notification"
+            )
+        } else {
+            // Server dedupe makes a repeated report harmless. Leave the job at
+            // the threshold so a later drain can persist the acknowledgement.
+            log.error(
+                "drain: recovery notification acknowledged for \(job.id, privacy: .public), but local acknowledgement could not be saved"
+            )
+        }
     }
 
-    /// True for transient failures that should NOT count against a job's attempt
-    /// budget — we retry indefinitely instead. Covers offline/network errors, ops-web
-    /// / S3 server errors (5xx, 408, 429), and auth blips (401/403 — the app's token
-    /// refreshes) plus ambiguous token/transport failures. Only genuinely permanent,
-    /// deterministic failures (e.g. 400/404/413) count toward parking, so a backend or
-    /// auth outage can never burn the budget and lose a photo.
-    private static func isTransientError(_ error: Error) -> Bool {
-        let ns = error as NSError
-        if ns.domain == NSURLErrorDomain {
-            switch ns.code {
-            case NSURLErrorNotConnectedToInternet, NSURLErrorNetworkConnectionLost,
-                 NSURLErrorTimedOut, NSURLErrorCannotConnectToHost, NSURLErrorCannotFindHost,
-                 NSURLErrorDNSLookupFailed, NSURLErrorDataNotAllowed, NSURLErrorInternationalRoamingOff:
-                return true
-            default:
-                return false
-            }
-        }
-        if let uploadError = error as? UploadError {
-            switch uploadError {
-            case .invalidResponse, .invalidURL:
-                // Token-refresh hiccup / non-HTTP response / malformed presigned URL —
-                // ambiguous and usually recoverable; retry rather than burn the budget.
-                return true
-            case .presignError(let code), .s3Error(let code):
-                return code >= 500 || code == 408 || code == 429 || code == 401 || code == 403
-            }
-        }
-        return false
-    }
 }

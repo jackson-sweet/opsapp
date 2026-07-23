@@ -20,18 +20,27 @@ enum SharePickerContent {
 }
 
 /// Drives the picker. The view observes it; the host view controller flips
-/// `phase` to `.done` once capture completes, then dismisses.
+/// `phase` to `.done` only after the complete share is durable. A failed atomic
+/// capture stays open with a direct retry.
 @MainActor
 final class SharePickerModel: ObservableObject {
-    enum Phase { case picking, submitting, done }
+    enum Phase: Equatable {
+        case picking
+        case submitting
+        case failed
+        case retainedForRecovery
+        case done
+    }
 
     @Published var phase: Phase = .picking
     @Published var confirmedTitle: String = ""
+    @Published var confirmedPhotoCount: Int = 0
 
     let content: SharePickerContent
     let photoCount: Int
     var onConfirm: ((ShareProjectRef) -> Void)?
     var onCancel: (() -> Void)?
+    var onClose: (() -> Void)?
 
     init(content: SharePickerContent, photoCount: Int) {
         self.content = content
@@ -41,6 +50,7 @@ final class SharePickerModel: ObservableObject {
 
 struct SharePickerView: View {
     @ObservedObject var model: SharePickerModel
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var search = ""
     @State private var selectedId: String?
 
@@ -51,8 +61,20 @@ struct SharePickerView: View {
             if model.phase == .done {
                 successView
                     .transition(.opacity)
+            } else if model.phase == .failed {
+                VStack(spacing: ShareTheme.Spacing.none) {
+                    header
+                    Divider().background(ShareTheme.Color.line)
+                    failureView
+                }
+            } else if model.phase == .retainedForRecovery {
+                VStack(spacing: ShareTheme.Spacing.none) {
+                    header
+                    Divider().background(ShareTheme.Color.line)
+                    retainedForRecoveryView
+                }
             } else {
-                VStack(spacing: 0) {
+                VStack(spacing: ShareTheme.Spacing.none) {
                     header
                     Divider().background(ShareTheme.Color.line)
                     contentBody
@@ -60,7 +82,10 @@ struct SharePickerView: View {
             }
         }
         .preferredColorScheme(.dark)
-        .animation(.easeInOut(duration: 0.2), value: model.phase)
+        .animation(
+            reduceMotion ? nil : ShareTheme.Motion.state,
+            value: model.phase
+        )
     }
 
     // MARK: - Header
@@ -69,21 +94,32 @@ struct SharePickerView: View {
         ZStack {
             VStack(spacing: ShareTheme.Spacing.s1) {
                 Text("ADD TO PROJECT")
-                    .font(ShareTheme.Font.title(20))
+                    .font(ShareTheme.Font.headerTitle)
                     .foregroundColor(ShareTheme.Color.textPrimary)
                 if model.photoCount > 0 {
                     Text(photoCountLabel.uppercased())
-                        .font(ShareTheme.Font.monoMedium(11))
+                        .font(ShareTheme.Font.headerMetadata)
                         .foregroundColor(ShareTheme.Color.textTertiary)
                 }
             }
             HStack {
-                Button { model.onCancel?() } label: {
-                    Text("Cancel")
-                        .font(ShareTheme.Font.body(15))
-                        .foregroundColor(ShareTheme.Color.textSecondary)
+                Button {
+                    if model.phase == .retainedForRecovery {
+                        model.onClose?()
+                    } else {
+                        model.onCancel?()
+                    }
+                } label: {
+                    Text(model.phase == .retainedForRecovery ? "Close" : "Cancel")
+                        .font(ShareTheme.Font.cancelAction)
+                        .foregroundColor(
+                            model.phase == .submitting
+                                ? ShareTheme.Color.textMute
+                                : ShareTheme.Color.textSecondary
+                        )
                         .frame(minWidth: ShareTheme.Size.touchMin, minHeight: ShareTheme.Size.touchMin, alignment: .leading)
                 }
+                .disabled(model.phase == .submitting)
                 Spacer()
             }
         }
@@ -128,7 +164,7 @@ struct SharePickerView: View {
 
     private func readyBody(_ projects: [ShareProjectRef]) -> some View {
         let visible = filtered(projects)
-        return VStack(spacing: 0) {
+        return VStack(spacing: ShareTheme.Spacing.none) {
             searchBar
                 .padding(.horizontal, ShareTheme.Spacing.s3)
                 .padding(.vertical, ShareTheme.Spacing.s2_5)
@@ -136,12 +172,12 @@ struct SharePickerView: View {
             if visible.isEmpty {
                 Spacer()
                 Text("[no match]")
-                    .font(ShareTheme.Font.mono(13))
+                    .font(ShareTheme.Font.statusMetadata)
                     .foregroundColor(ShareTheme.Color.textTertiary)
                 Spacer()
             } else {
                 ScrollView {
-                    LazyVStack(spacing: 0) {
+                    LazyVStack(spacing: ShareTheme.Spacing.none) {
                         ForEach(visible) { project in
                             ProjectRow(
                                 project: project,
@@ -163,14 +199,14 @@ struct SharePickerView: View {
     private var searchBar: some View {
         HStack(spacing: ShareTheme.Spacing.s2) {
             Image(systemName: "magnifyingglass")
-                .font(.system(size: 16))
+                .font(.system(size: ShareTheme.Size.smallGlyph))
                 .foregroundColor(ShareTheme.Color.textTertiary)
             TextField(
                 "",
                 text: $search,
                 prompt: Text("Search projects").foregroundColor(ShareTheme.Color.textTertiary)
             )
-            .font(ShareTheme.Font.body())
+            .font(ShareTheme.Font.searchBody)
             .foregroundColor(ShareTheme.Color.textPrimary)
             .tint(ShareTheme.Color.accent)
             .autocorrectionDisabled()
@@ -178,23 +214,26 @@ struct SharePickerView: View {
             if !search.isEmpty {
                 Button { search = "" } label: {
                     Image(systemName: "xmark.circle.fill")
-                        .font(.system(size: 16))
+                        .font(.system(size: ShareTheme.Size.smallGlyph))
                         .foregroundColor(ShareTheme.Color.textTertiary)
                 }
             }
         }
-        .padding(.vertical, 10)
+        .padding(.vertical, ShareTheme.Spacing.s2_5)
         .padding(.horizontal, ShareTheme.Spacing.s2_5)
         .background(ShareTheme.Color.surfaceInput)
         .cornerRadius(ShareTheme.Radius.button)
         .overlay(
             RoundedRectangle(cornerRadius: ShareTheme.Radius.button)
-                .stroke(ShareTheme.Color.line, lineWidth: 1)
+                .stroke(
+                    ShareTheme.Color.line,
+                    lineWidth: ShareTheme.Border.hairline
+                )
         )
     }
 
     private func ctaBar(_ projects: [ShareProjectRef]) -> some View {
-        VStack(spacing: 0) {
+        VStack(spacing: ShareTheme.Spacing.none) {
             Divider().background(ShareTheme.Color.line)
             Button {
                 guard let id = selectedId,
@@ -208,7 +247,7 @@ struct SharePickerView: View {
                         ProgressView().tint(ShareTheme.Color.accent)
                     }
                     Text(ctaLabel)
-                        .font(ShareTheme.Font.buttonLabel())
+                        .font(ShareTheme.Font.primaryAction)
                         .textCase(.uppercase)
                 }
             }
@@ -225,21 +264,86 @@ struct SharePickerView: View {
         VStack(spacing: ShareTheme.Spacing.s3) {
             ZStack {
                 Circle()
-                    .fill(ShareTheme.Color.success.opacity(0.15))
-                    .frame(width: 72, height: 72)
+                    .fill(
+                        ShareTheme.Color.success.opacity(
+                            ShareTheme.Opacity.semanticSoft
+                        )
+                    )
+                    .frame(
+                        width: ShareTheme.Size.outcomeCircle,
+                        height: ShareTheme.Size.outcomeCircle
+                    )
                 Image(systemName: "checkmark")
-                    .font(.system(size: 30, weight: .bold))
+                    .font(.system(
+                        size: ShareTheme.Size.outcomeGlyph,
+                        weight: .bold
+                    ))
                     .foregroundColor(ShareTheme.Color.success)
             }
-            Text(model.photoCount == 1 ? "PHOTO ADDED" : "PHOTOS ADDED")
-                .font(ShareTheme.Font.title(24))
+            Text(model.confirmedPhotoCount == 1 ? "PHOTO ADDED" : "PHOTOS ADDED")
+                .font(ShareTheme.Font.outcomeTitle)
                 .foregroundColor(ShareTheme.Color.textPrimary)
-            Text("[\(model.photoCount) → \(model.confirmedTitle)]")
-                .font(ShareTheme.Font.mono(13))
+            Text("[\(model.confirmedPhotoCount) → \(model.confirmedTitle)]")
+                .font(ShareTheme.Font.statusMetadata)
                 .foregroundColor(ShareTheme.Color.textTertiary)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, ShareTheme.Spacing.s4)
         }
+    }
+
+    // MARK: - Failure
+
+    private var failureView: some View {
+        VStack(spacing: ShareTheme.Spacing.none) {
+            Spacer()
+            VStack(spacing: ShareTheme.Spacing.s2) {
+                Text(
+                    model.photoCount == 1
+                        ? "// ERROR — PHOTO NOT ADDED"
+                        : "// ERROR — PHOTOS NOT ADDED"
+                )
+                    .font(ShareTheme.Font.errorLabel)
+                    .tracking(ShareTheme.Tracking.errorLabel)
+                    .foregroundColor(ShareTheme.Color.error)
+                    .multilineTextAlignment(.center)
+                Text("Nothing was saved. Try again.")
+                    .font(ShareTheme.Font.errorMessage)
+                    .foregroundColor(ShareTheme.Color.textSecondary)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, ShareTheme.Spacing.s4)
+            }
+            Spacer()
+            Divider().background(ShareTheme.Color.line)
+            Button {
+                retrySelectedProject()
+            } label: {
+                Text("TRY AGAIN")
+                    .font(ShareTheme.Font.primaryAction)
+            }
+            .buttonStyle(
+                SharePrimaryButtonStyle(enabled: true, tone: .error)
+            )
+            .padding(.horizontal, ShareTheme.Spacing.s3)
+            .padding(.vertical, ShareTheme.Spacing.s2_5)
+        }
+    }
+
+    private var retainedForRecoveryView: some View {
+        VStack(spacing: ShareTheme.Spacing.s2) {
+            Spacer()
+            Text("// ERROR — UPLOAD STATUS UNCONFIRMED")
+                .font(ShareTheme.Font.errorLabel)
+                .tracking(ShareTheme.Tracking.errorLabel)
+                .foregroundColor(ShareTheme.Color.error)
+                .multilineTextAlignment(.center)
+            Text("Open OPS and check the project before sharing again.")
+                .font(ShareTheme.Font.errorMessage)
+                .foregroundColor(ShareTheme.Color.textSecondary)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, ShareTheme.Spacing.s4)
+            Spacer()
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     // MARK: - Message (empty/blocked states)
@@ -248,14 +352,14 @@ struct SharePickerView: View {
         VStack(spacing: ShareTheme.Spacing.s2) {
             Spacer()
             Image(systemName: icon)
-                .font(.system(size: 44))
+                .font(.system(size: ShareTheme.Size.messageGlyph))
                 .foregroundColor(ShareTheme.Color.textMute)
                 .padding(.bottom, ShareTheme.Spacing.s2)
             Text(title.uppercased())
-                .font(ShareTheme.Font.title(18))
+                .font(ShareTheme.Font.messageTitle)
                 .foregroundColor(ShareTheme.Color.textPrimary)
             Text("[\(message)]")
-                .font(ShareTheme.Font.mono(13))
+                .font(ShareTheme.Font.statusMetadata)
                 .foregroundColor(ShareTheme.Color.textTertiary)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, ShareTheme.Spacing.s4)
@@ -281,6 +385,18 @@ struct SharePickerView: View {
             $0.title.lowercased().contains(q) || ($0.clientName?.lowercased().contains(q) ?? false)
         }
     }
+
+    private func retrySelectedProject() {
+        guard case .ready(let projects) = model.content,
+              let selectedId,
+              let project = projects.first(where: { $0.id == selectedId }) else {
+            model.phase = .picking
+            return
+        }
+        ShareHaptics.commit()
+        model.phase = .submitting
+        model.onConfirm?(project)
+    }
 }
 
 // MARK: - Row
@@ -293,14 +409,17 @@ private struct ProjectRow: View {
     var body: some View {
         Button(action: action) {
             HStack(spacing: ShareTheme.Spacing.s2_5) {
-                VStack(alignment: .leading, spacing: 2) {
+                VStack(
+                    alignment: .leading,
+                    spacing: ShareTheme.Spacing.s1
+                ) {
                     Text(project.title)
-                        .font(ShareTheme.Font.bodyBold())
+                        .font(ShareTheme.Font.rowTitle)
                         .foregroundColor(ShareTheme.Color.textPrimary)
                         .lineLimit(1)
                     if let client = project.clientName, !client.isEmpty {
                         Text(client)
-                            .font(ShareTheme.Font.mono(12))
+                            .font(ShareTheme.Font.rowMetadata)
                             .foregroundColor(ShareTheme.Color.textTertiary)
                             .lineLimit(1)
                     }
@@ -308,11 +427,20 @@ private struct ProjectRow: View {
                 Spacer(minLength: ShareTheme.Spacing.s2)
                 ZStack {
                     Circle()
-                        .stroke(selected ? ShareTheme.Color.accent : ShareTheme.Color.line, lineWidth: 1.5)
-                        .frame(width: 22, height: 22)
+                        .stroke(
+                            selected ? ShareTheme.Color.accent : ShareTheme.Color.line,
+                            lineWidth: ShareTheme.Border.selected
+                        )
+                        .frame(
+                            width: ShareTheme.Size.selectionControl,
+                            height: ShareTheme.Size.selectionControl
+                        )
                     if selected {
                         Image(systemName: "checkmark")
-                            .font(.system(size: 12, weight: .bold))
+                            .font(.system(
+                                size: ShareTheme.Size.selectionGlyph,
+                                weight: .bold
+                            ))
                             .foregroundColor(ShareTheme.Color.accent)
                     }
                 }
@@ -323,7 +451,7 @@ private struct ProjectRow: View {
             .background(selected ? ShareTheme.Color.surfaceActive : Color.clear)
             .overlay(
                 Rectangle()
-                    .frame(height: 1)
+                    .frame(height: ShareTheme.Border.hairline)
                     .foregroundColor(ShareTheme.Color.line),
                 alignment: .bottom
             )
@@ -336,7 +464,14 @@ private struct ProjectRow: View {
 // MARK: - Primary button (mirrors OPSButtonStyle.Primary)
 
 private struct SharePrimaryButtonStyle: ButtonStyle {
+    enum Tone {
+        case primary
+        case error
+    }
+
     let enabled: Bool
+    var tone: Tone = .primary
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
@@ -347,19 +482,38 @@ private struct SharePrimaryButtonStyle: ButtonStyle {
             .cornerRadius(ShareTheme.Radius.button)
             .overlay(
                 RoundedRectangle(cornerRadius: ShareTheme.Radius.button)
-                    .stroke(enabled ? ShareTheme.Color.accent : ShareTheme.Color.line, lineWidth: 1)
+                    .stroke(
+                        enabled ? tint : ShareTheme.Color.line,
+                        lineWidth: ShareTheme.Border.hairline
+                    )
             )
-            .scaleEffect(configuration.isPressed ? 0.98 : 1.0)
-            .animation(.easeOut(duration: 0.15), value: configuration.isPressed)
+            .scaleEffect(
+                configuration.isPressed && !reduceMotion
+                    ? ShareTheme.Motion.pressedScale
+                    : 1
+            )
+            .animation(
+                reduceMotion ? nil : ShareTheme.Motion.press,
+                value: configuration.isPressed
+            )
     }
 
     private func foreground(pressed: Bool) -> Color {
         guard enabled else { return ShareTheme.Color.textMute }
-        return pressed ? .black : ShareTheme.Color.accent
+        return pressed ? ShareTheme.Color.background : tint
     }
 
     private func background(pressed: Bool) -> Color {
         guard enabled else { return .clear }
-        return pressed ? ShareTheme.Color.accent : .clear
+        return pressed ? tint : .clear
+    }
+
+    private var tint: Color {
+        switch tone {
+        case .primary:
+            return ShareTheme.Color.accent
+        case .error:
+            return ShareTheme.Color.error
+        }
     }
 }

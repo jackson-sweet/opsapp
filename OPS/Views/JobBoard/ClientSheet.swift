@@ -25,8 +25,59 @@ struct ClientSheet: View {
             return nil
         }
     }
-    
-    let mode: Mode
+
+    struct Session {
+        var mode: Mode
+        var name = ""
+        var email = ""
+        var phone = ""
+        var address = ""
+        var notes = ""
+        var tempNotes = ""
+        var clientImage: UIImage?
+        var clientImageURL: String?
+
+        init(mode: Mode, prefilledName: String? = nil) {
+            self.mode = mode
+
+            if case .edit(let client) = mode {
+                hydrate(from: client)
+            } else if let prefilledName {
+                name = prefilledName
+            }
+        }
+
+        mutating func useExisting(_ client: Client) {
+            mode = .edit(client)
+            hydrate(from: client)
+        }
+
+        private mutating func hydrate(from client: Client) {
+            name = client.name
+            email = client.email ?? ""
+            phone = client.phoneNumber ?? ""
+            address = client.address ?? ""
+            notes = client.notes ?? ""
+            tempNotes = ""
+            clientImage = nil
+            clientImageURL = client.profileImageURL
+        }
+    }
+
+    enum DuplicateSelectionAction {
+        case editInPlace(Session)
+    }
+
+    static func resolveDuplicateSelection(
+        _ client: Client,
+        from session: Session
+    ) -> DuplicateSelectionAction {
+        var nextSession = session
+        nextSession.useExisting(client)
+        return .editInPlace(nextSession)
+    }
+
+    @State private var session: Session
     let onSave: (Client) -> Void
 
     @Environment(\.dismiss) private var dismiss
@@ -36,16 +87,7 @@ struct ClientSheet: View {
     // visible when this sheet is presented over the root view.
     @Environment(\.wizardStateManager) private var wizardStateManager
 
-    // Form Fields
-    @State private var name: String = ""
-    @State private var email: String = ""
-    @State private var phone: String = ""
-    @State private var address: String = ""
-    @State private var notes: String = ""
-
     // Avatar
-    @State private var clientImage: UIImage?
-    @State private var clientImageURL: String?
     @State private var showImagePicker = false
 
     // Duplicate Detection
@@ -67,9 +109,6 @@ struct ClientSheet: View {
     // Focus states for input fields
     @FocusState private var focusedField: ClientFormField?
 
-    // Temporary state for notes editing
-    @State private var tempNotes: String = ""
-
     // Section expansion
     @State private var isClientDetailsExpanded = true
 
@@ -82,20 +121,52 @@ struct ClientSheet: View {
     }
 
     init(mode: Mode, prefilledName: String? = nil, onSave: @escaping (Client) -> Void) {
-        self.mode = mode
+        _session = State(initialValue: Session(mode: mode, prefilledName: prefilledName))
         self.onSave = onSave
+    }
 
-        // Pre-populate fields if editing
-        if case .edit(let client) = mode {
-            _name = State(initialValue: client.name)
-            _email = State(initialValue: client.email ?? "")
-            _phone = State(initialValue: client.phoneNumber ?? "")
-            _address = State(initialValue: client.address ?? "")
-            _notes = State(initialValue: client.notes ?? "")
-            _clientImageURL = State(initialValue: client.profileImageURL)
-        } else if let prefilledName = prefilledName {
-            _name = State(initialValue: prefilledName)
-        }
+    private var mode: Mode {
+        session.mode
+    }
+
+    private var name: String {
+        get { session.name }
+        nonmutating set { session.name = newValue }
+    }
+
+    private var email: String {
+        get { session.email }
+        nonmutating set { session.email = newValue }
+    }
+
+    private var phone: String {
+        get { session.phone }
+        nonmutating set { session.phone = newValue }
+    }
+
+    private var address: String {
+        get { session.address }
+        nonmutating set { session.address = newValue }
+    }
+
+    private var notes: String {
+        get { session.notes }
+        nonmutating set { session.notes = newValue }
+    }
+
+    private var tempNotes: String {
+        get { session.tempNotes }
+        nonmutating set { session.tempNotes = newValue }
+    }
+
+    private var clientImage: UIImage? {
+        get { session.clientImage }
+        nonmutating set { session.clientImage = newValue }
+    }
+
+    private var clientImageURL: String? {
+        get { session.clientImageURL }
+        nonmutating set { session.clientImageURL = newValue }
     }
     
     var body: some View {
@@ -128,7 +199,7 @@ struct ClientSheet: View {
                                         .foregroundColor(OPSStyle.Colors.secondaryText)
 
                                     HStack(spacing: 0) {
-                                        TextField("Client name", text: $name)
+                                        TextField("Client name", text: $session.name)
                                             .font(OPSStyle.Typography.body)
                                             .foregroundColor(OPSStyle.Colors.primaryText)
                                             .autocorrectionDisabled(true)
@@ -175,8 +246,7 @@ struct ClientSheet: View {
                                         DuplicateWarning(duplicate: duplicate) {
                                             // Use existing client
                                             if let existingClient = dataController.getAllClients(for: dataController.currentUser?.companyId ?? "").first(where: { $0.id == duplicate.clientId }) {
-                                                dismiss()
-                                                onSave(existingClient)
+                                                useExistingClient(existingClient)
                                             }
                                         }
                                     }
@@ -188,7 +258,7 @@ struct ClientSheet: View {
                                         .font(OPSStyle.Typography.captionBold)
                                         .foregroundColor(OPSStyle.Colors.secondaryText)
 
-                                    TextField("Email Address", text: $email)
+                                    TextField("Email Address", text: $session.email)
                                         .font(OPSStyle.Typography.body)
                                         .foregroundColor(OPSStyle.Colors.primaryText)
                                         .keyboardType(.emailAddress)
@@ -223,7 +293,7 @@ struct ClientSheet: View {
                                         .font(OPSStyle.Typography.captionBold)
                                         .foregroundColor(OPSStyle.Colors.secondaryText)
 
-                                    TextField("Phone Number", text: $phone)
+                                    TextField("Phone Number", text: $session.phone)
                                         .font(OPSStyle.Typography.body)
                                         .foregroundColor(OPSStyle.Colors.primaryText)
                                         .keyboardType(.phonePad)
@@ -258,7 +328,7 @@ struct ClientSheet: View {
                                         .foregroundColor(OPSStyle.Colors.secondaryText)
 
                                     AddressAutocompleteField(
-                                        address: $address,
+                                        address: $session.address,
                                         placeholder: "Client Address",
                                         onAddressSelected: { fullAddress, _ in
                                             address = fullAddress
@@ -282,7 +352,7 @@ struct ClientSheet: View {
                                                     .padding(.leading, OPSStyle.Layout.spacing3)
                                             }
 
-                                            TextEditor(text: focusedField == .notes ? $tempNotes : $notes)
+                                            TextEditor(text: focusedField == .notes ? $session.tempNotes : $session.notes)
                                                 .font(OPSStyle.Typography.body)
                                                 .foregroundColor(OPSStyle.Colors.primaryText)
                                                 .frame(minHeight: 80, maxHeight: 200)
@@ -506,6 +576,22 @@ struct ClientSheet: View {
     }
 
     // MARK: - Helper Functions
+
+    private func useExistingClient(_ client: Client) {
+        focusedField = nil
+
+        switch Self.resolveDuplicateSelection(client, from: session) {
+        case .editInPlace(let nextSession):
+            session = nextSession
+        }
+
+        duplicateCheckResult = nil
+        showingDuplicateAlert = false
+        checkingDuplicate = false
+        errorMessage = nil
+        showEmailError = false
+        showPhoneError = false
+    }
 
     private func checkForDuplicates() {
         guard name.count >= 3 else {

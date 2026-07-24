@@ -156,13 +156,16 @@ struct ActivityTabView: View {
                                 authorName: notesViewModel.authorName(for: note.authorId),
                                 teamMember: notesViewModel.teamMember(for: note.authorId),
                                 isOwnNote: notesViewModel.isOwnNote(note),
-                                mentionNames: notesViewModel.mentionNames,
                                 allTeamMembers: notesViewModel.allTeamMembers,
                                 onDelete: { deletePhoto in
                                     Task { await notesViewModel.deleteNote(note, deletePhoto: deletePhoto) }
                                 },
-                                onEdit: { newContent in
-                                    Task { await notesViewModel.updateNoteContent(note, newContent: newContent) }
+                                onEdit: { newContent, identitySpans in
+                                    await notesViewModel.updateNoteContent(
+                                        note,
+                                        newContent: newContent,
+                                        identitySpans: identitySpans
+                                    )
                                 },
                                 onPhotoTap: onPhotoTap
                             )
@@ -258,8 +261,7 @@ struct ActivityTabView: View {
             HStack(spacing: OPSStyle.Layout.spacing1) {
                 // @ mention button — focuses text field and inserts @
                 Button(action: {
-                    notesViewModel.newNoteText += "@"
-                    notesViewModel.handleMentionInput(notesViewModel.newNoteText)
+                    notesViewModel.insertMentionTrigger()
                     isTextFieldFocused = true
                 }) {
                     Image(systemName: OPSStyle.Icons.mention)
@@ -278,19 +280,30 @@ struct ActivityTabView: View {
                 .buttonStyle(PlainButtonStyle())
                 .frame(width: 32, height: 32)
 
-                TextField("Write a note...", text: $notesViewModel.newNoteText)
-                    .font(OPSStyle.Typography.body)
-                    .foregroundColor(OPSStyle.Colors.primaryText)
-                    .focused($isTextFieldFocused)
-                    .textInputAutocapitalization(.sentences)
-                    .autocorrectionDisabled(false)
-                    .onChange(of: notesViewModel.newNoteText) { _, newValue in
-                        notesViewModel.handleMentionInput(newValue)
-                    }
-                    .onSubmit {
+                ProjectNoteMentionComposerField(
+                    text: $notesViewModel.newNoteText,
+                    selectedRange: $notesViewModel.composeSelectedRange,
+                    mentionSpans: $notesViewModel.composeMentionSpans,
+                    isFocused: Binding(
+                        get: { isTextFieldFocused },
+                        set: { isTextFieldFocused = $0 }
+                    ),
+                    placeholder: "Write a note...",
+                    onSubmit: {
                         if notesViewModel.canPost {
                             Task { await notesViewModel.postNote() }
                         }
+                    }
+                )
+                    .onChange(of: notesViewModel.newNoteText) { _, newValue in
+                        notesViewModel.handleMentionInput(newValue)
+                    }
+                    .onChange(
+                        of: notesViewModel.composeSelectedRange
+                    ) { _, _ in
+                        notesViewModel.handleMentionInput(
+                            notesViewModel.newNoteText
+                        )
                     }
 
                 Button(action: {

@@ -4931,35 +4931,40 @@ class DataController: ObservableObject {
         )
     }
 
-    /// Update a project note's content locally and record for sync - SINGLE SOURCE OF TRUTH
+    /// Replace a project note's content and authoritative mentions locally,
+    /// then append its immutable server event and dependent delivery work.
+    @discardableResult
     @MainActor
-    func updateProjectNoteContent(note: ProjectNote, content: String) {
-        note.content = content
-        note.updatedAt = Date()
-        note.needsSync = true
-        try? modelContext?.save()
-
-        syncEngine.recordOperation(
-            entityType: .projectNote,
-            entityId: note.id,
-            operationType: "update",
-            changedFields: ["content": content]
+    func updateProjectNoteContent(
+        note: ProjectNote,
+        content: String,
+        mentionedUserIds: [String],
+        mentionEventId: String
+    ) -> Bool {
+        syncEngine.recordProjectNoteMentionEdit(
+            note: note,
+            content: content,
+            mentionedUserIds: mentionedUserIds,
+            mentionEventId: mentionEventId
         )
     }
 
     /// Soft-delete a project note locally and record for sync - SINGLE SOURCE OF TRUTH
+    @discardableResult
     @MainActor
-    func deleteProjectNote(note: ProjectNote) {
-        note.deletedAt = Date()
-        note.needsSync = true
-        try? modelContext?.save()
-
-        syncEngine.recordOperation(
-            entityType: .projectNote,
-            entityId: note.id,
-            operationType: "delete",
-            changedFields: ["deleted_at": ISO8601DateFormatter().string(from: note.deletedAt!)]
-        )
+    func deleteProjectNote(note: ProjectNote) -> Bool {
+        guard let syncEngine else {
+            print(
+                "[DATA_CONTROLLER] Failed to durably queue project-note delete: "
+                    + "sync engine is unavailable"
+            )
+            return false
+        }
+        let didQueueDelete = syncEngine.recordProjectNoteDelete(note: note)
+        if !didQueueDelete {
+            print("[DATA_CONTROLLER] Failed to durably queue project-note delete")
+        }
+        return didQueueDelete
     }
 
     // MARK: - Project Details Operations

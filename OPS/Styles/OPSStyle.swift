@@ -425,6 +425,14 @@ enum OPSStyle {
             UIFont(name: "JetBrainsMono-Medium", size: size)
                 ?? .monospacedDigitSystemFont(ofSize: size, weight: .semibold)
         }
+
+        /// UIKit bridge for the canonical 16pt Mohave body role. Selection-
+        /// aware text editors use UITextView on the supported deployment target
+        /// and must render identically to SwiftUI fields using `body`.
+        static var uiBody: UIFont {
+            UIFont(name: "Mohave-Regular", size: 16)
+                ?? .preferredFont(forTextStyle: .body)
+        }
     }
     
     // MARK: - Layout

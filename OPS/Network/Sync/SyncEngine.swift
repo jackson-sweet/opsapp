@@ -34,6 +34,12 @@ final class SyncEngine {
     private var pushRequestedWhileInProgress: Bool = false
     nonisolated(unsafe) private var syncRetryTimer: Timer?
 
+    #if DEBUG
+    /// Deterministic test seam invoked after every discard mutation and delete
+    /// registration, immediately before SwiftData commits the transaction.
+    var projectNoteDiscardFailureInjector: (() throws -> Void)?
+    #endif
+
     /// The current authenticated user's ID, read from UserDefaults.
     private var currentUserId: String? {
         UserDefaults.standard.string(forKey: "currentUserId")
@@ -452,6 +458,387 @@ final class SyncEngine {
         return operation
     }
 
+    /// Atomically applies one local note edit and appends its two durable queue
+    /// records. The RPC payload uses server column names, while
+    /// `changedFields` deliberately uses the SwiftData property names consumed
+    /// by inbound merge protection.
+    @discardableResult
+    func recordProjectNoteMentionEdit(
+        note: ProjectNote,
+        content: String,
+        mentionedUserIds: [String],
+        mentionEventId: String
+    ) -> Bool {
+        guard let modelContext else {
+            print("[SYNC_ENGINE] Cannot record project-note mention edit — modelContext not configured")
+            return false
+        }
+
+        let noteId = note.id.lowercased()
+        let canonicalEventId = mentionEventId.lowercased()
+        let updatePayload: Data
+        let dispatchPayload: Data
+        let previousUpdatedAtPayload: Any
+        if let updatedAt = note.updatedAt {
+            previousUpdatedAtPayload =
+                updatedAt.timeIntervalSince1970
+        } else {
+            previousUpdatedAtPayload = NSNull()
+        }
+        do {
+            updatePayload = try JSONSerialization.data(
+                withJSONObject: [
+                    ProjectNoteMentionEditSync.noteIdPayloadKey: noteId,
+                    ProjectNoteMentionEditSync.contentPayloadKey: content,
+                    ProjectNoteMentionEditSync.mentionedUserIdsPayloadKey: mentionedUserIds,
+                    ProjectNoteMentionEditSync.eventIdPayloadKey: canonicalEventId,
+                    ProjectNoteMentionEditSync.previousContentPayloadKey:
+                        note.content,
+                    ProjectNoteMentionEditSync
+                        .previousMentionedUserIdsPayloadKey:
+                        note.mentionedUserIds,
+                    ProjectNoteMentionEditSync.previousNeedsSyncPayloadKey:
+                        note.needsSync,
+                    ProjectNoteMentionEditSync.previousUpdatedAtPayloadKey:
+                        previousUpdatedAtPayload,
+                ]
+            )
+            dispatchPayload = try JSONSerialization.data(
+                withJSONObject: [
+                    ProjectNoteMentionEditSync.eventIdPayloadKey: canonicalEventId
+                ]
+            )
+        } catch {
+            print("[SYNC_ENGINE] Failed to encode project-note mention edit: \(error)")
+            return false
+        }
+
+        do {
+            try ProjectNoteMentionQueueCoordinator.shared.withMutation {
+                activeClaimIds in
+                // The main context can retain objects changed by DataActor.
+                // Persist any existing main-context work, then refresh while
+                // holding the shared gate so the transaction below starts from
+                // the same store snapshot the actor must claim against.
+                if modelContext.hasChanges {
+                    try modelContext.save()
+                }
+                modelContext.rollback()
+                try modelContext.transaction {
+                    let allOperations = try modelContext.fetch(
+                        FetchDescriptor<SyncOperation>()
+                    )
+                    let activeStatuses = Set([
+                        "pending",
+                        "inProgress",
+                        "failed",
+                        "parked",
+                    ])
+                    let unresolvedCreate = allOperations
+                        .filter {
+                            $0.entityType
+                                == SyncEntityType.projectNote.rawValue
+                                && $0.entityId.lowercased() == noteId
+                                && $0.operationType == "create"
+                                && activeStatuses.contains($0.status)
+                        }
+                        .max {
+                            if $0.createdAt != $1.createdAt {
+                                return $0.createdAt < $1.createdAt
+                            }
+                            return $0.id.uuidString < $1.id.uuidString
+                        }
+                    let previousUpdate = allOperations
+                        .filter {
+                            ProjectNoteMentionEditSync
+                                .isUpdateOperation($0)
+                                && $0.entityId.lowercased() == noteId
+                                && activeStatuses.contains($0.status)
+                        }
+                        .max {
+                            if $0.createdAt != $1.createdAt {
+                                return $0.createdAt < $1.createdAt
+                            }
+                            return $0.id.uuidString < $1.id.uuidString
+                        }
+                    let sameNoteUpdateIds = Set(
+                        allOperations.compactMap {
+                            operation -> String? in
+                            guard ProjectNoteMentionEditSync
+                                .isUpdateOperation(operation),
+                                operation.entityId.lowercased()
+                                    == noteId else {
+                                return nil
+                            }
+                            return operation.id.uuidString
+                        }
+                    )
+                    let updateOperation = SyncOperation(
+                        entityType:
+                            SyncEntityType.projectNote.rawValue,
+                        entityId: noteId,
+                        operationType:
+                            ProjectNoteMentionEditSync
+                            .updateOperationType,
+                        payload: updatePayload,
+                        changedFields: [
+                            "content",
+                            "mentionedUserIdsString",
+                        ],
+                        priority: 1,
+                        dependsOnId:
+                            previousUpdate?.id.uuidString
+                                ?? unresolvedCreate?.id.uuidString
+                    )
+                    let dispatchOperation = SyncOperation(
+                        entityType:
+                            SyncEntityType.projectNote.rawValue,
+                        entityId: canonicalEventId,
+                        operationType:
+                            ProjectNoteMentionEditSync
+                            .dispatchOperationType,
+                        payload: dispatchPayload,
+                        changedFields: [],
+                        priority: 1,
+                        dependsOnId:
+                            updateOperation.id.uuidString
+                    )
+
+                    for operation in allOperations where
+                        operation.entityType
+                            == SyncEntityType.projectNote.rawValue
+                            && operation.entityId.lowercased()
+                                == noteId
+                            && (
+                                ProjectNoteMentionEditSync
+                                    .isUpdateOperation(operation)
+                                    || operation.operationType
+                                        == "create"
+                            )
+                            && operation.status == "failed"
+                    {
+                        operation.status = "pending"
+                        operation.retryCount = 0
+                        operation.lastAttemptedAt = nil
+                        operation.completedAt = nil
+                    }
+
+                    note.content = content
+                    note.mentionedUserIds = mentionedUserIds
+                    note.updatedAt = Date()
+                    note.needsSync = true
+
+                    // A dispatch whose request is currently executing has
+                    // crossed the mutation boundary. Only work without an
+                    // active execution lease may move behind this replacement.
+                    for operation in allOperations where
+                        ProjectNoteMentionEditSync
+                            .isDispatchOperation(operation)
+                            && operation.status != "completed"
+                            && operation.status != "inProgress"
+                            && !activeClaimIds
+                                .contains(operation.id)
+                            && operation.dependsOnId.map(
+                                sameNoteUpdateIds.contains
+                            ) == true
+                    {
+                        if operation.status == "failed" {
+                            operation.status = "pending"
+                            operation.retryCount = 0
+                            operation.lastAttemptedAt = nil
+                            operation.completedAt = nil
+                        }
+                        operation.dependsOnId =
+                            updateOperation.id.uuidString
+                    }
+
+                    modelContext.insert(updateOperation)
+                    modelContext.insert(dispatchOperation)
+                    ProjectNoteMentionEditSync
+                        .supersedeParkedUpdatesReplacedByLaterEdits(
+                            in:
+                                allOperations
+                                + [
+                                    updateOperation,
+                                    dispatchOperation,
+                                ]
+                        )
+                }
+            }
+        } catch {
+            print("[SYNC_ENGINE] Failed to save project-note mention edit: \(error)")
+            return false
+        }
+
+        refreshPendingCount()
+        if connectivity?.shouldAttemptSync == true {
+            Task { @MainActor [weak self] in
+                await self?.pushPending()
+            }
+        }
+        return true
+    }
+
+    /// Atomically tombstones one note, retires every mention delivery that has
+    /// not started, and queues the generic delete behind any same-note write
+    /// already in flight (or the unresolved create for an offline-new note).
+    @discardableResult
+    func recordProjectNoteDelete(
+        note: ProjectNote,
+        deletedAt: Date = Date()
+    ) -> Bool {
+        guard let modelContext else { return false }
+        let noteId = note.id.lowercased()
+        let payload: Data
+        let deletedAtString = ISO8601DateFormatter().string(from: deletedAt)
+        do {
+            payload = try JSONSerialization.data(
+                withJSONObject: ["deleted_at": deletedAtString]
+            )
+        } catch {
+            print("[SYNC_ENGINE] Failed to encode project-note delete: \(error)")
+            return false
+        }
+
+        do {
+            try ProjectNoteMentionQueueCoordinator.shared.withMutation {
+                activeClaimIds in
+                if modelContext.hasChanges {
+                    try modelContext.save()
+                }
+                modelContext.rollback()
+                try modelContext.transaction {
+                    let operations = try modelContext.fetch(
+                        FetchDescriptor<SyncOperation>()
+                    )
+                    let sameNoteUpdates = operations.filter {
+                        ProjectNoteMentionEditSync
+                            .isUpdateOperation($0)
+                            && $0.entityId.lowercased() == noteId
+                    }
+                    let eventIds = Set(
+                        sameNoteUpdates.compactMap {
+                            update -> String? in
+                            guard let payload = try?
+                                JSONSerialization.jsonObject(
+                                    with: update.payload
+                                ) as? [String: Any] else {
+                                return nil
+                            }
+                            return (
+                                payload[
+                                    ProjectNoteMentionEditSync
+                                        .eventIdPayloadKey
+                                ] as? String
+                            )?.lowercased()
+                        }
+                    )
+                    let sameNoteDispatches = operations.filter {
+                        ProjectNoteMentionEditSync
+                            .isDispatchOperation($0)
+                            && eventIds.contains(
+                                $0.entityId.lowercased()
+                            )
+                    }
+                    let inFlightMentionOperation = (
+                        sameNoteUpdates + sameNoteDispatches
+                    )
+                    .filter {
+                        $0.status == "inProgress"
+                            || activeClaimIds
+                                .contains($0.id)
+                    }
+                    .max {
+                        if $0.createdAt != $1.createdAt {
+                            return $0.createdAt < $1.createdAt
+                        }
+                        return $0.id.uuidString
+                            < $1.id.uuidString
+                    }
+                    let unresolvedCreate = operations
+                        .filter {
+                            ProjectNoteMentionEditSync
+                                .isProjectNoteCreateOperation($0)
+                                && $0.entityId.lowercased()
+                                    == noteId
+                                && $0.status != "completed"
+                        }
+                        .max {
+                            if $0.createdAt != $1.createdAt {
+                                return $0.createdAt < $1.createdAt
+                            }
+                            return $0.id.uuidString
+                                < $1.id.uuidString
+                        }
+                    let dependencyId =
+                        inFlightMentionOperation?.id.uuidString
+                            ?? unresolvedCreate?.id.uuidString
+                    let deleteOperation = SyncOperation(
+                        entityType:
+                            SyncEntityType.projectNote.rawValue,
+                        entityId: noteId,
+                        operationType: "delete",
+                        payload: payload,
+                        changedFields: ["deletedAt"],
+                        priority: 1,
+                        dependsOnId: dependencyId
+                    )
+                    let retiredIds = Set(
+                        (
+                            sameNoteUpdates
+                                + sameNoteDispatches
+                        ).compactMap {
+                            $0.status == "completed"
+                                || $0.status == "inProgress"
+                                || activeClaimIds
+                                    .contains($0.id)
+                                ? nil
+                                : $0.id
+                        }
+                    )
+
+                    if let unresolvedCreate,
+                       unresolvedCreate.status == "failed" {
+                        unresolvedCreate.status = "pending"
+                        unresolvedCreate.retryCount = 0
+                        unresolvedCreate.lastAttemptedAt = nil
+                        unresolvedCreate.completedAt = nil
+                    }
+                    note.deletedAt = deletedAt
+                    note.needsSync = true
+                    if unresolvedCreate?.status != "parked" {
+                        for operation in operations where
+                            retiredIds.contains(operation.id)
+                        {
+                            modelContext.delete(operation)
+                        }
+                    }
+                    modelContext.insert(deleteOperation)
+                    if let unresolvedCreate,
+                       ProjectNoteMentionEditSync
+                        .retireParkedCreateWithQueuedDelete(
+                            unresolvedCreate,
+                            in: operations + [deleteOperation]
+                        ) {
+                        note.needsSync = false
+                    }
+                }
+            }
+        } catch {
+            print("[SYNC_ENGINE] Failed to queue project-note delete: \(error)")
+            return false
+        }
+
+        refreshPendingCount()
+        ProjectNoteChangeSignal.post(projectId: note.projectId)
+        if connectivity?.shouldAttemptSync == true {
+            Task { @MainActor [weak self] in
+                await self?.pushPending()
+            }
+        }
+        return true
+    }
+
     /// One operation to enqueue via `recordOperations(_:)`.
     struct BulkOperationSpec {
         let entityType: SyncEntityType
@@ -860,6 +1247,12 @@ final class SyncEngine {
         // exactly once per device.
         enqueueDeckDesignLinkBackfillOnce()
 
+        // Recover a chain persisted between the instant a predecessor parked
+        // and the normal post-failure reconciliation. A later full replacement
+        // proves the parked payload and its event are safe to supersede.
+        reconcileSupersededParkedProjectNoteMentionUpdates()
+        reconcileParkedProjectNoteCreateDeleteChains()
+
         let pending = getPendingOperations()
         guard !pending.isEmpty else {
             print("[SYNC_ENGINE] No pending operations to push")
@@ -879,7 +1272,9 @@ final class SyncEngine {
                 print("[SYNC_ENGINE] Skipping push — connectivity says do not sync")
                 return
             }
-            completedProjectTaskIds = await actor.processPendingOperations()
+            completedProjectTaskIds.formUnion(
+                await actor.processPendingOperations()
+            )
         } else {
             await outboundProcessor?.processPendingOperations(
                 context: modelContext,
@@ -1416,6 +1811,91 @@ final class SyncEngine {
 
     // MARK: - Operation Queries
 
+    /// Retires permanently rejected mention updates only when a later
+    /// full-authoritative replacement is already queued directly behind them.
+    /// Used by both live failure handling and the push-start recovery sweep.
+    @discardableResult
+    func reconcileSupersededParkedProjectNoteMentionUpdates() -> Bool {
+        guard let modelContext else { return false }
+        do {
+            let operations = try modelContext.fetch(
+                FetchDescriptor<SyncOperation>()
+            )
+            var didChange = false
+            try modelContext.transaction {
+                didChange = ProjectNoteMentionEditSync
+                    .supersedeParkedUpdatesReplacedByLaterEdits(
+                        in: operations
+                    )
+            }
+            if didChange {
+                refreshPendingCount()
+            }
+            return didChange
+        } catch {
+            print(
+                "[SYNC_ENGINE] Failed to reconcile parked project-note mention chain: \(error)"
+            )
+            return false
+        }
+    }
+
+    /// Idempotent restart recovery for the crash window between persisting a
+    /// permanently rejected local-only create and retiring its already-queued
+    /// delete. The whole chain and tombstoned note dirty flag converge in one
+    /// transaction before every push, so the delete can never depend forever
+    /// on a parked create.
+    @discardableResult
+    func reconcileParkedProjectNoteCreateDeleteChains() -> Bool {
+        guard let modelContext else { return false }
+        do {
+            var didChange = false
+            try ProjectNoteMentionQueueCoordinator.shared.withMutation { _ in
+                if modelContext.hasChanges {
+                    try modelContext.save()
+                }
+                modelContext.rollback()
+                try modelContext.transaction {
+                    let operations = try modelContext.fetch(
+                        FetchDescriptor<SyncOperation>()
+                    )
+                    let notes = try modelContext.fetch(
+                        FetchDescriptor<ProjectNote>()
+                    )
+                    for create in operations where
+                        ProjectNoteMentionEditSync
+                            .isProjectNoteCreateOperation(create)
+                            && create.status == "parked"
+                    {
+                        guard ProjectNoteMentionEditSync
+                            .retireParkedCreateWithQueuedDelete(
+                                create,
+                                in: operations
+                            ) else {
+                            continue
+                        }
+                        didChange = true
+                        let noteId = create.entityId.lowercased()
+                        if let note = notes.first(where: {
+                            $0.id.lowercased() == noteId
+                        }), note.deletedAt != nil {
+                            note.needsSync = false
+                        }
+                    }
+                }
+            }
+            if didChange {
+                refreshPendingCount()
+            }
+            return didChange
+        } catch {
+            print(
+                "[SYNC_ENGINE] Failed parked project-note create/delete recovery: \(error)"
+            )
+            return false
+        }
+    }
+
     /// Returns all pending sync operations sorted by priority (immediate first)
     /// then by creation date (oldest first).
     func getPendingOperations() -> [SyncOperation] {
@@ -1622,18 +2102,230 @@ final class SyncEngine {
 
     // MARK: - Cancel
 
-    /// Cancels (deletes) a single pending sync operation.
+    /// Cancels one operation. Mention edits are dependency-aware: the rejected
+    /// update's impossible dispatch is removed with it and surviving full
+    /// replacements inherit the discarded node's upstream dependency.
     /// Does nothing if the operation is currently in-progress.
     func cancelOperation(_ operation: SyncOperation) {
         guard let modelContext else { return }
-        guard operation.status != "inProgress" else {
-            print("[SYNC_ENGINE] Cannot cancel in-progress operation \(operation.id)")
+        let operationId = operation.id
+        let operationType = operation.operationType
+        let entityType = operation.entityType
+        var cancelled = false
+        var projectIdToSignal: String?
+        var rejectionReason: String?
+        var discardStateSnapshot:
+            ProjectNoteMentionEditSync.DiscardRecoverySnapshot?
+
+        do {
+            try ProjectNoteMentionQueueCoordinator.shared.withMutation(
+                recoveringWith: { _ in
+                    do {
+                        if let discardStateSnapshot {
+                            try ProjectNoteMentionEditSync
+                                .restoreDiscardState(
+                                    discardStateSnapshot,
+                                    in: modelContext
+                                )
+                        } else {
+                            modelContext.rollback()
+                        }
+                    } catch {
+                        print(
+                            "[SYNC_ENGINE] Failed to restore discard state "
+                                + "after cancellation error: \(error)"
+                        )
+                    }
+                }
+            ) { activeClaimIds in
+                guard !activeClaimIds.contains(operationId) else {
+                    rejectionReason = "operation is actively executing"
+                    return
+                }
+                if modelContext.hasChanges {
+                    try modelContext.save()
+                }
+                modelContext.rollback()
+                try modelContext.transaction {
+                    let descriptor = FetchDescriptor<SyncOperation>(
+                        predicate: #Predicate {
+                            $0.id == operationId
+                        }
+                    )
+                    guard let persistedOperation =
+                        try modelContext.fetch(descriptor).first else {
+                        rejectionReason = "operation no longer exists"
+                        return
+                    }
+                    guard persistedOperation.status != "inProgress" else {
+                        rejectionReason = "operation is in progress"
+                        return
+                    }
+
+                    let operations = try modelContext.fetch(
+                        FetchDescriptor<SyncOperation>()
+                    )
+                    let discardedIds =
+                        ProjectNoteMentionEditSync.prepareForDiscard(
+                            persistedOperation,
+                            in: operations
+                        )
+                    let dependencyRewires = ProjectNoteMentionEditSync
+                        .dependencyRewiresForDiscard(
+                            discardedIds: discardedIds,
+                            in: operations
+                        )
+                    let touchedIds = discardedIds.union(
+                        dependencyRewires.map {
+                            $0.operation.id
+                        }
+                    )
+                    let hasExecutingDiscard = operations.contains {
+                        touchedIds.contains($0.id)
+                            && (
+                                $0.status == "inProgress"
+                                    || activeClaimIds.contains($0.id)
+                            )
+                    }
+                    guard !hasExecutingDiscard else {
+                        rejectionReason =
+                            "a dependent operation is actively executing"
+                        return
+                    }
+
+                    let reconciledState = ProjectNoteMentionEditSync
+                        .reconciledNoteStateAfterDiscard(
+                            persistedOperation,
+                            discardedIds: discardedIds,
+                            in: operations
+                        )
+                    let discardsUncreatedNote =
+                        ProjectNoteMentionEditSync
+                        .isProjectNoteCreateOperation(
+                            persistedOperation
+                        )
+                    let discardsProjectNoteDelete =
+                        persistedOperation.entityType
+                            == SyncEntityType.projectNote.rawValue
+                            && persistedOperation.operationType == "delete"
+                    let noteId =
+                        persistedOperation.entityId.lowercased()
+                    let reconciledNote: ProjectNote?
+                    if reconciledState != nil
+                        || discardsUncreatedNote
+                        || discardsProjectNoteDelete {
+                        reconciledNote =
+                            try ProjectNoteMentionEditSync
+                            .fetchProjectNote(
+                                matching: noteId,
+                                in: modelContext
+                            )
+                    } else {
+                        reconciledNote = nil
+                    }
+                    let noteMutation:
+                        ProjectNoteMentionEditSync.DiscardNoteMutation?
+                    if discardsUncreatedNote {
+                        noteMutation = .offlineCreateDeletion
+                    } else if reconciledState != nil {
+                        noteMutation = .mentionUpdate
+                    } else if discardsProjectNoteDelete {
+                        noteMutation = .delete
+                    } else {
+                        noteMutation = nil
+                    }
+
+                    discardStateSnapshot = ProjectNoteMentionEditSync
+                        .discardRecoverySnapshot(
+                            note: reconciledNote,
+                            noteMutation: noteMutation,
+                            operations: operations,
+                            discardedIds: discardedIds,
+                            dependencyRewires: dependencyRewires
+                        )
+                    ProjectNoteMentionEditSync.applyDiscardRewires(
+                        dependencyRewires
+                    )
+                    if let reconciledState, let reconciledNote {
+                        reconciledNote.content = reconciledState.content
+                        reconciledNote.mentionedUserIds =
+                            reconciledState.mentionedUserIds
+                        reconciledNote.needsSync =
+                            reconciledState.needsSync
+                        reconciledNote.updatedAt =
+                            reconciledState.updatedAt
+                    }
+                    if discardsProjectNoteDelete,
+                       let reconciledNote {
+                        let unresolvedStatuses = Set([
+                            "pending",
+                            "inProgress",
+                            "failed",
+                            "parked",
+                        ])
+                        let hasSurvivingSameNoteWrite =
+                            operations.contains {
+                                !discardedIds.contains($0.id)
+                                    && $0.entityType
+                                        == SyncEntityType.projectNote
+                                        .rawValue
+                                    && $0.entityId.lowercased()
+                                        == noteId
+                                    && unresolvedStatuses
+                                        .contains($0.status)
+                                    && (
+                                        ProjectNoteMentionEditSync
+                                            .isUpdateOperation($0)
+                                            || [
+                                                "create",
+                                                "update",
+                                                "delete",
+                                            ].contains(
+                                                $0.operationType
+                                            )
+                                    )
+                            }
+                        reconciledNote.deletedAt = nil
+                        reconciledNote.needsSync =
+                            hasSurvivingSameNoteWrite
+                    }
+                    if discardsUncreatedNote, let reconciledNote {
+                        modelContext.delete(reconciledNote)
+                    } else {
+                        projectIdToSignal = reconciledNote?.projectId
+                    }
+                    for candidate in operations where
+                        discardedIds.contains(candidate.id) {
+                        modelContext.delete(candidate)
+                    }
+                    #if DEBUG
+                    try projectNoteDiscardFailureInjector?()
+                    #endif
+                    cancelled = true
+                }
+            }
+        } catch let cancellationError {
+            print(
+                "[SYNC_ENGINE] Failed to cancel operation \(operationId): "
+                    + "\(cancellationError)"
+            )
             return
         }
-        modelContext.delete(operation)
-        try? modelContext.save()
+        guard cancelled else {
+            print(
+                "[SYNC_ENGINE] Cannot cancel operation \(operationId): "
+                    + (rejectionReason ?? "operation was not cancellable")
+            )
+            return
+        }
+        if let projectIdToSignal {
+            ProjectNoteChangeSignal.post(projectId: projectIdToSignal)
+        }
         refreshPendingCount()
-        print("[SYNC_ENGINE] Cancelled operation \(operation.id) (\(operation.operationType) \(operation.entityType))")
+        print(
+            "[SYNC_ENGINE] Cancelled operation \(operationId) "
+                + "(\(operationType) \(entityType))"
+        )
     }
 
     // MARK: - Cleanup
@@ -1652,10 +2344,19 @@ final class SyncEngine {
 
         do {
             let completed = try modelContext.fetch(descriptor)
+            let allOperations = try modelContext.fetch(FetchDescriptor<SyncOperation>())
+            let liveDependencyIds = Set(
+                allOperations.compactMap { operation -> String? in
+                    guard operation.status != "completed" else { return nil }
+                    return operation.dependsOnId
+                }
+            )
             var deletedCount = 0
 
             for op in completed {
-                if let completedAt = op.completedAt, completedAt < cutoff {
+                if let completedAt = op.completedAt,
+                   completedAt < cutoff,
+                   !liveDependencyIds.contains(op.id.uuidString) {
                     modelContext.delete(op)
                     deletedCount += 1
                 }

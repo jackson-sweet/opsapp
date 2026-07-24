@@ -62,11 +62,7 @@ struct ProjectNotesView: View {
                                 authorName: viewModel.authorName(for: note.authorId),
                                 authorAvatarURL: viewModel.authorAvatarURL(for: note.authorId),
                                 isOwnNote: viewModel.isOwnNote(note),
-                                // Bug ab12c273 — pass the canonical mention strings
-                                // ("All Team" + every team member's full name) so the
-                                // highlighter spans the full "@First Last" range
-                                // instead of stopping after the first word.
-                                mentionNames: viewModel.mentionNames,
+                                teamMembers: viewModel.allTeamMembers,
                                 onDelete: { deletePhoto in
                                     Task { await viewModel.deleteNote(note, deletePhoto: deletePhoto) }
                                 }
@@ -167,15 +163,24 @@ struct ProjectNotesView: View {
 
     private var composeBar: some View {
         HStack(spacing: OPSStyle.Layout.spacing2) {
-            TextField("Write a note...", text: $viewModel.newNoteText)
-                .font(OPSStyle.Typography.body)
-                .foregroundColor(OPSStyle.Colors.primaryText)
-                .focused($isComposeFocused)
+            ProjectNoteMentionComposerField(
+                text: $viewModel.newNoteText,
+                selectedRange: $viewModel.composeSelectedRange,
+                mentionSpans: $viewModel.composeMentionSpans,
+                isFocused: Binding(
+                    get: { isComposeFocused },
+                    set: { isComposeFocused = $0 }
+                ),
+                placeholder: "Write a note...",
+                onSubmit: {
+                    Task { await viewModel.postNote() }
+                }
+            )
                 .onChange(of: viewModel.newNoteText) { _, newValue in
                     viewModel.handleMentionInput(newValue)
                 }
-                .onSubmit {
-                    Task { await viewModel.postNote() }
+                .onChange(of: viewModel.composeSelectedRange) { _, _ in
+                    viewModel.handleMentionInput(viewModel.newNoteText)
                 }
 
             Button(action: {
@@ -232,12 +237,7 @@ struct ProjectNoteRow: View {
     let authorName: String
     let authorAvatarURL: String?
     let isOwnNote: Bool
-    /// Bug ab12c273 — full set of valid mention strings (every team
-    /// member's full name plus "All Team"). Lets the highlighter span the
-    /// entire mention even when it contains spaces. Without it the parser
-    /// only highlighted the first whitespace-delimited token after `@` so
-    /// "@Jason Sweet" rendered as "@Jason" + plain "Sweet".
-    let mentionNames: [String]
+    let teamMembers: [TeamMember]
     /// `deletePhoto` is true when the user chose to also remove the note's
     /// photo from the project gallery (only offered when the note has one).
     let onDelete: (_ deletePhoto: Bool) -> Void
@@ -325,58 +325,14 @@ struct ProjectNoteRow: View {
         return "\(first)\(last)"
     }
 
-    /// Bug ab12c273 — render `@Mention` spans in the accent colour with
-    /// the rest of the body in the primary colour. Mentions can contain
-    /// spaces (e.g. "@Harrison Sweet", "@All Team"), so the previous
-    /// space-counting parser stopped after the first word and bled the
-    /// last name out of the highlighted range. Mirrors the team-aware
-    /// algorithm in ActivityEntryView: scan for `@`, look ahead for the
-    /// longest match against `mentionNames` (sorted longest-first so
-    /// "All Team" wins over "All"), and highlight that whole span.
-    /// Unrecognised `@<token>` strings still highlight the single token
-    /// as a graceful fallback for stale references.
     private func highlightedContent(_ text: String) -> some View {
-        let sortedNames = mentionNames.sorted { $0.count > $1.count }
-        var segments: [(text: String, isMention: Bool)] = []
-        var buffer = ""
-        var i = text.startIndex
-
-        while i < text.endIndex {
-            if text[i] == "@" {
-                if !buffer.isEmpty {
-                    segments.append((buffer, false))
-                    buffer = ""
-                }
-                let afterAt = text.index(after: i)
-                let remainder = text[afterAt...]
-
-                if let matched = sortedNames.first(where: { remainder.hasPrefix($0) }) {
-                    segments.append(("@" + matched, true))
-                    i = text.index(afterAt, offsetBy: matched.count)
-                    continue
-                }
-
-                let tokenEnd = remainder.firstIndex(where: { $0 == " " || $0 == "\n" }) ?? text.endIndex
-                let token = String(remainder[..<tokenEnd])
-                if !token.isEmpty {
-                    segments.append(("@" + token, true))
-                    i = tokenEnd
-                    continue
-                }
-
-                buffer.append("@")
-                i = afterAt
-            } else {
-                buffer.append(text[i])
-                i = text.index(after: i)
-            }
-        }
-
-        if !buffer.isEmpty {
-            segments.append((buffer, false))
-        }
-
         var result = Text("")
+        let segments = ProjectNoteMentionParser.renderedSegments(
+            in: text,
+            mentionedUserIds: note.mentionedUserIds,
+            teamMembers: teamMembers,
+            currentUserId: note.authorId
+        )
         for segment in segments {
             result = result + Text(segment.text)
                 .font(OPSStyle.Typography.body)

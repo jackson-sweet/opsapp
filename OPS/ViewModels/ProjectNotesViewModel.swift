@@ -29,18 +29,11 @@ class ProjectNotesViewModel: ObservableObject {
     private var currentUserId: String?
     private(set) var allTeamMembers: [TeamMember] = []
 
-    /// Bug 213bbaa4 — every valid mention string an author may type
-    /// (every team member's full name plus the literal "All Team").
-    /// Surfaced for the activity feed renderer so multi-word mentions
-    /// are highlighted as a single span instead of just the first word.
-    var mentionNames: [String] {
-        var names = allTeamMembers.map { $0.fullName }
-        names.append("All Team")
-        return names
-    }
     private var modelContext: ModelContext?
     private weak var dataController: DataController?
     private var notificationObserver: NSObjectProtocol?
+    @Published var composeMentionSpans: [ProjectNoteMentionSpan] = []
+    @Published var composeSelectedRange = NSRange(location: 0, length: 0)
 
     init(projectId: String) {
         self.projectId = projectId
@@ -78,6 +71,7 @@ class ProjectNotesViewModel: ObservableObject {
     // MARK: - Load
 
     func loadNotes() async {
+        error = nil
         guard let repo = repository else { return }
         isLoading = true
         defer { isLoading = false }
@@ -88,6 +82,7 @@ class ProjectNotesViewModel: ObservableObject {
                 Self.mergeFetchedNotes(dtos, projectId: projectId, context: context)
             }
             loadNotesFromLocal()
+            error = nil
         } catch {
             if !(error is CancellationError) {
                 self.error = FieldErrorHandler.userFriendlyMessage(for: error)
@@ -109,14 +104,16 @@ class ProjectNotesViewModel: ObservableObject {
             predicate: #Predicate { $0.projectId == pid }
         )
         let existingById = Dictionary(
-            ((try? context.fetch(descriptor)) ?? []).map { ($0.id, $0) },
+            ((try? context.fetch(descriptor)) ?? []).map {
+                ($0.id.lowercased(), $0)
+            },
             uniquingKeysWith: { first, _ in first }
         )
         for dto in dtos {
             let model = dto.toModel()
             model.lastSyncedAt = Date()
             model.needsSync = false
-            if let existing = existingById[dto.id] {
+            if let existing = existingById[dto.id.lowercased()] {
                 // Bug f9e00eb9 — a row with un-pushed local changes (a pending
                 // delete tombstone or edit) is the source of truth until its
                 // sync op lands. Overwriting from a stale server snapshot here
@@ -186,9 +183,16 @@ class ProjectNotesViewModel: ObservableObject {
     // MARK: - Post
 
     func postNote() async {
-        let text = newNoteText.trimmingCharacters(in: .whitespacesAndNewlines)
+        error = nil
+        let rawText = newNoteText
         let hasImages = !pendingImages.isEmpty
-        guard !text.isEmpty || hasImages else { return }
+        let hasVisibleText = !rawText.trimmingCharacters(
+            in: .whitespacesAndNewlines
+        ).isEmpty
+        guard hasVisibleText || hasImages else {
+            return
+        }
+        let text = hasVisibleText ? rawText : ""
 
         guard let repo = repository,
               let companyId = companyId,
@@ -198,8 +202,23 @@ class ProjectNotesViewModel: ObservableObject {
             return
         }
 
-        // Extract @mentions
-        let mentionedIds = extractMentionedUserIds(from: text)
+        let selectedMentionSpans = composeMentionSpans
+        let selectedMentionUserIds: [String] = selectedMentionSpans.compactMap {
+            guard case .user(let id) = $0.recipient else { return nil }
+            return id
+        }
+        let mentionPlan = ProjectNoteMentionEditPlan.make(
+            content: text,
+            teamMembers: allTeamMembers,
+            currentUserId: currentUserId,
+            identitySpans: selectedMentionSpans,
+            preferredMentionedUserIds: selectedMentionUserIds
+        )
+        guard mentionPlan.unresolvedMentionNames.isEmpty else {
+            error = "Select the teammate again before posting."
+            return
+        }
+        let mentionedIds = mentionPlan.mentionedUserIds
 
         // Upload images if any. Bug ad97e11c — operators expect any photo
         // attached to a comment to appear in the project gallery alongside
@@ -286,7 +305,10 @@ class ProjectNotesViewModel: ObservableObject {
         // the content empty rather than substituting the literal "Photo".
         // The image attachments speak for themselves; the placeholder added
         // visual noise to every photo-only comment.
-        let noteContent = text
+        let noteContent = mentionPlan.content
+        let notificationText = ProjectNoteMentionParser.displayText(
+            from: noteContent
+        )
 
         let dto = CreateProjectNoteDTO(
             projectId: projectId,
@@ -316,6 +338,8 @@ class ProjectNotesViewModel: ObservableObject {
         // (bugs 488778ac / 4353812f — a comment must show in the feed live).
         ProjectNoteChangeSignal.post(projectId: projectId)
         newNoteText = ""
+        composeMentionSpans = []
+        composeSelectedRange = NSRange(location: 0, length: 0)
         pendingImages = []
         showMentionPicker = false
         showAllTeamOption = false
@@ -332,7 +356,7 @@ class ProjectNotesViewModel: ObservableObject {
             if let context = modelContext {
                 let optimisticId = optimisticNote.id
                 let descriptor = FetchDescriptor<ProjectNote>(predicate: #Predicate { $0.id == optimisticId })
-                if let existing = try? context.fetch(descriptor).first {
+                if let existing = (try? context.fetch(descriptor))?.first {
                     context.delete(existing)
                 }
                 let serverModel = created.toModel()
@@ -343,13 +367,14 @@ class ProjectNotesViewModel: ObservableObject {
             }
             loadNotesFromLocal()
             ProjectNoteChangeSignal.post(projectId: projectId)
+            error = nil
             ToastCenter.shared.present(Feedback.Project.notePosted)
 
             // Send push notifications for mentions
-            await sendMentionNotifications(mentionedIds: mentionedIds, noteText: noteContent, noteId: created.id, attachmentURLs: attachmentURLs)
+            await sendMentionNotifications(mentionedIds: mentionedIds, noteText: notificationText, noteId: created.id, attachmentURLs: attachmentURLs)
 
             // Send push notifications to project team members (excluding author and already-mentioned users)
-            await sendNoteAddedNotifications(mentionedIds: mentionedIds, noteText: noteContent, noteId: created.id, attachmentURLs: attachmentURLs)
+            await sendNoteAddedNotifications(mentionedIds: mentionedIds, noteText: notificationText, noteId: created.id, attachmentURLs: attachmentURLs)
         } catch {
             if !(error is CancellationError) {
                 // Field-friendly copy (e.g. "Connection timed out. Try moving to
@@ -359,13 +384,18 @@ class ProjectNotesViewModel: ObservableObject {
                 // work — restore it into the composer for a one-tap retry. Any
                 // attached photos already landed on the project via saveImages.
                 newNoteText = text
+                composeMentionSpans = selectedMentionSpans
+                composeSelectedRange = NSRange(
+                    location: (text as NSString).length,
+                    length: 0
+                )
             }
             // Revert: remove the optimistic note that failed to sync (notes have
             // no outbound retry queue, so a kept needsSync note would never push).
             if let context = modelContext {
                 let optimisticId = optimisticNote.id
                 let descriptor = FetchDescriptor<ProjectNote>(predicate: #Predicate { $0.id == optimisticId })
-                if let orphan = try? context.fetch(descriptor).first {
+                if let orphan = (try? context.fetch(descriptor))?.first {
                     context.delete(orphan)
                     try? context.save()
                 }
@@ -437,6 +467,7 @@ class ProjectNotesViewModel: ObservableObject {
     // MARK: - Delete
 
     func deleteNote(_ note: ProjectNote, deletePhoto: Bool = false) async {
+        error = nil
         // Capture the note's photo URLs before deletion so we can optionally
         // prune them once the note is tombstoned.
         let photoURLs: [String] = {
@@ -452,7 +483,10 @@ class ProjectNotesViewModel: ObservableObject {
         // lands. Offline-safe; the merge guard (needsSync) stops a concurrent
         // fetch from resurrecting the pending tombstone.
         if let dataController = dataController {
-            dataController.deleteProjectNote(note: note)
+            guard dataController.deleteProjectNote(note: note) else {
+                error = "Couldn't delete. Try again."
+                return
+            }
             loadNotesFromLocal()
             ProjectNoteChangeSignal.post(projectId: projectId)
             // A photo posted with a note is mirrored into the project gallery
@@ -462,12 +496,16 @@ class ProjectNotesViewModel: ObservableObject {
             if deletePhoto {
                 await removeNotePhotosFromProject(photoURLs)
             }
+            error = nil
             return
         }
 
         // Fallback — DataController not yet injected (cold-start race). Legacy
         // direct path with optimistic revert.
-        guard let repo = repository else { return }
+        guard let repo = repository else {
+            error = "Couldn't delete. Try again."
+            return
+        }
         note.deletedAt = Date()
         try? modelContext?.save()
         loadNotesFromLocal()
@@ -478,6 +516,7 @@ class ProjectNotesViewModel: ObservableObject {
             if deletePhoto {
                 await removeNotePhotosFromProject(photoURLs)
             }
+            error = nil
         } catch {
             // Revert on failure
             note.deletedAt = nil
@@ -573,44 +612,47 @@ class ProjectNotesViewModel: ObservableObject {
         for text: String,
         in members: [TeamMember]
     ) -> (suggestions: [TeamMember], showAllTeam: Bool)? {
-        guard let atRange = text.range(of: "@", options: .backwards) else { return nil }
-        let afterAt = String(text[atRange.upperBound...])
-
-        // Mention already terminated by a space — unless the user is still
-        // mid-way through a multi-word name like "All Team" or
-        // "Harrison Sweet".
-        if afterAt.contains(" ") && afterAt.last == " " {
-            let partial = afterAt.trimmingCharacters(in: .whitespaces).lowercased()
-            let isPartialAllTeam = "all team".hasPrefix(partial) && partial != "all team"
-            let isPartialMemberName = members.contains { member in
-                let fullName = member.fullName.lowercased()
-                return fullName.hasPrefix(partial) && fullName != partial
-            }
-            if !isPartialAllTeam && !isPartialMemberName { return nil }
+        let selection = NSRange(
+            location: (text as NSString).length,
+            length: 0
+        )
+        guard let match = ProjectNoteMentionEditor.match(
+            in: text,
+            selectedRange: selection,
+            members: members
+        ) else {
+            return nil
         }
-
-        let query = afterAt.trimmingCharacters(in: .whitespaces).lowercased()
-        if query.isEmpty {
-            return (suggestions: members, showAllTeam: true)
-        }
-        let filtered = members.filter {
-            $0.fullName.lowercased().contains(query) ||
-            $0.firstName.lowercased().hasPrefix(query) ||
-            $0.lastName.lowercased().hasPrefix(query)
-        }
-        return (suggestions: filtered, showAllTeam: "all team".hasPrefix(query))
+        return (
+            suggestions: match.suggestions,
+            showAllTeam: match.showAllTeam
+        )
     }
 
     /// Pure helper. Replace the trailing partial `@…` token in `text` with
     /// the fully-resolved mention name plus a trailing space. Used by both
     /// the compose-bar pipeline and the edit-mode picker.
     nonisolated static func textInserting(mention name: String, into text: String) -> String {
-        guard let atRange = text.range(of: "@", options: .backwards) else { return text }
-        return String(text[..<atRange.lowerBound]) + "@\(name) "
+        let selection = NSRange(
+            location: (text as NSString).length,
+            length: 0
+        )
+        return ProjectNoteMentionEditor.replacingActiveMention(
+            with: name,
+            in: text,
+            selectedRange: selection
+        )?.text ?? text
     }
 
     func handleMentionInput(_ text: String) {
-        guard let match = Self.mentionMatch(for: text, in: allTeamMembers) else {
+        if !text.contains("@") {
+            composeMentionSpans = []
+        }
+        guard let match = ProjectNoteMentionEditor.match(
+            in: text,
+            selectedRange: composeSelectedRange,
+            members: mentionableTeamMembers
+        ) else {
             showMentionPicker = false
             showAllTeamOption = false
             mentionSuggestions = []
@@ -621,15 +663,77 @@ class ProjectNotesViewModel: ObservableObject {
         showMentionPicker = !match.suggestions.isEmpty || match.showAllTeam
     }
 
+    func insertMentionTrigger() {
+        let utf16Text = newNoteText as NSString
+        let safeSelection = NSMaxRange(composeSelectedRange)
+            <= utf16Text.length
+            ? composeSelectedRange
+            : NSRange(location: utf16Text.length, length: 0)
+        let mutable = NSMutableString(string: newNoteText)
+        mutable.replaceCharacters(in: safeSelection, with: "@")
+        composeMentionSpans = ProjectNoteMentionEditor
+            .adjustingMentionSpans(
+                composeMentionSpans,
+                replacing: safeSelection,
+                with: "@"
+            )
+        newNoteText = mutable as String
+        composeSelectedRange = NSRange(
+            location: safeSelection.location + 1,
+            length: 0
+        )
+        handleMentionInput(newNoteText)
+    }
+
     func insertMention(_ member: TeamMember) {
-        newNoteText = Self.textInserting(mention: member.fullName, into: newNoteText)
+        guard member.id.lowercased()
+                != currentUserId?.lowercased() else {
+            showMentionPicker = false
+            showAllTeamOption = false
+            mentionSuggestions = []
+            return
+        }
+        let visibleText = ProjectNoteMentionParser.visibleMentionText(
+            for: member
+        )
+        if let replacement = ProjectNoteMentionEditor
+            .replacingActiveMention(
+                with: member.fullName,
+                in: newNoteText,
+                selectedRange: composeSelectedRange,
+                mentionSpans: composeMentionSpans,
+                recipient: .user(id: member.id),
+                visibleMentionText: visibleText
+            ) {
+            newNoteText = replacement.text
+            composeMentionSpans = replacement.mentionSpans
+            composeSelectedRange = replacement.selectedRange
+        }
         showMentionPicker = false
         showAllTeamOption = false
         mentionSuggestions = []
     }
 
+    private var mentionableTeamMembers: [TeamMember] {
+        let current = currentUserId?.lowercased()
+        return allTeamMembers.filter {
+            $0.id.lowercased() != current
+        }
+    }
+
     func insertAllTeamMention() {
-        newNoteText = Self.textInserting(mention: "All Team", into: newNoteText)
+        if let replacement = ProjectNoteMentionEditor
+            .replacingActiveMention(
+                with: "All Team",
+                in: newNoteText,
+                selectedRange: composeSelectedRange,
+                mentionSpans: composeMentionSpans,
+                recipient: .allTeam
+            ) {
+            newNoteText = replacement.text
+            composeMentionSpans = replacement.mentionSpans
+            composeSelectedRange = replacement.selectedRange
+        }
         showMentionPicker = false
         showAllTeamOption = false
         mentionSuggestions = []
@@ -666,61 +770,57 @@ class ProjectNotesViewModel: ObservableObject {
     }
 
     /// Update the content of an existing note
-    func updateNoteContent(_ note: ProjectNote, newContent: String) async {
-        guard let context = modelContext else { return }
+    func updateNoteContent(
+        _ note: ProjectNote,
+        newContent: String,
+        identitySpans: [ProjectNoteMentionSpan] = []
+    ) async -> Bool {
+        error = nil
+        guard modelContext != nil else {
+            error = "Couldn't save. Try again."
+            return false
+        }
+        let plan = ProjectNoteMentionEditPlan.make(
+            content: newContent,
+            teamMembers: allTeamMembers,
+            currentUserId: currentUserId,
+            identitySpans: identitySpans,
+            baseline: ProjectNoteMentionBaseline(
+                content: note.content,
+                mentionedUserIds: note.mentionedUserIds
+            )
+        )
+        guard plan.unresolvedMentionNames.isEmpty else {
+            error = "Select the teammate again before saving."
+            return false
+        }
+        let mentionEventId = UUID().uuidString.lowercased()
 
         // Durable path — queue the edit through the sync engine so it retries
         // through a signal blip and survives offline (mirrors the delete fix).
         // The merge guard keeps a stale server snapshot from clobbering the
         // un-pushed edit before its op lands.
-        if let dataController = dataController {
-            dataController.updateProjectNoteContent(note: note, content: newContent)
+        if let dataController = dataController,
+           dataController.updateProjectNoteContent(
+               note: note,
+               content: plan.content,
+               mentionedUserIds: plan.mentionedUserIds,
+               mentionEventId: mentionEventId
+           ) {
             loadNotesFromLocal()
             ProjectNoteChangeSignal.post(projectId: projectId)
-            return
+            error = nil
+            return true
         }
 
-        // Fallback — direct path with optimistic revert.
-        guard let repo = repository else { return }
-        let oldContent = note.content
-        note.content = newContent
-        note.updatedAt = Date()
-        try? context.save()
-        loadNotesFromLocal()
-        ProjectNoteChangeSignal.post(projectId: projectId)
-
-        do {
-            try await repo.updateContent(note.id, content: newContent)
-        } catch {
-            // Revert on failure
-            note.content = oldContent
-            try? context.save()
-            loadNotesFromLocal()
-            ProjectNoteChangeSignal.post(projectId: projectId)
-            if !(error is CancellationError) {
-                self.error = FieldErrorHandler.userFriendlyMessage(for: error)
-            }
-        }
+        // Never downgrade to a direct RPC. That transaction commits an
+        // immutable event; without a persisted dependent dispatch, app exit or
+        // continued outage could strand delivery permanently.
+        error = "Couldn't save. Try again."
+        return false
     }
 
     // MARK: - Private Helpers
-
-    private func extractMentionedUserIds(from text: String) -> [String] {
-        // @All Team means notify everyone except self
-        if text.contains("@All Team") {
-            return allTeamMembers
-                .filter { $0.id != currentUserId }
-                .map { $0.id }
-        }
-
-        var ids: [String] = []
-        for member in allTeamMembers {
-            if text.contains("@\(member.fullName)") {
-                ids.append(member.id)
-            }
-        }
-        return ids
-    }
 
     private func sendMentionNotifications(mentionedIds: [String], noteText: String, noteId: String, attachmentURLs: [String] = []) async {
         guard !mentionedIds.isEmpty else { return }

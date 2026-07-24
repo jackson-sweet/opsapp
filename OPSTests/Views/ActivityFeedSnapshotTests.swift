@@ -109,10 +109,9 @@ final class ActivityFeedSnapshotTests: XCTestCase {
                 authorName: "Harrison Sweet",
                 teamMember: member(),
                 isOwnNote: false,
-                mentionNames: [],
                 allTeamMembers: [member()],
                 onDelete: { _ in },
-                onEdit: { _ in },
+                onEdit: { _, _ in true },
                 onPhotoTap: { _, _ in }
             )
             .environmentObject(DataController())

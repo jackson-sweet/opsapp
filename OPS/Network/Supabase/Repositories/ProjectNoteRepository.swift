@@ -92,18 +92,34 @@ class ProjectNoteRepository {
             .value
     }
 
-    // MARK: - Update Content
+    // MARK: - Update Content and Mentions
 
-    func updateContent(_ noteId: String, content: String) async throws {
-        struct ContentUpdate: Codable {
-            let content: String
-            let updated_at: String
+    /// Replaces the note body and authoritative mention list in one guarded
+    /// database transaction. The RPC also persists an immutable edit event,
+    /// keyed by `mentionEventId`, so a lost response can be replayed safely.
+    func updateMentions(
+        _ noteId: String,
+        content: String,
+        mentionedUserIds: [String],
+        mentionEventId: String
+    ) async throws {
+        struct Parameters: Encodable {
+            let p_note_id: String
+            let p_content: String
+            let p_mentioned_user_ids: [String]
+            let p_event_id: String
         }
-        let payload = ContentUpdate(content: content, updated_at: isoNow())
+
         try await client
-            .from("project_notes")
-            .update(payload)
-            .eq("id", value: noteId)
+            .rpc(
+                "update_project_note_mentions",
+                params: Parameters(
+                    p_note_id: noteId,
+                    p_content: content,
+                    p_mentioned_user_ids: mentionedUserIds,
+                    p_event_id: mentionEventId
+                )
+            )
             .execute()
     }
 

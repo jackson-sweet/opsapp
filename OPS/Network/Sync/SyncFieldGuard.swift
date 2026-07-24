@@ -47,11 +47,16 @@ enum SyncFieldGuard {
     ///   - recent — the op had any lifecycle event (created / last-attempted /
     ///     completed) within `window`, regardless of its current status. This
     ///     covers the `inProgress` (mid-push) and just-`completed` echoes, and a
-    ///     recently-`failed` write whose local value should still win briefly.
+    ///     recently-`failed` write whose local value should still win briefly;
+    ///     or
+    ///   - an unresolved durable project-note write — creates, edits, and
+    ///     tombstones remain authoritative through failed/parked states until
+    ///     server completion or explicit operator discard.
     ///
     /// Field-level by design: only the fields a pending/recent op actually wrote
     /// are protected, so a concurrent remote edit to a *different* field of the
-    /// same entity still merges. Protection self-heals once `window` elapses.
+    /// same entity still merges. Generic protection self-heals once `window`
+    /// elapses; durable mention edits release only at their terminal outcome.
     ///
     /// - Parameters:
     ///   - ops: SyncOperations already scoped to one entity.
@@ -71,8 +76,39 @@ enum SyncFieldGuard {
             let isRecent = op.createdAt >= cutoff
                 || (op.lastAttemptedAt.map { $0 >= cutoff } ?? false)
                 || (op.completedAt.map { $0 >= cutoff } ?? false)
-            guard isPending || isRecent else { continue }
-            fields.formUnion(op.getChangedFields())
+            let isUnresolvedProjectNoteWrite =
+                op.entityType == SyncEntityType.projectNote.rawValue
+                    && ["pending", "inProgress", "failed", "parked"]
+                        .contains(op.status)
+                    && (
+                        ProjectNoteMentionEditSync.isUpdateOperation(op)
+                            || ["create", "update", "delete"]
+                                .contains(op.operationType)
+                    )
+            guard isPending
+                    || isRecent
+                    || isUnresolvedProjectNoteWrite else {
+                continue
+            }
+            let operationFields = op.getChangedFields()
+            fields.formUnion(operationFields)
+
+            // Defense for historic/custom payload-driven operations whose
+            // changedFields used the server column name. ProjectNote stores
+            // the same value locally as mentionedUserIdsString; protecting
+            // only mentioned_user_ids would let a stale echo restore removed
+            // mention access.
+            if operationFields.contains("mentioned_user_ids") {
+                fields.insert("mentionedUserIdsString")
+            }
+            // ProjectNote merge code uses the SwiftData property spelling,
+            // while generic/legacy queue rows use the Supabase column name.
+            // Preserve both so pull and realtime share one tombstone guard.
+            if operationFields.contains("deleted_at")
+                || operationFields.contains("deletedAt") {
+                fields.insert("deleted_at")
+                fields.insert("deletedAt")
+            }
         }
         return fields
     }

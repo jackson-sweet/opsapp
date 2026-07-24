@@ -13,14 +13,6 @@ struct ActivityEntryView: View {
     let authorName: String
     let teamMember: TeamMember?
     let isOwnNote: Bool
-    /// Bug 213bbaa4 — full set of valid mention strings (every team
-    /// member's full name + the literal "All Team"). Used by the highlighter
-    /// to span the entire mention even when it contains spaces. Without
-    /// this the previous word-split parser only painted the leading
-    /// `@<FirstWord>` blue and left the trailing word in the default
-    /// foreground colour ("@Harrison" blue, "Sweet" not — same for
-    /// "@All Team").
-    let mentionNames: [String]
     /// Bug 162364de — full TeamMember roster passed in so the edit field
     /// can fire the same `@`-mention picker as the compose bar. Without
     /// it the edit flow had no source of truth for avatars + ids.
@@ -28,13 +20,16 @@ struct ActivityEntryView: View {
     /// `deletePhoto` is true when the user chose to also remove the note's
     /// photo from the project gallery (only offered when the note has one).
     let onDelete: (_ deletePhoto: Bool) -> Void
-    let onEdit: (String) -> Void
+    let onEdit: (String, [ProjectNoteMentionSpan]) async -> Bool
     let onPhotoTap: (([String], Int) -> Void)?
 
     @EnvironmentObject private var dataController: DataController
 
     @State private var isEditing = false
     @State private var editText = ""
+    @State private var editSelectedRange = NSRange(location: 0, length: 0)
+    @State private var editMentionSpans: [ProjectNoteMentionSpan] = []
+    @State private var isSavingEdit = false
     @State private var showDeleteConfirmation = false
 
     // Bug 162364de — local picker state for the edit field. Scoped here
@@ -102,7 +97,18 @@ struct ActivityEntryView: View {
                 if isOwnNote {
                     Menu {
                         Button(action: {
-                            editText = note.content ?? ""
+                            let draft = ProjectNoteMentionParser.editableDraft(
+                                in: note.content,
+                                mentionedUserIds: note.mentionedUserIds,
+                                teamMembers: mentionIdentityMembers,
+                                currentUserId: note.authorId
+                            )
+                            editText = draft.text
+                            editSelectedRange = NSRange(
+                                location: (draft.text as NSString).length,
+                                length: 0
+                            )
+                            editMentionSpans = draft.identitySpans
                             isEditing = true
                         }) {
                             Label("Edit", systemImage: OPSStyle.Icons.pencil)
@@ -124,17 +130,25 @@ struct ActivityEntryView: View {
             // Content
             if isEditing {
                 VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
-                    TextField("Edit note...", text: $editText, axis: .vertical)
-                        .font(OPSStyle.Typography.body)
-                        .foregroundColor(OPSStyle.Colors.primaryText)
-                        .padding(10)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                .stroke(OPSStyle.Colors.primaryAccent, lineWidth: 1)
+                    ProjectNoteMentionEditingField(
+                        text: $editText,
+                        selectedRange: $editSelectedRange,
+                        mentionSpans: $editMentionSpans,
+                        placeholder: "Edit note..."
+                    )
+                    .disabled(isSavingEdit)
+                    .onChange(of: editText) { _, newValue in
+                        updateEditMentionState(
+                            for: newValue,
+                            selectedRange: editSelectedRange
                         )
-                        .onChange(of: editText) { _, newValue in
-                            updateEditMentionState(for: newValue)
-                        }
+                    }
+                    .onChange(of: editSelectedRange) { _, newValue in
+                        updateEditMentionState(
+                            for: editText,
+                            selectedRange: newValue
+                        )
+                    }
 
                     if editShowMentionPicker {
                         editMentionPicker
@@ -143,20 +157,33 @@ struct ActivityEntryView: View {
                     HStack {
                         Button("Cancel") {
                             isEditing = false
+                            editMentionSpans = []
                             clearEditMentionState()
                         }
+                        .disabled(isSavingEdit)
                         .font(OPSStyle.Typography.caption)
                         .foregroundColor(OPSStyle.Colors.secondaryText)
 
                         Spacer()
 
                         Button("Save") {
-                            onEdit(editText)
-                            isEditing = false
-                            clearEditMentionState()
+                            Task { @MainActor in
+                                guard !isSavingEdit else { return }
+                                isSavingEdit = true
+                                let didQueueSave = await onEdit(
+                                    editText,
+                                    editMentionSpans
+                                )
+                                isSavingEdit = false
+                                guard didQueueSave else { return }
+                                isEditing = false
+                                editMentionSpans = []
+                                clearEditMentionState()
+                            }
                         }
                         .font(OPSStyle.Typography.captionBold)
                         .foregroundColor(OPSStyle.Colors.primaryAccent)
+                        .disabled(isSavingEdit)
                     }
                 }
             } else if isPhotoComment, let photo = note.photoURL, !photo.isEmpty {
@@ -327,8 +354,17 @@ struct ActivityEntryView: View {
         }
     }
 
-    private func updateEditMentionState(for text: String) {
-        guard let match = ProjectNotesViewModel.mentionMatch(for: text, in: allTeamMembers) else {
+    private func updateEditMentionState(
+        for text: String,
+        selectedRange: NSRange
+    ) {
+        guard let match = ProjectNoteMentionEditor.match(
+            in: text,
+            selectedRange: selectedRange,
+            members: allTeamMembers.filter {
+                $0.id.lowercased() != note.authorId.lowercased()
+            }
+        ) else {
             clearEditMentionState()
             return
         }
@@ -343,29 +379,79 @@ struct ActivityEntryView: View {
         editMentionSuggestions = []
     }
 
+    /// The active picker remains limited to the current roster, while retained
+    /// note identities may resolve through a locally-known former/inactive
+    /// teammate. This prevents an unrelated text edit from silently revoking a
+    /// still-authoritative mention when the active roster snapshot is stale.
+    private var mentionIdentityMembers: [TeamMember] {
+        var membersById = Dictionary(
+            allTeamMembers.map { ($0.id.lowercased(), $0) },
+            uniquingKeysWith: { first, _ in first }
+        )
+        for id in note.mentionedUserIds {
+            let canonicalId = id.lowercased()
+            guard membersById[canonicalId] == nil,
+                  let user = dataController.getUser(id: id) else {
+                continue
+            }
+            membersById[canonicalId] = TeamMember.fromUser(user)
+        }
+        return Array(membersById.values)
+    }
+
     private func insertEditMention(_ member: TeamMember) {
-        editText = ProjectNotesViewModel.textInserting(mention: member.fullName, into: editText)
+        guard let replacement = ProjectNoteMentionEditor
+            .replacingActiveMention(
+                with: member.fullName,
+                in: editText,
+                selectedRange: editSelectedRange,
+                mentionSpans: editMentionSpans,
+                recipient: .user(id: member.id),
+                visibleMentionText:
+                    ProjectNoteMentionParser.visibleMentionText(for: member)
+            ) else {
+            clearEditMentionState()
+            return
+        }
+        editText = replacement.text
+        editSelectedRange = replacement.selectedRange
+        editMentionSpans = replacement.mentionSpans
         clearEditMentionState()
     }
 
     private func insertEditAllTeamMention() {
-        editText = ProjectNotesViewModel.textInserting(mention: "All Team", into: editText)
+        guard let replacement = ProjectNoteMentionEditor
+            .replacingActiveMention(
+                with: "All Team",
+                in: editText,
+                selectedRange: editSelectedRange,
+                mentionSpans: editMentionSpans,
+                recipient: .allTeam
+            ) else {
+            clearEditMentionState()
+            return
+        }
+        editText = replacement.text
+        editSelectedRange = replacement.selectedRange
+        editMentionSpans = replacement.mentionSpans
         clearEditMentionState()
     }
 
-    /// Bug 213bbaa4 + f6cd3c43 — render `@Mention` spans in the accent
-    /// colour and (when the matched span is a real teammate) attach a
-    /// link so tapping the mention opens that teammate's contact sheet.
-    /// Mentions can contain spaces (e.g. "@Harrison Sweet", "@All Team"),
-    /// so a naive split-on-space paints only the first word. We scan
-    /// for `@`, look ahead for the longest match against `mentionNames`
-    /// (sorted longest-first so "All Team" wins over "All"), and
-    /// highlight the whole span. Unrecognised `@<token>` strings still
-    /// highlight as a graceful fallback — preserves intent when the
-    /// mention's referent has been removed from the team or when the
-    /// post comes from another platform.
+    /// Canonical markup is humanized before rendering while its authoritative
+    /// recipient remains attached to the attributed span. Duplicate visible
+    /// names therefore open the selected teammate, and the reserved group
+    /// remains highlighted but inert.
     private func mentionHighlightedText(_ text: String) -> some View {
-        Text(mentionAttributedText(text))
+        Text(
+            mentionAttributedText(
+                ProjectNoteMentionParser.renderedSegments(
+                    in: text,
+                    mentionedUserIds: note.mentionedUserIds,
+                    teamMembers: mentionIdentityMembers,
+                    currentUserId: note.authorId
+                )
+            )
+        )
             .environment(\.openURL, OpenURLAction { url in
                 guard url.scheme == "opsmention", let memberId = url.host else {
                     return .systemAction
@@ -375,68 +461,23 @@ struct ActivityEntryView: View {
             })
     }
 
-    private func mentionAttributedText(_ text: String) -> AttributedString {
-        // Sort longest-first so "All Team" wins the prefix match against
-        // "All" if both happen to be valid.
-        let sortedNames = mentionNames.sorted { $0.count > $1.count }
-
+    private func mentionAttributedText(
+        _ segments: [ProjectNoteMentionRenderSegment]
+    ) -> AttributedString {
         var result = AttributedString()
-        var buffer = ""
-        var i = text.startIndex
-
-        func flushPlainBuffer() {
-            guard !buffer.isEmpty else { return }
-            var plain = AttributedString(buffer)
-            plain.font = OPSStyle.Typography.body
-            plain.foregroundColor = OPSStyle.Colors.primaryText
-            result.append(plain)
-            buffer = ""
-        }
-
-        while i < text.endIndex {
-            if text[i] == "@" {
-                flushPlainBuffer()
-                let afterAt = text.index(after: i)
-                let remainder = text[afterAt...]
-
-                if let matched = sortedNames.first(where: { remainder.hasPrefix($0) }) {
-                    result.append(mentionSpan(matched))
-                    i = text.index(afterAt, offsetBy: matched.count)
-                    continue
-                }
-
-                let tokenEnd = remainder.firstIndex(where: { $0 == " " || $0 == "\n" }) ?? text.endIndex
-                let token = String(remainder[..<tokenEnd])
-                if !token.isEmpty {
-                    result.append(mentionSpan(token))
-                    i = tokenEnd
-                    continue
-                }
-
-                buffer.append("@")
-                i = afterAt
-            } else {
-                buffer.append(text[i])
-                i = text.index(after: i)
+        for segment in segments {
+            var span = AttributedString(segment.text)
+            span.font = OPSStyle.Typography.body
+            span.foregroundColor = segment.isMention
+                ? OPSStyle.Colors.primaryAccent
+                : OPSStyle.Colors.primaryText
+            if case .some(.user(let memberId)) = segment.recipient,
+               let url = URL(string: "opsmention://\(memberId)") {
+                span.link = url
             }
+            result.append(span)
         }
-
-        flushPlainBuffer()
         return result
-    }
-
-    /// Build the styled `@Name` span. Attaches a custom-scheme link only
-    /// when the name resolves to a known TeamMember — `@All Team` and
-    /// orphaned mentions render coloured but inert (no link, no tap).
-    private func mentionSpan(_ name: String) -> AttributedString {
-        var span = AttributedString("@\(name)")
-        span.font = OPSStyle.Typography.body
-        span.foregroundColor = OPSStyle.Colors.primaryAccent
-        if let member = allTeamMembers.first(where: { $0.fullName == name }),
-           let url = URL(string: "opsmention://\(member.id)") {
-            span.link = url
-        }
-        return span
     }
 
     /// Resolve the tapped mention to a `User` via DataController and
@@ -446,7 +487,9 @@ struct ActivityEntryView: View {
     private func openContactSheet(forMemberId memberId: String) {
         guard let companyId = dataController.currentUser?.companyId else { return }
         let users = dataController.getTeamMembers(companyId: companyId)
-        if let user = users.first(where: { $0.id == memberId }) {
+        if let user = users.first(where: {
+            $0.id.caseInsensitiveCompare(memberId) == .orderedSame
+        }) {
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
             contactSheetMember = user
         }

@@ -26,7 +26,40 @@ final class OutboundProcessor {
 
     /// Fetches all pending SyncOperations, coalesces them, and pushes each to Supabase.
     /// Operations that are in backoff or have unmet dependencies are skipped.
-    func processPendingOperations(context: ModelContext, connectivity: ConnectivityManager) async {
+    func processPendingOperations(
+        context: ModelContext,
+        connectivity: ConnectivityManager
+    ) async {
+        var shouldContinueMentionDrain: Bool
+        repeat {
+            let readyBeforePass = readyPendingMentionOperationIds(
+                context: context
+            )
+            await processPendingOperationsPass(
+                context: context,
+                connectivity: connectivity
+            )
+            let readyAfterPass = readyPendingMentionOperationIds(
+                context: context
+            )
+            shouldContinueMentionDrain = ProjectNoteMentionEditSync
+                .shouldContinueDrain(
+                    readyBeforePass: readyBeforePass,
+                    readyAfterPass: readyAfterPass
+                )
+            if shouldContinueMentionDrain {
+                print("[OutboundProcessor] Mention dependency released — continuing local-context drain")
+            } else if !readyAfterPass.isEmpty,
+                      readyAfterPass == readyBeforePass {
+                print("[OutboundProcessor] Mention drain made no progress — stopping until the next sync trigger")
+            }
+        } while shouldContinueMentionDrain
+    }
+
+    private func processPendingOperationsPass(
+        context: ModelContext,
+        connectivity: ConnectivityManager
+    ) async {
         guard await connectivity.shouldAttemptSync else {
             print("[OutboundProcessor] Skipping — connectivity says do not sync")
             return
@@ -107,6 +140,19 @@ final class OutboundProcessor {
         }
     }
 
+    private func readyPendingMentionOperationIds(
+        context: ModelContext,
+        now: Date = Date()
+    ) -> Set<UUID> {
+        let operations = (
+            try? context.fetch(FetchDescriptor<SyncOperation>())
+        ) ?? []
+        return ProjectNoteMentionEditSync.readyPendingOperationIds(
+            in: operations,
+            now: now
+        )
+    }
+
     // MARK: - Dependency Check
 
     /// Checks whether a dependency operation (by UUID string) has status "completed" in the store.
@@ -140,12 +186,17 @@ final class OutboundProcessor {
     func coalesceOperations(_ operations: [SyncOperation]) -> [SyncOperation] {
         // Group by (entityType, entityId)
         var groups: [String: [SyncOperation]] = [:]
-        for op in operations {
+        for op in operations where !ProjectNoteMentionEditSync.bypassesGenericCoalescing(op) {
             let key = "\(op.entityType)::\(op.entityId)"
             groups[key, default: []].append(op)
         }
 
-        var result: [SyncOperation] = []
+        // Mention edits and their persisted-event dispatches form an explicit
+        // dependency chain. Coalescing them would discard immutable event IDs
+        // or mark a dependency completed without executing its RPC.
+        var result = operations.filter {
+            ProjectNoteMentionEditSync.bypassesGenericCoalescing($0)
+        }
 
         for (_, groupOps) in groups {
             guard !groupOps.isEmpty else { continue }
@@ -247,10 +298,16 @@ final class OutboundProcessor {
     /// Executes a single SyncOperation against Supabase.
     /// Sets status to "inProgress" before attempting, and updates status/retryCount on completion or failure.
     func executeOperation(_ operation: SyncOperation, context: ModelContext) async throws {
+        guard try claimForExecution(
+            operation,
+            context: context
+        ) else { return }
+        defer {
+            ProjectNoteMentionQueueCoordinator.shared.release(
+                operationId: operation.id
+            )
+        }
         print("[OutboundProcessor] Pushing \(operation.entityType) \(operation.entityId)...")
-
-        operation.status = "inProgress"
-        operation.lastAttemptedAt = Date()
 
         do {
             // Decode payload
@@ -322,7 +379,49 @@ final class OutboundProcessor {
                 }
 
             case .parked:
-                print("[OutboundProcessor] Parked \(operation.entityType) \(operation.entityId) — server rejected it (permanent); will not auto-retry: \(classified.localizedDescription)")
+                var wasSuperseded = false
+                var retiredCreateDelete = false
+                do {
+                    try context.transaction {
+                        let operations = try context.fetch(
+                            FetchDescriptor<SyncOperation>()
+                        )
+                        wasSuperseded = ProjectNoteMentionEditSync
+                            .supersedeParkedUpdatesReplacedByLaterEdits(
+                                in: operations
+                            )
+                        retiredCreateDelete = ProjectNoteMentionEditSync
+                            .retireParkedCreateWithQueuedDelete(
+                                operation,
+                                in: operations
+                            )
+                        if retiredCreateDelete {
+                            let noteId = operation.entityId.lowercased()
+                            if let note = try ProjectNoteMentionEditSync
+                                .fetchProjectNote(
+                                    matching: noteId,
+                                    in: context
+                                ) {
+                                note.needsSync = false
+                            }
+                        }
+                    }
+                } catch {
+                    print(
+                        "[OutboundProcessor] Failed parked-chain reconciliation: \(error)"
+                    )
+                }
+                if retiredCreateDelete {
+                    print(
+                        "[OutboundProcessor] Retired local-only "
+                            + "project-note create/delete chain "
+                            + operation.entityId
+                    )
+                } else if wasSuperseded {
+                    print("[OutboundProcessor] Retired rejected project-note edit \(operation.entityId) — later authoritative replacement released")
+                } else {
+                    print("[OutboundProcessor] Parked \(operation.entityType) \(operation.entityId) — server rejected it (permanent); will not auto-retry: \(classified.localizedDescription)")
+                }
                 AnalyticsService.shared.track(
                     eventType: .error,
                     eventName: "sync_parked",
@@ -355,6 +454,31 @@ final class OutboundProcessor {
         }
     }
 
+    /// Readiness validation and the `pending → inProgress` transition share one
+    /// owning-context transaction, giving concurrent edits a single
+    /// linearization point. A retarget committed first prevents this claim; a
+    /// claim committed first means the request legitimately precedes that edit.
+    private func claimForExecution(
+        _ operation: SyncOperation,
+        context: ModelContext
+    ) throws -> Bool {
+        let didClaim = try ProjectNoteMentionEditSync.claimForExecution(
+            operation,
+            context: context,
+            refreshFromStore: false
+        )
+        if !didClaim,
+           ProjectNoteMentionEditSync.isDependencyDrainOperation(
+               operation
+           ) {
+            print(
+                "[OutboundProcessor] Skipping stale dependency snapshot "
+                    + "\(operation.operationType) \(operation.entityId)"
+            )
+        }
+        return didClaim
+    }
+
     // MARK: - Repository Routing
 
     /// Routes an operation to the correct Supabase repository based on entityType and operationType.
@@ -365,6 +489,15 @@ final class OutboundProcessor {
         payload: [String: Any]
     ) async throws {
         let companyId = UserDefaults.standard.string(forKey: "currentUserCompanyId") ?? ""
+
+        if try await ProjectNoteMentionEditSync.executeIfHandled(
+            entityType: entityType,
+            operationType: operationType,
+            payload: payload,
+            companyId: companyId
+        ) {
+            return
+        }
 
         guard let syncEntityType = SyncEntityType(rawValue: entityType) else {
             print("[OutboundProcessor] Unknown entity type: \(entityType) — using generic table push")

@@ -1141,8 +1141,8 @@ final class RealtimeProcessor: ObservableObject {
                 }
 
             case "project_notes":
-                let descriptor = FetchDescriptor<ProjectNote>(predicate: #Predicate { $0.id == id })
-                if let existing = try context.fetch(descriptor).first {
+                if let existing = try ProjectNoteMentionEditSync
+                    .fetchProjectNote(matching: id, in: context) {
                     existing.deletedAt = Date()
                     try context.save()
                 }
@@ -1468,16 +1468,29 @@ final class RealtimeProcessor: ObservableObject {
         entityId: String,
         context: ModelContext
     ) -> Set<String> {
-        let entityTypeRaw = entityType.rawValue
-        let descriptor = FetchDescriptor<SyncOperation>(
-            predicate: #Predicate<SyncOperation> {
-                $0.entityType == entityTypeRaw
-                && $0.entityId == entityId
-                && $0.status == "pending"
+        let ops: [SyncOperation]
+        if entityType == .projectNote {
+            ops = (
+                try? ProjectNoteMentionEditSync
+                    .fetchProjectNoteOperations(
+                        matching: entityId,
+                        in: context
+                    )
+            )?.filter { $0.status == "pending" } ?? []
+        } else {
+            let entityTypeRaw = entityType.rawValue
+            let descriptor = FetchDescriptor<SyncOperation>(
+                predicate: #Predicate<SyncOperation> {
+                    $0.entityType == entityTypeRaw
+                        && $0.entityId == entityId
+                        && $0.status == "pending"
+                }
+            )
+            guard let fetched = try? context.fetch(descriptor) else {
+                return []
             }
-        )
-
-        guard let ops = try? context.fetch(descriptor) else { return [] }
+            ops = fetched
+        }
 
         var fields = Set<String>()
         for op in ops {
@@ -1498,15 +1511,29 @@ final class RealtimeProcessor: ObservableObject {
         entityId: String,
         context: ModelContext
     ) -> Set<String> {
-        let entityTypeRaw = entityType.rawValue
-        let descriptor = FetchDescriptor<SyncOperation>(
-            predicate: #Predicate<SyncOperation> {
-                $0.entityType == entityTypeRaw
-                && $0.entityId == entityId
+        let ops: [SyncOperation]
+        if entityType == .projectNote {
+            guard let fetched = try? ProjectNoteMentionEditSync
+                .fetchProjectNoteOperations(
+                    matching: entityId,
+                    in: context
+                ) else {
+                return []
             }
-        )
-
-        guard let ops = try? context.fetch(descriptor) else { return [] }
+            ops = fetched
+        } else {
+            let entityTypeRaw = entityType.rawValue
+            let descriptor = FetchDescriptor<SyncOperation>(
+                predicate: #Predicate<SyncOperation> {
+                    $0.entityType == entityTypeRaw
+                        && $0.entityId == entityId
+                }
+            )
+            guard let fetched = try? context.fetch(descriptor) else {
+                return []
+            }
+            ops = fetched
+        }
 
         return SyncFieldGuard.protectedFields(from: ops, now: Date())
     }
@@ -1918,8 +1945,8 @@ final class RealtimeProcessor: ObservableObject {
     }
 
     private func upsertProjectNote(context: ModelContext, id: String, model: ProjectNote, pendingFields: Set<String>) throws {
-        let descriptor = FetchDescriptor<ProjectNote>(predicate: #Predicate { $0.id == id })
-        if let existing = try context.fetch(descriptor).first {
+        if let existing = try ProjectNoteMentionEditSync
+            .fetchProjectNote(matching: id, in: context) {
             if !pendingFields.contains("content")                   { existing.content = model.content }
             if !pendingFields.contains("attachmentsJSON")           { existing.attachmentsJSON = model.attachmentsJSON }
             if !pendingFields.contains("mentionedUserIdsString")    { existing.mentionedUserIdsString = model.mentionedUserIdsString }
@@ -1928,7 +1955,23 @@ final class RealtimeProcessor: ObservableObject {
             if !pendingFields.contains("updatedAt")                 { existing.updatedAt = model.updatedAt }
             if !pendingFields.contains("deletedAt")                 { existing.deletedAt = model.deletedAt }
             existing.lastSyncedAt = Date()
-            existing.needsSync = false
+            let operations = try context.fetch(
+                FetchDescriptor<SyncOperation>()
+            )
+            let pendingDirtyFields = pendingFieldsForEntity(
+                entityType: .projectNote,
+                entityId: id,
+                context: context
+            )
+            let hasUnresolvedWrite =
+                ProjectNoteMentionEditSync.hasUnresolvedWrite(
+                    for: id,
+                    in: operations
+                )
+            if pendingDirtyFields.isEmpty
+                && !hasUnresolvedWrite {
+                existing.needsSync = false
+            }
         } else {
             model.lastSyncedAt = Date()
             model.needsSync = false

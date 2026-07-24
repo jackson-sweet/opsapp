@@ -33,7 +33,7 @@ class ProjectNote: Identifiable {
     var needsSync: Bool = false
 
     init(
-        id: String = UUID().uuidString,
+        id: String = UUID().uuidString.lowercased(),
         projectId: String,
         companyId: String,
         authorId: String,
@@ -41,7 +41,7 @@ class ProjectNote: Identifiable {
         photoURL: String? = nil,
         createdAt: Date = Date()
     ) {
-        self.id = id
+        self.id = id.lowercased()
         self.projectId = projectId
         self.companyId = companyId
         self.authorId = authorId

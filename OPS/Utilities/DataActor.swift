@@ -1292,11 +1292,8 @@ actor DataActor {
 
     private func mergeProjectNote(dto: ProjectNoteDTO) throws {
         let id = dto.id
-        let descriptor = FetchDescriptor<ProjectNote>(
-            predicate: #Predicate { $0.id == id }
-        )
-
-        if let existing = try modelContext.fetch(descriptor).first {
+        if let existing = try ProjectNoteMentionEditSync
+            .fetchProjectNote(matching: id, in: modelContext) {
             let accept = acceptableFields(
                 entityType: .projectNote,
                 entityId: id,
@@ -1328,7 +1325,15 @@ actor DataActor {
             if accept.contains("deletedAt") { existing.deletedAt = dto.deletedAt.flatMap { SupabaseDate.parse($0) } }
 
             existing.lastSyncedAt = Date()
-            if !hasPendingOperations(entityType: .projectNote, entityId: existing.id) {
+            let operations = try modelContext.fetch(
+                FetchDescriptor<SyncOperation>()
+            )
+            let hasUnresolvedWrite =
+                ProjectNoteMentionEditSync.hasUnresolvedWrite(
+                    for: id,
+                    in: operations
+                )
+            if !hasUnresolvedWrite {
                 existing.needsSync = false
             }
         } else {
@@ -3222,16 +3227,30 @@ actor DataActor {
         entityId: String,
         fieldName: String
     ) -> Bool {
-        let entityTypeRaw = entityType.rawValue
-        let descriptor = FetchDescriptor<SyncOperation>(
-            predicate: #Predicate<SyncOperation> {
-                $0.entityType == entityTypeRaw &&
-                $0.entityId == entityId &&
-                $0.status == "pending"
+        let pendingOps: [SyncOperation]
+        if entityType == .projectNote {
+            pendingOps = (
+                try? ProjectNoteMentionEditSync
+                    .fetchProjectNoteOperations(
+                        matching: entityId,
+                        in: modelContext
+                    )
+            )?.filter { $0.status == "pending" } ?? []
+        } else {
+            let entityTypeRaw = entityType.rawValue
+            let descriptor = FetchDescriptor<SyncOperation>(
+                predicate: #Predicate<SyncOperation> {
+                    $0.entityType == entityTypeRaw
+                        && $0.entityId == entityId
+                        && $0.status == "pending"
+                }
+            )
+            guard let fetched = try? modelContext.fetch(descriptor) else {
+                return true
             }
-        )
-
-        guard let pendingOps = try? modelContext.fetch(descriptor) else {
+            pendingOps = fetched
+        }
+        guard !pendingOps.isEmpty else {
             return true
         }
 
@@ -3260,16 +3279,28 @@ actor DataActor {
         entityId: String,
         fields: [String]
     ) -> Set<String> {
-        let entityTypeRaw = entityType.rawValue
-        let descriptor = FetchDescriptor<SyncOperation>(
-            predicate: #Predicate<SyncOperation> {
-                $0.entityType == entityTypeRaw &&
-                $0.entityId == entityId
+        let ops: [SyncOperation]
+        if entityType == .projectNote {
+            guard let fetched = try? ProjectNoteMentionEditSync
+                .fetchProjectNoteOperations(
+                    matching: entityId,
+                    in: modelContext
+                ) else {
+                return Set(fields)
             }
-        )
-
-        guard let ops = try? modelContext.fetch(descriptor) else {
-            return Set(fields)
+            ops = fetched
+        } else {
+            let entityTypeRaw = entityType.rawValue
+            let descriptor = FetchDescriptor<SyncOperation>(
+                predicate: #Predicate<SyncOperation> {
+                    $0.entityType == entityTypeRaw
+                        && $0.entityId == entityId
+                }
+            )
+            guard let fetched = try? modelContext.fetch(descriptor) else {
+                return Set(fields)
+            }
+            ops = fetched
         }
 
         let pendingFields = SyncFieldGuard.protectedFields(from: ops, now: Date())
@@ -3289,6 +3320,16 @@ actor DataActor {
     /// Used by merges to decide whether `needsSync` should be cleared after a server merge.
     /// Ported from InboundProcessor.hasPendingOperations.
     private func hasPendingOperations(entityType: SyncEntityType, entityId: String) -> Bool {
+        if entityType == .projectNote {
+            let operations = try? ProjectNoteMentionEditSync
+                .fetchProjectNoteOperations(
+                    matching: entityId,
+                    in: modelContext
+                )
+            return operations?.contains {
+                $0.status == "pending"
+            } == true
+        }
         let typeStr = entityType.rawValue
         let predicate = #Predicate<SyncOperation> { op in
             op.entityType == typeStr &&
@@ -3856,7 +3897,11 @@ actor DataActor {
                         m.deletedAt = Date()
                     }
                 case "project_notes":
-                    if let m = try modelContext.fetch(FetchDescriptor<ProjectNote>(predicate: #Predicate { $0.id == id })).first {
+                    if let m = try ProjectNoteMentionEditSync
+                        .fetchProjectNote(
+                            matching: id,
+                            in: modelContext
+                        ) {
                         m.deletedAt = Date()
                     }
                 case "project_photos":
@@ -3936,6 +3981,33 @@ actor DataActor {
     ///   - executeOperation mutations persist via per-state transactions inside that
     ///     method (no single trailing context.save)
     func processPendingOperations() async -> Set<String> {
+        var completedProjectTaskIds = Set<String>()
+        var shouldContinueMentionDrain: Bool
+        repeat {
+            let readyBeforePass =
+                readyPendingProjectNoteMentionOperationIds()
+            completedProjectTaskIds.formUnion(
+                await processPendingOperationsPass()
+            )
+            let readyAfterPass =
+                readyPendingProjectNoteMentionOperationIds()
+            shouldContinueMentionDrain = ProjectNoteMentionEditSync
+                .shouldContinueDrain(
+                    readyBeforePass: readyBeforePass,
+                    readyAfterPass: readyAfterPass
+                )
+            if shouldContinueMentionDrain {
+                print("[DataActor] Mention dependency released — continuing actor-context drain")
+            } else if !readyAfterPass.isEmpty,
+                      readyAfterPass == readyBeforePass {
+                print("[DataActor] Mention drain made no progress — stopping until the next sync trigger")
+            }
+        } while shouldContinueMentionDrain
+
+        return completedProjectTaskIds
+    }
+
+    private func processPendingOperationsPass() async -> Set<String> {
         // 1. Fetch pending operations sorted by priority ASC, createdAt ASC.
         let pending: [SyncOperation]
         do {
@@ -4017,6 +4089,27 @@ actor DataActor {
         return completedProjectTaskIds
     }
 
+    /// Actor-local readiness snapshot used by the dependency drain. Keeping
+    /// this fetch on the actor's owning ModelContext prevents stale main-context
+    /// snapshots from deciding whether another pass is required.
+    func readyPendingProjectNoteMentionOperationIds(
+        now: Date = Date()
+    ) -> Set<UUID> {
+        // This actor lives for the app session. Main-context edits can retarget
+        // a dispatch dependency after this context has already registered that
+        // operation, so refetch alone may return the stale registered model.
+        // Every actor pass has committed its own transactions before reaching
+        // this point; rollback safely refreshes those snapshots from the store.
+        modelContext.rollback()
+        let operations = (
+            try? modelContext.fetch(FetchDescriptor<SyncOperation>())
+        ) ?? []
+        return ProjectNoteMentionEditSync.readyPendingOperationIds(
+            in: operations,
+            now: now
+        )
+    }
+
     // MARK: - Dependency Check
 
     /// Checks whether a dependency operation (by UUID string) has status "completed"
@@ -4047,14 +4140,15 @@ actor DataActor {
     /// Ported from OutboundProcessor.executeOperation. Context parameter removed;
     /// state mutations now wrapped in `modelContext.transaction { }` blocks.
     private func executeOperation(_ operation: SyncOperation) async throws {
+        guard try claimForExecution(operation) else { return }
+        defer {
+            ProjectNoteMentionQueueCoordinator.shared.release(
+                operationId: operation.id
+            )
+        }
         print("[DataActor] Pushing \(operation.entityType) \(operation.entityId)...")
         if operation.entityType == SyncEntityType.projectTask.rawValue {
             print("[DUPE_TRACE] ACTOR.outbound.inProgress id=\(operation.entityId) op=\(operation.operationType)")
-        }
-
-        try? modelContext.transaction {
-            operation.status = "inProgress"
-            operation.lastAttemptedAt = Date()
         }
 
         do {
@@ -4117,6 +4211,36 @@ actor DataActor {
                 )
             }
 
+            var parkedMentionWasSuperseded = false
+            var parkedCreateDeleteWasRetired = false
+            if case .parked = outcome,
+               let operations = try? modelContext.fetch(
+                FetchDescriptor<SyncOperation>()
+               ) {
+                try? modelContext.transaction {
+                    parkedMentionWasSuperseded = ProjectNoteMentionEditSync
+                        .supersedeParkedUpdatesReplacedByLaterEdits(
+                            in: operations
+                        )
+                    parkedCreateDeleteWasRetired =
+                        ProjectNoteMentionEditSync
+                        .retireParkedCreateWithQueuedDelete(
+                            operation,
+                            in: operations
+                        )
+                    if parkedCreateDeleteWasRetired {
+                        let noteId = operation.entityId.lowercased()
+                        if let note = try ProjectNoteMentionEditSync
+                            .fetchProjectNote(
+                                matching: noteId,
+                                in: modelContext
+                            ) {
+                            note.needsSync = false
+                        }
+                    }
+                }
+            }
+
             // Snapshot for the @MainActor analytics hop.
             let retryCount = operation.retryCount
             let entityType = operation.entityType
@@ -4141,7 +4265,17 @@ actor DataActor {
                 }
 
             case .parked:
-                print("[DataActor] Parked \(operation.entityType) \(operation.entityId) — server rejected it (permanent); will not auto-retry: \(errorDescription)")
+                if parkedCreateDeleteWasRetired {
+                    print(
+                        "[DataActor] Retired local-only "
+                            + "project-note create/delete chain "
+                            + operation.entityId
+                    )
+                } else if parkedMentionWasSuperseded {
+                    print("[DataActor] Retired rejected project-note edit \(operation.entityId) — later authoritative replacement released")
+                } else {
+                    print("[DataActor] Parked \(operation.entityType) \(operation.entityId) — server rejected it (permanent); will not auto-retry: \(errorDescription)")
+                }
                 await MainActor.run {
                     AnalyticsService.shared.track(
                         eventType: .error,
@@ -4178,6 +4312,26 @@ actor DataActor {
         }
     }
 
+    private func claimForExecution(
+        _ operation: SyncOperation
+    ) throws -> Bool {
+        let didClaim = try ProjectNoteMentionEditSync.claimForExecution(
+            operation,
+            context: modelContext,
+            refreshFromStore: true
+        )
+        if !didClaim,
+           ProjectNoteMentionEditSync.isDependencyDrainOperation(
+               operation
+           ) {
+            print(
+                "[DataActor] Skipping stale dependency snapshot "
+                    + "\(operation.operationType) \(operation.entityId)"
+            )
+        }
+        return didClaim
+    }
+
     // MARK: - Repository Routing
 
     /// Routes an operation to the correct Supabase repository based on entityType
@@ -4190,6 +4344,15 @@ actor DataActor {
         payload: [String: Any]
     ) async throws {
         let companyId = UserDefaults.standard.string(forKey: "currentUserCompanyId") ?? ""
+
+        if try await ProjectNoteMentionEditSync.executeIfHandled(
+            entityType: entityType,
+            operationType: operationType,
+            payload: payload,
+            companyId: companyId
+        ) {
+            return
+        }
 
         guard let syncEntityType = SyncEntityType(rawValue: entityType) else {
             print("[DataActor] Unknown entity type: \(entityType) — using generic table push")
@@ -4520,12 +4683,17 @@ actor DataActor {
     /// Ported verbatim from OutboundProcessor.coalesceOperations.
     private func coalesceOperations(_ operations: [SyncOperation]) -> [SyncOperation] {
         var groups: [String: [SyncOperation]] = [:]
-        for op in operations {
+        for op in operations where !ProjectNoteMentionEditSync.bypassesGenericCoalescing(op) {
             let key = "\(op.entityType)::\(op.entityId)"
             groups[key, default: []].append(op)
         }
 
-        var result: [SyncOperation] = []
+        // These operations carry immutable event IDs and explicit ordering.
+        // Generic update coalescing would silently drop one or satisfy a
+        // dependency without executing the corresponding RPC.
+        var result = operations.filter {
+            ProjectNoteMentionEditSync.bypassesGenericCoalescing($0)
+        }
 
         for (_, groupOps) in groups {
             guard !groupOps.isEmpty else { continue }

@@ -499,16 +499,30 @@ final class InboundProcessor {
         fieldName: String,
         context: ModelContext
     ) -> Bool {
-        let entityTypeRaw = entityType.rawValue
-        let descriptor = FetchDescriptor<SyncOperation>(
-            predicate: #Predicate<SyncOperation> {
-                $0.entityType == entityTypeRaw &&
-                $0.entityId == entityId &&
-                $0.status == "pending"
+        let pendingOps: [SyncOperation]
+        if entityType == .projectNote {
+            pendingOps = (
+                try? ProjectNoteMentionEditSync
+                    .fetchProjectNoteOperations(
+                        matching: entityId,
+                        in: context
+                    )
+            )?.filter { $0.status == "pending" } ?? []
+        } else {
+            let entityTypeRaw = entityType.rawValue
+            let descriptor = FetchDescriptor<SyncOperation>(
+                predicate: #Predicate<SyncOperation> {
+                    $0.entityType == entityTypeRaw
+                        && $0.entityId == entityId
+                        && $0.status == "pending"
+                }
+            )
+            guard let fetched = try? context.fetch(descriptor) else {
+                return true
             }
-        )
-
-        guard let pendingOps = try? context.fetch(descriptor) else {
+            pendingOps = fetched
+        }
+        guard !pendingOps.isEmpty else {
             // If we can't query, default to accepting server value
             return true
         }
@@ -536,16 +550,28 @@ final class InboundProcessor {
         // its push is in flight (status "inProgress") or just-completed within
         // the recent window, otherwise a stale inbound echo silently reverts the
         // just-saved edit. SyncFieldGuard encodes that lifecycle rule.
-        let entityTypeRaw = entityType.rawValue
-        let descriptor = FetchDescriptor<SyncOperation>(
-            predicate: #Predicate<SyncOperation> {
-                $0.entityType == entityTypeRaw &&
-                $0.entityId == entityId
+        let ops: [SyncOperation]
+        if entityType == .projectNote {
+            guard let fetched = try? ProjectNoteMentionEditSync
+                .fetchProjectNoteOperations(
+                    matching: entityId,
+                    in: context
+                ) else {
+                return Set(fields)
             }
-        )
-
-        guard let ops = try? context.fetch(descriptor) else {
-            return Set(fields)
+            ops = fetched
+        } else {
+            let entityTypeRaw = entityType.rawValue
+            let descriptor = FetchDescriptor<SyncOperation>(
+                predicate: #Predicate<SyncOperation> {
+                    $0.entityType == entityTypeRaw
+                        && $0.entityId == entityId
+                }
+            )
+            guard let fetched = try? context.fetch(descriptor) else {
+                return Set(fields)
+            }
+            ops = fetched
         }
 
         let pendingFields = SyncFieldGuard.protectedFields(from: ops, now: Date())
@@ -1309,11 +1335,8 @@ final class InboundProcessor {
 
     private func mergeProjectNote(dto: ProjectNoteDTO, context: ModelContext) throws {
         let id = dto.id
-        let descriptor = FetchDescriptor<ProjectNote>(
-            predicate: #Predicate { $0.id == id }
-        )
-
-        if let existing = try context.fetch(descriptor).first {
+        if let existing = try ProjectNoteMentionEditSync
+            .fetchProjectNote(matching: id, in: context) {
             let accept = acceptableFields(
                 entityType: .projectNote,
                 entityId: id,
@@ -1346,8 +1369,15 @@ final class InboundProcessor {
             if accept.contains("deletedAt") { existing.deletedAt = dto.deletedAt.flatMap { SupabaseDate.parse($0) } }
 
             existing.lastSyncedAt = Date()
-            let hasPending = hasPendingOperations(entityType: .projectNote, entityId: existing.id, context: context)
-            if !hasPending {
+            let operations = try context.fetch(
+                FetchDescriptor<SyncOperation>()
+            )
+            let hasUnresolvedWrite =
+                ProjectNoteMentionEditSync.hasUnresolvedWrite(
+                    for: id,
+                    in: operations
+                )
+            if !hasUnresolvedWrite {
                 existing.needsSync = false
             }
         } else {
@@ -1774,6 +1804,16 @@ final class InboundProcessor {
     /// Returns true if there are any pending SyncOperations for the given entity.
     /// Used to decide whether `needsSync` should be cleared after an inbound merge.
     private func hasPendingOperations(entityType: SyncEntityType, entityId: String, context: ModelContext) -> Bool {
+        if entityType == .projectNote {
+            let operations = try? ProjectNoteMentionEditSync
+                .fetchProjectNoteOperations(
+                    matching: entityId,
+                    in: context
+                )
+            return operations?.contains {
+                $0.status == "pending"
+            } == true
+        }
         let typeStr = entityType.rawValue
         let predicate = #Predicate<SyncOperation> { op in
             op.entityType == typeStr &&

@@ -156,6 +156,10 @@ struct PhotoCommentViewer: View {
         }
         .statusBar(hidden: true)
         .preferredColorScheme(.dark)
+        .errorToast(
+            $viewModel.error,
+            label: viewModel.errorFeedbackLabel
+        )
         .onAppear {
             setupViewModel()
             // Bug 7b43be32 — load + cache the project handle so the
@@ -558,10 +562,17 @@ struct PhotoCommentViewer: View {
                             teamMember: viewModel.teamMember(for: comment.authorId),
                             isOwn: viewModel.isOwnComment(comment),
                             isEditing: viewModel.editingNoteId == comment.id,
+                            allTeamMembers: viewModel.teamMembers,
+                            mentionIdentityMembers:
+                                viewModel.mentionIdentityMembers(for: comment),
                             editText: $viewModel.editText,
                             onEdit: { viewModel.startEditing(comment) },
                             onCancelEdit: { viewModel.cancelEditing() },
-                            onSaveEdit: { Task { await viewModel.saveEdit() } },
+                            onSaveEdit: { identitySpans in
+                                await viewModel.saveEdit(
+                                    identitySpans: identitySpans
+                                )
+                            },
                             onDelete: { Task { await viewModel.deleteComment(comment) } }
                         )
                         .id(comment.id)
@@ -647,10 +658,8 @@ struct PhotoCommentViewer: View {
     private var composeBar: some View {
         HStack(spacing: OPSStyle.Layout.spacing2) {
             Button(action: {
-                if !viewModel.newCommentText.contains("@") {
-                    viewModel.newCommentText += "@"
-                    viewModel.handleMentionInput(viewModel.newCommentText)
-                }
+                viewModel.insertMentionTrigger()
+                isComposeFocused = true
             }) {
                 Text("@")
                     .font(OPSStyle.Typography.bodyBold)
@@ -659,24 +668,43 @@ struct PhotoCommentViewer: View {
             }
             .buttonStyle(PlainButtonStyle())
 
-            TextField("Comment...", text: $viewModel.newCommentText)
-                .font(OPSStyle.Typography.body)
-                .foregroundColor(OPSStyle.Colors.primaryText)
-                .focused($isComposeFocused)
+            ProjectNoteMentionComposerField(
+                text: $viewModel.newCommentText,
+                selectedRange: $viewModel.composeSelectedRange,
+                mentionSpans: $viewModel.composeMentionSpans,
+                isFocused: Binding(
+                    get: { isComposeFocused },
+                    set: { isComposeFocused = $0 }
+                ),
+                placeholder: "Comment...",
+                onSubmit: {
+                    Task {
+                        if await viewModel.postComment() {
+                            ToastCenter.shared.present(
+                                Feedback.Project.commentPosted
+                            )
+                        }
+                    }
+                }
+            )
                 .onChange(of: viewModel.newCommentText) { _, newValue in
                     viewModel.handleMentionInput(newValue)
                 }
-                .onSubmit {
-                    Task {
-                        await viewModel.postComment()
-                        ToastCenter.shared.present(Feedback.Project.commentPosted)
-                    }
+                .onChange(
+                    of: viewModel.composeSelectedRange
+                ) { _, _ in
+                    viewModel.handleMentionInput(
+                        viewModel.newCommentText
+                    )
                 }
 
             Button(action: {
                 Task {
-                    await viewModel.postComment()
-                    ToastCenter.shared.present(Feedback.Project.commentPosted)
+                    if await viewModel.postComment() {
+                        ToastCenter.shared.present(
+                            Feedback.Project.commentPosted
+                        )
+                    }
                 }
             }) {
                 Image(systemName: OPSStyle.Icons.sendFill)
@@ -947,14 +975,22 @@ struct PhotoCommentRow: View {
     let teamMember: TeamMember?
     let isOwn: Bool
     let isEditing: Bool
+    let allTeamMembers: [TeamMember]
+    let mentionIdentityMembers: [TeamMember]
     @Binding var editText: String
     let onEdit: () -> Void
     let onCancelEdit: () -> Void
-    let onSaveEdit: () -> Void
+    let onSaveEdit: ([ProjectNoteMentionSpan]) async -> Void
     let onDelete: () -> Void
 
     @State private var showDeleteConfirmation = false
     @State private var showMenu = false
+    @State private var editMentionSuggestions: [TeamMember] = []
+    @State private var editShowAllTeam = false
+    @State private var editShowMentionPicker = false
+    @State private var editSelectedRange = NSRange(location: 0, length: 0)
+    @State private var editMentionSpans: [ProjectNoteMentionSpan] = []
+    @State private var isSavingEdit = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
@@ -1003,31 +1039,65 @@ struct PhotoCommentRow: View {
 
             // Content or edit field
             if isEditing {
-                HStack(spacing: OPSStyle.Layout.spacing2) {
-                    TextField("Edit comment...", text: $editText)
-                        .font(OPSStyle.Typography.body)
-                        .foregroundColor(OPSStyle.Colors.primaryText)
-                        .padding(OPSStyle.Layout.spacing2)
-                        .background(OPSStyle.Colors.surfaceInput)
-                        .cornerRadius(OPSStyle.Layout.cornerRadius)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: 1)
+                VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
+                    ProjectNoteMentionEditingField(
+                        text: $editText,
+                        selectedRange: $editSelectedRange,
+                        mentionSpans: $editMentionSpans,
+                        placeholder: "Edit comment..."
+                    )
+                    .disabled(isSavingEdit)
+                    .onChange(of: editText) { _, newValue in
+                        updateEditMentionState(
+                            for: newValue,
+                            selectedRange: editSelectedRange
                         )
-
-                    Button(action: onSaveEdit) {
-                        Text("Save")
-                            .font(OPSStyle.Typography.captionBold)
-                            .foregroundColor(OPSStyle.Colors.primaryAccent)
                     }
-                    .buttonStyle(PlainButtonStyle())
-
-                    Button(action: onCancelEdit) {
-                        Text("Cancel")
-                            .font(OPSStyle.Typography.caption)
-                            .foregroundColor(OPSStyle.Colors.tertiaryText)
+                    .onChange(of: editSelectedRange) { _, newValue in
+                        updateEditMentionState(
+                            for: editText,
+                            selectedRange: newValue
+                        )
                     }
-                    .buttonStyle(PlainButtonStyle())
+
+                    if editShowMentionPicker {
+                        editMentionPicker
+                    }
+
+                    HStack {
+                        Button {
+                            clearEditMentionState()
+                            onCancelEdit()
+                        } label: {
+                            Text("Cancel")
+                                .font(OPSStyle.Typography.caption)
+                                .foregroundColor(OPSStyle.Colors.secondaryText)
+                        }
+                        .buttonStyle(PlainButtonStyle())
+                        .disabled(isSavingEdit)
+
+                        Spacer()
+
+                        Button {
+                            Task { @MainActor in
+                                guard !isSavingEdit else { return }
+                                isSavingEdit = true
+                                clearEditMentionState()
+                                await onSaveEdit(editMentionSpans)
+                                isSavingEdit = false
+                            }
+                        } label: {
+                            Text("Save")
+                                .font(OPSStyle.Typography.captionBold)
+                                .foregroundColor(
+                                    canSaveEdit
+                                        ? OPSStyle.Colors.primaryAccent
+                                        : OPSStyle.Colors.tertiaryText
+                                )
+                        }
+                        .buttonStyle(PlainButtonStyle())
+                        .disabled(isSavingEdit || !canSaveEdit)
+                    }
                 }
             } else {
                 highlightedContent(comment.content)
@@ -1041,6 +1111,167 @@ struct PhotoCommentRow: View {
         } message: {
             Text("This comment will be permanently deleted.")
         }
+        .onChange(of: isEditing) { _, editing in
+            if editing {
+                initializeEditIdentityState()
+                clearEditMentionState()
+            } else {
+                editMentionSpans = []
+                clearEditMentionState()
+            }
+        }
+        .onAppear {
+            if isEditing {
+                initializeEditIdentityState()
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var editMentionPicker: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: OPSStyle.Layout.spacing2) {
+                if editShowAllTeam {
+                    Button(action: insertEditAllTeamMention) {
+                        HStack(spacing: OPSStyle.Layout.spacing1) {
+                            Image(systemName: OPSStyle.Icons.crew)
+                                .font(.system(size: OPSStyle.Layout.IconSize.xs))
+                                .foregroundColor(OPSStyle.Colors.secondaryText)
+                                .frame(
+                                    width: OPSStyle.Layout.IconSize.lg,
+                                    height: OPSStyle.Layout.IconSize.lg
+                                )
+                                .background(OPSStyle.Colors.surfaceActive)
+                                .clipShape(Circle())
+                            Text("All Team")
+                                .font(OPSStyle.Typography.caption)
+                                .foregroundColor(OPSStyle.Colors.primaryText)
+                        }
+                        .padding(.horizontal, OPSStyle.Layout.spacing2)
+                        .frame(minHeight: OPSStyle.Layout.chipMinHeight)
+                        .background(OPSStyle.Colors.surfaceInput)
+                        .cornerRadius(OPSStyle.Layout.chipRadius)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius)
+                                .stroke(
+                                    OPSStyle.Colors.inputFieldBorder,
+                                    lineWidth:
+                                        OPSStyle.Layout.Border.standard
+                                )
+                        )
+                    }
+                    .buttonStyle(PlainButtonStyle())
+                }
+
+                ForEach(editMentionSuggestions, id: \.id) { member in
+                    Button(action: { insertEditMention(member) }) {
+                        HStack(spacing: OPSStyle.Layout.spacing1) {
+                            TeamMemberAvatar(
+                                teamMember: member,
+                                size: OPSStyle.Layout.IconSize.lg
+                            )
+                            Text(member.fullName)
+                                .font(OPSStyle.Typography.caption)
+                                .foregroundColor(OPSStyle.Colors.primaryText)
+                        }
+                        .padding(.horizontal, OPSStyle.Layout.spacing2)
+                        .frame(minHeight: OPSStyle.Layout.chipMinHeight)
+                        .background(OPSStyle.Colors.surfaceInput)
+                        .cornerRadius(OPSStyle.Layout.chipRadius)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius)
+                                .stroke(
+                                    OPSStyle.Colors.inputFieldBorder,
+                                    lineWidth:
+                                        OPSStyle.Layout.Border.standard
+                                )
+                        )
+                    }
+                    .buttonStyle(PlainButtonStyle())
+                }
+            }
+            .padding(.vertical, OPSStyle.Layout.spacing1)
+        }
+    }
+
+    private func updateEditMentionState(
+        for text: String,
+        selectedRange: NSRange
+    ) {
+        guard let match = ProjectNoteMentionEditor.match(
+            in: text,
+            selectedRange: selectedRange,
+            members: allTeamMembers.filter {
+                $0.id.lowercased() != comment.authorId.lowercased()
+            }
+        ) else {
+            clearEditMentionState()
+            return
+        }
+        editMentionSuggestions = match.suggestions
+        editShowAllTeam = match.showAllTeam
+        editShowMentionPicker = !match.suggestions.isEmpty || match.showAllTeam
+    }
+
+    private func clearEditMentionState() {
+        editShowMentionPicker = false
+        editShowAllTeam = false
+        editMentionSuggestions = []
+    }
+
+    private func initializeEditIdentityState() {
+        let draft = ProjectNoteMentionParser.editableDraft(
+            in: comment.content,
+            mentionedUserIds: comment.mentionedUserIds,
+            teamMembers: mentionIdentityMembers,
+            currentUserId: comment.authorId
+        )
+        if editText == comment.content {
+            editText = draft.text
+        }
+        editSelectedRange = NSRange(
+            location: (editText as NSString).length,
+            length: 0
+        )
+        editMentionSpans = draft.identitySpans
+    }
+
+    private func insertEditMention(_ member: TeamMember) {
+        guard let replacement = ProjectNoteMentionEditor
+            .replacingActiveMention(
+                with: member.fullName,
+                in: editText,
+                selectedRange: editSelectedRange,
+                mentionSpans: editMentionSpans,
+                recipient: .user(id: member.id),
+                visibleMentionText:
+                    ProjectNoteMentionParser.visibleMentionText(for: member)
+            ) else {
+            clearEditMentionState()
+            return
+        }
+        editText = replacement.text
+        editSelectedRange = replacement.selectedRange
+        editMentionSpans = replacement.mentionSpans
+        clearEditMentionState()
+    }
+
+    private func insertEditAllTeamMention() {
+        guard let replacement = ProjectNoteMentionEditor
+            .replacingActiveMention(
+                with: "All Team",
+                in: editText,
+                selectedRange: editSelectedRange,
+                mentionSpans: editMentionSpans,
+                recipient: .allTeam
+            ) else {
+            clearEditMentionState()
+            return
+        }
+        editText = replacement.text
+        editSelectedRange = replacement.selectedRange
+        editMentionSpans = replacement.mentionSpans
+        clearEditMentionState()
     }
 
     private var initials: String {
@@ -1050,30 +1281,28 @@ struct PhotoCommentRow: View {
         return "\(first)\(last)"
     }
 
-    private func highlightedContent(_ text: String) -> Text {
-        let words = text.split(separator: " ", omittingEmptySubsequences: false)
-        var result = Text("")
-        var inMention = false
-        var isFirst = true
+    private var canSaveEdit: Bool {
+        !editText.trimmingCharacters(
+            in: .whitespacesAndNewlines
+        ).isEmpty
+    }
 
-        for word in words {
-            let separator = isFirst ? "" : " "
-            isFirst = false
-            if word.hasPrefix("@") {
-                inMention = true
-                result = result + Text(separator + word)
-                    .font(OPSStyle.Typography.body)
-                    .foregroundColor(OPSStyle.Colors.primaryAccent)
-            } else if inMention {
-                result = result + Text(separator + word)
-                    .font(OPSStyle.Typography.body)
-                    .foregroundColor(OPSStyle.Colors.primaryAccent)
-                inMention = false
-            } else {
-                result = result + Text(separator + word)
-                    .font(OPSStyle.Typography.body)
-                    .foregroundColor(OPSStyle.Colors.primaryText)
-            }
+    private func highlightedContent(_ text: String) -> Text {
+        var result = Text("")
+        let segments = ProjectNoteMentionParser.renderedSegments(
+            in: text,
+            mentionedUserIds: comment.mentionedUserIds,
+            teamMembers: mentionIdentityMembers,
+            currentUserId: comment.authorId
+        )
+        for segment in segments {
+            result = result + Text(segment.text)
+                .font(OPSStyle.Typography.body)
+                .foregroundColor(
+                    segment.isMention
+                        ? OPSStyle.Colors.primaryAccent
+                        : OPSStyle.Colors.primaryText
+                )
         }
         return result
     }

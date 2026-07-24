@@ -17,6 +17,8 @@ class PhotoCommentsViewModel: ObservableObject {
     @Published var showAllTeamOption = false
     @Published var isLoading = false
     @Published var error: String? = nil
+    @Published private(set) var errorFeedbackLabel =
+        Feedback.Err.operationFailed
 
     // Edit state
     @Published var editingNoteId: String? = nil
@@ -32,10 +34,45 @@ class PhotoCommentsViewModel: ObservableObject {
     private weak var dataController: DataController?
     private var loadTask: Task<Void, Never>?
     private var notificationObserver: NSObjectProtocol?
+    private let createCommentOverride:
+        ((CreateProjectNoteDTO) async throws -> ProjectNoteDTO)?
+    private let postRetryBaseDelaySeconds: Double
+    @Published var composeMentionSpans: [ProjectNoteMentionSpan] = []
+    @Published var composeSelectedRange = NSRange(location: 0, length: 0)
 
-    init(photoURL: String, projectId: String) {
+    init(
+        photoURL: String,
+        projectId: String,
+        createCommentOverride:
+            ((CreateProjectNoteDTO) async throws -> ProjectNoteDTO)? = nil,
+        postRetryBaseDelaySeconds: Double = 0.5
+    ) {
         self.photoURL = photoURL
         self.projectId = projectId
+        self.createCommentOverride = createCommentOverride
+        self.postRetryBaseDelaySeconds = postRetryBaseDelaySeconds
+    }
+
+    /// Read-only roster for row-scoped edit mention pickers. The mutable source
+    /// remains private so setup is still the only place that can replace it.
+    var teamMembers: [TeamMember] {
+        allTeamMembers
+    }
+
+    func mentionIdentityMembers(for note: ProjectNote) -> [TeamMember] {
+        var membersById = Dictionary(
+            allTeamMembers.map { ($0.id.lowercased(), $0) },
+            uniquingKeysWith: { first, _ in first }
+        )
+        for id in note.mentionedUserIds {
+            let canonicalId = id.lowercased()
+            guard membersById[canonicalId] == nil,
+                  let user = dataController?.getUser(id: id) else {
+                continue
+            }
+            membersById[canonicalId] = TeamMember.fromUser(user)
+        }
+        return Array(membersById.values)
     }
 
     deinit {
@@ -70,7 +107,14 @@ class PhotoCommentsViewModel: ObservableObject {
     // MARK: - Load
 
     func loadComments() async {
-        guard let repo = repository else { return }
+        beginAttempt(feedbackLabel: Feedback.Err.requestFailed)
+        guard let repo = repository else {
+            fail(
+                "Couldn't load comments. Try again.",
+                feedbackLabel: Feedback.Err.requestFailed
+            )
+            return
+        }
         isLoading = true
         defer { isLoading = false }
         do {
@@ -83,9 +127,11 @@ class PhotoCommentsViewModel: ObservableObject {
                     let model = dto.toModel()
                     model.lastSyncedAt = Date()
                     model.needsSync = false
-                    let noteId = dto.id
-                    let descriptor = FetchDescriptor<ProjectNote>(predicate: #Predicate { $0.id == noteId })
-                    if let existing = try? context.fetch(descriptor).first {
+                    if let existing = try?
+                        ProjectNoteMentionEditSync.fetchProjectNote(
+                            matching: dto.id,
+                            in: context
+                        ) {
                         // Bug f9e00eb9 — never clobber an un-pushed local change
                         // (pending delete/edit) with a stale server snapshot.
                         if existing.needsSync { continue }
@@ -105,9 +151,13 @@ class PhotoCommentsViewModel: ObservableObject {
                 try? context.save()
             }
             loadCommentsFromLocal()
+            error = nil
         } catch {
             if !(error is CancellationError) {
-                self.error = FieldErrorHandler.userFriendlyMessage(for: error)
+                fail(
+                    FieldErrorHandler.userFriendlyMessage(for: error),
+                    feedbackLabel: Feedback.Err.requestFailed
+                )
             }
             loadCommentsFromLocal()
         }
@@ -142,20 +192,62 @@ class PhotoCommentsViewModel: ObservableObject {
 
     // MARK: - Post
 
-    func postComment() async {
-        let text = newCommentText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty,
-              let repo = repository,
-              let companyId = companyId,
-              let currentUserId = currentUserId else { return }
+    @discardableResult
+    func postComment() async -> Bool {
+        beginAttempt(feedbackLabel: Feedback.Err.saveFailed)
+        let text = newCommentText
+        guard !text.trimmingCharacters(
+            in: .whitespacesAndNewlines
+        ).isEmpty else {
+            return false
+        }
+        guard let companyId = companyId,
+              let currentUserId = currentUserId else {
+            fail(
+                "Couldn't post comment. Try again.",
+                feedbackLabel: Feedback.Err.saveFailed
+            )
+            return false
+        }
+        let repository = repository
+        guard createCommentOverride != nil || repository != nil else {
+            fail(
+                "Couldn't post comment. Try again.",
+                feedbackLabel: Feedback.Err.saveFailed
+            )
+            return false
+        }
 
-        let mentionedIds = extractMentionedUserIds(from: text)
+        let selectedMentionSpans = composeMentionSpans
+        let selectedMentionUserIds: [String] = selectedMentionSpans.compactMap {
+            guard case .user(let id) = $0.recipient else { return nil }
+            return id
+        }
+        let mentionPlan = ProjectNoteMentionEditPlan.make(
+            content: text,
+            teamMembers: allTeamMembers,
+            currentUserId: currentUserId,
+            identitySpans: selectedMentionSpans,
+            preferredMentionedUserIds: selectedMentionUserIds
+        )
+        guard mentionPlan.unresolvedMentionNames.isEmpty else {
+            fail(
+                "Select the teammate again before posting.",
+                feedbackLabel: Feedback.Err.saveFailed
+            )
+            return false
+        }
+        let mentionedIds = mentionPlan.mentionedUserIds
+        let persistedContent = mentionPlan.content
+        let notificationText = ProjectNoteMentionParser.displayText(
+            from: persistedContent
+        )
 
         let dto = CreateProjectNoteDTO(
             projectId: projectId,
             companyId: companyId,
             authorId: currentUserId,
-            content: text,
+            content: persistedContent,
             mentionedUserIds: mentionedIds,
             photoURL: photoURL
         )
@@ -165,7 +257,7 @@ class PhotoCommentsViewModel: ObservableObject {
             projectId: projectId,
             companyId: companyId,
             authorId: currentUserId,
-            content: text,
+            content: persistedContent,
             photoURL: photoURL
         )
         optimisticNote.mentionedUserIds = mentionedIds
@@ -179,20 +271,31 @@ class PhotoCommentsViewModel: ObservableObject {
         // about this comment immediately, not on next project reopen.
         ProjectNoteChangeSignal.post(projectId: projectId)
         newCommentText = ""
+        composeMentionSpans = []
+        composeSelectedRange = NSRange(location: 0, length: 0)
         showMentionPicker = false
         showAllTeamOption = false
         mentionSuggestions = []
 
         do {
             // Retry through a transient signal blip before giving up.
-            let created = try await NetworkRetry.run(maxAttempts: 3, baseDelaySeconds: 0.5) {
-                try await repo.create(dto)
+            let created = try await NetworkRetry.run(
+                maxAttempts: 3,
+                baseDelaySeconds: postRetryBaseDelaySeconds
+            ) {
+                if let createCommentOverride {
+                    return try await createCommentOverride(dto)
+                }
+                guard let repository else {
+                    throw URLError(.unknown)
+                }
+                return try await repository.create(dto)
             }
             // Replace optimistic note with server version
             if let context = modelContext {
                 let optimisticId = optimisticNote.id
                 let descriptor = FetchDescriptor<ProjectNote>(predicate: #Predicate { $0.id == optimisticId })
-                if let existing = try? context.fetch(descriptor).first {
+                if let existing = (try? context.fetch(descriptor))?.first {
                     context.delete(existing)
                 }
                 let serverModel = created.toModel()
@@ -205,44 +308,70 @@ class PhotoCommentsViewModel: ObservableObject {
             ProjectNoteChangeSignal.post(projectId: projectId)
 
             // Send notifications
-            await sendMentionNotifications(mentionedIds: mentionedIds, noteText: text, noteId: created.id)
+            await sendMentionNotifications(mentionedIds: mentionedIds, noteText: notificationText, noteId: created.id)
             // Notify the photo's uploader (unless they're the commenter or were
             // already @mentioned above).
-            await sendPhotoOwnerNotification(mentionedIds: mentionedIds, noteText: text, noteId: created.id)
+            await sendPhotoOwnerNotification(mentionedIds: mentionedIds, noteText: notificationText, noteId: created.id)
+            error = nil
+            return true
         } catch {
             if !(error is CancellationError) {
-                self.error = FieldErrorHandler.userFriendlyMessage(for: error)
+                fail(
+                    FieldErrorHandler.userFriendlyMessage(for: error),
+                    feedbackLabel: Feedback.Err.saveFailed
+                )
                 // Preserve the operator's typed comment for a one-tap retry.
                 newCommentText = text
+                composeMentionSpans = selectedMentionSpans
+                composeSelectedRange = NSRange(
+                    location: (text as NSString).length,
+                    length: 0
+                )
             }
             // Revert optimistic note
             if let context = modelContext {
                 let optimisticId = optimisticNote.id
                 let descriptor = FetchDescriptor<ProjectNote>(predicate: #Predicate { $0.id == optimisticId })
-                if let orphan = try? context.fetch(descriptor).first {
+                if let orphan = (try? context.fetch(descriptor))?.first {
                     context.delete(orphan)
                     try? context.save()
                 }
             }
             loadCommentsFromLocal()
+            return false
         }
     }
 
     // MARK: - Delete
 
-    func deleteComment(_ note: ProjectNote) async {
+    @discardableResult
+    func deleteComment(_ note: ProjectNote) async -> Bool {
+        beginAttempt(feedbackLabel: Feedback.Err.deleteFailed)
         // Durable path — queue the tombstone so it survives a timeout/offline
         // and retries (bug f9e00eb9). The merge guard stops a concurrent fetch
         // from resurrecting the pending delete.
         if let dataController = dataController {
-            dataController.deleteProjectNote(note: note)
+            guard dataController.deleteProjectNote(note: note) else {
+                fail(
+                    "Couldn't delete comment. Try again.",
+                    feedbackLabel: Feedback.Err.deleteFailed
+                )
+                return false
+            }
             loadCommentsFromLocal()
             ProjectNoteChangeSignal.post(projectId: projectId)
-            return
+            error = nil
+            return true
         }
 
         // Fallback — direct path with optimistic revert.
-        guard let repo = repository else { return }
+        guard let repo = repository else {
+            fail(
+                "Couldn't delete comment. Try again.",
+                feedbackLabel: Feedback.Err.deleteFailed
+            )
+            return false
+        }
         note.deletedAt = Date()
         try? modelContext?.save()
         loadCommentsFromLocal()
@@ -250,76 +379,122 @@ class PhotoCommentsViewModel: ObservableObject {
 
         do {
             try await repo.softDelete(note.id)
+            error = nil
+            return true
         } catch {
             note.deletedAt = nil
             try? modelContext?.save()
             loadCommentsFromLocal()
             ProjectNoteChangeSignal.post(projectId: projectId)
             if !(error is CancellationError) {
-                self.error = FieldErrorHandler.userFriendlyMessage(for: error)
+                fail(
+                    FieldErrorHandler.userFriendlyMessage(for: error),
+                    feedbackLabel: Feedback.Err.deleteFailed
+                )
             }
+            return false
         }
     }
 
     // MARK: - Edit
 
     func startEditing(_ note: ProjectNote) {
+        beginAttempt(feedbackLabel: Feedback.Err.saveFailed)
+        let draft = ProjectNoteMentionParser.editableDraft(
+            in: note.content,
+            mentionedUserIds: note.mentionedUserIds,
+            teamMembers: mentionIdentityMembers(for: note),
+            currentUserId: currentUserId
+        )
+        editText = draft.text
         editingNoteId = note.id
-        editText = note.content
     }
 
     func cancelEditing() {
         editingNoteId = nil
         editText = ""
+        error = nil
     }
 
-    func saveEdit() async {
+    func saveEdit(
+        identitySpans: [ProjectNoteMentionSpan] = []
+    ) async {
+        beginAttempt(feedbackLabel: Feedback.Err.saveFailed)
         guard let noteId = editingNoteId,
-              let repo = repository,
-              let context = modelContext else { return }
-        let newContent = editText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !newContent.isEmpty else { return }
+              let context = modelContext else {
+            fail(
+                "Couldn't save. Try again.",
+                feedbackLabel: Feedback.Err.saveFailed
+            )
+            return
+        }
+        let newContent = editText
+        guard !newContent.trimmingCharacters(
+            in: .whitespacesAndNewlines
+        ).isEmpty else {
+            fail(
+                "Enter a comment before saving.",
+                feedbackLabel: Feedback.Err.saveFailed
+            )
+            return
+        }
 
         let descriptor = FetchDescriptor<ProjectNote>(predicate: #Predicate { $0.id == noteId })
-        guard let note = try? context.fetch(descriptor).first else { return }
+        guard let note = try? context.fetch(descriptor).first else {
+            fail(
+                "Couldn't save. Try again.",
+                feedbackLabel: Feedback.Err.saveFailed
+            )
+            return
+        }
+        let plan = ProjectNoteMentionEditPlan.make(
+            content: newContent,
+            teamMembers: allTeamMembers,
+            currentUserId: currentUserId,
+            identitySpans: identitySpans,
+            baseline: ProjectNoteMentionBaseline(
+                content: note.content,
+                mentionedUserIds: note.mentionedUserIds
+            )
+        )
+        guard plan.unresolvedMentionNames.isEmpty else {
+            fail(
+                "Select the teammate again before saving.",
+                feedbackLabel: Feedback.Err.saveFailed
+            )
+            return
+        }
+        let mentionEventId = UUID().uuidString.lowercased()
 
         // Durable path — queue the edit so it retries and survives offline.
-        if let dataController = dataController {
-            dataController.updateProjectNoteContent(note: note, content: newContent)
+        if let dataController = dataController,
+           dataController.updateProjectNoteContent(
+               note: note,
+               content: plan.content,
+               mentionedUserIds: plan.mentionedUserIds,
+               mentionEventId: mentionEventId
+           ) {
             loadCommentsFromLocal()
             editingNoteId = nil
             editText = ""
+            error = nil
             ProjectNoteChangeSignal.post(projectId: projectId)
             return
         }
 
-        // Fallback — direct path with optimistic revert.
-        let oldContent = note.content
-        note.content = newContent
-        note.updatedAt = Date()
-        try? context.save()
-        loadCommentsFromLocal()
-        editingNoteId = nil
-        editText = ""
-        ProjectNoteChangeSignal.post(projectId: projectId)
-
-        do {
-            try await repo.updateContent(noteId, content: newContent)
-        } catch {
-            note.content = oldContent
-            try? context.save()
-            loadCommentsFromLocal()
-            ProjectNoteChangeSignal.post(projectId: projectId)
-            if !(error is CancellationError) {
-                self.error = FieldErrorHandler.userFriendlyMessage(for: error)
-            }
-        }
+        // Never commit the RPC without its durable dispatch record. Keeping the
+        // edit open lets the operator retry without creating a stranded event.
+        fail(
+            "Couldn't save. Try again.",
+            feedbackLabel: Feedback.Err.saveFailed
+        )
     }
 
     // MARK: - Switch Photo
 
     func switchPhoto(to newURL: String) {
         loadTask?.cancel()
+        error = nil
         photoURL = newURL
         comments = []
         editingNoteId = nil
@@ -332,57 +507,97 @@ class PhotoCommentsViewModel: ObservableObject {
     // MARK: - Mention Handling
 
     func handleMentionInput(_ text: String) {
-        guard let atRange = text.range(of: "@", options: .backwards) else {
+        if !text.contains("@") {
+            composeMentionSpans = []
+        }
+        guard let match = ProjectNoteMentionEditor.match(
+            in: text,
+            selectedRange: composeSelectedRange,
+            members: mentionableTeamMembers
+        ) else {
             showMentionPicker = false
             showAllTeamOption = false
             mentionSuggestions = []
             return
         }
-
-        let afterAt = String(text[atRange.upperBound...])
-
-        // Don't dismiss if user is still typing a multi-word mention like "All Team"
-        if afterAt.contains(" ") && afterAt.last == " " {
-            let partial = afterAt.trimmingCharacters(in: .whitespaces).lowercased()
-            let isPartialAllTeam = "all team".hasPrefix(partial) && partial != "all team"
-            let isPartialMemberName = allTeamMembers.contains { member in
-                let fullName = member.fullName.lowercased()
-                return fullName.hasPrefix(partial) && fullName != partial
-            }
-            if !isPartialAllTeam && !isPartialMemberName {
-                showMentionPicker = false
-                showAllTeamOption = false
-                mentionSuggestions = []
-                return
-            }
-        }
-
-        let query = afterAt.trimmingCharacters(in: .whitespaces).lowercased()
-        if query.isEmpty {
-            mentionSuggestions = allTeamMembers
-            showAllTeamOption = true
-        } else {
-            mentionSuggestions = allTeamMembers.filter {
-                $0.fullName.lowercased().contains(query) ||
-                $0.firstName.lowercased().hasPrefix(query) ||
-                $0.lastName.lowercased().hasPrefix(query)
-            }
-            showAllTeamOption = "all team".hasPrefix(query)
-        }
+        mentionSuggestions = match.suggestions
+        showAllTeamOption = match.showAllTeam
         showMentionPicker = !mentionSuggestions.isEmpty || showAllTeamOption
     }
 
+    func insertMentionTrigger() {
+        let utf16Text = newCommentText as NSString
+        let safeSelection = NSMaxRange(composeSelectedRange)
+            <= utf16Text.length
+            ? composeSelectedRange
+            : NSRange(location: utf16Text.length, length: 0)
+        let mutable = NSMutableString(string: newCommentText)
+        mutable.replaceCharacters(in: safeSelection, with: "@")
+        composeMentionSpans = ProjectNoteMentionEditor
+            .adjustingMentionSpans(
+                composeMentionSpans,
+                replacing: safeSelection,
+                with: "@"
+            )
+        newCommentText = mutable as String
+        composeSelectedRange = NSRange(
+            location: safeSelection.location + 1,
+            length: 0
+        )
+        handleMentionInput(newCommentText)
+    }
+
     func insertMention(_ member: TeamMember) {
-        guard let atRange = newCommentText.range(of: "@", options: .backwards) else { return }
-        newCommentText = String(newCommentText[..<atRange.lowerBound]) + "@\(member.fullName) "
+        guard member.id.lowercased()
+                != currentUserId?.lowercased() else {
+            showMentionPicker = false
+            showAllTeamOption = false
+            mentionSuggestions = []
+            return
+        }
+        let visibleText = ProjectNoteMentionParser.visibleMentionText(
+            for: member
+        )
+        guard let replacement = ProjectNoteMentionEditor
+            .replacingActiveMention(
+                with: member.fullName,
+                in: newCommentText,
+                selectedRange: composeSelectedRange,
+                mentionSpans: composeMentionSpans,
+                recipient: .user(id: member.id),
+                visibleMentionText: visibleText
+            ) else {
+            return
+        }
+        newCommentText = replacement.text
+        composeMentionSpans = replacement.mentionSpans
+        composeSelectedRange = replacement.selectedRange
         showMentionPicker = false
         showAllTeamOption = false
         mentionSuggestions = []
     }
 
+    private var mentionableTeamMembers: [TeamMember] {
+        let current = currentUserId?.lowercased()
+        return allTeamMembers.filter {
+            $0.id.lowercased() != current
+        }
+    }
+
     func insertAllTeamMention() {
-        guard let atRange = newCommentText.range(of: "@", options: .backwards) else { return }
-        newCommentText = String(newCommentText[..<atRange.lowerBound]) + "@All Team "
+        guard let replacement = ProjectNoteMentionEditor
+            .replacingActiveMention(
+                with: "All Team",
+                in: newCommentText,
+                selectedRange: composeSelectedRange,
+                mentionSpans: composeMentionSpans,
+                recipient: .allTeam
+            ) else {
+            return
+        }
+        newCommentText = replacement.text
+        composeMentionSpans = replacement.mentionSpans
+        composeSelectedRange = replacement.selectedRange
         showMentionPicker = false
         showAllTeamOption = false
         mentionSuggestions = []
@@ -405,19 +620,14 @@ class PhotoCommentsViewModel: ObservableObject {
 
     // MARK: - Private Helpers
 
-    private func extractMentionedUserIds(from text: String) -> [String] {
-        if text.contains("@All Team") {
-            return allTeamMembers
-                .filter { $0.id != currentUserId }
-                .map { $0.id }
-        }
-        var ids: [String] = []
-        for member in allTeamMembers {
-            if text.contains("@\(member.fullName)") {
-                ids.append(member.id)
-            }
-        }
-        return ids
+    private func beginAttempt(feedbackLabel: String) {
+        error = nil
+        errorFeedbackLabel = feedbackLabel
+    }
+
+    private func fail(_ message: String, feedbackLabel: String) {
+        errorFeedbackLabel = feedbackLabel
+        error = message
     }
 
     private func sendMentionNotifications(mentionedIds: [String], noteText: String, noteId: String) async {

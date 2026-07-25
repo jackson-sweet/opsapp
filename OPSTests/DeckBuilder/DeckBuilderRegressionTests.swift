@@ -15,6 +15,148 @@ import XCTest
 @MainActor
 final class DeckBuilderRegressionTests: XCTestCase {
 
+    // MARK: - Label draft/commit boundary (bug f8b539f6)
+
+    func testDeckLabelEditSession_stagesKeystrokesAndCommitsFinalValueOnce() {
+        var session = DeckLabelEditSession(sourceValue: "Existing")
+
+        XCTAssertNil(session.handle(.changed("6")))
+        XCTAssertNil(session.handle(.changed("63")))
+        XCTAssertNil(session.handle(.changed("630 deck ")))
+        XCTAssertEqual(session.draft, "630 deck ")
+
+        XCTAssertEqual(
+            session.handle(.commit),
+            DeckLabelEditSession.Commit(value: "630 deck")
+        )
+        XCTAssertNil(session.handle(.commit))
+    }
+
+    func testDeckLabelEditSession_committingWhitespaceClearsExistingLabel() {
+        var session = DeckLabelEditSession(sourceValue: "Hot tub deck")
+
+        XCTAssertNil(session.handle(.changed(" \n ")))
+        XCTAssertEqual(
+            session.handle(.commit),
+            DeckLabelEditSession.Commit(value: nil)
+        )
+        XCTAssertNil(session.handle(.commit))
+    }
+
+    func testDeckLabelMutators_unchangedValuesDoNotCreateUndoState() {
+        var data = DeckDrawingData()
+        var edge = DeckEdge(id: "e1", startVertexId: "v1", endVertexId: "v2")
+        edge.label = "Gate"
+        data.edges = [edge]
+        data.footprint.label = "Main deck"
+
+        let viewModel = DeckBuilderViewModel(deckDesign: deckDesign(drawingData: data))
+        viewModel.activePersistedSurfaces = [
+            DeckSurface(id: "s1", vertexIds: ["v1", "v2"], label: "Landing")
+        ]
+
+        viewModel.setEdgeLabel("e1", label: " Gate ")
+        XCTAssertFalse(viewModel.canUndo)
+
+        viewModel.selection.selectedSurfaceIds = ["s1"]
+        viewModel.setLabelOnSelectedSurfaces(" Landing ")
+        XCTAssertFalse(viewModel.canUndo)
+
+        viewModel.setLabelOnActiveFootprint(" Main deck ")
+        XCTAssertFalse(viewModel.canUndo)
+    }
+
+    func testSetEdgeLabel_changedValueCreatesOnlyOneUndoSnapshot() {
+        var data = DeckDrawingData()
+        data.vertices = [
+            DeckVertex(id: "v1", position: CGPoint(x: 0, y: 0)),
+            DeckVertex(id: "v2", position: CGPoint(x: 120, y: 0)),
+        ]
+        var edge = DeckEdge(id: "e1", startVertexId: "v1", endVertexId: "v2")
+        edge.label = "Gate"
+        data.edges = [edge]
+        let viewModel = DeckBuilderViewModel(deckDesign: deckDesign(drawingData: data))
+
+        viewModel.setEdgeLabel("e1", label: "Main gate")
+        viewModel.setEdgeLabel("e1", label: " Main gate ")
+
+        XCTAssertEqual(viewModel.findEdge(byId: "e1")?.label, "Main gate")
+        XCTAssertTrue(viewModel.canUndo)
+
+        viewModel.undo()
+
+        XCTAssertEqual(viewModel.findEdge(byId: "e1")?.label, "Gate")
+        XCTAssertFalse(viewModel.canUndo)
+    }
+
+    func testSetLabel_stableTargetDoesNotFollowSelectionOrActiveLevel() {
+        var levelA = DeckLevel(id: "level-a", name: "Level A")
+        levelA.vertices = [
+            DeckVertex(id: "a1", position: CGPoint(x: 0, y: 0)),
+            DeckVertex(id: "a2", position: CGPoint(x: 120, y: 0)),
+            DeckVertex(id: "a3", position: CGPoint(x: 120, y: 120)),
+            DeckVertex(id: "a4", position: CGPoint(x: 0, y: 120)),
+        ]
+        levelA.edges = [
+            DeckEdge(id: "ae1", startVertexId: "a1", endVertexId: "a2"),
+            DeckEdge(id: "ae2", startVertexId: "a2", endVertexId: "a3"),
+            DeckEdge(id: "ae3", startVertexId: "a3", endVertexId: "a4"),
+            DeckEdge(id: "ae4", startVertexId: "a4", endVertexId: "a1"),
+        ]
+        levelA.surfaces = [
+            DeckSurface(
+                id: "surface-a",
+                vertexIds: ["a1", "a2", "a3", "a4"],
+                label: "Level A label"
+            )
+        ]
+
+        var levelB = DeckLevel(id: "level-b", name: "Level B")
+        levelB.vertices = [
+            DeckVertex(id: "b1", position: CGPoint(x: 0, y: 0)),
+            DeckVertex(id: "b2", position: CGPoint(x: 80, y: 0)),
+            DeckVertex(id: "b3", position: CGPoint(x: 80, y: 80)),
+            DeckVertex(id: "b4", position: CGPoint(x: 0, y: 80)),
+        ]
+        levelB.edges = [
+            DeckEdge(id: "be1", startVertexId: "b1", endVertexId: "b2"),
+            DeckEdge(id: "be2", startVertexId: "b2", endVertexId: "b3"),
+            DeckEdge(id: "be3", startVertexId: "b3", endVertexId: "b4"),
+            DeckEdge(id: "be4", startVertexId: "b4", endVertexId: "b1"),
+        ]
+        levelB.surfaces = [
+            DeckSurface(
+                id: "surface-b",
+                vertexIds: ["b1", "b2", "b3", "b4"],
+                label: "Level B label"
+            )
+        ]
+
+        var data = DeckDrawingData()
+        data.levels = [levelA, levelB]
+        let viewModel = DeckBuilderViewModel(deckDesign: deckDesign(drawingData: data))
+        viewModel.activeLevelIndex = 0
+        viewModel.selection.selectedSurfaceIds = ["surface-a"]
+        let target = DeckLabelEditTarget.surfaces(
+            ids: viewModel.selection.selectedSurfaceIds,
+            levelId: viewModel.activeLevel?.id
+        )
+
+        viewModel.activeLevelIndex = 1
+        viewModel.selection.selectedSurfaceIds = ["surface-b"]
+        viewModel.setLabel("Edited on A", for: target)
+
+        XCTAssertEqual(viewModel.drawingData.levels[0].surfaces.first?.label, "Edited on A")
+        XCTAssertEqual(viewModel.drawingData.levels[1].surfaces.first?.label, "Level B label")
+        XCTAssertTrue(viewModel.canUndo)
+
+        viewModel.undo()
+
+        XCTAssertEqual(viewModel.drawingData.levels[0].surfaces.first?.label, "Level A label")
+        XCTAssertEqual(viewModel.drawingData.levels[1].surfaces.first?.label, "Level B label")
+        XCTAssertFalse(viewModel.canUndo)
+    }
+
     func testTotalRealWorldArea_sumsMultipleDetectedSurfaces() {
         var data = DeckDrawingData()
         data.scaleFactor = 1.0

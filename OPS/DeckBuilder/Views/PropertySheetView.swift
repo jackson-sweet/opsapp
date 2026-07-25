@@ -3,6 +3,112 @@
 import SwiftUI
 import SwiftData
 
+/// Owns the transient text for a deck label and emits a normalized value only
+/// when editing is explicitly committed. Keystrokes are draft-only so they
+/// cannot create undo, persistence, sync, or feedback side effects.
+struct DeckLabelEditSession: Equatable {
+    struct Commit: Equatable {
+        let value: String?
+    }
+
+    enum Action: Equatable {
+        case changed(String)
+        case commit
+        case synchronize(String?)
+    }
+
+    private(set) var draft: String
+    private var committedValue: String?
+
+    init(sourceValue: String?) {
+        draft = sourceValue ?? ""
+        committedValue = Self.normalized(sourceValue)
+    }
+
+    mutating func handle(_ action: Action) -> Commit? {
+        switch action {
+        case .changed(let value):
+            draft = value
+            return nil
+
+        case .commit:
+            let value = Self.normalized(draft)
+            guard value != committedValue else { return nil }
+            committedValue = value
+            return Commit(value: value)
+
+        case .synchronize(let value):
+            draft = value ?? ""
+            committedValue = Self.normalized(value)
+            return nil
+        }
+    }
+
+    private static func normalized(_ value: String?) -> String? {
+        let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines)
+        return (trimmed?.isEmpty ?? true) ? nil : trimmed
+    }
+}
+
+/// A visually-neutral TextField wrapper that gives deck labels one shared,
+/// idempotent commit contract across keyboard Done, focus loss, and dismissal.
+private struct CommittingDeckLabelField: View {
+    let placeholder: String
+    let sourceValue: String?
+    let target: DeckLabelEditTarget
+    let onCommit: (DeckLabelEditTarget, String?) -> Void
+
+    @State private var session: DeckLabelEditSession
+    @State private var editTarget: DeckLabelEditTarget
+    @FocusState private var isFocused: Bool
+
+    init(
+        _ placeholder: String,
+        sourceValue: String?,
+        target: DeckLabelEditTarget,
+        onCommit: @escaping (DeckLabelEditTarget, String?) -> Void
+    ) {
+        self.placeholder = placeholder
+        self.sourceValue = sourceValue
+        self.target = target
+        self.onCommit = onCommit
+        _session = State(initialValue: DeckLabelEditSession(sourceValue: sourceValue))
+        _editTarget = State(initialValue: target)
+    }
+
+    var body: some View {
+        TextField(
+            placeholder,
+            text: Binding(
+                get: { session.draft },
+                set: { _ = session.handle(.changed($0)) }
+            )
+        )
+        .focused($isFocused)
+        .onSubmit {
+            commit()
+            isFocused = false
+        }
+        .onChange(of: isFocused) { wasFocused, isFocused in
+            if wasFocused && !isFocused {
+                commit()
+            }
+        }
+        .onChange(of: sourceValue) { _, value in
+            guard !isFocused, editTarget == target else { return }
+            _ = session.handle(.synchronize(value))
+        }
+        .onDisappear {
+            commit()
+        }
+    }
+
+    private func commit() {
+        guard let commit = session.handle(.commit) else { return }
+        onCommit(editTarget, commit.value)
+    }
+}
+
 struct PropertySheetView: View {
     @ObservedObject var viewModel: DeckBuilderViewModel
     @Environment(\.dismiss) private var dismiss
@@ -364,14 +470,21 @@ struct PropertySheetView: View {
     /// secondary line.
     @ViewBuilder
     private func edgeLabelField(edgeId: String, edge: DeckEdge) -> some View {
+        let labelTarget = DeckLabelEditTarget.edge(
+            id: edgeId,
+            levelId: viewModel.activeLevel?.id
+        )
         HStack(spacing: OPSStyle.Layout.spacing2) {
             Image(systemName: "tag")
                 .font(.system(size: OPSStyle.Layout.IconSize.sm))
                 .foregroundColor(OPSStyle.Colors.secondaryText)
-            TextField("Label (optional)", text: Binding(
-                get: { edge.label ?? "" },
-                set: { viewModel.setEdgeLabel(edgeId, label: $0) }
-            ))
+            CommittingDeckLabelField(
+                "Label (optional)",
+                sourceValue: edge.label,
+                target: labelTarget,
+                onCommit: { viewModel.setLabel($1, for: $0) }
+            )
+            .id(labelTarget)
             .font(OPSStyle.Typography.caption)
             .foregroundColor(OPSStyle.Colors.primaryText)
             .textInputAutocapitalization(.words)
@@ -649,6 +762,9 @@ struct PropertySheetView: View {
             if let first = surfaces.first { return first.label ?? "" }
             return viewModel.drawingData.footprint.label ?? ""
         }()
+        let labelTarget: DeckLabelEditTarget = selectedSurfaceIds.isEmpty
+            ? .footprint(levelId: viewModel.activeLevel?.id)
+            : .surfaces(ids: selectedSurfaceIds, levelId: viewModel.activeLevel?.id)
 
         VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
             Text("Label")
@@ -659,16 +775,13 @@ struct PropertySheetView: View {
                 Image(systemName: "tag")
                     .font(.system(size: OPSStyle.Layout.IconSize.sm))
                     .foregroundColor(OPSStyle.Colors.secondaryText)
-                TextField("e.g. BBQ pad, Hot tub deck", text: Binding(
-                    get: { activeLabel },
-                    set: { newValue in
-                        if !selectedSurfaceIds.isEmpty {
-                            viewModel.setLabelOnSelectedSurfaces(newValue)
-                        } else {
-                            viewModel.setLabelOnActiveFootprint(newValue)
-                        }
-                    }
-                ))
+                CommittingDeckLabelField(
+                    "e.g. BBQ pad, Hot tub deck",
+                    sourceValue: activeLabel,
+                    target: labelTarget,
+                    onCommit: { viewModel.setLabel($1, for: $0) }
+                )
+                .id(labelTarget)
                 .font(OPSStyle.Typography.caption)
                 .foregroundColor(OPSStyle.Colors.primaryText)
                 .textInputAutocapitalization(.words)

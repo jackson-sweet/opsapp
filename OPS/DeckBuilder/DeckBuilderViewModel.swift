@@ -12,6 +12,16 @@ enum VinylOrderSurfaceScope: Equatable {
     case allSurfaces
 }
 
+/// Stable destination captured when a deck label field begins editing.
+/// `levelId == nil` means the single-level root drawing; a multi-level target
+/// always carries its level id so a later level/selection change cannot move
+/// or drop the pending draft.
+enum DeckLabelEditTarget: Hashable {
+    case edge(id: String, levelId: String?)
+    case surfaces(ids: Set<String>, levelId: String?)
+    case footprint(levelId: String?)
+}
+
 @MainActor
 class DeckBuilderViewModel: ObservableObject {
 
@@ -3068,46 +3078,111 @@ class DeckBuilderViewModel: ObservableObject {
     /// Sets a label on every currently-selected surface. Pass `nil` or
     /// empty to clear. DECK-NEW-1 follow-up.
     func setLabelOnSelectedSurfaces(_ raw: String?) {
-        let trimmed = raw?.trimmingCharacters(in: .whitespacesAndNewlines)
-        let value: String? = (trimmed?.isEmpty ?? true) ? nil : trimmed
-        let targetIds = selection.selectedSurfaceIds
-        guard !targetIds.isEmpty else { return }
-        pushUndo("label surface")
-        var surfaces = activePersistedSurfaces
-        for i in surfaces.indices where targetIds.contains(surfaces[i].id) {
-            surfaces[i].label = value
-        }
-        activePersistedSurfaces = surfaces
-        save()
-        ToastCenter.shared.present(Feedback.Deck.surfacesLabeled)
+        setLabel(
+            raw,
+            for: .surfaces(
+                ids: selection.selectedSurfaceIds,
+                levelId: activeLevel?.id
+            )
+        )
     }
 
     /// Sets the legacy footprint label — used from the property sheet so the
     /// user can name the active deck surface ("BBQ pad", "Hot tub deck") when
     /// no per-surface ids are selected (single closed shape). Bug 4a03f507.
     func setLabelOnActiveFootprint(_ raw: String?) {
-        let trimmed = raw?.trimmingCharacters(in: .whitespacesAndNewlines)
-        let value: String? = (trimmed?.isEmpty ?? true) ? nil : trimmed
-        pushUndo("label footprint")
-        var fp = activeFootprint
-        fp.label = value
-        activeFootprint = fp
-        save()
-        ToastCenter.shared.present(Feedback.Deck.footprintLabeled)
+        setLabel(raw, for: .footprint(levelId: activeLevel?.id))
     }
 
     /// Optional per-edge label. The model stores it on `DeckEdge.label`
     /// — pre-existing — but there was no setter that re-routes through
     /// `activeUpdateEdge` + undo/save. Bug 4a03f507.
     func setEdgeLabel(_ edgeId: String, label raw: String?) {
-        guard var edge = activeEdge(byId: edgeId) else { return }
+        setLabel(raw, for: .edge(id: edgeId, levelId: activeLevel?.id))
+    }
+
+    /// Commits a label to the exact geometry context that produced the draft.
+    /// The explicit target prevents focus-loss/sheet-dismiss callbacks from
+    /// following a newer selection or active level.
+    func setLabel(_ raw: String?, for target: DeckLabelEditTarget) {
         let trimmed = raw?.trimmingCharacters(in: .whitespacesAndNewlines)
         let value: String? = (trimmed?.isEmpty ?? true) ? nil : trimmed
-        pushUndo("label edge")
-        edge.label = value
-        activeUpdateEdge(edge)
-        save()
-        ToastCenter.shared.present(Feedback.Deck.edgeLabeled)
+
+        switch target {
+        case .surfaces(let targetIds, let levelId):
+            guard !targetIds.isEmpty else { return }
+
+            if let levelId {
+                guard let levelIndex = drawingData.levels.firstIndex(where: { $0.id == levelId }) else {
+                    return
+                }
+                var surfaces = drawingData.levels[levelIndex].surfaces
+                guard surfaces.contains(where: {
+                    targetIds.contains($0.id) && $0.label != value
+                }) else { return }
+                pushUndo("label surface")
+                for index in surfaces.indices where targetIds.contains(surfaces[index].id) {
+                    surfaces[index].label = value
+                }
+                drawingData.levels[levelIndex].surfaces = surfaces
+            } else {
+                guard !drawingData.isMultiLevel else { return }
+                var surfaces = drawingData.surfaces
+                guard surfaces.contains(where: {
+                    targetIds.contains($0.id) && $0.label != value
+                }) else { return }
+                pushUndo("label surface")
+                for index in surfaces.indices where targetIds.contains(surfaces[index].id) {
+                    surfaces[index].label = value
+                }
+                drawingData.surfaces = surfaces
+            }
+
+            save()
+            ToastCenter.shared.present(Feedback.Deck.surfacesLabeled)
+
+        case .footprint(let levelId):
+            if let levelId {
+                guard let levelIndex = drawingData.levels.firstIndex(where: { $0.id == levelId }) else {
+                    return
+                }
+                guard drawingData.levels[levelIndex].footprint.label != value else { return }
+                pushUndo("label footprint")
+                drawingData.levels[levelIndex].footprint.label = value
+            } else {
+                guard !drawingData.isMultiLevel else { return }
+                guard drawingData.footprint.label != value else { return }
+                pushUndo("label footprint")
+                drawingData.footprint.label = value
+            }
+
+            save()
+            ToastCenter.shared.present(Feedback.Deck.footprintLabeled)
+
+        case .edge(let edgeId, let levelId):
+            if let levelId {
+                guard let levelIndex = drawingData.levels.firstIndex(where: { $0.id == levelId }),
+                      let edgeIndex = drawingData.levels[levelIndex].edges.firstIndex(where: { $0.id == edgeId })
+                else {
+                    return
+                }
+                guard drawingData.levels[levelIndex].edges[edgeIndex].label != value else { return }
+                pushUndo("label edge")
+                drawingData.levels[levelIndex].edges[edgeIndex].label = value
+            } else {
+                guard !drawingData.isMultiLevel,
+                      let edgeIndex = drawingData.edges.firstIndex(where: { $0.id == edgeId })
+                else {
+                    return
+                }
+                guard drawingData.edges[edgeIndex].label != value else { return }
+                pushUndo("label edge")
+                drawingData.edges[edgeIndex].label = value
+            }
+
+            save()
+            ToastCenter.shared.present(Feedback.Deck.edgeLabeled)
+        }
     }
 
     /// Creates a fresh level (migrating from single-level if needed) and

@@ -2,10 +2,9 @@
 //  LeadImageService.swift
 //  OPS
 //
-//  Photos on a LEAD. Uploads ride the standard presign flow into
-//  `opportunities/{companyId}/{opportunityId}/…` and land as full public S3
-//  URLs in `opportunities.images` — the exact shape the web email-extract
-//  pipeline writes, so both producers stay interchangeable. The PATCH is a
+//  Photos on a LEAD. Uploads ride the standard presign flow into the public
+//  project-media namespace at `projects/{companyId}/leads/{opportunityId}/…`
+//  and land as full S3 URLs in `opportunities.images`. The PATCH is a
 //  fetch→merge→update against the SERVER row (never the possibly-stale local
 //  array), so two devices adding photos near-simultaneously lose nothing.
 //
@@ -22,6 +21,12 @@ import Foundation
 import SwiftData
 import SwiftUI
 import UIKit
+
+enum LeadImageStoragePath {
+    static func folder(companyId: String, opportunityId: String) -> String {
+        "projects/\(companyId)/leads/\(opportunityId)"
+    }
+}
 
 /// One queued lead photo. Persisted in UserDefaults (bytes live on disk via
 /// ImageFileManager) so the queue survives relaunch.
@@ -103,7 +108,10 @@ final class LeadImageService: ObservableObject {
                 let url = try await uploader.uploadImageData(
                     data,
                     filename: filename,
-                    folder: "opportunities/\(companyId)/\(opportunityId)"
+                    folder: LeadImageStoragePath.folder(
+                        companyId: companyId,
+                        opportunityId: opportunityId
+                    )
                 )
                 result.uploadedURLs.append(url)
             } catch {
@@ -230,7 +238,10 @@ final class LeadImageService: ObservableObject {
                     let url = try await uploader.uploadImageData(
                         data,
                         filename: (pending.localURL as NSString).lastPathComponent,
-                        folder: "opportunities/\(pending.companyId)/\(pending.opportunityId)"
+                        folder: LeadImageStoragePath.folder(
+                            companyId: pending.companyId,
+                            opportunityId: pending.opportunityId
+                        )
                     )
                     _ = ImageFileManager.shared.deleteImage(localID: pending.localURL)
                     mergedByOpportunity[pending.opportunityId, default: (pending.companyId, [])].urls.append(url)

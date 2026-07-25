@@ -16,6 +16,30 @@ import XCTest
 
 final class InboundChangeSignalDataActorTests: XCTestCase {
 
+    func test_fullSyncOrdersIncludeReminderDependencies() throws {
+        for order in [
+            InboundProcessor.syncOrder,
+            DataActor.syncOrder
+        ] {
+            let taskTypeIndex = try XCTUnwrap(
+                order.firstIndex(of: .taskType)
+            )
+            let templateIndex = try XCTUnwrap(
+                order.firstIndex(of: .taskTypeReminder)
+            )
+            let projectTaskIndex = try XCTUnwrap(
+                order.firstIndex(of: .projectTask)
+            )
+            let reminderIndex = try XCTUnwrap(
+                order.firstIndex(of: .taskReminder)
+            )
+
+            XCTAssertLessThan(taskTypeIndex, templateIndex)
+            XCTAssertLessThan(templateIndex, reminderIndex)
+            XCTAssertLessThan(projectTaskIndex, reminderIndex)
+        }
+    }
+
     // MARK: - Harness
 
     private func makeInMemoryContainer() throws -> ModelContainer {

@@ -19,7 +19,8 @@ struct TaskTypeSheet: View {
         var title: String {
             switch self {
             case .create: return "CREATE TASK TYPE"
-            case .edit: return "EDIT TASK TYPE"
+            case .edit(let taskType, _):
+                return taskType.isDefault ? "TASK TYPE" : "EDIT TASK TYPE"
             }
         }
 
@@ -36,13 +37,16 @@ struct TaskTypeSheet: View {
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var dataController: DataController
     @Environment(\.modelContext) private var modelContext
+    @Query private var allTasks: [ProjectTask]
 
     // Form State
     @State private var taskTypeName: String = ""
     @State private var taskTypeIcon: String = "checklist"
-    @State private var taskTypeColor: Color = Color(hex: "93A17C")!
-    @State private var taskTypeColorHex: String = "93A17C"
+    @State private var taskTypeColor: Color = Color(hex: "73806E")!
+    @State private var taskTypeColorHex: String = "73806E"
     @State private var isDefault: Bool = false
+    @State private var showingColorPicker = false
+    @State private var showingUsageSheet = false
 
     // Loading state
     @State private var isSaving = false
@@ -53,6 +57,7 @@ struct TaskTypeSheet: View {
     @State private var dependencies: [TaskTypeDependency] = []
     @State private var showingDependencyPicker = false
     @State private var editingDependencyId: String?
+    @State private var dependenciesExpanded = false
 
     // Linked products state — bug 4dadd96c. Surfaces every product whose
     // `task_type_ref` points at this task type so the operator can see and
@@ -63,7 +68,7 @@ struct TaskTypeSheet: View {
     @State private var isLoadingLinkedProducts: Bool = false
     @State private var showingAttachProductSheet: Bool = false
     @State private var showingNewLinkedProductSheet: Bool = false
-    @State private var linkedProductsExpanded: Bool = true
+    @State private var linkedProductsExpanded: Bool = false
 
     // Default sub-tasks (task_templates) state — same bug. Edit-mode only
     // for the same reason; templates carry a FK back to the parent task
@@ -72,7 +77,7 @@ struct TaskTypeSheet: View {
     @State private var isLoadingSubTasks: Bool = false
     @State private var showingNewSubTaskSheet: Bool = false
     @State private var editingSubTask: TaskTemplate? = nil
-    @State private var subTasksExpanded: Bool = true
+    @State private var subTasksExpanded: Bool = false
 
     // Bug 6aa8182e — delete/merge from inside the edit sheet. When the type
     // is in use, deleting is blocked and the alert routes to the merge sheet.
@@ -157,30 +162,19 @@ struct TaskTypeSheet: View {
 
                 ScrollView {
                     VStack(spacing: OPSStyle.Layout.spacing4) {
-                        // Preview — blown-up task type badge
-                        previewCard
+                        identitySection
 
-                        // Task Type Details
-                        ExpandableSection(
-                            title: "TASK TYPE DETAILS",
-                            icon: "tag.fill",
-                            isExpanded: .constant(true),
-                            onDelete: nil,
-                            collapsible: false
-                        ) {
-                            VStack(spacing: OPSStyle.Layout.spacing3) {
-                                nameField
-                                colorField
-                            }
+                        if case .edit(let taskType, _) = mode {
+                            usageSection(for: taskType)
                         }
 
-                        // Dependencies section
-                        dependenciesSection
+                        if !identityLocked {
+                            dependenciesSection
+                        }
 
-                        // Linked Products + Default Sub-Tasks live in
-                        // edit mode only — both pin to the persisted task
-                        // type id, which doesn't exist until first save.
-                        if case .edit(let taskType, _) = mode {
+                        // Linked Products + Default Sub-Tasks live in edit mode
+                        // only and stay collapsed until explicitly needed.
+                        if case .edit(let taskType, _) = mode, !identityLocked {
                             linkedProductsSection(for: taskType)
                             subTasksSection(for: taskType)
                         }
@@ -192,14 +186,14 @@ struct TaskTypeSheet: View {
                             deleteTypeSection(for: taskType)
                         }
                     }
-                    .padding()
-                    .padding(.bottom, 100)
+                    .padding(OPSStyle.Layout.spacing3_5)
                 }
             }
             .standardSheetToolbar(
                 title: mode.title,
-                actionText: "Save",
-                isActionEnabled: isValid,
+                cancelText: identityLocked ? "Close" : "Cancel",
+                actionText: identityLocked ? "" : "Save",
+                isActionEnabled: isValid && !identityLocked,
                 isSaving: isSaving,
                 showProgressOnSave: false,
                 onCancel: { dismiss() },
@@ -207,6 +201,12 @@ struct TaskTypeSheet: View {
             )
             .interactiveDismissDisabled()
         }
+        .presentationDetents(
+            mode.isEditing ? [.large] : [.medium, .large]
+        )
+        .presentationDragIndicator(
+            mode.isEditing ? .hidden : .visible
+        )
         .onAppear {
             if case .edit(let taskType, _) = mode {
                 taskTypeName = taskType.display
@@ -235,6 +235,18 @@ struct TaskTypeSheet: View {
             )
             .environmentObject(dataController)
         }
+        .sheet(isPresented: $showingColorPicker) {
+            colorPickerSheet
+        }
+        .sheet(isPresented: $showingUsageSheet) {
+            if let taskType = editTaskType {
+                TaskTypeUsageSheet(
+                    source: taskType,
+                    allCompanyTypes: existingTaskTypes
+                )
+                .environmentObject(dataController)
+            }
+        }
         .errorToast($errorMessage, label: Feedback.Err.saveFailed)
         .alert(
             "Delete this type?",
@@ -258,7 +270,7 @@ struct TaskTypeSheet: View {
                 showMergeSheet = true
             }
         } message: { type in
-            let count = type.tasks.filter { $0.deletedAt == nil }.count
+            let count = activeTaskCount(for: type)
             Text("\(count) task\(count == 1 ? "" : "s") still use \(type.display). Merge it into another type to move the tasks before deleting.")
         }
         .errorToast($deleteErrorMessage, label: Feedback.Err.deleteFailed)
@@ -343,17 +355,16 @@ struct TaskTypeSheet: View {
     }
 
     private func deleteTypeSection(for taskType: TaskType) -> some View {
-        VStack(spacing: 10) {
+        VStack(spacing: OPSStyle.Layout.spacing2_5) {
             Button(action: {
                 UIImpactFeedbackGenerator(style: .light).impactOccurred()
                 requestDelete(taskType)
             }) {
-                HStack(spacing: 10) {
-                    Image(systemName: "trash")
+                HStack(spacing: OPSStyle.Layout.spacing2_5) {
+                    Image(systemName: OPSStyle.Icons.trash)
                         .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .semibold))
                     Text("DELETE TYPE")
                         .font(OPSStyle.Typography.bodyBold)
-                        .tracking(1.2)
                 }
                 .foregroundColor(OPSStyle.Colors.errorStatus)
                 .frame(maxWidth: .infinity)
@@ -366,7 +377,7 @@ struct TaskTypeSheet: View {
 
             // Helper copy — reinforces what delete actually does so a distracted
             // user doesn't realize mid-undo that every task got removed.
-            let activeCount = taskType.tasks.filter { $0.deletedAt == nil }.count
+            let activeCount = activeTaskCount(for: taskType)
             if activeCount > 0 {
                 Text("\(activeCount) task\(activeCount == 1 ? "" : "s") use this type — delete is blocked. Merge into another type first.")
                     .font(OPSStyle.Typography.smallCaption)
@@ -387,7 +398,7 @@ struct TaskTypeSheet: View {
         // Refresh existingTaskTypesForMerge in case the user added more types
         // between sheet open and this tap.
         loadExistingTaskTypes()
-        let activeCount = type.tasks.filter { $0.deletedAt == nil }.count
+        let activeCount = activeTaskCount(for: type)
         if activeCount > 0 {
             showBlockedDeleteAlert = true
         } else {
@@ -414,57 +425,150 @@ struct TaskTypeSheet: View {
         }
     }
 
-    // MARK: - Preview Card (Blown-Up Task Type Badge)
+    // MARK: - Identity + Usage
 
-    private var previewCard: some View {
-        VStack(spacing: 10) {
-            Text("PREVIEW")
-                .font(OPSStyle.Typography.smallCaption)
-                .foregroundColor(OPSStyle.Colors.secondaryText)
-
-            Text((taskTypeName.isEmpty ? "Task Type Name" : taskTypeName).uppercased())
-                .font(OPSStyle.Typography.previewLabel)
-                .tracking(0.6)
-                .foregroundColor(taskTypeColor)
-                .lineLimit(1)
-                .padding(.horizontal, OPSStyle.Layout.spacing3_5)
-                .padding(.vertical, 10)
-                .background(
-                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cardRadius)
-                        .fill(taskTypeColor.opacity(0.12))
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cardRadius)
-                        .stroke(taskTypeColor, lineWidth: 1.5)
-                )
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, OPSStyle.Layout.spacing4)
-        .glassSurface()
+    private var identityLocked: Bool {
+        editTaskType?.isDefault == true
     }
 
-    // MARK: - Name Field
+    private func activeTaskCount(for taskType: TaskType) -> Int {
+        TaskTypeSettingsLogic.activeTaskCount(
+            for: taskType,
+            in: allTasks
+        )
+    }
 
-    private var nameField: some View {
+    private var identitySection: some View {
         VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
-            Text("NAME")
-                .font(OPSStyle.Typography.captionBold)
-                .foregroundColor(OPSStyle.Colors.secondaryText)
+            Text(identityLocked ? "DEFAULT TYPE" : "IDENTITY")
+                .font(OPSStyle.Typography.metadata)
+                .foregroundColor(OPSStyle.Colors.tertiaryText)
 
-            TextField("Enter task type name", text: $taskTypeName)
-                .font(OPSStyle.Typography.body)
-                .foregroundColor(OPSStyle.Colors.primaryText)
-                .padding()
-                .background(OPSStyle.Colors.surfaceInput)
-                .cornerRadius(OPSStyle.Layout.cornerRadius)
-                .overlay(
-                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                        .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: OPSStyle.Layout.Border.standard)
-                )
+            VStack(spacing: 0) {
+                if identityLocked {
+                    HStack(spacing: OPSStyle.Layout.spacing3) {
+                        RoundedRectangle(
+                            cornerRadius: OPSStyle.Layout.progressBarRadius
+                        )
+                        .fill(taskTypeColor)
+                        .frame(
+                            width: OPSStyle.Layout.spacing1,
+                            height: OPSStyle.Layout.spacing4
+                        )
+
+                        Text(taskTypeName)
+                            .font(OPSStyle.Typography.bodyBold)
+                            .foregroundColor(OPSStyle.Colors.primaryText)
+                            .lineLimit(1)
+
+                        Spacer()
+
+                        Text("LOCKED")
+                            .font(OPSStyle.Typography.microLabel)
+                            .foregroundColor(OPSStyle.Colors.secondaryText)
+                    }
+                    .padding(.horizontal, OPSStyle.Layout.spacing3)
+                    .frame(height: OPSStyle.Layout.touchTargetStandard)
+                } else {
+                    TextField("Task type name", text: $taskTypeName)
+                        .font(OPSStyle.Typography.body)
+                        .foregroundColor(OPSStyle.Colors.primaryText)
+                        .padding(.horizontal, OPSStyle.Layout.spacing3)
+                        .frame(height: OPSStyle.Layout.inputHeight)
+                        .background(OPSStyle.Colors.surfaceInput)
+                        .overlay(
+                            RoundedRectangle(
+                                cornerRadius: OPSStyle.Layout.cornerRadius
+                            )
+                            .stroke(
+                                OPSStyle.Colors.inputFieldBorder,
+                                lineWidth: OPSStyle.Layout.Border.standard
+                            )
+                        )
+                        .cornerRadius(OPSStyle.Layout.cornerRadius)
+                        .padding(OPSStyle.Layout.spacing3)
+
+                    OPSStyle.Colors.separator
+                        .frame(height: OPSStyle.Layout.Border.standard)
+                        .padding(.leading, OPSStyle.Layout.spacing3)
+
+                    Button {
+                        showingColorPicker = true
+                    } label: {
+                        HStack(spacing: OPSStyle.Layout.spacing3) {
+                            Circle()
+                                .fill(taskTypeColor)
+                                .frame(
+                                    width: OPSStyle.Layout.IconSize.lg,
+                                    height: OPSStyle.Layout.IconSize.lg
+                                )
+
+                            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
+                                Text("COLOR")
+                                    .font(OPSStyle.Typography.metadata)
+                                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+                                Text(selectedColorName)
+                                    .font(OPSStyle.Typography.body)
+                                    .foregroundColor(OPSStyle.Colors.primaryText)
+                            }
+
+                            Spacer()
+
+                            Image(systemName: OPSStyle.Icons.chevronRight)
+                                .font(.system(size: OPSStyle.Layout.IconSize.sm))
+                                .foregroundColor(OPSStyle.Colors.tertiaryText)
+                        }
+                        .padding(.horizontal, OPSStyle.Layout.spacing3)
+                        .frame(height: OPSStyle.Layout.touchTargetStandard)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Color, \(selectedColorName)")
+                    .accessibilityHint("Opens the color picker")
+                }
+            }
+            .glassSurface()
         }
     }
 
-    // MARK: - Color Field (3-Row Horizontal Scroll)
+    private func usageSection(for taskType: TaskType) -> some View {
+        Button {
+            showingUsageSheet = true
+        } label: {
+            HStack(spacing: OPSStyle.Layout.spacing3) {
+                VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
+                    Text("TASKS USING THIS TYPE")
+                        .font(OPSStyle.Typography.metadata)
+                        .foregroundColor(OPSStyle.Colors.tertiaryText)
+                    Text("MANAGE TASKS")
+                        .font(OPSStyle.Typography.bodyBold)
+                        .foregroundColor(OPSStyle.Colors.primaryText)
+                }
+
+                Spacer()
+
+                Text("\(activeTaskCount(for: taskType))")
+                    .font(OPSStyle.Typography.dataValueLg)
+                    .monospacedDigit()
+                    .foregroundColor(OPSStyle.Colors.secondaryText)
+
+                Image(systemName: OPSStyle.Icons.chevronRight)
+                    .font(.system(size: OPSStyle.Layout.IconSize.sm))
+                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+            }
+            .padding(.horizontal, OPSStyle.Layout.spacing3)
+            .frame(height: OPSStyle.Layout.touchTargetStandard)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .glassSurface()
+        .accessibilityLabel(
+            "\(activeTaskCount(for: taskType)) tasks use this type"
+        )
+        .accessibilityHint("Opens task selection and reassignment")
+    }
+
+    // MARK: - Color Picker
 
     /// Normalize hex by stripping leading # if present
     private func normalizeHex(_ hex: String) -> String {
@@ -490,50 +594,81 @@ struct TaskTypeSheet: View {
         })?.display
     }
 
-    private var colorField: some View {
+    private var selectedColorName: String {
+        curatedColors.first {
+            $0.hex.lowercased() == taskTypeColorHex.lowercased()
+        }?.name.uppercased() ?? taskTypeColorHex.uppercased()
+    }
+
+    private var colorPickerSheet: some View {
         let inUse = colorsInUse
 
-        return VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing3) {
-            Text("COLOR")
-                .font(OPSStyle.Typography.captionBold)
-                .foregroundColor(OPSStyle.Colors.secondaryText)
+        return NavigationStack {
+            ZStack {
+                OPSStyle.Colors.background.ignoresSafeArea()
 
-            // Color families
-            ForEach(colorFamilies, id: \.family) { group in
-                let familyColors = curatedColors.filter { $0.family == group.family }
+                ScrollView {
+                    VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing4) {
+                        HStack(spacing: OPSStyle.Layout.spacing3) {
+                            Circle()
+                                .fill(taskTypeColor)
+                                .frame(
+                                    width: OPSStyle.Layout.touchTargetMin,
+                                    height: OPSStyle.Layout.touchTargetMin
+                                )
+                            Text(selectedColorName)
+                                .font(OPSStyle.Typography.bodyBold)
+                                .foregroundColor(OPSStyle.Colors.primaryText)
+                        }
 
-                VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
-                    Text(group.label)
-                        .font(OPSStyle.Typography.smallCaption)
-                        .foregroundColor(OPSStyle.Colors.tertiaryText)
+                        ForEach(colorFamilies, id: \.family) { group in
+                            let familyColors = curatedColors.filter {
+                                $0.family == group.family
+                            }
 
-                    // Wrap colors in a flowing grid
-                    FlowLayout(spacing: OPSStyle.Layout.spacing2) {
-                        ForEach(familyColors, id: \.hex) { curated in
-                            let used = inUse.contains(curated.hex.lowercased())
-                            let isSelected = taskTypeColorHex.lowercased() == curated.hex.lowercased()
+                            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
+                                Text(group.label)
+                                    .font(OPSStyle.Typography.metadata)
+                                    .foregroundColor(OPSStyle.Colors.tertiaryText)
 
-                            ColorOption(
-                                color: Color(hex: curated.hex) ?? OPSStyle.Colors.primaryAccent,
-                                isSelected: isSelected,
-                                isInUse: used,
-                                usedByName: used ? taskTypeUsingColor(curated.hex) : nil,
-                                action: {
-                                    taskTypeColor = Color(hex: curated.hex) ?? OPSStyle.Colors.primaryAccent
-                                    taskTypeColorHex = curated.hex
+                                FlowLayout(spacing: OPSStyle.Layout.spacing2) {
+                                    ForEach(familyColors, id: \.hex) { curated in
+                                        let used = inUse.contains(
+                                            curated.hex.lowercased()
+                                        )
+                                        let isSelected =
+                                            taskTypeColorHex.lowercased()
+                                                == curated.hex.lowercased()
+
+                                        ColorOption(
+                                            color: Color(hex: curated.hex)
+                                                ?? OPSStyle.Colors.primaryAccent,
+                                            isSelected: isSelected,
+                                            isInUse: used,
+                                            usedByName: used
+                                                ? taskTypeUsingColor(curated.hex)
+                                                : nil,
+                                            action: {
+                                                taskTypeColor =
+                                                    Color(hex: curated.hex)
+                                                        ?? OPSStyle.Colors.primaryAccent
+                                                taskTypeColorHex = curated.hex
+                                            }
+                                        )
+                                    }
                                 }
-                            )
+                            }
                         }
                     }
+                    .padding(OPSStyle.Layout.spacing3_5)
                 }
             }
-
-            // Show selected color name
-            if let selected = curatedColors.first(where: { $0.hex.lowercased() == taskTypeColorHex.lowercased() }) {
-                Text(selected.name.uppercased())
-                    .font(OPSStyle.Typography.smallCaption)
-                    .foregroundColor(OPSStyle.Colors.secondaryText)
-            }
+            .standardSheetToolbar(
+                title: "Color",
+                actionText: "Done",
+                onCancel: { showingColorPicker = false },
+                onAction: { showingColorPicker = false }
+            )
         }
     }
 
@@ -552,11 +687,11 @@ struct TaskTypeSheet: View {
 
     private var dependenciesSection: some View {
         ExpandableSection(
-            title: "DEPENDENCIES",
-            icon: "arrow.triangle.branch",
-            isExpanded: .constant(true),
+            title: "DEPENDENCIES · \(dependencies.count)",
+            icon: OPSStyle.Icons.scheduleCascade,
+            isExpanded: $dependenciesExpanded,
             onDelete: nil,
-            collapsible: false
+            collapsible: true
         ) {
             VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2_5) {
                 if dependencies.isEmpty {
@@ -777,7 +912,7 @@ struct TaskTypeSheet: View {
                     }
                 }
                 Spacer()
-                Image(systemName: "pencil")
+                Image(systemName: OPSStyle.Icons.pencil)
                     .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .semibold))
                     .foregroundColor(OPSStyle.Colors.primaryAccent)
             }
@@ -1819,22 +1954,45 @@ struct ColorOption: View {
             ZStack {
                 Circle()
                     .fill(color)
-                    .opacity(isInUse && !isSelected ? 0.35 : 1.0)
-                    .frame(width: 32, height: 32)
+                    .opacity(
+                        isInUse && !isSelected
+                            ? OPSStyle.Layout.Opacity.light
+                            : 1
+                    )
+                    .frame(
+                        width: OPSStyle.Layout.IconSize.xl,
+                        height: OPSStyle.Layout.IconSize.xl
+                    )
 
                 // Selection = one hairline gap-ring (focus-ring grammar,
                 // MOBILE.md §1) + a checkmark. One restrained, accessible
                 // signal — not a stack of size, scale, double-ring and label.
                 if isSelected {
                     Circle()
-                        .stroke(OPSStyle.Colors.text, lineWidth: 2)
-                        .frame(width: 38, height: 38)
+                        .stroke(
+                            OPSStyle.Colors.text,
+                            lineWidth: OPSStyle.Layout.Border.thick
+                        )
+                        .frame(
+                            width: OPSStyle.Layout.touchTargetMin,
+                            height: OPSStyle.Layout.touchTargetMin
+                        )
 
                     Circle()
-                        .fill(OPSStyle.Colors.background.opacity(0.55))
-                        .frame(width: 16, height: 16)
-                    Image(systemName: "checkmark")
-                        .font(.system(size: 10, weight: .bold))
+                        .fill(
+                            OPSStyle.Colors.background.opacity(
+                                OPSStyle.Layout.Opacity.medium
+                            )
+                        )
+                        .frame(
+                            width: OPSStyle.Layout.IconSize.sm,
+                            height: OPSStyle.Layout.IconSize.sm
+                        )
+                    Image(systemName: OPSStyle.Icons.checkmark)
+                        .font(.system(
+                            size: OPSStyle.Layout.IconSize.xs,
+                            weight: .bold
+                        ))
                         .foregroundColor(OPSStyle.Colors.text)
                 }
 
@@ -1842,15 +2000,19 @@ struct ColorOption: View {
                 // non-colour cue so the disabled state survives glare and
                 // colour-blindness.
                 if isInUse && !isSelected {
-                    Path { path in
-                        path.move(to: CGPoint(x: 8, y: 24))
-                        path.addLine(to: CGPoint(x: 24, y: 8))
-                    }
-                    .stroke(OPSStyle.Colors.primaryText, lineWidth: 2)
-                    .frame(width: 32, height: 32)
+                    Rectangle()
+                        .fill(OPSStyle.Colors.primaryText)
+                        .frame(
+                            width: OPSStyle.Layout.IconSize.xl,
+                            height: OPSStyle.Layout.Border.thick
+                        )
+                        .rotationEffect(.degrees(-45))
                 }
             }
-            .frame(width: 40, height: 40)
+            .frame(
+                width: OPSStyle.Layout.touchTargetMin,
+                height: OPSStyle.Layout.touchTargetMin
+            )
         }
         .buttonStyle(PlainButtonStyle())
         .accessibilityLabel(accessibilityText)

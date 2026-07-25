@@ -15,6 +15,8 @@ struct SettingsHeader: View {
     var showEditButton: Bool = false
     var isEditing: Bool = false
     var editButtonText: String? = nil
+    var trailingIcon: String? = nil
+    var trailingAccessibilityLabel: String? = nil
     var onBackTapped: () -> Void
     var onEditTapped: (() -> Void)? = nil
 
@@ -28,7 +30,10 @@ struct SettingsHeader: View {
                     .font(.system(size: OPSStyle.Layout.IconSize.md, weight: .semibold))
                     .foregroundColor(OPSStyle.Colors.primaryText)
             }
-            .frame(width: 44, height: 44)
+            .frame(
+                width: OPSStyle.Layout.touchTargetMin,
+                height: OPSStyle.Layout.touchTargetMin
+            )
 
             Spacer()
 
@@ -40,7 +45,25 @@ struct SettingsHeader: View {
             Spacer()
 
             // Edit button or spacer for balance
-            if showEditButton {
+            if let trailingIcon {
+                Button(action: {
+                    onEditTapped?()
+                }) {
+                    Image(systemName: trailingIcon)
+                        .font(.system(
+                            size: OPSStyle.Layout.IconSize.md,
+                            weight: .semibold
+                        ))
+                        .foregroundColor(OPSStyle.Colors.primaryAccent)
+                }
+                .frame(
+                    width: OPSStyle.Layout.touchTargetMin,
+                    height: OPSStyle.Layout.touchTargetMin
+                )
+                .accessibilityLabel(
+                    trailingAccessibilityLabel ?? "Action"
+                )
+            } else if showEditButton {
                 Button(action: {
                     onEditTapped?()
                 }) {
@@ -48,11 +71,11 @@ struct SettingsHeader: View {
                         .font(OPSStyle.Typography.bodyBold)
                         .foregroundColor(OPSStyle.Colors.primaryAccent)
                 }
-                .frame(height: 44)
+                .frame(height: OPSStyle.Layout.touchTargetMin)
             } else {
                 // Empty spacer to balance the header
                 Spacer()
-                    .frame(width: 44)
+                    .frame(width: OPSStyle.Layout.touchTargetMin)
             }
         }
         .padding(.horizontal, OPSStyle.Layout.spacing3_5)

@@ -44,12 +44,7 @@ struct SyncStatusSection: View {
 
     /// Clears the failed/stuck state on the given operations and kicks a sync.
     private func requeue(_ operations: [SyncOperation]) {
-        for op in operations {
-            op.status = "pending"
-            op.retryCount = 0
-            op.lastError = nil
-        }
-        try? dataController.modelContext?.save()
+        syncEngine.retryOperations(operations)
         Task { await syncEngine.triggerSync() }
     }
 }

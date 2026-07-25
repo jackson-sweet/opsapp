@@ -30,6 +30,7 @@ final class SyncEngine {
     private var modelContext: ModelContext?
     private var connectivity: ConnectivityManager?
     private var syncInProgress: Bool = false
+    private var syncRequestedWhileInProgress: Bool = false
     private var pushInProgress: Bool = false
     private var pushRequestedWhileInProgress: Bool = false
     nonisolated(unsafe) private var syncRetryTimer: Timer?
@@ -893,6 +894,22 @@ final class SyncEngine {
         return recorded
     }
 
+    /// Refreshes queue state after a feature appends a custom SyncOperation
+    /// inside the same SwiftData transaction as its local model changes.
+    /// Custom commands use this path because calling `recordOperation` would
+    /// require a second save and create a crash window between state and queue.
+    func notifyDurableOperationQueued(pullAfterPush: Bool = false) {
+        refreshPendingCount()
+        guard connectivity?.shouldAttemptSync == true else { return }
+        Task { @MainActor [weak self] in
+            if pullAfterPush {
+                await self?.triggerSync()
+            } else {
+                await self?.pushPending()
+            }
+        }
+    }
+
     // MARK: - Sync Triggers
 
     /// Fetches just the company row and merges it into SwiftData.
@@ -930,7 +947,10 @@ final class SyncEngine {
     /// Triggers a full push-then-pull cycle, guarding against concurrent syncs.
     func triggerSync() async {
         guard !syncInProgress else {
-            print("[SYNC_ENGINE] Sync already in progress — skipping")
+            syncRequestedWhileInProgress = true
+            print(
+                "[SYNC_ENGINE] Sync already in progress — queued one follow-up"
+            )
             return
         }
 
@@ -949,6 +969,7 @@ final class SyncEngine {
             syncInProgress = false
             isSyncing = false
             refreshPendingCount()
+            drainQueuedSyncRequest()
         }
 
         // Push local changes first, then pull server changes
@@ -959,6 +980,14 @@ final class SyncEngine {
         if !hasError {
             statusText = "Synced"
             kickoffPhotoPrefetch()
+        }
+    }
+
+    private func drainQueuedSyncRequest() {
+        guard syncRequestedWhileInProgress else { return }
+        syncRequestedWhileInProgress = false
+        Task { @MainActor [weak self] in
+            await self?.triggerSync()
         }
     }
 
@@ -1043,6 +1072,7 @@ final class SyncEngine {
             syncInProgress = false
             isSyncing = false
             refreshPendingCount()
+            drainQueuedSyncRequest()
         }
 
         // Pull all entities via DataActor (flag-on) or InboundProcessor (legacy).
@@ -1131,7 +1161,8 @@ final class SyncEngine {
     /// realtime hasn't delivered an edit, instead of a full all-entity sync that
     /// drags the whole catalog/estimates/invoices/photos down on every pull.
     /// Still pushes pending local ops so an offline edit isn't stranded.
-    func refreshScheduleData() async {
+    @discardableResult
+    func refreshScheduleData(companyId requestedCompanyId: String? = nil) async -> Bool {
         // Briefly defer to an in-flight sync rather than racing it.
         if syncInProgress {
             for _ in 0..<30 {
@@ -1140,14 +1171,23 @@ final class SyncEngine {
             }
             guard !syncInProgress else {
                 print("[SYNC_ENGINE] Sync in progress — skipping schedule refresh")
-                return
+                return false
             }
         }
 
         guard connectivity?.shouldAttemptSync == true else {
             print("[SYNC_ENGINE] Network not available — skipping schedule refresh")
             statusText = "Offline — schedule refresh deferred"
-            return
+            return false
+        }
+
+        let companyId = requestedCompanyId
+            ?? UserDefaults.standard.string(forKey: "currentUserCompanyId")
+            ?? ""
+        guard !companyId.isEmpty else {
+            print("[SYNC_ENGINE] Cannot refresh schedule — no company ID")
+            statusText = "Sync error"
+            return false
         }
 
         syncInProgress = true
@@ -1159,25 +1199,32 @@ final class SyncEngine {
             syncInProgress = false
             isSyncing = false
             refreshPendingCount()
+            drainQueuedSyncRequest()
         }
 
-        guard let ctx = modelContext else { return }
+        guard let ctx = modelContext else { return false }
+        var taskTypesRefreshed = false
         do {
+            let failedEntities: Set<SyncEntityType>
             if FeatureFlags.useDataActor, let actor = dataActor {
-                let companyId = UserDefaults.standard.string(forKey: "currentUserCompanyId") ?? ""
-                _ = try await actor.syncScheduleEntities(companyId: companyId)
+                failedEntities = try await actor.syncScheduleEntities(companyId: companyId)
             } else {
                 // Legacy path has no scoped pull — fall back to a full inbound
                 // sync (rare: the actor path is the default).
-                _ = try await inboundProcessor?.fullSync(context: ctx, onProgress: { _, _ in })
+                failedEntities = try await inboundProcessor?.fullSync(
+                    context: ctx,
+                    onProgress: { _, _ in }
+                ) ?? [.taskType]
             }
+            taskTypesRefreshed = !failedEntities.contains(.taskType)
+            hasError = !failedEntities.isEmpty
         } catch {
             print("[SYNC_ENGINE] Schedule refresh error: \(error)")
             hasError = true
             let classified = classifySyncError(error)
             if case .authExpired = classified {
                 NotificationCenter.default.post(name: .syncAuthExpired, object: nil)
-                return
+                return false
             }
         }
 
@@ -1186,6 +1233,7 @@ final class SyncEngine {
         await pushPending()
 
         statusText = hasError ? "Sync error" : "Schedule up to date"
+        return taskTypesRefreshed
     }
 
     /// Re-sends the onboarding-completion ACK (POST /api/onboarding/complete) when a
@@ -2100,6 +2148,51 @@ final class SyncEngine {
         return try? JSONSerialization.data(withJSONObject: object)
     }
 
+    // MARK: - Explicit Retry
+
+    /// Rearms recoverable operations transactionally. Task-type mutations also
+    /// rearm their field guards; when a permanent rejection already rolled the
+    /// optimistic projection back, the guard snapshots are refreshed from the
+    /// current local state before retrying.
+    func retryOperations(_ operations: [SyncOperation]) {
+        guard let modelContext, !operations.isEmpty else { return }
+        let requestedIds = Set(operations.map(\.id))
+
+        do {
+            try modelContext.transaction {
+                let persisted = try modelContext.fetch(
+                    FetchDescriptor<SyncOperation>()
+                )
+                for operation in persisted
+                where requestedIds.contains(operation.id)
+                    && (
+                        operation.status == "failed"
+                            || operation.status == "parked"
+                    ) {
+                    if try TaskTypeMutationSync
+                        .prepareForRetryIfHandled(
+                            operation,
+                            in: modelContext
+                        ) {
+                        continue
+                    }
+                    operation.status = "pending"
+                    operation.retryCount = 0
+                    operation.lastAttemptedAt = nil
+                    operation.completedAt = nil
+                    operation.lastError = nil
+                }
+            }
+        } catch {
+            print(
+                "[SYNC_ENGINE] Failed to rearm recoverable operations: "
+                    + "\(error)"
+            )
+            return
+        }
+        refreshPendingCount()
+    }
+
     // MARK: - Cancel
 
     /// Cancels one operation. Mention edits are dependency-aware: the rejected
@@ -2114,6 +2207,7 @@ final class SyncEngine {
         var cancelled = false
         var projectIdToSignal: String?
         var rejectionReason: String?
+        var taskTypeReminderStateChanged = false
         var discardStateSnapshot:
             ProjectNoteMentionEditSync.DiscardRecoverySnapshot?
 
@@ -2165,6 +2259,61 @@ final class SyncEngine {
                     let operations = try modelContext.fetch(
                         FetchDescriptor<SyncOperation>()
                     )
+                    if let taskTypePlan =
+                        TaskTypeMutationSync.discardPlanIfHandled(
+                            persistedOperation,
+                            in: operations
+                        ) {
+                        let hasExecutingTaskTypeOperation =
+                            operations.contains {
+                                taskTypePlan.commandIds.contains($0.id)
+                                    && (
+                                        $0.status == "inProgress"
+                                            || activeClaimIds
+                                                .contains($0.id)
+                                    )
+                            }
+                        guard !hasExecutingTaskTypeOperation else {
+                            rejectionReason =
+                                "a related task type change is actively executing"
+                            return
+                        }
+
+                        if taskTypePlan.restoresDirectDelete {
+                            guard try TaskTypeMutationSync
+                                .restoreRejectedDirectDelete(
+                                    persistedOperation,
+                                    in: modelContext
+                                ) else {
+                                rejectionReason =
+                                    "the deleted task type could not be restored"
+                                return
+                            }
+                        } else {
+                            let rollback = try TaskTypeMutationSync
+                                .rollbackRejectedMutation(
+                                    persistedOperation,
+                                    in: modelContext
+                                )
+                            guard rollback.didRollback else {
+                                rejectionReason =
+                                    "task type rollback snapshots are unavailable"
+                                return
+                            }
+                            taskTypeReminderStateChanged =
+                                rollback.reminderStateChanged
+                        }
+
+                        for candidate in operations
+                        where taskTypePlan.operationIds.contains(
+                            candidate.id
+                        ) {
+                            modelContext.delete(candidate)
+                        }
+                        cancelled = true
+                        return
+                    }
+
                     let discardedIds =
                         ProjectNoteMentionEditSync.prepareForDiscard(
                             persistedOperation,
@@ -2320,6 +2469,12 @@ final class SyncEngine {
         }
         if let projectIdToSignal {
             ProjectNoteChangeSignal.post(projectId: projectIdToSignal)
+        }
+        if taskTypeReminderStateChanged {
+            NotificationCenter.default.post(
+                name: .taskTypeMutationRolledBack,
+                object: nil
+            )
         }
         refreshPendingCount()
         print(

@@ -93,8 +93,10 @@ actor DataActor {
         .client,
         .subClient,
         .taskType,
+        .taskTypeReminder,
         .project,
         .projectTask,
+        .taskReminder,
         .wizardState,
         .projectNote,
         .projectPhoto,
@@ -909,8 +911,8 @@ actor DataActor {
             if accept.contains("isDefault") { existing.isDefault = dto.isDefault ?? false }
             if accept.contains("displayOrder") { existing.displayOrder = dto.displayOrder ?? 0 }
             if accept.contains("dependenciesJSON") {
-                if let deps = dto.dependencies, !deps.isEmpty,
-                   let data = try? JSONEncoder().encode(deps),
+                let dependencies = dto.dependencies ?? []
+                if let data = try? JSONEncoder().encode(dependencies),
                    let json = String(data: data, encoding: .utf8) {
                     existing.dependenciesJSON = json
                 }
@@ -1185,10 +1187,13 @@ actor DataActor {
             if accept.contains("source_line_item_id") { existing.sourceLineItemId = dto.sourceLineItemId }
             if accept.contains("source_estimate_id") { existing.sourceEstimateId = dto.sourceEstimateId }
             if accept.contains("dependency_overrides") {
-                if let overrides = dto.dependencyOverrides, !overrides.isEmpty,
-                   let data = try? JSONEncoder().encode(overrides),
-                   let json = String(data: data, encoding: .utf8) {
-                    existing.dependencyOverridesJSON = json
+                if let overrides = dto.dependencyOverrides {
+                    if let data = try? JSONEncoder().encode(overrides),
+                       let json = String(data: data, encoding: .utf8) {
+                        existing.dependencyOverridesJSON = json
+                    }
+                } else {
+                    existing.dependencyOverridesJSON = nil
                 }
             }
             if accept.contains("start_time") {
@@ -3188,6 +3193,7 @@ actor DataActor {
                 let id = dto.id
                 let descriptor = FetchDescriptor<TaskTypeReminder>(predicate: #Predicate { $0.id == id })
                 if let existing = try modelContext.fetch(descriptor).first {
+                    if existing.needsSync { continue }
                     dto.apply(to: existing)
                 } else {
                     modelContext.insert(dto.makeLocalRow())
@@ -3212,6 +3218,7 @@ actor DataActor {
                 }
             }
         }
+        inboundMergedEntityNames.insert("TaskReminder")
         print("[DataActor] Merged \(dtos.count) task reminder instances")
     }
 
@@ -3982,27 +3989,52 @@ actor DataActor {
     ///     method (no single trailing context.save)
     func processPendingOperations() async -> Set<String> {
         var completedProjectTaskIds = Set<String>()
-        var shouldContinueMentionDrain: Bool
+        var shouldContinueDrain: Bool
         repeat {
-            let readyBeforePass =
+            let readyMentionsBeforePass =
                 readyPendingProjectNoteMentionOperationIds()
+            let readyTaskTypePipelineBeforePass =
+                readyPendingTaskTypePipelineOperationIds()
             completedProjectTaskIds.formUnion(
                 await processPendingOperationsPass()
             )
-            let readyAfterPass =
+            let readyMentionsAfterPass =
                 readyPendingProjectNoteMentionOperationIds()
-            shouldContinueMentionDrain = ProjectNoteMentionEditSync
+            let readyTaskTypePipelineAfterPass =
+                readyPendingTaskTypePipelineOperationIds()
+            let shouldContinueMentionDrain = ProjectNoteMentionEditSync
                 .shouldContinueDrain(
-                    readyBeforePass: readyBeforePass,
-                    readyAfterPass: readyAfterPass
+                    readyBeforePass: readyMentionsBeforePass,
+                    readyAfterPass: readyMentionsAfterPass
                 )
+            let shouldContinueTaskTypePipeline =
+                ProjectNoteMentionEditSync.shouldContinueDrain(
+                    readyBeforePass:
+                        readyTaskTypePipelineBeforePass,
+                    readyAfterPass:
+                        readyTaskTypePipelineAfterPass
+                )
+            shouldContinueDrain =
+                shouldContinueMentionDrain
+                    || shouldContinueTaskTypePipeline
             if shouldContinueMentionDrain {
                 print("[DataActor] Mention dependency released — continuing actor-context drain")
-            } else if !readyAfterPass.isEmpty,
-                      readyAfterPass == readyBeforePass {
-                print("[DataActor] Mention drain made no progress — stopping until the next sync trigger")
             }
-        } while shouldContinueMentionDrain
+            if shouldContinueTaskTypePipeline {
+                print("[DataActor] Task-type pipeline released — continuing actor-context drain")
+            }
+            if !shouldContinueDrain,
+               (
+                   (!readyMentionsAfterPass.isEmpty
+                       && readyMentionsAfterPass
+                           == readyMentionsBeforePass)
+                       || (!readyTaskTypePipelineAfterPass.isEmpty
+                           && readyTaskTypePipelineAfterPass
+                               == readyTaskTypePipelineBeforePass)
+               ) {
+                print("[DataActor] Outbound dependency drain made no progress — stopping until the next sync trigger")
+            }
+        } while shouldContinueDrain
 
         return completedProjectTaskIds
     }
@@ -4033,6 +4065,9 @@ actor DataActor {
 
         // 2. Filter out operations in backoff or with unmet dependencies.
         let now = Date()
+        let allOperations = (
+            try? modelContext.fetch(FetchDescriptor<SyncOperation>())
+        ) ?? pending
         let eligible = pending.filter { op in
             if op.retryCount > 0, let lastAttempt = op.lastAttemptedAt {
                 let earliestRetry = lastAttempt.addingTimeInterval(op.backoffDelay)
@@ -4051,6 +4086,18 @@ actor DataActor {
                         return false
                     }
                 }
+            }
+
+            if TaskTypeMutationSync.isBlockedByUnresolvedMutation(
+                op,
+                in: allOperations
+            ) {
+                print(
+                    "[DataActor] Holding later write "
+                        + "\(op.entityType) \(op.entityId) "
+                        + "behind an unresolved task-type mutation"
+                )
+                return false
             }
 
             return true
@@ -4110,6 +4157,22 @@ actor DataActor {
         )
     }
 
+    /// Actor-local readiness snapshot for task-type mutations and the generic
+    /// writes they release. A changed non-empty set means the preceding pass
+    /// made pipeline progress and another immediate pass can do useful work.
+    func readyPendingTaskTypePipelineOperationIds(
+        now: Date = Date()
+    ) -> Set<UUID> {
+        modelContext.rollback()
+        let operations = (
+            try? modelContext.fetch(FetchDescriptor<SyncOperation>())
+        ) ?? []
+        return TaskTypeMutationSync.readyPendingPipelineOperationIds(
+            in: operations,
+            now: now
+        )
+    }
+
     // MARK: - Dependency Check
 
     /// Checks whether a dependency operation (by UUID string) has status "completed"
@@ -4163,9 +4226,15 @@ actor DataActor {
                 payload: payloadDict
             )
 
-            try? modelContext.transaction {
+            let completedAt = Date()
+            try modelContext.transaction {
                 operation.status = "completed"
-                operation.completedAt = Date()
+                operation.completedAt = completedAt
+                try TaskTypeMutationSync.completeProtectionOperations(
+                    for: operation,
+                    in: modelContext,
+                    completedAt: completedAt
+                )
             }
             print("[DataActor] Completed \(operation.entityType) \(operation.entityId)")
             if operation.entityType == SyncEntityType.projectTask.rawValue {
@@ -4213,6 +4282,9 @@ actor DataActor {
 
             var parkedMentionWasSuperseded = false
             var parkedCreateDeleteWasRetired = false
+            var parkedTaskTypeDeleteWasRestored = false
+            var taskTypeMutationRollback =
+                TaskTypeMutationSync.RejectionRollbackResult.none
             if case .parked = outcome,
                let operations = try? modelContext.fetch(
                 FetchDescriptor<SyncOperation>()
@@ -4238,6 +4310,17 @@ actor DataActor {
                             note.needsSync = false
                         }
                     }
+                    parkedTaskTypeDeleteWasRestored =
+                        try TaskTypeMutationSync
+                        .restoreRejectedDirectDelete(
+                            operation,
+                            in: modelContext
+                        )
+                    taskTypeMutationRollback = try TaskTypeMutationSync
+                        .rollbackRejectedMutation(
+                            operation,
+                            in: modelContext
+                        )
                 }
             }
 
@@ -4265,7 +4348,28 @@ actor DataActor {
                 }
 
             case .parked:
-                if parkedCreateDeleteWasRetired {
+                if taskTypeMutationRollback.didRollback {
+                    print(
+                        "[DataActor] Rolled back rejected task type "
+                            + "mutation chain: "
+                            + taskTypeMutationRollback.restoredCommandIds
+                                .joined(separator: ",")
+                    )
+                    if taskTypeMutationRollback.reminderStateChanged {
+                        await MainActor.run {
+                            NotificationCenter.default.post(
+                                name: .taskTypeMutationRolledBack,
+                                object: nil
+                            )
+                        }
+                    }
+                } else if parkedTaskTypeDeleteWasRestored {
+                    print(
+                        "[DataActor] Restored task type "
+                            + operation.entityId
+                            + " after the server rejected its delete"
+                    )
+                } else if parkedCreateDeleteWasRetired {
                     print(
                         "[DataActor] Retired local-only "
                             + "project-note create/delete chain "
@@ -4315,6 +4419,31 @@ actor DataActor {
     private func claimForExecution(
         _ operation: SyncOperation
     ) throws -> Bool {
+        if try TaskTypeMutationSync.isBlockedByUnresolvedMutation(
+            operation,
+            in: modelContext
+        ) {
+            print(
+                "[DataActor] Holding stale later-write snapshot "
+                    + "\(operation.entityType) \(operation.entityId)"
+            )
+            return false
+        }
+        if let didClaim = try TaskTypeMutationSync
+            .claimForExecutionIfHandled(
+                operation,
+                context: modelContext,
+                refreshFromStore: true
+            ) {
+            if !didClaim {
+                print(
+                    "[DataActor] Waiting to run task-type mutation "
+                        + operation.entityId
+                        + " until earlier affected writes finish"
+                )
+            }
+            return didClaim
+        }
         let didClaim = try ProjectNoteMentionEditSync.claimForExecution(
             operation,
             context: modelContext,
@@ -4350,6 +4479,13 @@ actor DataActor {
             operationType: operationType,
             payload: payload,
             companyId: companyId
+        ) {
+            return
+        }
+        if try await TaskTypeMutationSync.executeIfHandled(
+            entityType: entityType,
+            operationType: operationType,
+            payload: payload
         ) {
             return
         }
@@ -4683,7 +4819,9 @@ actor DataActor {
     /// Ported verbatim from OutboundProcessor.coalesceOperations.
     private func coalesceOperations(_ operations: [SyncOperation]) -> [SyncOperation] {
         var groups: [String: [SyncOperation]] = [:]
-        for op in operations where !ProjectNoteMentionEditSync.bypassesGenericCoalescing(op) {
+        for op in operations
+        where !ProjectNoteMentionEditSync.bypassesGenericCoalescing(op)
+            && !TaskTypeMutationSync.bypassesGenericCoalescing(op) {
             let key = "\(op.entityType)::\(op.entityId)"
             groups[key, default: []].append(op)
         }
@@ -4693,6 +4831,7 @@ actor DataActor {
         // dependency without executing the corresponding RPC.
         var result = operations.filter {
             ProjectNoteMentionEditSync.bypassesGenericCoalescing($0)
+                || TaskTypeMutationSync.bypassesGenericCoalescing($0)
         }
 
         for (_, groupOps) in groups {

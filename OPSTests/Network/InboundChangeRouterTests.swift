@@ -22,13 +22,15 @@ final class InboundChangeRouterTests: XCTestCase {
         debounce: TimeInterval = 0.05,
         maxLatency: TimeInterval = 0.5,
         onCalendar: @escaping () -> Void = {},
-        onUserEvents: @escaping () -> Void = {}
+        onUserEvents: @escaping () -> Void = {},
+        onTaskReminders: @escaping () -> Void = {}
     ) -> InboundChangeRouter {
         InboundChangeRouter(
             debounceInterval: debounce,
             maxLatency: maxLatency,
             onCalendarTasksChanged: onCalendar,
-            onUserEventsChanged: onUserEvents
+            onUserEventsChanged: onUserEvents,
+            onTaskRemindersChanged: onTaskReminders
         )
     }
 
@@ -123,6 +125,34 @@ final class InboundChangeRouterTests: XCTestCase {
         InboundChangeSignal.post(entityNames: ["CalendarUserEvent"])
 
         wait(for: [userEventsFired, noCalendar], timeout: 1.0)
+        _ = router
+    }
+
+    func test_taskReminderEntity_firesReminderScheduleCallbackOnly() {
+        let remindersFired = expectation(
+            description: "task reminder schedule callback"
+        )
+        let noCalendar = expectation(description: "calendar must not fire")
+        noCalendar.isInverted = true
+        let noUserEvents = expectation(
+            description: "user events must not fire"
+        )
+        noUserEvents.isInverted = true
+
+        remindersFired.assertForOverFulfill = false
+
+        let router = makeRouter(
+            onCalendar: { noCalendar.fulfill() },
+            onUserEvents: { noUserEvents.fulfill() },
+            onTaskReminders: { remindersFired.fulfill() }
+        )
+
+        InboundChangeSignal.post(entityNames: ["TaskReminder"])
+
+        wait(
+            for: [remindersFired, noCalendar, noUserEvents],
+            timeout: 1.0
+        )
         _ = router
     }
 

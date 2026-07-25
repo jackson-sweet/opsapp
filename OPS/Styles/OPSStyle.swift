@@ -716,6 +716,7 @@ enum OPSStyle {
         static let add = "plus.circle.fill"                 // THE icon for Add/Create
         static let edit = "pencil.circle.fill"              // THE icon for Edit
         static let delete = "trash.fill"                    // THE icon for Delete
+        static let merge = "arrow.triangle.merge"           // THE icon for Merge
         static let sync = "arrow.triangle.2.circlepath"     // THE icon for Sync
         static let share = "square.and.arrow.up"            // THE icon for Share
         static let filter = "line.horizontal.3.decrease.circle" // THE icon for Filter

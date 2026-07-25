@@ -146,8 +146,10 @@ final class InboundProcessor {
         .client,
         .subClient,
         .taskType,
+        .taskTypeReminder,
         .project,
         .projectTask,
+        .taskReminder,
         .wizardState,
         .projectNote,
         .projectPhoto,
@@ -859,8 +861,8 @@ final class InboundProcessor {
             if accept.contains("isDefault") { existing.isDefault = dto.isDefault ?? false }
             if accept.contains("displayOrder") { existing.displayOrder = dto.displayOrder ?? 0 }
             if accept.contains("dependenciesJSON") {
-                if let deps = dto.dependencies, !deps.isEmpty,
-                   let data = try? JSONEncoder().encode(deps),
+                let dependencies = dto.dependencies ?? []
+                if let data = try? JSONEncoder().encode(dependencies),
                    let json = String(data: data, encoding: .utf8) {
                     existing.dependenciesJSON = json
                 }
@@ -1160,10 +1162,13 @@ final class InboundProcessor {
             if accept.contains("source_line_item_id") { existing.sourceLineItemId = dto.sourceLineItemId }
             if accept.contains("source_estimate_id") { existing.sourceEstimateId = dto.sourceEstimateId }
             if accept.contains("dependency_overrides") {
-                if let overrides = dto.dependencyOverrides, !overrides.isEmpty,
-                   let data = try? JSONEncoder().encode(overrides),
-                   let json = String(data: data, encoding: .utf8) {
-                    existing.dependencyOverridesJSON = json
+                if let overrides = dto.dependencyOverrides {
+                    if let data = try? JSONEncoder().encode(overrides),
+                       let json = String(data: data, encoding: .utf8) {
+                        existing.dependencyOverridesJSON = json
+                    }
+                } else {
+                    existing.dependencyOverridesJSON = nil
                 }
             }
             if accept.contains("start_time") {
@@ -3293,6 +3298,14 @@ final class InboundProcessor {
             let id = dto.id
             let descriptor = FetchDescriptor<TaskTypeReminder>(predicate: #Predicate { $0.id == id })
             if let existing = try context.fetch(descriptor).first {
+                if existing.needsSync {
+                    print(
+                        "[InboundProcessor] Skipping reminder template "
+                            + id
+                            + " — pending local op"
+                    )
+                    continue
+                }
                 dto.apply(to: existing)
             } else {
                 context.insert(dto.makeLocalRow())

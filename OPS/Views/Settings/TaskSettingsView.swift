@@ -12,9 +12,10 @@ struct TaskSettingsView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var dataController: DataController
+    @Query private var allTasks: [ProjectTask]
     
     @State private var taskTypes: [TaskType] = []
-    @State private var isLoading = true
+    @State private var loadState: TaskTypeLoadState = .loading
     @State private var selectedTaskType: TaskType?
     @State private var showingEditSheet = false
     @State private var showingAddSheet = false
@@ -37,112 +38,97 @@ struct TaskSettingsView: View {
                 // Header
                 SettingsHeader(
                     title: "Task Types",
-                    onBackTapped: { dismiss() }
+                    trailingIcon: canAddTaskType
+                        ? OPSStyle.Icons.plus
+                        : nil,
+                    trailingAccessibilityLabel: "Add task type",
+                    onBackTapped: { dismiss() },
+                    onEditTapped: { showingAddSheet = true }
                 )
                 .padding(.bottom, OPSStyle.Layout.spacing2)
                 
-                if isLoading {
+                switch loadState {
+                case .loading:
                     Spacer()
-                    ProgressView("Loading task types...")
+                    ProgressView("LOADING TASK TYPES")
                         .foregroundColor(OPSStyle.Colors.primaryText)
                     Spacer()
-                } else if taskTypes.isEmpty {
-                    // Empty state
-                    Spacer()
-                    VStack(spacing: OPSStyle.Layout.spacing3_5) {
-                        Image(systemName: "square.grid.2x2")
-                            .font(.system(size: OPSStyle.Layout.IconSize.xxl))
-                            .foregroundColor(OPSStyle.Colors.tertiaryText)
-                        
-                        Text("No Task Types")
-                            .font(OPSStyle.Typography.title)
-                            .foregroundColor(OPSStyle.Colors.primaryText)
-                        
-                        Text("Create task types to categorize work")
-                            .font(OPSStyle.Typography.body)
-                            .foregroundColor(OPSStyle.Colors.secondaryText)
-                        
-                        Button(action: createDefaultTaskTypes) {
-                            Text("CREATE DEFAULT TYPES")
-                                .font(OPSStyle.Typography.smallButton)
-                                .foregroundColor(OPSStyle.Colors.primaryText)
-                                .padding(.horizontal, OPSStyle.Layout.spacing4)
-                                .padding(.vertical, OPSStyle.Layout.spacing2_5)
-                                .background(OPSStyle.Colors.primaryAccent)
-                                .cornerRadius(OPSStyle.Layout.cornerRadius)
-                        }
-                    }
-                    Spacer()
-                } else {
-                    // Task types list
+                case .failed:
+                    taskTypeLoadFailure
+                case .loaded:
                     ScrollView {
-                        VStack(spacing: OPSStyle.Layout.spacing2_5) {
-                            ForEach(sortedTaskTypes) { taskType in
-                                TaskTypeRow(
-                                    taskType: taskType,
-                                    onTap: {
-                                        selectedTaskType = taskType
-                                        showingEditSheet = true
-                                    },
-                                    onRename: {
-                                        selectedTaskType = taskType
-                                        showingEditSheet = true
-                                    },
-                                    onMerge: {
-                                        taskTypeToMerge = taskType
-                                    },
-                                    onDelete: {
-                                        requestDelete(taskType)
+                        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
+                            Text("\(taskTypes.count) TASK TYPE\(taskTypes.count == 1 ? "" : "S")")
+                                .font(OPSStyle.Typography.metadata)
+                                .monospacedDigit()
+                                .foregroundColor(OPSStyle.Colors.tertiaryText)
+
+                            VStack(spacing: 0) {
+                                if taskTypes.isEmpty {
+                                    Text("NO TASK TYPES")
+                                        .font(OPSStyle.Typography.captionBold)
+                                        .foregroundColor(OPSStyle.Colors.secondaryText)
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                        .frame(height: OPSStyle.Layout.touchTargetStandard)
+                                        .padding(.horizontal, OPSStyle.Layout.spacing3)
+                                } else {
+                                    ForEach(Array(sortedTaskTypes.enumerated()), id: \.element.id) { index, taskType in
+                                        TaskTypeRow(
+                                            taskType: taskType,
+                                            activeTaskCount: activeTaskCount(for: taskType),
+                                            onTap: {
+                                                selectedTaskType = taskType
+                                                showingEditSheet = true
+                                            },
+                                            onRename: {
+                                                selectedTaskType = taskType
+                                                showingEditSheet = true
+                                            },
+                                            onMerge: {
+                                                taskTypeToMerge = taskType
+                                            },
+                                            onDelete: {
+                                                requestDelete(taskType)
+                                            }
+                                        )
+
+                                        if index < sortedTaskTypes.count - 1 {
+                                            separator
+                                        }
                                     }
-                                )
+
+                                    separator
+                                }
+
+                                addTaskTypeRow
                             }
+                            .glassSurface()
                         }
                         .padding(.horizontal, OPSStyle.Layout.spacing3_5)
                         .padding(.vertical, OPSStyle.Layout.spacing2_5)
                     }
                 }
-                
-                // Bottom action bar
-                HStack {
-                    Text("\(taskTypes.count) task types")
-                        .font(OPSStyle.Typography.caption)
-                        .foregroundColor(OPSStyle.Colors.secondaryText)
-                    
-                    Spacer()
-                    
-                    Button(action: { showingAddSheet = true }) {
-                        Image(systemName: OPSStyle.Icons.plusCircleFill)
-                            .font(.system(size: OPSStyle.Layout.IconSize.lg))
-                            .foregroundColor(OPSStyle.Colors.primaryAccent)
-                    }
-                }
-                .padding()
-                .glassSurface(cornerRadius: 0)
             }
         }
         .trackScreen("Settings.Tasks")
         .navigationBarHidden(true)
         .onAppear {
-            fetchTaskTypes()
-            // If no task types found, try syncing from server
-            if taskTypes.isEmpty {
-                syncTaskTypes()
-            }
+            loadTaskTypes()
         }
         .sheet(isPresented: $showingEditSheet) {
             if let taskType = selectedTaskType {
                 TaskTypeSheet(mode: .edit(taskType: taskType) {
-                    fetchTaskTypes()
+                    refreshTaskTypesFromCache()
                 })
                 .environmentObject(dataController)
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("TaskTypeDeleted"))) { _ in
-            fetchTaskTypes()
+            refreshTaskTypesFromCache()
         }
         .sheet(isPresented: $showingAddSheet) {
             TaskTypeSheet(mode: .create { _ in
-                fetchTaskTypes()
+                refreshTaskTypesFromCache()
             })
             .environmentObject(dataController)
         }
@@ -152,7 +138,7 @@ struct TaskSettingsView: View {
                 source: source,
                 allCompanyTypes: taskTypes,
                 onComplete: {
-                    fetchTaskTypes()
+                    refreshTaskTypesFromCache()
                     // Close the edit sheet too if it was showing for this type.
                     if selectedTaskType?.id == source.id {
                         showingEditSheet = false
@@ -193,7 +179,7 @@ struct TaskSettingsView: View {
                 blockedDeleteType = nil
             }
         } message: { item in
-            let count = item.tasks.filter { $0.deletedAt == nil }.count
+            let count = activeTaskCount(for: item)
             Text("\(count) task\(count == 1 ? "" : "s") still use \(item.display). Merge it into another type to move the tasks before deleting.")
         }
         .errorToast($deleteError, label: Feedback.Err.deleteFailed)
@@ -203,7 +189,7 @@ struct TaskSettingsView: View {
     // MARK: - Delete / Merge Actions
 
     private func requestDelete(_ type: TaskType) {
-        let activeCount = type.tasks.filter { $0.deletedAt == nil }.count
+        let activeCount = activeTaskCount(for: type)
         if activeCount > 0 {
             blockedDeleteType = type
         } else {
@@ -221,9 +207,8 @@ struct TaskSettingsView: View {
 
         do {
             try await dataController.deleteTaskType(taskTypeId: type.id)
-            dataController.triggerBackgroundSync()
             UINotificationFeedbackGenerator().notificationOccurred(.success)
-            fetchTaskTypes()
+            refreshTaskTypesFromCache()
             if selectedTaskType?.id == type.id {
                 showingEditSheet = false
                 selectedTaskType = nil
@@ -238,13 +223,122 @@ struct TaskSettingsView: View {
         TaskTypeSettingsLogic.sortedTaskTypes(taskTypes)
     }
 
-    private func fetchTaskTypes() {
-        isLoading = true
+    private var canAddTaskType: Bool {
+        if case .loaded = loadState {
+            return true
+        }
+        return false
+    }
 
+    private var taskTypeLoadFailure: some View {
+        VStack(spacing: OPSStyle.Layout.spacing3) {
+            Spacer()
+
+            Text("// TASK TYPES UNAVAILABLE")
+                .font(OPSStyle.Typography.metadata)
+                .foregroundColor(OPSStyle.Colors.secondaryText)
+
+            Text("Couldn’t load task types. Check your connection and retry.")
+                .font(OPSStyle.Typography.body)
+                .foregroundColor(OPSStyle.Colors.secondaryText)
+                .multilineTextAlignment(.center)
+
+            Button {
+                syncTaskTypes()
+            } label: {
+                Text("RETRY")
+                    .font(OPSStyle.Typography.captionBold)
+                    .foregroundColor(OPSStyle.Colors.primaryAccent)
+                    .frame(
+                        minHeight: OPSStyle.Layout.touchTargetMin
+                    )
+                    .padding(.horizontal, OPSStyle.Layout.spacing4)
+                    .background(OPSStyle.Colors.surfaceInput)
+                    .cornerRadius(OPSStyle.Layout.cornerRadius)
+                    .overlay(
+                        RoundedRectangle(
+                            cornerRadius: OPSStyle.Layout.cornerRadius
+                        )
+                        .stroke(
+                            OPSStyle.Colors.cardBorder,
+                            lineWidth: OPSStyle.Layout.Border.standard
+                        )
+                    )
+            }
+            .buttonStyle(.plain)
+
+            Spacer()
+        }
+        .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+    }
+
+    private var separator: some View {
+        OPSStyle.Colors.separator
+            .frame(height: OPSStyle.Layout.Border.standard)
+            .padding(.leading, OPSStyle.Layout.spacing5)
+    }
+
+    private var addTaskTypeRow: some View {
+        Button {
+            showingAddSheet = true
+        } label: {
+            HStack(spacing: OPSStyle.Layout.spacing3) {
+                Image(systemName: OPSStyle.Icons.plus)
+                    .font(.system(
+                        size: OPSStyle.Layout.IconSize.sm,
+                        weight: .semibold
+                    ))
+                    .foregroundColor(OPSStyle.Colors.primaryAccent)
+                    .frame(width: OPSStyle.Layout.spacing3)
+
+                Text("ADD TASK TYPE")
+                    .font(OPSStyle.Typography.captionBold)
+                    .foregroundColor(OPSStyle.Colors.primaryAccent)
+
+                Spacer()
+            }
+            .padding(.horizontal, OPSStyle.Layout.spacing3)
+            .frame(height: OPSStyle.Layout.touchTargetStandard)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Add task type")
+    }
+
+    private func activeTaskCount(for taskType: TaskType) -> Int {
+        TaskTypeSettingsLogic.activeTaskCount(
+            for: taskType,
+            in: allTasks
+        )
+    }
+
+    private func loadTaskTypes() {
+        loadState = .loading
+        guard fetchTaskTypesFromCache() else { return }
+
+        loadState = TaskTypeSettingsLogic.loadState(
+            hasCachedTaskTypes: !taskTypes.isEmpty,
+            remoteRefreshSucceeded: nil
+        )
+        if taskTypes.isEmpty {
+            syncTaskTypes()
+        }
+    }
+
+    private func refreshTaskTypesFromCache() {
+        guard fetchTaskTypesFromCache() else { return }
+        loadState = TaskTypeSettingsLogic.loadState(
+            hasCachedTaskTypes: !taskTypes.isEmpty,
+            remoteRefreshSucceeded: true
+        )
+    }
+
+    @discardableResult
+    private func fetchTaskTypesFromCache() -> Bool {
         guard let companyId = dataController.currentUser?.companyId else {
             print("❌ No company ID found")
-            isLoading = false
-            return
+            loadState = taskTypes.isEmpty ? .failed : .loaded
+            return false
         }
 
         print("🔍 Fetching task types for company: \(companyId)")
@@ -262,43 +356,50 @@ struct TaskSettingsView: View {
             print("✅ Filtered task types for company: \(filteredTypes.count)")
 
             taskTypes = TaskTypeSettingsLogic.visibleTaskTypes(filteredTypes, companyId: companyId)
-            isLoading = false
+            return true
         } catch {
             print("❌ Error fetching task types: \(error)")
-            taskTypes = []
-            isLoading = false
+            // Keep the last usable in-memory snapshot if SwiftData is
+            // temporarily unavailable. An empty cache cannot be trusted.
+            loadState = taskTypes.isEmpty ? .failed : .loaded
+            return false
         }
     }
     
-    private func createDefaultTaskTypes() {
-        guard let companyId = dataController.currentUser?.companyId else { return }
-
-        let defaults = TaskType.createDefaults(companyId: companyId)
-        for taskType in defaults {
-            modelContext.insert(taskType)
-        }
-
-        do {
-            try modelContext.save()
-            fetchTaskTypes()
-            ToastCenter.shared.present(Feedback.Settings.defaultTypesCreated)
-        } catch {
-        }
-    }
-
     private func syncTaskTypes() {
-        guard let companyId = dataController.currentUser?.companyId else { return }
+        guard let companyId = dataController.currentUser?.companyId else {
+            loadState = taskTypes.isEmpty ? .failed : .loaded
+            return
+        }
+
+        let hasCachedTaskTypes = !taskTypes.isEmpty
+        loadState = TaskTypeSettingsLogic.loadState(
+            hasCachedTaskTypes: hasCachedTaskTypes,
+            remoteRefreshSucceeded: nil
+        )
 
         print("🔄 Syncing task types for company: \(companyId)")
 
-        Task {
-            await dataController.triggerTaskTypesSync(companyId: companyId)
-            print("✅ Task types synced")
+        Task { @MainActor in
+            let refreshed = await dataController.triggerTaskTypesSync(
+                companyId: companyId
+            )
 
-            // Refresh the list on main thread
-            await MainActor.run {
-                fetchTaskTypes()
+            guard refreshed else {
+                print("❌ Task type refresh failed")
+                loadState = TaskTypeSettingsLogic.loadState(
+                    hasCachedTaskTypes: !taskTypes.isEmpty,
+                    remoteRefreshSucceeded: false
+                )
+                return
             }
+
+            guard fetchTaskTypesFromCache() else { return }
+            loadState = TaskTypeSettingsLogic.loadState(
+                hasCachedTaskTypes: !taskTypes.isEmpty,
+                remoteRefreshSucceeded: true
+            )
+            print("✅ Task types refreshed")
         }
     }
 }
@@ -306,6 +407,7 @@ struct TaskSettingsView: View {
 // MARK: - Task Type Row
 struct TaskTypeRow: View {
     let taskType: TaskType
+    let activeTaskCount: Int
     let onTap: () -> Void
     /// Long-press action: open edit sheet focused on the name field. Currently
     /// behaves the same as onTap — the edit sheet is where rename lives.
@@ -315,73 +417,75 @@ struct TaskTypeRow: View {
     /// Long-press action: delete (parent gates on in-use check).
     let onDelete: () -> Void
 
-    private var activeTaskCount: Int {
-        taskType.tasks.filter { $0.deletedAt == nil }.count
-    }
-
     var body: some View {
         Button(action: onTap) {
             HStack(spacing: OPSStyle.Layout.spacing3) {
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.smallCornerRadius)
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius)
                     .fill(Color(hex: taskType.color) ?? OPSStyle.Colors.primaryAccent)
-                    .frame(width: 8, height: 52)
+                    .frame(
+                        width: OPSStyle.Layout.spacing1,
+                        height: OPSStyle.Layout.spacing4
+                    )
                     .overlay(
-                        RoundedRectangle(cornerRadius: OPSStyle.Layout.smallCornerRadius)
-                            .stroke(OPSStyle.Colors.primaryText.opacity(0.16),
-                                    lineWidth: OPSStyle.Layout.Border.standard)
+                        RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius)
+                            .stroke(
+                                OPSStyle.Colors.cardBorder,
+                                lineWidth: OPSStyle.Layout.Border.standard
+                            )
                     )
 
-                VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
-                    HStack(spacing: OPSStyle.Layout.spacing2) {
-                        Text(taskType.display.uppercased())
-                            .font(OPSStyle.Typography.bodyBold)
-                            .foregroundColor(OPSStyle.Colors.primaryText)
-                            .lineLimit(1)
+                Text(taskType.display)
+                    .font(OPSStyle.Typography.bodyBold)
+                    .foregroundColor(OPSStyle.Colors.primaryText)
+                    .lineLimit(1)
 
-                        if taskType.isDefault {
-                            Text("DEFAULT")
-                                .font(OPSStyle.Typography.microLabel)
-                                .foregroundColor(OPSStyle.Colors.secondaryText)
-                                .padding(.horizontal, OPSStyle.Layout.spacing2)
-                                .padding(.vertical, 2)
-                                .background(OPSStyle.Colors.surfaceInput)
-                                .cornerRadius(OPSStyle.Layout.chipRadius)
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius)
-                                        .stroke(OPSStyle.Colors.cardBorder,
-                                                lineWidth: OPSStyle.Layout.Border.standard)
-                                )
-                        }
-                    }
-
-                    Text("\(activeTaskCount) task\(activeTaskCount == 1 ? "" : "s")")
-                        .font(OPSStyle.Typography.smallCaption)
+                if taskType.isDefault {
+                    Text("DEFAULT")
+                        .font(OPSStyle.Typography.microLabel)
                         .foregroundColor(OPSStyle.Colors.secondaryText)
+                        .padding(.horizontal, OPSStyle.Layout.spacing2)
+                        .padding(.vertical, OPSStyle.Layout.spacing1)
+                        .background(OPSStyle.Colors.surfaceInput)
+                        .cornerRadius(OPSStyle.Layout.chipRadius)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius)
+                                .stroke(
+                                    OPSStyle.Colors.cardBorder,
+                                    lineWidth: OPSStyle.Layout.Border.standard
+                                )
+                        )
                 }
 
-                Spacer()
+                Spacer(minLength: OPSStyle.Layout.spacing2)
 
-                if !taskType.isDefault {
-                    Image(systemName: OPSStyle.Icons.chevronRight)
-                        .font(.system(size: OPSStyle.Layout.IconSize.sm))
-                        .foregroundColor(OPSStyle.Colors.tertiaryText)
-                }
+                Text("\(activeTaskCount)")
+                    .font(OPSStyle.Typography.metadata)
+                    .monospacedDigit()
+                    .foregroundColor(OPSStyle.Colors.secondaryText)
+
+                Image(systemName: OPSStyle.Icons.chevronRight)
+                    .font(.system(size: OPSStyle.Layout.IconSize.sm))
+                    .foregroundColor(OPSStyle.Colors.tertiaryText)
             }
-            .padding(OPSStyle.Layout.spacing3)
-            .glassSurface()
+            .padding(.horizontal, OPSStyle.Layout.spacing3)
+            .frame(height: OPSStyle.Layout.touchTargetStandard)
+            .contentShape(Rectangle())
         }
-        .buttonStyle(PlainButtonStyle())
-        // Defaults have no edit path — tap is disabled, but context menu stays
-        // available so users can still merge / delete custom types via long
-        // press on their card. Default types also support context menu but
-        // individual actions self-gate below.
-        .disabled(taskType.isDefault)
+        .buttonStyle(.plain)
+        .accessibilityLabel(
+            "\(taskType.display), \(activeTaskCount) task\(activeTaskCount == 1 ? "" : "s")\(taskType.isDefault ? ", default" : "")"
+        )
+        .accessibilityHint(
+            taskType.isDefault
+                ? "Opens usage. Default details are read-only."
+                : "Opens task type details."
+        )
         .contextMenu {
             // Rename — opens the edit sheet for custom types only.
             Button {
                 onRename()
             } label: {
-                Label("Rename", systemImage: "pencil")
+                Label("Rename", systemImage: OPSStyle.Icons.pencil)
             }
             .disabled(taskType.isDefault)
 
@@ -390,7 +494,7 @@ struct TaskTypeRow: View {
             Button {
                 onMerge()
             } label: {
-                Label("Merge Into…", systemImage: "arrow.triangle.merge")
+                Label("Merge Into…", systemImage: OPSStyle.Icons.merge)
             }
             .disabled(taskType.isDefault)
 
@@ -398,7 +502,7 @@ struct TaskTypeRow: View {
             Button(role: .destructive) {
                 onDelete()
             } label: {
-                Label("Delete", systemImage: "trash")
+                Label("Delete", systemImage: OPSStyle.Icons.trash)
             }
             .disabled(taskType.isDefault)
         }

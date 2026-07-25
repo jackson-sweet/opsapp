@@ -30,30 +30,50 @@ final class OutboundProcessor {
         context: ModelContext,
         connectivity: ConnectivityManager
     ) async {
-        var shouldContinueMentionDrain: Bool
+        var shouldContinueDrain: Bool
         repeat {
-            let readyBeforePass = readyPendingMentionOperationIds(
+            let mentionReadyBeforePass = readyPendingMentionOperationIds(
+                context: context
+            )
+            let taskTypeReadyBeforePass =
+                readyPendingTaskTypePipelineOperationIds(
                 context: context
             )
             await processPendingOperationsPass(
                 context: context,
                 connectivity: connectivity
             )
-            let readyAfterPass = readyPendingMentionOperationIds(
+            let mentionReadyAfterPass = readyPendingMentionOperationIds(
                 context: context
             )
-            shouldContinueMentionDrain = ProjectNoteMentionEditSync
-                .shouldContinueDrain(
-                    readyBeforePass: readyBeforePass,
-                    readyAfterPass: readyAfterPass
+            let taskTypeReadyAfterPass =
+                readyPendingTaskTypePipelineOperationIds(
+                    context: context
                 )
-            if shouldContinueMentionDrain {
+            let shouldContinueMentionDrain = ProjectNoteMentionEditSync
+                .shouldContinueDrain(
+                    readyBeforePass: mentionReadyBeforePass,
+                    readyAfterPass: mentionReadyAfterPass
+                )
+            let shouldContinueTaskTypeDrain =
+                !taskTypeReadyAfterPass.isEmpty
+                    && taskTypeReadyAfterPass
+                        != taskTypeReadyBeforePass
+            shouldContinueDrain =
+                shouldContinueMentionDrain
+                    || shouldContinueTaskTypeDrain
+            if shouldContinueTaskTypeDrain {
+                print(
+                    "[OutboundProcessor] Task-type ordering released "
+                        + "more local work — continuing drain"
+                )
+            } else if shouldContinueMentionDrain {
                 print("[OutboundProcessor] Mention dependency released — continuing local-context drain")
-            } else if !readyAfterPass.isEmpty,
-                      readyAfterPass == readyBeforePass {
+            } else if !mentionReadyAfterPass.isEmpty,
+                      mentionReadyAfterPass == mentionReadyBeforePass {
                 print("[OutboundProcessor] Mention drain made no progress — stopping until the next sync trigger")
             }
-        } while shouldContinueMentionDrain
+        } while shouldContinueDrain
     }
 
     private func processPendingOperationsPass(
@@ -90,6 +110,9 @@ final class OutboundProcessor {
 
         // 2. Filter out operations in backoff or with unmet dependencies
         let now = Date()
+        let allOperations = (
+            try? context.fetch(FetchDescriptor<SyncOperation>())
+        ) ?? pending
         let eligible = pending.filter { op in
             // Backoff check: if retried before, ensure enough time has elapsed since last attempt
             if op.retryCount > 0, let lastAttempt = op.lastAttemptedAt {
@@ -111,6 +134,18 @@ final class OutboundProcessor {
                         return false
                     }
                 }
+            }
+
+            if TaskTypeMutationSync.isBlockedByUnresolvedMutation(
+                op,
+                in: allOperations
+            ) {
+                print(
+                    "[OutboundProcessor] Holding later write "
+                        + "\(op.entityType) \(op.entityId) "
+                        + "behind an unresolved task-type mutation"
+                )
+                return false
             }
 
             return true
@@ -153,6 +188,19 @@ final class OutboundProcessor {
         )
     }
 
+    private func readyPendingTaskTypePipelineOperationIds(
+        context: ModelContext,
+        now: Date = Date()
+    ) -> Set<UUID> {
+        let operations = (
+            try? context.fetch(FetchDescriptor<SyncOperation>())
+        ) ?? []
+        return TaskTypeMutationSync.readyPendingPipelineOperationIds(
+            in: operations,
+            now: now
+        )
+    }
+
     // MARK: - Dependency Check
 
     /// Checks whether a dependency operation (by UUID string) has status "completed" in the store.
@@ -186,7 +234,9 @@ final class OutboundProcessor {
     func coalesceOperations(_ operations: [SyncOperation]) -> [SyncOperation] {
         // Group by (entityType, entityId)
         var groups: [String: [SyncOperation]] = [:]
-        for op in operations where !ProjectNoteMentionEditSync.bypassesGenericCoalescing(op) {
+        for op in operations
+        where !ProjectNoteMentionEditSync.bypassesGenericCoalescing(op)
+            && !TaskTypeMutationSync.bypassesGenericCoalescing(op) {
             let key = "\(op.entityType)::\(op.entityId)"
             groups[key, default: []].append(op)
         }
@@ -196,6 +246,7 @@ final class OutboundProcessor {
         // or mark a dependency completed without executing its RPC.
         var result = operations.filter {
             ProjectNoteMentionEditSync.bypassesGenericCoalescing($0)
+                || TaskTypeMutationSync.bypassesGenericCoalescing($0)
         }
 
         for (_, groupOps) in groups {
@@ -323,9 +374,18 @@ final class OutboundProcessor {
                 payload: payloadDict
             )
 
-            // Success
-            operation.status = "completed"
-            operation.completedAt = Date()
+            // Success. Complete the dependent field guards in the same local
+            // transaction so the authoritative pull can reconcile immediately.
+            let completedAt = Date()
+            try context.transaction {
+                operation.status = "completed"
+                operation.completedAt = completedAt
+                try TaskTypeMutationSync.completeProtectionOperations(
+                    for: operation,
+                    in: context,
+                    completedAt: completedAt
+                )
+            }
             print("[OutboundProcessor] Completed \(operation.entityType) \(operation.entityId)")
 
         } catch {
@@ -381,6 +441,9 @@ final class OutboundProcessor {
             case .parked:
                 var wasSuperseded = false
                 var retiredCreateDelete = false
+                var restoredTaskTypeDelete = false
+                var taskTypeMutationRollback =
+                    TaskTypeMutationSync.RejectionRollbackResult.none
                 do {
                     try context.transaction {
                         let operations = try context.fetch(
@@ -405,13 +468,42 @@ final class OutboundProcessor {
                                 note.needsSync = false
                             }
                         }
+                        restoredTaskTypeDelete = try TaskTypeMutationSync
+                            .restoreRejectedDirectDelete(
+                                operation,
+                                in: context
+                            )
+                        taskTypeMutationRollback = try TaskTypeMutationSync
+                            .rollbackRejectedMutation(
+                                operation,
+                                in: context
+                            )
                     }
                 } catch {
                     print(
                         "[OutboundProcessor] Failed parked-chain reconciliation: \(error)"
                     )
                 }
-                if retiredCreateDelete {
+                if taskTypeMutationRollback.didRollback {
+                    print(
+                        "[OutboundProcessor] Rolled back rejected task type "
+                            + "mutation chain: "
+                            + taskTypeMutationRollback.restoredCommandIds
+                                .joined(separator: ",")
+                    )
+                    if taskTypeMutationRollback.reminderStateChanged {
+                        NotificationCenter.default.post(
+                            name: .taskTypeMutationRolledBack,
+                            object: nil
+                        )
+                    }
+                } else if restoredTaskTypeDelete {
+                    print(
+                        "[OutboundProcessor] Restored task type "
+                            + operation.entityId
+                            + " after the server rejected its delete"
+                    )
+                } else if retiredCreateDelete {
                     print(
                         "[OutboundProcessor] Retired local-only "
                             + "project-note create/delete chain "
@@ -462,6 +554,31 @@ final class OutboundProcessor {
         _ operation: SyncOperation,
         context: ModelContext
     ) throws -> Bool {
+        if try TaskTypeMutationSync.isBlockedByUnresolvedMutation(
+            operation,
+            in: context
+        ) {
+            print(
+                "[OutboundProcessor] Holding stale later-write snapshot "
+                    + "\(operation.entityType) \(operation.entityId)"
+            )
+            return false
+        }
+        if let didClaim = try TaskTypeMutationSync
+            .claimForExecutionIfHandled(
+                operation,
+                context: context,
+                refreshFromStore: false
+            ) {
+            if !didClaim {
+                print(
+                    "[OutboundProcessor] Waiting to run task-type mutation "
+                        + operation.entityId
+                        + " until earlier affected writes finish"
+                )
+            }
+            return didClaim
+        }
         let didClaim = try ProjectNoteMentionEditSync.claimForExecution(
             operation,
             context: context,
@@ -495,6 +612,13 @@ final class OutboundProcessor {
             operationType: operationType,
             payload: payload,
             companyId: companyId
+        ) {
+            return
+        }
+        if try await TaskTypeMutationSync.executeIfHandled(
+            entityType: entityType,
+            operationType: operationType,
+            payload: payload
         ) {
             return
         }

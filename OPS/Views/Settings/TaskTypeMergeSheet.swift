@@ -20,7 +20,7 @@ struct TaskTypeMergeSheet: View {
 
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var dataController: DataController
-    @Environment(\.modelContext) private var modelContext
+    @Query private var allTasks: [ProjectTask]
 
     @State private var selectedTargetId: String? = nil
     @State private var isMerging: Bool = false
@@ -28,7 +28,10 @@ struct TaskTypeMergeSheet: View {
     @State private var showingConfirmation: Bool = false
 
     private var sourceActiveTaskCount: Int {
-        source.tasks.filter { $0.deletedAt == nil }.count
+        TaskTypeSettingsLogic.activeTaskCount(
+            for: source,
+            in: allTasks
+        )
     }
 
     private var candidateTargets: [TaskType] {
@@ -36,7 +39,11 @@ struct TaskTypeMergeSheet: View {
         // — merging into a default is a legitimate cleanup move). Sorted with
         // the same precedence the list uses.
         allCompanyTypes
-            .filter { $0.id != source.id && $0.deletedAt == nil }
+            .filter {
+                $0.id != source.id
+                    && $0.companyId == source.companyId
+                    && $0.deletedAt == nil
+            }
             .sorted {
                 if $0.isDefault != $1.isDefault {
                     return !$0.isDefault && $1.isDefault
@@ -110,7 +117,10 @@ struct TaskTypeMergeSheet: View {
                 ZStack {
                     Circle()
                         .fill(Color(hex: source.color) ?? OPSStyle.Colors.primaryAccent)
-                        .frame(width: 44, height: 44)
+                        .frame(
+                            width: OPSStyle.Layout.touchTargetMin,
+                            height: OPSStyle.Layout.touchTargetMin
+                        )
                     Image(systemName: source.icon ?? "hammer.fill")
                         .font(.system(size: OPSStyle.Layout.IconSize.md))
                         .foregroundColor(OPSStyle.Colors.primaryText)
@@ -177,7 +187,10 @@ struct TaskTypeMergeSheet: View {
                     Text(target.display)
                         .font(OPSStyle.Typography.body)
                         .foregroundColor(OPSStyle.Colors.primaryText)
-                    let count = target.tasks.filter { $0.deletedAt == nil }.count
+                    let count = TaskTypeSettingsLogic.activeTaskCount(
+                        for: target,
+                        in: allTasks
+                    )
                     Text("\(count) current task\(count == 1 ? "" : "s")")
                         .font(OPSStyle.Typography.smallCaption)
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
@@ -270,114 +283,24 @@ struct TaskTypeMergeSheet: View {
 
     // MARK: - Merge
 
-    /// Reassigns every active task from the source type to the target type,
-    /// saves locally, records sync operations, then soft-deletes the source.
-    /// The soft-delete uses the DataController path so cascading doesn't
-    /// re-delete the freshly-reassigned tasks.
-    ///
-    /// Bug 4dadd96c — also re-pins every Product and TaskTemplate that
-    /// pointed at the source type. Without this, merging left dangling
-    /// products on the source type and templates orphaned in the catalog.
+    /// Applies the complete local projection and queues one idempotent server
+    /// transaction. The database moves every live reference before deleting
+    /// the source, so an interrupted merge cannot strand half-moved data.
     private func performMerge() async {
         guard let target = selectedTarget else { return }
         guard !isMerging else { return }
         isMerging = true
 
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime]
-        let targetId = target.id
-        let sourceId = source.id
-
-        // Reassign every active task to the target type.
-        let activeTasks = source.tasks.filter { $0.deletedAt == nil }
-        for task in activeTasks {
-            task.taskType = target
-            task.needsSync = true
-            dataController.syncEngine.recordOperation(
-                entityType: .projectTask,
-                entityId: task.id,
-                operationType: "update",
-                changedFields: ["task_type_id": targetId]
+        do {
+            _ = try dataController.mergeTaskType(
+                sourceTaskTypeId: source.id,
+                intoTaskTypeId: target.id
             )
-        }
-
-        // Re-pin every Product that pointed at the source. Both columns get
-        // rewritten so legacy `task_type_id` text reads land on the same
-        // parent as the canonical `task_type_ref` reads.
-        let productDescriptor = FetchDescriptor<Product>(
-            predicate: #Predicate<Product> { product in
-                product.taskTypeRef == sourceId || product.taskTypeId == sourceId
-            }
-        )
-        let linkedProducts = (try? modelContext.fetch(productDescriptor)) ?? []
-        for product in linkedProducts {
-            product.taskTypeRef = targetId
-            product.taskTypeId = targetId
-        }
-
-        // Re-pin every TaskTemplate (sub-task scaffolding) that pointed at
-        // the source so the merge target inherits the workflow steps.
-        let templateDescriptor = FetchDescriptor<TaskTemplate>(
-            predicate: #Predicate<TaskTemplate> { template in
-                (template.taskTypeRef == sourceId || template.taskTypeId == sourceId)
-                && template.deletedAt == nil
-            }
-        )
-        let linkedTemplates = (try? modelContext.fetch(templateDescriptor)) ?? []
-        for template in linkedTemplates {
-            template.taskTypeRef = targetId
-            template.taskTypeId = targetId
-            template.needsSync = true
-        }
-
-        do {
-            try modelContext.save()
         } catch {
             isMerging = false
             mergeError = error.localizedDescription
             return
         }
-
-        // Mirror the local re-pins server-side. Failures here aren't fatal —
-        // the rows have `needsSync` and the SwiftData snapshot is authoritative
-        // locally; the next sync sweep will reconcile.
-        let companyId = source.companyId
-        let productRepo = ProductRepository(companyId: companyId)
-        for product in linkedProducts {
-            var fields = UpdateProductDTO()
-            fields.taskTypeRef = targetId
-            fields.taskTypeId = targetId
-            do {
-                _ = try await productRepo.update(product.id, fields: fields)
-            } catch {
-                print("[TaskTypeMerge] ⚠️ Product re-pin sync failed for \(product.id): \(error)")
-            }
-        }
-
-        let templateRepo = TaskTemplateRepository(companyId: companyId)
-        for template in linkedTemplates {
-            var fields = UpdateTaskTemplateDTO()
-            fields.taskTypeRef = targetId
-            fields.taskTypeId = targetId
-            do {
-                _ = try await templateRepo.update(template.id, fields: fields)
-            } catch {
-                print("[TaskTypeMerge] ⚠️ TaskTemplate re-pin sync failed for \(template.id): \(error)")
-            }
-        }
-
-        // Source type no longer owns any active tasks, products, or templates,
-        // so the cascading soft delete inside DataController.deleteTaskType
-        // won't touch the rows we just reassigned.
-        do {
-            try await dataController.deleteTaskType(taskTypeId: source.id)
-        } catch {
-            isMerging = false
-            mergeError = error.localizedDescription
-            return
-        }
-
-        dataController.triggerBackgroundSync()
 
         isMerging = false
         UINotificationFeedbackGenerator().notificationOccurred(.success)

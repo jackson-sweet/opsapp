@@ -400,10 +400,7 @@ struct PendingWorkScreen: View {
             }
         )
         guard let op = (try? modelContext.fetch(descriptor))?.first else { return }
-        op.status = "pending"
-        op.retryCount = 0
-        op.lastError = nil
-        try? modelContext.save()
+        dataController.syncEngine.retryOperations([op])
     }
 
     private func resetRecoverableOperations() {
@@ -411,12 +408,7 @@ struct PendingWorkScreen: View {
             predicate: #Predicate<SyncOperation> { $0.status == "failed" || $0.status == "parked" }
         )
         guard let ops = try? modelContext.fetch(descriptor), !ops.isEmpty else { return }
-        for op in ops {
-            op.status = "pending"
-            op.retryCount = 0
-            op.lastError = nil
-        }
-        try? modelContext.save()
+        dataController.syncEngine.retryOperations(ops)
     }
 
     private func retryPhotos(ids: [String]) {

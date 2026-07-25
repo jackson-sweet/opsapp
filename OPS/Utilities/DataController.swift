@@ -108,6 +108,7 @@ class DataController: ObservableObject {
     private(set) var inboundChangeRouter: InboundChangeRouter?
 
     private var cancellables = Set<AnyCancellable>()
+    private var taskTypeMutationRollbackCancellable: AnyCancellable?
 
     // Cancellable data wipe scheduled during logout — cancelled if re-login starts
     private var pendingDataWipeWork: DispatchWorkItem?
@@ -231,6 +232,19 @@ class DataController: ObservableObject {
     func setModelContext(_ context: ModelContext) {
         self.modelContext = context
 
+        if taskTypeMutationRollbackCancellable == nil {
+            taskTypeMutationRollbackCancellable = NotificationCenter.default
+                .publisher(for: .taskTypeMutationRolledBack)
+                .receive(on: RunLoop.main)
+                .sink { [weak self] _ in
+                    guard let context = self?.modelContext else { return }
+                    Task { @MainActor in
+                        await NotificationManager.shared
+                            .refreshTaskReminderSchedules(context: context)
+                    }
+                }
+        }
+
         // Create sync engine and connectivity eagerly so they're never nil.
         // configure() is called later in initializeSyncManager() once auth is verified.
         if self.syncEngine == nil {
@@ -272,6 +286,13 @@ class DataController: ObservableObject {
                         name: Notification.Name("CalendarUserEventsDidChange"),
                         object: nil
                     )
+                },
+                onTaskRemindersChanged: { [weak self] in
+                    guard let context = self?.modelContext else { return }
+                    Task { @MainActor in
+                        await NotificationManager.shared
+                            .refreshTaskReminderSchedules(context: context)
+                    }
                 }
             )
         }
@@ -6330,42 +6351,135 @@ class DataController: ObservableObject {
     /// This replaces syncManager.deleteTaskType(taskTypeId:) calls.
     @MainActor
     func deleteTaskType(taskTypeId: String) async throws {
-        guard let context = modelContext else { return }
+        guard let context = modelContext else {
+            throw TaskTypeDeletionError.modelContextUnavailable
+        }
+
+        let canonicalId = taskTypeId.lowercased()
+        let taskTypes = try context.fetch(FetchDescriptor<TaskType>())
+        guard let taskType = taskTypes.first(where: {
+            $0.id.lowercased() == canonicalId
+        }), taskType.deletedAt == nil else {
+            throw TaskTypeDeletionError.notFound
+        }
+        guard !taskType.isDefault else {
+            throw TaskTypeDeletionError.defaultTypeProtected
+        }
+
+        // The scalar id is authoritative. A stale or missing SwiftData
+        // relationship must never make an in-use type look empty.
+        let canonicalCompanyId = taskType.companyId.lowercased()
+        let allTasks = try context.fetch(FetchDescriptor<ProjectTask>())
+        let activeReferenceCount = allTasks.filter {
+                $0.deletedAt == nil
+                    && $0.companyId.lowercased() == canonicalCompanyId
+                    && $0.taskTypeId.lowercased() == canonicalId
+            }
+            .count
+        guard activeReferenceCount == 0 else {
+            throw TaskTypeDeletionError.stillInUse(
+                activeTaskCount: activeReferenceCount
+            )
+        }
+
+        let productReferenceCount = try context
+            .fetch(FetchDescriptor<Product>())
+            .filter {
+            $0.companyId.lowercased() == canonicalCompanyId
+                && (
+                    $0.taskTypeRef?.lowercased() == canonicalId
+                        || $0.taskTypeId?.lowercased() == canonicalId
+                )
+        }.count
+        let templateReferenceCount = try context
+            .fetch(FetchDescriptor<TaskTemplate>())
+            .filter {
+            $0.deletedAt == nil
+                && $0.companyId.lowercased() == canonicalCompanyId
+                && (
+                    $0.taskTypeRef?.lowercased() == canonicalId
+                        || $0.taskTypeId.lowercased() == canonicalId
+                )
+        }.count
+        let incomingDependencyCount = taskTypes.filter { candidate in
+            guard candidate.deletedAt == nil,
+                  candidate.companyId.lowercased() == canonicalCompanyId,
+                  candidate.id.lowercased() != canonicalId else {
+                return false
+            }
+            guard let data = candidate.dependenciesJSON.data(using: .utf8),
+                  let dependencies = try? JSONDecoder().decode(
+                      [TaskTypeDependency].self,
+                      from: data
+                  ) else {
+                return true
+            }
+            return dependencies.contains {
+                $0.dependsOnTaskTypeId.lowercased() == canonicalId
+            }
+        }.count
+        let reminderTemplateReferenceCount = try context
+            .fetch(FetchDescriptor<TaskTypeReminder>())
+            .filter {
+                $0.deletedAt == nil
+                    && $0.companyId.lowercased() == canonicalCompanyId
+                    && $0.taskTypeId.lowercased() == canonicalId
+            }
+            .count
+        let taskOverrideReferenceCount = allTasks.filter { task in
+            guard task.deletedAt == nil,
+                  task.companyId.lowercased() == canonicalCompanyId,
+                  let json = task.dependencyOverridesJSON else {
+                return false
+            }
+            guard let data = json.data(using: .utf8),
+                  let dependencies = try? JSONDecoder().decode(
+                      [TaskTypeDependency].self,
+                      from: data
+                  ) else {
+                return true
+            }
+            return dependencies.contains {
+                $0.dependsOnTaskTypeId.lowercased() == canonicalId
+            }
+        }.count
+        let configurationReferenceCount =
+            productReferenceCount
+                + templateReferenceCount
+                + incomingDependencyCount
+                + reminderTemplateReferenceCount
+                + taskOverrideReferenceCount
+        guard configurationReferenceCount == 0 else {
+            throw TaskTypeDeletionError.referencedByConfiguration(
+                referenceCount: configurationReferenceCount
+            )
+        }
 
         let deletionDate = Date()
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime]
-
-        // Soft delete locally and cascade to associated tasks
-        let descriptor = FetchDescriptor<TaskType>(predicate: #Predicate { $0.id == taskTypeId })
-        if let taskType = try? context.fetch(descriptor).first {
-            // Cascade soft delete to all tasks that belong to this task type
-            for task in taskType.tasks where task.deletedAt == nil {
-                task.deletedAt = deletionDate
-                task.needsSync = true
-
-                syncEngine.recordOperation(
-                    entityType: .projectTask,
-                    entityId: task.id,
-                    operationType: "delete",
-                    changedFields: ["deleted_at": formatter.string(from: deletionDate)]
-                )
-            }
-
-            taskType.deletedAt = deletionDate
-            taskType.needsSync = true
-            try? context.save()
-        }
-
-        // Record for async sync
-        syncEngine.recordOperation(
-            entityType: .taskType,
-            entityId: taskTypeId,
+        let deletedAt = formatter.string(from: deletionDate)
+        let operation = SyncOperation(
+            entityType: SyncEntityType.taskType.rawValue,
+            entityId: taskType.id.lowercased(),
             operationType: "delete",
-            changedFields: ["deleted_at": formatter.string(from: deletionDate)]
+            payload: try JSONSerialization.data(
+                withJSONObject: ["deleted_at": deletedAt],
+                options: [.sortedKeys]
+            ),
+            changedFields: ["deleted_at"]
         )
 
-        print("[DataController] ✅ Task type deleted: \(taskTypeId)")
+        // The database independently rejects default types and any mutable
+        // references that appeared after the local validation.
+        try context.transaction {
+            taskType.deletedAt = deletionDate
+            taskType.needsSync = true
+            context.insert(operation)
+        }
+        syncEngine.notifyDurableOperationQueued(pullAfterPush: true)
+
+        print("[DataController] ✅ Task type deleted: \(taskType.id)")
     }
 
     // MARK: - SubClient Operations (SyncEngine Migration)
@@ -6817,10 +6931,20 @@ class DataController: ObservableObject {
         await syncEngine.triggerSync()
     }
 
-    /// Trigger task types sync - replaces syncManager.syncCompanyTaskTypes()
+    /// Refresh task types from the backend.
+    /// Returns true only when the task-type entity pull completed, including
+    /// an authoritative empty result.
     @MainActor
-    func triggerTaskTypesSync(companyId: String) async {
-        await syncEngine.triggerSync()
+    @discardableResult
+    func triggerTaskTypesSync(companyId: String) async -> Bool {
+        guard !companyId.isEmpty,
+              currentUser?.companyId?.caseInsensitiveCompare(companyId)
+                == .orderedSame else {
+            print("[DATA_CONTROLLER] Task type refresh rejected — company mismatch")
+            return false
+        }
+
+        return await syncEngine.refreshScheduleData(companyId: companyId)
     }
 
     /// Trigger tasks sync - replaces syncManager.syncTasks()

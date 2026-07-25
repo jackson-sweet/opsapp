@@ -371,4 +371,9 @@ extension Notification.Name {
     /// Posted when local photo disk usage exceeds 500MB.
     /// UI can observe this to show a storage warning.
     static let photoDiskUsageHigh = Notification.Name("photoDiskUsageHigh")
+
+    /// Posted after a permanently rejected task-type reassignment or merge
+    /// restores its optimistic local reminder state.
+    static let taskTypeMutationRolledBack =
+        Notification.Name("taskTypeMutationRolledBack")
 }

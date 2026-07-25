@@ -27,6 +27,8 @@
 //       • CalendarUserEvent → "CalendarUserEventsDidChange" notification
 //         (ScheduleView.loadUserEvents, MonthGridView, CalendarDaySelector
 //         already observe it)
+//       • TaskReminder → rebuild the current user's local reminder schedules
+//         from the main SwiftData context after the actor save lands
 //
 //  Performance: trailing debounce (default 250 ms) collapses merge storms to
 //  a single cache rebuild, with a max-latency bound (default 1 s) so a
@@ -115,6 +117,7 @@ final class InboundChangeRouter {
 
     static let userEventEntityName = "CalendarUserEvent"
     static let photoAnnotationEntityName = "PhotoAnnotation"
+    static let taskReminderEntityName = "TaskReminder"
 
     // MARK: - Configuration
 
@@ -122,6 +125,7 @@ final class InboundChangeRouter {
     private let maxLatency: TimeInterval
     private let onCalendarTasksChanged: () -> Void
     private let onUserEventsChanged: () -> Void
+    private let onTaskRemindersChanged: () -> Void
 
     // MARK: - State
 
@@ -136,12 +140,14 @@ final class InboundChangeRouter {
         debounceInterval: TimeInterval = 0.25,
         maxLatency: TimeInterval = 1.0,
         onCalendarTasksChanged: @escaping () -> Void,
-        onUserEventsChanged: @escaping () -> Void
+        onUserEventsChanged: @escaping () -> Void,
+        onTaskRemindersChanged: @escaping () -> Void = {}
     ) {
         self.debounceInterval = debounceInterval
         self.maxLatency = maxLatency
         self.onCalendarTasksChanged = onCalendarTasksChanged
         self.onUserEventsChanged = onUserEventsChanged
+        self.onTaskRemindersChanged = onTaskRemindersChanged
 
         self.cancellable = NotificationCenter.default
             .publisher(for: .inboundDataMerged)
@@ -200,6 +206,9 @@ final class InboundChangeRouter {
         }
         if names.contains(Self.photoAnnotationEntityName) {
             NotificationCenter.default.post(name: .projectPhotoAnnotationsChanged, object: nil)
+        }
+        if names.contains(Self.taskReminderEntityName) {
+            onTaskRemindersChanged()
         }
     }
 }

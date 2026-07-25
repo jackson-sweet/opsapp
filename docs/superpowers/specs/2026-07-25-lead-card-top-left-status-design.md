@@ -1,7 +1,7 @@
 # Lead Card Top-Left Status — Design
 
-**Date:** 2026-07-25  
-**Bug:** `b4eee308-83c7-434c-9f55-d83c897dd720`  
+**Date:** 2026-07-25
+**Bug:** `b4eee308-83c7-434c-9f55-d83c897dd720`
 **Scope:** `LeadTriageCard` on the OPS iOS Leads tab and stage drill.
 
 ## Problem

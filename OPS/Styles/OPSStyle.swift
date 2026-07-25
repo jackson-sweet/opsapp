@@ -736,10 +736,13 @@ enum OPSStyle {
         static let settings = "gearshape.fill"              // THE icon for Settings
         static let search = "magnifyingglass"               // THE icon for Search
         static let menu = "line.3.horizontal"               // THE icon for Menu
+        static let message = "message.fill"                 // THE icon for composing or sending a message
         static let close = "xmark"                          // THE icon for Close/Dismiss
         static let back = "chevron.left"                    // THE icon for Back navigation
         static let forward = "chevron.right"                // THE icon for Forward navigation
         static let arrowRight = "arrow.right"               // THE icon for a directional right arrow (list-row affordance)
+        static let expand = "arrow.up.left.and.arrow.down.right" // THE icon for entering a focused full-screen view
+        static let fit = "arrow.down.right.and.arrow.up.left"    // THE icon for fitting content back into its viewport
 
         // MARK: - Legacy SF Symbols (Currently in Use)
         // These are used in existing code - during Track F migration, replace with semantic icons above

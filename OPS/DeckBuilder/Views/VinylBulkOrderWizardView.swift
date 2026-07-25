@@ -8,10 +8,9 @@
 //  across every confirmed job, composes ONE combined supplier text, and
 //  auto-marks every job ordered when the message sends.
 //
-//  Page state is session-local exactly like the single-project order sheet:
-//  color/catalog picks write through to the design config on CONFIRM, order
-//  mode + roll length persist to materialsSettings, and whatever layout is
-//  live at send freezes into each job's snapshot.
+//  Page state mirrors the single-project order sheet: confirmed vinyl layout,
+//  color/catalog picks, order mode, and roll length write through to the design,
+//  and whatever layout is live at send freezes into each job's snapshot.
 //
 
 import MessageUI
@@ -56,9 +55,8 @@ struct VinylBulkOrderWizardContext: Identifiable {
     var id: String { jobs.map(\.projectId).joined(separator: "|") }
 }
 
-/// Editable per-page state. Direction/width/seam stay session-transient
-/// (parity with the order sheet); order mode + roll length write through to
-/// the design's materialsSettings at CONFIRM.
+/// Editable per-page state. Vinyl layout settings, order mode, and roll length
+/// write through to the design at CONFIRM.
 private struct VinylWizardPageState {
     var vinylSettings: VinylOrderSettings
     var materialsSettings: DeckMaterialsSettings
@@ -99,26 +97,25 @@ struct VinylBulkOrderWizardView: View {
                 OPSStyle.Colors.background.ignoresSafeArea()
 
                 if didSeed {
-                    VStack(spacing: 0) {
-                        wizardHeader
-
-                        if onSendPage {
-                            VinylBulkOrderSendPageView(
-                                context: context,
-                                sections: confirmedSections,
-                                needs: confirmedNeeds,
-                                makeCommitItems: { commitItems() },
-                                onBack: { withAnimation(OPSStyle.Animation.page) { pageIndex = max(0, jobs.count - 1) } },
-                                onCommitted: { outcome, failedItems in onCommitted(outcome, failedItems) }
-                            )
-                        } else {
-                            pageBody
-                        }
+                    if onSendPage {
+                        VinylBulkOrderSendPageView(
+                            context: context,
+                            sections: confirmedSections,
+                            needs: confirmedNeeds,
+                            makeCommitItems: { commitItems() },
+                            onBack: { withAnimation(OPSStyle.Animation.page) { pageIndex = max(0, jobs.count - 1) } },
+                            onCommitted: { outcome, failedItems in onCommitted(outcome, failedItems) }
+                        )
+                    } else {
+                        pageBody
                     }
                 }
             }
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
+                ToolbarItem(placement: .principal) {
+                    wizardHeader
+                }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("CANCEL") {
                         if hasConfirmedAny {
@@ -131,6 +128,8 @@ struct VinylBulkOrderWizardView: View {
                     .foregroundColor(OPSStyle.Colors.primaryText)
                 }
             }
+            .toolbarBackground(OPSStyle.Colors.cardBackgroundDark, for: .navigationBar)
+            .toolbarBackground(.visible, for: .navigationBar)
             .confirmationDialog(
                 "CANCEL ORDER?",
                 isPresented: $showingCancelConfirm,
@@ -149,27 +148,23 @@ struct VinylBulkOrderWizardView: View {
     // MARK: - Header
 
     private var wizardHeader: some View {
-        VStack(alignment: .leading, spacing: 3) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
             Text(onSendPage ? "ORDER · SEND" : "ORDER · \(pageIndex + 1) OF \(jobs.count)")
                 .font(OPSStyle.Typography.metadata)
                 .foregroundColor(OPSStyle.Colors.secondaryText)
-                .tracking(1.1)
             Text(onSendPage ? "FLASHING + GLUE + MESSAGE" : jobs[pageIndex].title.uppercased())
                 .font(OPSStyle.Typography.bodyBold)
                 .foregroundColor(OPSStyle.Colors.primaryText)
                 .lineLimit(1)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, OPSStyle.Layout.spacing3)
-        .padding(.vertical, OPSStyle.Layout.spacing2)
-        .background(OPSStyle.Colors.cardBackgroundDark)
+        .accessibilityElement(children: .combine)
     }
 
     // MARK: - Per-job page
 
     private var pageBody: some View {
         let job = jobs[pageIndex]
-        return VStack(spacing: 0) {
+        return ZStack(alignment: .bottom) {
             ScrollView {
                 VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing3) {
                     VinylBulkOrderPageView(
@@ -185,57 +180,40 @@ struct VinylBulkOrderWizardView: View {
                 .padding(OPSStyle.Layout.spacing3)
             }
 
-            pageActionBar(job)
+            pageActionBar
         }
     }
 
-    private func pageActionBar(_ job: VinylBulkOrderJob) -> some View {
-        HStack(spacing: OPSStyle.Layout.spacing2) {
-            Button {
-                withAnimation(OPSStyle.Animation.page) {
-                    if pageIndex > 0 { pageIndex -= 1 }
+    private var pageActionBar: some View {
+        OPSFloatingButtonBar(
+            horizontalPadding: OPSStyle.Layout.spacing3,
+            verticalPadding: OPSStyle.Layout.spacing2
+        ) {
+            HStack(spacing: OPSStyle.Layout.spacing2) {
+                Button {
+                    withAnimation(OPSStyle.Animation.page) {
+                        if pageIndex > 0 { pageIndex -= 1 }
+                    }
+                } label: {
+                    Text("BACK")
                 }
-            } label: {
-                Text("BACK")
-                    .font(OPSStyle.Typography.buttonLabel)
-                    .foregroundColor(OPSStyle.Colors.primaryText)
-                    .frame(maxWidth: .infinity)
-                    .frame(minHeight: OPSStyle.Layout.touchTargetMin)
-                    .background(OPSStyle.Colors.cardBackgroundDark)
-                    .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                            .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-                    )
-            }
-            .buttonStyle(.plain)
-            .disabled(pageIndex == 0)
-            .opacity(pageIndex == 0 ? 0.45 : 1)
+                .opsSecondaryButtonStyle()
+                .disabled(pageIndex == 0)
+                .opacity(pageIndex == 0 ? OPSStyle.Layout.Opacity.medium : 1)
 
-            Button {
-                confirmPage(at: pageIndex)
-            } label: {
-                Text("CONFIRM")
-                    .font(OPSStyle.Typography.buttonLabel)
-                    .foregroundColor(OPSStyle.Colors.background)
-                    .frame(maxWidth: .infinity)
-                    .frame(minHeight: OPSStyle.Layout.touchTargetMin)
-                    .background(canConfirmCurrentPage ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.tertiaryText)
-                    .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius))
+                Button {
+                    confirmPage(at: pageIndex)
+                } label: {
+                    Text("CONFIRM")
+                }
+                .opsPrimaryButtonStyle(isDisabled: !canConfirmCurrentPage)
+                .disabled(!canConfirmCurrentPage)
             }
-            .buttonStyle(.plain)
-            .disabled(!canConfirmCurrentPage)
         }
-        .padding(.horizontal, OPSStyle.Layout.spacing3)
-        .padding(.top, OPSStyle.Layout.spacing2)
-        .padding(.bottom, OPSStyle.Layout.spacing3)
-        .background(OPSStyle.Colors.background.opacity(0.96))
     }
 
     private var canConfirmCurrentPage: Bool {
-        guard pageIndex < pageStates.count else { return false }
-        return !pageStates[pageIndex].vinylSettings.color
-            .trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        pageStates.indices.contains(pageIndex)
     }
 
     private func confirmPage(at index: Int) {
@@ -248,9 +226,8 @@ struct VinylBulkOrderWizardView: View {
         }
     }
 
-    /// Persist the page's color/catalog pick + order mode to the design so a
-    /// later sheet open restores it — the exact fields the order sheet writes,
-    /// through the same drawingData accessor discipline (no view model).
+    /// Persist the confirmed layout, color/catalog pick, and order mode so a
+    /// later sheet open restores exactly what the operator reviewed.
     private func writeThroughConfig(at index: Int) {
         let job = jobs[index]
         guard let design = job.design else { return }
@@ -261,6 +238,13 @@ struct VinylBulkOrderWizardView: View {
         let newColor = trimmedColor.isEmpty ? nil : trimmedColor
         let newVariantId = state.vinylSettings.catalogVariantId?.trimmingCharacters(in: .whitespacesAndNewlines)
         let newItemId = state.vinylSettings.catalogItemId?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let normalizedVariantId = (newVariantId?.isEmpty ?? true) ? nil : newVariantId
+        let normalizedItemId = (newItemId?.isEmpty ?? true) ? nil : newItemId
+
+        var persistedVinylSettings = state.vinylSettings
+        persistedVinylSettings.color = newColor ?? ""
+        persistedVinylSettings.catalogVariantId = normalizedVariantId
+        persistedVinylSettings.catalogItemId = normalizedItemId
 
         var materialsSettings = data.materialsSettings ?? DeckMaterialsSettings()
         let settingsChanged = materialsSettings.orderMode != state.materialsSettings.orderMode
@@ -269,13 +253,15 @@ struct VinylBulkOrderWizardView: View {
         materialsSettings.fullRollLengthFeet = state.materialsSettings.fullRollLengthFeet
 
         let configChanged = data.config.vinylColor != newColor
-            || data.config.vinylCatalogVariantId != ((newVariantId?.isEmpty ?? true) ? nil : newVariantId)
-            || data.config.vinylCatalogItemId != ((newItemId?.isEmpty ?? true) ? nil : newItemId)
+            || data.config.vinylCatalogVariantId != normalizedVariantId
+            || data.config.vinylCatalogItemId != normalizedItemId
+        let vinylSettingsChanged = data.vinylOrderSettings != persistedVinylSettings
 
-        guard configChanged || settingsChanged else { return }
+        guard configChanged || settingsChanged || vinylSettingsChanged else { return }
         data.config.vinylColor = newColor
-        data.config.vinylCatalogVariantId = (newVariantId?.isEmpty ?? true) ? nil : newVariantId
-        data.config.vinylCatalogItemId = (newItemId?.isEmpty ?? true) ? nil : newItemId
+        data.config.vinylCatalogVariantId = normalizedVariantId
+        data.config.vinylCatalogItemId = normalizedItemId
+        data.vinylOrderSettings = persistedVinylSettings
         data.materialsSettings = materialsSettings
         design.drawingData = data
     }
@@ -290,10 +276,12 @@ struct VinylBulkOrderWizardView: View {
             var materials = DeckMaterialsSettings()
             if let design = job.design {
                 let data = design.drawingData
+                vinyl = data.vinylOrderSettings ?? .default
+                let restoredItemId = data.config.vinylCatalogItemId ?? vinyl.catalogItemId
                 let restored = VinylCatalogSelection.restoredSelection(
-                    configItemId: data.config.vinylCatalogItemId?.trimmingCharacters(in: .whitespacesAndNewlines),
-                    configVariantId: data.config.vinylCatalogVariantId,
-                    configColor: data.config.vinylColor,
+                    configItemId: restoredItemId?.trimmingCharacters(in: .whitespacesAndNewlines),
+                    configVariantId: data.config.vinylCatalogVariantId ?? vinyl.catalogVariantId,
+                    configColor: data.config.vinylColor ?? vinyl.color,
                     availableItemIds: Set(catalogChoices.map(\.id)),
                     variantIdsByItem: Dictionary(
                         uniqueKeysWithValues: catalogChoices.map { ($0.id, Set($0.variants.map(\.id))) }
@@ -472,14 +460,11 @@ private struct VinylBulkOrderPageView: View {
             if job.degenerateReason == nil, let plan = state.plan {
                 cutsSection(plan)
 
-                VinylCutPreview(plan: plan)
-                    .frame(height: OPSStyle.Layout.touchTargetLarge * 3)
-                    .background(OPSStyle.Colors.cardBackgroundDark)
-                    .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                            .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-                    )
+                VinylOrderLayoutWindow(
+                    plan: plan,
+                    projectTitle: job.title,
+                    subtitle: orderLayoutSubtitle(for: plan)
+                )
 
                 layoutSection
             }
@@ -488,7 +473,7 @@ private struct VinylBulkOrderPageView: View {
 
     private func degenerateBanner(_ reason: VinylBulkOrderJob.DegenerateReason) -> some View {
         HStack(spacing: OPSStyle.Layout.spacing2) {
-            Image(systemName: "exclamationmark.triangle.fill")
+            Image(systemName: OPSStyle.Icons.alert)
                 .font(.system(size: OPSStyle.Layout.IconSize.xs, weight: .semibold))
             Text(reason.label)
                 .font(OPSStyle.Typography.captionBold)
@@ -498,10 +483,13 @@ private struct VinylBulkOrderPageView: View {
         }
         .foregroundColor(OPSStyle.Colors.warningStatus)
         .padding(OPSStyle.Layout.spacing2)
-        .background(OPSStyle.Colors.warningStatus.opacity(0.10))
+        .background(OPSStyle.Colors.warningStatus.opacity(OPSStyle.Layout.Opacity.subtle))
         .overlay(
             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                .stroke(OPSStyle.Colors.warningStatus.opacity(0.45), lineWidth: OPSStyle.Layout.Border.standard)
+                .stroke(
+                    OPSStyle.Colors.warningStatus.opacity(OPSStyle.Layout.Opacity.medium),
+                    lineWidth: OPSStyle.Layout.Border.standard
+                )
         )
         .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius))
     }
@@ -596,40 +584,19 @@ private struct VinylBulkOrderPageView: View {
     }
 
     private var freeTextColorField: some View {
-        VStack(spacing: OPSStyle.Layout.spacing2) {
-            HStack(spacing: OPSStyle.Layout.spacing2) {
-                Text("COLOR")
-                    .font(OPSStyle.Typography.smallCaption)
-                    .foregroundColor(OPSStyle.Colors.tertiaryText)
-                    .frame(width: OPSStyle.Layout.touchTargetStandard + OPSStyle.Layout.spacing5, alignment: .leading)
-                TextField("FIELD CONFIRM", text: $state.vinylSettings.color)
-                    .font(OPSStyle.Typography.body)
-                    .textInputAutocapitalization(.words)
-                    .foregroundColor(OPSStyle.Colors.primaryText)
-                    .padding(.horizontal, OPSStyle.Layout.spacing2)
-                    .frame(height: OPSStyle.Layout.touchTargetMin)
-                    .background(OPSStyle.Colors.subtleBackground)
-                    .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius))
-            }
-
-            if state.vinylSettings.color.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                Button {
-                    state.vinylSettings.color = "FIELD CONFIRM"
-                } label: {
-                    Text("USE FIELD CONFIRM")
-                        .font(OPSStyle.Typography.buttonLabel)
-                        .foregroundColor(OPSStyle.Colors.secondaryText)
-                        .frame(maxWidth: .infinity)
-                        .frame(minHeight: OPSStyle.Layout.touchTargetMin)
-                        .background(OPSStyle.Colors.subtleBackground)
-                        .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-                        )
-                }
-                .buttonStyle(.plain)
-            }
+        HStack(spacing: OPSStyle.Layout.spacing2) {
+            Text("COLOR")
+                .font(OPSStyle.Typography.smallCaption)
+                .foregroundColor(OPSStyle.Colors.tertiaryText)
+                .frame(width: OPSStyle.Layout.touchTargetStandard + OPSStyle.Layout.spacing5, alignment: .leading)
+            TextField("FIELD CONFIRM", text: $state.vinylSettings.color)
+                .font(OPSStyle.Typography.body)
+                .textInputAutocapitalization(.words)
+                .foregroundColor(OPSStyle.Colors.primaryText)
+                .padding(.horizontal, OPSStyle.Layout.spacing2)
+                .frame(height: OPSStyle.Layout.touchTargetMin)
+                .background(OPSStyle.Colors.subtleBackground)
+                .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius))
         }
     }
 
@@ -654,11 +621,18 @@ private struct VinylBulkOrderPageView: View {
         pageSection(title: "CUTS") {
             VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
                 if state.materialsSettings.orderMode == .fullRolls {
-                    let pack = VinylRollPacker.rollsNeeded(
+                    let packingPlan = VinylRollPacker.packingPlan(
                         stripLengthsFeet: plan.surfaces.flatMap(\.purchasedCuts).map { $0.lengthInches / 12.0 },
                         rollLengthFeet: state.materialsSettings.fullRollLengthFeet
                     )
-                    metricRow("ROLLS", "\(pack.rollCount) @ \(Int(state.materialsSettings.fullRollLengthFeet))' × \(vinylFormatInches(state.vinylSettings.rollWidthInches))")
+                    metricRow(
+                        "ROLLS",
+                        "\(packingPlan.rolls.count) @ \(Int(state.materialsSettings.fullRollLengthFeet))' × \(vinylFormatInches(state.vinylSettings.rollWidthInches))"
+                    )
+                    VinylRollUtilizationView(plan: packingPlan)
+                    if !packingPlan.overlengthStripLengthsFeet.isEmpty {
+                        overlengthWarning(count: packingPlan.overlengthStripLengthsFeet.count)
+                    }
                 }
                 metricRow("ORDER AREA", "\(plan.totalOrderedSqFt) SQ FT")
 
@@ -669,6 +643,38 @@ private struct VinylBulkOrderPageView: View {
                 }
             }
         }
+    }
+
+    private func orderLayoutSubtitle(for plan: VinylCutPlan) -> String {
+        if state.materialsSettings.orderMode == .fullRolls {
+            let packingPlan = VinylRollPacker.packingPlan(
+                stripLengthsFeet: plan.surfaces.flatMap(\.purchasedCuts).map { $0.lengthInches / 12.0 },
+                rollLengthFeet: state.materialsSettings.fullRollLengthFeet
+            )
+            return "\(packingPlan.rolls.count) ROLL\(packingPlan.rolls.count == 1 ? "" : "S")"
+        }
+        return "\(plan.totalStripCount) CUT\(plan.totalStripCount == 1 ? "" : "S")"
+    }
+
+    private func overlengthWarning(count: Int) -> some View {
+        HStack(spacing: OPSStyle.Layout.spacing2) {
+            Image(systemName: OPSStyle.Icons.alert)
+                .font(.system(size: OPSStyle.Layout.IconSize.xs, weight: .semibold))
+            Text("CUT LONGER THAN ROLL · \(count)")
+                .font(OPSStyle.Typography.captionBold)
+            Spacer(minLength: 0)
+        }
+        .foregroundColor(OPSStyle.Colors.warningStatus)
+        .padding(OPSStyle.Layout.spacing2)
+        .background(OPSStyle.Colors.warningStatus.opacity(OPSStyle.Layout.Opacity.subtle))
+        .overlay(
+            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                .stroke(
+                    OPSStyle.Colors.warningStatus.opacity(OPSStyle.Layout.Opacity.medium),
+                    lineWidth: OPSStyle.Layout.Border.standard
+                )
+        )
+        .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius))
     }
 
     // MARK: Layout (collapsed by default)
@@ -683,7 +689,7 @@ private struct VinylBulkOrderPageView: View {
                         Text(state.showLayout ? "HIDE LAYOUT" : "EDIT LAYOUT")
                             .font(OPSStyle.Typography.buttonLabel)
                         Spacer(minLength: 0)
-                        Image(systemName: state.showLayout ? "chevron.up" : "chevron.down")
+                        Image(systemName: state.showLayout ? OPSStyle.Icons.chevronUp : OPSStyle.Icons.chevronDown)
                             .font(.system(size: OPSStyle.Layout.IconSize.xs, weight: .semibold))
                     }
                     .foregroundColor(OPSStyle.Colors.primaryText)
@@ -893,7 +899,7 @@ struct VinylBulkOrderSendPageView: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
+        ZStack(alignment: .bottom) {
             ScrollView {
                 VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing3) {
                     consumablesSection
@@ -1110,51 +1116,34 @@ struct VinylBulkOrderSendPageView: View {
     // MARK: Send + commit
 
     private var sendActionBar: some View {
-        HStack(spacing: OPSStyle.Layout.spacing2) {
-            Button {
-                onBack()
-            } label: {
-                Text("BACK")
-                    .font(OPSStyle.Typography.buttonLabel)
-                    .foregroundColor(OPSStyle.Colors.primaryText)
-                    .frame(maxWidth: .infinity)
-                    .frame(minHeight: OPSStyle.Layout.touchTargetMin)
-                    .background(OPSStyle.Colors.cardBackgroundDark)
-                    .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                            .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-                    )
-            }
-            .buttonStyle(.plain)
-            .disabled(isCommitting)
-
-            Button {
-                handleSendAction()
-            } label: {
-                HStack(spacing: OPSStyle.Layout.spacing2) {
-                    if isCommitting {
-                        ProgressView().tint(OPSStyle.Colors.background)
-                    } else {
-                        Image(systemName: "message.fill")
-                            .font(.system(size: OPSStyle.Layout.IconSize.xs, weight: .semibold))
-                    }
-                    Text(MFMessageComposeViewController.canSendText() ? "TEXT ORDER" : "COPY ORDER")
-                        .font(OPSStyle.Typography.buttonLabel)
+        OPSFloatingButtonBar(
+            horizontalPadding: OPSStyle.Layout.spacing3,
+            verticalPadding: OPSStyle.Layout.spacing2
+        ) {
+            HStack(spacing: OPSStyle.Layout.spacing2) {
+                Button("BACK") {
+                    onBack()
                 }
-                .foregroundColor(OPSStyle.Colors.background)
-                .frame(maxWidth: .infinity)
-                .frame(minHeight: OPSStyle.Layout.touchTargetMin)
-                .background(sections.isEmpty ? OPSStyle.Colors.tertiaryText : OPSStyle.Colors.primaryAccent)
-                .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius))
+                .opsSecondaryButtonStyle()
+                .disabled(isCommitting)
+
+                Button {
+                    handleSendAction()
+                } label: {
+                    HStack(spacing: OPSStyle.Layout.spacing2) {
+                        if isCommitting {
+                            ProgressView().tint(OPSStyle.Colors.primaryAccent)
+                        } else {
+                            Image(systemName: OPSStyle.Icons.message)
+                                .font(.system(size: OPSStyle.Layout.IconSize.xs, weight: .semibold))
+                        }
+                        Text(MFMessageComposeViewController.canSendText() ? "TEXT ORDER" : "COPY ORDER")
+                    }
+                }
+                .opsPrimaryButtonStyle(isDisabled: sections.isEmpty || isCommitting)
+                .disabled(sections.isEmpty || isCommitting)
             }
-            .buttonStyle(.plain)
-            .disabled(sections.isEmpty || isCommitting)
         }
-        .padding(.horizontal, OPSStyle.Layout.spacing3)
-        .padding(.top, OPSStyle.Layout.spacing2)
-        .padding(.bottom, OPSStyle.Layout.spacing3)
-        .background(OPSStyle.Colors.background.opacity(0.96))
     }
 
     private func handleSendAction() {

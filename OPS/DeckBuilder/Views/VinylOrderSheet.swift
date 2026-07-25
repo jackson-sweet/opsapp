@@ -115,11 +115,15 @@ struct VinylOrderSheet: View {
     private var isRollMode: Bool { orderMode == .fullRolls }
 
     /// The plan's purchased strips packed into whole rolls of `fullRollLengthFeet`.
-    private var rollPack: RollPackResult {
-        VinylRollPacker.rollsNeeded(
+    private var rollPackingPlan: VinylRollPackingPlan {
+        VinylRollPacker.packingPlan(
             stripLengthsFeet: plan.surfaces.flatMap(\.purchasedCuts).map { $0.lengthInches / 12.0 },
             rollLengthFeet: fullRollLengthFeet
         )
+    }
+
+    private var rollPack: RollPackResult {
+        rollPackingPlan.summary
     }
 
     /// e.g. "3 ROLLS @ 75'" — the roll-mode order line for the summary + notes.
@@ -307,14 +311,11 @@ struct VinylOrderSheet: View {
                         VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing3) {
                             validationBanner
                             if plan.isOrderable {
-                                VinylCutPreview(plan: plan)
-                                    .frame(height: VinylOrderLayout.previewHeight)
-                                    .background(OPSStyle.Colors.cardBackgroundDark)
-                                    .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius))
-                                    .overlay(
-                                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                            .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-                                    )
+                                VinylOrderLayoutWindow(
+                                    plan: plan,
+                                    projectTitle: projectTitle,
+                                    subtitle: deckTitle
+                                )
                             }
 
                             controlsSection
@@ -711,6 +712,7 @@ struct VinylOrderSheet: View {
                     // Full-roll mode leads with whole rolls; the cut list below
                     // stays the on-site cutting guide.
                     metricRow("ROLLS", "\(rollPack.rollCount) @ \(Int(fullRollLengthFeet))'")
+                    VinylRollUtilizationView(plan: rollPackingPlan)
                     if rollPack.overlengthStripCount > 0 {
                         metricRow("OVER ROLL", "\(rollPack.overlengthStripCount) CUT\(rollPack.overlengthStripCount == 1 ? "" : "S")")
                     }
@@ -1824,4 +1826,3 @@ enum VinylOrderLayout {
     static let templateEditorHeight = CGFloat(OPSStyle.Layout.touchTargetLarge * 2)
     static let cutTemplateEditorHeight = CGFloat(OPSStyle.Layout.touchTargetLarge)
 }
-

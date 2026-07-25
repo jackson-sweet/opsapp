@@ -1,8 +1,8 @@
 // OPS/OPS/DeckBuilder/Engine/VinylRollPacker.swift
 //
 // Full-roll ordering math (spec § 4.1). Given the strip lengths a cut plan
-// requires and the length of one full roll, returns the FEWEST whole rolls that
-// yield every strip — a single strip is cut from ONE roll and never spans two.
+// requires and the length of one full roll, returns a deterministic whole-roll
+// packing — a single strip is cut from ONE roll and never spans two.
 //
 // First-fit-decreasing bin-packing: sort strips longest-first, drop each into
 // the first roll that still has room, else open a new roll. FFD is the standard
@@ -24,43 +24,99 @@ struct RollPackResult: Equatable {
     let overlengthStripCount: Int
 }
 
-enum VinylRollPacker {
+/// One opened roll and the strips assigned to it by first-fit-decreasing.
+struct VinylPackedRoll: Equatable {
+    let capacityFeet: Double
+    let stripLengthsFeet: [Double]
 
-    /// Fewest rolls of `rollLengthFeet` needed to yield every strip in
-    /// `stripLengthsFeet`. Each strip consumes its own length from ONE roll (no
-    /// strip spans two rolls). First-fit-decreasing. A strip longer than a roll
-    /// is counted in `overlengthStripCount` and excluded from the packed rolls.
+    var usedFeet: Double {
+        stripLengthsFeet.reduce(0, +)
+    }
+
+    var leftoverFeet: Double {
+        max(0, capacityFeet - usedFeet)
+    }
+}
+
+/// The complete deterministic packing result, including material usage for each
+/// opened roll and every strip that cannot be produced at the requested length.
+struct VinylRollPackingPlan: Equatable {
+    let rolls: [VinylPackedRoll]
+    let overlengthStripLengthsFeet: [Double]
+
+    var summary: RollPackResult {
+        RollPackResult(
+            rollCount: rolls.count,
+            overlengthStripCount: overlengthStripLengthsFeet.count
+        )
+    }
+}
+
+enum VinylRollPacker {
+    private static let epsilon = 1e-6
+
+    /// First-fit-decreasing roll count for every producible strip in
+    /// `stripLengthsFeet`. Each strip consumes its own length from ONE roll and
+    /// never spans two. A strip longer than a roll is counted in
+    /// `overlengthStripCount` and excluded from the packed rolls.
     ///
     /// A non-positive `rollLengthFeet` yields no valid roll, so every strip is
     /// unproducible: `(rollCount: 0, overlengthStripCount: stripLengthsFeet.count)`.
     static func rollsNeeded(stripLengthsFeet: [Double], rollLengthFeet: Double) -> RollPackResult {
-        let epsilon = 1e-6
+        packingPlan(
+            stripLengthsFeet: stripLengthsFeet,
+            rollLengthFeet: rollLengthFeet
+        ).summary
+    }
 
+    /// Deterministic first-fit-decreasing assignments with the used and
+    /// remaining material retained for each opened roll.
+    static func packingPlan(
+        stripLengthsFeet: [Double],
+        rollLengthFeet: Double
+    ) -> VinylRollPackingPlan {
         guard rollLengthFeet > epsilon else {
-            return RollPackResult(rollCount: 0, overlengthStripCount: stripLengthsFeet.count)
+            return VinylRollPackingPlan(
+                rolls: [],
+                overlengthStripLengthsFeet: stripLengthsFeet.sorted(by: >)
+            )
         }
 
-        var overlengthStripCount = 0
+        var overlengthStripLengthsFeet: [Double] = []
         var packable: [Double] = []
         for length in stripLengthsFeet {
             if length > rollLengthFeet + epsilon {
-                overlengthStripCount += 1          // longer than any roll — cannot be produced
+                overlengthStripLengthsFeet.append(length)
             } else if length > epsilon {
-                packable.append(length)            // skip degenerate ≤0 strips (consume no material)
+                packable.append(length)
             }
         }
 
         // Longest-first: the FFD ordering that minimizes wasted roll capacity.
         let sorted = packable.sorted(by: >)
-        var rollRemaining: [Double] = []           // remaining feet on each opened roll
+        var rollStripLengths: [[Double]] = []
+        var rollRemaining: [Double] = []
+
         for length in sorted {
             if let index = rollRemaining.firstIndex(where: { $0 + epsilon >= length }) {
+                rollStripLengths[index].append(length)
                 rollRemaining[index] -= length
             } else {
+                rollStripLengths.append([length])
                 rollRemaining.append(rollLengthFeet - length)
             }
         }
 
-        return RollPackResult(rollCount: rollRemaining.count, overlengthStripCount: overlengthStripCount)
+        let rolls = rollStripLengths.map { lengths in
+            return VinylPackedRoll(
+                capacityFeet: rollLengthFeet,
+                stripLengthsFeet: lengths
+            )
+        }
+
+        return VinylRollPackingPlan(
+            rolls: rolls,
+            overlengthStripLengthsFeet: overlengthStripLengthsFeet.sorted(by: >)
+        )
     }
 }

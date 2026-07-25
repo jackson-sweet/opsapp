@@ -199,3 +199,70 @@ final class VinylPreviewAnnotationPlannerTests: XCTestCase {
         return plan.surfaces[0]
     }
 }
+
+final class VinylOrderViewportStateTests: XCTestCase {
+
+    func testFullscreenGeometryReservesHeaderControlRailAndFitBar() {
+        let geometry = VinylOrderFullscreenGeometry(
+            containerSize: CGSize(width: 390, height: 844)
+        )
+
+        XCTAssertEqual(
+            geometry.drawingSize.width,
+            390 - VinylOrderFullscreenGeometry.controlRailWidth,
+            accuracy: 0.001
+        )
+        XCTAssertEqual(
+            geometry.drawingSize.height,
+            844
+                - VinylOrderFullscreenGeometry.headerHeight
+                - VinylOrderFullscreenGeometry.fitBarHeight,
+            accuracy: 0.001
+        )
+        XCTAssertEqual(
+            geometry.drawingCenter.y,
+            VinylOrderFullscreenGeometry.headerHeight
+                + (geometry.drawingSize.height / 2),
+            accuracy: 0.001
+        )
+    }
+
+    func testZoomClampsAtBothBoundsAndRecentersAtFitScale() {
+        var state = VinylOrderViewportState()
+        let viewport = CGSize(width: 320, height: 640)
+
+        state.applyZoom(multiplier: 20, viewportSize: viewport)
+        XCTAssertEqual(state.scale, VinylOrderViewportState.maximumScale)
+
+        state.applyPan(translation: CGSize(width: 100, height: 200), viewportSize: viewport)
+        state.applyZoom(multiplier: 0.001, viewportSize: viewport)
+
+        XCTAssertEqual(state.scale, VinylOrderViewportState.minimumScale)
+        XCTAssertEqual(state.offset, .zero)
+    }
+
+    func testPanClampsToTheVisibleZoomedCanvasBounds() {
+        var state = VinylOrderViewportState()
+        let viewport = CGSize(width: 320, height: 640)
+
+        state.applyZoom(multiplier: 2, viewportSize: viewport)
+        state.applyPan(
+            translation: CGSize(width: 1_000, height: -1_000),
+            viewportSize: viewport
+        )
+
+        XCTAssertEqual(state.offset.width, 160, accuracy: 0.001)
+        XCTAssertEqual(state.offset.height, -320, accuracy: 0.001)
+    }
+
+    func testFitResetsZoomAndPan() {
+        var state = VinylOrderViewportState(
+            scale: 3,
+            offset: CGSize(width: 80, height: -120)
+        )
+
+        state.fit()
+
+        XCTAssertEqual(state, VinylOrderViewportState())
+    }
+}

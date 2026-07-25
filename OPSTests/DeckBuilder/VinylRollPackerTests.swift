@@ -77,4 +77,54 @@ final class VinylRollPackerTests: XCTestCase {
         let b = VinylRollPacker.rollsNeeded(stripLengthsFeet: [55, 20, 30, 40, 30], rollLengthFeet: 75)
         XCTAssertEqual(a, b)
     }
+
+    func testPackingPlanRetainsEachRollsCutsUsedAndLeftoverFeet() {
+        let plan = VinylRollPacker.packingPlan(
+            stripLengthsFeet: [40, 30, 30],
+            rollLengthFeet: 75
+        )
+
+        XCTAssertEqual(plan.rolls.count, 2)
+        XCTAssertEqual(plan.rolls[0].stripLengthsFeet, [40, 30])
+        XCTAssertEqual(plan.rolls[0].usedFeet, 70, accuracy: 0.001)
+        XCTAssertEqual(plan.rolls[0].leftoverFeet, 5, accuracy: 0.001)
+        XCTAssertEqual(plan.rolls[1].stripLengthsFeet, [30])
+        XCTAssertEqual(plan.rolls[1].usedFeet, 30, accuracy: 0.001)
+        XCTAssertEqual(plan.rolls[1].leftoverFeet, 45, accuracy: 0.001)
+    }
+
+    func testPackingPlanExactFitLeavesNothing() {
+        let plan = VinylRollPacker.packingPlan(
+            stripLengthsFeet: [45, 30],
+            rollLengthFeet: 75
+        )
+
+        XCTAssertEqual(plan.rolls.count, 1)
+        XCTAssertEqual(plan.rolls[0].usedFeet, 75, accuracy: 0.001)
+        XCTAssertEqual(plan.rolls[0].leftoverFeet, 0, accuracy: 0.001)
+    }
+
+    func testPackingPlanKeepsOverlengthCutsOutsideEveryRoll() {
+        let plan = VinylRollPacker.packingPlan(
+            stripLengthsFeet: [80, 40, 30],
+            rollLengthFeet: 75
+        )
+
+        XCTAssertEqual(plan.overlengthStripLengthsFeet, [80])
+        XCTAssertEqual(plan.rolls.flatMap(\.stripLengthsFeet), [40, 30])
+        XCTAssertEqual(plan.summary, RollPackResult(rollCount: 1, overlengthStripCount: 1))
+    }
+
+    func testPackingPlanIsDeterministicAcrossInputOrder() {
+        let a = VinylRollPacker.packingPlan(
+            stripLengthsFeet: [30, 40, 30, 20, 55],
+            rollLengthFeet: 75
+        )
+        let b = VinylRollPacker.packingPlan(
+            stripLengthsFeet: [55, 20, 30, 40, 30],
+            rollLengthFeet: 75
+        )
+
+        XCTAssertEqual(a, b)
+    }
 }

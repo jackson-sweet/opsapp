@@ -7,6 +7,111 @@
 
 import CoreGraphics
 import SwiftUI
+import UIKit
+
+struct VinylOrderViewportState: Equatable {
+    static let minimumScale: CGFloat = 1
+    static let maximumScale: CGFloat = 4
+
+    var scale: CGFloat = minimumScale
+    var offset: CGSize = .zero
+
+    mutating func applyZoom(multiplier: CGFloat, viewportSize: CGSize) {
+        scale = min(
+            Self.maximumScale,
+            max(Self.minimumScale, scale * multiplier)
+        )
+
+        if scale == Self.minimumScale {
+            offset = .zero
+        } else {
+            offset = clampedOffset(offset, viewportSize: viewportSize)
+        }
+    }
+
+    mutating func applyPan(translation: CGSize, viewportSize: CGSize) {
+        guard scale > Self.minimumScale else {
+            offset = .zero
+            return
+        }
+
+        offset = clampedOffset(
+            CGSize(
+                width: offset.width + translation.width,
+                height: offset.height + translation.height
+            ),
+            viewportSize: viewportSize
+        )
+    }
+
+    mutating func fit() {
+        self = Self()
+    }
+
+    private func clampedOffset(_ proposedOffset: CGSize, viewportSize: CGSize) -> CGSize {
+        let horizontalLimit = max(0, viewportSize.width * (scale - 1) / 2)
+        let verticalLimit = max(0, viewportSize.height * (scale - 1) / 2)
+        return CGSize(
+            width: min(horizontalLimit, max(-horizontalLimit, proposedOffset.width)),
+            height: min(verticalLimit, max(-verticalLimit, proposedOffset.height))
+        )
+    }
+}
+
+struct VinylOrderFullscreenGeometry: Equatable {
+    static var headerHeight: CGFloat {
+        OPSStyle.Layout.touchTargetMin + OPSStyle.Layout.spacing4
+    }
+
+    static var controlRailWidth: CGFloat {
+        OPSStyle.Layout.touchTargetMin + OPSStyle.Layout.spacing3
+    }
+
+    static var fitBarHeight: CGFloat {
+        OPSStyle.Layout.touchTargetMin + OPSStyle.Layout.spacing3
+    }
+
+    let containerSize: CGSize
+
+    var drawingSize: CGSize {
+        CGSize(
+            width: max(1, containerSize.width - Self.controlRailWidth),
+            height: max(
+                1,
+                containerSize.height - Self.headerHeight - Self.fitBarHeight
+            )
+        )
+    }
+
+    var headerCenter: CGPoint {
+        CGPoint(
+            x: containerSize.width / 2,
+            y: Self.headerHeight / 2
+        )
+    }
+
+    var drawingCenter: CGPoint {
+        CGPoint(
+            x: drawingSize.width / 2,
+            y: Self.headerHeight + (drawingSize.height / 2)
+        )
+    }
+
+    var controlRailCenter: CGPoint {
+        CGPoint(
+            x: drawingSize.width + (Self.controlRailWidth / 2),
+            y: Self.headerHeight
+                + ((containerSize.height - Self.headerHeight) / 2)
+        )
+    }
+
+    var fitBarCenter: CGPoint {
+        CGPoint(
+            x: drawingSize.width / 2,
+            y: containerSize.height - (Self.fitBarHeight / 2)
+        )
+    }
+}
 
 struct VinylCutPreview: View {
     let plan: VinylCutPlan
@@ -517,4 +622,462 @@ struct VinylPreviewEdgeLayout {
     let edge: VinylOrderSurfaceEdge
     let outwardNormal: CGVector
     let length: CGFloat
+}
+
+// MARK: - Shared Order Layout Window
+
+struct VinylOrderLayoutWindow: View {
+    let plan: VinylCutPlan
+    let projectTitle: String
+    let subtitle: String?
+
+    @State private var isShowingFullscreen = false
+    @State private var viewport = VinylOrderViewportState()
+
+    init(
+        plan: VinylCutPlan,
+        projectTitle: String,
+        subtitle: String? = nil
+    ) {
+        self.plan = plan
+        self.projectTitle = projectTitle
+        self.subtitle = subtitle
+    }
+
+    var body: some View {
+        Button(action: presentFullscreen) {
+            VStack(spacing: 0) {
+                HStack(spacing: OPSStyle.Layout.spacing2) {
+                    Text("// ORDER LAYOUT")
+                        .font(OPSStyle.Typography.panelTitle)
+                        .foregroundColor(OPSStyle.Colors.text2)
+
+                    Spacer(minLength: OPSStyle.Layout.spacing2)
+
+                    Text("FULL SCREEN")
+                        .font(OPSStyle.Typography.metadata)
+                        .foregroundColor(OPSStyle.Colors.text3)
+
+                    Image(systemName: OPSStyle.Icons.expand)
+                        .font(.system(
+                            size: OPSStyle.Layout.IconSize.md,
+                            weight: .semibold
+                        ))
+                        .foregroundColor(OPSStyle.Colors.text2)
+                        .frame(
+                            width: OPSStyle.Layout.touchTargetMin,
+                            height: OPSStyle.Layout.touchTargetMin
+                        )
+                }
+                .padding(.leading, OPSStyle.Layout.spacing3)
+                .padding(.trailing, OPSStyle.Layout.spacing2)
+                .frame(minHeight: OPSStyle.Layout.touchTargetMin)
+
+                Rectangle()
+                    .fill(OPSStyle.Colors.line)
+                    .frame(height: OPSStyle.Layout.Border.standard)
+
+                VinylCutPreview(plan: plan)
+                    .frame(height: VinylOrderLayout.previewHeight)
+                    .background(OPSStyle.Colors.background)
+            }
+            .glassSurface(cornerRadius: OPSStyle.Layout.panelRadius)
+        }
+        .buttonStyle(.plain)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Order layout")
+        .accessibilityHint("Opens full screen")
+        .fullScreenCover(isPresented: $isShowingFullscreen, onDismiss: resetViewport) {
+            VinylOrderFullscreenLayout(
+                plan: plan,
+                projectTitle: displayProjectTitle,
+                subtitle: displaySubtitle,
+                viewport: $viewport,
+                onClose: dismissFullscreen
+            )
+        }
+    }
+
+    private var displayProjectTitle: String {
+        let trimmed = projectTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? "PROJECT" : trimmed
+    }
+
+    private var displaySubtitle: String? {
+        guard let subtitle else { return nil }
+        let trimmed = subtitle.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
+    }
+
+    private func presentFullscreen() {
+        viewport.fit()
+        VinylOrderInteractionFeedback.fire()
+        isShowingFullscreen = true
+    }
+
+    private func dismissFullscreen() {
+        VinylOrderInteractionFeedback.fire()
+        isShowingFullscreen = false
+    }
+
+    private func resetViewport() {
+        viewport.fit()
+    }
+}
+
+private struct VinylOrderFullscreenLayout: View {
+    let plan: VinylCutPlan
+    let projectTitle: String
+    let subtitle: String?
+    @Binding var viewport: VinylOrderViewportState
+    let onClose: () -> Void
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var lastMagnification: CGFloat = 1
+    @State private var lastDragTranslation: CGSize = .zero
+
+    private static let zoomStep: CGFloat = 1.25
+
+    var body: some View {
+        GeometryReader { geometry in
+            let layout = VinylOrderFullscreenGeometry(
+                containerSize: geometry.size
+            )
+
+            ZStack(alignment: .topLeading) {
+                OPSStyle.Colors.background
+                    .ignoresSafeArea()
+
+                drawingViewport(size: layout.drawingSize)
+                    .position(layout.drawingCenter)
+
+                fullscreenHeader
+                    .frame(
+                        width: geometry.size.width,
+                        height: VinylOrderFullscreenGeometry.headerHeight
+                    )
+                    .position(layout.headerCenter)
+
+                zoomControlRail(viewportSize: layout.drawingSize)
+                    .frame(
+                        width: VinylOrderFullscreenGeometry.controlRailWidth,
+                        height: max(
+                            1,
+                            geometry.size.height
+                                - VinylOrderFullscreenGeometry.headerHeight
+                        )
+                    )
+                    .position(layout.controlRailCenter)
+
+                fitControlBar
+                    .frame(
+                        width: layout.drawingSize.width,
+                        height: VinylOrderFullscreenGeometry.fitBarHeight
+                    )
+                    .position(layout.fitBarCenter)
+            }
+            .clipped()
+        }
+        .hidesGlobalTabBar()
+        .accessibilityAddTraits(.isModal)
+        .onDisappear {
+            lastMagnification = 1
+            lastDragTranslation = .zero
+        }
+    }
+
+    private func drawingViewport(size: CGSize) -> some View {
+        VinylCutPreview(plan: plan)
+            .frame(width: size.width, height: size.height)
+            .scaleEffect(viewport.scale)
+            .offset(viewport.offset)
+            .frame(width: size.width, height: size.height)
+            .clipped()
+            .contentShape(Rectangle())
+            .gesture(magnificationGesture(viewportSize: size))
+            .simultaneousGesture(panGesture(viewportSize: size))
+    }
+
+    private var fullscreenHeader: some View {
+        HStack(alignment: .center, spacing: OPSStyle.Layout.spacing3) {
+            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
+                Text(projectTitle)
+                    .font(OPSStyle.Typography.screenTitle(for: projectTitle))
+                    .foregroundColor(OPSStyle.Colors.text)
+                    .textCase(.uppercase)
+                    .lineLimit(1)
+
+                Text(contextLine)
+                    .font(OPSStyle.Typography.metadata)
+                    .foregroundColor(OPSStyle.Colors.text2)
+                    .textCase(.uppercase)
+                    .lineLimit(1)
+            }
+
+            Spacer(minLength: OPSStyle.Layout.spacing2)
+
+            layoutControl(
+                icon: OPSStyle.Icons.close,
+                label: "Close order layout"
+            ) {
+                onClose()
+            }
+        }
+        .padding(.horizontal, OPSStyle.Layout.spacing3)
+        .background(
+            OPSStyle.Colors.background.opacity(OPSStyle.Layout.Opacity.heavy)
+        )
+        .overlay(alignment: .bottom) {
+            Rectangle()
+                .fill(OPSStyle.Colors.line)
+                .frame(height: OPSStyle.Layout.Border.standard)
+        }
+    }
+
+    private func zoomControlRail(viewportSize: CGSize) -> some View {
+        VStack(spacing: 0) {
+            VStack(spacing: OPSStyle.Layout.spacing1) {
+                layoutControl(
+                    icon: OPSStyle.Icons.plus,
+                    label: "Zoom in",
+                    isDisabled: viewport.scale >= VinylOrderViewportState.maximumScale
+                ) {
+                    adjustZoom(
+                        by: Self.zoomStep,
+                        viewportSize: viewportSize
+                    )
+                }
+
+                layoutControl(
+                    icon: OPSStyle.Icons.minus,
+                    label: "Zoom out",
+                    isDisabled: viewport.scale <= VinylOrderViewportState.minimumScale
+                ) {
+                    adjustZoom(
+                        by: 1 / Self.zoomStep,
+                        viewportSize: viewportSize
+                    )
+                }
+            }
+            .padding(OPSStyle.Layout.spacing1)
+            .glassDense(cornerRadius: OPSStyle.Layout.panelRadius)
+
+            Spacer(minLength: OPSStyle.Layout.spacing3)
+        }
+        .padding(.horizontal, OPSStyle.Layout.spacing2)
+        .padding(.top, OPSStyle.Layout.spacing3)
+    }
+
+    private var fitControlBar: some View {
+        HStack(spacing: 0) {
+            Spacer(minLength: OPSStyle.Layout.spacing3)
+
+            Button(action: fitLayout) {
+                HStack(spacing: OPSStyle.Layout.spacing2) {
+                    Image(systemName: OPSStyle.Icons.fit)
+                        .font(.system(
+                            size: OPSStyle.Layout.IconSize.md,
+                            weight: .semibold
+                        ))
+
+                    Text("FIT LAYOUT")
+                        .font(OPSStyle.Typography.button)
+                }
+                .foregroundColor(
+                    viewport == VinylOrderViewportState()
+                        ? OPSStyle.Colors.textMute
+                        : OPSStyle.Colors.text
+                )
+                .padding(.horizontal, OPSStyle.Layout.spacing3)
+                .frame(minHeight: OPSStyle.Layout.touchTargetMin)
+                .glassDense(cornerRadius: OPSStyle.Layout.panelRadius)
+            }
+            .buttonStyle(.plain)
+            .disabled(viewport == VinylOrderViewportState())
+            .accessibilityLabel("Fit layout")
+
+            Spacer(minLength: OPSStyle.Layout.spacing3)
+        }
+        .padding(.horizontal, OPSStyle.Layout.spacing3)
+        .padding(.vertical, OPSStyle.Layout.spacing2)
+    }
+
+    private var contextLine: String {
+        guard let subtitle else { return "// ORDER LAYOUT" }
+        return "// ORDER LAYOUT · \(subtitle)"
+    }
+
+    private func layoutControl(
+        icon: String,
+        label: String,
+        isDisabled: Bool = false,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            Image(systemName: icon)
+                .font(.system(
+                    size: OPSStyle.Layout.IconSize.md,
+                    weight: .semibold
+                ))
+        }
+        .opsIconButtonStyle(
+            backgroundColor: OPSStyle.Colors.surfaceActive,
+            foregroundColor: isDisabled ? OPSStyle.Colors.textMute : OPSStyle.Colors.text
+        )
+        .disabled(isDisabled)
+        .accessibilityLabel(label)
+    }
+
+    private func magnificationGesture(viewportSize: CGSize) -> some Gesture {
+        MagnificationGesture()
+            .onChanged { value in
+                let multiplier = value / lastMagnification
+                viewport.applyZoom(
+                    multiplier: multiplier,
+                    viewportSize: viewportSize
+                )
+                lastMagnification = value
+            }
+            .onEnded { _ in
+                lastMagnification = 1
+            }
+    }
+
+    private func panGesture(viewportSize: CGSize) -> some Gesture {
+        DragGesture()
+            .onChanged { value in
+                let translation = CGSize(
+                    width: value.translation.width - lastDragTranslation.width,
+                    height: value.translation.height - lastDragTranslation.height
+                )
+                viewport.applyPan(
+                    translation: translation,
+                    viewportSize: viewportSize
+                )
+                lastDragTranslation = value.translation
+            }
+            .onEnded { _ in
+                lastDragTranslation = .zero
+            }
+    }
+
+    private func adjustZoom(by multiplier: CGFloat, viewportSize: CGSize) {
+        updateViewport(animation: OPSStyle.Animation.hover) {
+            viewport.applyZoom(
+                multiplier: multiplier,
+                viewportSize: viewportSize
+            )
+        }
+        VinylOrderInteractionFeedback.fire()
+    }
+
+    private func fitLayout() {
+        updateViewport(animation: OPSStyle.Animation.page) {
+            viewport.fit()
+        }
+        VinylOrderInteractionFeedback.fire()
+    }
+
+    private func updateViewport(
+        animation: Animation,
+        _ changes: () -> Void
+    ) {
+        if reduceMotion {
+            var transaction = Transaction()
+            transaction.disablesAnimations = true
+            withTransaction(transaction) {
+                changes()
+            }
+        } else {
+            withAnimation(animation) {
+                changes()
+            }
+        }
+    }
+}
+
+// MARK: - Roll Utilization
+
+struct VinylRollUtilizationView: View {
+    let plan: VinylRollPackingPlan
+
+    var body: some View {
+        VStack(spacing: OPSStyle.Layout.spacing2) {
+            if plan.rolls.isEmpty {
+                Text("—")
+                    .font(OPSStyle.Typography.dataValue)
+                    .foregroundColor(OPSStyle.Colors.text3)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(OPSStyle.Layout.spacing3)
+                    .nestedCard(cornerRadius: OPSStyle.Layout.cardRadius)
+            } else {
+                ForEach(Array(plan.rolls.enumerated()), id: \.offset) { index, roll in
+                    rollCard(roll, index: index)
+                }
+            }
+        }
+    }
+
+    private func rollCard(_ roll: VinylPackedRoll, index: Int) -> some View {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
+            Text("ROLL \(String(format: "%02d", index + 1))")
+                .font(OPSStyle.Typography.panelTitle)
+                .foregroundColor(OPSStyle.Colors.text2)
+
+            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
+                Text("CUTS")
+                    .font(OPSStyle.Typography.metadata)
+                    .foregroundColor(OPSStyle.Colors.text3)
+
+                Text(cutSummary(for: roll))
+                    .font(OPSStyle.Typography.dataValue)
+                    .foregroundColor(OPSStyle.Colors.text)
+                    .monospacedDigit()
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Rectangle()
+                .fill(OPSStyle.Colors.line)
+                .frame(height: OPSStyle.Layout.Border.standard)
+
+            HStack(alignment: .firstTextBaseline, spacing: OPSStyle.Layout.spacing3) {
+                utilizationMetric(label: "USED", value: feetText(roll.usedFeet))
+                Spacer(minLength: OPSStyle.Layout.spacing2)
+                utilizationMetric(label: "LEFT", value: feetText(roll.leftoverFeet))
+            }
+        }
+        .padding(OPSStyle.Layout.spacing3)
+        .nestedCard(cornerRadius: OPSStyle.Layout.cardRadius)
+        .accessibilityElement(children: .combine)
+    }
+
+    private func utilizationMetric(label: String, value: String) -> some View {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
+            Text(label)
+                .font(OPSStyle.Typography.metadata)
+                .foregroundColor(OPSStyle.Colors.text3)
+
+            Text(value)
+                .font(OPSStyle.Typography.dataValue)
+                .foregroundColor(OPSStyle.Colors.text)
+                .monospacedDigit()
+        }
+    }
+
+    private func cutSummary(for roll: VinylPackedRoll) -> String {
+        let cuts = roll.stripLengthsFeet.map(feetText)
+        return cuts.isEmpty ? "—" : cuts.joined(separator: " + ")
+    }
+
+    private func feetText(_ value: Double) -> String {
+        vinylFormatFeetAndInches(value * 12)
+    }
+}
+
+private enum VinylOrderInteractionFeedback {
+    static func fire() {
+        let generator = UIImpactFeedbackGenerator(style: .light)
+        generator.prepare()
+        generator.impactOccurred()
+    }
 }

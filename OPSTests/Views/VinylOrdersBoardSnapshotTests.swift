@@ -206,6 +206,13 @@ final class VinylOrdersBoardSnapshotTests: XCTestCase {
 
     private func wizardContext() -> VinylBulkOrderWizardContext {
         let design = DeckDesign(companyId: "co-1", title: "6836 Mark Ln")
+        var drawingData = design.drawingData
+        var materialsSettings = drawingData.materialsSettings ?? DeckMaterialsSettings()
+        materialsSettings.orderMode = .fullRolls
+        materialsSettings.fullRollLengthFeet = 75
+        drawingData.materialsSettings = materialsSettings
+        design.drawingData = drawingData
+
         let resolved = DeckMaterialsResolver.Resolved(
             scale: 1.0,
             vinylInputs: [rectSurface()],

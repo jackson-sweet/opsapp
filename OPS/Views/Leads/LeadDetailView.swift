@@ -62,6 +62,7 @@ struct LeadDetailView: View {
     @State private var showingCameraCapture = false
     @State private var showingPhotoLibrary = false
     @State private var libraryItems: [PhotosPickerItem] = []
+    @State private var importingPhotoIDs: [String] = []
     @State private var photoViewerState: LeadPhotoViewerState?
 
     // Deck design on the lead
@@ -258,6 +259,7 @@ struct LeadDetailView: View {
                                     },
                                     onOpenDeck: { design in deckDesignToOpen = design },
                                     onCreateDeck: { showingDeckCreationPicker = true },
+                                    importingPhotoIDs: importingPhotoIDs,
                                     onAddPhotos: { showingAddPhotoDialog = true },
                                     onTapPhoto: { items, index in
                                         photoViewerState = LeadPhotoViewerState(items: items, initialIndex: index)
@@ -383,7 +385,9 @@ struct LeadDetailView: View {
             CameraBatchView { images in
                 showingCameraCapture = false
                 guard !images.isEmpty else { return }
-                addPhotos(images)
+                let reservationIDs = images.map { _ in UUID().uuidString }
+                importingPhotoIDs.append(contentsOf: reservationIDs)
+                addPhotos(images, reservationIDs: reservationIDs)
             }
         }
         .photosPicker(
@@ -394,8 +398,12 @@ struct LeadDetailView: View {
         )
         .onChange(of: libraryItems) { _, items in
             guard !items.isEmpty else { return }
+            let reservationIDs = items.map { _ in UUID().uuidString }
+            importingPhotoIDs.append(contentsOf: reservationIDs)
             libraryItems = []
-            Task { await importLibraryItems(items) }
+            Task {
+                await importLibraryItems(items, reservationIDs: reservationIDs)
+            }
         }
         .fullScreenCover(item: $photoViewerState) { state in
             LeadPhotoViewer(
@@ -430,27 +438,66 @@ struct LeadDetailView: View {
 
     // MARK: - Photos
 
-    private func addPhotos(_ images: [UIImage]) {
+    private func addPhotos(_ images: [UIImage], reservationIDs: [String]) {
         Task {
-            let result = await LeadImageService.shared.addImages(images, to: opportunity)
+            await Task.yield()
+            let result = await LeadImageService.shared.addImages(
+                images,
+                to: opportunity,
+                reservationIDs: reservationIDs
+            )
+            importingPhotoIDs.removeAll { reservationIDs.contains($0) }
             if result.failedCount > 0 {
                 ToastCenter.shared.present(Toast(label: Feedback.Err.saveFailed, tone: .error))
-            } else if !result.uploadedURLs.isEmpty || result.queuedCount > 0 {
+            } else if result.queuedCount > 0 {
                 UINotificationFeedbackGenerator().notificationOccurred(.success)
             }
         }
     }
 
-    private func importLibraryItems(_ items: [PhotosPickerItem]) async {
-        var images: [UIImage] = []
-        for item in items {
-            if let data = try? await item.loadTransferable(type: Data.self),
-               let image = UIImage(data: data) {
-                images.append(image)
+    private func importLibraryItems(
+        _ items: [PhotosPickerItem],
+        reservationIDs: [String]
+    ) async {
+        let decoded = await withTaskGroup(
+            of: (index: Int, reservationID: String, image: UIImage)?.self
+        ) { group in
+            for (index, item) in items.enumerated() {
+                let reservationID = reservationIDs[index]
+                group.addTask {
+                    guard let data = try? await item.loadTransferable(type: Data.self),
+                          let image = UIImage(data: data) else {
+                        return nil
+                    }
+                    return (index, reservationID, image)
+                }
             }
+            var results: [(index: Int, reservationID: String, image: UIImage)] = []
+            for await result in group {
+                if let result { results.append(result) }
+            }
+            return results.sorted { $0.index < $1.index }
         }
-        guard !images.isEmpty else { return }
-        addPhotos(images)
+
+        guard !decoded.isEmpty else {
+            importingPhotoIDs.removeAll { reservationIDs.contains($0) }
+            ToastCenter.shared.present(Toast(label: Feedback.Err.saveFailed, tone: .error))
+            return
+        }
+
+        let successfulIDs = decoded.map(\.reservationID)
+        let result = await LeadImageService.shared.addImages(
+            decoded.map(\.image),
+            to: opportunity,
+            reservationIDs: successfulIDs
+        )
+        importingPhotoIDs.removeAll { reservationIDs.contains($0) }
+
+        if decoded.count != items.count || result.failedCount > 0 {
+            ToastCenter.shared.present(Toast(label: Feedback.Err.saveFailed, tone: .error))
+        } else if result.queuedCount > 0 {
+            UINotificationFeedbackGenerator().notificationOccurred(.success)
+        }
     }
 
     // MARK: - Deck design

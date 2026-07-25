@@ -35,8 +35,43 @@ struct PendingLeadImageUpload: Codable, Equatable, Identifiable {
     let opportunityId: String
     let companyId: String
     let timestamp: Date
+    /// Matches the picker reservation so SwiftUI replaces the placeholder
+    /// without moving the tile. Nil for queues written by older app versions.
+    let displayID: String?
+    /// Preserves selection order for photos staged in the same batch.
+    let batchIndex: Int?
 
-    var id: String { localURL }
+    var id: String { displayID ?? localURL }
+
+    init(
+        localURL: String,
+        opportunityId: String,
+        companyId: String,
+        timestamp: Date,
+        displayID: String? = nil,
+        batchIndex: Int? = nil
+    ) {
+        self.localURL = localURL
+        self.opportunityId = opportunityId
+        self.companyId = companyId
+        self.timestamp = timestamp
+        self.displayID = displayID
+        self.batchIndex = batchIndex
+    }
+}
+
+enum LeadImagePendingQueue {
+    /// Replaces only the snapshot a drain owned. Entries appended while the
+    /// drain was suspended on network work remain in the queue.
+    static func reconciling(
+        current: [PendingLeadImageUpload],
+        drainedSnapshot: [PendingLeadImageUpload],
+        stillPendingFromSnapshot: [PendingLeadImageUpload]
+    ) -> [PendingLeadImageUpload] {
+        let snapshotURLs = Set(drainedSnapshot.map(\.localURL))
+        let appendedDuringDrain = current.filter { !snapshotURLs.contains($0.localURL) }
+        return stillPendingFromSnapshot + appendedDuringDrain
+    }
 }
 
 @MainActor
@@ -53,19 +88,29 @@ final class LeadImageService: ObservableObject {
     weak private(set) var modelContext: ModelContext?
 
     private let defaultsKey = "pendingLeadImageUploads"
+    private let defaults: UserDefaults
+    private let backgroundWorkEnabled: Bool
     private var isDraining = false
+    private var drainRequested = false
     private var retryTimer: Timer?
     private let uploader = PresignedURLUploadService.shared
 
-    private init() {
+    init(
+        defaults: UserDefaults = .standard,
+        backgroundWorkEnabled: Bool = true
+    ) {
+        self.defaults = defaults
+        self.backgroundWorkEnabled = backgroundWorkEnabled
         loadPendingUploads()
-        NotificationCenter.default.addObserver(
-            self,
-            selector: #selector(connectivityChanged),
-            name: ConnectivityManager.connectivityChangedNotification,
-            object: nil
-        )
-        if !pendingUploads.isEmpty {
+        if backgroundWorkEnabled {
+            NotificationCenter.default.addObserver(
+                self,
+                selector: #selector(connectivityChanged),
+                name: ConnectivityManager.connectivityChangedNotification,
+                object: nil
+            )
+        }
+        if backgroundWorkEnabled && !pendingUploads.isEmpty {
             startRetryTimerIfNeeded()
             Task {
                 // Small delay so app startup settles before the first drain.
@@ -87,14 +132,36 @@ final class LeadImageService: ObservableObject {
         var failedCount = 0
     }
 
-    /// Upload a batch for one lead. Sequential per photo (leads carry a
-    /// handful, not a jobsite dump) with per-photo failure isolation: what
-    /// lands is recorded immediately, what doesn't is queued durably.
+    /// Persist and publish the whole batch before starting network work.
+    /// The caller can therefore replace picker reservations with real local
+    /// thumbnails while upload/reconciliation continues in the background.
     @discardableResult
-    func addImages(_ images: [UIImage], to opportunity: Opportunity) async -> AddResult {
-        let companyId = opportunity.companyId
-        let opportunityId = opportunity.id
+    func addImages(
+        _ images: [UIImage],
+        to opportunity: Opportunity,
+        reservationIDs: [String] = []
+    ) async -> AddResult {
+        let result = stageImages(
+            images,
+            opportunityId: opportunity.id,
+            companyId: opportunity.companyId,
+            reservationIDs: reservationIDs
+        )
+        if result.queuedCount > 0, backgroundWorkEnabled {
+            Task { await drain() }
+        }
+        return result
+    }
+
+    @discardableResult
+    func stageImages(
+        _ images: [UIImage],
+        opportunityId: String,
+        companyId: String,
+        reservationIDs: [String] = []
+    ) -> AddResult {
         var result = AddResult()
+        let batchTimestamp = Date()
 
         for (index, image) in images.enumerated() {
             guard let data = preparedJPEGData(for: image) else {
@@ -102,79 +169,32 @@ final class LeadImageService: ObservableObject {
                 continue
             }
 
-            let epoch = Date().timeIntervalSince1970
-            let filename = "lead_\(epoch)_\(index).jpg"
-            do {
-                let url = try await uploader.uploadImageData(
-                    data,
-                    filename: filename,
-                    folder: LeadImageStoragePath.folder(
-                        companyId: companyId,
-                        opportunityId: opportunityId
-                    )
-                )
-                result.uploadedURLs.append(url)
-            } catch {
-                // Persist bytes + queue the retry. localID doubles as the
-                // stable tile identity in the strip. The `project_images`
-                // namespace is ImageFileManager's ONLY recognized local://
-                // prefix (getFileURL nils anything else — proven by the
-                // snapshot harness); the lead_ filename keeps the store
-                // debuggable and timestamp-parseable.
-                let localID = "local://project_images/lead_\(opportunityId)_\(epoch)_\(index).jpg"
-                if ImageFileManager.shared.saveImage(data: data, localID: localID) {
-                    pendingUploads.append(PendingLeadImageUpload(
-                        localURL: localID,
-                        opportunityId: opportunityId,
-                        companyId: companyId,
-                        timestamp: Date()
-                    ))
-                    result.queuedCount += 1
-                } else {
-                    result.failedCount += 1
-                }
-            }
-        }
-
-        if !result.uploadedURLs.isEmpty {
-            await recordUploaded(result.uploadedURLs, opportunityId: opportunityId, companyId: companyId, localModel: opportunity)
-        }
-        if result.queuedCount > 0 {
-            savePendingUploads()
-            startRetryTimerIfNeeded()
-        }
-        return result
-    }
-
-    /// PATCH the uploaded URLs onto the server row and mirror the echo onto
-    /// the local model. Server-merge failure re-queues NOTHING — the bytes are
-    /// already on S3 — instead the URLs queue as a lightweight "record" retry
-    /// through the same pending store using a synthetic local id that resolves
-    /// straight to the remote URL on drain.
-    private func recordUploaded(
-        _ urls: [String],
-        opportunityId: String,
-        companyId: String,
-        localModel: Opportunity?
-    ) async {
-        do {
-            let repo = OpportunityRepository(companyId: companyId)
-            let dto = try await repo.appendImages(urls, to: opportunityId)
-            applyEcho(dto, to: localModel, opportunityId: opportunityId)
-        } catch {
-            // S3 succeeded, the row PATCH didn't (e.g. connection dropped
-            // between the two). Queue the URL itself for a drain-side merge.
-            for url in urls {
+            let displayID = reservationIDs.indices.contains(index)
+                ? reservationIDs[index]
+                : UUID().uuidString
+            let localID = "local://project_images/lead_\(opportunityId)_\(displayID).jpg"
+            if ImageFileManager.shared.saveImage(data: data, localID: localID) {
                 pendingUploads.append(PendingLeadImageUpload(
-                    localURL: url,
+                    localURL: localID,
                     opportunityId: opportunityId,
                     companyId: companyId,
-                    timestamp: Date()
+                    timestamp: batchTimestamp,
+                    displayID: displayID,
+                    batchIndex: index
                 ))
+                result.queuedCount += 1
+            } else {
+                result.failedCount += 1
             }
-            savePendingUploads()
-            startRetryTimerIfNeeded()
         }
+
+        if result.queuedCount > 0 {
+            savePendingUploads()
+            if backgroundWorkEnabled {
+                startRetryTimerIfNeeded()
+            }
+        }
+        return result
     }
 
     // MARK: - Delete
@@ -221,14 +241,18 @@ final class LeadImageService: ObservableObject {
     ///   - `local://…`  — bytes on disk; upload, then merge the URL.
     ///   - `https://…`  — already on S3 (row PATCH failed earlier); merge only.
     func drain() async {
-        guard !isDraining, !pendingUploads.isEmpty else { return }
+        guard !pendingUploads.isEmpty else { return }
+        guard !isDraining else {
+            drainRequested = true
+            return
+        }
         isDraining = true
-        defer { isDraining = false }
+        let snapshot = pendingUploads
 
         var stillPending: [PendingLeadImageUpload] = []
         var mergedByOpportunity: [String: (companyId: String, urls: [String])] = [:]
 
-        for pending in pendingUploads {
+        for pending in snapshot {
             if pending.localURL.hasPrefix("local://") {
                 guard let data = ImageFileManager.shared.getImageData(localID: pending.localURL) else {
                     // Bytes are gone (storage cleanup) — nothing recoverable.
@@ -272,10 +296,22 @@ final class LeadImageService: ObservableObject {
             }
         }
 
-        pendingUploads = stillPending
+        let appendedDuringDrain = pendingUploads.contains { current in
+            !snapshot.contains { $0.localURL == current.localURL }
+        }
+        pendingUploads = LeadImagePendingQueue.reconciling(
+            current: pendingUploads,
+            drainedSnapshot: snapshot,
+            stillPendingFromSnapshot: stillPending
+        )
         savePendingUploads()
+        isDraining = false
+        let shouldDrainAgain = drainRequested || appendedDuringDrain
+        drainRequested = false
         if pendingUploads.isEmpty {
             stopRetryTimer()
+        } else if shouldDrainAgain, backgroundWorkEnabled {
+            Task { await drain() }
         }
     }
 
@@ -319,7 +355,7 @@ final class LeadImageService: ObservableObject {
     // MARK: - Persistence
 
     private func loadPendingUploads() {
-        guard let data = UserDefaults.standard.data(forKey: defaultsKey),
+        guard let data = defaults.data(forKey: defaultsKey),
               let decoded = try? JSONDecoder().decode([PendingLeadImageUpload].self, from: data) else {
             return
         }
@@ -328,7 +364,7 @@ final class LeadImageService: ObservableObject {
 
     private func savePendingUploads() {
         guard let data = try? JSONEncoder().encode(pendingUploads) else { return }
-        UserDefaults.standard.set(data, forKey: defaultsKey)
+        defaults.set(data, forKey: defaultsKey)
     }
 
     // MARK: - Snapshot seeding (DEBUG)

@@ -23,14 +23,60 @@ enum LeadPhotoItem: Identifiable, Equatable {
     var id: String {
         switch self {
         case .remote(let url):     return url
-        case .queued(let pending): return pending.localURL
+        case .queued(let pending): return pending.id
         }
+    }
+}
+
+enum LeadPhotoStripItem: Identifiable, Equatable {
+    case importing(String)
+    case photo(LeadPhotoItem)
+
+    var id: String {
+        switch self {
+        case .importing(let id): return id
+        case .photo(let photo):  return photo.id
+        }
+    }
+}
+
+enum LeadPhotoStripPresentation {
+    static func items(
+        reservationIDs: [String],
+        queued: [PendingLeadImageUpload],
+        remoteURLs: [String]
+    ) -> [LeadPhotoStripItem] {
+        let orderedQueued = queued.sorted { lhs, rhs in
+            if lhs.timestamp != rhs.timestamp {
+                return lhs.timestamp > rhs.timestamp
+            }
+            return (lhs.batchIndex ?? 0) < (rhs.batchIndex ?? 0)
+        }
+        let queuedByID = Dictionary(
+            uniqueKeysWithValues: orderedQueued.map { ($0.id, $0) }
+        )
+        let reservedItems = reservationIDs.map { id -> LeadPhotoStripItem in
+            if let pending = queuedByID[id] {
+                return .photo(.queued(pending))
+            }
+            return .importing(id)
+        }
+        let reservationSet = Set(reservationIDs)
+        let otherQueued = orderedQueued
+            .filter { !reservationSet.contains($0.id) }
+            .map { LeadPhotoStripItem.photo(.queued($0)) }
+        let remote = remoteURLs
+            .filter { !$0.isEmpty }
+            .reversed()
+            .map { LeadPhotoStripItem.photo(.remote($0)) }
+        return reservedItems + otherQueued + remote
     }
 }
 
 struct LeadPhotosSection: View {
     let opportunity: Opportunity
     let canManage: Bool
+    var importingPhotoIDs: [String] = []
     /// Parent presents the camera / library dialog.
     var onAdd: () -> Void = {}
     /// Parent presents the full-screen viewer at the tapped index.
@@ -43,7 +89,12 @@ struct LeadPhotosSection: View {
     var items: [LeadPhotoItem] {
         let queued = imageService.queuedUploads(for: opportunity.id)
             .filter { $0.localURL.hasPrefix("local://") }
-            .sorted { $0.timestamp > $1.timestamp }
+            .sorted { lhs, rhs in
+                if lhs.timestamp != rhs.timestamp {
+                    return lhs.timestamp > rhs.timestamp
+                }
+                return (lhs.batchIndex ?? 0) < (rhs.batchIndex ?? 0)
+            }
             .map(LeadPhotoItem.queued)
         let remote = opportunity.images
             .filter { !$0.isEmpty }
@@ -52,33 +103,54 @@ struct LeadPhotosSection: View {
         return queued + remote
     }
 
+    var stripItems: [LeadPhotoStripItem] {
+        LeadPhotoStripPresentation.items(
+            reservationIDs: importingPhotoIDs,
+            queued: imageService.queuedUploads(for: opportunity.id)
+                .filter { $0.localURL.hasPrefix("local://") },
+            remoteURLs: opportunity.images
+        )
+    }
+
     /// Document-row form (Leads redesign spec §5.9): the PHOTOS row's content
     /// region — no header, no outer padding; the details document supplies
     /// the label column. Empty + view-only renders the document's `—` blank.
     var body: some View {
-        let items = self.items
-        if items.isEmpty && !canManage {
+        let photoItems = self.items
+        let stripItems = self.stripItems
+        if stripItems.isEmpty && !canManage {
             Text("—")
                 .font(.custom("Mohave-Medium", size: 14))
                 .foregroundColor(OPSStyle.Colors.textMute)
-        } else if items.isEmpty {
+        } else if stripItems.isEmpty {
             // Empty + can manage — one quiet tile-sized affordance.
             addTile
         } else {
             ScrollView(.horizontal) {
-                HStack(spacing: 10) {
+                HStack(spacing: OPSStyle.Layout.spacing2_5) {
                     if canManage {
                         addTile
                     }
-                    ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
-                        Button {
-                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                            onTap(items, index)
-                        } label: {
-                            tile(for: item)
+                    ForEach(stripItems) { stripItem in
+                        switch stripItem {
+                        case .importing:
+                            importingTile
+                        case .photo(let item):
+                            Button {
+                                guard let index = photoItems.firstIndex(of: item) else { return }
+                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                                onTap(photoItems, index)
+                            } label: {
+                                tile(for: item)
+                            }
+                            .buttonStyle(PlainButtonStyle())
+                            .accessibilityLabel(
+                                accessibilityLabel(
+                                    for: item,
+                                    index: photoItems.firstIndex(of: item) ?? 0
+                                )
+                            )
                         }
-                        .buttonStyle(PlainButtonStyle())
-                        .accessibilityLabel(accessibilityLabel(for: item, index: index))
                     }
                 }
             }
@@ -89,6 +161,33 @@ struct LeadPhotosSection: View {
     // MARK: - Tiles
 
     private let tileSize: CGFloat = 84
+
+    private var importingTile: some View {
+        ZStack {
+            OPSStyle.Colors.fillNeutralDim
+            Image(systemName: "photo")
+                .font(.system(size: OPSStyle.Layout.IconSize.sm))
+                .foregroundColor(OPSStyle.Colors.textMute)
+        }
+        .frame(width: tileSize, height: tileSize)
+        .clipShape(
+            RoundedRectangle(
+                cornerRadius: OPSStyle.Layout.buttonRadius,
+                style: .continuous
+            )
+        )
+        .overlay(
+            RoundedRectangle(
+                cornerRadius: OPSStyle.Layout.buttonRadius,
+                style: .continuous
+            )
+            .strokeBorder(
+                OPSStyle.Colors.line,
+                lineWidth: OPSStyle.Layout.Border.standard
+            )
+        )
+        .accessibilityHidden(true)
+    }
 
     private var addTile: some View {
         Button {

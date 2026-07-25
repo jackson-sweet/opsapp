@@ -49,6 +49,7 @@ struct LeadDetailsDocument: View {
     var onMatchProject: () -> Void = {}
     var onOpenDeck: (DeckDesign) -> Void = { _ in }
     var onCreateDeck: () -> Void = {}
+    var importingPhotoIDs: [String] = []
     var onAddPhotos: () -> Void = {}
     var onTapPhoto: (_ items: [LeadPhotoItem], _ index: Int) -> Void = { _, _ in }
     var onOpenAttachment: (LeadAttachment) -> Void = { _ in }
@@ -115,6 +116,7 @@ struct LeadDetailsDocument: View {
                     LeadPhotosSection(
                         opportunity: lead,
                         canManage: canEdit,
+                        importingPhotoIDs: importingPhotoIDs,
                         onAdd: onAddPhotos,
                         onTap: onTapPhoto
                     )

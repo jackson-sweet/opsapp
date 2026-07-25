@@ -854,7 +854,11 @@ struct JobBoardTasksView: View {
 
     private var availableTaskTypes: [TaskType] {
         guard let companyId = dataController.currentUser?.companyId else { return [] }
-        return dataController.getAllTaskTypes(for: companyId)
+        return dataController.getSelectableTaskTypes(for: companyId)
+    }
+
+    private var availableTaskTypeIds: Set<String> {
+        Set(availableTaskTypes.map(\.id))
     }
 
     private var availableTeamMembers: [User] {
@@ -1043,6 +1047,12 @@ struct JobBoardTasksView: View {
                 dataController: dataController
             )
         }
+        .onAppear {
+            sanitizeTaskTypeSelection()
+        }
+        .onChange(of: availableTaskTypeIds) { _, _ in
+            sanitizeTaskTypeSelection()
+        }
         .onChange(of: selectedStatuses) { _, _ in
             updateFilterVisibility()
         }
@@ -1154,6 +1164,16 @@ struct JobBoardTasksView: View {
 
     private var hasActiveFilters: Bool {
         !selectedStatuses.isEmpty || !selectedTaskTypeIds.isEmpty || !selectedTeamMemberIds.isEmpty || assignedToMe
+    }
+
+    private func sanitizeTaskTypeSelection() {
+        let sanitized = TaskTypeSelectionPolicy.sanitizedSelection(
+            selectedTaskTypeIds,
+            from: availableTaskTypes,
+            companyId: dataController.currentUser?.companyId
+        )
+        guard sanitized != selectedTaskTypeIds else { return }
+        selectedTaskTypeIds = sanitized
     }
 
     private func updateFilterVisibility() {

@@ -23,11 +23,37 @@ struct ProjectSearchFilterView: View {
     let availableTaskTypes: [TaskType]
     let availableClients: [Client]
 
+    private var companyId: String? {
+        dataController.currentUser?.companyId
+    }
+
+    private var selectableTaskTypes: [TaskType] {
+        guard let companyId else { return [] }
+
+        return TaskTypeSelectionPolicy.selectableTaskTypes(
+            from: availableTaskTypes,
+            companyId: companyId
+        )
+    }
+
+    private var selectableTaskTypeIds: [String] {
+        selectableTaskTypes.map(\.id)
+    }
+
     var body: some View {
         FilterSheet<NoSort>(
             title: "Filter Projects",
             filters: buildFilters()
         )
+        .onAppear {
+            sanitizeTaskTypeSelection()
+        }
+        .onChange(of: selectableTaskTypeIds) { _, _ in
+            sanitizeTaskTypeSelection()
+        }
+        .onChange(of: companyId) { _, _ in
+            sanitizeTaskTypeSelection()
+        }
     }
 
     private func buildFilters() -> [FilterSectionConfig] {
@@ -58,11 +84,11 @@ struct ProjectSearchFilterView: View {
         }
 
         // Task types filter
-        if !availableTaskTypes.isEmpty {
+        if !selectableTaskTypes.isEmpty {
             filters.append(.multiSelectById(
                 title: "TASK TYPES",
                 icon: "checkmark.circle.fill",
-                options: availableTaskTypes,
+                options: selectableTaskTypes,
                 selection: $selectedTaskTypeIds,
                 getId: { $0.id },
                 getDisplay: { $0.display },
@@ -85,5 +111,20 @@ struct ProjectSearchFilterView: View {
         }
 
         return filters
+    }
+
+    private func sanitizeTaskTypeSelection() {
+        guard let companyId else {
+            selectedTaskTypeIds.removeAll()
+            return
+        }
+
+        let sanitized = TaskTypeSelectionPolicy.sanitizedSelection(
+            selectedTaskTypeIds,
+            from: availableTaskTypes,
+            companyId: companyId
+        )
+        guard sanitized != selectedTaskTypeIds else { return }
+        selectedTaskTypeIds = sanitized
     }
 }

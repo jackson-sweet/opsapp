@@ -34,10 +34,18 @@ struct PhotoFilterSheet: View {
                 predicate: #Predicate<Company> { $0.id == companyId }
             )
             let companies = try context.fetch(descriptor)
-            return companies.first?.taskTypes.sorted { $0.displayOrder < $1.displayOrder } ?? []
+            return TaskTypeSelectionPolicy.selectableTaskTypes(
+                from: companies.first?.taskTypes ?? [],
+                companyId: companyId
+            )
+            .sorted { $0.displayOrder < $1.displayOrder }
         } catch {
             return []
         }
+    }
+
+    private var taskTypeOptionIds: [String] {
+        taskTypes.map(\.id)
     }
 
     /// Suggestions shown only when search text is non-empty, max 5, excluding already-selected
@@ -229,6 +237,30 @@ struct PhotoFilterSheet: View {
                 }
             }
         }
+        .onAppear {
+            sanitizeTaskTypeSelection()
+        }
+        .onChange(of: taskTypeOptionIds) { _, _ in
+            sanitizeTaskTypeSelection()
+        }
+        .onChange(of: dataController.currentUser?.companyId) { _, _ in
+            sanitizeTaskTypeSelection()
+        }
+    }
+
+    private func sanitizeTaskTypeSelection() {
+        guard let companyId = dataController.currentUser?.companyId else {
+            taskTypeIds.removeAll()
+            return
+        }
+
+        let sanitized = TaskTypeSelectionPolicy.sanitizedSelection(
+            taskTypeIds,
+            from: taskTypes,
+            companyId: companyId
+        )
+        guard sanitized != taskTypeIds else { return }
+        taskTypeIds = sanitized
     }
 
     // MARK: - Filter Section

@@ -19,6 +19,17 @@ struct TaskListFilterSheet: View {
     let availableTaskTypes: [TaskType]
     let availableTeamMembers: [User]
 
+    private var selectableTaskTypes: [TaskType] {
+        TaskTypeSelectionPolicy.selectableTaskTypes(
+            from: availableTaskTypes,
+            companyId: dataController.currentUser?.companyId
+        )
+    }
+
+    private var selectableTaskTypeIds: Set<String> {
+        Set(selectableTaskTypes.map(\.id))
+    }
+
     var body: some View {
         let sortBinding = Binding<TaskSortOption?>(
             get: { sortOption },
@@ -32,6 +43,12 @@ struct TaskListFilterSheet: View {
             selectedSort: sortBinding,
             getSortDisplay: { $0.rawValue }
         )
+        .onAppear {
+            sanitizeTaskTypeSelection()
+        }
+        .onChange(of: selectableTaskTypeIds) { _, _ in
+            sanitizeTaskTypeSelection()
+        }
     }
 
     private func buildFilters() -> [FilterSectionConfig] {
@@ -48,11 +65,11 @@ struct TaskListFilterSheet: View {
         ))
 
         // Task type filter
-        if !availableTaskTypes.isEmpty {
+        if !selectableTaskTypes.isEmpty {
             filters.append(.multiSelectById(
                 title: "TASK TYPE",
                 icon: "checkmark.circle.fill",
-                options: availableTaskTypes,
+                options: selectableTaskTypes,
                 selection: $selectedTaskTypeIds,
                 getId: { $0.id },
                 getDisplay: { $0.display },
@@ -75,5 +92,15 @@ struct TaskListFilterSheet: View {
         }
 
         return filters
+    }
+
+    private func sanitizeTaskTypeSelection() {
+        let sanitized = TaskTypeSelectionPolicy.sanitizedSelection(
+            selectedTaskTypeIds,
+            from: selectableTaskTypes,
+            companyId: dataController.currentUser?.companyId
+        )
+        guard sanitized != selectedTaskTypeIds else { return }
+        selectedTaskTypeIds = sanitized
     }
 }

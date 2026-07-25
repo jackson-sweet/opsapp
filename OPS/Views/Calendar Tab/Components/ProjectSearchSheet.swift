@@ -29,6 +29,20 @@ struct ProjectSearchSheet: View {
     @State private var teamMembers: [TeamMember] = []
     @State private var availableTaskTypes: [TaskType] = []
     @State private var availableClients: [Client] = []
+
+    private var selectableTaskTypes: [TaskType] {
+        guard let companyId = dataController.currentUser?.companyId else {
+            return []
+        }
+        return TaskTypeSelectionPolicy.selectableTaskTypes(
+            from: availableTaskTypes,
+            companyId: companyId
+        )
+    }
+
+    private var selectableTaskTypeIds: [String] {
+        selectableTaskTypes.map(\.id)
+    }
     @State private var showFilters = false
     @State private var showFilterSheet = false
     
@@ -225,10 +239,13 @@ struct ProjectSearchSheet: View {
                 selectedClientIds: $selectedClientIds,
                 // selectedSchedulingTypes: $selectedSchedulingTypes,  // Removed (task-only scheduling migration)
                 availableTeamMembers: teamMembers,
-                availableTaskTypes: availableTaskTypes,
+                availableTaskTypes: selectableTaskTypes,
                 availableClients: availableClients
             )
             .environmentObject(dataController)
+        }
+        .onChange(of: selectableTaskTypeIds) { _, _ in
+            sanitizeTaskTypeSelection()
         }
     }
     
@@ -708,6 +725,8 @@ struct ProjectSearchSheet: View {
                 // Get projects based on user role
                 guard let currentUser = dataController.currentUser else {
                     allProjects = []
+                    availableTaskTypes = []
+                    selectedTaskTypeIds.removeAll()
                     isLoading = false
                     return
                 }
@@ -749,9 +768,12 @@ struct ProjectSearchSheet: View {
                     
                     // Load task types from company
                     if let company = dataController.getCompany(id: companyId) {
-                        availableTaskTypes = company.taskTypes.sorted { $0.displayOrder < $1.displayOrder }
+                        availableTaskTypes = company.taskTypes
+                            .sorted { $0.displayOrder < $1.displayOrder }
+                        sanitizeTaskTypeSelection()
                     } else {
                         availableTaskTypes = []
+                        selectedTaskTypeIds.removeAll()
                     }
                     
                     // Load clients
@@ -760,12 +782,28 @@ struct ProjectSearchSheet: View {
                     // No company, no team members, task types or clients
                     teamMembers = []
                     availableTaskTypes = []
+                    selectedTaskTypeIds.removeAll()
                     availableClients = []
                 }
                 
                 isLoading = false
             }
         }
+    }
+
+    private func sanitizeTaskTypeSelection() {
+        guard let companyId = dataController.currentUser?.companyId else {
+            selectedTaskTypeIds.removeAll()
+            return
+        }
+
+        let sanitized = TaskTypeSelectionPolicy.sanitizedSelection(
+            selectedTaskTypeIds,
+            from: selectableTaskTypes,
+            companyId: companyId
+        )
+        guard sanitized != selectedTaskTypeIds else { return }
+        selectedTaskTypeIds = sanitized
     }
 }
 

@@ -130,6 +130,17 @@ struct ProjectTaskComposer: View {
         self.externalEditorTask = editorTask
     }
 
+    /// `availableTaskTypes` intentionally remains the raw cache so existing
+    /// rows can resolve a retained deleted type's historical name and color.
+    /// Every option-producing path uses this active same-company subset.
+    private var selectableTaskTypes: [TaskType] {
+        guard let companyId, !companyId.isEmpty else { return [] }
+        return TaskTypeSelectionPolicy.selectableTaskTypes(
+            from: availableTaskTypes,
+            companyId: companyId
+        )
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing3) {
             suggestionsSection
@@ -229,7 +240,9 @@ struct ProjectTaskComposer: View {
             activeMemberIds: activeMemberIds,
             excluding: selections
         )
-        return computed.filter { taskType(for: $0.taskTypeId) != nil }
+        return computed.filter {
+            selectableTaskType(for: $0.taskTypeId) != nil
+        }
     }
 
     private func suggestionButton(_ suggestion: TaskSuggestion) -> some View {
@@ -373,7 +386,7 @@ struct ProjectTaskComposer: View {
 
     private func taskTypeField(_ task: LocalTask) -> some View {
         Menu {
-            ForEach(availableTaskTypes, id: \.id) { type in
+            ForEach(selectableTaskTypes, id: \.id) { type in
                 Button(type.display) {
                     updateEditor { $0.taskTypeId = type.id }
                 }
@@ -789,7 +802,25 @@ struct ProjectTaskComposer: View {
     }
 
     private func canSave(_ task: LocalTask) -> Bool {
-        !task.taskTypeId.isEmpty && taskType(for: task.taskTypeId) != nil
+        guard !task.taskTypeId.isEmpty else { return false }
+        if selectableTaskType(for: task.taskTypeId) != nil {
+            return true
+        }
+
+        // A persisted task may keep its unchanged deleted same-company type
+        // while other fields are edited. New tasks and changed selections
+        // always require an active selectable type.
+        guard let companyId,
+              let original = tasks.first(where: { $0.id == task.id }),
+              original.taskTypeId == task.taskTypeId,
+              let historicalType = taskType(for: task.taskTypeId) else {
+            return false
+        }
+        return historicalType.companyId == companyId
+    }
+
+    private func selectableTaskType(for id: String) -> TaskType? {
+        selectableTaskTypes.first { $0.id == id }
     }
 
     private func taskType(for id: String) -> TaskType? {

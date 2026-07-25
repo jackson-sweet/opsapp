@@ -18,6 +18,13 @@ struct TaskTypeDetailSheet: View {
     @State private var showingEditForm = false
     @State private var showingDeletionSheet = false
 
+    private var availableTaskTypeReassignments: [TaskType] {
+        TaskTypeSelectionPolicy.selectableTaskTypes(
+            from: allTaskTypes,
+            companyId: taskType.companyId
+        ).filter { $0.id != taskType.id }
+    }
+
     var body: some View {
         NavigationView {
             ZStack {
@@ -193,7 +200,7 @@ struct TaskTypeDetailSheet: View {
                 itemType: "Task Type",
                 childItems: taskType.tasks.sorted { $0.displayOrder < $1.displayOrder },
                 childType: "Task",
-                availableReassignments: allTaskTypes,
+                availableReassignments: availableTaskTypeReassignments,
                 getItemDisplay: { taskType in
                     AnyView(
                         HStack(spacing: OPSStyle.Layout.spacing2) {
@@ -263,7 +270,7 @@ struct TaskTypeDetailSheet: View {
                 },
                 onDelete: { taskType, reassignments, deletions in
                     let taskTypeTasks = taskType.tasks.sorted { $0.displayOrder < $1.displayOrder }
-                    let availableTaskTypes = allTaskTypes.filter { $0.id != taskType.id }
+                    let availableTaskTypes = availableTaskTypeReassignments
 
                     // Check if bulk operation
                     let uniqueAssignments = Set(reassignments.values)

@@ -11,6 +11,116 @@ import XCTest
 
 final class JobBoardListBehaviorTests: XCTestCase {
 
+    func testSelectableTaskTypesExcludeSoftDeletedAndOtherCompanyRows() {
+        let firstActive = TaskType(
+            id: "first-active",
+            display: "Install",
+            color: "#93A17C",
+            companyId: "company-a"
+        )
+        let secondActive = TaskType(
+            id: "second-active",
+            display: "Finish",
+            color: "#93A17C",
+            companyId: "company-a"
+        )
+        let deleted = TaskType(
+            id: "deleted",
+            display: "Retired",
+            color: "#93A17C",
+            companyId: "company-a"
+        )
+        deleted.deletedAt = Date(timeIntervalSince1970: 10)
+        let otherCompany = TaskType(
+            id: "other-company",
+            display: "Other",
+            color: "#93A17C",
+            companyId: "company-b"
+        )
+
+        let result = TaskTypeSelectionPolicy.selectableTaskTypes(
+            from: [secondActive, deleted, otherCompany, firstActive],
+            companyId: "company-a"
+        )
+
+        XCTAssertEqual(result.map(\.id), [secondActive.id, firstActive.id])
+    }
+
+    func testSanitizedTaskTypeSelectionDropsDeletedAndMissingIds() {
+        let active = TaskType(
+            id: "active",
+            display: "Install",
+            color: "#93A17C",
+            companyId: "company-a"
+        )
+        let deleted = TaskType(
+            id: "deleted",
+            display: "Retired",
+            color: "#93A17C",
+            companyId: "company-a"
+        )
+        deleted.deletedAt = Date(timeIntervalSince1970: 10)
+
+        let result = TaskTypeSelectionPolicy.sanitizedSelection(
+            Set(["active", "deleted", "missing"]),
+            from: [active, deleted],
+            companyId: "company-a"
+        )
+
+        XCTAssertEqual(result, Set([active.id]))
+    }
+
+    func testPersistableTaskTypeAllowsOnlyActiveOrUnchangedHistoricalType() {
+        let active = TaskType(
+            id: "active",
+            display: "Install",
+            color: "#93A17C",
+            companyId: "company-a"
+        )
+        let deleted = TaskType(
+            id: "deleted",
+            display: "Retired",
+            color: "#93A17C",
+            companyId: "company-a"
+        )
+        deleted.deletedAt = Date(timeIntervalSince1970: 10)
+
+        let taskTypes = [active, deleted]
+
+        XCTAssertEqual(
+            TaskTypeSelectionPolicy.persistableTaskType(
+                id: active.id,
+                from: taskTypes,
+                companyId: "company-a"
+            )?.id,
+            active.id
+        )
+        XCTAssertEqual(
+            TaskTypeSelectionPolicy.persistableTaskType(
+                id: deleted.id,
+                originalTaskTypeId: deleted.id,
+                from: taskTypes,
+                companyId: "company-a"
+            )?.id,
+            deleted.id
+        )
+        XCTAssertNil(
+            TaskTypeSelectionPolicy.persistableTaskType(
+                id: deleted.id,
+                from: taskTypes,
+                companyId: "company-a"
+            )
+        )
+        XCTAssertNil(
+            TaskTypeSelectionPolicy.persistableTaskType(
+                id: deleted.id,
+                originalTaskTypeId: active.id,
+                from: taskTypes,
+                companyId: "company-a"
+            )
+        )
+    }
+
     func testJobBoardVisibleTasksExcludeTasksFromArchivedClosedCompletedAndDeletedProjects() {
         let activeProject = makeProject(id: "active", status: .inProgress)
         let archivedProject = makeProject(id: "archived", status: .archived)

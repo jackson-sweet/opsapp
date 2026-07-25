@@ -2707,6 +2707,17 @@ class DataController: ObservableObject {
         }
     }
 
+    /// Task types that may be offered in user-facing pickers and filters.
+    ///
+    /// Keep `getAllTaskTypes(for:)` as the complete local cache for sync and
+    /// historical label resolution; selection surfaces use this narrower API.
+    func getSelectableTaskTypes(for companyId: String) -> [TaskType] {
+        TaskTypeSelectionPolicy.selectableTaskTypes(
+            from: getAllTaskTypes(for: companyId),
+            companyId: companyId
+        )
+    }
+
     // MARK: - Task Status Options Management
 
     func getAllTaskStatusOptions(for companyId: String) -> [TaskStatusOption] {

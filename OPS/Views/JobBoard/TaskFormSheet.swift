@@ -77,6 +77,17 @@ struct TaskFormSheet: View {
         return allTaskTypes
     }
 
+    /// New choices are company-scoped and must still be active. Keep
+    /// `availableTaskTypes` raw so an existing task can continue resolving the
+    /// name/color of its retained soft-deleted type.
+    private var selectableTaskTypes: [TaskType] {
+        guard let companyId = taskTypeSelectionCompanyId else { return [] }
+        return TaskTypeSelectionPolicy.selectableTaskTypes(
+            from: availableTaskTypes,
+            companyId: companyId
+        )
+    }
+
     private var availableTeamMembers: [User] {
         if tutorialMode {
             return fetchedTeamMembers.filter { $0.id.hasPrefix("DEMO_") }
@@ -114,7 +125,7 @@ struct TaskFormSheet: View {
     /// Bug 9d5c2535 — task types sorted by most-recently used across the
     /// company, with a divider between recent and the alphabetical rest.
     private var recencyOrderedTaskTypes: [TaskType] {
-        let alphaSorted = availableTaskTypes.sorted { $0.display < $1.display }
+        let alphaSorted = selectableTaskTypes.sorted { $0.display < $1.display }
 
         guard let companyId = dataController.currentUser?.companyId else {
             return alphaSorted
@@ -142,7 +153,7 @@ struct TaskFormSheet: View {
     private var recentTaskTypeCount: Int {
         guard let companyId = dataController.currentUser?.companyId else { return 0 }
         let recentSet = Set(dataController.recentTaskTypeIds(companyId: companyId))
-        return availableTaskTypes.filter { recentSet.contains($0.id) }.count
+        return selectableTaskTypes.filter { recentSet.contains($0.id) }.count
     }
 
     @State private var selectedProjectId: String?
@@ -177,10 +188,10 @@ struct TaskFormSheet: View {
     private var isValid: Bool {
         // In draft mode, only task type is required
         if mode.isDraft {
-            return selectedTaskTypeId != nil
+            return hasPersistableTaskTypeSelection
         }
         // In regular mode, both project and task type are required
-        return selectedProjectId != nil && selectedTaskTypeId != nil
+        return selectedProjectId != nil && hasPersistableTaskTypeSelection
     }
 
     // MARK: - Tutorial Phase Control
@@ -251,6 +262,58 @@ struct TaskFormSheet: View {
     private var selectedTaskType: TaskType? {
         guard let id = selectedTaskTypeId else { return nil }
         return allTaskTypes.first { $0.id == id }
+    }
+
+    private var taskTypeSelectionCompanyId: String? {
+        selectedProject?.companyId
+            ?? mode.task?.companyId
+            ?? dataController.currentUser?.companyId
+    }
+
+    private var sanitizedSelectedTaskTypeId: String? {
+        guard let selectedTaskTypeId,
+              let companyId = taskTypeSelectionCompanyId else {
+            return nil
+        }
+        let sanitized = TaskTypeSelectionPolicy.sanitizedSelection(
+            Set([selectedTaskTypeId]),
+            from: availableTaskTypes,
+            companyId: companyId
+        )
+        return sanitized.contains(selectedTaskTypeId) ? selectedTaskTypeId : nil
+    }
+
+    /// Existing persisted tasks may retain a deleted same-company task type.
+    /// That historical id remains displayable and may be preserved while other
+    /// fields are edited, but it is never offered as a new choice.
+    private var preservesHistoricalTaskTypeSelection: Bool {
+        guard let selectedTaskTypeId,
+              let selectedTaskType,
+              let companyId = taskTypeSelectionCompanyId,
+              selectedTaskType.companyId == companyId else {
+            return false
+        }
+
+        if let task = mode.task {
+            return selectedTaskTypeId == task.taskTypeId
+        }
+        if let localTask = mode.localTask,
+           localTask.existingTaskId != nil {
+            return selectedTaskTypeId == localTask.taskTypeId
+        }
+        return false
+    }
+
+    private var hasPersistableTaskTypeSelection: Bool {
+        sanitizedSelectedTaskTypeId != nil || preservesHistoricalTaskTypeSelection
+    }
+
+    private var selectedTaskTypeForSave: TaskType? {
+        if preservesHistoricalTaskTypeSelection {
+            return selectedTaskType
+        }
+        guard let id = sanitizedSelectedTaskTypeId else { return nil }
+        return selectableTaskTypes.first { $0.id == id }
     }
 
     private var filteredProjects: [Project] {
@@ -370,7 +433,7 @@ struct TaskFormSheet: View {
                     CalendarSchedulerSheet(
                         isPresented: $showingScheduler,
                         itemType: .draftTask(
-                            taskTypeId: selectedTaskTypeId ?? "",
+                            taskTypeId: selectedTaskTypeForSave?.id ?? "",
                             teamMemberIds: Array(selectedTeamMemberIds),
                             projectId: selectedProject?.id ?? preselectedProjectId
                         ),
@@ -404,7 +467,7 @@ struct TaskFormSheet: View {
                         itemType: .task(ProjectTask(
                             id: UUID().uuidString,
                             projectId: project.id,
-                            taskTypeId: selectedTaskTypeId ?? "",
+                            taskTypeId: selectedTaskTypeForSave?.id ?? "",
                             companyId: dataController.currentUser?.companyId ?? "",
                             status: .active
                         )),
@@ -538,7 +601,7 @@ struct TaskFormSheet: View {
         .onChange(of: selectedTaskTypeId) { _, newId in
             // Auto-populate default team members from task type in create mode
             guard mode.isCreate, let newId,
-                  let taskType = allTaskTypes.first(where: { $0.id == newId }),
+                  let taskType = selectableTaskTypes.first(where: { $0.id == newId }),
                   !taskType.defaultTeamMemberIdsString.isEmpty else { return }
             let defaultIds = Set(taskType.defaultTeamMemberIdsString.components(separatedBy: ","))
             if !defaultIds.isEmpty {
@@ -1239,7 +1302,7 @@ struct TaskFormSheet: View {
 
                 // Auto-schedule button — only show when project and task type are
                 // selected AND the user may schedule (calendar.edit, scope-aware).
-                if !tutorialMode && selectedProjectId != nil && selectedTaskTypeId != nil && canSchedule {
+                if !tutorialMode && selectedProjectId != nil && hasPersistableTaskTypeSelection && canSchedule {
                     Button(action: {
                         autoScheduleTask()
                     }) {
@@ -1433,7 +1496,7 @@ struct TaskFormSheet: View {
     private func autoScheduleTask() {
         guard canSchedule else { return }
         guard let projectId = selectedProjectId,
-              let taskTypeId = selectedTaskTypeId else { return }
+              let taskTypeId = selectedTaskTypeForSave?.id else { return }
 
         let effectiveDeps = dependencyOverrides ?? (selectedTaskType?.dependencies ?? [])
         let tempTask = TemporarySchedulableTask(
@@ -1491,8 +1554,8 @@ struct TaskFormSheet: View {
         // Snapshot form state synchronously so the async work can't observe
         // torn writes mid-flight (e.g. user editing notes after tapping Create).
         let snapshotProjectId = selectedProjectId
-        let snapshotTaskTypeId = selectedTaskTypeId
-        let snapshotTaskType = selectedTaskType
+        let snapshotTaskType = selectedTaskTypeForSave
+        let snapshotTaskTypeId = snapshotTaskType?.id
         let snapshotStatus = selectedStatus
         let snapshotNotes = taskNotes
         let snapshotTeamMemberIds = Array(selectedTeamMemberIds)
@@ -1751,7 +1814,7 @@ struct TaskFormSheet: View {
     }
 
     private func saveDraftTask() {
-        guard let taskTypeId = selectedTaskTypeId else { return }
+        guard let taskTypeId = selectedTaskTypeForSave?.id else { return }
 
         // Create or update LocalTask
         var localTask: LocalTask

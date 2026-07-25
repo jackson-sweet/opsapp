@@ -33,8 +33,12 @@ struct QuickAddSuggestionsRail: View {
     /// Drives the long-press → prefilled TaskFormSheet path.
     @State private var prefilledSuggestion: TaskSuggestion?
 
-    private var taskTypeById: [String: TaskType] {
-        Dictionary(uniqueKeysWithValues: allTaskTypes.map { ($0.id, $0) })
+    private var selectableTaskTypeById: [String: TaskType] {
+        let selectable = TaskTypeSelectionPolicy.selectableTaskTypes(
+            from: allTaskTypes,
+            companyId: project.companyId
+        )
+        return Dictionary(uniqueKeysWithValues: selectable.map { ($0.id, $0) })
     }
 
     private var userById: [String: User] {
@@ -79,7 +83,7 @@ struct QuickAddSuggestionsRail: View {
 
         // Drop any whose task type the user no longer has access to — the
         // chip needs the display name and color from the TaskType row.
-        return computed.filter { taskTypeById[$0.taskTypeId] != nil }
+        return computed.filter { selectableTaskTypeById[$0.taskTypeId] != nil }
     }
 
     /// Resolve a suggestion's crew to displayable Users, dropping any id whose
@@ -136,7 +140,7 @@ struct QuickAddSuggestionsRail: View {
 
     @ViewBuilder
     private func chip(for suggestion: TaskSuggestion) -> some View {
-        let taskType = taskTypeById[suggestion.taskTypeId]
+        let taskType = selectableTaskTypeById[suggestion.taskTypeId]
         let displayName = taskType?.display ?? "Task"
         let chipColor = Color(hex: taskType?.color ?? "") ?? OPSStyle.Colors.primaryAccent
         let members: [User] = activeMembers(for: suggestion)
@@ -213,7 +217,10 @@ struct QuickAddSuggestionsRail: View {
     // MARK: - Actions
 
     private func commit(_ suggestion: TaskSuggestion) {
-        guard canEdit else { return }
+        guard canEdit,
+              let taskType = selectableTaskTypeById[suggestion.taskTypeId] else {
+            return
+        }
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
 
         // Final guard: commit only members still active in the company. The
@@ -223,23 +230,20 @@ struct QuickAddSuggestionsRail: View {
         let activeCrew = activeMembers(for: suggestion)
         let committedMemberIds = activeCrew.map { $0.id.lowercased() }
 
-        let taskType = taskTypeById[suggestion.taskTypeId]
-        let taskTypeColor = taskType?.color ?? "#59779F"
-
         let newTask = ProjectTask(
             id: UUID().uuidString.lowercased(),
             projectId: project.id,
             taskTypeId: suggestion.taskTypeId,
             companyId: project.companyId,
             status: .active,
-            taskColor: taskTypeColor
+            taskColor: taskType.color
         )
         newTask.setTeamMemberIds(committedMemberIds)
         newTask.displayOrder = (project.tasks.map { $0.displayOrder }.max() ?? -1) + 1
 
         modelContext.insert(newTask)
         newTask.project = project
-        if let taskType { newTask.taskType = taskType }
+        newTask.taskType = taskType
 
         // Hydrate teamMembers relationship so the new row renders avatars
         // immediately, matching TaskFormSheet.saveTask's behaviour

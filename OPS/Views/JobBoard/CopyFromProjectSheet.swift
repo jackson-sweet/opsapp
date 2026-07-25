@@ -10,17 +10,37 @@ import SwiftData
 
 struct CopyFromProjectSheet: View {
     @Environment(\.dismiss) private var dismiss
-    @EnvironmentObject private var dataController: DataController
     @Query private var allProjects: [Project]
+    @Query private var allTaskTypes: [TaskType]
 
     let onCopy: ([String: Any]) -> Void
     let populatedFields: Set<String>
+    let destinationCompanyId: String?
 
     @State private var searchText = ""
     @State private var selectedProject: Project?
     @State private var selectedFields: Set<String> = []
     @State private var showingOverwriteWarning = false
     @State private var fieldsToOverwrite: [String] = []
+
+    private var selectableTaskTypeIds: Set<String> {
+        guard let companyId = destinationCompanyId else {
+            return []
+        }
+        return Set(
+            TaskTypeSelectionPolicy.selectableTaskTypes(
+                from: allTaskTypes,
+                companyId: companyId
+            ).map(\.id)
+        )
+    }
+
+    private func copyableTasks(for project: Project) -> [ProjectTask] {
+        project.tasks.filter {
+            $0.deletedAt == nil
+                && selectableTaskTypeIds.contains($0.taskTypeId)
+        }
+    }
 
     private var filteredProjects: [Project] {
         let baseProjects: [Project]
@@ -53,7 +73,7 @@ struct CopyFromProjectSheet: View {
             (id: "address", label: "SITE ADDRESS", hasData: !(project.address ?? "").isEmpty),
             (id: "description", label: "DESCRIPTION", hasData: !(project.projectDescription ?? "").isEmpty),
             (id: "notes", label: "NOTES", hasData: !(project.notes ?? "").isEmpty),
-            (id: "tasks", label: "TASKS", hasData: !project.tasks.isEmpty)
+            (id: "tasks", label: "TASKS", hasData: !copyableTasks(for: project).isEmpty)
             // (id: "images", label: "PROJECT IMAGES", hasData: false) // TODO: Add when image support is implemented
         ]
     }
@@ -194,7 +214,9 @@ struct CopyFromProjectSheet: View {
     // MARK: - Project Selection Card
 
     private func projectSelectionCard(for project: Project) -> some View {
-        HStack(spacing: 0) {
+        let taskCount = copyableTasks(for: project).count
+
+        return HStack(spacing: 0) {
             VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
                 HStack {
                     VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
@@ -257,11 +279,11 @@ struct CopyFromProjectSheet: View {
                     HStack(alignment: .bottom, spacing: OPSStyle.Layout.spacing1) {
                         Image(systemName: OPSStyle.Icons.task)
                             .font(.system(size: OPSStyle.Layout.IconSize.xs))
-                            .foregroundColor(project.tasks.isEmpty ? OPSStyle.Colors.tertiaryText.opacity(0.5) : OPSStyle.Colors.tertiaryText)
+                            .foregroundColor(taskCount == 0 ? OPSStyle.Colors.tertiaryText.opacity(0.5) : OPSStyle.Colors.tertiaryText)
 
-                        Text("\(project.tasks.count) TASK\(project.tasks.count == 1 ? "" : "S")")
+                        Text("\(taskCount) TASK\(taskCount == 1 ? "" : "S")")
                             .font(OPSStyle.Typography.smallCaption)
-                            .foregroundColor(project.tasks.isEmpty ? OPSStyle.Colors.tertiaryText.opacity(0.5) : OPSStyle.Colors.tertiaryText)
+                            .foregroundColor(taskCount == 0 ? OPSStyle.Colors.tertiaryText.opacity(0.5) : OPSStyle.Colors.tertiaryText)
                             .lineLimit(1)
                     }
 
@@ -437,7 +459,7 @@ struct CopyFromProjectSheet: View {
                 }
             case "tasks":
                 // Copy task structure and team — reset dates and status for fresh start
-                copiedData["tasks"] = project.tasks.map { task in
+                copiedData["tasks"] = copyableTasks(for: project).map { task in
                     let taskDict: [String: Any] = [
                         "taskTypeId": task.taskTypeId,
                         "status": TaskStatus.active.rawValue,
@@ -463,4 +485,3 @@ struct CopyFromProjectSheet: View {
         dismiss()
     }
 }
-

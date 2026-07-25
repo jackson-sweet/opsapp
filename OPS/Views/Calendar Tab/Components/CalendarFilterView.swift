@@ -27,6 +27,20 @@ struct CalendarFilterView: View {
     @State private var availableTaskTypes: [TaskType] = []
     @State private var availableClients: [Client] = []
 
+    private var selectableTaskTypes: [TaskType] {
+        guard let companyId = dataController.currentUser?.companyId else {
+            return []
+        }
+        return TaskTypeSelectionPolicy.selectableTaskTypes(
+            from: availableTaskTypes,
+            companyId: companyId
+        )
+    }
+
+    private var selectableTaskTypeIds: [String] {
+        selectableTaskTypes.map(\.id)
+    }
+
     // Which dropdown is currently expanded (only one at a time so the sheet
     // stays scannable instead of becoming a wall of checkboxes).
     @State private var expandedSection: Section? = nil
@@ -97,6 +111,11 @@ struct CalendarFilterView: View {
         .onChange(of: selectedTaskTypeIds) { _, _ in applyFilters() }
         .onChange(of: selectedClientIds) { _, _ in applyFilters() }
         .onChange(of: selectedStatuses) { _, _ in applyFilters() }
+        .onChange(of: selectableTaskTypeIds) { _, _ in
+            if sanitizeTaskTypeSelection() {
+                applyFilters()
+            }
+        }
     }
 
     // MARK: - Sections
@@ -157,11 +176,11 @@ struct CalendarFilterView: View {
                     action: { selectedTaskTypeIds.removeAll() }
                 )
 
-                if !availableTaskTypes.isEmpty {
+                if !selectableTaskTypes.isEmpty {
                     Divider().background(OPSStyle.Colors.separator)
                 }
 
-                ForEach(Array(availableTaskTypes.enumerated()), id: \.element.id) { index, type in
+                ForEach(Array(selectableTaskTypes.enumerated()), id: \.element.id) { index, type in
                     HStack(spacing: OPSStyle.Layout.spacing2_5) {
                         Image(systemName: type.icon ?? "checkmark.circle.fill")
                             .font(.system(size: OPSStyle.Layout.IconSize.sm))
@@ -185,14 +204,14 @@ struct CalendarFilterView: View {
                     .contentShape(Rectangle())
                     .onTapGesture { toggleId(&selectedTaskTypeIds, type.id) }
 
-                    if index < availableTaskTypes.count - 1 {
+                    if index < selectableTaskTypes.count - 1 {
                         Divider()
                             .background(OPSStyle.Colors.separator)
                             .padding(.leading, OPSStyle.Layout.spacing3)
                     }
                 }
 
-                if availableTaskTypes.isEmpty {
+                if selectableTaskTypes.isEmpty {
                     emptyRow(text: "No task types")
                 }
             }
@@ -533,12 +552,18 @@ struct CalendarFilterView: View {
 
     private func loadAvailableOptions() {
         guard let companyId = dataController.currentUser?.companyId,
-              dataController.getCompany(id: companyId) != nil else { return }
+              dataController.getCompany(id: companyId) != nil else {
+            availableTaskTypes = []
+            selectedTaskTypeIds.removeAll()
+            return
+        }
 
         let users = dataController.getTeamMembers(companyId: companyId)
         availableTeamMembers = users.map { TeamMember.fromUser($0) }.sorted { $0.fullName < $1.fullName }
 
-        availableTaskTypes = dataController.getAllTaskTypes(for: companyId).sorted { $0.displayOrder < $1.displayOrder }
+        availableTaskTypes = dataController.getAllTaskTypes(for: companyId)
+            .sorted { $0.displayOrder < $1.displayOrder }
+        _ = sanitizeTaskTypeSelection()
 
         availableClients = dataController.getAllClients(for: companyId).sorted {
             if let date1 = $0.createdAt, let date2 = $1.createdAt { return date1 > date2 }
@@ -553,6 +578,27 @@ struct CalendarFilterView: View {
         selectedTaskTypeIds = viewModel.selectedTaskTypeIds
         selectedClientIds = viewModel.selectedClientIds
         selectedStatuses = viewModel.selectedStatuses
+        if sanitizeTaskTypeSelection() {
+            applyFilters()
+        }
+    }
+
+    @discardableResult
+    private func sanitizeTaskTypeSelection() -> Bool {
+        guard let companyId = dataController.currentUser?.companyId else {
+            guard !selectedTaskTypeIds.isEmpty else { return false }
+            selectedTaskTypeIds.removeAll()
+            return true
+        }
+
+        let sanitized = TaskTypeSelectionPolicy.sanitizedSelection(
+            selectedTaskTypeIds,
+            from: selectableTaskTypes,
+            companyId: companyId
+        )
+        guard sanitized != selectedTaskTypeIds else { return false }
+        selectedTaskTypeIds = sanitized
+        return true
     }
 
     private func applyFilters() {

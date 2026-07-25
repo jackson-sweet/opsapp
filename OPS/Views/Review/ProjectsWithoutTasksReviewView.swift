@@ -350,12 +350,31 @@ struct ProjectsWithoutTasksReviewView: View {
 
     @MainActor
     private func persist(_ draft: LocalTask, for project: Project) async throws -> LocalTask {
-        guard let taskType = allTaskTypes.first(where: { $0.id == draft.taskTypeId }) else {
+        let existingTask: ProjectTask?
+        if let existingTaskId = draft.existingTaskId {
+            existingTask = try persistedTask(id: existingTaskId, project: project)
+        } else {
+            existingTask = nil
+        }
+
+        let taskType: TaskType?
+        if let existingTask,
+           existingTask.taskTypeId == draft.taskTypeId {
+            taskType = allTaskTypes.first {
+                $0.id == draft.taskTypeId && $0.companyId == project.companyId
+            }
+        } else {
+            taskType = TaskTypeSelectionPolicy.selectableTaskTypes(
+                from: allTaskTypes,
+                companyId: project.companyId
+            ).first { $0.id == draft.taskTypeId }
+        }
+
+        guard let taskType else {
             throw ProjectTaskComposerPersistenceError.missingTaskType
         }
 
-        if let existingTaskId = draft.existingTaskId,
-           let task = try persistedTask(id: existingTaskId, project: project) {
+        if let task = existingTask {
             task.taskTypeId = draft.taskTypeId
             task.taskType = taskType
             task.customTitle = draft.customTitle

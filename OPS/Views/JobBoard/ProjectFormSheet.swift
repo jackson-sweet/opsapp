@@ -239,7 +239,9 @@ struct ProjectFormSheet: View {
     private var isValid: Bool {
         // Name is OPTIONAL — when blank, the server auto-derives it from the
         // address via `title_is_auto`. Only the client is required.
-        selectedClientId != nil
+        selectedClientId != nil && localTasks.allSatisfy {
+            persistableTaskType(for: $0) != nil
+        }
     }
 
     private var matchingClients: [Client] {
@@ -331,13 +333,17 @@ struct ProjectFormSheet: View {
 
     // MARK: - Inline task row helpers
 
+    private var inlineTaskTypeCompanyId: String? {
+        mode.project?.companyId ?? dataController.currentUser?.companyId
+    }
+
     /// Task types ordered most-recently-used first across the company, then
     /// alphabetical for the remainder. Mirrors `TaskFormSheet`'s ordering so
     /// the inline `Menu` shows the user's usual types at the top.
     private var recencyOrderedTaskTypes: [TaskType] {
         let alphaSorted = allTaskTypes.sorted { $0.display < $1.display }
 
-        guard let companyId = dataController.currentUser?.companyId else {
+        guard let companyId = inlineTaskTypeCompanyId else {
             return alphaSorted
         }
 
@@ -358,13 +364,28 @@ struct ProjectFormSheet: View {
         return recentTier + restTier
     }
 
-    /// Tutorial-mode filtered + recency-ordered task types used by the shared
-    /// composer so scripted sessions only see DEMO_ types.
+    /// Raw tutorial-mode filtered + recency-ordered cache passed to the shared
+    /// composer. The composer keeps this complete set for historical task-row
+    /// display and derives its own selectable subset.
     private var availableInlineTaskTypes: [TaskType] {
         if tutorialMode {
             return recencyOrderedTaskTypes.filter { $0.id.hasPrefix("DEMO_") }
         }
         return recencyOrderedTaskTypes
+    }
+
+    private var selectableInlineTaskTypes: [TaskType] {
+        guard let companyId = inlineTaskTypeCompanyId else {
+            return []
+        }
+        return TaskTypeSelectionPolicy.selectableTaskTypes(
+            from: availableInlineTaskTypes,
+            companyId: companyId
+        )
+    }
+
+    private var selectableInlineTaskTypeIds: Set<String> {
+        Set(selectableInlineTaskTypes.map(\.id))
     }
 
     /// Whether the current user may schedule this project's tasks. Gated on
@@ -623,7 +644,8 @@ struct ProjectFormSheet: View {
         .sheet(isPresented: $showingCopyFromProject) {
             CopyFromProjectSheet(
                 onCopy: handleCopyFromProject,
-                populatedFields: currentlyPopulatedFields
+                populatedFields: currentlyPopulatedFields,
+                destinationCompanyId: inlineTaskTypeCompanyId
             )
         }
         // Bug f86cf554 — deck design capture from project create form.
@@ -1712,7 +1734,7 @@ struct ProjectFormSheet: View {
             ProjectTaskComposer(
                 tasks: $localTasks,
                 availableTaskTypes: availableInlineTaskTypes,
-                companyId: dataController.currentUser?.companyId,
+                companyId: inlineTaskTypeCompanyId,
                 projectId: mode.project?.id,
                 canSchedule: canSchedule,
                 isEnabled: !tutorialMode,
@@ -2070,7 +2092,10 @@ struct ProjectFormSheet: View {
     }
 
     private func recentSuggestionCard(for project: Project) -> some View {
-        let taskCount = project.tasks.filter { $0.deletedAt == nil }.count
+        let taskCount = project.tasks.filter {
+            $0.deletedAt == nil
+                && selectableInlineTaskTypeIds.contains($0.taskTypeId)
+        }.count
         let relative: String = {
             guard let created = project.createdAt else { return "" }
             let formatter = RelativeDateTimeFormatter()
@@ -2120,7 +2145,10 @@ struct ProjectFormSheet: View {
         #endif
 
         let taskPayload: [[String: Any]] = source.tasks
-            .filter { $0.deletedAt == nil }
+            .filter {
+                $0.deletedAt == nil
+                    && selectableInlineTaskTypeIds.contains($0.taskTypeId)
+            }
             .map { task in
                 return [
                     "taskTypeId": task.taskTypeId,
@@ -2144,6 +2172,26 @@ struct ProjectFormSheet: View {
     }
 
     // MARK: - Helper Methods
+
+    private func selectableTaskType(id: String, companyId: String) -> TaskType? {
+        TaskTypeSelectionPolicy.selectableTaskTypes(
+            from: allTaskTypes,
+            companyId: companyId
+        ).first { $0.id == id }
+    }
+
+    private func persistableTaskType(for localTask: LocalTask) -> TaskType? {
+        guard let companyId = inlineTaskTypeCompanyId else { return nil }
+        let originalTaskTypeId = localTask.existingTaskId.flatMap { taskId in
+            mode.project?.tasks.first(where: { $0.id == taskId })?.taskTypeId
+        }
+        return TaskTypeSelectionPolicy.persistableTaskType(
+            id: localTask.taskTypeId,
+            originalTaskTypeId: originalTaskTypeId,
+            from: allTaskTypes,
+            companyId: companyId
+        )
+    }
 
     private func handleCopyFromProject(_ copiedData: [String: Any]) {
         // Apply copied data with animation
@@ -2179,6 +2227,7 @@ struct ProjectFormSheet: View {
         if let taskData = copiedData["tasks"] as? [[String: Any]] {
             let newTasks = taskData.compactMap { taskDict -> LocalTask? in
                 guard let taskTypeId = taskDict["taskTypeId"] as? String,
+                      selectableInlineTaskTypeIds.contains(taskTypeId),
                       let statusRaw = taskDict["status"] as? String,
                       let status = TaskStatus(rawValue: statusRaw) else {
                     return nil
@@ -2384,20 +2433,29 @@ struct ProjectFormSheet: View {
     /// duplicate-name alert when the user accepts the suggestion or chooses
     /// Save Anyway.
     private func proceedWithSave() {
-        guard !isSaving else { return }
+        guard !isSaving, isValid else { return }
 
         // A valid task that is still open in the shared composer is part of
         // this form even if the operator skips the nested Add button and taps
         // the project's primary save action. Commit that visible draft only
         // after pre-save validation has cleared, then close the bound editor
         // so the form and composer cannot diverge or submit it twice.
-        let validTaskTypeIds = Set(availableInlineTaskTypes.map(\.id))
+        var validTaskTypeIds = selectableInlineTaskTypeIds
+        if let pendingComposerTask,
+           persistableTaskType(for: pendingComposerTask) != nil {
+            validTaskTypeIds.insert(pendingComposerTask.taskTypeId)
+        }
         let tasksForSave = ProjectTaskComposerLogic.tasksForParentSave(
             committedTasks: localTasks,
             pendingTask: pendingComposerTask,
             pendingTaskIsVisible: isTasksExpanded,
             validTaskTypeIds: validTaskTypeIds
         )
+        guard tasksForSave.allSatisfy({
+            persistableTaskType(for: $0) != nil
+        }) else {
+            return
+        }
         localTasks = tasksForSave
         if isTasksExpanded,
            let pendingComposerTask,
@@ -2894,9 +2952,16 @@ struct ProjectFormSheet: View {
         var fields: [String: AnyJSON] = [:]
 
         if task.taskTypeId != local.taskTypeId, !local.taskTypeId.isEmpty {
+            guard let targetTaskType = selectableTaskType(
+                id: local.taskTypeId,
+                companyId: task.companyId
+            ) else {
+                print("[PROJECT_EDIT] ⚠️ Rejected inactive or foreign task type \(local.taskTypeId)")
+                return
+            }
             fields["task_type_id"] = .string(local.taskTypeId)
             task.taskTypeId = local.taskTypeId
-            task.taskType = allTaskTypes.first { $0.id == local.taskTypeId }
+            task.taskType = targetTaskType
         }
 
         let realTitle = (task.customTitle?.isEmpty == true) ? nil : task.customTitle
@@ -2944,12 +3009,16 @@ struct ProjectFormSheet: View {
     }
 
     private func createTask(for project: Project, localTask: LocalTask) async {
-        guard let companyId = dataController.currentUser?.companyId else {
+        let companyId = project.companyId
+        guard !companyId.isEmpty else {
             print("[TASK_CREATE] ❌ No company ID available")
             return
         }
 
-        guard let taskType = allTaskTypes.first(where: { $0.id == localTask.taskTypeId }) else {
+        guard let taskType = selectableTaskType(
+            id: localTask.taskTypeId,
+            companyId: project.companyId
+        ) else {
             print("[TASK_CREATE] ❌ Task type not found: \(localTask.taskTypeId)")
             return
         }
@@ -3169,12 +3238,16 @@ struct ProjectFormSheet: View {
 
     /// Creates a task locally without API sync (for tutorial mode)
     private func createTaskLocally(for project: Project, localTask: LocalTask) async {
-        guard let companyId = dataController.currentUser?.companyId else {
+        let companyId = project.companyId
+        guard !companyId.isEmpty else {
             print("[TASK_CREATE_LOCAL] ❌ No company ID available")
             return
         }
 
-        guard let taskType = allTaskTypes.first(where: { $0.id == localTask.taskTypeId }) else {
+        guard let taskType = selectableTaskType(
+            id: localTask.taskTypeId,
+            companyId: project.companyId
+        ) else {
             print("[TASK_CREATE_LOCAL] ❌ Task type not found: \(localTask.taskTypeId)")
             return
         }

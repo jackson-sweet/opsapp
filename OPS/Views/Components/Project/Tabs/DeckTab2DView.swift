@@ -139,7 +139,7 @@ struct DeckTab2DView: View {
                     let levelSurfaces = level.detectedSurfaces
                     if !levelSurfaces.isEmpty {
                         let primary = DeckSurfaceInspector.primarySurfaceId(among: levelSurfaces)
-                        for face in levelSurfaces {
+                        for (surfaceIndex, face) in levelSurfaces.enumerated() {
                             let resolved = DeckSurfaceInspector.resolvedPayload(
                                 detected: face,
                                 persisted: level.surfaces,
@@ -152,6 +152,7 @@ struct DeckTab2DView: View {
                                 positions: face.positions,
                                 assignedItems: resolved.assignedItems,
                                 label: resolved.label,
+                                fallbackOrdinal: showsTools ? surfaceIndex + 1 : nil,
                                 selected: showsTools && toolState.selectedSurfaceIds.contains(face.id)
                             )
                         }
@@ -179,14 +180,21 @@ struct DeckTab2DView: View {
                 if !surfaces.isEmpty {
                     let persisted = drawingData.surfaces
                     let primary = DeckSurfaceInspector.primarySurfaceId(among: surfaces)
-                    for face in surfaces {
+                    for (surfaceIndex, face) in surfaces.enumerated() {
                         let resolved = DeckSurfaceInspector.resolvedPayload(
                             detected: face,
                             persisted: persisted,
                             legacyFootprint: drawingData.footprint,
                             isLegacyPrimary: face.id == primary
                         )
-                        drawSurfaceFill(context: context, positions: face.positions, assignedItems: resolved.assignedItems, label: resolved.label, selected: showsTools && toolState.selectedSurfaceIds.contains(face.id))
+                        drawSurfaceFill(
+                            context: context,
+                            positions: face.positions,
+                            assignedItems: resolved.assignedItems,
+                            label: resolved.label,
+                            fallbackOrdinal: showsTools ? surfaceIndex + 1 : nil,
+                            selected: showsTools && toolState.selectedSurfaceIds.contains(face.id)
+                        )
                     }
                 } else if drawingData.isClosed {
                     drawFootprint(context: context)
@@ -304,7 +312,14 @@ struct DeckTab2DView: View {
     /// Tinted by the surface's first assigned item color when present —
     /// matches the in-builder look so per-surface materials read correctly
     /// in the project tab. DECK-NEW-1 follow-up.
-    private func drawSurfaceFill(context: GraphicsContext, positions: [CGPoint], assignedItems: [AssignedItem] = [], label: String? = nil, selected: Bool = false) {
+    private func drawSurfaceFill(
+        context: GraphicsContext,
+        positions: [CGPoint],
+        assignedItems: [AssignedItem] = [],
+        label: String? = nil,
+        fallbackOrdinal: Int? = nil,
+        selected: Bool = false
+    ) {
         guard positions.count >= 3 else { return }
         var path = Path()
         path.move(to: positions[0])
@@ -324,10 +339,11 @@ struct DeckTab2DView: View {
 
         drawSelectionHighlight(context: context, path: path, selected: selected)
 
-        let resolvedLabel: String? = {
-            if let l = label?.trimmingCharacters(in: .whitespacesAndNewlines), !l.isEmpty { return l }
-            return assignedItems.first?.name
-        }()
+        let resolvedLabel = DeckViewerSurfaceLabelResolver.resolve(
+            userLabel: label,
+            assignedItems: assignedItems,
+            fallbackOrdinal: fallbackOrdinal
+        )
         if let l = resolvedLabel {
             drawSurfaceLabel(context: context, positions: positions, label: l)
         }
@@ -345,16 +361,31 @@ struct DeckTab2DView: View {
     private func drawSurfaceLabel(context: GraphicsContext, positions: [CGPoint], label: String) {
         let cx = positions.map(\.x).reduce(0, +) / CGFloat(positions.count)
         let cy = positions.map(\.y).reduce(0, +) / CGFloat(positions.count)
-        let pillH: CGFloat = 18
-        let charW: CGFloat = 6
-        let pillW = CGFloat(label.count) * charW + 12
-        let cr: CGFloat = 4
-        let pillRect = CGRect(x: cx - pillW / 2, y: cy - pillH / 2, width: pillW, height: pillH)
-        context.fill(Path(roundedRect: pillRect, cornerRadius: cr),
-                     with: .color(OPSStyle.Colors.glassDenseApprox))
-        context.draw(Text(label).font(.system(size: 10, weight: .semibold, design: .monospaced))
-            .foregroundColor(Color.white.opacity(0.9)),
-                     at: CGPoint(x: cx, y: cy))
+        let resolved = context.resolve(
+            Text(label)
+                .font(OPSStyle.Typography.microLabel)
+                .foregroundColor(OPSStyle.Colors.text)
+        )
+        let textSize = resolved.measure(in: CGSize(width: canvasSize, height: canvasSize))
+        let horizontalPadding = CGFloat(OPSStyle.Layout.spacing1)
+        let verticalPadding = CGFloat(OPSStyle.Layout.spacing1) / 2
+        let pillRect = CGRect(
+            x: cx - textSize.width / 2 - horizontalPadding,
+            y: cy - textSize.height / 2 - verticalPadding,
+            width: textSize.width + horizontalPadding * 2,
+            height: textSize.height + verticalPadding * 2
+        )
+        let pillPath = Path(
+            roundedRect: pillRect,
+            cornerRadius: CGFloat(OPSStyle.Layout.chipRadius)
+        )
+        context.fill(pillPath, with: .color(OPSStyle.Colors.glassDenseApprox))
+        context.stroke(
+            pillPath,
+            with: .color(OPSStyle.Colors.line),
+            lineWidth: OPSStyle.Layout.Border.standard
+        )
+        context.draw(resolved, at: CGPoint(x: cx, y: cy), anchor: .center)
     }
 
     private func drawEdge(context: GraphicsContext, edge: DeckEdge, vertexLookup: (String) -> DeckVertex?) {
@@ -569,7 +600,15 @@ struct DeckTab2DView: View {
     /// level. Tinted by per-surface material color when present, falling
     /// back to the level's display color for the unassigned look.
     /// DECK-NEW-1 follow-up.
-    private func drawLevelSurfaceFill(context: GraphicsContext, level: DeckLevel, positions: [CGPoint], assignedItems: [AssignedItem] = [], label: String? = nil, selected: Bool = false) {
+    private func drawLevelSurfaceFill(
+        context: GraphicsContext,
+        level: DeckLevel,
+        positions: [CGPoint],
+        assignedItems: [AssignedItem] = [],
+        label: String? = nil,
+        fallbackOrdinal: Int? = nil,
+        selected: Bool = false
+    ) {
         guard positions.count >= 3 else { return }
         var path = Path()
         path.move(to: positions[0])
@@ -589,10 +628,11 @@ struct DeckTab2DView: View {
 
         drawSelectionHighlight(context: context, path: path, selected: selected)
 
-        let resolvedLabel: String? = {
-            if let l = label?.trimmingCharacters(in: .whitespacesAndNewlines), !l.isEmpty { return l }
-            return assignedItems.first?.name
-        }()
+        let resolvedLabel = DeckViewerSurfaceLabelResolver.resolve(
+            userLabel: label,
+            assignedItems: assignedItems,
+            fallbackOrdinal: fallbackOrdinal
+        )
         if let l = resolvedLabel {
             drawSurfaceLabel(context: context, positions: positions, label: l)
         }

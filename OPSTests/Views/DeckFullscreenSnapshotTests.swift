@@ -151,6 +151,15 @@ final class DeckFullscreenSnapshotTests: XCTestCase {
                  drawingData: splitData, title: "MERIDIAN DECK")
     }
 
+    func testRenderUnnamedDisconnectedSurfaceLabels() {
+        snapshot(
+            "09-unnamed-disconnected-labels",
+            toolState: DeckViewerToolState(),
+            drawingData: Self.centeredDisconnectedSurfaces(),
+            title: "AGNES DECK"
+        )
+    }
+
     // MARK: - Viewport-centered fixtures (≈ centered in a 393×852 pt canvas)
 
     /// 20' × 14' deck centered near (196, 360): stair front, glass rail right,
@@ -220,6 +229,34 @@ final class DeckFullscreenSnapshotTests: XCTestCase {
         ]
 
         data.levels = [lower, upper]
+        return data
+    }
+
+    /// Two disconnected unnamed faces, matching the reported expanded-view
+    /// failure while leaving ample interior room for each identity annotation.
+    static func centeredDisconnectedSurfaces() -> DeckDrawingData {
+        var data = DeckDrawingData()
+        data.scaleFactor = 1.0
+        data.vertices = [
+            DeckVertex(id: "a1", position: CGPoint(x: 60, y: 290)),
+            DeckVertex(id: "a2", position: CGPoint(x: 170, y: 290)),
+            DeckVertex(id: "a3", position: CGPoint(x: 170, y: 410)),
+            DeckVertex(id: "a4", position: CGPoint(x: 60, y: 410)),
+            DeckVertex(id: "b1", position: CGPoint(x: 220, y: 270)),
+            DeckVertex(id: "b2", position: CGPoint(x: 340, y: 270)),
+            DeckVertex(id: "b3", position: CGPoint(x: 340, y: 400)),
+            DeckVertex(id: "b4", position: CGPoint(x: 220, y: 400))
+        ]
+        data.edges = [
+            edge("ae1", "a1", "a2", dim: 110),
+            edge("ae2", "a2", "a3", dim: 120),
+            edge("ae3", "a3", "a4", dim: 110),
+            edge("ae4", "a4", "a1", dim: 120),
+            edge("be1", "b1", "b2", dim: 120),
+            edge("be2", "b2", "b3", dim: 130),
+            edge("be3", "b3", "b4", dim: 120),
+            edge("be4", "b4", "b1", dim: 130)
+        ]
         return data
     }
 

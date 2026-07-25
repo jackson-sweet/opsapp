@@ -4,7 +4,7 @@
 
 **Goal:** Make the lead stage the literal top-left scan anchor on every `LeadTriageCard` while preserving value, menu behavior, terminal behavior, and the card's remaining information.
 
-**Architecture:** Introduce a tiny ordered header-row model and render the card header from that sequence. This makes the approved hierarchy directly regression-testable: status/value first, contact second, job third. Remove the stage tag from the lower metadata row, which retains stage progress and source.
+**Architecture:** Recompose the existing card header so its first row contains the current status control and estimated value, followed by full-width contact and job rows. Remove the stage tag from the lower metadata row, which retains stage progress and source. Protect the visible result with a hosted-render regression that detects the semantic `QUOTED` badge pixels in the card's top-left zone.
 
 **Tech Stack:** Swift 5, SwiftUI, XCTest, existing `LeadStatusMenu`, `StageTag`, `OPSStyle`, and the existing hosted snapshot harness.
 
@@ -38,18 +38,18 @@
 
 **Design tokens:** No styling in this task.
 
-**Step 1: Write the focused test**
+**Step 1: Write the focused rendered-layout test**
 
-Create a test that expects:
+Render a `.quoted` lead in the `.fresh` chase state through `UIHostingController` at 393pt width. The chase strip is neutral in this fixture, so warm tan pixels belong to the status tag. Normalize the rendered image into RGBA bytes, detect the mobile tan signature (`red > green > blue` with the minimum channel separation needed to exclude neutral text), and assert that the resulting bounds are in the top-left header zone:
 
 ```swift
-XCTAssertEqual(
-    LeadTriageCardHeaderLayout.rows,
-    [.statusAndValue, .contact, .job]
-)
+let bounds = try XCTUnwrap(tanStatusBounds(in: renderedCard))
+XCTAssertLessThan(bounds.minX, 60)
+XCTAssertLessThan(bounds.minY, 45)
+XCTAssertLessThan(bounds.maxY, 60)
 ```
 
-The production card will render those exact rows through `ForEach`, so this assertion owns the real header sequence rather than a parallel description.
+Add a one-pixel green calibration marker to the test-only rendered root so the scanner can determine whether the bitmap rows are top-down or bottom-up. The test exercises the real `LeadTriageCard`; it does not inspect source text or mirror a production constant.
 
 **Step 2: Run only the new test and verify RED**
 
@@ -64,7 +64,7 @@ xcodebuild test \
   -clonedSourcePackagesDirPath .spm-local
 ```
 
-Expected: compilation fails because `LeadTriageCardHeaderLayout` does not yet exist.
+Expected: the test fails because the detected status bounds are below the chase strip instead of inside the top-left header zone.
 
 ### Task 2: Render the approved hierarchy
 
@@ -75,37 +75,13 @@ Expected: compilation fails because `LeadTriageCardHeaderLayout` does not yet ex
 
 **Design tokens:** `OPSStyle.Layout.spacing2_5`; existing `StageTag`, `LeadStatusMenu`, `OPSStyle.Typography.bodyBold`, `OPSStyle.Colors.text`, and existing mono value treatment. No new value is permitted.
 
-**Step 1: Add the ordered header model**
+**Step 1: Render the status/value header row**
 
-Add an internal hashable row enum and canonical sequence:
+Replace the current contact/value row with a `HStack` whose leading item is the existing interactive `LeadStatusMenu` for open leads or plain `StageTag` for terminal leads, and whose trailing item is the existing estimated value. Reuse the current `OPSStyle.Layout.spacing2_5` spacing and all existing badge/value treatments.
 
-```swift
-enum LeadTriageCardHeaderRow: Hashable {
-    case statusAndValue
-    case contact
-    case job
-}
+**Step 2: Render contact and job beneath**
 
-enum LeadTriageCardHeaderLayout {
-    static let rows: [LeadTriageCardHeaderRow] = [
-        .statusAndValue,
-        .contact,
-        .job,
-    ]
-}
-```
-
-**Step 2: Render that sequence**
-
-Replace the current contact/value plus optional job block with:
-
-```swift
-ForEach(LeadTriageCardHeaderLayout.rows, id: \.self) { row in
-    headerRow(row)
-}
-```
-
-The `statusAndValue` row hosts the existing interactive `LeadStatusMenu` for open leads and plain `StageTag` for terminal leads, then the existing value on the trailing edge. `contact` renders the full-width contact name. `job` renders only when `jobLine` exists and keeps its existing typography/truncation.
+Render the contact name as a full-width leading row beneath the status/value row. Keep the optional job line immediately beneath the name with its existing typography, color, truncation, and spacing.
 
 **Step 3: Simplify the lower metadata row**
 

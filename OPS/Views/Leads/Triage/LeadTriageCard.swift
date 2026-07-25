@@ -161,18 +161,25 @@ struct LeadTriageCard: View {
     private var cardBody: some View {
         VStack(alignment: .leading, spacing: 0) {
             VStack(alignment: .leading, spacing: 0) {
-                // Contact + value
-                HStack(alignment: .firstTextBaseline, spacing: OPSStyle.Layout.spacing2_5) {
-                    Text(lead.displayContactName)
-                        .font(OPSStyle.Typography.bodyBold)
-                        .foregroundColor(OPSStyle.Colors.text)
-                        .lineLimit(1).truncationMode(.tail)
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                // Stage + value — the card's primary scan anchors
+                HStack(alignment: .center, spacing: OPSStyle.Layout.spacing2_5) {
+                    stageControl
+
+                    Spacer(minLength: 0)
+
                     Text(valueText)
                         .font(.custom("JetBrainsMono-Medium", size: 16))
                         .foregroundColor((lead.estimatedValue ?? 0) > 0 ? OPSStyle.Colors.text : OPSStyle.Colors.textMute)
                         .monospacedDigit()
                 }
+
+                // Contact
+                Text(lead.displayContactName)
+                    .font(OPSStyle.Typography.bodyBold)
+                    .foregroundColor(OPSStyle.Colors.text)
+                    .lineLimit(1).truncationMode(.tail)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.top, OPSStyle.Layout.spacing2)
 
                 // Job
                 if let job = jobLine {
@@ -200,7 +207,7 @@ struct LeadTriageCard: View {
                     .padding(.top, OPSStyle.Layout.spacing2_5)
                 }
 
-                // Meta — stage progress · stage chip (status menu) · source
+                // Meta — stage progress · source
                 metaRow
                     .padding(.top, OPSStyle.Layout.spacing2_5)
 
@@ -390,6 +397,30 @@ struct LeadTriageCard: View {
 
     // MARK: Meta row (information only)
 
+    @ViewBuilder
+    private var stageControl: some View {
+        if isTerminal {
+            StageTag(stage: lead.stage, detail: "\(lead.daysInStage)D")
+        } else {
+            LeadStatusMenu(
+                lead: lead,
+                canEdit: canEdit,
+                canConvert: canConvert,
+                onStage: onStage,
+                onWon: onWon,
+                onLost: onLost,
+                onArchive: onArchive,
+                onDiscard: onDiscard
+            ) {
+                StageTag(
+                    stage: lead.stage,
+                    detail: "\(lead.daysInStage)D",
+                    showsChevron: canEdit || canConvert
+                )
+            }
+        }
+    }
+
     private var metaRow: some View {
         HStack(spacing: OPSStyle.Layout.spacing2_5) {
             // Stage progress — 6 segments filled to the current stage
@@ -402,27 +433,6 @@ struct LeadTriageCard: View {
             }
             .frame(width: 62)
             .accessibilityHidden(true)
-
-            if isTerminal {
-                StageTag(stage: lead.stage, detail: "\(lead.daysInStage)D")
-            } else {
-                LeadStatusMenu(
-                    lead: lead,
-                    canEdit: canEdit,
-                    canConvert: canConvert,
-                    onStage: onStage,
-                    onWon: onWon,
-                    onLost: onLost,
-                    onArchive: onArchive,
-                    onDiscard: onDiscard
-                ) {
-                    StageTag(
-                        stage: lead.stage,
-                        detail: "\(lead.daysInStage)D",
-                        showsChevron: canEdit || canConvert
-                    )
-                }
-            }
 
             Spacer(minLength: 0)
 

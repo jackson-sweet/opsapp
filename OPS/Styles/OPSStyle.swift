@@ -478,6 +478,7 @@ enum OPSStyle {
         static let monthGridStandardBadgeHeight: CGFloat = 14.0
         static let monthGridStandardHeightThreshold: CGFloat = 120.0
         static let monthGridExpandedHeightThreshold: CGFloat = 180.0
+        static let wizardInstructionBarClearance: CGFloat = 80.0
 
         // MARK: - Corner radius (spec v2 — sharp, tactical, no 999px pills)
         // Prefer the new semantic names (panelRadius, chipRadius, etc.).

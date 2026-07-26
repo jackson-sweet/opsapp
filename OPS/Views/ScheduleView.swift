@@ -17,6 +17,16 @@ struct TaskDetailInfo: Identifiable {
     let projectId: String
 }
 
+enum ScheduleViewportLayout {
+    static func outerBottomInset(
+        isMonthExpanded: Bool,
+        wizardActive: Bool
+    ) -> CGFloat {
+        guard isMonthExpanded, wizardActive else { return 0 }
+        return OPSStyle.Layout.wizardInstructionBarClearance
+    }
+}
+
 struct ScheduleView: View {
     // This view no longer uses NavigationLink for project details
     // All project presentations are done via the sheet in ProjectSheetContainer
@@ -157,7 +167,16 @@ struct ScheduleView: View {
                         .padding(.top, OPSStyle.Layout.spacing1)
                         .allowsHitTesting(false)
                 }
-                .padding(.bottom, viewModel.isMonthExpanded ? (wizardActive ? 80 : 0) : 90) // tab bar + wizard bar clearance
+                // The global tab bar is an overlay. Keep the week viewport full
+                // bleed; DayPageView owns the internal scroll-content clearance
+                // that keeps its final card reachable above the bar.
+                .padding(
+                    .bottom,
+                    ScheduleViewportLayout.outerBottomInset(
+                        isMonthExpanded: viewModel.isMonthExpanded,
+                        wizardActive: wizardActive
+                    )
+                )
                 //.frame(maxWidth: 50)
             }
             }

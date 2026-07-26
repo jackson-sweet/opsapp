@@ -145,6 +145,24 @@ final class IOSBugReportRegressionTests: XCTestCase {
         XCTAssertTrue(UniversalSearchVisibilityPolicy.isInactiveProject(archived))
     }
 
+    @MainActor
+    func testConvertProjectSheetOwnsKeyboardToolbarInsidePresentationBoundary() {
+        let lead = Opportunity(
+            id: "lead-keyboard-toolbar",
+            companyId: "company-1",
+            contactName: "Jordan Lee",
+            stage: .won
+        )
+
+        let sheet = ConvertToProjectSheet(opportunity: lead)
+        let bodyType = String(reflecting: type(of: sheet.body))
+
+        XCTAssertTrue(
+            bodyType.contains("ToolbarModifier"),
+            "The conversion sheet must own its keyboard toolbar because app-root toolbars do not cross sheet presentation boundaries."
+        )
+    }
+
     private func makeProject(id: String, status: Status, teamIds: [String]) -> Project {
         let project = Project(id: id, title: id, status: status)
         project.setTeamMemberIds(teamIds)

@@ -195,6 +195,7 @@ struct ConvertToProjectSheet: View {
         }
         .preferredColorScheme(.dark)
         .interactiveDismissDisabled(isSaving)
+        .opsKeyboardDoneToolbar()
         .task {
             let recoveredCommittedConversion = await loadPreflight()
             guard !recoveredCommittedConversion else { return }

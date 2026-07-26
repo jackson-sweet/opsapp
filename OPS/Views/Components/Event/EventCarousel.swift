@@ -7,6 +7,96 @@
 
 import SwiftUI
 
+enum EventCarouselMetrics {
+    static let cardWidth: CGFloat = 362
+    static let cardHeight: CGFloat = 100
+    static let statusBarWidth = OPSStyle.Layout.spacing1
+    static let contentWidth = cardWidth - statusBarWidth
+    static let indicatorGap = OPSStyle.Layout.spacing2
+    static let indicatorActiveDiameter = OPSStyle.Layout.Indicator.dotSM
+    static let indicatorInactiveDiameter = OPSStyle.Layout.spacing1
+    static let indicatorSpacing = OPSStyle.Layout.spacing2
+    static let maxVisibleIndicators = 5
+    static let viewportHeight = cardHeight + OPSStyle.Layout.spacing3_5
+}
+
+/// Gives carousel navigation a dedicated lane below the readable card surface.
+/// Keeping this wrapper separate makes overlap a directly testable invariant.
+struct EventCarouselPaginationLayout<CardContent: View, Indicator: View>: View {
+    private let cardContent: CardContent
+    private let indicator: Indicator
+
+    init(
+        @ViewBuilder cardContent: () -> CardContent,
+        @ViewBuilder indicator: () -> Indicator
+    ) {
+        self.cardContent = cardContent()
+        self.indicator = indicator()
+    }
+
+    var body: some View {
+        VStack(spacing: EventCarouselMetrics.indicatorGap) {
+            cardContent
+                .frame(height: EventCarouselMetrics.cardHeight)
+
+            indicator
+                .frame(height: EventCarouselMetrics.indicatorActiveDiameter)
+        }
+        .frame(height: EventCarouselMetrics.viewportHeight, alignment: .top)
+    }
+}
+
+private struct EventCarouselPageIndicator: View {
+    let totalCount: Int
+    let selectedIndex: Int
+
+    private var visibleIndices: [Int] {
+        guard totalCount > 0 else { return [] }
+        guard totalCount > EventCarouselMetrics.maxVisibleIndicators else {
+            return Array(0..<totalCount)
+        }
+
+        let clampedIndex = min(max(selectedIndex, 0), totalCount - 1)
+        let halfWindow = EventCarouselMetrics.maxVisibleIndicators / 2
+        let maximumStart = totalCount - EventCarouselMetrics.maxVisibleIndicators
+        let start = min(max(clampedIndex - halfWindow, 0), maximumStart)
+        return Array(start..<(start + EventCarouselMetrics.maxVisibleIndicators))
+    }
+
+    var body: some View {
+        HStack(spacing: EventCarouselMetrics.indicatorSpacing) {
+            ForEach(visibleIndices, id: \.self) { index in
+                let isSelected = index == selectedIndex
+                let isCondensedLeadingEdge =
+                    index == visibleIndices.first && index > 0
+                let isCondensedTrailingEdge =
+                    index == visibleIndices.last && index < totalCount - 1
+
+                Circle()
+                    .fill(
+                        isSelected
+                            ? OPSStyle.Colors.text3
+                            : OPSStyle.Colors.fillNeutral
+                    )
+                    .frame(
+                        width: isSelected
+                            ? EventCarouselMetrics.indicatorActiveDiameter
+                            : EventCarouselMetrics.indicatorInactiveDiameter,
+                        height: isSelected
+                            ? EventCarouselMetrics.indicatorActiveDiameter
+                            : EventCarouselMetrics.indicatorInactiveDiameter
+                    )
+                    .opacity(
+                        isCondensedLeadingEdge || isCondensedTrailingEdge
+                            ? OPSStyle.Layout.Opacity.medium
+                            : 1
+                    )
+            }
+        }
+        .accessibilityHidden(true)
+    }
+}
+
 struct EventCarousel: View {
     let tasks: [ProjectTask]
     @Binding var selectedIndex: Int
@@ -20,15 +110,26 @@ struct EventCarousel: View {
     @EnvironmentObject private var dataController: DataController
     
     var body: some View {
-        TabView(selection: $selectedIndex) {
-            // Create card views for each event
-            ForEach(tasks.indices, id: \.self) { index in
-                makeEventCard(for: index)
-                    .tag(index)
+        EventCarouselPaginationLayout(
+            cardContent: {
+                TabView(selection: $selectedIndex) {
+                    // Create card views for each event
+                    ForEach(tasks.indices, id: \.self) { index in
+                        makeEventCard(for: index)
+                            .tag(index)
+                    }
+                }
+                .tabViewStyle(PageTabViewStyle(indexDisplayMode: .never))
+            },
+            indicator: {
+                if tasks.count > 1 {
+                    EventCarouselPageIndicator(
+                        totalCount: tasks.count,
+                        selectedIndex: selectedIndex
+                    )
+                }
             }
-        }
-        .tabViewStyle(PageTabViewStyle(indexDisplayMode: .never)) // Hide default dots
-        .frame(height: 120)
+        )
         .onChange(of: selectedIndex) { oldIndex, newIndex in
             // Hide confirmation when swiping
             if showStartConfirmation {
@@ -47,8 +148,6 @@ struct EventCarousel: View {
             isSelected: selectedIndex == index,
             showConfirmation: showStartConfirmation && selectedIndex == index,
             isActiveProject: activeProjectID == task.projectId,
-            currentIndex: selectedIndex,
-            totalCount: tasks.count,
             onTap: {
                 handleCardTap(forIndex: index)
             },
@@ -96,8 +195,6 @@ struct EventCardView: View {
     let isSelected: Bool
     let showConfirmation: Bool
     let isActiveProject: Bool
-    let currentIndex: Int
-    let totalCount: Int
     let onTap: () -> Void
     let onStart: () -> Void
     let onStop: () -> Void
@@ -156,89 +253,76 @@ struct EventCardView: View {
                     // Left color bar
                     Rectangle()
                         .fill(displayColor)
-                        .frame(width: 4)
+                        .frame(width: EventCarouselMetrics.statusBarWidth)
                     
-                    ZStack(alignment: .topTrailing) {
-                        // Main content
-                        VStack(alignment: .leading, spacing: 2) {
-                            // Event title
-                            Text(displayTitle.uppercased())
-                                .font(OPSStyle.Typography.cardTitle)
-                                .foregroundColor(OPSStyle.Colors.primaryText)
+                    // Main content
+                    VStack(alignment: .leading, spacing: 2) {
+                        // Event title
+                        Text(displayTitle.uppercased())
+                            .font(OPSStyle.Typography.cardTitle)
+                            .foregroundColor(OPSStyle.Colors.primaryText)
+                            .lineLimit(1)
+
+                        // Client name
+                        if let clientName = project?.effectiveClientName {
+                            Text(clientName)
+                                .font(OPSStyle.Typography.cardBody)
+                                .foregroundColor(OPSStyle.Colors.secondaryText)
                                 .lineLimit(1)
-                            
-                            // Client name
-                            if let clientName = project?.effectiveClientName {
-                                Text(clientName)
+                        }
+
+                        // Address with event type badge inline
+                        HStack(spacing: OPSStyle.Layout.spacing2) {
+                            if let address = project?.address {
+                                Text(extractAddressComponents(address))
                                     .font(OPSStyle.Typography.cardBody)
                                     .foregroundColor(OPSStyle.Colors.secondaryText)
                                     .lineLimit(1)
                             }
                             
-                            // Address with event type badge inline
-                            HStack(spacing: OPSStyle.Layout.spacing2) {
-                                if let address = project?.address {
-                                    Text(extractAddressComponents(address))
-                                        .font(OPSStyle.Typography.cardBody)
-                                        .foregroundColor(OPSStyle.Colors.secondaryText)
-                                        .lineLimit(1)
-                                }
-                                
-                                Spacer()
+                            Spacer()
 
-                                // Event type badge - show task type (all events are tasks now)
-                                if let taskType = taskTypeBadge {
-                                    Text(taskType.uppercased())
-                                        .font(OPSStyle.Typography.smallCaption)
-                                        .foregroundColor(displayColor)
-                                        .padding(.horizontal, OPSStyle.Layout.spacing2)
-                                        .padding(.vertical, OPSStyle.Layout.spacing1)
-                                        .background(
-                                            RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                                                .fill(displayColor.opacity(0.1))
-                                                .overlay(
-                                                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                                                        .stroke(displayColor.opacity(0.3), lineWidth: OPSStyle.Layout.Border.standard)
-                                                )
-                                        )
-                                } else {
-                                    Text("TASK")
-                                        .font(OPSStyle.Typography.smallCaption)
-                                        .foregroundColor(displayColor)
-                                        .padding(.horizontal, OPSStyle.Layout.spacing2)
-                                        .padding(.vertical, OPSStyle.Layout.spacing1)
-                                        .background(
-                                            RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                                                .fill(displayColor.opacity(0.1))
-                                                .overlay(
-                                                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                                                        .stroke(displayColor.opacity(0.3), lineWidth: OPSStyle.Layout.Border.standard)
-                                                )
-                                        )
-                                }
+                            // Event type badge - show task type (all events are tasks now)
+                            if let taskType = taskTypeBadge {
+                                Text(taskType.uppercased())
+                                    .font(OPSStyle.Typography.smallCaption)
+                                    .foregroundColor(displayColor)
+                                    .padding(.horizontal, OPSStyle.Layout.spacing2)
+                                    .padding(.vertical, OPSStyle.Layout.spacing1)
+                                    .background(
+                                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
+                                            .fill(displayColor.opacity(0.1))
+                                            .overlay(
+                                                RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
+                                                    .stroke(displayColor.opacity(0.3), lineWidth: OPSStyle.Layout.Border.standard)
+                                            )
+                                    )
+                            } else {
+                                Text("TASK")
+                                    .font(OPSStyle.Typography.smallCaption)
+                                    .foregroundColor(displayColor)
+                                    .padding(.horizontal, OPSStyle.Layout.spacing2)
+                                    .padding(.vertical, OPSStyle.Layout.spacing1)
+                                    .background(
+                                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
+                                            .fill(displayColor.opacity(0.1))
+                                            .overlay(
+                                                RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
+                                                    .stroke(displayColor.opacity(0.3), lineWidth: OPSStyle.Layout.Border.standard)
+                                            )
+                                    )
                             }
-                        }
-                        .padding(.horizontal, OPSStyle.Layout.spacing2_5)
-                        .padding(.vertical, OPSStyle.Layout.spacing2)
-                        .frame(width: 358, alignment: .leading)
-
-                        // Page indicators - only show if there's more than one event
-                        if totalCount > 1 {
-                            HStack(spacing: OPSStyle.Layout.spacing2_5) {
-                                ForEach(0..<totalCount, id: \.self) { index in
-                                    Circle()
-                                        .fill(index == currentIndex ? OPSStyle.Colors.text : OPSStyle.Colors.inputFieldBorder)
-                                        .frame(width: 13, height: 13)
-                                }
-                            }
-                            .padding(6)
-                            .padding(.top, 6)
-                            .padding(.trailing, 10)
                         }
                     }
+                    .padding(.horizontal, OPSStyle.Layout.spacing2_5)
+                    .padding(.vertical, OPSStyle.Layout.spacing2)
+                    .frame(width: EventCarouselMetrics.contentWidth, alignment: .leading)
                 }
             }
-            .frame(width: 362, height: 100)
+            .frame(
+                width: EventCarouselMetrics.cardWidth,
+                height: EventCarouselMetrics.cardHeight
+            )
             .cornerRadius(OPSStyle.Layout.cornerRadius)
             .overlay(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
@@ -256,7 +340,10 @@ struct EventCardView: View {
                 ZStack(alignment: .topTrailing) {
                     // Grey overlay
                     OPSStyle.Colors.modalOverlay
-                        .frame(width: 362, height: 100)
+                        .frame(
+                            width: EventCarouselMetrics.cardWidth,
+                            height: EventCarouselMetrics.cardHeight
+                        )
                         .cornerRadius(OPSStyle.Layout.cornerRadius)
 
                     // Completed badge
@@ -278,7 +365,10 @@ struct EventCardView: View {
                 ZStack(alignment: .topTrailing) {
                     // Grey overlay
                     OPSStyle.Colors.modalOverlay
-                        .frame(width: 362, height: 100)
+                        .frame(
+                            width: EventCarouselMetrics.cardWidth,
+                            height: EventCarouselMetrics.cardHeight
+                        )
                         .cornerRadius(OPSStyle.Layout.cornerRadius)
 
                     // Cancelled badge
@@ -359,7 +449,10 @@ struct EventCardView: View {
                 .font(.system(size: OPSStyle.Layout.IconSize.lg))
                 .foregroundColor(OPSStyle.Colors.primaryText)
         }
-        .frame(width: 362, height: 100)
+        .frame(
+            width: EventCarouselMetrics.cardWidth,
+            height: EventCarouselMetrics.cardHeight
+        )
         .background(OPSStyle.Colors.primaryAccent.opacity(0.95))
         .cornerRadius(OPSStyle.Layout.cornerRadius)
         .onTapGesture {

@@ -8,6 +8,17 @@
 
 import SwiftUI
 
+struct TaskDetailDescriptionPresentation: Equatable {
+    let text: String
+    let isEmpty: Bool
+
+    init(notes: String?) {
+        let normalizedNotes = notes?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        isEmpty = normalizedNotes.isEmpty
+        text = isEmpty ? "—" : normalizedNotes
+    }
+}
+
 struct TaskDetailPopupSheet: View {
     let task: ProjectTask
     let onSelect: (ProjectTask) -> Void
@@ -62,6 +73,7 @@ struct TaskDetailPopupSheet: View {
                         reopenButton
                     }
                     infoCard
+                    descriptionCard
                     actionButtons
                 }
                 .padding(.horizontal, OPSStyle.Layout.spacing3)
@@ -120,14 +132,6 @@ struct TaskDetailPopupSheet: View {
                 .textCase(.uppercase)
                 .foregroundColor(OPSStyle.Colors.text)
                 .opacity(task.status == .completed ? 0.5 : 1.0)
-
-            // Notes (if present)
-            if let notes = task.taskNotes, !notes.isEmpty {
-                Text(notes)
-                    .font(OPSStyle.Typography.caption)
-                    .foregroundColor(OPSStyle.Colors.secondaryText)
-                    .lineLimit(3)
-            }
         }
     }
 
@@ -207,6 +211,34 @@ struct TaskDetailPopupSheet: View {
             }
         }
         .glassSurface()
+    }
+
+    // MARK: - Description Card
+
+    private var descriptionCard: some View {
+        let presentation = TaskDetailDescriptionPresentation(notes: task.taskNotes)
+
+        return VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
+            Text("DESCRIPTION")
+                .font(OPSStyle.Typography.smallCaption)
+                .foregroundColor(OPSStyle.Colors.tertiaryText)
+
+            Text(presentation.text)
+                .font(OPSStyle.Typography.body)
+                .foregroundColor(
+                    presentation.isEmpty
+                        ? OPSStyle.Colors.tertiaryText
+                        : OPSStyle.Colors.primaryText
+                )
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(OPSStyle.Layout.spacing3)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .glassSurface()
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Task description")
+        .accessibilityValue(presentation.text)
+        .accessibilityIdentifier("taskDetailDescriptionArea")
     }
 
     // MARK: - Dates Row (tappable — opens scheduler)

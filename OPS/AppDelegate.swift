@@ -42,6 +42,12 @@ class AppDelegate: NSObject, UIApplicationDelegate, OSNotificationLifecycleListe
         // Light, text color, transparent→glass on scroll). MOBILE.md §2.1/§13.
         OPSStyle.configureNavigationBarAppearance()
 
+        // Every UIKit/SwiftUI text input receives the same keyboard accessory,
+        // regardless of which sheet, cover, navigation stack, or overlay
+        // window owns it. Presentation-scoped SwiftUI toolbars cannot provide
+        // this app-wide guarantee.
+        OPSKeyboardDoneAccessoryCoordinator.shared.start()
+
         // Configure Firebase (must be first)
         FirebaseApp.configure()
 

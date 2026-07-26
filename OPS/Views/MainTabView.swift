@@ -489,7 +489,6 @@ struct MainTabView: View {
         // ZStack (and therefore above PushInMessage at zIndex 2).
         .toastHost()
         .leadsToastSubscriber()
-        .opsKeyboardDoneToolbar()
         .sheet(isPresented: $appState.showingUniversalSearch) {
             UniversalSearchSheet()
                 .environmentObject(dataController)

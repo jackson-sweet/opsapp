@@ -433,6 +433,14 @@ enum OPSStyle {
             UIFont(name: "Mohave-Regular", size: 16)
                 ?? .preferredFont(forTextStyle: .body)
         }
+
+        /// UIKit bridge for the canonical Cake Mono 14pt button-label role.
+        /// Used by input accessories and other UIKit-owned controls that
+        /// cannot consume the SwiftUI `buttonLabel` token directly.
+        static var uiButtonLabel: UIFont {
+            UIFont(name: "CakeMono-Light", size: 14)
+                ?? .systemFont(ofSize: 14, weight: .light)
+        }
     }
     
     // MARK: - Layout

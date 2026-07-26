@@ -154,16 +154,9 @@ struct QuantityAdjustmentSheet: View {
                             currentQuantity = max(0, value)
                         }
                     }
-                    .toolbar {
-                        ToolbarItemGroup(placement: .keyboard) {
-                            Spacer()
-                            Button(action: {
-                                finishEditing()
-                            }) {
-                                Text("Enter")
-                                    .font(OPSStyle.Typography.bodyBold)
-                                    .foregroundColor(OPSStyle.Colors.primaryAccent)
-                            }
+                    .onChange(of: isQuantityFocused) { _, isFocused in
+                        if !isFocused && isEditingQuantity {
+                            finishEditing()
                         }
                     }
 

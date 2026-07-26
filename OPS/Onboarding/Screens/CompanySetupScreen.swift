@@ -174,23 +174,6 @@ struct CompanySetupScreen: View {
                                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                                         .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
                                 )
-                                .toolbar {
-                                    ToolbarItemGroup(placement: .keyboard) {
-                                        if focusedField == .phone {
-                                            Spacer()
-                                            Button {
-                                                focusedField = nil
-                                            } label: {
-                                                HStack(spacing: OPSStyle.Layout.spacing1) {
-                                                    Text("Enter")
-                                                    Image(systemName: "return")
-                                                }
-                                            }
-                                            .font(OPSStyle.Typography.bodyBold)
-                                            .foregroundColor(OPSStyle.Colors.primaryText)
-                                        }
-                                    }
-                                }
                         }
                     }
                 }

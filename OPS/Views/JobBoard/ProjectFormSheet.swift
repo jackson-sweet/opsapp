@@ -812,18 +812,6 @@ struct ProjectFormSheet: View {
                 }
             }
         }
-        .toolbar {
-            ToolbarItemGroup(placement: .keyboard) {
-                Spacer()
-                Button {
-                    focusedField = nil
-                } label: {
-                    Text("DONE")
-                }
-                .font(OPSStyle.Typography.bodyBold)
-                .foregroundColor(OPSStyle.Colors.primaryText)
-            }
-        }
         // Bug 33403492 — system contact picker. The button on
         // `clientSearchField` flips `showingContactPicker`, and the
         // selected contact is funnelled to `handleContactSelected` which

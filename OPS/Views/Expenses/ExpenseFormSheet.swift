@@ -248,16 +248,6 @@ struct ExpenseFormSheet: View {
                         .foregroundColor(OPSStyle.Colors.primaryText)
                 }
             }
-            .toolbar {
-                ToolbarItemGroup(placement: .keyboard) {
-                    Spacer()
-                    Button("Done") {
-                        focusedField = nil
-                    }
-                    .font(OPSStyle.Typography.bodyBold)
-                    .foregroundColor(OPSStyle.Colors.primaryAccent)
-                }
-            }
             .sheet(isPresented: $showDocumentScanner) {
                 DocumentScannerView(scannedImages: $pendingScannerImages) {
                     applySelectedReceipts(pendingScannerImages)

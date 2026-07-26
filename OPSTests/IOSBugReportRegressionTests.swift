@@ -1,4 +1,5 @@
 import XCTest
+import UIKit
 @testable import OPS
 
 final class IOSBugReportRegressionTests: XCTestCase {
@@ -146,21 +147,96 @@ final class IOSBugReportRegressionTests: XCTestCase {
     }
 
     @MainActor
-    func testConvertProjectSheetOwnsKeyboardToolbarInsidePresentationBoundary() {
-        let lead = Opportunity(
-            id: "lead-keyboard-toolbar",
-            companyId: "company-1",
-            contactName: "Jordan Lee",
-            stage: .won
+    func testGlobalKeyboardDoneAccessoryInstallsForTextFieldsAndTextViews() {
+        let notificationCenter = NotificationCenter()
+        let coordinator = OPSKeyboardDoneAccessoryCoordinator(
+            notificationCenter: notificationCenter
+        )
+        coordinator.start()
+        defer { coordinator.stop() }
+
+        let textField = UITextField()
+        notificationCenter.post(
+            name: UITextField.textDidBeginEditingNotification,
+            object: textField
         )
 
-        let sheet = ConvertToProjectSheet(opportunity: lead)
-        let bodyType = String(reflecting: type(of: sheet.body))
+        let textView = UITextView()
+        notificationCenter.post(
+            name: UITextView.textDidBeginEditingNotification,
+            object: textView
+        )
+
+        XCTAssertTrue(textField.inputAccessoryView is OPSKeyboardDoneAccessoryView)
+        XCTAssertTrue(textView.inputAccessoryView is OPSKeyboardDoneAccessoryView)
+    }
+
+    @MainActor
+    func testGlobalKeyboardDoneAccessoryDoesNotStackOnRepeatedEditing() {
+        let notificationCenter = NotificationCenter()
+        let coordinator = OPSKeyboardDoneAccessoryCoordinator(
+            notificationCenter: notificationCenter
+        )
+        coordinator.start()
+        defer { coordinator.stop() }
+
+        let textField = UITextField()
+        notificationCenter.post(
+            name: UITextField.textDidBeginEditingNotification,
+            object: textField
+        )
+        let firstAccessory = textField.inputAccessoryView
+
+        notificationCenter.post(
+            name: UITextField.textDidBeginEditingNotification,
+            object: textField
+        )
+
+        XCTAssertNotNil(firstAccessory)
+        XCTAssertTrue(textField.inputAccessoryView === firstAccessory)
+    }
+
+    @MainActor
+    func testGlobalKeyboardDoneAccessoryResignsTheRealFirstResponder() throws {
+        let notificationCenter = NotificationCenter()
+        let coordinator = OPSKeyboardDoneAccessoryCoordinator(
+            notificationCenter: notificationCenter
+        )
+        coordinator.start()
+        defer { coordinator.stop() }
+
+        let host = UIViewController()
+        let textField = UITextField(frame: CGRect(x: 20, y: 20, width: 200, height: 48))
+        host.view.addSubview(textField)
+
+        let window = UIWindow(frame: UIScreen.main.bounds)
+        window.rootViewController = host
+        window.makeKeyAndVisible()
+        defer { window.isHidden = true }
+
+        XCTAssertTrue(textField.becomeFirstResponder())
+        notificationCenter.post(
+            name: UITextField.textDidBeginEditingNotification,
+            object: textField
+        )
+
+        let accessory = try XCTUnwrap(
+            textField.inputAccessoryView as? OPSKeyboardDoneAccessoryView
+        )
+        let doneItem = try XCTUnwrap(
+            accessory.items?.first(where: { $0.title == "DONE" })
+        )
+        let action = try XCTUnwrap(doneItem.action)
 
         XCTAssertTrue(
-            bodyType.contains("ToolbarModifier"),
-            "The conversion sheet must own its keyboard toolbar because app-root toolbars do not cross sheet presentation boundaries."
+            UIApplication.shared.sendAction(
+                action,
+                to: doneItem.target,
+                from: doneItem,
+                for: nil
+            )
         )
+        XCTAssertFalse(textField.isFirstResponder)
     }
 
     private func makeProject(id: String, status: Status, teamIds: [String]) -> Project {

@@ -153,23 +153,6 @@ struct ProfileScreen: View {
                                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                                         .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
                                 )
-                                .toolbar {
-                                    ToolbarItemGroup(placement: .keyboard) {
-                                        if isPhoneFocused {
-                                            Spacer()
-                                            Button {
-                                                isPhoneFocused = false
-                                            } label: {
-                                                HStack(spacing: OPSStyle.Layout.spacing1) {
-                                                    Text("Enter")
-                                                    Image(systemName: "return")
-                                                }
-                                            }
-                                            .font(OPSStyle.Typography.bodyBold)
-                                            .foregroundColor(OPSStyle.Colors.primaryText)
-                                        }
-                                    }
-                                }
                         }
                     }
                 }

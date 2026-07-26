@@ -180,6 +180,7 @@ struct TaskFormSheet: View {
     @State private var errorMessage: String?
     @FocusState private var focusedField: TaskFormField?
     @State private var tempNotes: String = ""
+    @State private var shouldDiscardNoteDraftOnBlur = false
 
     enum TaskFormField {
         case notes
@@ -746,25 +747,6 @@ struct TaskFormSheet: View {
                     }
                 }
                 }
-            }
-        }
-        .toolbar {
-            ToolbarItemGroup(placement: .keyboard) {
-                Spacer()
-                Button {
-                    // Save notes content if notes field is focused
-                    if focusedField == .notes {
-                        taskNotes = tempNotes
-                    }
-                    focusedField = nil
-                } label: {
-                    HStack(spacing: OPSStyle.Layout.spacing1) {
-                        Text("Enter")
-                        Image(systemName: "return")
-                    }
-                }
-                .font(OPSStyle.Typography.bodyBold)
-                .foregroundColor(OPSStyle.Colors.primaryAccent)
             }
         }
     }
@@ -1455,6 +1437,12 @@ struct TaskFormSheet: View {
                         .onChange(of: focusedField) { oldValue, newValue in
                             if newValue == .notes && oldValue != .notes {
                                 tempNotes = taskNotes
+                            } else if oldValue == .notes && newValue != .notes {
+                                if shouldDiscardNoteDraftOnBlur {
+                                    shouldDiscardNoteDraftOnBlur = false
+                                } else {
+                                    taskNotes = tempNotes
+                                }
                             }
                         }
                 }
@@ -1473,7 +1461,7 @@ struct TaskFormSheet: View {
                         Spacer()
 
                         Button("CANCEL") {
-                            tempNotes = ""
+                            shouldDiscardNoteDraftOnBlur = true
                             focusedField = nil
                         }
                         .font(OPSStyle.Typography.caption)

@@ -210,22 +210,10 @@ private struct SiteVisitCaptureConsole: View {
         .onChange(of: viewModel.noteDraft) { _, _ in
             scheduleNoteAutosave()
         }
-        .toolbar {
-            ToolbarItemGroup(placement: .keyboard) {
-                Spacer()
-                Button("DONE") {
-                    // Dismiss whatever is focused — the identity, checklist, and
-                    // ad-hoc fields live in child views and aren't bound to this
-                    // view's `focusedField`, so clear that AND resign globally.
-                    focusedField = nil
-                    UIApplication.shared.sendAction(
-                        #selector(UIResponder.resignFirstResponder),
-                        to: nil, from: nil, for: nil
-                    )
-                    viewModel.autosaveNote()
-                }
-                .font(OPSStyle.Typography.captionBold)
-                .foregroundColor(OPSStyle.Colors.text)
+        .onChange(of: focusedField) { oldValue, newValue in
+            if oldValue == .note && newValue != .note {
+                noteAutosaveTask?.cancel()
+                viewModel.autosaveNote()
             }
         }
         .onDisappear {

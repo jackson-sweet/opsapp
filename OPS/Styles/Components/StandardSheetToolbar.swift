@@ -6,9 +6,6 @@
 //
 
 import SwiftUI
-#if canImport(UIKit)
-import UIKit
-#endif
 
 /// Standardized sheet toolbar modifier with Cancel/Title/Action buttons
 ///
@@ -84,28 +81,6 @@ struct StandardSheetToolbarModifier: ViewModifier {
 }
 
 extension View {
-    func opsKeyboardDoneToolbar() -> some View {
-        toolbar {
-            ToolbarItemGroup(placement: .keyboard) {
-                Spacer()
-                Button {
-                    #if canImport(UIKit)
-                    UIApplication.shared.sendAction(
-                        #selector(UIResponder.resignFirstResponder),
-                        to: nil,
-                        from: nil,
-                        for: nil
-                    )
-                    #endif
-                } label: {
-                    Text("DONE")
-                        .font(OPSStyle.Typography.bodyBold)
-                }
-                .foregroundColor(OPSStyle.Colors.primaryText)
-            }
-        }
-    }
-
     /// Apply standardized sheet toolbar with Cancel/Title/Action buttons
     ///
     /// Matches ProjectFormSheet authority pattern:

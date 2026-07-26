@@ -883,6 +883,9 @@ struct ProjectDetailsView: View {
                     viewModel.selectedTask = task
                     viewModel.cancelSelectedTask()
                 },
+                onDuplicateTask: { task in
+                    viewModel.duplicateTask(task)
+                },
                 onDeleteTask: { task in
                     viewModel.selectedTask = task
                     viewModel.showingTaskDeleteConfirmation = true

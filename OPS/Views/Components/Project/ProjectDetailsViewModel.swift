@@ -168,6 +168,16 @@ class ProjectDetailsViewModel: ObservableObject {
         return PermissionStore.shared.can("projects.edit")
     }
 
+    /// Duplicating inserts a new `project_tasks` row, so this deliberately uses
+    /// `tasks.create` at full scope rather than borrowing `projects.edit`.
+    var canDuplicateTasks: Bool {
+        ProjectTaskDuplication.canDuplicate(
+            canCreateTasks: PermissionStore.shared.can("tasks.create"),
+            isMentionOnly: isMentionOnlyAccess,
+            sourceDeletedAt: nil
+        )
+    }
+
     var canEditVinylOrderMarker: Bool {
         canEditProject
             && PermissionStore.shared.isFeatureEnabled("deck_builder")
@@ -290,6 +300,75 @@ class ProjectDetailsViewModel: ObservableObject {
                 print("[TASK_CANCEL] Task \(task.id) cancelled")
             } catch {
                 print("[TASK_CANCEL] Failed to cancel task: \(error)")
+            }
+        }
+    }
+
+    func duplicateTask(_ source: ProjectTask) {
+        guard ProjectTaskDuplication.canDuplicate(
+            canCreateTasks: PermissionStore.shared.can("tasks.create"),
+            isMentionOnly: isMentionOnlyAccess,
+            sourceDeletedAt: source.deletedAt
+        ) else {
+            return
+        }
+
+        let nextDisplayOrder = (
+            project.tasks
+                .filter { $0.deletedAt == nil }
+                .map(\.displayOrder)
+                .max() ?? -1
+        ) + 1
+
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            guard let dataController = self.dataController,
+                  let context = dataController.modelContext else {
+                networkError = "Task duplication is unavailable."
+                return
+            }
+
+            do {
+                let dto = try ProjectTaskDuplication.makeDTO(
+                    from: source,
+                    displayOrder: nextDisplayOrder
+                )
+                let duplicateId = try await dataController.createTask(dto: dto)
+                let descriptor = FetchDescriptor<ProjectTask>(
+                    predicate: #Predicate<ProjectTask> { $0.id == duplicateId }
+                )
+                guard let duplicate = try context.fetch(descriptor).first else {
+                    throw NSError(
+                        domain: "ProjectTaskDuplication",
+                        code: 1,
+                        userInfo: [NSLocalizedDescriptionKey: "The duplicated task was not saved locally."]
+                    )
+                }
+
+                // The scalar ids are authoritative; wire relationships now so
+                // every task surface renders the new row correctly before the
+                // next full sync relationship pass.
+                if duplicate.taskTypeId == source.taskType?.id {
+                    duplicate.taskType = source.taskType
+                }
+                let memberIds = duplicate.getTeamMemberIds()
+                if memberIds.isEmpty {
+                    duplicate.teamMembers = []
+                } else {
+                    let userDescriptor = FetchDescriptor<User>(
+                        predicate: #Predicate<User> { memberIds.contains($0.id) }
+                    )
+                    duplicate.teamMembers = try context.fetch(userDescriptor)
+                }
+                try context.save()
+
+                selectedTask = duplicate
+                UINotificationFeedbackGenerator().notificationOccurred(.success)
+                ToastCenter.shared.present(Feedback.Task.duplicated)
+                print("[TASK_DUPLICATE] Task \(source.id) duplicated as \(duplicate.id)")
+            } catch {
+                networkError = error.localizedDescription
+                print("[TASK_DUPLICATE] Failed to duplicate task \(source.id): \(error)")
             }
         }
     }

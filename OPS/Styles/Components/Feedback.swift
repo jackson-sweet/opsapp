@@ -146,6 +146,7 @@ enum Feedback {
 
     enum Task {
         static let created       = Toast(label: "// TASK CREATED", tone: .success)
+        static let duplicated    = Toast(label: "// TASK DUPLICATED", tone: .success)
         static let deleted       = Toast(label: "// TASK DELETED", tone: .success)
         static let completed     = Toast(label: "// TASK DONE", tone: .success)
         static let cancelled     = Toast(label: "// TASK CANCELLED", tone: .success)

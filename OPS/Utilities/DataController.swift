@@ -5259,26 +5259,7 @@ class DataController: ObservableObject {
             print("[DataController] ⚠️ Task already exists locally, skipping insert: \(dto.id)")
         }
 
-        // Build the full payload for SyncEngine create
-        var changedFields: [String: Any] = [
-            "id": dto.id,
-            "company_id": dto.companyId,
-            "project_id": dto.projectId,
-            "status": dto.status
-        ]
-        if let v = dto.taskTypeId { changedFields["task_type_id"] = v }
-        if let v = dto.customTitle { changedFields["custom_title"] = v }
-        if let v = dto.taskNotes { changedFields["task_notes"] = v }
-        if let v = dto.taskColor { changedFields["task_color"] = v }
-        if let v = dto.displayOrder { changedFields["display_order"] = v }
-        if let v = dto.teamMemberIds { changedFields["team_member_ids"] = v }
-        if let v = dto.startDate { changedFields["start_date"] = v }
-        if let v = dto.endDate { changedFields["end_date"] = v }
-        if let v = dto.duration { changedFields["duration"] = v }
-        if let v = dto.startTime { changedFields["start_time"] = v }
-        if let v = dto.endTime { changedFields["end_time"] = v }
-        if let v = dto.sourceLineItemId { changedFields["source_line_item_id"] = v }
-        if let v = dto.sourceEstimateId { changedFields["source_estimate_id"] = v }
+        let changedFields = try Self.projectTaskCreateFields(for: dto)
 
         syncEngine.recordOperation(
             entityType: .projectTask,
@@ -5298,6 +5279,41 @@ class DataController: ObservableObject {
         }
 
         return dto.id
+    }
+
+    /// Canonical queued-create payload for project tasks. Kept as a pure seam
+    /// so every create path retains the DTO's scheduling-definition metadata,
+    /// including an explicit empty dependency override.
+    static func projectTaskCreateFields(
+        for dto: SupabaseProjectTaskDTO
+    ) throws -> [String: Any] {
+        var fields: [String: Any] = [
+            "id": dto.id,
+            "company_id": dto.companyId,
+            "project_id": dto.projectId,
+            "status": dto.status
+        ]
+        if let value = dto.taskTypeId { fields["task_type_id"] = value }
+        if let value = dto.customTitle { fields["custom_title"] = value }
+        if let value = dto.taskNotes { fields["task_notes"] = value }
+        if let value = dto.taskColor { fields["task_color"] = value }
+        if let value = dto.displayOrder { fields["display_order"] = value }
+        if let value = dto.teamMemberIds { fields["team_member_ids"] = value }
+        if let value = dto.startDate { fields["start_date"] = value }
+        if let value = dto.endDate { fields["end_date"] = value }
+        if let value = dto.duration { fields["duration"] = value }
+        if let value = dto.startTime { fields["start_time"] = value }
+        if let value = dto.endTime { fields["end_time"] = value }
+        if let value = dto.sourceLineItemId { fields["source_line_item_id"] = value }
+        if let value = dto.sourceEstimateId { fields["source_estimate_id"] = value }
+        if let value = dto.scheduleLocked { fields["schedule_locked"] = value }
+        if let value = dto.createdAt { fields["created_at"] = value }
+        if let overrides = dto.dependencyOverrides {
+            let data = try JSONEncoder().encode(overrides)
+            fields["dependency_overrides"] = try JSONSerialization.jsonObject(with: data)
+        }
+
+        return fields
     }
 
     /// Delete task by ID - SINGLE SOURCE OF TRUTH

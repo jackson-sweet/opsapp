@@ -273,7 +273,7 @@ extension SupabaseProjectTaskDTO {
         task.duration = duration ?? 1
 
         // Encode dependency overrides into JSON string for SwiftData storage
-        if let overrides = dependencyOverrides, !overrides.isEmpty,
+        if let overrides = dependencyOverrides,
            let data = try? JSONEncoder().encode(overrides),
            let json = String(data: data, encoding: .utf8) {
             task.dependencyOverridesJSON = json

@@ -27,6 +27,7 @@ struct DetailsTabView: View {
     var onCompleteTask: ((ProjectTask) -> Void)? = nil
     var onReopenTask: ((ProjectTask) -> Void)? = nil
     var onCancelTask: ((ProjectTask) -> Void)? = nil
+    var onDuplicateTask: ((ProjectTask) -> Void)? = nil
     var onDeleteTask: ((ProjectTask) -> Void)? = nil
     var onClientLongPress: (() -> Void)? = nil
     /// Opens the existing `ProjectStatusChangeSheet` (wired in
@@ -124,6 +125,7 @@ struct DetailsTabView: View {
                 selectedTask: viewModel.selectedTask,
                 project: project,
                 canEdit: viewModel.canEditProject,
+                canDuplicate: viewModel.canDuplicateTasks,
                 userById: userById,
                 onTaskTap: onTaskTap,
                 onAddTask: onAddTask,
@@ -131,6 +133,7 @@ struct DetailsTabView: View {
                 onCompleteTask: onCompleteTask,
                 onReopenTask: onReopenTask,
                 onCancelTask: onCancelTask,
+                onDuplicateTask: onDuplicateTask,
                 onDeleteTask: onDeleteTask
             )
 
@@ -642,6 +645,7 @@ struct TaskListSection: View {
     let selectedTask: ProjectTask?
     let project: Project
     let canEdit: Bool
+    let canDuplicate: Bool
     /// User lookup keyed by id — used to resolve task team-member avatars from
     /// the authoritative `teamMemberIdsString` CSV. Passed down from
     /// DetailsTabView so the @Query only runs once per project view.
@@ -652,6 +656,7 @@ struct TaskListSection: View {
     var onCompleteTask: ((ProjectTask) -> Void)? = nil
     var onReopenTask: ((ProjectTask) -> Void)? = nil
     var onCancelTask: ((ProjectTask) -> Void)? = nil
+    var onDuplicateTask: ((ProjectTask) -> Void)? = nil
     var onDeleteTask: ((ProjectTask) -> Void)? = nil
 
     var body: some View {
@@ -755,6 +760,12 @@ struct TaskListSection: View {
                         } else {
                             Button(action: { onSelectTask?(task) }) {
                                 Label("Select Task", systemImage: "checkmark.circle")
+                            }
+                        }
+
+                        if canDuplicate && task.deletedAt == nil {
+                            Button(action: { onDuplicateTask?(task) }) {
+                                Label("Duplicate Task", systemImage: OPSStyle.Icons.copy)
                             }
                         }
 

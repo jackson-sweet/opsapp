@@ -130,6 +130,14 @@ class AppDelegate: NSObject, UIApplicationDelegate, OSNotificationLifecycleListe
         // Delay routing to allow app to fully initialize if cold-launched
         // This gives time for view observers to be set up
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+            if NotificationRailPushRoute.shouldOpen(
+                screen: screen,
+                type: notificationType
+            ) {
+                self.openNotificationRailViaCoordinator()
+                return
+            }
+
             // member_joined carries additionalData fields that aren't part of
             // routeByType's signature (memberId / wasSeated / roleAssigned),
             // so handle it at the onClick level and post directly.
@@ -459,7 +467,18 @@ class AppDelegate: NSObject, UIApplicationDelegate, OSNotificationLifecycleListe
         print("[PUSH] Lead: \(leadId ?? "none")")
         print("[PUSH] Screen: \(screen ?? "none")")
 
-        // Route based on screen or type
+        // Delivery is not a tap. A visible quota push must never open the rail
+        // on arrival or leave a navigation intent for a later ordinary launch;
+        // OneSignal's explicit onClick callback owns that route.
+        guard NotificationRailPushRoute.shouldNavigateFromDelivery(
+            screen: screen,
+            type: notificationType
+        ) else {
+            print("[PUSH] Notification rail delivery recorded; waiting for user tap")
+            return
+        }
+
+        // Preserve the established arrival handling for all other push types.
         if let screen = screen {
             routeToScreen(screen, projectId: projectId, taskId: taskId, leadId: leadId)
         } else if let type = notificationType {
@@ -488,6 +507,19 @@ class AppDelegate: NSObject, UIApplicationDelegate, OSNotificationLifecycleListe
     private func openProjectViaCoordinator(_ projectId: String) {
         Task { @MainActor in
             DeepLinkCoordinator.shared.receive(entity: "projects", id: projectId, scheme: "push")
+        }
+    }
+
+    /// Open the existing notification rail through the same durable in-memory
+    /// handoff used by project deep links. The sentinel id exists only because
+    /// DeepLinkCoordinator models every destination as an entity/id pair.
+    private func openNotificationRailViaCoordinator() {
+        Task { @MainActor in
+            DeepLinkCoordinator.shared.receive(
+                entity: NotificationRailPushRoute.coordinatorEntity,
+                id: NotificationRailPushRoute.coordinatorId,
+                scheme: "push"
+            )
         }
     }
 

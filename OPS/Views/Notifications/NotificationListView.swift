@@ -565,6 +565,9 @@ struct NotificationListView: View {
 
     private var notificationListContent: some View {
         let grouped = groupedNotifications
+        let hasDismissibleUnread = notifications.contains {
+            !$0.isRead && NotificationReadPolicy.shouldMarkRead(persistent: $0.persistent)
+        }
         // READ ALL rides the first rendered section header. TODAY wins when it
         // exists; otherwise it falls through to the first non-empty bucket so the
         // action is never lost.
@@ -573,24 +576,32 @@ struct NotificationListView: View {
         let readAllOnOlderOnly = grouped.today.isEmpty && grouped.thisWeek.isEmpty && grouped.lastWeek.isEmpty
         return LazyVStack(spacing: 0) {
             if !grouped.today.isEmpty {
-                sectionHeader("TODAY", count: grouped.today.count, showReadAll: true)
+                sectionHeader("TODAY", count: grouped.today.count, showReadAll: hasDismissibleUnread)
                 sectionRows(grouped.today)
             }
 
             if !grouped.thisWeek.isEmpty {
-                sectionHeader("THIS WEEK", count: grouped.thisWeek.count, showReadAll: readAllOnThisWeek)
+                sectionHeader(
+                    "THIS WEEK",
+                    count: grouped.thisWeek.count,
+                    showReadAll: readAllOnThisWeek && hasDismissibleUnread
+                )
                 sectionRows(grouped.thisWeek)
             }
 
             if !grouped.lastWeek.isEmpty {
-                sectionHeader("LAST WEEK", count: grouped.lastWeek.count, showReadAll: readAllOnLastWeek)
+                sectionHeader(
+                    "LAST WEEK",
+                    count: grouped.lastWeek.count,
+                    showReadAll: readAllOnLastWeek && hasDismissibleUnread
+                )
                 sectionRows(grouped.lastWeek)
             }
 
             if !grouped.older.isEmpty {
                 // Older-only edge: the older section renders as a CTA (not a plain
                 // header), so give READ ALL a clean home just above it.
-                if readAllOnOlderOnly {
+                if readAllOnOlderOnly && hasDismissibleUnread {
                     HStack {
                         Spacer()
                         readAllButton
@@ -960,7 +971,8 @@ struct NotificationListView: View {
 
     /// Mark a notification as read in local state and sync to server.
     private func markAsRead(_ notification: NotificationDTO) {
-        guard let index = notifications.firstIndex(where: { $0.id == notification.id }),
+        guard NotificationReadPolicy.shouldMarkRead(persistent: notification.persistent),
+              let index = notifications.firstIndex(where: { $0.id == notification.id }),
               !notifications[index].isRead else { return }
         notifications[index].isRead = true
         appState.unreadNotificationCount = max(0, appState.unreadNotificationCount - 1)
@@ -973,6 +985,8 @@ struct NotificationListView: View {
     private func notificationIcon(for type: String) -> some View {
         let (iconName, color): (String, Color) = {
             switch type {
+            case "ai_provider_quota":
+                return (OPSStyle.Icons.alert, OPSStyle.Colors.errorStatus)
             case "mention":
                 return (OPSStyle.Icons.mention, OPSStyle.Colors.primaryAccent)
             case "project_note":
@@ -1121,18 +1135,8 @@ struct NotificationListView: View {
         // for list-row taps that transition the user somewhere.
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
 
-        // Mark as read locally first
-        if let index = notifications.firstIndex(where: { $0.id == notification.id }),
-           !notifications[index].isRead {
-            notifications[index].isRead = true
-            appState.unreadNotificationCount = max(0, appState.unreadNotificationCount - 1)
-        }
-
-        // Mark as read on server
-        Task {
-            let repo = NotificationRepository()
-            try? await repo.markAsRead(notification.id)
-        }
+        // Persistent incidents remain unread until condition-specific recovery.
+        markAsRead(notification)
 
         // Route by deep link type
         let deepLink = notification.deepLinkType ?? ""
@@ -1419,8 +1423,11 @@ struct NotificationListView: View {
         Task {
             let repo = NotificationRepository()
             try? await repo.markAllAsRead(userId: userId)
+            let unreadCount = try? await repo.fetchUnreadCount(userId: userId)
             await MainActor.run {
-                appState.unreadNotificationCount = 0
+                if let unreadCount {
+                    appState.unreadNotificationCount = unreadCount
+                }
             }
             await loadNotifications()
         }

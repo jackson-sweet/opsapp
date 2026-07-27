@@ -3,8 +3,8 @@
 //  OPSTests
 //
 //  Visual-verification harness for the Leads Discard action (2026-07-05).
-//  Renders the real first-run DiscardExplainerSheet and the updated
-//  LostReasonSheet (now carrying the "Discard instead" escape hatch) to PNGs.
+//  Renders the Phase C reason chooser, the legacy first-run explainer, and the
+//  LostReasonSheet (which carries the "Discard instead" escape hatch) to PNGs.
 //  Uses a real UIHostingController in a UIWindow — unlike ImageRenderer this
 //  resolves OPS asset-catalog colors AND lays out the sheets' ScrollView +
 //  bottom-anchored footer faithfully. A rendering harness, not an assertion.
@@ -74,7 +74,18 @@ final class LeadsDiscardSnapshotTests: XCTestCase {
     /// First-run education — DISCARD vs LOST, with the rose DISCARD LEAD CTA.
     func testRenderDiscardExplainer() {
         snapshot("discard_explainer", size: CGSize(width: 393, height: 560)) {
-            DiscardExplainerSheet(opportunity: sampleLead(), onConfirm: {})
+            DiscardExplainerSheet(opportunity: sampleLead(), onConfirm: { true })
+        }
+    }
+
+    /// Phase C correction surface — reasons are visible at once and every row
+    /// is the submit action; no second confirmation or mandatory note.
+    func testRenderPhaseCDispositionReasons() {
+        snapshot("phase_c_disposition_reasons", size: CGSize(width: 393, height: 852)) {
+            LeadDispositionReasonSheet(
+                opportunity: sampleLead(),
+                onSelect: { _, _ in true }
+            )
         }
     }
 

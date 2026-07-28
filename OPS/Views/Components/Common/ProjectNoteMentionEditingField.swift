@@ -389,6 +389,7 @@ private struct SelectionAwareMentionTextView: UIViewRepresentable {
         if onSubmit != nil {
             textView.returnKeyType = .send
         }
+        OPSKeyboardDoneAccessoryCoordinator.shared.prepare(textView)
         return textView
     }
 

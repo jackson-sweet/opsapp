@@ -197,6 +197,35 @@ final class IOSBugReportRegressionTests: XCTestCase {
     }
 
     @MainActor
+    func testPreparedTextViewKeepsAccessoryWithoutReloadingOnFocus() throws {
+        let notificationCenter = NotificationCenter()
+        let coordinator = OPSKeyboardDoneAccessoryCoordinator(
+            notificationCenter: notificationCenter
+        )
+        coordinator.start()
+        defer { coordinator.stop() }
+
+        let textView = ReloadTrackingTextView()
+        coordinator.prepare(textView)
+
+        let accessory = try XCTUnwrap(
+            textView.inputAccessoryView as? OPSKeyboardDoneAccessoryView
+        )
+        XCTAssertEqual(
+            accessory.intrinsicContentSize.height,
+            OPSStyle.Layout.touchTargetMin
+        )
+
+        notificationCenter.post(
+            name: UITextView.textDidBeginEditingNotification,
+            object: textView
+        )
+
+        XCTAssertTrue(textView.inputAccessoryView === accessory)
+        XCTAssertEqual(textView.reloadInputViewsCallCount, 0)
+    }
+
+    @MainActor
     func testGlobalKeyboardDoneAccessoryResignsTheRealFirstResponder() throws {
         let notificationCenter = NotificationCenter()
         let coordinator = OPSKeyboardDoneAccessoryCoordinator(
@@ -237,6 +266,16 @@ final class IOSBugReportRegressionTests: XCTestCase {
             )
         )
         XCTAssertFalse(textField.isFirstResponder)
+    }
+
+    @MainActor
+    private final class ReloadTrackingTextView: UITextView {
+        private(set) var reloadInputViewsCallCount = 0
+
+        override func reloadInputViews() {
+            reloadInputViewsCallCount += 1
+            super.reloadInputViews()
+        }
     }
 
     private func makeProject(id: String, status: Status, teamIds: [String]) -> Project {

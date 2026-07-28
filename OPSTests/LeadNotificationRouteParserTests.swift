@@ -44,6 +44,18 @@ final class LeadNotificationRouteParserTests: XCTestCase {
         }
     }
 
+    func testAssignmentTypesDetectedWithoutDeepLinkType() {
+        // The live assignment worker stamps deep_link_type='lead', so routing
+        // already works. These assertions are the belt: if the server ever drops
+        // deep_link_type, `type` alone must still carry the row to the lead.
+        for t in ["lead_assigned", "lead_assignment_required"] {
+            XCTAssertTrue(
+                LeadNotificationRouteParser.isLeadNotification(type: t, deepLinkType: nil),
+                "expected \(t) to be a lead notification on type alone"
+            )
+        }
+    }
+
     func testNonLeadNotificationNotDetected() {
         XCTAssertFalse(LeadNotificationRouteParser.isLeadNotification(type: "expense_submitted", deepLinkType: nil))
         XCTAssertFalse(LeadNotificationRouteParser.isLeadNotification(type: nil, deepLinkType: nil))
@@ -164,6 +176,20 @@ final class LeadNotificationRouteParserTests: XCTestCase {
             dedupeKey: nil
         )
         XCTAssertEqual(route, .emailThread(threadId))
+    }
+
+    func testRouteResolvesShippedAssignmentPayload() {
+        // Exactly what the live assignment worker writes: the opportunity id in
+        // the url and a `lead-assignment-delivery:` dedupe key keyed on the
+        // DELIVERY id, not the lead. The url must win — a delivery id resolved
+        // as a lead id would open the wrong record (the dedupe scanner only
+        // accepts `lead_lifecycle:` keys, which is what keeps that from happening).
+        let deliveryId = "6b2f2b7a-9d8d-4a1f-9f2a-2f1c0d3e4a5b"
+        let route = LeadNotificationRouteParser.route(
+            actionUrl: "/pipeline?opportunityId=\(oppId)",
+            dedupeKey: "lead-assignment-delivery:\(deliveryId)"
+        )
+        XCTAssertEqual(route, .opportunity(oppId))
     }
 
     func testRouteNilWhenNothingResolvable() {

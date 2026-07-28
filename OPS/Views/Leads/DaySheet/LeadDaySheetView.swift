@@ -198,31 +198,28 @@ struct LeadDaySheetView: View {
         }
     }
 
-    /// The console's queue-header geometry, in the day sheet's quieter voice:
-    /// label, rule, count. Neutral throughout — urgency is the row's job, and a
-    /// colored header would shout it twice.
+    /// `// YOUR MOVE · 2` — spec §3.2's header, written in the same count
+    /// grammar as the sub-line above it. (The console's queue band separates
+    /// label from count with a full-width rule; borrowing that here would give
+    /// one screen two ways of writing a count, and the delegate never sees the
+    /// console to be consistent with.) Neutral but for the count, which lifts
+    /// one step — urgency is the row's job, and a colored header would shout it
+    /// twice.
     private func sectionHeader(_ label: String, count: Int) -> some View {
-        HStack(spacing: OPSStyle.Layout.spacing2_5) {
-            HStack(spacing: 0) {
-                Text("// ")
-                    .foregroundColor(OPSStyle.Colors.textMute)
-                Text(label)
-                    .foregroundColor(OPSStyle.Colors.text3)
-            }
-            .font(OPSStyle.Typography.nanoLabel)
-            .fontWeight(.semibold)
-            .tracking(1.4)
-
-            Rectangle()
-                .fill(OPSStyle.Colors.line)
-                .frame(height: OPSStyle.Layout.Border.standard)
-
-            Text("\(count)")
-                .font(OPSStyle.Typography.nanoLabel)
-                .fontWeight(.semibold)
+        HStack(spacing: 0) {
+            Text("// ")
+                .foregroundColor(OPSStyle.Colors.textMute)
+            Text(label)
                 .foregroundColor(OPSStyle.Colors.text3)
+            Text(" · ")
+                .foregroundColor(OPSStyle.Colors.text2)
+            Text("\(count)")
+                .foregroundColor(OPSStyle.Colors.text2)
                 .monospacedDigit()
         }
+        .font(OPSStyle.Typography.nanoLabel)
+        .fontWeight(.semibold)
+        .tracking(1.4)
         .padding(.top, OPSStyle.Layout.spacing1)
         .accessibilityElement(children: .combine)
     }

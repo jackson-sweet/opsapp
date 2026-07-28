@@ -3,9 +3,11 @@
 //  OPSTests
 //
 //  Visual verification of the assembled day sheet — the surface an `assigned`
-//  operator gets instead of the triage console. Two renders: a populated day
-//  spanning all three groups (YOUR MOVE / NEW / WAITING, each with its own
-//  urgency vocabulary), and the empty sheet with its CTA.
+//  operator gets instead of the triage console. One render per state in spec
+//  §3.5: a populated day spanning all three groups (YOUR MOVE / NEW / WAITING,
+//  each with its own urgency vocabulary), the empty sheet with its CTA, the
+//  loading skeletons, offline-with-cache, error-with-no-cache, and the case
+//  that proves the error does not preempt a cache it has.
 //
 //  Harness is DaySheetCardSnapshotTests' verbatim, including the safe-area fix
 //  (a UIWindow inherits the device insets whatever its frame, which would push
@@ -115,16 +117,28 @@ final class DaySheetViewSnapshotTests: XCTestCase {
         PermissionStore.previewWithAssignedAccess(canCreate: canCreate)
     }
 
+    /// `isLoading` / `loadError` / `lastSyncLabel` are the three inputs the
+    /// sheet's state branch reads (spec §3.5). Set here rather than through a
+    /// fetch: the branch is what is under test, not the loader that trips it.
     @ViewBuilder
     private func hosted(
         _ opportunities: [Opportunity],
         store: PermissionStore,
-        canCreate: Bool
+        canCreate: Bool,
+        isLoading: Bool = false,
+        loadError: String? = nil,
+        lastSyncLabel: String? = nil
     ) -> some View {
         DaySheetHost(
-            viewModel: .previewLoaded(opportunities: opportunities),
+            viewModel: {
+                let viewModel = PipelineViewModel.previewLoaded(opportunities: opportunities)
+                viewModel.isLoading = isLoading
+                viewModel.loadError = loadError
+                return viewModel
+            }(),
             committer: .preview(),
-            canCreate: canCreate
+            canCreate: canCreate,
+            lastSyncLabel: lastSyncLabel
         )
         .frame(width: Self.sheetWidth)
         .environmentObject(store)
@@ -148,6 +162,53 @@ final class DaySheetViewSnapshotTests: XCTestCase {
             hosted([], store: delegateStore(canCreate: true), canCreate: true)
         }
     }
+
+    /// First launch, fetch in flight: three row-shaped skeletons at the height
+    /// the real cards land at, so the sheet does not reflow when it answers.
+    /// Skeletons show ONLY while there is nothing yet — a refresh over live
+    /// rows updates them in place (`loadData(silent:)`).
+    func testRenderLoadingDaySheet() {
+        snapshot("day_sheet_loading", size: CGSize(width: Self.sheetWidth, height: 420)) {
+            hosted([], store: delegateStore(), canCreate: false, isLoading: true)
+        }
+    }
+
+    /// Offline with a cache: the whole day still renders, headed by
+    /// `SYS :: OFFLINE — LAST SYNC 07:12` in tan. Nothing is withheld and
+    /// nothing is disabled — the reads are real, they are just not this
+    /// minute's copy.
+    func testRenderOfflineDaySheet() {
+        snapshot("day_sheet_offline_sys", size: CGSize(width: Self.sheetWidth, height: 760)) {
+            hosted(assignedDay(),
+                   store: delegateStore(),
+                   canCreate: false,
+                   lastSyncLabel: "07:12")
+        }
+    }
+
+    /// The fetch failed and there is nothing cached — the one dead end on this
+    /// surface, and it ships with the way out.
+    func testRenderErrorDaySheet() {
+        snapshot("day_sheet_error", size: CGSize(width: Self.sheetWidth, height: 420)) {
+            hosted([],
+                   store: delegateStore(),
+                   canCreate: false,
+                   loadError: "The request timed out.")
+        }
+    }
+
+    /// The fetch failed but the cache holds: the error must NOT preempt the
+    /// day. Same render as offline — rows plus the `SYS ::` line — with no
+    /// trace of `// ERROR — LEADS UNAVAILABLE`.
+    func testRenderErrorWithCacheDaySheet() {
+        snapshot("day_sheet_error_with_cache", size: CGSize(width: Self.sheetWidth, height: 760)) {
+            hosted(assignedDay(),
+                   store: delegateStore(),
+                   canCreate: false,
+                   loadError: "The request timed out.",
+                   lastSyncLabel: "07:12")
+        }
+    }
 }
 
 // MARK: - Host
@@ -159,6 +220,9 @@ private struct DaySheetHost: View {
     let viewModel: PipelineViewModel
     let committer: LeadMilestoneCommitter
     let canCreate: Bool
+    /// The tab computes this (offline, or a failed fetch, with a stamp to
+    /// name); the sheet only renders it.
+    var lastSyncLabel: String?
 
     @State private var expandedLeadId: String?
     @State private var scrollTarget: String?
@@ -172,7 +236,7 @@ private struct DaySheetHost: View {
                 expandedLeadId: $expandedLeadId,
                 scrollTarget: $scrollTarget,
                 operatorId: "preview-user",
-                lastSyncLabel: nil,
+                lastSyncLabel: lastSyncLabel,
                 onFullLead: { _ in },
                 onOpenDeck: { _, _ in },
                 onStage: { _, _ in },

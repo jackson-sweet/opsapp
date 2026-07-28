@@ -147,6 +147,58 @@ extension PermissionStore {
         store.initialized = true
         return store
     }
+
+    /// The delegate: `assigned` scope on view/edit, no convert, no create —
+    /// exactly the grant that routes `LeadsTabView` to the day sheet. The
+    /// operator id matches `Opportunity.preview`'s default `assignedTo`, so
+    /// fixture rows actually clear the policy's row filter instead of
+    /// previewing an empty sheet.
+    static func previewWithAssignedAccess(
+        operatorId: String = "preview-user",
+        canCreate: Bool = false,
+        canConvert: Bool = false
+    ) -> PermissionStore {
+        let store = PermissionStore()
+        var permissions: [String: String] = [
+            "pipeline.view": "assigned",
+            "pipeline.edit": "assigned",
+        ]
+        if canCreate { permissions["pipeline.create"] = "all" }
+        if canConvert { permissions["pipeline.convert"] = "assigned" }
+        // No `pipeline.manage` row: the legacy all-scope compatibility path in
+        // `LeadAccessPolicy.rawScope` would otherwise widen every absent grant
+        // back to `.all` and the sheet would never be reached.
+        store.permissions = permissions
+        store.setPreviewOperatorId(operatorId)
+        store.roleName = "SALES"
+        store.initialized = true
+        return store
+    }
+}
+
+// MARK: - LeadMilestoneCommitter
+
+extension LeadMilestoneCommitter {
+    /// Inert committer for previews and snapshot hosts: every seam is a stub,
+    /// the queue is a throwaway directory with its background work off, and no
+    /// expiry is ever scheduled. Cards render their idle stamp and stay there.
+    @MainActor
+    static func preview() -> LeadMilestoneCommitter {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("daysheet-preview-\(UUID().uuidString)", isDirectory: true)
+        return LeadMilestoneCommitter(
+            companyId: "preview-company",
+            queue: MilestoneWriteQueue(directory: directory, backgroundWorkEnabled: false),
+            isOnline: { false },
+            moveStage: { _, _ in },
+            flipLocalStage: { _, _ in },
+            logActivity: { _ in "preview-activity" },
+            deleteActivity: { _ in },
+            currentStageRaw: { _ in PipelineStage.newLead.rawValue },
+            notifyLeadUpdated: { _ in },
+            schedule: { _, _ in LeadMilestoneCommitter.ScheduledExpiry {} }
+        )
+    }
 }
 
 // MARK: - Env-object stack

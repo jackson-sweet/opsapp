@@ -101,6 +101,15 @@ extension Font {
         return Font.custom("Mohave-Light", size: 80)
     }
 
+    /// Empty-state figure — Mohave Light 32pt.
+    /// MOBILE.md §10 empty state: the hero value that shows the zero (`0`, `$0`,
+    /// `—`) above the `// NOTHING HERE` label, spec'd as Mohave 300 / 32px.
+    /// One step below `hero` (80pt) — an empty surface states the absence, it
+    /// does not shout it.
+    public static var emptyStateFigure: Font {
+        return Font.custom("Mohave-Light", size: 32)
+    }
+
     /// Body text — Mohave Regular 16pt
     public static var body: Font {
         return Font.custom("Mohave-Regular", size: 16)

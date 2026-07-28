@@ -590,6 +590,7 @@ class AppDelegate: NSObject, UIApplicationDelegate, OSNotificationLifecycleListe
         switch type {
         case "leads_waiting", "pipeline_complete",
              "lead", "leads", "opportunity", "opportunities",
+             "lead_assigned", "lead_assignment_required",
              "lead_created", "lead_updated", "lead_follow_up_due",
              "opportunity_created", "opportunity_updated", "opportunity_follow_up_due":
             routeToLeadOrJobBoard(leadId: leadId)

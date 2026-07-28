@@ -123,6 +123,7 @@ enum LeadNotificationRouteParser {
     static let leadRoutingValues: Set<String> = [
         "lead", "leads", "opportunity", "opportunities",
         "leads_waiting", "pipeline_complete",
+        "lead_assigned", "lead_assignment_required",
         "lead_created", "lead_updated", "lead_follow_up_due", "lead_follow_up_sent",
         "opportunity_created", "opportunity_updated", "opportunity_follow_up_due"
     ]
@@ -1049,6 +1050,10 @@ struct NotificationListView: View {
                 return ("folder.badge.plus", OPSStyle.Colors.warningStatus)
             case "billable_this_week":
                 return ("dollarsign.circle", OPSStyle.Colors.finRevenue)
+            case "lead_assigned":
+                return (OPSStyle.Icons.assignmentNotification, OPSStyle.Colors.primaryAccent)
+            case "lead_assignment_required":
+                return ("person.crop.circle.badge.exclamationmark", OPSStyle.Colors.warningStatus)
             case "lead_converted":
                 return ("flag.checkered", OPSStyle.Colors.successStatus)
             case "lead_follow_up_sent":

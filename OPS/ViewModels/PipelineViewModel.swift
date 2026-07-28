@@ -30,6 +30,12 @@ class PipelineViewModel: ObservableObject {
     private var companyId: String?
     private let followUpService: LeadFollowUpServiceProtocol
 
+    /// Handed every successful fetch, verbatim off the wire. The day sheet
+    /// installs this to persist its offline snapshot (`DaySheetCache`); the
+    /// console leaves it nil and is untouched. The view model stays cache-blind
+    /// on purpose — it knows how to fetch, not where a screen keeps its copy.
+    var snapshotSink: (([OpportunityDTO]) -> Void)?
+
     enum FollowUpProgress: Equatable {
         case idle
         case sending
@@ -142,6 +148,7 @@ class PipelineViewModel: ObservableObject {
             let oppDtos = try await repo.fetchAll()
             allOpportunities = Self.merge(existing: allOpportunities,
                                           incoming: oppDtos.map { $0.toModel() })
+            snapshotSink?(oppDtos)
             // A canonical refresh is the retry boundary for transient
             // mailbox/thread/signature availability. The durable request key
             // still prevents a second provider send if the prior result was

@@ -82,9 +82,40 @@ struct LeadsTabView: View {
     /// the `.task` load and the `pendingLeadDeepLinkId` change fire.
     @State private var isResolvingDeepLink = false
 
+    // MARK: Day sheet (assigned scope — spec §2)
+
+    /// The one card open on the day sheet, and the lead a deep link wants
+    /// revealed. Both live here so the tab's existing drain can drive them.
+    @State private var expandedLeadId: String?
+    @State private var daySheetScrollTarget: String?
+    /// Built on first `.task` — the production wiring needs a company id, which
+    /// only the environment can supply.
+    @State private var milestoneCommitter: LeadMilestoneCommitter?
+    /// When the last good fetch landed, for `SYS :: OFFLINE — LAST SYNC <T>`.
+    @State private var lastSnapshotAt: Date?
+    /// Deck opened from an expanded card (LeadDetailView's pattern).
+    @State private var deckRequest: DeckOpenRequest?
+
+    /// A deck to open full-screen, with the lead it belongs to for the title.
+    private struct DeckOpenRequest: Identifiable {
+        let design: DeckDesign
+        let leadName: String
+        var id: String { design.id }
+    }
+
     init(viewModel: PipelineViewModel? = nil) {
         _viewModel = StateObject(wrappedValue: viewModel ?? PipelineViewModel())
     }
+
+    /// Which LEADS surface this operator gets (spec §2) — the permission scope
+    /// decides, never a role name. `all` is the owner's triage console;
+    /// `assigned` is the delegate's day sheet. Pure and static so the branch is
+    /// testable without a view.
+    static func showsDaySheet(policy: LeadAccessPolicy) -> Bool {
+        policy.scope(for: .view) == .assigned
+    }
+
+    private var showsDaySheet: Bool { Self.showsDaySheet(policy: leadAccessPolicy) }
 
     private var buckets: PipelineViewModel.TriageBuckets { viewModel.triageBuckets }
     private var leadAccessPolicy: LeadAccessPolicy { permissionStore.leadAccessPolicy }
@@ -127,6 +158,151 @@ struct LeadsTabView: View {
                     .padding(.bottom, OPSStyle.Layout.spacing2)
                     .background(OPSStyle.Colors.background.ignoresSafeArea(edges: .top))
 
+                    surface
+                        .safeAreaInset(edge: .bottom) {
+                            Color.clear.frame(height: 120)
+                        }
+                        .leadDiscardFlow(
+                            target: $discardTarget,
+                            perform: { lead in try await viewModel.discard(opportunityId: lead.id) }
+                        )
+                        .opsConfirm($archiveConfirm)
+                }
+            }
+            .navigationBarHidden(true)
+            .navigationDestination(item: $detailLead) { lead in
+                LeadDetailView(
+                    opportunity: lead,
+                    onMarkLost: { activeSheet = .lost(lead) },
+                    onEdit:     { activeSheet = .edit(lead) },
+                    onMarkWon:  { activeSheet = .convert(lead) },
+                    onConvertLead: { convertedLead in
+                        activeSheet = .convert(convertedLead)
+                    }
+                )
+                .environmentObject(dataController)
+                .environmentObject(permissionStore)
+            }
+            .navigationDestination(item: $footerStage) { stage in
+                PipelineStageListView(
+                    stage: stage,
+                    viewModel: viewModel,
+                    onLeadTap: { detailLead = $0 },
+                    onRequestSheet: { activeSheet = $0 }
+                )
+                .environmentObject(dataController)
+                .environmentObject(permissionStore)
+            }
+            .sheet(item: $activeSheet) { sheet in
+                sheetView(for: sheet)
+            }
+            .sheet(item: $comebackTarget) { lead in
+                ComebackChooserSheet(lead: lead, viewModel: viewModel)
+            }
+            .fullScreenCover(item: $deckRequest) { request in
+                deckBuilder(request)
+            }
+            .fullScreenCover(item: $activeSiteVisitLead) { lead in
+                SiteVisitCaptureView(
+                    opportunity: lead,
+                    onCreateProject: { convertedLead in
+                        activeSiteVisitLead = nil
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                            activeSheet = .convert(convertedLead)
+                        }
+                    }
+                )
+                .environmentObject(dataController)
+            }
+        }
+        .trackScreen("Leads")
+        .task {
+            if let companyId = dataController.currentUser?.companyId {
+                viewModel.setup(companyId: companyId, currentUserId: dataController.currentUser?.id)
+                prepareDaySheetIfNeeded(companyId: companyId)
+                await viewModel.loadData()
+                finishDaySheetLoadIfNeeded(companyId: companyId)
+            }
+            await resolvePendingLeadDeepLinkIfNeeded()
+        }
+        .modifier(LeadsRefreshListeners(viewModel: viewModel))
+        .onChange(of: appState.pendingLeadDeepLinkId) { _, newValue in
+            guard newValue != nil else { return }
+            Task { await resolvePendingLeadDeepLinkIfNeeded() }
+        }
+        .onChange(of: showsDaySheet) { _, isDaySheet in
+            // Permissions can hydrate after the tab's first `.task` — a store
+            // that fails closed on a cold launch would otherwise leave the day
+            // sheet without its committer for the rest of the session.
+            guard isDaySheet, let companyId = dataController.currentUser?.companyId else { return }
+            prepareDaySheetIfNeeded(companyId: companyId)
+        }
+        .onChange(of: viewModel.allOpportunities.map(\.id)) { _, ids in
+            // A reload can drop a lead deleted / merged / archived elsewhere.
+            // If that lead is open in detail, pop it rather than strand a dead
+            // screen. Observe the id list (Equatable) rather than [Opportunity]
+            // — the @Model class has no Equatable conformance, and this covers
+            // every reload path (realtime, foreground, pull-to-refresh, the
+            // nine Lead*Success listeners), not just the realtime one.
+            // activeSheet is left alone — a mid-edit sheet stays (per non-goals).
+            if let open = detailLead, !ids.contains(open.id) {
+                detailLead = nil
+            }
+            // Same stranding rule for the day sheet's open card.
+            if let open = expandedLeadId, !ids.contains(open) {
+                expandedLeadId = nil
+            }
+        }
+    }
+
+    // MARK: - Surface branch (spec §2)
+
+    /// One shell — header, sheets, destinations, listeners — and exactly one
+    /// thing swapped inside it: the scroll body. The console path below is
+    /// untouched.
+    @ViewBuilder
+    private var surface: some View {
+        if showsDaySheet {
+            daySheetScroll
+        } else {
+            consoleScroll
+        }
+    }
+
+    // MARK: - Day sheet
+
+    @ViewBuilder
+    private var daySheetScroll: some View {
+        if let committer = milestoneCommitter {
+            LeadDaySheetView(
+                viewModel: viewModel,
+                committer: committer,
+                expandedLeadId: $expandedLeadId,
+                scrollTarget: $daySheetScrollTarget,
+                operatorId: dataController.currentUser?.id,
+                lastSyncLabel: daySheetLastSyncLabel,
+                onFullLead: { detailLead = $0 },
+                onOpenDeck: { lead, design in
+                    deckRequest = DeckOpenRequest(design: design,
+                                                  leadName: lead.displayContactName)
+                },
+                onStage: { lead, stage in setStage(lead, to: stage) },
+                onWon: { presentWon($0) },
+                onLost: { activeSheet = .lost($0) },
+                onArchive: { requestArchive($0) },
+                onDiscard: { discardTarget = $0 },
+                onAddLead: canCreate ? { activeSheet = .add } : nil
+            )
+        } else {
+            // One frame: the committer is built by `.task`, which runs before
+            // the first fetch answers. Nothing to show yet either way.
+            Color.clear
+        }
+    }
+
+    // MARK: - Console
+
+    private var consoleScroll: some View {
                     ScrollView {
                         LazyVStack(alignment: .leading, spacing: 0, pinnedViews: [.sectionHeaders]) {
                             LeadsSummary(viewModel: viewModel)
@@ -161,125 +337,6 @@ struct LeadsTabView: View {
                         // ScrollView.
                         await viewModel.loadData(silent: true)
                     }
-                    .safeAreaInset(edge: .bottom) {
-                        Color.clear.frame(height: 120)
-                    }
-                    .leadDiscardFlow(
-                        target: $discardTarget,
-                        perform: { lead in try await viewModel.discard(opportunityId: lead.id) }
-                    )
-                    .opsConfirm($archiveConfirm)
-                }
-            }
-            .navigationBarHidden(true)
-            .navigationDestination(item: $detailLead) { lead in
-                LeadDetailView(
-                    opportunity: lead,
-                    onMarkLost: { activeSheet = .lost(lead) },
-                    onEdit:     { activeSheet = .edit(lead) },
-                    onMarkWon:  { activeSheet = .convert(lead) },
-                    onConvertLead: { convertedLead in
-                        activeSheet = .convert(convertedLead)
-                    }
-                )
-                .environmentObject(dataController)
-                .environmentObject(permissionStore)
-            }
-            .navigationDestination(item: $footerStage) { stage in
-                PipelineStageListView(
-                    stage: stage,
-                    viewModel: viewModel,
-                    onLeadTap: { detailLead = $0 },
-                    onRequestSheet: { activeSheet = $0 }
-                )
-                .environmentObject(dataController)
-                .environmentObject(permissionStore)
-            }
-            .sheet(item: $activeSheet) { sheet in
-                sheetView(for: sheet)
-            }
-            .sheet(item: $comebackTarget) { lead in
-                ComebackChooserSheet(lead: lead, viewModel: viewModel)
-            }
-            .fullScreenCover(item: $activeSiteVisitLead) { lead in
-                SiteVisitCaptureView(
-                    opportunity: lead,
-                    onCreateProject: { convertedLead in
-                        activeSiteVisitLead = nil
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                            activeSheet = .convert(convertedLead)
-                        }
-                    }
-                )
-                .environmentObject(dataController)
-            }
-        }
-        .trackScreen("Leads")
-        .task {
-            if let companyId = dataController.currentUser?.companyId {
-                viewModel.setup(companyId: companyId, currentUserId: dataController.currentUser?.id)
-                await viewModel.loadData()
-            }
-            await resolvePendingLeadDeepLinkIfNeeded()
-        }
-        .onChange(of: appState.pendingLeadDeepLinkId) { _, newValue in
-            guard newValue != nil else { return }
-            Task { await resolvePendingLeadDeepLinkIfNeeded() }
-        }
-        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("LeadCreatedSuccess"))) { _ in
-            Task { await viewModel.loadData() }
-        }
-        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("LeadUpdatedSuccess"))) { _ in
-            Task { await viewModel.loadData() }
-        }
-        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("LeadActivityLoggedSuccess"))) { _ in
-            Task { await viewModel.loadData() }
-        }
-        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("LeadMarkedLostSuccess"))) { _ in
-            Task { await viewModel.loadData() }
-        }
-        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("LeadMarkedWonSuccess"))) { _ in
-            Task { await viewModel.loadData() }
-        }
-        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("LeadConvertedSuccess"))) { _ in
-            Task { await viewModel.loadData() }
-        }
-        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("LeadLinkedProjectSuccess"))) { _ in
-            Task { await viewModel.loadData() }
-        }
-        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("LeadArchivedSuccess"))) { _ in
-            Task { await viewModel.loadData() }
-        }
-        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("LeadDeletedSuccess"))) { _ in
-            Task { await viewModel.loadData() }
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .opsLeadsDidChange)) { _ in
-            // Remote change (RealtimeProcessor: opportunities / activities /
-            // follow_ups). Funnel through the debounced, coalesced reload — an
-            // event storm collapses to one silent merge fetch; leads are
-            // deliberately outside the SwiftData sync engine.
-            viewModel.scheduleRefresh()
-        }
-        .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
-            // Catch-up on resume: realtime tears down ~30s after backgrounding
-            // (OPSApp scenePhase), so any change during background is lost —
-            // this re-fetch is the recovery path. Short debounce; the coalescer
-            // + hasLoadedOnce guard make it a no-op on cold launch where .task
-            // owns the first load.
-            viewModel.scheduleRefresh(debounce: .milliseconds(300))
-        }
-        .onChange(of: viewModel.allOpportunities.map(\.id)) { _, ids in
-            // A reload can drop a lead deleted / merged / archived elsewhere.
-            // If that lead is open in detail, pop it rather than strand a dead
-            // screen. Observe the id list (Equatable) rather than [Opportunity]
-            // — the @Model class has no Equatable conformance, and this covers
-            // every reload path (realtime, foreground, pull-to-refresh, the
-            // nine Lead*Success listeners), not just the realtime one.
-            // activeSheet is left alone — a mid-edit sheet stays (per non-goals).
-            if let open = detailLead, !ids.contains(open.id) {
-                detailLead = nil
-            }
-        }
     }
 
     // MARK: - Sticky chip band
@@ -520,6 +577,14 @@ struct LeadsTabView: View {
 
     @MainActor
     private func presentDeepLinkedLead(_ lead: Opportunity) {
+        // Day sheet: open the lead where it lives rather than pushing a screen
+        // over it. A lead the loaded sheet doesn't hold (reassigned, or the
+        // fetchOne recovery above) has no row to expand — push detail instead,
+        // so a tapped notification is never a dead tap.
+        if showsDaySheet, viewModel.allOpportunities.contains(where: { $0.id == lead.id }) {
+            daySheetScrollTarget = lead.id
+            return
+        }
         if let current = detailLead, current.id != lead.id {
             detailLead = nil
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
@@ -529,6 +594,110 @@ struct LeadsTabView: View {
             detailLead = lead
         }
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
+    }
+
+    // MARK: - Day sheet plumbing (spec §3.5 / §6)
+
+    /// Build the milestone committer and install the offline snapshot sink.
+    /// Console operators reach none of this — the sink stays nil there, and the
+    /// view model behaves exactly as it always has.
+    @MainActor
+    private func prepareDaySheetIfNeeded(companyId: String) {
+        guard showsDaySheet, let userId = dataController.currentUser?.id else { return }
+
+        if milestoneCommitter == nil {
+            // Capture the controller itself, not this view: the committer
+            // outlives any one body evaluation, and reading an
+            // `@EnvironmentObject` through a stale view copy is a trap.
+            let controller = dataController
+            milestoneCommitter = LeadMilestoneCommitter(
+                pipeline: viewModel,
+                companyId: companyId,
+                // The screen supplies connectivity: DataController is the app's
+                // one source of network truth.
+                isOnline: { controller.isConnected }
+            )
+        }
+
+        viewModel.snapshotSink = { dtos in
+            let savedAt = Date()
+            DaySheetCache.shared.save(dtos, userId: userId, companyId: companyId, savedAt: savedAt)
+            lastSnapshotAt = savedAt
+        }
+
+        // Seed the stamp from disk so an offline cold launch can say when the
+        // sheet it is showing was last true.
+        if lastSnapshotAt == nil,
+           let snapshot = DaySheetCache.shared.load(userId: userId, companyId: companyId) {
+            lastSnapshotAt = snapshot.savedAt
+        }
+    }
+
+    /// After the first fetch: fall back to the cached sheet if it failed, and
+    /// warm the row thumbnails if it worked.
+    @MainActor
+    private func finishDaySheetLoadIfNeeded(companyId: String) {
+        guard showsDaySheet, let userId = dataController.currentUser?.id else { return }
+        hydrateFromDaySheetCache(userId: userId, companyId: companyId)
+        prefetchDaySheetThumbs()
+    }
+
+    /// Cold open with no signal: the fetch failed and nothing is loaded, so the
+    /// last good sheet becomes the sheet. Kept here rather than in the view
+    /// model — the cache belongs to this screen, not to the loader.
+    @MainActor
+    private func hydrateFromDaySheetCache(userId: String, companyId: String) {
+        guard viewModel.loadError != nil, viewModel.allOpportunities.isEmpty else { return }
+        guard let snapshot = DaySheetCache.shared.load(userId: userId, companyId: companyId) else { return }
+        viewModel.allOpportunities = PipelineViewModel.merge(
+            existing: [],
+            incoming: snapshot.dtos.map { $0.toModel() }
+        )
+        lastSnapshotAt = snapshot.savedAt
+    }
+
+    /// One shot per lead — the tile shows the newest photo, so that is the only
+    /// one worth spending a truck's bandwidth on. Fire-and-forget; the tiles
+    /// resolve from cache on their own next appearance.
+    @MainActor
+    private func prefetchDaySheetThumbs() {
+        let newest: [String] = viewModel.allOpportunities.compactMap { lead in
+            lead.images.last { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
+        }
+        guard !newest.isEmpty else { return }
+        Task { _ = await PhotoDownloadManager.shared.downloadAllPhotos(newest) }
+    }
+
+    /// Non-nil only when the sheet is showing something other than a fetch that
+    /// just succeeded — offline, or the last fetch failed — and there is a
+    /// stamp to name.
+    private var daySheetLastSyncLabel: String? {
+        guard !dataController.isConnected || viewModel.loadError != nil else { return nil }
+        guard let lastSnapshotAt else { return nil }
+        return DaySheetCache.lastSyncLabel(lastSnapshotAt)
+    }
+
+    /// WON is the guarded conversion — iOS refuses a direct `.won` stage write
+    /// (`OpportunityRepository.validateDirectStageMutation`) and the server's
+    /// conversion RPC refuses an actor without convert scope. Edit-only
+    /// delegates never see the button; this guard is the backstop.
+    private func presentWon(_ lead: Opportunity) {
+        guard canConvert(lead) else { return }
+        activeSheet = .convert(lead)
+    }
+
+    /// Full-screen deck from an expanded card — the tab owns the model context
+    /// and sync engine, exactly as LeadDetailView does.
+    @ViewBuilder
+    private func deckBuilder(_ request: DeckOpenRequest) -> some View {
+        if let modelContext = dataController.modelContext {
+            DeckBuilderView(
+                deckDesign: request.design,
+                modelContext: modelContext,
+                syncEngine: dataController.syncEngine,
+                projectName: request.leadName
+            )
+        }
     }
 
     // MARK: - Helpers
@@ -627,6 +796,63 @@ struct LeadsTabView: View {
                 }
             }
         }
+    }
+}
+
+// MARK: - Refresh listeners
+
+/// Every freshness trigger for the LEADS tab, lifted out of the root body so
+/// the surface branch stays inside the type-checker's budget. Shared by both
+/// surfaces — the console and the day sheet reload on exactly the same events,
+/// because they read exactly the same view model.
+private struct LeadsRefreshListeners: ViewModifier {
+
+    @ObservedObject var viewModel: PipelineViewModel
+
+    func body(content: Content) -> some View {
+        content
+            .onReceive(NotificationCenter.default.publisher(for: Notification.Name("LeadCreatedSuccess"))) { _ in
+                Task { await viewModel.loadData() }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: Notification.Name("LeadUpdatedSuccess"))) { _ in
+                Task { await viewModel.loadData() }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: Notification.Name("LeadActivityLoggedSuccess"))) { _ in
+                Task { await viewModel.loadData() }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: Notification.Name("LeadMarkedLostSuccess"))) { _ in
+                Task { await viewModel.loadData() }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: Notification.Name("LeadMarkedWonSuccess"))) { _ in
+                Task { await viewModel.loadData() }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: Notification.Name("LeadConvertedSuccess"))) { _ in
+                Task { await viewModel.loadData() }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: Notification.Name("LeadLinkedProjectSuccess"))) { _ in
+                Task { await viewModel.loadData() }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: Notification.Name("LeadArchivedSuccess"))) { _ in
+                Task { await viewModel.loadData() }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: Notification.Name("LeadDeletedSuccess"))) { _ in
+                Task { await viewModel.loadData() }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .opsLeadsDidChange)) { _ in
+                // Remote change (RealtimeProcessor: opportunities / activities /
+                // follow_ups). Funnel through the debounced, coalesced reload — an
+                // event storm collapses to one silent merge fetch; leads are
+                // deliberately outside the SwiftData sync engine.
+                viewModel.scheduleRefresh()
+            }
+            .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
+                // Catch-up on resume: realtime tears down ~30s after backgrounding
+                // (OPSApp scenePhase), so any change during background is lost —
+                // this re-fetch is the recovery path. Short debounce; the coalescer
+                // + hasLoadedOnce guard make it a no-op on cold launch where .task
+                // owns the first load.
+                viewModel.scheduleRefresh(debounce: .milliseconds(300))
+            }
     }
 }
 

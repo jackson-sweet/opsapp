@@ -31,16 +31,33 @@ struct LeadStatusMenu<Label: View>: View {
     var onLost: () -> Void     // parent routes to LostReasonSheet
     var onArchive: () -> Void  // parent shows OPSConfirm then archives
     var onDiscard: () -> Void  // parent runs leadDiscardFlow
+    /// Optional tap owner. When set, a tap runs this action and the menu moves
+    /// to long-press — the day sheet's stage chip expands the row on tap and
+    /// keeps corrections a deliberate press away (day-sheet spec §4). Unset,
+    /// the chip behaves as it always has: tap opens the menu.
+    var primaryAction: (() -> Void)? = nil
     @ViewBuilder var label: () -> Label
 
     var body: some View {
         if canEdit || canConvert {
-            Menu {
-                menuContent
-            } label: {
-                label()
+            if let primaryAction {
+                Menu {
+                    menuContent
+                } label: {
+                    label()
+                } primaryAction: {
+                    primaryAction()
+                }
+                .accessibilityLabel("Status: \(lead.stage.displayName)")
+                .accessibilityHint("Touch and hold to change status")
+            } else {
+                Menu {
+                    menuContent
+                } label: {
+                    label()
+                }
+                .accessibilityLabel("Status: \(lead.stage.displayName). Double-tap to change.")
             }
-            .accessibilityLabel("Status: \(lead.stage.displayName). Double-tap to change.")
         } else {
             label()
                 .accessibilityLabel("Status: \(lead.stage.displayName)")
@@ -105,10 +122,14 @@ struct LeadStatusMenu<Label: View>: View {
 ///
 /// `detail` appends a mono qualifier inside the chip (`QUOTED · 9D`);
 /// `showsChevron` adds the ▾ affordance when the chip hosts the status menu.
+/// `neutralized` drops the tone entirely (neutral fill / hairline / `--text-2`)
+/// for surfaces where the stage is reference data rather than the headline —
+/// the day-sheet row, where urgency owns the only colour in the chips line.
 struct StageTag: View {
     let stage: PipelineStage
     var detail: String? = nil
     var showsChevron: Bool = false
+    var neutralized: Bool = false
 
     var body: some View {
         HStack(spacing: 4) {
@@ -140,6 +161,7 @@ struct StageTag: View {
     }
 
     private var fillColor: Color {
+        if neutralized { return OPSStyle.Colors.surfaceHover }
         switch stage {
         case .won:                                   return OPSStyle.Colors.oliveFillM
         case .lost:                                  return OPSStyle.Colors.roseFillM
@@ -149,6 +171,7 @@ struct StageTag: View {
     }
 
     private var borderColor: Color {
+        if neutralized { return OPSStyle.Colors.line }
         switch stage {
         case .won:                                   return OPSStyle.Colors.oliveLineM
         case .lost:                                  return OPSStyle.Colors.roseLineM
@@ -158,6 +181,7 @@ struct StageTag: View {
     }
 
     private var textColor: Color {
+        if neutralized { return OPSStyle.Colors.text2 }
         switch stage {
         case .won:                                   return OPSStyle.Colors.oliveTextM
         case .lost:                                  return OPSStyle.Colors.roseTextM

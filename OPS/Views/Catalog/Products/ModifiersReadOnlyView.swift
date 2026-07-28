@@ -74,13 +74,7 @@ struct ModifiersReadOnlyView: View {
             return formatMultiplier(amount)
         }
         let sign = amount >= 0 ? "+" : "−"
-        let formatter = NumberFormatter()
-        formatter.numberStyle = .currency
-        formatter.currencyCode = "USD"
-        formatter.maximumFractionDigits = 2
-        formatter.minimumFractionDigits = 0
-        let absString = formatter.string(from: NSNumber(value: abs(amount))) ?? "$0"
-        return "\(sign)\(absString)"
+        return "\(sign)\(BooksFormat.price(abs(amount)))"
     }
 
     private func formatMultiplier(_ amount: Double) -> String {

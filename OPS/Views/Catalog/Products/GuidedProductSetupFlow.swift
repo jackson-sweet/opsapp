@@ -964,7 +964,7 @@ struct GuidedProductSetupFlow: View {
                         .font(OPSStyle.Typography.bodyBold)
                         .foregroundColor(OPSStyle.Colors.primaryText)
                         .lineLimit(1)
-                    Text("\(product.category3Way.displayLabel) · \(formatMoney(product.basePrice))")
+                    Text("\(product.category3Way.displayLabel) · \(BooksFormat.price(product.basePrice))")
                         .font(OPSStyle.Typography.metadata)
                         .monospacedDigit()
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
@@ -998,7 +998,7 @@ struct GuidedProductSetupFlow: View {
                     .font(OPSStyle.Typography.bodyBold)
                     .foregroundColor(OPSStyle.Colors.primaryText)
                     .lineLimit(1)
-                Text(formatMoney((product?.basePrice ?? 0) * draft.quantity))
+                Text(BooksFormat.price((product?.basePrice ?? 0) * draft.quantity))
                     .font(OPSStyle.Typography.metadata)
                     .monospacedDigit()
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
@@ -1460,7 +1460,7 @@ struct GuidedProductSetupFlow: View {
 
             Spacer()
 
-            Text(formatMoney(product.basePrice))
+            Text(BooksFormat.price(product.basePrice))
                 .font(OPSStyle.Typography.metadata)
                 .monospacedDigit()
                 .foregroundColor(OPSStyle.Colors.secondaryText)
@@ -1677,7 +1677,7 @@ struct GuidedProductSetupFlow: View {
             Text(label)
                 .font(OPSStyle.Typography.metadata)
                 .foregroundColor(OPSStyle.Colors.tertiaryText)
-            Text(formatMoney(value))
+            Text(BooksFormat.price(value))
                 .font(OPSStyle.Typography.metadata)
                 .monospacedDigit()
                 .foregroundColor(OPSStyle.Colors.primaryText)
@@ -2708,13 +2708,6 @@ struct GuidedProductSetupFlow: View {
             .trimmingCharacters(in: .whitespacesAndNewlines)
         guard !cleaned.isEmpty else { return nil }
         return Double(cleaned)
-    }
-
-    private func formatMoney(_ value: Double) -> String {
-        let formatter = NumberFormatter()
-        formatter.numberStyle = .currency
-        formatter.maximumFractionDigits = value.rounded() == value ? 0 : 2
-        return formatter.string(from: NSNumber(value: value)) ?? "$0"
     }
 
     private func quantityText(_ value: Double) -> String {

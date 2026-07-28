@@ -124,7 +124,7 @@ struct ExpenseCard: View {
                         .foregroundColor(OPSStyle.Colors.primaryText)
                         .lineLimit(1)
                     Spacer()
-                    Text(expense.amount, format: .currency(code: expense.currency ?? "USD").precision(.fractionLength(2)))
+                    Text(BooksFormat.exact(expense.amount, code: expense.currency ?? "USD"))
                         .font(OPSStyle.Typography.body)
                         .foregroundColor(OPSStyle.Colors.primaryText)
                 }

@@ -495,7 +495,7 @@ struct NewBundleSheet: View {
                     .foregroundColor(OPSStyle.Colors.primaryText)
                     .lineLimit(1)
                 Spacer()
-                Text(formattedPrice(product.basePrice))
+                Text(BooksFormat.price(product.basePrice))
                     .font(OPSStyle.Typography.metadata)
                     .monospacedDigit()
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
@@ -535,14 +535,14 @@ struct NewBundleSheet: View {
                     .font(OPSStyle.Typography.body)
                     .foregroundColor(OPSStyle.Colors.primaryText)
                     .lineLimit(1)
-                Text(formattedPrice(unitPrice) + " ea")
+                Text(BooksFormat.price(unitPrice) + " ea")
                     .font(OPSStyle.Typography.metadata)
                     .monospacedDigit()
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
             }
             Spacer()
             qtyStepper(for: draft)
-            Text(formattedPrice(lineTotal))
+            Text(BooksFormat.price(lineTotal))
                 .font(OPSStyle.Typography.metadata)
                 .monospacedDigit()
                 .foregroundColor(OPSStyle.Colors.primaryText)
@@ -676,7 +676,7 @@ struct NewBundleSheet: View {
                 .font(OPSStyle.Typography.metadata)
                 .foregroundColor(OPSStyle.Colors.tertiaryText)
             Spacer()
-            Text(formattedPrice(rolledTotal))
+            Text(BooksFormat.price(rolledTotal))
                 .font(OPSStyle.Typography.bodyBold)
                 .monospacedDigit()
                 .foregroundColor(OPSStyle.Colors.primaryText)
@@ -707,7 +707,7 @@ struct NewBundleSheet: View {
                     .font(OPSStyle.Typography.metadata)
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
                 Spacer()
-                Text(formattedPrice(rolledTotal))
+                Text(BooksFormat.price(rolledTotal))
                     .font(OPSStyle.Typography.metadata)
                     .monospacedDigit()
                     .foregroundColor(OPSStyle.Colors.secondaryText)
@@ -819,15 +819,6 @@ struct NewBundleSheet: View {
                 .disabled(!canSave)
             }
         }
-    }
-
-    private func formattedPrice(_ value: Double) -> String {
-        let f = NumberFormatter()
-        f.numberStyle = .currency
-        f.currencyCode = "USD"
-        f.maximumFractionDigits = 2
-        f.minimumFractionDigits = 0
-        return f.string(from: NSNumber(value: value)) ?? "$0"
     }
 
     // MARK: - Save

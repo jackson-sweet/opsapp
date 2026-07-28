@@ -63,7 +63,7 @@ struct ProjectExpensesTabView: View {
 
     private var totalCard: some View {
         VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
-            Text(formatCurrency(viewModel.expenseTotal))
+            Text(BooksFormat.exact(viewModel.expenseTotal))
                 .font(OPSStyle.Typography.title)
                 .foregroundColor(OPSStyle.Colors.accountingCost)
         }
@@ -121,12 +121,4 @@ struct ProjectExpensesTabView: View {
         .padding(.horizontal, OPSStyle.Layout.spacing3)
     }
 
-    // MARK: - Helpers
-
-    private func formatCurrency(_ amount: Double) -> String {
-        let formatter = NumberFormatter()
-        formatter.numberStyle = .currency
-        formatter.currencyCode = "USD"
-        return formatter.string(from: NSNumber(value: amount)) ?? "$0.00"
-    }
 }

@@ -100,7 +100,7 @@ struct RejectConfirmationView: View {
 
                 Spacer()
 
-                Text(formatCurrency(expense.amount))
+                Text(BooksFormat.exact(expense.amount))
                     .font(OPSStyle.Typography.captionBold)
                     .foregroundColor(OPSStyle.Colors.primaryText)
             }
@@ -237,12 +237,4 @@ struct RejectConfirmationView: View {
 
     // MARK: - Formatters
 
-    private func formatCurrency(_ amount: Double) -> String {
-        let formatter = NumberFormatter()
-        formatter.numberStyle = .currency
-        formatter.currencyCode = "USD"
-        formatter.minimumFractionDigits = 2
-        formatter.maximumFractionDigits = 2
-        return formatter.string(from: NSNumber(value: amount)) ?? "$0.00"
-    }
 }

@@ -213,7 +213,7 @@ struct BooksExpenseRow: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             VStack(alignment: .trailing, spacing: 5) {
-                Text(expense.amount.formatted(.currency(code: expense.currency ?? "USD").precision(.fractionLength(2))))
+                Text(BooksFormat.exact(expense.amount, code: expense.currency ?? "USD"))
                     .font(.custom("JetBrainsMono-Regular", size: 14))
                     .foregroundColor(OPSStyle.Colors.text)
                     .monospacedDigit()

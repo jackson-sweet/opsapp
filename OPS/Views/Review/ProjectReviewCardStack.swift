@@ -273,12 +273,12 @@ struct ProjectReviewCardStack: View {
             return "Balance data unavailable"
         }
         if summary.hasUnresolvedInvoices && !summary.hasOutstandingInvoices {
-            return "\(summary.unresolvedInvoiceCount) unresolved invoice, \(summary.unresolvedBalance.formatted(.currency(code: summary.currencyCode)))"
+            return "\(summary.unresolvedInvoiceCount) unresolved invoice, \(BooksFormat.exact(summary.unresolvedBalance, code: summary.currencyCode))"
         }
         guard summary.hasOutstandingInvoices else {
             return "No outstanding invoice balance"
         }
-        return "\(summary.outstandingInvoiceCount) outstanding, \(summary.outstandingBalance.formatted(.currency(code: summary.currencyCode)))"
+        return "\(summary.outstandingInvoiceCount) outstanding, \(BooksFormat.exact(summary.outstandingBalance, code: summary.currencyCode))"
     }
 
     private func computeDirection(from translation: CGSize) -> SwipeDirection? {

@@ -201,7 +201,7 @@ struct LineItemEditSheet: View {
                             .font(OPSStyle.Typography.body)
                             .foregroundColor(OPSStyle.Colors.secondaryText)
                         Spacer()
-                        Text(lineTotal, format: .currency(code: "USD").precision(.fractionLength(0)))
+                        Text(BooksFormat.currency(lineTotal))
                             .font(OPSStyle.Typography.body)
                             .fontWeight(.semibold)
                             .foregroundColor(OPSStyle.Colors.primaryText)
@@ -260,7 +260,7 @@ struct LineItemEditSheet: View {
                     .font(OPSStyle.Typography.smallCaption)
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
                 Spacer()
-                Text(String(format: "$%.2f / %@", resolution.unitPrice, product.pricingUnit.rawValue))
+                Text("\(BooksFormat.exact(resolution.unitPrice)) / \(product.pricingUnit.rawValue)")
                     .font(OPSStyle.Typography.captionBold)
                     .foregroundColor(OPSStyle.Colors.primaryAccent)
             }
@@ -271,7 +271,7 @@ struct LineItemEditSheet: View {
                         .font(OPSStyle.Typography.smallCaption)
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
                     Spacer()
-                    Text(String(format: "$%.2f", resolution.unitPrice * qty))
+                    Text(BooksFormat.exact(resolution.unitPrice * qty))
                         .font(OPSStyle.Typography.cardTitle)
                         .foregroundColor(OPSStyle.Colors.primaryText)
                 }

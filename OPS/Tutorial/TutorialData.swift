@@ -91,7 +91,7 @@ enum TutorialData {
     // MARK: - Formatting
 
     static func formatCurrency(_ amount: Int) -> String {
-        "$\(amount.formatted(.number.grouping(.automatic)))"
+        BooksFormat.currency(Double(amount))
     }
 
     // MARK: - Nested Types

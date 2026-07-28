@@ -196,24 +196,24 @@ struct ExpenseBatchDetailView: View {
         switch bucket {
         case .pay:
             if batchStatus == .partiallyApproved {
-                return [("OWED", formatCurrency(owedAmount)),
+                return [("OWED", BooksFormat.exact(owedAmount)),
                         ("ITEMS", items),
-                        ("TOTAL", formatCurrency(batch.totalAmount ?? 0))]
+                        ("TOTAL", BooksFormat.exact(batch.totalAmount ?? 0))]
             }
-            return [("OWED", formatCurrency(owedAmount)),
+            return [("OWED", BooksFormat.exact(owedAmount)),
                     ("ITEMS", items),
                     ("SUBMITTED", formatShortDate(batch.createdAt))]
         case .paid:
             let when = ExpenseBuckets.parseDate(batch.paidAt).map(formatDateValue) ?? "—"
-            return [("PAID", formatCurrency(owedAmount)),
+            return [("PAID", BooksFormat.exact(owedAmount)),
                     ("ITEMS", items),
                     ("ON", when)]
         case .crew where batchStatus == .open:
-            return [("SO FAR", formatCurrency(batch.totalAmount ?? 0)),
+            return [("SO FAR", BooksFormat.exact(batch.totalAmount ?? 0)),
                     ("ITEMS", items),
                     ("STARTED", formatShortDate(batch.createdAt))]
         default:
-            return [("TOTAL", formatCurrency(batch.totalAmount ?? 0)),
+            return [("TOTAL", BooksFormat.exact(batch.totalAmount ?? 0)),
                     ("ITEMS", items),
                     ("SUBMITTED", formatShortDate(batch.createdAt))]
         }
@@ -447,7 +447,7 @@ struct ExpenseBatchDetailView: View {
 
                 // Amount + flag toggle
                 VStack(alignment: .trailing, spacing: OPSStyle.Layout.spacing2) {
-                    Text(expense.amount, format: .currency(code: expense.currency ?? "USD").precision(.fractionLength(2)))
+                    Text(BooksFormat.exact(expense.amount, code: expense.currency ?? "USD"))
                         .font(OPSStyle.Typography.bodyBold)
                         .foregroundColor(OPSStyle.Colors.primaryText)
 
@@ -553,7 +553,7 @@ struct ExpenseBatchDetailView: View {
                     detailRow(label: "PAYMENT", value: display)
                 }
                 if let tax = expense.taxAmount, tax > 0 {
-                    detailRow(label: "TAX", value: formatCurrency(tax))
+                    detailRow(label: "TAX", value: BooksFormat.exact(tax))
                 }
 
                 // Flag comment field (when flagged)
@@ -639,7 +639,7 @@ struct ExpenseBatchDetailView: View {
                 } else if bucket == .pay {
                     // Approved money not yet settled — the one next step.
                     footerButton(
-                        "MARK PAID · \(formatCurrency(owedAmount))",
+                        "MARK PAID · \(BooksFormat.exact(owedAmount))",
                         background: OPSStyle.Colors.successStatus
                     ) {
                         UINotificationFeedbackGenerator().notificationOccurred(.success)
@@ -714,15 +714,6 @@ struct ExpenseBatchDetailView: View {
         let fmt = DateFormatter()
         fmt.dateFormat = "MMM d"
         return fmt.string(from: date).uppercased()
-    }
-
-    private func formatCurrency(_ amount: Double) -> String {
-        let formatter = NumberFormatter()
-        formatter.numberStyle = .currency
-        formatter.currencyCode = "USD"
-        formatter.minimumFractionDigits = 2
-        formatter.maximumFractionDigits = 2
-        return formatter.string(from: NSNumber(value: amount)) ?? "$0.00"
     }
 
     // Date-only strings parse at LOCAL midnight (ExpenseBuckets.parseDate) —

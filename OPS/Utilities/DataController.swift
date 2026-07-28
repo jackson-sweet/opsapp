@@ -4395,6 +4395,41 @@ class DataController: ObservableObject {
         return try? ctx.fetch(FetchDescriptor<CalendarUserEvent>(predicate: predicate)).first
     }
 
+    /// Calendar user events (time off + personal) overlapping a date range.
+    ///
+    /// Company-scoped and non-deleted, matching the month grid's cache
+    /// (`MonthGridCache.loadEvents` + `CalendarViewModel.loadUserEvents`), with
+    /// one extra rule the scheduler needs: a request that is still `pending`, or
+    /// was `denied`, has not actually taken anyone off the schedule — so it must
+    /// never dim a day or read as a conflict. Only `approved` (a granted request)
+    /// and `none` (an event that needs no approval) count as real absences.
+    ///
+    /// Feeds `SchedulerDayContext`, which turns these into the schedule sheet's
+    /// crew-time-off day signal and its named day-inspector rows.
+    @MainActor
+    func getUserEvents(in dateRange: ClosedRange<Date>) -> [CalendarUserEvent] {
+        guard let context = modelContext,
+              let companyId = currentUser?.companyId else { return [] }
+
+        let descriptor = FetchDescriptor<CalendarUserEvent>(
+            predicate: #Predicate<CalendarUserEvent> { event in
+                event.companyId == companyId && event.deletedAt == nil
+            }
+        )
+
+        let events = (try? context.fetch(descriptor)) ?? []
+        return events
+            .filter { event in
+                switch event.eventStatus {
+                case .approved, .none: break
+                case .pending, .denied: return false
+                }
+                return event.startDate <= dateRange.upperBound
+                    && event.endDate >= dateRange.lowerBound
+            }
+            .sorted { $0.startDate < $1.startDate }
+    }
+
     /// Auto-schedule all unscheduled tasks in a project.
     @MainActor
     func autoScheduleProject(_ project: Project, anchorDate: Date) async throws -> SchedulingEngine.AutoScheduleResult {

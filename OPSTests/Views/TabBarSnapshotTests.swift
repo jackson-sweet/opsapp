@@ -26,6 +26,17 @@
 //  KEY WINDOW (the real display pipeline) — see `settledLaneState(...)`.
 //  Detached windows remain fine for static pixel captures.
 //
+//  HARD-WON №2 (2026-07-28, iOS 26.5): the app host's key window must be
+//  RESOLVED AND REPAIRED, not trusted. Full-suite runs degrade host state:
+//  hidden leftover harness windows accumulate in `scene.windows`, and the
+//  host can drop out of the foreground-active pipeline — at which point
+//  window-level drawHierarchy goes blank suite-wide and LATER-transaction
+//  programmatic scrolls are dropped outright (initial-transaction scrolls
+//  and setContentOffset keep working — which is why only the after-render
+//  selection test froze, at exactly the initial landing offset). Resolve
+//  the window via AppHostWindow.acquire(), and never gate a flip on a
+//  fixed-duration sleep — settle on geometry quiescence instead.
+//
 //  Run:  xcodebuild test -scheme OPS \
 //          -destination 'platform=iOS Simulator,name=iPhone 17,OS=26.5' \
 //          -only-testing:OPSTests/TabBarSnapshotTests \
@@ -106,17 +117,13 @@ final class TabBarSnapshotTests: XCTestCase {
         }
     }
 
-    private func appKeyWindow() throws -> UIWindow {
-        try XCTUnwrap(
-            UIApplication.shared.connectedScenes
-                .compactMap { $0 as? UIWindowScene }
-                .flatMap { $0.windows }
-                .first { $0.isKeyWindow }
-                ?? UIApplication.shared.connectedScenes
-                    .compactMap { ($0 as? UIWindowScene)?.windows.first }
-                    .first,
-            "The OPS test host app must expose a window for scroll assertions"
-        )
+    private func appHostWindow() throws -> UIWindow {
+        // Resolved + repaired via AppHostWindow: naive `isKeyWindow` lookups
+        // can catch hidden leftover harness windows mid-suite, and a degraded
+        // host drops later-transaction programmatic scrolls — the exact
+        // failure this file's scroll assertions exist to catch. See
+        // AppHostWindow.swift.
+        try AppHostWindow.acquire()
     }
 
     /// Hosts the real `CustomTabBar` in the app host's key window (the only
@@ -127,7 +134,7 @@ final class TabBarSnapshotTests: XCTestCase {
     /// animates on the 200ms panel curve, so we wait on the condition itself.
     /// Restores the app host's UI before returning.
     private func settledLaneState(initialTab: Int, thenSelect flipTo: Int? = nil) throws -> (offset: CGFloat, contentWidth: CGFloat, laneWidth: CGFloat) {
-        let window = try appKeyWindow()
+        let window = try appHostWindow()
         let original = window.rootViewController
         defer {
             window.rootViewController = original
@@ -143,20 +150,60 @@ final class TabBarSnapshotTests: XCTestCase {
         window.rootViewController = host
         window.layoutIfNeeded()
 
+        let scrollView = try XCTUnwrap(findScrollView(host.view))
+        var preFlipOffset: CGFloat?
+
         if let flipTo {
-            // Let the initial (unrevealed) state settle first, like a user tap.
-            RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.3))
+            // Settle the initial (unrevealed) state on the condition itself —
+            // lane laid out wider than the viewport and geometry quiescent
+            // across two consecutive polls — before flipping, like a user tap.
+            // A fixed sleep can flip before first layout completes and the
+            // reveal scroll then resolves against unsettled geometry.
+            var lastWidth: CGFloat = -1
+            var lastOffset: CGFloat = .infinity
+            let settleDeadline = Date(timeIntervalSinceNow: 2)
+            while Date() < settleDeadline {
+                let width = scrollView.contentSize.width
+                let offset = scrollView.contentOffset.x
+                if width > window.bounds.width, width == lastWidth, offset == lastOffset {
+                    break
+                }
+                lastWidth = width
+                lastOffset = offset
+                RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.05))
+            }
+            preFlipOffset = scrollView.contentOffset.x
             model.selected = flipTo
         }
 
-        let scrollView = try XCTUnwrap(findScrollView(host.view))
+        // iOS 26.5: a scrollTo issued in the first post-initial update
+        // transaction after a rootViewController swap can lose a race with the
+        // scroll driver's attachment and be dropped outright — onChange fires,
+        // the proxy call happens, then nothing (no target-behavior
+        // consultations, no movement). A re-issue in any later transaction
+        // executes normally; healthy runs even get one for free from
+        // re-composition. If the drop signature shows (offset still exactly at
+        // its pre-flip value), re-drive the selection through the product path
+        // once — the harness equivalent of a user's second tap. The PeekSnap
+        // regression this file guards eats EVERY scrollTo, so it still fails
+        // the retry and stays caught.
         let deadline = Date(timeIntervalSinceNow: 5)
+        let retryAt = Date(timeIntervalSinceNow: 1.5)
+        var retriedDroppedReveal = false
         while Date() < deadline {
             let contentWidth = scrollView.contentSize.width
             let target = max(contentWidth - window.bounds.width, 0)
             if contentWidth > window.bounds.width,
                abs(scrollView.contentOffset.x - target) <= 0.5 {
                 break
+            }
+            if let flipTo, let preFlipOffset, !retriedDroppedReveal, Date() > retryAt,
+               abs(scrollView.contentOffset.x - preFlipOffset) < 0.5 {
+                retriedDroppedReveal = true
+                print("TabBarSnapshotTests: reveal transaction dropped — re-driving selection through the product path once")
+                model.selected = initialTab
+                RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.05))
+                model.selected = flipTo
             }
             RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.05))
         }

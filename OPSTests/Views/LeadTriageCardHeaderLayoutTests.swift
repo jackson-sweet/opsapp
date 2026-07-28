@@ -65,29 +65,49 @@ final class LeadTriageCardHeaderLayoutTests: XCTestCase {
     }
 
     private func render<V: View>(_ view: V) throws -> UIImage {
-        let host = UIHostingController(rootView: view)
-        let fitted = host.sizeThatFits(
+        let sizingHost = UIHostingController(rootView: view)
+        let fitted = sizingHost.sizeThatFits(
             in: CGSize(width: cardWidth, height: .greatestFiniteMagnitude)
         )
         let size = CGSize(width: cardWidth, height: max(fitted.height, 10))
-        let window = UIWindow(frame: CGRect(origin: .zero, size: size))
-        if let scene = UIApplication.shared.connectedScenes
-            .compactMap({ $0 as? UIWindowScene })
-            .first {
-            window.windowScene = scene
+
+        // Draw inside the app host's own window, never a test-created one:
+        // mid-suite, window-level drawHierarchy of a freshly attached window
+        // goes blank suite-wide ("[Snapshotting] … requires it to be in a
+        // foreground scene") and this is the one test that pixel-asserts the
+        // result. Hosting via rootViewController swap keeps the live display
+        // pipeline; the pattern matches settledLaneState in
+        // TabBarSnapshotTests. See AppHostWindow.
+        let window = try AppHostWindow.acquire()
+        let original = window.rootViewController
+        defer {
+            window.rootViewController = original
+            RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.1))
         }
+
+        // Pin the card into an exact card-sized box at the window's top-left
+        // (safe areas ignored), replicating the old card-sized window's
+        // geometry so the pixel assertions keep their coordinate meaning.
+        let host = UIHostingController(rootView: AnyView(
+            ZStack(alignment: .topLeading) {
+                Color.black
+                view.frame(width: size.width, height: size.height, alignment: .topLeading)
+            }
+            .ignoresSafeArea()
+        ))
         window.rootViewController = host
-        window.makeKeyAndVisible()
-        host.view.frame = window.bounds
         window.layoutIfNeeded()
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.1))
 
         let format = UIGraphicsImageRendererFormat()
         format.scale = 1
-        let image = UIGraphicsImageRenderer(size: size, format: format).image { _ in
-            window.drawHierarchy(in: window.bounds, afterScreenUpdates: true)
+        let full = UIGraphicsImageRenderer(size: window.bounds.size, format: format).image { _ in
+            host.view.drawHierarchy(in: window.bounds, afterScreenUpdates: true)
         }
-        window.isHidden = true
-        return image
+        guard let card = full.cgImage?.cropping(to: CGRect(origin: .zero, size: size)) else {
+            throw PixelScanError.missingCGImage
+        }
+        return UIImage(cgImage: card)
     }
 
     private func tanStatusBounds(in image: UIImage) throws -> CGRect? {

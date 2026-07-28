@@ -72,12 +72,14 @@ struct UniversalSearchSheet: View {
         case user(User)
         case inventory(InventoryItem)
         case catalog(EnrichedVariantRow)
+        case deleteClient(Client)
 
         var id: String {
             switch self {
             case .user(let u): return "user-\(u.id)"
             case .inventory(let i): return "inventory-\(i.id)"
             case .catalog(let r): return "catalog-\(r.id)"
+            case .deleteClient(let client): return "delete-client-\(client.id)"
             }
         }
     }
@@ -119,6 +121,7 @@ struct UniversalSearchSheet: View {
     private var canCreateClients: Bool  { permissionStore.can("clients.create") }
     private var canEditTasks: Bool      { permissionStore.can("tasks.edit") }
     private var canEditProjects: Bool   { permissionStore.can("projects.edit") }
+    private var canDeleteClients: Bool  { permissionStore.can("clients.delete") }
 
     // MARK: - Available Data (role-filtered)
 
@@ -504,6 +507,9 @@ struct UniversalSearchSheet: View {
             case .catalog(let row):
                 VariantDetailView(row: row)
                     .environmentObject(dataController)
+            case .deleteClient(let client):
+                ClientDeletionSheet(client: client)
+                    .environmentObject(dataController)
             }
         }
     }
@@ -813,36 +819,14 @@ struct UniversalSearchSheet: View {
     }
 
     private func clientRow(_ client: Client) -> some View {
-        var actions: [QuickActionSpec] = []
-        if let phone = client.phoneNumber, !phone.isEmpty {
-            actions.append(QuickActionSpec(
-                id: "call",
-                icon: OPSStyle.Icons.phoneFill,
-                accessibilityLabel: "Call client",
-                tint: OPSStyle.Colors.primaryAccent
-            ) {
-                openTel(phone)
-            })
-        }
-        if canCreateProjects {
-            actions.append(QuickActionSpec(
-                id: "addProject",
-                icon: OPSStyle.Icons.addProject,
-                accessibilityLabel: "Add project for client",
-                tint: OPSStyle.Colors.primaryAccent
-            ) {
-                addingProjectForClient = client
-            })
-        }
-
-        return SearchResultRow(
-            icon: "building.2.fill",
-            accentColor: OPSStyle.Colors.primaryAccent,
-            title: client.name,
-            subtitle: client.email ?? client.phoneNumber,
-            pill: nil,
-            quickActions: actions,
-            onTap: { navigateToClient(client) }
+        ClientSearchResultRow(
+            client: client,
+            canCreateProject: canCreateProjects,
+            canDeleteClient: canDeleteClients,
+            onCall: openTel,
+            onViewClient: { navigateToClient(client) },
+            onAddProject: { addingProjectForClient = client },
+            onDeleteClient: { selectedDetail = .deleteClient(client) }
         )
     }
 
@@ -1484,6 +1468,63 @@ private struct QuickCreateChipSpec: Identifiable {
     let action: () -> Void
 }
 
+// MARK: - Client Search Result
+
+/// The shipping Universal Search client row. Keeping its context-menu ownership
+/// inside one component prevents a future wrapper from shadowing the native
+/// long-press actions.
+private struct ClientSearchResultRow: View {
+    let client: Client
+    let canCreateProject: Bool
+    let canDeleteClient: Bool
+    let onCall: (String) -> Void
+    let onViewClient: () -> Void
+    let onAddProject: () -> Void
+    let onDeleteClient: () -> Void
+
+    private var quickActions: [QuickActionSpec] {
+        guard let phone = client.phoneNumber, !phone.isEmpty else { return [] }
+        return [
+            QuickActionSpec(
+                id: "call",
+                icon: OPSStyle.Icons.phoneFill,
+                accessibilityLabel: "Call client",
+                tint: OPSStyle.Colors.primaryAccent,
+                action: { onCall(phone) }
+            )
+        ]
+    }
+
+    var body: some View {
+        SearchResultRow(
+            icon: "building.2.fill",
+            accentColor: OPSStyle.Colors.primaryAccent,
+            title: client.name,
+            subtitle: client.email ?? client.phoneNumber,
+            pill: nil,
+            quickActions: quickActions,
+            onTap: onViewClient
+        )
+        .contextMenu {
+            ForEach(
+                ClientLongPressActionPolicy.actions(
+                    canCreateProject: canCreateProject,
+                    canDeleteClient: canDeleteClient
+                )
+            ) { action in
+                switch action {
+                case .viewClient:
+                    Button("View Client", action: onViewClient)
+                case .addProject:
+                    Button("Add Project", action: onAddProject)
+                case .deleteClient:
+                    Button("Delete", role: .destructive, action: onDeleteClient)
+                }
+            }
+        }
+    }
+}
+
 // MARK: - Search Result Row
 //
 // Layout: [type icon] [title + subtitle] [pill] [quick actions...] [chevron]
@@ -1606,3 +1647,58 @@ private struct QuickCreateChip: View {
         .accessibilityLabel("Create new \(spec.label.lowercased())")
     }
 }
+
+#if DEBUG
+// MARK: - Client Search Action QA Host
+
+/// Hermetic host for driving the real Universal Search client row through a
+/// native long press without auth, network, or a persistent SwiftData store.
+struct ClientSearchActionsQAHost: View {
+    @State private var lastAction = "—"
+
+    private let client = Client(
+        id: "qa-client-actions",
+        name: "North Ridge Electric",
+        email: "ops@northridge.test",
+        phoneNumber: "5550100",
+        companyId: "qa-company"
+    )
+
+    private var isReadOnly: Bool {
+        ProcessInfo.processInfo.arguments.contains("-OPS_CLIENT_SEARCH_ACTIONS_QA_READ_ONLY")
+    }
+
+    var body: some View {
+        ZStack {
+            OPSStyle.Colors.background.ignoresSafeArea()
+
+            VStack(spacing: OPSStyle.Layout.spacing4) {
+                Text("// CLIENT SEARCH ACTIONS QA")
+                    .font(OPSStyle.Typography.pageTitle)
+                    .foregroundColor(OPSStyle.Colors.primaryText)
+
+                ClientSearchResultRow(
+                    client: client,
+                    canCreateProject: !isReadOnly,
+                    canDeleteClient: !isReadOnly,
+                    onCall: { _ in lastAction = "call" },
+                    onViewClient: { lastAction = "view" },
+                    onAddProject: { lastAction = "add" },
+                    onDeleteClient: { lastAction = "delete" }
+                )
+                .contentShape(Rectangle())
+                .accessibilityIdentifier("qa_client_search_row")
+
+                Text("LAST_ACTION::\(lastAction)")
+                    .font(OPSStyle.Typography.caption)
+                    .foregroundColor(OPSStyle.Colors.secondaryText)
+                    .accessibilityIdentifier("qa_client_search_last_action")
+            }
+            .padding(OPSStyle.Layout.spacing4)
+        }
+        .onAppear {
+            UIView.setAnimationsEnabled(false)
+        }
+    }
+}
+#endif

@@ -19,7 +19,9 @@ struct OPSApp: App {
     init() {
         MapboxConfig.configure()
         #if DEBUG
-        if CatalogSetupQARuntime.isEnabled() || ScheduleLongPressQARuntime.isEnabled() {
+        if ClientSearchActionsQARuntime.isEnabled() ||
+            CatalogSetupQARuntime.isEnabled() ||
+            ScheduleLongPressQARuntime.isEnabled() {
             return
         }
         #endif
@@ -65,9 +67,16 @@ struct OPSApp: App {
         let schema = Schema(versionedSchema: OPSSchemaV19.self)
 
         let isHostedXCTest = ProcessInfo.processInfo.environment["XCTestBundlePath"] != nil
+        #if DEBUG
+        let isHermeticQALaunch = ClientSearchActionsQARuntime.isEnabled() ||
+            CatalogSetupQARuntime.isEnabled() ||
+            ScheduleLongPressQARuntime.isEnabled()
+        #else
+        let isHermeticQALaunch = false
+        #endif
         let modelConfiguration = OPSModelStore.configuration(
             schema: schema,
-            isStoredInMemoryOnly: isHostedXCTest
+            isStoredInMemoryOnly: isHostedXCTest || isHermeticQALaunch
         )
 
         func makeContainer() throws -> ModelContainer {
@@ -97,7 +106,10 @@ struct OPSApp: App {
     @ViewBuilder
     private var rootView: some View {
         #if DEBUG
-        if ScheduleLongPressQARuntime.isEnabled() {
+        if ClientSearchActionsQARuntime.isEnabled() {
+            ClientSearchActionsQAHost()
+                .preferredColorScheme(.dark)
+        } else if ScheduleLongPressQARuntime.isEnabled() {
             ScheduleLongPressQAHost()
                 .environmentObject(dataController)
                 .environmentObject(permissionStore)

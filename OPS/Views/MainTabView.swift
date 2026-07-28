@@ -506,11 +506,25 @@ struct MainTabView: View {
         // client-surface tap (JobBoard card, UniversalSearchSheet, task details);
         // deep-links from Spotlight should match that contract. From the detail
         // view, the user can still tap the pencil to edit when they need to.
-        .sheet(isPresented: $appState.showClientDetails) {
+        .sheet(
+            isPresented: $appState.showClientDetails,
+            onDismiss: {
+                appState.dismissClientDetails()
+            }
+        ) {
             if let clientId = appState.selectedClientId,
                let ctx = dataController.modelContext,
                let client = try? ctx.fetch(FetchDescriptor<Client>(predicate: #Predicate { $0.id == clientId })).first {
-                ContactDetailView(client: client, project: nil)
+                ContactDetailView(
+                    client: client,
+                    project: nil,
+                    onClientDeletionRequest: {
+                        appState.requestClientDetailsDismissal()
+                    },
+                    waitForClientDeletionRouteDismissal: {
+                        await appState.waitForClientDetailsDismissal()
+                    }
+                )
                     .environmentObject(dataController)
                     .environmentObject(permissionStore)
             }

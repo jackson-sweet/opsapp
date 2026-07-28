@@ -548,7 +548,12 @@ struct AutoScheduleManager {
 
     // MARK: - Pass 1: Dependency Floor
 
-    private static func calculateDependencyFloor(
+    /// Earliest date `task` may start given its scheduled predecessors, never
+    /// earlier than `anchor`. Internal (not private) so the schedule sheet's
+    /// `SchedulerDayContext` can pin its own soft-guide floor to exactly the
+    /// semantics the auto-scheduler enforces — see
+    /// `SchedulerDayContextTests.testDependencyFloorMatchesAutoScheduleManager`.
+    static func calculateDependencyFloor(
         for task: any SchedulableTask,
         allProjectTasks: [any SchedulableTask],
         anchor: Date,

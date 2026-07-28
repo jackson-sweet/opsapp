@@ -87,7 +87,13 @@ final class OutboundProcessorTests: XCTestCase {
             createdAt: Date(timeIntervalSince1970: 4)
         )
 
-        try await processor.executeOperation(operation, context: makeContext())
+        // executeOperation claims ops from the persisted store (pending → inProgress
+        // linearization) — an op must be inserted and saved or the claim refuses it.
+        let context = try makeContext()
+        context.insert(operation)
+        try context.save()
+
+        try await processor.executeOperation(operation, context: context)
 
         XCTAssertEqual(spy.completedTaskIds, [taskId])
         XCTAssertEqual(spy.completionIdempotencyKeys, ["complete-key-1"])
@@ -109,14 +115,18 @@ final class OutboundProcessorTests: XCTestCase {
             createdAt: Date(timeIntervalSince1970: 5)
         )
 
+        let context = try makeContext()
+        context.insert(operation)
+        try context.save()
+
         do {
-            try await processor.executeOperation(operation, context: makeContext())
+            try await processor.executeOperation(operation, context: context)
             XCTFail("Expected the first RPC attempt to fail")
         } catch {
             XCTAssertEqual(operation.status, "pending")
         }
 
-        try await processor.executeOperation(operation, context: makeContext())
+        try await processor.executeOperation(operation, context: context)
 
         XCTAssertEqual(spy.completionIdempotencyKeys.count, 2)
         XCTAssertEqual(spy.completionIdempotencyKeys[0], spy.completionIdempotencyKeys[1])
@@ -139,7 +149,11 @@ final class OutboundProcessorTests: XCTestCase {
             createdAt: Date(timeIntervalSince1970: 6)
         )
 
-        try await processor.executeOperation(operation, context: makeContext())
+        let context = try makeContext()
+        context.insert(operation)
+        try context.save()
+
+        try await processor.executeOperation(operation, context: context)
 
         XCTAssertTrue(spy.completedTaskIds.isEmpty)
         XCTAssertEqual(spy.updatedTaskIds, [taskId])
@@ -165,7 +179,11 @@ final class OutboundProcessorTests: XCTestCase {
             createdAt: Date(timeIntervalSince1970: 7)
         )
 
-        try await processor.executeOperation(operation, context: makeContext())
+        let context = try makeContext()
+        context.insert(operation)
+        try context.save()
+
+        try await processor.executeOperation(operation, context: context)
 
         XCTAssertEqual(spy.createdStatuses, [TaskStatus.active.rawValue])
         XCTAssertEqual(spy.completedTaskIds, [taskId])

@@ -38,11 +38,14 @@ SwiftUI on the supported deployment target:
   UIKit text fields.
 - `UITextView` covers `TextEditor` and direct UIKit text views.
 
-When either becomes active, the coordinator installs the canonical OPS keyboard
-accessory if it is not already installed and reloads the active input views.
-The accessory weakly retains the exact text input it belongs to. Its trailing
-`DONE` button resigns that input directly, avoiding any ambiguity when OPS has
-multiple windows or responder chains.
+OPS-owned UIKit-backed custom editors install the canonical accessory when the
+input is created, before it can become first responder. This keeps their focus
+and keyboard presentation continuous without reloading input views mid-focus.
+For system-managed SwiftUI inputs that cannot be prepared directly, editing
+activation remains the fallback installation boundary and reloads the active
+input only when required. The accessory weakly retains the exact text input it
+belongs to. Its trailing `DONE` button resigns that input directly, avoiding
+any ambiguity when OPS has multiple windows or responder chains.
 
 ```text
 ┌──────────────────────────────────┐
@@ -77,8 +80,8 @@ is moved to the form's focus-loss boundary:
 - Copy remains `DONE`: uppercase, terse, and already approved for authority.
 - Button typography uses the canonical Cake Mono button-label UIKit bridge.
 - Foreground uses the OPS primary-text token.
-- The native input-accessory toolbar supplies the standard 44-point keyboard
-  action row and system keyboard surface.
+- The native input-accessory toolbar reports the OPS minimum touch-target token
+  as its stable intrinsic height and uses the system keyboard surface.
 - No new color, spacing, radius, icon, animation, or decorative treatment.
 - VoiceOver reads the button as `Done`.
 
@@ -108,6 +111,8 @@ contract.
   and a text view after editing begins.
 - Prove repeated editing notifications do not stack or replace the canonical
   accessory.
+- Prove a prepared custom text view retains the same accessory without
+  reloading its input views when editing begins.
 - Prove invoking `DONE` resigns a real first responder hosted in a window.
 - Prove every former local toolbar side effect remains attached to focus loss.
 - Run a repository audit confirming no generic SwiftUI keyboard toolbar remains.

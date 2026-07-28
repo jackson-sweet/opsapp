@@ -336,8 +336,14 @@ final class DeckDesignLinkSyncTests: XCTestCase {
             createdAt: Date()
         )
 
+        // executeOperation claims ops from the persisted store (pending → inProgress
+        // linearization) — the op must be inserted and saved or the claim refuses it.
+        let context = try makeContext()
+        context.insert(op)
+        try context.save()
+
         do {
-            try await processor.executeOperation(op, context: try makeContext())
+            try await processor.executeOperation(op, context: context)
             XCTFail("a malformed linkOpportunity op must throw, not silently succeed")
         } catch {
             XCTAssertTrue(

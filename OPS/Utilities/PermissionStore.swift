@@ -356,3 +356,22 @@ class PermissionStore: ObservableObject {
         canViewProject(project, userId: userId)
     }
 }
+
+#if DEBUG
+
+// MARK: - Preview / test seam
+
+extension PermissionStore {
+
+    /// The operator identity that assigned-scope policies match rows against.
+    ///
+    /// Production sets it from the keychain cache or a permissions fetch —
+    /// neither of which a preview or a snapshot host runs. Without it an
+    /// `assigned` grant filters every row away and an assigned-scope surface
+    /// previews empty, which reads as a layout bug rather than the missing
+    /// identity it actually is. DEBUG-only; excluded from release builds.
+    func setPreviewOperatorId(_ id: String?) {
+        currentUserId = id
+    }
+}
+#endif

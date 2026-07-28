@@ -11,15 +11,29 @@
 //  surface that fires a geocode per row is a rate-limit and a battery bill.
 //  Same coordinates-only rule LeadMapHeader ships.
 //
+//  The photo tile reads the app's OWN photo cache before it reaches for the
+//  network. `AsyncImage` has no knowledge of `ImageFileManager` — offline, an
+//  URLSession-backed tile resolves to nothing and every photographed lead falls
+//  back to its initial. The day sheet is an offline surface (spec §6): the shot
+//  the runner took this morning has to be on the row this afternoon in a
+//  basement with no bars. Memory → disk → network, the chain PhotoGalleryViewer
+//  already speaks.
+//
 //  Spec: docs/superpowers/specs/2026-07-27-my-leads-day-sheet-design.md §3.3
 //
 
 import SwiftUI
 import CoreLocation
+import UIKit
 
 struct LeadThumbView: View {
 
     let lead: Opportunity
+
+    /// Resolved from the local caches. Nil until the lookup runs (or when the
+    /// photo has never been on this device), which is when `AsyncImage` owns
+    /// the tile.
+    @State private var cachedPhoto: UIImage?
 
     /// Spec §3.3 — 56pt square tile (component dimension, à la
     /// `LeadMapHeader.mapHeight`).
@@ -43,20 +57,8 @@ struct LeadThumbView: View {
 
     @ViewBuilder
     private var source: some View {
-        if let url = newestPhotoURL {
-            AsyncImage(url: url) { phase in
-                switch phase {
-                case .success(let image):
-                    image.resizable().scaledToFill()
-                default:
-                    // Loading AND failure both land on the initial tile — the
-                    // row must never flash empty or hold a spinner mid-scroll.
-                    initialTile
-                }
-            }
-            .frame(width: Self.side, height: Self.side)
-            .clipped()
-            .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.cardRadius, style: .continuous))
+        if let newest = newestPhoto {
+            photoTile(newest)
         } else if let coordinate {
             ProjectLocationSnapshotView(
                 coordinate: coordinate,
@@ -76,6 +78,55 @@ struct LeadThumbView: View {
         } else {
             initialTile
         }
+    }
+
+    /// Cache first, network second. `ZStack` (never a bare `Group`) anchors the
+    /// lookup — a childless Group's `.task` never fires.
+    private func photoTile(_ photo: (url: URL, key: String)) -> some View {
+        ZStack {
+            if let cachedPhoto {
+                Image(uiImage: cachedPhoto)
+                    .resizable()
+                    .scaledToFill()
+            } else {
+                AsyncImage(url: photo.url) { phase in
+                    switch phase {
+                    case .success(let image):
+                        image.resizable().scaledToFill()
+                    default:
+                        // Loading AND failure both land on the initial tile —
+                        // the row must never flash empty or hold a spinner
+                        // mid-scroll.
+                        initialTile
+                    }
+                }
+            }
+        }
+        .frame(width: Self.side, height: Self.side)
+        .clipped()
+        .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.cardRadius, style: .continuous))
+        .task(id: photo.key) { await resolveCachedPhoto(photo.key) }
+    }
+
+    /// Memory → disk → give up (and let `AsyncImage` try the wire).
+    ///
+    /// The disk read is detached so a scroll never waits on file IO; only
+    /// `Data` crosses back, so no image object is passed between actors. The
+    /// decoded result is promoted into the memory cache, which is what makes
+    /// the second appearance of a row instant.
+    @MainActor
+    private func resolveCachedPhoto(_ key: String) async {
+        if let memory = ImageCache.shared.get(forKey: key) {
+            cachedPhoto = memory
+            return
+        }
+        guard PhotoDownloadManager.shared.isOnDevice(key) else { return }
+        let data = await Task.detached(priority: .userInitiated) {
+            ImageFileManager.shared.getImageData(localID: key)
+        }.value
+        guard let data, let image = UIImage(data: data) else { return }
+        ImageCache.shared.set(image, forKey: key)
+        cachedPhoto = image
     }
 
     private var initialTile: some View {
@@ -124,9 +175,15 @@ struct LeadThumbView: View {
     /// `images`, so the server's order is oldest-first (LeadPhotosSection
     /// reverses it for the same reason). The tile has to show what the operator
     /// photographed last, not what the lead looked like the day it landed.
-    private var newestPhotoURL: URL? {
+    ///
+    /// `key` is the protocol-normalized string the whole photo stack caches
+    /// under (`//host/x.jpg` → `https://host/x.jpg`), so a tile and a prefetch
+    /// of the same shot can never miss each other over a scheme.
+    private var newestPhoto: (url: URL, key: String)? {
         guard let newest = photoURLs.last else { return nil }
-        return URL(string: newest)
+        let key = newest.hasPrefix("//") ? "https:" + newest : newest
+        guard let url = URL(string: key) else { return nil }
+        return (url, key)
     }
 
     private var coordinate: CLLocationCoordinate2D? {

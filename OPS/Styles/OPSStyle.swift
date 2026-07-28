@@ -368,6 +368,9 @@ enum OPSStyle {
         static let title = Font.title
         static let subtitle = Font.subtitle                // → JetBrains Mono 22pt
 
+        // Empty states (Mohave) — MOBILE.md §10 hero figure, 32pt Light
+        static let emptyStateFigure = Font.emptyStateFigure
+
         // Body text (Mohave)
         static let body = Font.body
         static let bodyBold = Font.bodyBold
@@ -479,6 +482,8 @@ enum OPSStyle {
         static let monthGridStandardHeightThreshold: CGFloat = 120.0
         static let monthGridExpandedHeightThreshold: CGFloat = 180.0
         static let wizardInstructionBarClearance: CGFloat = 80.0
+        static let emptyStatePadding: CGFloat = 48.0    // §10 empty/error block, vertical (48px 20px)
+        static let emptyStateActionWidth: CGFloat = 200.0 // §10 compact centered CTA under an empty state
 
         // MARK: - Corner radius (spec v2 — sharp, tactical, no 999px pills)
         // Prefer the new semantic names (panelRadius, chipRadius, etc.).
@@ -649,6 +654,11 @@ enum OPSStyle {
         static let durationChartBar: Double = 0.400  // 400-600ms — chart bar grow (add index delay)
         static let durationFlip:     Double = 0.350  // 350ms — card flip
         static let durationCountUp:  Double = 0.800  // 800ms — hero number count-up
+        static let durationSkeletonPulse: Double = 1.500 // MOBILE.md §10 — 1.5s skeleton pulse
+
+        /// MOBILE.md §10 skeleton pulse floor: `fillNeutralDim` (white 0.06)
+        /// dimmed to white 0.03 and back.
+        static let skeletonPulseOpacity: Double = 0.5
 
         // MARK: Reduce-motion (spec v2 §8/§14 — "always honor prefers-reduced-motion")
         // Every pre-built token below is a COMPUTED value that reads the system

@@ -61,19 +61,19 @@ struct DaySheetLeadRow: View {
     private var lead: Opportunity { row.lead }
 
     var body: some View {
-        HStack(spacing: OPSStyle.Layout.spacing2_5) {
+        // `spacing2` between the three blocks, and a Spacer that can collapse:
+        // the row's fixed furniture (56pt tile, 88pt of touch targets, the
+        // card's own padding) already claims more than half a 390pt screen, and
+        // every point spent on air here is a point the stage chip does not get.
+        // The identity block still clears the rule by 16pt (8 + 8).
+        HStack(spacing: OPSStyle.Layout.spacing2) {
             LeadThumbView(lead: lead)
 
             identity
 
-            Spacer(minLength: OPSStyle.Layout.spacing2)
+            Spacer(minLength: 0)
 
-            Rectangle()
-                .fill(OPSStyle.Colors.lineSoft)
-                .frame(width: OPSStyle.Layout.Border.standard,
-                       height: OPSStyle.Layout.touchTargetMin)
-
-            verbs
+            trailing
         }
         .padding(.horizontal, OPSStyle.Layout.spacing3)
         .padding(.vertical, OPSStyle.Layout.spacing2_5)
@@ -121,10 +121,37 @@ struct DaySheetLeadRow: View {
     /// has stopped being a token and started being a sentence fragment. The
     /// name and address lines above absorb the compression instead — they are
     /// prose, and prose truncates honestly.
+    ///
+    /// Which means the pair needs a way to give ground that is NOT truncation,
+    /// or the row overflows its card on a 390pt phone (fixed furniture eats
+    /// everything but ~120pt, and `QUOTED · 6D` + `3D LATE` wants ~175). The
+    /// ladder spends the row's real width from the top down:
+    ///
+    ///   1. `QUOTED · 6D` + `3D LATE`   — everything, on a wide device
+    ///   2. `QUOTED` + `3D LATE`        — the qualifier goes first; the spec
+    ///                                    already treats it as optional (it is
+    ///                                    omitted under a day), and the exact
+    ///                                    age is one tap away in the card
+    ///   3. `3D LATE`                   — last resort: the token the sheet is
+    ///                                    ORDERED by always survives
+    ///
+    /// `ViewThatFits` picks the richest rung the actual width allows, so the
+    /// same row shows more on a Pro Max than on a mini without a geometry read
+    /// or a hardcoded breakpoint.
     private var chips: some View {
+        ViewThatFits(in: .horizontal) {
+            chipRow(detail: stageDetail, showsStage: true)
+            chipRow(detail: nil, showsStage: true)
+            chipRow(detail: nil, showsStage: false)
+        }
+    }
+
+    private func chipRow(detail: String?, showsStage: Bool) -> some View {
         HStack(spacing: OPSStyle.Layout.spacing2) {
-            stageChip
-                .fixedSize()
+            if showsStage {
+                stageChip(detail: detail)
+                    .fixedSize()
+            }
             urgencyChip
                 .fixedSize()
         }
@@ -133,7 +160,7 @@ struct DaySheetLeadRow: View {
     /// The stage chip is neutralized here: on the day sheet urgency owns the
     /// only colour in the row, so a tan QUOTED chip would compete with the tan
     /// TODAY token sitting beside it.
-    private var stageChip: some View {
+    private func stageChip(detail: String?) -> some View {
         LeadStatusMenu(
             lead: lead,
             canEdit: canEdit,
@@ -147,7 +174,7 @@ struct DaySheetLeadRow: View {
         ) {
             StageTag(
                 stage: lead.stage,
-                detail: stageDetail,
+                detail: detail,
                 showsChevron: canEdit || canConvert,
                 neutralized: true,
                 compact: true
@@ -186,6 +213,24 @@ struct DaySheetLeadRow: View {
             .tracking(0.8)
             .foregroundColor(OPSStyle.Colors.text3)
             .monospacedDigit()
+    }
+
+    // MARK: - Trailing (rule · call · route)
+
+    /// The rule and the two verbs are ONE block, hugging: at a real list width
+    /// (390pt device minus the 20pt gutters) the row's fixed furniture — 56pt
+    /// thumb, 88pt of touch targets, card padding — leaves the chips barely
+    /// more than a hundred points. Four separate 12pt gaps out here were
+    /// spending that budget on air, and the row overflowed its own card.
+    private var trailing: some View {
+        HStack(spacing: OPSStyle.Layout.spacing2) {
+            Rectangle()
+                .fill(OPSStyle.Colors.lineSoft)
+                .frame(width: OPSStyle.Layout.Border.standard,
+                       height: OPSStyle.Layout.touchTargetMin)
+
+            verbs
+        }
     }
 
     // MARK: - Verbs (call · route)

@@ -107,6 +107,12 @@ enum InboundChangeSignal {
 /// Debounce semantics: trailing-edge with a max-latency bound. Each arrival
 /// re-arms the flush timer; if arrivals keep coming, the max-latency clock
 /// forces a flush so the UI is never starved by a continuous merge stream.
+///
+/// The clock and the debounce scheduler are injectable so unit tests can
+/// drive time deterministically instead of racing wall-clock timers under
+/// load. Production always uses the defaults — `Date` for the clock and a
+/// main-queue `asyncAfter` for the flush deadline — so runtime behavior is
+/// unchanged by the seam.
 @MainActor
 final class InboundChangeRouter {
 
@@ -123,6 +129,8 @@ final class InboundChangeRouter {
 
     private let debounceInterval: TimeInterval
     private let maxLatency: TimeInterval
+    private let now: () -> Date
+    private let scheduleFlush: (TimeInterval, DispatchWorkItem) -> Void
     private let onCalendarTasksChanged: () -> Void
     private let onUserEventsChanged: () -> Void
     private let onTaskRemindersChanged: () -> Void
@@ -139,12 +147,18 @@ final class InboundChangeRouter {
     init(
         debounceInterval: TimeInterval = 0.25,
         maxLatency: TimeInterval = 1.0,
+        now: @escaping () -> Date = Date.init,
+        scheduleFlush: @escaping (_ delay: TimeInterval, _ work: DispatchWorkItem) -> Void = { delay, work in
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: work)
+        },
         onCalendarTasksChanged: @escaping () -> Void,
         onUserEventsChanged: @escaping () -> Void,
         onTaskRemindersChanged: @escaping () -> Void = {}
     ) {
         self.debounceInterval = debounceInterval
         self.maxLatency = maxLatency
+        self.now = now
+        self.scheduleFlush = scheduleFlush
         self.onCalendarTasksChanged = onCalendarTasksChanged
         self.onUserEventsChanged = onUserEventsChanged
         self.onTaskRemindersChanged = onTaskRemindersChanged
@@ -170,13 +184,13 @@ final class InboundChangeRouter {
         pendingEntityNames.formUnion(names)
 
         if firstAccumulatedAt == nil {
-            firstAccumulatedAt = Date()
+            firstAccumulatedAt = now()
         }
 
         // Max-latency bound: a continuous stream of merges (realtime storm)
         // must not push the flush out forever.
         if let first = firstAccumulatedAt,
-           Date().timeIntervalSince(first) >= maxLatency {
+           now().timeIntervalSince(first) >= maxLatency {
             pendingFlush?.cancel()
             flush()
             return
@@ -187,7 +201,7 @@ final class InboundChangeRouter {
             self?.flush()
         }
         pendingFlush = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + debounceInterval, execute: work)
+        scheduleFlush(debounceInterval, work)
     }
 
     private func flush() {

@@ -174,6 +174,10 @@ final class PendingWorkSnapshotTests: XCTestCase {
             .frame(width: deviceWidth, height: deviceHeight)
             .background(OPSStyle.Colors.background)
             .environment(\.colorScheme, .dark)
+            // A UIWindow inherits the device safe-area insets whatever its frame —
+            // without this the content renders displaced and bottom-clipped
+            // (same correction as DaySheetRowSnapshotTests).
+            .ignoresSafeArea()
 
         let host = UIHostingController(rootView: root)
         host.overrideUserInterfaceStyle = .dark

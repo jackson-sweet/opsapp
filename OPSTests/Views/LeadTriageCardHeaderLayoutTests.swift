@@ -65,7 +65,11 @@ final class LeadTriageCardHeaderLayoutTests: XCTestCase {
     }
 
     private func render<V: View>(_ view: V) throws -> UIImage {
-        let host = UIHostingController(rootView: view)
+        // A UIWindow inherits the device safe-area insets whatever its frame —
+        // ignoring safe area keeps the card at its natural origin instead of
+        // displaced ~46pt down and bottom-clipped out of the fitted canvas
+        // (same correction as DaySheetRowSnapshotTests).
+        let host = UIHostingController(rootView: view.ignoresSafeArea())
         let fitted = host.sizeThatFits(
             in: CGSize(width: cardWidth, height: .greatestFiniteMagnitude)
         )

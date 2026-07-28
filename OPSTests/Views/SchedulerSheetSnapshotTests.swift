@@ -126,6 +126,39 @@ final class SchedulerSheetSnapshotTests: XCTestCase {
         }
     }
 
+    /// The busiest legal 667pt stack: rescheduling a dated task while the
+    /// quick-push row carries the cascade toggle and the identity row carries
+    /// UNSCHEDULE. The toggle is proven through the dependents branch — a
+    /// same-project task that depends on this one — because that count rides
+    /// project-scoped queries only. (The crew-ripple branch reads
+    /// `DataController.currentUser`, which the app host's async
+    /// `checkExistingAuth` can rewrite mid-render; dating this task after the
+    /// fence job keeps that branch at zero either way, so the badge is a
+    /// deterministic 1.) The month grid compresses to its floor; nav and
+    /// footer must both survive on screen.
+    func testSmallPhoneWorstCaseReschedule() throws {
+        let world = try World()
+
+        let railingsType = TaskType(id: "type-railings", display: "Railings", color: "#8B8778", companyId: "company-1")
+        railingsType.dependencies = [
+            TaskTypeDependency(dependsOnTaskTypeId: "type-decking", overlapPercentage: 0)
+        ]
+        world.context.insert(railingsType)
+        let railings = ProjectTask(id: "task-railings", projectId: "project-harbour", taskTypeId: railingsType.id, companyId: "company-1")
+        railings.taskType = railingsType
+        world.context.insert(railings)
+        try? world.context.save()
+
+        // Monday + 15/16 — after every seeded job, so only the dependent counts.
+        let start = calendar.date(byAdding: .day, value: 7, to: world.conflictStart)!
+        let end = calendar.date(byAdding: .day, value: 8, to: world.conflictStart)!
+        world.item.startDate = start
+        world.item.endDate = end
+        snapshot("12_small_phone_worst", size: smallPhone) {
+            world.sheet(start: start, end: end, onClearDates: {})
+        }
+    }
+
     /// The footer in all three of its states, side by side.
     func testFooterStates() {
         let day = calendar.startOfDay(for: Date())

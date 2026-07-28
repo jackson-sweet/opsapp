@@ -501,7 +501,19 @@ enum OPSStyle {
         static let schedulerDayPanelHeight: CGFloat = 150.0      // 812pt-class devices
         static let schedulerDayPanelCompactHeight: CGFloat = 120.0 // 667pt-class devices
         static let schedulerCompactHeightThreshold: CGFloat = 700.0
-        static let schedulerCalendarMinHeight: CGFloat = 300.0
+        /// Floor for the month scroll — the sheet's one flexible region. The
+        /// grid greedily absorbs whatever height the fixed chrome leaves, so
+        /// on tall screens this floor never engages; it exists only so a
+        /// squeezed presentation compresses the grid instead of pushing the
+        /// footer off screen. Invariant: worst-case fixed chrome (nav 52 +
+        /// identity 32 + range strip 64 + quick-push row with cascade toggle
+        /// 91 + pinned header ~75 + compact day panel 120 + footer 68 ≈ 502)
+        /// plus this floor must fit the shortest supported presentation —
+        /// ~620pt iPad form sheet, ~637pt iPhone SE `.sheet`. 112 ≈ month
+        /// caption + two 48pt week rows, still scrollable. (300 overcommitted
+        /// every reschedule presentation and clipped nav + footer; SE-class
+        /// overflowed by ~95–125pt.)
+        static let schedulerCalendarMinHeight: CGFloat = 112.0
         /// Dependency-floor days stay fully tappable — they only recede.
         static let schedulerPreFloorOpacity: Double = 0.35
         /// CLEAR takes 30% of the footer; SAVE keeps the thumb-weighted share.

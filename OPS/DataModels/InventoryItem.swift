@@ -32,6 +32,19 @@ enum ThresholdStatus: Int, Comparable, CaseIterable {
         }
     }
 
+    /// Accessible foreground for status text. Brick remains reserved for
+    /// destructive borders and dots; mobile-uplift tones carry text meaning.
+    var textColor: Color {
+        switch self {
+        case .normal:
+            return OPSStyle.Colors.text
+        case .warning:
+            return OPSStyle.Colors.tanTextM
+        case .critical:
+            return OPSStyle.Colors.roseTextM
+        }
+    }
+
     /// Label for badge display (nil for normal status)
     var label: String? {
         switch self {

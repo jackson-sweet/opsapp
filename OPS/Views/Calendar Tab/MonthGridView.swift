@@ -1026,8 +1026,11 @@ struct MonthGridView: View {
                     .opsSheet(detents: [.medium, .large])
             }
             .sheet(isPresented: $showMonthPicker) {
-                MonthJumpPicker(viewModel: viewModel)
-                    .opsSheet(detents: [.medium])
+                MonthJumpPicker(selectedMonth: viewModel.visibleMonth) { monthStart in
+                    viewModel.visibleMonth = monthStart
+                    viewModel.selectDate(monthStart, userInitiated: true)
+                }
+                .opsSheet(detents: [.medium])
             }
             // Long-press → "Pick new date…" opens the same scheduler used
             // elsewhere in the app for full control over start/end (Bug
@@ -1074,160 +1077,6 @@ struct MonthGridView: View {
                 }
             }
         }
-    }
-}
-
-// MARK: - Month Jump Picker
-
-private struct MonthJumpPicker: View {
-    @ObservedObject var viewModel: CalendarViewModel
-    @Environment(\.dismiss) private var dismiss
-    @State private var displayYear: Int
-
-    private let calendar = Calendar.current
-    private let monthNames = Calendar.current.shortMonthSymbols
-
-    init(viewModel: CalendarViewModel) {
-        self.viewModel = viewModel
-        self._displayYear = State(initialValue: Calendar.current.component(.year, from: viewModel.visibleMonth))
-    }
-
-    /// The month (1-12) of the currently visible month in the grid
-    private var currentMonth: Int {
-        calendar.component(.month, from: viewModel.visibleMonth)
-    }
-
-    /// The year of the currently visible month
-    private var currentYear: Int {
-        calendar.component(.year, from: viewModel.visibleMonth)
-    }
-
-    var body: some View {
-        VStack(spacing: 0) {
-            // Header
-            HStack {
-                Text("JUMP TO DATE")
-                    .font(OPSStyle.Typography.captionBold)
-                    .foregroundColor(OPSStyle.Colors.secondaryText)
-                    .tracking(1)
-
-                Spacer()
-
-                Button("DONE") {
-                    dismiss()
-                }
-                .font(OPSStyle.Typography.captionBold)
-                .foregroundColor(OPSStyle.Colors.primaryAccent)
-            }
-            .padding(.horizontal, OPSStyle.Layout.spacing3_5)
-            .padding(.top, OPSStyle.Layout.spacing3_5)
-            .padding(.bottom, OPSStyle.Layout.spacing4)
-
-            // Year navigation
-            HStack {
-                Button {
-                    withAnimation(OPSStyle.Animation.fast) { displayYear -= 1 }
-                } label: {
-                    Image(systemName: OPSStyle.Icons.chevronLeft)
-                        .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .semibold))
-                        .foregroundColor(OPSStyle.Colors.primaryText)
-                        .frame(width: OPSStyle.Layout.touchTargetMin, height: OPSStyle.Layout.touchTargetMin)
-                }
-
-                Spacer()
-
-                Text(String(displayYear))
-                    .font(OPSStyle.Typography.headingBold)
-                    .foregroundColor(OPSStyle.Colors.primaryText)
-                    .contentTransition(.numericText())
-
-                Spacer()
-
-                Button {
-                    withAnimation(OPSStyle.Animation.fast) { displayYear += 1 }
-                } label: {
-                    Image(systemName: OPSStyle.Icons.chevronRight)
-                        .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .semibold))
-                        .foregroundColor(OPSStyle.Colors.primaryText)
-                        .frame(width: OPSStyle.Layout.touchTargetMin, height: OPSStyle.Layout.touchTargetMin)
-                }
-            }
-            .padding(.horizontal, OPSStyle.Layout.spacing3_5)
-            .padding(.bottom, OPSStyle.Layout.spacing3_5)
-
-            // Month grid (3x4)
-            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: OPSStyle.Layout.spacing2_5), count: 3), spacing: OPSStyle.Layout.spacing2_5) {
-                ForEach(1...12, id: \.self) { month in
-                    let isSelected = month == currentMonth && displayYear == currentYear
-                    let isCurrentMonth = month == calendar.component(.month, from: Date()) && displayYear == calendar.component(.year, from: Date())
-
-                    Button {
-                        selectMonth(month)
-                    } label: {
-                        Text(monthNames[month - 1].uppercased())
-                            .font(OPSStyle.Typography.bodyBold)
-                            .foregroundColor(isSelected ? OPSStyle.Colors.invertedText : OPSStyle.Colors.primaryText)
-                            .frame(maxWidth: .infinity)
-                            .frame(height: OPSStyle.Layout.touchTargetMin)
-                            .background(
-                                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                    .fill(isSelected ? OPSStyle.Colors.primaryText : OPSStyle.Colors.surfaceInput)
-                            )
-                            .overlay(
-                                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                    .stroke(
-                                        isCurrentMonth && !isSelected ? OPSStyle.Colors.primaryAccent.opacity(0.5) : OPSStyle.Colors.cardBorder,
-                                        lineWidth: OPSStyle.Layout.Border.standard
-                                    )
-                            )
-                    }
-                }
-            }
-            .padding(.horizontal, OPSStyle.Layout.spacing3_5)
-
-            Spacer().frame(height: 24)
-
-            // Today shortcut
-            Button {
-                let today = Date()
-                let todayYear = calendar.component(.year, from: today)
-                let todayMonth = calendar.component(.month, from: today)
-                displayYear = todayYear
-                selectMonth(todayMonth)
-            } label: {
-                Text("TODAY")
-                    .font(OPSStyle.Typography.captionBold)
-                    .foregroundColor(OPSStyle.Colors.primaryAccent)
-                    .tracking(1)
-                    .padding(.vertical, 10)
-                    .padding(.horizontal, OPSStyle.Layout.spacing4)
-                    .background(
-                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                            .fill(OPSStyle.Colors.surfaceInput)
-                    )
-                    .overlay(
-                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                            .stroke(OPSStyle.Colors.primaryAccent.opacity(0.3), lineWidth: 0.5)
-                    )
-            }
-            .padding(.bottom, OPSStyle.Layout.spacing3_5)
-        }
-        .background(OPSStyle.Colors.background)
-    }
-
-    private func selectMonth(_ month: Int) {
-        var components = DateComponents()
-        components.year = displayYear
-        components.month = month
-        components.day = 1
-
-        guard let date = calendar.date(from: components),
-              let monthStart = calendar.dateInterval(of: .month, for: date)?.start else { return }
-
-        UIImpactFeedbackGenerator(style: .light).impactOccurred()
-        viewModel.visibleMonth = monthStart
-        viewModel.selectDate(monthStart, userInitiated: true)
-        dismiss()
     }
 }
 

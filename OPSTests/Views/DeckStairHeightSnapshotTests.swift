@@ -7,9 +7,10 @@
 //  the Connect entry point's edge picker, and the height sheet scoped to a
 //  named level. NOT pass/fail — writes images for inspection.
 //
-//  Rendered via UIHostingController + UIWindow + drawHierarchy so
-//  asset-catalog colors resolve and onAppear runs (ImageRenderer does
-//  neither).
+//  Rendered via FixedSizeSnapshot: hosted in the APP'S OWN window at a fixed
+//  logical size, so asset-catalog colors resolve, onAppear runs, and the
+//  capture is identical on any runner device (test-created windows render
+//  blank in degraded full-suite runs — see AppHostWindow.swift).
 //
 //  Run:  xcodebuild test -scheme OPS \
 //          -destination 'platform=iOS Simulator,name=iPhone 17,OS=26.5' \
@@ -37,22 +38,12 @@ final class DeckStairHeightSnapshotTests: XCTestCase {
 
     private func snapshot<V: View>(_ name: String, view: V, size: CGSize? = nil) {
         let renderSize = size ?? frameSize
-        let host = UIHostingController(rootView: view)
-        host.overrideUserInterfaceStyle = .dark
-        host.view.frame = CGRect(origin: .zero, size: renderSize)
-        host.view.backgroundColor = .black
-
-        let window = UIWindow(frame: CGRect(origin: .zero, size: renderSize))
-        window.overrideUserInterfaceStyle = .dark
-        window.rootViewController = host
-        window.makeKeyAndVisible()
-        host.view.setNeedsLayout()
-        host.view.layoutIfNeeded()
-        RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.6))
-
-        let renderer = UIGraphicsImageRenderer(size: renderSize)
-        let image = renderer.image { _ in
-            host.view.drawHierarchy(in: host.view.bounds, afterScreenUpdates: true)
+        let image: UIImage
+        do {
+            image = try FixedSizeSnapshot.render(view, size: renderSize)
+        } catch {
+            XCTFail("Could not acquire the app host window for \(name): \(error)")
+            return
         }
 
         guard let data = image.pngData() else {

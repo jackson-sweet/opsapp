@@ -3,9 +3,10 @@
 //  OPSTests
 //
 //  Visual proof for the expense batch console — renders every console and
-//  detail state to PNGs (UIHostingController + UIWindow + drawHierarchy,
-//  dark, 390×844) and stashes them as attachments + files for
-//  docs/artifacts export. Fixture DTOs only; no network.
+//  detail state to PNGs (FixedSizeSnapshot: hosted in the app's own window
+//  at a fixed 390×844, dark, device-agnostic) and stashes them as
+//  attachments + files for docs/artifacts export. Fixture DTOs only; no
+//  network.
 //
 
 import XCTest
@@ -332,25 +333,15 @@ final class ExpenseConsoleSnapshotTests: XCTestCase {
         }
     }
 
-    // MARK: - Render harness (UIHostingController + UIWindow + drawHierarchy)
+    // MARK: - Render harness (FixedSizeSnapshot — app-hosted, fixed size)
 
     private func renderToPNG(_ name: String, @ViewBuilder _ make: () -> some View) {
-        let host = UIHostingController(rootView: make().frame(width: frameSize.width, height: frameSize.height))
-        host.overrideUserInterfaceStyle = .dark
-        host.view.frame = CGRect(origin: .zero, size: frameSize)
-        host.view.backgroundColor = .black
-
-        let window = UIWindow(frame: CGRect(origin: .zero, size: frameSize))
-        window.overrideUserInterfaceStyle = .dark
-        window.rootViewController = host
-        window.makeKeyAndVisible()
-        host.view.setNeedsLayout()
-        host.view.layoutIfNeeded()
-        RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.5))
-
-        let renderer = UIGraphicsImageRenderer(size: frameSize)
-        let image = renderer.image { _ in
-            host.view.drawHierarchy(in: host.view.bounds, afterScreenUpdates: true)
+        let image: UIImage
+        do {
+            image = try FixedSizeSnapshot.render(make(), size: frameSize)
+        } catch {
+            XCTFail("Could not acquire the app host window for \(name): \(error)")
+            return
         }
         guard let data = image.pngData() else {
             XCTFail("Failed to render \(name)")

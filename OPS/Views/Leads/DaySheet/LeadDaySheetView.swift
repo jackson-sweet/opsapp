@@ -110,7 +110,17 @@ struct LeadDaySheetView: View {
             // The window closed (expired, undone, or refused) — the sheet is
             // free to re-derive, which is when a stamped card finds its new
             // group.
-            if pending == nil { frozenGroups = nil }
+            //
+            // 300ms on the one curve (spec §7): `Row.id` IS the lead id, so the
+            // row keeps its identity across the regroup and SwiftUI glides the
+            // stamped card from YOUR MOVE down to WAITING. Without the
+            // transaction it would teleport, and the operator would lose track
+            // of the card he was just working.
+            if pending == nil {
+                withAnimation(OPSStyle.Animation.curve(OPSStyle.Animation.durationStagger)) {
+                    frozenGroups = nil
+                }
+            }
         }
     }
 
@@ -268,13 +278,26 @@ struct LeadDaySheetView: View {
 
     /// One card open at a time — opening a second closes the first, so the
     /// sheet never becomes a wall of expanded cards to scroll past.
+    ///
+    /// 250ms on the one OPS curve (spec §7). The body fades in (`.transition`
+    /// on the card's expanded content) while the card's height change pushes
+    /// the rows below it — the push IS the layout animation, riding this same
+    /// transaction, so nothing slides on a second beat.
+    ///
+    /// Light impact on the OPEN only. Opening is a discovery — something
+    /// arrived under the thumb. Closing is not: the card leaving is its own
+    /// confirmation, and a buzz for it would be the second signal for one tap.
     private func toggleExpansion(_ id: String) {
-        if expandedLeadId == id {
-            expandedLeadId = nil
-        } else {
-            expandedLeadId = id
-            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        guard expandedLeadId != id else {
+            withAnimation(OPSStyle.Animation.page) { expandedLeadId = nil }
+            return
         }
+        // Primed on the press so the taptic engine is warm by the time the
+        // expansion lands — a late buzz reads as a second event.
+        let impact = UIImpactFeedbackGenerator(style: .light)
+        impact.prepare()
+        withAnimation(OPSStyle.Animation.page) { expandedLeadId = id }
+        impact.impactOccurred()
     }
 
     /// The one write on this screen. WON routes out to the guarded conversion
@@ -308,11 +331,16 @@ struct LeadDaySheetView: View {
     /// Deep link: open the lead in place rather than pushing a screen over the
     /// sheet — the row he tapped a notification for is the row he lands on.
     private func reveal(_ id: String, using proxy: ScrollViewProxy) {
-        expandedLeadId = id
+        let impact = UIImpactFeedbackGenerator(style: .light)
+        impact.prepare()
+        // Open AND scroll inside one 250ms transaction. Split across two, the
+        // card would expand on one beat and travel on another — two events for
+        // one notification tap.
         withAnimation(OPSStyle.Animation.page) {
+            expandedLeadId = id
             proxy.scrollTo(id, anchor: .top)
         }
-        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        impact.impactOccurred()
         scrollTarget = nil
     }
 
@@ -387,7 +415,9 @@ struct LeadDaySheetView: View {
 
 /// One pulsing row-shaped placeholder. MOBILE.md §10: white 0.06 → 0.03,
 /// 1.5s ease-in-out, radius of the element being loaded. Reduced motion holds
-/// it still rather than swapping in a different animation.
+/// it still rather than swapping in a different animation — and holds it at
+/// FULL `fillNeutralDim`, not at the dim end of a pulse frozen in place, which
+/// is what dropping only the animation would leave on screen.
 private struct SkeletonRow: View {
 
     let reduceMotion: Bool
@@ -398,7 +428,7 @@ private struct SkeletonRow: View {
         RoundedRectangle(cornerRadius: OPSStyle.Layout.panelRadius, style: .continuous)
             .fill(OPSStyle.Colors.fillNeutralDim)
             .frame(height: DaySheetLeadRow.minHeight)
-            .opacity(dim ? OPSStyle.Animation.skeletonPulseOpacity : 1)
+            .opacity(dim && !reduceMotion ? OPSStyle.Animation.skeletonPulseOpacity : 1)
             .animation(
                 reduceMotion
                     ? nil

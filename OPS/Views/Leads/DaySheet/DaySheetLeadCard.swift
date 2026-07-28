@@ -21,10 +21,14 @@
 //  appears only when this operator may edit this lead (the transform already
 //  gates `row.milestone` on edit scope).
 //
-//  No animation here — expansion is a plain conditional, and the milestone's
-//  press → confirmation → UNDO is a plain state swap read off
-//  `LeadMilestoneCommitter.pending`. Motion (250ms push, group re-sort, the
-//  undo chip's fade, reduced-motion fallback) is a later task's job.
+//  Motion is two opacity transitions and nothing else (spec §7). The expanded
+//  body fades in over the 250ms transaction the SCREEN opens — this card never
+//  animates its own expansion, because the height change that pushes every row
+//  below it belongs to the sheet's layout, not to one cell. The milestone
+//  control crossfades idle ↔ pending in 150ms, scoped to that control by
+//  `.animation(_:value:)` so a stamp never animates the card around it. Both
+//  ride `OPSStyle.Animation` tokens, which resolve to a 150ms crossfade under
+//  Reduce Motion with no call-site branch.
 //
 //  Spec: docs/superpowers/specs/2026-07-27-my-leads-day-sheet-design.md §3.4
 //
@@ -84,7 +88,11 @@ struct DaySheetLeadCard: View {
         VStack(spacing: 0) {
             face
             if isExpanded {
+                // Opacity only. A move/slide on top of the height change would
+                // give one tap two motions, and the clip below already keeps
+                // the growing body inside the panel while it fades up.
                 expandedContent
+                    .transition(.opacity)
             }
         }
         .commandCard()
@@ -647,6 +655,12 @@ private struct DaySheetMilestoneStamp: View {
             onPress: { onPress(milestone) },
             onUndo: { Task { await committer.undo() } }
         )
+        // 150ms crossfade, spec §7. Scoped to THIS control by value: the press
+        // that opens the window also flips the lead's stage, and an ambient
+        // animation would drag the whole card through that. Idle and pending
+        // share a footprint, so there is nothing to animate but opacity — the
+        // confirmation settles in place rather than bouncing the column.
+        .animation(OPSStyle.Animation.hover, value: pending)
     }
 }
 
@@ -670,8 +684,10 @@ private struct DaySheetMilestoneControl: View {
     var body: some View {
         if let pending {
             confirmation(queued: pending.queuedRequestId != nil)
+                .transition(.opacity)
         } else {
             stamp
+                .transition(.opacity)
         }
     }
 

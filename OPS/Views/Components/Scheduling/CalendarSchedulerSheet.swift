@@ -2,8 +2,30 @@
 //  CalendarSchedulerSheet.swift
 //  OPS
 //
-//  Calendar-based scheduler for rescheduling projects and tasks
-//  Allows selecting new dates while viewing potential conflicts
+//  Picking dates for a job.
+//
+//  The screen answers, in this order, the three questions a person actually
+//  has when they open it:
+//
+//    1. WHAT AM I MOVING?   — the identity line, always on screen.
+//    2. WHEN IS IT FREE?    — a continuous month scroll where every day already
+//                             carries its own availability: this project's
+//                             work, the crew's other jobs, the crew's time off,
+//                             and how early the job's prerequisites allow.
+//    3. WHAT DOES THAT COST? — the day panel names the actual jobs, clients,
+//                             crew, and drive distance a pick collides with.
+//
+//  Nothing on this screen blocks a date. A dependency floor dims; a conflict
+//  gets named; time off is spelled out — and the operator still picks the day
+//  the job needs, because they know something the calendar does not. The
+//  signals exist to make that choice informed, not to overrule it.
+//
+//  There is exactly one commit point: SAVE in the sticky footer. CLEAR resets
+//  the picker and never touches stored dates; removing dates from a job is an
+//  explicit, separately named UNSCHEDULE.
+//
+//  Availability logic lives in `SchedulerDayContext` (pure, tested). This file
+//  is assembly and presentation only.
 //
 
 import SwiftUI
@@ -24,26 +46,25 @@ struct CalendarSchedulerSheet: View {
 
     @Environment(\.modelContext) private var modelContext
     @Environment(\.tutorialMode) private var tutorialMode
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @EnvironmentObject private var dataController: DataController
 
-    // Calendar state
-    @State private var selectedStartDate: Date
-    @State private var selectedEndDate: Date
-    @State private var viewMode: ViewMode = .selecting
-    @State private var currentMonth: Date = Date()
-    @State private var conflictingEvents: [ProjectTask] = []
-    @State private var showingConflictWarning = false
+    // Selection + scroll state
+    @State private var selection: SchedulerSelection
+    @State private var visibleMonth: Date
+    @State private var scrollRequest: Date?
+    @State private var showMonthPicker = false
+    @State private var inspectorDay: InspectorDay?
+    /// Warning haptic fires once per completed conflicting range, not on every
+    /// re-render of it.
+    @State private var lastWarnedRange: String?
 
-    // Filter chips — independent, multi-select. Default state depends on
-    // itemType so the most useful signal is on without user effort:
-    //   • project / task with crew → MY CREW + THIS PROJECT both on
-    //   • draft task with crew but no project → MY CREW on
-    //   • everything else → both off (show all)
-    @State private var showThisProjectFilter: Bool = true
-    @State private var showMyCrewFilter: Bool = true
-
-    @State private var allScheduledTasks: [ProjectTask] = []
-    @State private var filteredScheduledTasks: [ProjectTask] = []
+    // Availability engine — rebuilt whenever the schedule data changes.
+    @State private var dayContext: SchedulerDayContext
+    /// A draft task's identity comes from its task type, which lives in the
+    /// store. Resolved once on load rather than re-fetched on every render.
+    @State private var draftTaskTitle: String?
+    @State private var draftProjectTitle: String?
 
     // Quick push / cascade state
     @State private var cascadeEnabled: Bool = false
@@ -53,10 +74,22 @@ struct CalendarSchedulerSheet: View {
     @State private var pendingPushPreservesCalendarWeek: Bool = false
     @AppStorage("showCascadePreview") private var showCascadePreviewPref: Bool = true
 
-    // Grid configuration
-    private let columns = Array(repeating: GridItem(.flexible(), spacing: 0), count: 7)
-    // Start with Monday
-    private let weekdayLabels = ["M", "T", "W", "T", "F", "S", "S"]
+    private let calendar = Calendar.current
+    /// Monday-first, matching the Schedule tab so the two grids read the same.
+    private let weekdayLabels = ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"]
+    /// The month the scroll list is built around. Fixed for the life of the
+    /// sheet so the lazy list's identities never churn underneath a scroll.
+    private let anchorMonth: Date
+
+    private struct InspectorDay: Identifiable {
+        let id: TimeInterval
+        let date: Date
+
+        init(_ date: Date) {
+            self.date = date
+            self.id = date.timeIntervalSince1970
+        }
+    }
 
     // MARK: - Initialization
     init(isPresented: Binding<Bool>,
@@ -77,98 +110,111 @@ struct CalendarSchedulerSheet: View {
         self.preselectedTeamMemberIds = preselectedTeamMemberIds
         self.emitsSuccessFeedbackOnConfirm = emitsSuccessFeedbackOnConfirm
 
-        // Initialize with current dates or today
-        let startDate = currentStartDate ?? Date()
-        let endDate = currentEndDate ?? Calendar.current.date(byAdding: .day, value: 1, to: startDate) ?? startDate
+        // Reopening an already-scheduled job shows what is scheduled today, so
+        // SAVE is valid immediately and the grid opens on the right weeks.
+        let calendar = Calendar.current
+        let seeded = SchedulerSelection.prefilled(
+            start: currentStartDate,
+            end: currentEndDate,
+            calendar: calendar
+        )
+        self._selection = State(initialValue: seeded)
 
-        self._selectedStartDate = State(initialValue: startDate)
-        self._selectedEndDate = State(initialValue: endDate)
+        let anchorDate = currentStartDate ?? Date()
+        let anchor = calendar.dateInterval(of: .month, for: anchorDate)?.start ?? anchorDate
+        self.anchorMonth = anchor
+        self._visibleMonth = State(initialValue: anchor)
 
-        // Start with the month of the current start date
-        if let monthStart = Calendar.current.dateInterval(of: .month, for: startDate)?.start {
-            self._currentMonth = State(initialValue: monthStart)
-        }
-
-        // Default filter state — MY CREW / THIS PROJECT both on when the
-        // itemType has both signals available. Otherwise turn off whichever
-        // signal isn't applicable so the user isn't seeing a lit chip that
-        // does nothing.
-        let hasProject: Bool = {
-            switch itemType {
-            case .project: return true
-            case .task: return true
-            case .draftTask(_, _, let projectId): return projectId != nil
-            }
-        }()
-        let hasCrew: Bool = {
-            switch itemType {
-            case .project(let project):
-                if let preselected = preselectedTeamMemberIds, !preselected.isEmpty { return true }
-                return !project.getTeamMemberIds().isEmpty
-            case .task(let task):
-                if let preselected = preselectedTeamMemberIds, !preselected.isEmpty { return true }
-                return !task.getTeamMemberIds().isEmpty
-            case .draftTask(_, let teamMemberIds, _):
-                return !teamMemberIds.isEmpty
-            }
-        }()
-        self._showThisProjectFilter = State(initialValue: hasProject)
-        self._showMyCrewFilter = State(initialValue: hasCrew)
+        // A placeholder context so the first frame renders a real (empty) grid
+        // instead of nothing; `loadContext` replaces it from the store on appear.
+        self._dayContext = State(initialValue: SchedulerDayContext(
+            item: Self.baseItem(
+                itemType: itemType,
+                preselectedTeamMemberIds: preselectedTeamMemberIds,
+                isScheduled: currentStartDate != nil
+            ),
+            events: []
+        ))
     }
 
     // MARK: - Body
     var body: some View {
-        ZStack {
-            OPSStyle.Colors.background
-                .ignoresSafeArea()
+        GeometryReader { proxy in
+            let isCompact = proxy.size.height < OPSStyle.Layout.schedulerCompactHeightThreshold
 
-            VStack(spacing: 0) {
-                // Header
-                headerView
+            ZStack {
+                OPSStyle.Colors.background
+                    .ignoresSafeArea()
 
-                
-                // Calendar View
-                ScrollView {
-                    VStack(spacing: OPSStyle.Layout.spacing3_5) {
+                VStack(spacing: 0) {
+                    navigationBar
+                    identityRow
 
-                        // Selected dates display (always visible, same size)
-                        selectedDatesHeader
-                            .padding(.top, OPSStyle.Layout.spacing2)
+                    rangeStrip
+                        .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+                        .padding(.bottom, OPSStyle.Layout.spacing2)
 
-                        // Filter chips — above the grid so users actually find
-                        // them. They scope which events are encoded into day
-                        // cells and which appear in the day inspector below.
-                        filterChipStrip
-
-                        // Quick push bar (only for tasks with existing dates)
-                        if case .task = itemType, currentStartDate != nil {
-                            quickPushBar
-                        }
-
-                        // Calendar Grid
-                        calendarSectionFullWidth
-
-                        // Legend — explains the three signals so the first
-                        // session reads correctly without a tutorial.
-                        cellLegendStrip
-
-                        // Day inspector — lists actual events on the focused
-                        // day so the user can see WHAT is scheduled, not just
-                        // that something is. Replaces the old "conflict only"
-                        // warning card with an always-available detail panel.
-                        dayInspectorPanel
-                            .padding(.horizontal, OPSStyle.Layout.spacing3_5)
-
-                        // Action Button (always visible, disabled when no dates)
-                        actionButtons
-                            .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+                    if case .task = itemType, currentStartDate != nil {
+                        quickPushRow
+                            .padding(.bottom, OPSStyle.Layout.spacing2)
                     }
-                    .padding(.bottom, OPSStyle.Layout.spacing3_5)
+
+                    if let suggested = dayContext.suggestion, !selection.isCommittable {
+                        suggestionChip(suggested)
+                            .padding(.bottom, OPSStyle.Layout.spacing2)
+                    }
+
+                    pinnedCalendarHeader
+
+                    SchedulerMonthScroll(
+                        context: dayContext,
+                        selection: selection,
+                        visibleMonth: $visibleMonth,
+                        scrollRequest: $scrollRequest,
+                        anchorMonth: anchorMonth,
+                        onTapDay: handleDayTap,
+                        onLongPressDay: handleDayLongPress
+                    )
+                    .frame(minHeight: OPSStyle.Layout.schedulerCalendarMinHeight)
+
+                    dayPanel
+                        .frame(
+                            height: isCompact
+                                ? OPSStyle.Layout.schedulerDayPanelCompactHeight
+                                : OPSStyle.Layout.schedulerDayPanelHeight
+                        )
+
+                    SchedulerFooterBar(
+                        selection: selection,
+                        onClear: handleClear,
+                        onSave: handleSave
+                    )
                 }
             }
+            .frame(width: proxy.size.width, height: proxy.size.height)
         }
         .onAppear {
-            loadScheduledTasks()
+            loadContext()
+        }
+        .onChange(of: dataController.scheduledTasksDidChange) { _, _ in
+            loadContext()
+        }
+        .sheet(isPresented: $showMonthPicker) {
+            MonthJumpPicker(selectedMonth: visibleMonth) { monthStart in
+                scrollRequest = monthStart
+            }
+            .opsSheet(detents: [.medium])
+        }
+        .sheet(item: $inspectorDay) { day in
+            SchedulerDaySheet(
+                day: day.date,
+                context: dayContext,
+                action: selection.dayAction,
+                onApply: {
+                    applyDaySelection(day.date)
+                }
+            )
+            .opsSheet(detents: [.medium])
         }
         .sheet(isPresented: $showingCascadePreview) {
             if let plan = cascadePlan, case .task(let task) = itemType {
@@ -196,404 +242,334 @@ struct CalendarSchedulerSheet: View {
         }
     }
 
-    // MARK: - Header View
-    private var headerView: some View {
-        ZStack {
-            SchedulerBlurView(style: .dark)
-                .ignoresSafeArea(edges: .top)
+    // MARK: - Navigation bar
 
-            VStack(spacing: 0) {
-                HStack {
-                    Button("Cancel") {
-                        guard !tutorialMode else { return } // Disabled in tutorial mode
-                        isPresented = false
-                    }
-                    .foregroundColor(tutorialMode ? OPSStyle.Colors.tertiaryText : OPSStyle.Colors.primaryText)
-                    .font(OPSStyle.Typography.body)
-                    .allowsHitTesting(!tutorialMode)
-                    .opacity(tutorialMode ? 0.5 : 1.0)
-
-                    Spacer()
-
-                    Text("Schedule \(itemType.displayName)")
-                        .font(OPSStyle.Typography.bodyBold)
-                        .foregroundColor(OPSStyle.Colors.primaryText)
-
-                    Spacer()
-
-                    // Clear button — resets the in-sheet date selection AND,
-                    // when dates already exist on the item, clears them on
-                    // save. Bug f3604d52 — always show when onClearDates is
-                    // wired so users can reset their picker mid-flow even
-                    // before committing a schedule.
-                    if onClearDates != nil {
-                        Button {
-                            handleClearDates()
-                        } label: {
-                            Text("Clear")
-                                .font(OPSStyle.Typography.body)
-                                .foregroundColor(OPSStyle.Colors.errorStatus)
-                        }
-                        .frame(minHeight: 44)
-                        .contentShape(Rectangle())
-                    } else {
-                        // Invisible spacer for balance
-                        Text("Cancel")
-                            .font(OPSStyle.Typography.body)
-                            .opacity(0)
-                    }
-                }
-                .padding()
+    private var navigationBar: some View {
+        HStack {
+            Button("Cancel") {
+                guard !tutorialMode else { return } // Disabled in tutorial mode
+                isPresented = false
             }
-        }
-        .frame(height: 60)
-    }
+            .foregroundColor(tutorialMode ? OPSStyle.Colors.tertiaryText : OPSStyle.Colors.primaryText)
+            .font(OPSStyle.Typography.body)
+            .allowsHitTesting(!tutorialMode)
+            .opacity(tutorialMode ? 0.5 : 1.0)
 
-    // MARK: - Selected Dates Header
-    private var hasSelectedDates: Bool {
-        // User has completed date selection (in reviewing mode)
-        viewMode == .reviewing
-    }
+            Spacer()
 
-    private var selectedDatesHeader: some View {
-        HStack(spacing: 0) {
-            // Start date
-            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
-                Text("START")
-                    .font(OPSStyle.Typography.smallCaption)
-                    .foregroundColor(OPSStyle.Colors.secondaryText)
-                Text(hasSelectedDates ? formatDate(selectedStartDate) : "Select date")
-                    .font(OPSStyle.Typography.bodyBold)
-                    .foregroundColor(hasSelectedDates ? OPSStyle.Colors.primaryText : OPSStyle.Colors.tertiaryText)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-
-            // Arrow
-            Image(systemName: "arrow.right")
-                .font(.system(size: OPSStyle.Layout.IconSize.sm))
-                .foregroundColor(hasSelectedDates ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.tertiaryText)
-                .padding(.horizontal, OPSStyle.Layout.spacing2_5)
-
-            // End date
-            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
-                Text("END")
-                    .font(OPSStyle.Typography.smallCaption)
-                    .foregroundColor(OPSStyle.Colors.secondaryText)
-                Text(hasSelectedDates ? formatDate(selectedEndDate) : "Select date")
-                    .font(OPSStyle.Typography.bodyBold)
-                    .foregroundColor(hasSelectedDates ? OPSStyle.Colors.primaryText : OPSStyle.Colors.tertiaryText)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-
-            // Duration
-            VStack(alignment: .trailing, spacing: OPSStyle.Layout.spacing1) {
-                Text("DURATION")
-                    .font(OPSStyle.Typography.smallCaption)
-                    .foregroundColor(OPSStyle.Colors.secondaryText)
-                Text(hasSelectedDates ? "\(daysBetween(selectedStartDate, selectedEndDate)) days" : "—")
-                    .font(OPSStyle.Typography.bodyBold)
-                    .foregroundColor(hasSelectedDates ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.tertiaryText)
-            }
-        }
-        .padding(OPSStyle.Layout.spacing3)
-        .glassSurface(
-            borderColor: hasSelectedDates ? OPSStyle.Colors.primaryAccent.opacity(0.3) : OPSStyle.Colors.glassBorder
-        )
-        .padding(.horizontal, OPSStyle.Layout.spacing3_5)
-        .animation(OPSStyle.Animation.fast, value: hasSelectedDates)
-    }
-
-    // MARK: - Calendar Section (Full Width)
-    private var calendarSectionFullWidth: some View {
-        VStack(spacing: OPSStyle.Layout.spacing3) {
-            // Month Navigation
-            monthNavigationView
-                .padding(.horizontal, OPSStyle.Layout.spacing3_5)
-
-            // Weekday Headers
-            weekdayHeadersView
-                .padding(.horizontal, OPSStyle.Layout.spacing3)
-
-            // Calendar Grid
-            calendarGridView
-                .padding(.horizontal, OPSStyle.Layout.spacing3)
-        }
-    }
-
-    // MARK: - Filter Chip Strip
-    //
-    // Two independent chips above the calendar. Tapping toggles each on/off.
-    // Both off = "show everything," which is the most permissive filter.
-    // Multi-select (not mutually exclusive) so the user can see e.g. tasks
-    // that match either project OR crew at the same time.
-    private var filterChipStrip: some View {
-        let projectChipEnabled = itemType.projectId != nil
-        let crewChipEnabled = !currentItemTeamMemberIds.isEmpty
-
-        return HStack(spacing: OPSStyle.Layout.spacing2) {
-            filterChip(
-                label: "THIS PROJECT",
-                icon: OPSStyle.Icons.taskType,
-                isActive: showThisProjectFilter,
-                isEnabled: projectChipEnabled,
-                onTap: {
-                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                    showThisProjectFilter.toggle()
-                    filterScheduledTasks()
-                }
-            )
-
-            filterChip(
-                label: "MY CREW",
-                icon: OPSStyle.Icons.crew,
-                isActive: showMyCrewFilter,
-                isEnabled: crewChipEnabled,
-                onTap: {
-                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                    showMyCrewFilter.toggle()
-                    filterScheduledTasks()
-                }
-            )
-
-            Spacer(minLength: 0)
-
-            // Live count of visible events in the current window — confirms
-            // filters actually do something and gives the user a sense of
-            // density before they start tapping days.
-            Text("\(filteredScheduledTasks.count)")
-                .font(OPSStyle.Typography.dataValue)
+            Text("SCHEDULE \(itemType.displayName.uppercased())")
+                .font(OPSStyle.Typography.buttonLabel)
                 .foregroundColor(OPSStyle.Colors.primaryText)
-            +
-            Text(" SHOWN")
-                .font(OPSStyle.Typography.category)
-                .foregroundColor(OPSStyle.Colors.tertiaryText)
+
+            Spacer()
+
+            // Balances the title against Cancel without adding a second exit.
+            Text("Cancel")
+                .font(OPSStyle.Typography.body)
+                .opacity(0)
+                .accessibilityHidden(true)
         }
         .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+        .frame(height: OPSStyle.Layout.bottomCTAHeight)
     }
 
-    private func filterChip(
-        label: String,
-        icon: String,
-        isActive: Bool,
-        isEnabled: Bool,
-        onTap: @escaping () -> Void
-    ) -> some View {
-        Button(action: { if isEnabled { onTap() } }) {
-            HStack(spacing: OPSStyle.Layout.spacing1 + 2) {
-                Image(systemName: icon)
-                    .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .semibold))
-                Text(label)
-                    .font(OPSStyle.Typography.category)
-            }
-            .foregroundColor(
-                !isEnabled ? OPSStyle.Colors.tertiaryText.opacity(0.4)
-                : isActive ? OPSStyle.Colors.invertedText
-                : OPSStyle.Colors.primaryText
-            )
-            .padding(.horizontal, OPSStyle.Layout.spacing2_5)
-            .frame(minHeight: OPSStyle.Layout.touchTargetMin)
-            .background(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius)
-                    .fill(isActive ? OPSStyle.Colors.primaryText : Color.clear)
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius)
-                    .strokeBorder(
-                        !isEnabled ? OPSStyle.Colors.cardBorderSubtle
-                        : isActive ? Color.clear
-                        : OPSStyle.Colors.cardBorder,
-                        lineWidth: OPSStyle.Layout.Border.standard
-                    )
-            )
-            .contentShape(Rectangle())
-        }
-        .disabled(!isEnabled)
-    }
+    // MARK: - Identity
 
-    // MARK: - Cell Legend Strip
-    //
-    // Three tiny inline samples that explain the cell encoding. Kept compact
-    // so first-time readers can decode the grid without a tour. Hidden in the
-    // tutorial flow because the tutorial has its own onboarding overlay.
-    private var cellLegendStrip: some View {
-        HStack(spacing: OPSStyle.Layout.spacing3) {
-            legendItem(swatch: AnyView(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.progressBarRadius)
-                    .fill(OPSStyle.Colors.primaryText)
-                    .frame(width: 2, height: 16)
-            ), label: "PROJECT")
+    private var identityRow: some View {
+        HStack(spacing: OPSStyle.Layout.spacing2) {
+            Text("//")
+                .font(OPSStyle.Typography.metadata)
+                .foregroundColor(OPSStyle.Colors.inactiveText)
 
-            legendItem(swatch: AnyView(
-                Text("3")
+            Text(itemTitle.uppercased())
+                .font(OPSStyle.Typography.metadata)
+                .foregroundColor(OPSStyle.Colors.primaryText)
+                .lineLimit(1)
+
+            if let project = itemProjectTitle, !project.isEmpty {
+                Text("· \(project.uppercased())")
                     .font(OPSStyle.Typography.metadata)
-                    .foregroundColor(OPSStyle.Colors.warningStatus)
-                    .padding(.horizontal, OPSStyle.Layout.spacing1)
-                    .padding(.vertical, 1)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius)
-                            .strokeBorder(OPSStyle.Colors.warningStatus.opacity(0.6), lineWidth: OPSStyle.Layout.Border.standard)
-                    )
-            ), label: "CONFLICT")
-
-            legendItem(swatch: AnyView(
-                HStack(spacing: OPSStyle.Layout.spacing1 / 2) {
-                    Circle().fill(OPSStyle.Colors.primaryAccent).frame(
-                        width: OPSStyle.Layout.Indicator.dotSM,
-                        height: OPSStyle.Layout.Indicator.dotSM
-                    )
-                    Circle().fill(OPSStyle.Colors.successStatus).frame(
-                        width: OPSStyle.Layout.Indicator.dotSM,
-                        height: OPSStyle.Layout.Indicator.dotSM
-                    )
-                }
-            ), label: "CREW")
+                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+                    .lineLimit(1)
+            }
 
             Spacer(minLength: 0)
+
+            // Removing a job's dates is a different act from resetting the
+            // picker, so it gets its own honestly-named control — and only
+            // exists when there are dates to remove.
+            if canUnschedule {
+                Button(action: handleUnschedule) {
+                    Text("UNSCHEDULE")
+                        .font(OPSStyle.Typography.metadata)
+                        .foregroundColor(OPSStyle.Colors.rose)
+                        .padding(.horizontal, OPSStyle.Layout.spacing2)
+                        .frame(minHeight: OPSStyle.Layout.touchTargetMin)
+                        .contentShape(Rectangle())
+                }
+            }
         }
-        .padding(.horizontal, OPSStyle.Layout.spacing3_5)
-        .opacity(0.85)
+        .padding(.leading, OPSStyle.Layout.spacing3_5)
+        .padding(.trailing, canUnschedule ? OPSStyle.Layout.spacing2 : OPSStyle.Layout.spacing3_5)
+        .frame(height: OPSStyle.Layout.schedulerIdentityHeight)
     }
 
-    private func legendItem(swatch: AnyView, label: String) -> some View {
-        HStack(spacing: OPSStyle.Layout.spacing2) {
-            swatch
-                .frame(minWidth: OPSStyle.Layout.IconSize.xs, alignment: .center)
+    // MARK: - Range strip
+
+    private var rangeStrip: some View {
+        HStack(spacing: OPSStyle.Layout.spacing3) {
+            rangeField("START", value: selection.startDate.map { Self.weekdayDate($0) })
+            rangeField("END", value: selection.endDate.map { Self.weekdayDate($0) })
+            rangeField(
+                "DAYS",
+                value: selection.dayCount(calendar: calendar).map(String.init),
+                alignment: .trailing
+            )
+        }
+        .padding(.horizontal, OPSStyle.Layout.spacing3)
+        .frame(height: OPSStyle.Layout.schedulerRangeStripHeight)
+        .glassSurface()
+    }
+
+    private func rangeField(
+        _ label: String,
+        value: String?,
+        alignment: HorizontalAlignment = .leading
+    ) -> some View {
+        VStack(alignment: alignment, spacing: OPSStyle.Layout.spacing1) {
             Text(label)
                 .font(OPSStyle.Typography.metadata)
                 .foregroundColor(OPSStyle.Colors.tertiaryText)
+            Text(value?.uppercased() ?? "—")
+                .font(OPSStyle.Typography.dataValue)
+                .monospacedDigit()
+                .foregroundColor(value == nil ? OPSStyle.Colors.tertiaryText : OPSStyle.Colors.primaryText)
+                .lineLimit(1)
         }
+        .frame(
+            maxWidth: .infinity,
+            alignment: alignment == .trailing ? .trailing : .leading
+        )
     }
 
-    // MARK: - Day Inspector Panel
-    //
-    // Shows the real list of events on the currently focused day. When a
-    // single day is selected we show that day's events; when a range is
-    // selected we show events grouped by day across the range. Replaces the
-    // old "only on conflict" warning card with a panel that's useful during
-    // exploration, not just after committing.
-    @ViewBuilder
-    private var dayInspectorPanel: some View {
-        let focused = inspectorEvents()
-        if !focused.events.isEmpty {
-            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2_5) {
-                HStack(spacing: OPSStyle.Layout.spacing2) {
-                    Text(focused.headline)
-                        .font(OPSStyle.Typography.category)
-                        .foregroundColor(OPSStyle.Colors.secondaryText)
-                    Spacer()
-                    Text("\(focused.events.count)")
-                        .font(OPSStyle.Typography.dataValue)
-                        .foregroundColor(OPSStyle.Colors.primaryText)
-                    +
-                    Text(focused.events.count == 1 ? " EVENT" : " EVENTS")
-                        .font(OPSStyle.Typography.category)
-                        .foregroundColor(OPSStyle.Colors.tertiaryText)
-                }
+    // MARK: - Suggestion
 
-                VStack(spacing: OPSStyle.Layout.spacing2) {
-                    ForEach(focused.events.prefix(5)) { task in
-                        dayInspectorRow(task: task)
-                    }
-                    if focused.events.count > 5 {
-                        Text("+ \(focused.events.count - 5) MORE")
-                            .font(OPSStyle.Typography.metadata)
-                            .foregroundColor(OPSStyle.Colors.tertiaryText)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(.top, 2)
-                    }
-                }
+    private func suggestionChip(_ suggested: Date) -> some View {
+        Button {
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            withAnimation(reduceMotion ? nil : OPSStyle.Animation.fast) {
+                selection = .start(calendar.startOfDay(for: suggested))
             }
-            .padding(OPSStyle.Layout.spacing3)
-            .glassSurface()
-        } else {
+            scrollRequest = calendar.dateInterval(of: .month, for: suggested)?.start
+        } label: {
             HStack(spacing: OPSStyle.Layout.spacing2) {
-                Text("//")
+                Text("SUGGESTED")
                     .font(OPSStyle.Typography.metadata)
-                    .foregroundColor(OPSStyle.Colors.inactiveText)
-                Text("NO EVENTS · \(focused.headline.uppercased())")
+                    .foregroundColor(OPSStyle.Colors.tanTextM)
+                Text(suggestionDetail(suggested))
                     .font(OPSStyle.Typography.metadata)
-                    .foregroundColor(OPSStyle.Colors.tertiaryText)
-                Spacer()
+                    .foregroundColor(OPSStyle.Colors.secondaryText)
+                    .lineLimit(1)
+                Spacer(minLength: 0)
             }
-            .padding(OPSStyle.Layout.spacing3)
-            .glassSurface(borderColor: OPSStyle.Colors.cardBorderSubtle)
+            .padding(.horizontal, OPSStyle.Layout.spacing2_5)
+            .frame(height: OPSStyle.Layout.schedulerSuggestionHeight)
+            .frame(maxWidth: .infinity)
+            .background(
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius)
+                    .fill(OPSStyle.Colors.tanFillM)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius)
+                    .strokeBorder(OPSStyle.Colors.tanLineM, lineWidth: OPSStyle.Layout.Border.standard)
+            )
+            .contentShape(Rectangle())
         }
+        .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+        .transition(.opacity)
     }
 
-    private func dayInspectorRow(task: ProjectTask) -> some View {
-        let isSameProject = (task.projectId == itemType.projectId) && itemType.projectId != nil
-        let isCrewConflict = !Set(task.getTeamMemberIds()).isDisjoint(with: currentItemTeamMemberIds)
-        let dayLabel: String = {
-            if let start = task.startDate {
-                return formatDate(start, short: true)
-            }
-            return "—"
-        }()
+    private func suggestionDetail(_ suggested: Date) -> String {
+        let date = Self.weekdayDate(suggested).uppercased()
+        guard let prerequisite = dayContext.floorPrerequisiteTitle else { return date }
+        return "AFTER \(prerequisite.uppercased()) · \(date)"
+    }
 
-        return HStack(spacing: OPSStyle.Layout.spacing2_5) {
-            // Left stripe: white if same project, task color otherwise.
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.progressBarRadius)
-                .fill(isSameProject ? OPSStyle.Colors.primaryText : task.swiftUIColor)
-                .frame(width: 3)
+    // MARK: - Pinned calendar header
 
-            VStack(alignment: .leading, spacing: 2) {
-                HStack(spacing: OPSStyle.Layout.spacing2) {
-                    Text(task.displayTitle)
-                        .font(OPSStyle.Typography.cardSubtitle)
-                        .foregroundColor(OPSStyle.Colors.primaryText)
-                        .lineLimit(1)
-                    if isSameProject {
-                        Text("THIS PROJECT")
-                            .font(OPSStyle.Typography.metadata)
-                            .foregroundColor(OPSStyle.Colors.invertedText)
-                            .padding(.horizontal, OPSStyle.Layout.spacing1)
-                            .padding(.vertical, 1)
-                            .background(
-                                RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius)
-                                    .fill(OPSStyle.Colors.primaryText)
-                            )
+    private var pinnedCalendarHeader: some View {
+        VStack(spacing: 0) {
+            HStack {
+                Text(SchedulerDayContext.monthCaption(visibleMonth, calendar: calendar))
+                    .font(OPSStyle.Typography.category)
+                    .foregroundColor(OPSStyle.Colors.primaryText)
+
+                Spacer()
+
+                Button {
+                    showMonthPicker = true
+                } label: {
+                    HStack(spacing: OPSStyle.Layout.spacing1) {
+                        Text("JUMP TO")
+                            .font(OPSStyle.Typography.microLabel)
+                            .foregroundColor(OPSStyle.Colors.secondaryText)
+                        Image(systemName: OPSStyle.Icons.schedule)
+                            .font(.system(size: OPSStyle.Layout.IconSize.xs, weight: .medium))
+                            .foregroundColor(OPSStyle.Colors.secondaryText)
                     }
+                    .padding(.horizontal, OPSStyle.Layout.spacing2_5)
+                    .frame(minHeight: OPSStyle.Layout.chipMinHeight)
+                    .nestedCard()
+                    .contentShape(Rectangle())
                 }
-                HStack(spacing: OPSStyle.Layout.spacing2) {
-                    Text(dayLabel.uppercased())
+            }
+            .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+            .padding(.bottom, OPSStyle.Layout.spacing2)
+
+            Rectangle()
+                .fill(OPSStyle.Colors.line)
+                .frame(height: OPSStyle.Layout.Border.standard)
+
+            HStack(spacing: 0) {
+                ForEach(Array(weekdayLabels.enumerated()), id: \.offset) { _, label in
+                    Text(label)
                         .font(OPSStyle.Typography.metadata)
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
-                    if !task.teamMembers.isEmpty {
-                        Text("·")
-                            .font(OPSStyle.Typography.metadata)
-                            .foregroundColor(OPSStyle.Colors.inactiveText)
-                        HStack(spacing: OPSStyle.Layout.spacing1 / 2) {
-                            ForEach(task.teamMembers.prefix(4)) { user in
-                                Circle()
-                                    .fill(colorFor(user: user))
-                                    .frame(
-                                        width: OPSStyle.Layout.Indicator.dotMD - 1,
-                                        height: OPSStyle.Layout.Indicator.dotMD - 1
-                                    )
-                            }
-                            if task.teamMembers.count > 4 {
-                                Text("+\(task.teamMembers.count - 4)")
-                                    .font(OPSStyle.Typography.metadata)
-                                    .foregroundColor(OPSStyle.Colors.tertiaryText)
-                            }
-                        }
+                        .frame(maxWidth: .infinity)
+                }
+            }
+            .padding(.horizontal, OPSStyle.Layout.spacing2)
+            .padding(.vertical, OPSStyle.Layout.spacing2)
+        }
+        .background(OPSStyle.Colors.background)
+    }
+
+    // MARK: - Day panel
+
+    @ViewBuilder
+    private var dayPanel: some View {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
+            // Hairline floor under the scroll: without it the panel reads as
+            // more empty calendar rather than a fixed report on the pick.
+            Rectangle()
+                .fill(OPSStyle.Colors.line)
+                .frame(height: OPSStyle.Layout.Border.standard)
+                .padding(.horizontal, -OPSStyle.Layout.spacing3_5)
+
+            switch selection {
+            case .none:
+                emptyPanel
+
+            case .start(let day):
+                panelHeader(
+                    headline: Self.weekdayDate(day).uppercased(),
+                    trailing: nil,
+                    trailingIsWarning: false
+                )
+                dayRows(for: day)
+
+            case .range(let start, let end):
+                let review = dayContext.rangeReview(start: start, end: end)
+                panelHeader(
+                    headline: "\(SchedulerDayContext.shortDate(start, calendar: calendar).uppercased()) – \(SchedulerDayContext.shortDate(end, calendar: calendar).uppercased())",
+                    trailing: review.conflictCount == 0
+                        ? "NO CONFLICTS"
+                        : (review.conflictCount == 1 ? "1 CONFLICT" : "\(review.conflictCount) CONFLICTS"),
+                    trailingIsWarning: review.conflictCount > 0
+                )
+                rangeRows(review)
+            }
+        }
+        .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+        .padding(.top, OPSStyle.Layout.spacing2)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .animation(reduceMotion ? nil : OPSStyle.Animation.fast, value: selection)
+    }
+
+    private var emptyPanel: some View {
+        VStack {
+            Spacer(minLength: 0)
+            Text("[ TAP A START DATE ]")
+                .font(OPSStyle.Typography.metadata)
+                .foregroundColor(OPSStyle.Colors.inactiveText)
+                .frame(maxWidth: .infinity, alignment: .center)
+            Spacer(minLength: 0)
+        }
+    }
+
+    private func panelHeader(headline: String, trailing: String?, trailingIsWarning: Bool) -> some View {
+        HStack(spacing: OPSStyle.Layout.spacing2) {
+            Text(headline)
+                .font(OPSStyle.Typography.category)
+                .foregroundColor(OPSStyle.Colors.secondaryText)
+            Spacer(minLength: 0)
+            if let trailing {
+                Text(trailing)
+                    .font(OPSStyle.Typography.metadata)
+                    .foregroundColor(
+                        trailingIsWarning ? OPSStyle.Colors.tanTextM : OPSStyle.Colors.tertiaryText
+                    )
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func dayRows(for day: Date) -> some View {
+        let split = dayContext.events(on: day)
+        if split.relevant.isEmpty {
+            emptyDayLine
+        } else {
+            fadedScroll {
+                VStack(spacing: OPSStyle.Layout.spacing2) {
+                    ForEach(split.relevant) { event in
+                        eventRow(event)
                     }
                 }
             }
+        }
+    }
 
-            Spacer(minLength: 0)
-
-            if isCrewConflict {
-                Text("CONFLICT")
-                    .font(OPSStyle.Typography.metadata)
-                    .foregroundColor(OPSStyle.Colors.warningStatus)
-                    .padding(.horizontal, OPSStyle.Layout.spacing1)
-                    .padding(.vertical, 1)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius)
-                            .strokeBorder(OPSStyle.Colors.warningStatus.opacity(0.6), lineWidth: OPSStyle.Layout.Border.standard)
-                    )
+    @ViewBuilder
+    private func rangeRows(_ review: SchedulerDayContext.RangeReview) -> some View {
+        if review.rows.isEmpty && review.floorViolation == nil {
+            emptyDayLine
+        } else {
+            fadedScroll {
+                VStack(spacing: OPSStyle.Layout.spacing2) {
+                    if let floor = review.floorViolation,
+                       let prerequisite = dayContext.floorPrerequisiteTitle {
+                        dependencyNoteRow(prerequisite: prerequisite, floor: floor)
+                    }
+                    ForEach(review.rows) { event in
+                        eventRow(event)
+                    }
+                }
             }
+        }
+    }
+
+    private var emptyDayLine: some View {
+        HStack(spacing: OPSStyle.Layout.spacing2) {
+            Text("//")
+                .font(OPSStyle.Typography.metadata)
+                .foregroundColor(OPSStyle.Colors.inactiveText)
+            Text(dayContext.item.crewIds.isEmpty ? "NO JOBS" : "NO JOBS · CREW CLEAR")
+                .font(OPSStyle.Typography.metadata)
+                .foregroundColor(OPSStyle.Colors.tertiaryText)
+            Spacer(minLength: 0)
+        }
+    }
+
+    private func dependencyNoteRow(prerequisite: String, floor: Date) -> some View {
+        HStack(spacing: OPSStyle.Layout.spacing2) {
+            RoundedRectangle(cornerRadius: OPSStyle.Layout.progressBarRadius)
+                .fill(OPSStyle.Colors.warningStatus)
+                .frame(width: OPSStyle.Layout.schedulerSignalBarHeight)
+            Text("BEFORE \(prerequisite.uppercased()) ENDS · \(SchedulerDayContext.shortDate(floor, calendar: calendar).uppercased())")
+                .font(OPSStyle.Typography.metadata)
+                .foregroundColor(OPSStyle.Colors.tanTextM)
+                .lineLimit(1)
+            Spacer(minLength: 0)
         }
         .padding(.vertical, OPSStyle.Layout.spacing2)
         .padding(.horizontal, OPSStyle.Layout.spacing2)
@@ -603,224 +579,40 @@ struct CalendarSchedulerSheet: View {
         )
     }
 
-    private struct InspectorContext {
-        let headline: String
-        let events: [ProjectTask]
+    private func eventRow(_ event: SchedulerDayContext.Event) -> some View {
+        SchedulerEventRow(
+            event: event,
+            isConflict: dayContext.isConflict(event),
+            isThisProject: dayContext.isSameProject(event),
+            attribution: dayContext.attribution(for: event),
+            distance: dayContext.distanceLabel(to: event)
+        )
     }
 
-    private func inspectorEvents() -> InspectorContext {
-        switch viewMode {
-        case .selecting:
-            // Single tapped day — show that day's events.
-            let events = filteredScheduledTasks.filter { task in
-                task.spannedDates.contains { Calendar.current.isDate($0, inSameDayAs: selectedStartDate) }
-            }
-            return InspectorContext(
-                headline: formatDate(selectedStartDate),
-                events: events.sorted { ($0.startDate ?? .distantPast) < ($1.startDate ?? .distantPast) }
+    /// Fades the panel's top and bottom edges so a partially scrolled list
+    /// reads as "there is more" instead of a clipped row.
+    private func fadedScroll<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
+        ScrollView(.vertical, showsIndicators: false) {
+            content()
+                .padding(.vertical, OPSStyle.Layout.spacing1)
+        }
+        .mask(
+            LinearGradient(
+                stops: [
+                    .init(color: .clear, location: 0),
+                    .init(color: .black, location: 0.06),
+                    .init(color: .black, location: 0.94),
+                    .init(color: .clear, location: 1)
+                ],
+                startPoint: .top,
+                endPoint: .bottom
             )
-        case .reviewing:
-            // Range selected — show all events overlapping the range.
-            let range = selectedStartDate...selectedEndDate
-            let events = filteredScheduledTasks.filter { task in
-                guard let s = task.startDate, let e = task.endDate else { return false }
-                return (s...e).overlaps(range)
-            }
-            let days = daysBetween(selectedStartDate, selectedEndDate)
-            let headline = "\(formatDate(selectedStartDate, short: true).uppercased()) – \(formatDate(selectedEndDate, short: true).uppercased())  \(days)D"
-            return InspectorContext(
-                headline: headline,
-                events: events.sorted { ($0.startDate ?? .distantPast) < ($1.startDate ?? .distantPast) }
-            )
-        }
+        )
     }
 
-    // MARK: - Month Navigation
-    private var monthNavigationView: some View {
-        HStack {
-            Button(action: previousMonth) {
-                Image(systemName: "chevron.left")
-                    .foregroundColor(OPSStyle.Colors.primaryAccent)
-                    .font(.system(size: OPSStyle.Layout.IconSize.md))
-            }
+    // MARK: - Quick Push Row
 
-            Spacer()
-
-            Text(monthYearString(from: currentMonth))
-                .font(OPSStyle.Typography.bodyBold)
-                .foregroundColor(OPSStyle.Colors.primaryText)
-
-            Spacer()
-
-            Button(action: nextMonth) {
-                Image(systemName: "chevron.right")
-                    .foregroundColor(OPSStyle.Colors.primaryAccent)
-                    .font(.system(size: OPSStyle.Layout.IconSize.md))
-            }
-        }
-    }
-
-    // MARK: - Weekday Headers
-    private var weekdayHeadersView: some View {
-        LazyVGrid(columns: columns, spacing: 0) {
-            ForEach(Array(weekdayLabels.enumerated()), id: \.offset) { index, label in
-                Text(label)
-                    .font(OPSStyle.Typography.captionBold)
-                    .foregroundColor(OPSStyle.Colors.secondaryText)
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 30)
-            }
-        }
-    }
-
-    // MARK: - Calendar Grid
-    private var calendarGridView: some View {
-        // Precompute once per render: day → events spanning that day, plus the
-        // set of conflict days. This replaces the per-cell helpers that each
-        // re-filtered the full task pool and re-allocated `spannedDates`, turning
-        // the grid from O(cells × tasks × spannedDates) into O(tasks) per render.
-        // That blowup, re-run on every DataController sync republish, was the
-        // "app glitches and slows down when scheduling" freeze. Built fresh each
-        // render from the current filteredScheduledTasks/viewMode, so it can
-        // never go stale.
-        let dayIndex = dayEventIndex(filteredScheduledTasks)
-        let conflictKeys = conflictDayKeys()
-        let calendar = Calendar.current
-        return LazyVGrid(columns: columns, spacing: 2) {
-            ForEach(daysInMonth(), id: \.self) { date in
-                let dayKey = calendar.startOfDay(for: date)
-                let visibleEvents = dayIndex[dayKey] ?? []
-                SchedulerDayCell(
-                    date: date,
-                    isInCurrentMonth: isInCurrentMonth(date),
-                    eventCount: visibleEvents.count,
-                    isThisProjectDay: isThisProjectDay(on: date, in: visibleEvents),
-                    crewColors: crewColorsForDate(visibleEvents),
-                    isSelected: isDateSelected(date),
-                    isInRange: isDateInRange(date),
-                    isStartDate: isStartDate(date),
-                    isEndDate: isEndDate(date),
-                    hasConflicts: conflictKeys.contains(dayKey),
-                    hasTeamConflicts: dayHasTeamConflict(visibleEvents),
-                    isToday: isToday(date),
-                    onTap: { handleDateSelection(date) }
-                )
-            }
-        }
-    }
-
-    /// Day → events spanning that day, bucketed by `startOfDay`. Reproduces
-    /// `getEventsForDate` exactly (a task lands on day D iff one of its
-    /// `spannedDates` is the same day as D) and preserves
-    /// `filteredScheduledTasks` order, but computes each task's `spannedDates`
-    /// once instead of once per (cell × task).
-    private func dayEventIndex(_ tasks: [ProjectTask]) -> [Date: [ProjectTask]] {
-        let calendar = Calendar.current
-        var index: [Date: [ProjectTask]] = [:]
-        for task in tasks {
-            var seenDays = Set<Date>()
-            for spanned in task.spannedDates {
-                let key = calendar.startOfDay(for: spanned)
-                if seenDays.insert(key).inserted {
-                    index[key, default: []].append(task)
-                }
-            }
-        }
-        return index
-    }
-
-    /// Day-keys carrying a scheduling conflict — only in reviewing mode, matching
-    /// `hasConflicts(on:)`. Empty otherwise.
-    private func conflictDayKeys() -> Set<Date> {
-        guard viewMode == .reviewing else { return [] }
-        let calendar = Calendar.current
-        var keys = Set<Date>()
-        for task in conflictingEvents {
-            for spanned in task.spannedDates {
-                keys.insert(calendar.startOfDay(for: spanned))
-            }
-        }
-        return keys
-    }
-
-    /// Team-conflict test for a day, computed from that day's already-resolved
-    /// events — matches `hasTeamConflicts(on:)`: exclude the current item, require
-    /// crew overlap with the item being scheduled.
-    private func dayHasTeamConflict(_ events: [ProjectTask]) -> Bool {
-        let myCrew = currentItemTeamMemberIds
-        guard !myCrew.isEmpty else { return false }
-        return events.contains { scheduledTask in
-            let isSameItem: Bool
-            switch itemType {
-            case .project: isSameItem = false
-            case .task(let task): isSameItem = scheduledTask.id == task.id
-            case .draftTask: isSameItem = false
-            }
-            guard !isSameItem else { return false }
-            return !Set(scheduledTask.getTeamMemberIds()).isDisjoint(with: myCrew)
-        }
-    }
-
-    // MARK: - Action Buttons
-    private var actionButtons: some View {
-        VStack(spacing: OPSStyle.Layout.spacing2_5) {
-            if !conflictingEvents.isEmpty && hasSelectedDates {
-                // Conflicts exist - show both options
-                HStack(spacing: OPSStyle.Layout.spacing2_5) {
-                    Button(action: {
-                        // Reset to single date selection
-                        selectedStartDate = currentStartDate ?? Date()
-                        selectedEndDate = selectedStartDate
-                        conflictingEvents = []
-                        viewMode = .selecting
-                    }) {
-                        Text("CHANGE")
-                            .font(OPSStyle.Typography.captionBold)
-                            .foregroundColor(OPSStyle.Colors.primaryText)
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 14)
-                            .background(OPSStyle.Colors.surfaceInput)
-                            .cornerRadius(OPSStyle.Layout.cornerRadius)
-                            .overlay(
-                                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                    .strokeBorder(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-                            )
-                    }
-
-                    Button(action: handleConfirmSchedule) {
-                        Text("CONFIRM ANYWAY")
-                            .font(OPSStyle.Typography.captionBold)
-                            .foregroundColor(OPSStyle.Colors.warningStatus)
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 14)
-                            .background(OPSStyle.Colors.primaryText)
-                            .cornerRadius(OPSStyle.Layout.cornerRadius)
-                    }
-                }
-            } else {
-                // Single confirm button (disabled when no dates selected)
-                Button(action: handleConfirmSchedule) {
-                    Text("CONFIRM DATES")
-                        .font(OPSStyle.Typography.captionBold)
-                        .foregroundColor(hasSelectedDates ? OPSStyle.Colors.invertedText : OPSStyle.Colors.tertiaryText)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 14)
-                        .background(hasSelectedDates ? OPSStyle.Colors.primaryText : OPSStyle.Colors.surfaceInput)
-                        .cornerRadius(OPSStyle.Layout.cornerRadius)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                .strokeBorder(hasSelectedDates ? Color.clear : OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-                        )
-                }
-                .disabled(!hasSelectedDates)
-            }
-        }
-        .animation(OPSStyle.Animation.fast, value: hasSelectedDates)
-    }
-
-    // MARK: - Quick Push Bar
-
-    private var quickPushBar: some View {
+    private var quickPushRow: some View {
         VStack(spacing: OPSStyle.Layout.spacing2) {
             HStack(spacing: OPSStyle.Layout.spacing2) {
                 ForEach([1, 2, 3], id: \.self) { days in
@@ -833,23 +625,23 @@ struct CalendarSchedulerSheet: View {
             if case .task(let task) = itemType {
                 let affectedCount = cascadeAffectedCount(for: task)
                 if affectedCount > 0 {
-                    HStack {
-                        Toggle(isOn: $cascadeEnabled) {
-                            HStack(spacing: 6) {
-                                Text("Move the crew's jobs")
-                                    .font(OPSStyle.Typography.caption)
-                                    .foregroundColor(OPSStyle.Colors.secondaryText)
-                                Text("\(affectedCount)")
-                                    .font(OPSStyle.Typography.smallCaption)
-                                    .foregroundColor(.white)
-                                    .padding(.horizontal, 6)
-                                    .padding(.vertical, 2)
-                                    .background(OPSStyle.Colors.primaryAccent)
-                                    .cornerRadius(8)
-                            }
+                    Toggle(isOn: $cascadeEnabled) {
+                        HStack(spacing: OPSStyle.Layout.spacing1 + 2) {
+                            Text("Move the crew's jobs")
+                                .font(OPSStyle.Typography.caption)
+                                .foregroundColor(OPSStyle.Colors.secondaryText)
+                            Text("\(affectedCount)")
+                                .font(OPSStyle.Typography.metadata)
+                                .monospacedDigit()
+                                .foregroundColor(OPSStyle.Colors.primaryText)
+                                .padding(.horizontal, OPSStyle.Layout.spacing1)
+                                .background(
+                                    RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius)
+                                        .fill(OPSStyle.Colors.surfaceActive)
+                                )
                         }
-                        .toggleStyle(SwitchToggleStyle(tint: OPSStyle.Colors.text))
                     }
+                    .toggleStyle(SwitchToggleStyle(tint: OPSStyle.Colors.surfaceActive))
                 }
             }
         }
@@ -865,12 +657,19 @@ struct CalendarSchedulerSheet: View {
             handleQuickPush(days: days, preserveCalendarWeek: preserveCalendarWeek)
         }) {
             Text(label)
-                .font(OPSStyle.Typography.button)
-                .foregroundColor(.white)
+                .font(OPSStyle.Typography.buttonLabel)
+                .foregroundColor(OPSStyle.Colors.primaryText)
                 .frame(maxWidth: .infinity)
-                .frame(height: 40)
-                .background(OPSStyle.Colors.primaryAccent)
-                .cornerRadius(OPSStyle.Layout.cardCornerRadius)
+                .frame(height: OPSStyle.Layout.touchTargetMin)
+                .background(
+                    RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius)
+                        .fill(OPSStyle.Colors.surfaceInput)
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius)
+                        .strokeBorder(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+                )
+                .contentShape(Rectangle())
         }
     }
 
@@ -942,107 +741,269 @@ struct CalendarSchedulerSheet: View {
         return ids.count
     }
 
-    // MARK: - Helper Methods
+    // MARK: - Interactions
 
-    private func daysInMonth() -> [Date] {
-        var calendar = Calendar.current
-        calendar.firstWeekday = 2 // Start week on Monday
+    private func handleDayTap(_ date: Date) {
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        let next = selection.tapping(date, calendar: calendar)
+        withAnimation(reduceMotion ? nil : OPSStyle.Animation.faster) {
+            selection = next
+        }
+        warnIfRangeConflicts(next)
+    }
 
-        guard let monthInterval = calendar.dateInterval(of: .month, for: currentMonth) else {
-            return []
+    private func handleDayLongPress(_ date: Date) {
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        inspectorDay = InspectorDay(date)
+    }
+
+    private func applyDaySelection(_ date: Date) {
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        let next = selection.tapping(date, calendar: calendar)
+        withAnimation(reduceMotion ? nil : OPSStyle.Animation.faster) {
+            selection = next
+        }
+        inspectorDay = nil
+        warnIfRangeConflicts(next)
+    }
+
+    /// One warning haptic the moment a range closes on real conflicts. Silence
+    /// afterwards — the panel already carries the detail, and a buzzing sheet
+    /// stops meaning anything.
+    private func warnIfRangeConflicts(_ next: SchedulerSelection) {
+        guard case .range(let start, let end) = next else {
+            lastWarnedRange = nil
+            return
+        }
+        let key = "\(start.timeIntervalSince1970)-\(end.timeIntervalSince1970)"
+        guard lastWarnedRange != key else { return }
+        lastWarnedRange = key
+        if dayContext.rangeReview(start: start, end: end).conflictCount > 0 {
+            UINotificationFeedbackGenerator().notificationOccurred(.warning)
+        }
+    }
+
+    /// CLEAR resets the picker only. It never writes, never unschedules, and
+    /// never closes the sheet — the operator asked to start over, not to leave.
+    private func handleClear() {
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        withAnimation(reduceMotion ? nil : OPSStyle.Animation.fast) {
+            selection = .none
+        }
+        lastWarnedRange = nil
+    }
+
+    private func handleSave() {
+        guard case .range(let start, let end) = selection else { return }
+
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        // Async authoritative flows own the success moment after server ACK.
+        // Legacy synchronous callers retain the existing immediate feedback.
+        if emitsSuccessFeedbackOnConfirm {
+            UINotificationFeedbackGenerator().notificationOccurred(.success)
         }
 
-        let firstOfMonth = monthInterval.start
-        let firstWeekday = calendar.component(.weekday, from: firstOfMonth)
+        onScheduleUpdate(start, end)
+        isPresented = false
+    }
 
-        // Calculate days from Monday (accounting for firstWeekday = 2)
-        let daysFromMonday = (firstWeekday - calendar.firstWeekday + 7) % 7
+    private func handleUnschedule() {
+        UINotificationFeedbackGenerator().notificationOccurred(.warning)
+        onClearDates?()
+        isPresented = false
+    }
 
-        guard let startDate = calendar.date(byAdding: .day, value: -daysFromMonday, to: firstOfMonth) else {
-            return []
-        }
+    private var canUnschedule: Bool {
+        onClearDates != nil && (currentStartDate != nil || currentEndDate != nil)
+    }
 
-        var dates: [Date] = []
-        for i in 0..<42 { // 6 weeks
-            if let date = calendar.date(byAdding: .day, value: i, to: startDate) {
-                dates.append(date)
+    // MARK: - Data
+
+    /// Rebuilds the availability engine from the local store. Runs on appear
+    /// and on every schedule republish, so the grid can never show a stale
+    /// picture of who is free.
+    private func loadContext() {
+        resolveDraftIdentity()
+
+        // The scroll spans ±12 months, so the data window must too — a grid
+        // that silently stops carrying signals past a boundary is worse than
+        // no grid at all.
+        let windowStart = calendar.date(byAdding: .month, value: -12, to: anchorMonth) ?? anchorMonth
+        let windowEnd = calendar.date(byAdding: .month, value: 13, to: anchorMonth) ?? anchorMonth
+
+        let crewIds = currentItemTeamMemberIds
+        let tasks = dataController.getScheduledTasks(in: windowStart...windowEnd)
+        let userEvents = dataController.getUserEvents(in: windowStart...windowEnd)
+
+        // Resolve crew names from the company roster ONCE, by id. A task's
+        // `teamMembers` relationship is populated by sync's relationship
+        // linking and is routinely empty on freshly fetched rows, while the
+        // id CSV is always there — so a relationship-only lookup silently
+        // degrades every attribution chip to a generic "CREW". Naming the
+        // person is the whole point of the row.
+        var rosterNames: [String: String] = [:]
+        if let companyId = dataController.currentUser?.companyId {
+            for member in dataController.getTeamMembers(companyId: companyId) {
+                rosterNames[member.id] = member.firstName
             }
         }
 
-        return dates
-    }
+        var events: [SchedulerDayContext.Event] = []
+        events.reserveCapacity(tasks.count + userEvents.count)
 
-    private func isInCurrentMonth(_ date: Date) -> Bool {
-        Calendar.current.isDate(date, equalTo: currentMonth, toGranularity: .month)
-    }
-
-    private func isToday(_ date: Date) -> Bool {
-        Calendar.current.isDateInToday(date)
-    }
-
-    private func isDateSelected(_ date: Date) -> Bool {
-        Calendar.current.isDate(date, inSameDayAs: selectedStartDate) ||
-        Calendar.current.isDate(date, inSameDayAs: selectedEndDate)
-    }
-
-    private func isStartDate(_ date: Date) -> Bool {
-        Calendar.current.isDate(date, inSameDayAs: selectedStartDate)
-    }
-
-    private func isEndDate(_ date: Date) -> Bool {
-        Calendar.current.isDate(date, inSameDayAs: selectedEndDate)
-    }
-
-    private func isDateInRange(_ date: Date) -> Bool {
-        date >= selectedStartDate && date <= selectedEndDate
-    }
-
-    /// True when at least one of the visible events on `date` belongs to the
-    /// current item's project. Powers the left-edge "this project" stripe on
-    /// the day cell.
-    private func isThisProjectDay(on date: Date, in events: [ProjectTask]) -> Bool {
-        guard let pid = itemType.projectId else { return false }
-        // Exclude the current task itself when editing — a task's own dates
-        // are already shown via the selection chrome and shouldn't double up
-        // as a "same project" signal.
-        let selfId: String? = {
-            if case .task(let t) = itemType { return t.id }
-            return nil
-        }()
-        return events.contains { task in
-            task.projectId == pid && task.id != selfId
-        }
-    }
-
-    /// Distinct crew-member colors for the visible events on a day, scoped to
-    /// crew that overlaps with the current item's assigned crew. Empty array
-    /// when no crew context exists (e.g. draft with no assignees).
-    private func crewColorsForDate(_ events: [ProjectTask]) -> [Color] {
-        let myCrew = currentItemTeamMemberIds
-        guard !myCrew.isEmpty else { return [] }
-
-        var seen = Set<String>()
-        var colors: [Color] = []
-        for task in events {
-            for user in task.teamMembers where myCrew.contains(user.id) {
-                if seen.insert(user.id).inserted {
-                    colors.append(colorFor(user: user))
-                }
+        for task in tasks {
+            guard let start = task.startDate else { continue }
+            let end = task.endDate ?? start
+            var firstNames: [String: String] = [:]
+            for member in task.teamMembers {
+                firstNames[member.id] = member.firstName
             }
+            for id in task.getTeamMemberIds() where firstNames[id] == nil {
+                if let name = rosterNames[id] { firstNames[id] = name }
+            }
+            events.append(
+                SchedulerDayContext.Event(
+                    id: task.id,
+                    kind: .job,
+                    // A bare task-type name ("Installation") identifies nothing
+                    // when three jobs share it. The project does.
+                    title: task.project?.title.isEmpty == false
+                        ? task.project!.title
+                        : task.displayTitle,
+                    subtitle: task.project?.effectiveClientName,
+                    taskTitle: task.displayTitle,
+                    projectId: task.projectId,
+                    start: start,
+                    end: end,
+                    crewIds: Set(task.getTeamMemberIds()),
+                    crewFirstNames: firstNames,
+                    latitude: task.project?.latitude,
+                    longitude: task.project?.longitude
+                )
+            )
         }
-        return colors
+
+        for event in userEvents {
+            var owners = Set(event.teamMemberIds ?? [])
+            owners.insert(event.userId)
+            guard !owners.isEmpty else { continue }
+            var firstNames: [String: String] = [:]
+            for owner in owners {
+                firstNames[owner] = rosterNames[owner]
+                    ?? dataController.getUser(id: owner)?.firstName
+                    ?? "Crew"
+            }
+            let headline = owners
+                .compactMap { firstNames[$0] }
+                .sorted()
+                .first ?? "Crew"
+            events.append(
+                SchedulerDayContext.Event(
+                    id: "userevent:\(event.id)",
+                    kind: .timeOff,
+                    title: headline,
+                    start: event.startDate,
+                    end: event.endDate,
+                    crewIds: owners,
+                    crewFirstNames: firstNames
+                )
+            )
+        }
+
+        let dependencies = resolvedDependencies()
+        let prerequisites = resolvedPrerequisites(dependencies: dependencies)
+        let projectCoordinate = itemCoordinate()
+
+        let context = SchedulerDayContext(
+            item: SchedulerDayContext.Item(
+                selfTaskId: selfTaskId,
+                projectId: itemType.projectId,
+                crewIds: crewIds,
+                latitude: projectCoordinate?.latitude,
+                longitude: projectCoordinate?.longitude,
+                dependencies: dependencies,
+                isScheduled: currentStartDate != nil
+            ),
+            events: events,
+            prerequisites: prerequisites,
+            skipsWeekends: dataController.currentCompanySkipsWeekends,
+            calendar: calendar
+        )
+        dayContext = context
+
+        // An unscheduled job with a prerequisite opens on the first week it
+        // could actually start, rather than on a today that is not an option.
+        if currentStartDate == nil,
+           selection == .none,
+           let suggested = context.suggestion,
+           let suggestedMonth = calendar.dateInterval(of: .month, for: suggested)?.start,
+           !calendar.isDate(suggestedMonth, equalTo: visibleMonth, toGranularity: .month) {
+            scrollRequest = suggestedMonth
+        }
     }
 
-    private func colorFor(user: User) -> Color {
-        if let hex = user.userColor, !hex.isEmpty, let color = Color(hex: hex) {
-            return color
+    /// Dependencies declared by the thing being scheduled. Projects have none;
+    /// a draft reads them from its task type.
+    private func resolvedDependencies() -> [TaskTypeDependency] {
+        switch itemType {
+        case .project:
+            return []
+        case .task(let task):
+            return task.effectiveDependencies
+        case .draftTask(let taskTypeId, _, _):
+            guard !taskTypeId.isEmpty else { return [] }
+            let descriptor = FetchDescriptor<TaskType>(
+                predicate: #Predicate<TaskType> { $0.id == taskTypeId }
+            )
+            return (try? modelContext.fetch(descriptor))?.first?.dependencies ?? []
         }
-        return user.roleColor
+    }
+
+    /// Prerequisites that are BOTH declared and already on the calendar. A
+    /// prerequisite nobody has scheduled yet constrains nothing, so it is
+    /// absent here — and no day gets dimmed.
+    private func resolvedPrerequisites(
+        dependencies: [TaskTypeDependency]
+    ) -> [SchedulerDayContext.Prerequisite] {
+        guard !dependencies.isEmpty, let projectId = itemType.projectId else { return [] }
+        let targets = Set(dependencies.map(\.dependsOnTaskTypeId))
+
+        return dataController.getTasksForProject(projectId).compactMap { task in
+            guard task.deletedAt == nil,
+                  task.status != .cancelled,
+                  task.id != selfTaskId,
+                  targets.contains(task.taskTypeId),
+                  let start = task.startDate else { return nil }
+            return SchedulerDayContext.Prerequisite(
+                taskTypeId: task.taskTypeId,
+                title: task.displayTitle,
+                start: start,
+                duration: max(task.duration, 1)
+            )
+        }
+    }
+
+    private func itemCoordinate() -> (latitude: Double?, longitude: Double?)? {
+        switch itemType {
+        case .project(let project):
+            return (project.latitude, project.longitude)
+        case .task(let task):
+            guard let project = task.project else { return nil }
+            return (project.latitude, project.longitude)
+        case .draftTask(_, _, let projectId):
+            guard let projectId, let project = dataController.getProject(id: projectId) else { return nil }
+            return (project.latitude, project.longitude)
+        }
+    }
+
+    private var selfTaskId: String? {
+        if case .task(let task) = itemType { return task.id }
+        return nil
     }
 
     /// Set of team-member ids belonging to the item currently being scheduled.
-    /// Centralized so the filter chips, the day cell, and the inspector panel
-    /// all reason about the same crew.
+    /// Centralized so the grid, the panel, and the day inspector all reason
+    /// about the same crew.
     private var currentItemTeamMemberIds: Set<String> {
         if let preselected = preselectedTeamMemberIds, !preselected.isEmpty {
             return preselected
@@ -1054,185 +1015,77 @@ struct CalendarSchedulerSheet: View {
         }
     }
 
-    private func handleDateSelection(_ date: Date) {
-        // Haptic feedback
-        let generator = UIImpactFeedbackGenerator(style: .light)
-        generator.impactOccurred()
-
-        if selectedStartDate == selectedEndDate {
-            // Second date selected - auto-sort so earlier date is start, later is end
-            let firstDate = selectedStartDate
-            let secondDate = date
-
-            if secondDate < firstDate {
-                selectedStartDate = secondDate
-                selectedEndDate = firstDate
-            } else {
-                selectedStartDate = firstDate
-                selectedEndDate = secondDate
-            }
-
-            // Check for conflicts and move to review mode
-            checkForConflicts()
-            viewMode = .reviewing
-        } else {
-            // Reset to single date selection
-            selectedStartDate = date
-            selectedEndDate = date
-            // Clear conflicts and go back to selecting
-            conflictingEvents = []
-            viewMode = .selecting
+    private var itemTitle: String {
+        switch itemType {
+        case .project(let project):
+            return project.title
+        case .task(let task):
+            return task.displayTitle
+        case .draftTask:
+            return draftTaskTitle ?? itemType.displayName
         }
     }
 
-    private func loadScheduledTasks() {
-        // Load all scheduled tasks in the date range
-        let calendar = Calendar.current
-        let searchStart = calendar.date(byAdding: .month, value: -3, to: selectedStartDate) ?? selectedStartDate
-        let searchEnd = calendar.date(byAdding: .month, value: 3, to: selectedEndDate) ?? selectedEndDate
-
-        // Use optimized range query
-        allScheduledTasks = dataController.getScheduledTasks(in: searchStart...searchEnd)
-
-        // Filter tasks
-        filterScheduledTasks()
+    private var itemProjectTitle: String? {
+        switch itemType {
+        case .project:
+            return nil
+        case .task(let task):
+            return task.project?.title
+        case .draftTask:
+            return draftProjectTitle
+        }
     }
 
-    private func filterScheduledTasks() {
-        // Exclude the current task itself from the visible set — its dates
-        // are already shown via the selection chrome and shouldn't pollute
-        // counts or appear in the day inspector.
+    /// Resolves a draft's task-type name and project name once per load. Doing
+    /// this in a computed property would fetch on every render of the identity
+    /// row — the same per-render re-query that made the previous sheet stutter.
+    private func resolveDraftIdentity() {
+        guard case .draftTask(let taskTypeId, _, let projectId) = itemType else { return }
+        if !taskTypeId.isEmpty {
+            let descriptor = FetchDescriptor<TaskType>(
+                predicate: #Predicate<TaskType> { $0.id == taskTypeId }
+            )
+            draftTaskTitle = (try? modelContext.fetch(descriptor))?.first?.display
+        }
+        if let projectId {
+            draftProjectTitle = dataController.getProject(id: projectId)?.title
+        }
+    }
+
+    // MARK: - Static helpers
+
+    private static func baseItem(
+        itemType: ScheduleItemType,
+        preselectedTeamMemberIds: Set<String>?,
+        isScheduled: Bool
+    ) -> SchedulerDayContext.Item {
+        let crew: Set<String> = {
+            if let preselected = preselectedTeamMemberIds, !preselected.isEmpty { return preselected }
+            switch itemType {
+            case .project(let project): return Set(project.getTeamMemberIds())
+            case .task(let task): return Set(task.getTeamMemberIds())
+            case .draftTask(_, let teamMemberIds, _): return Set(teamMemberIds)
+            }
+        }()
         let selfId: String? = {
             if case .task(let task) = itemType { return task.id }
             return nil
         }()
-        let pool = allScheduledTasks.filter { task in
-            if let id = selfId, task.id == id { return false }
-            return true
-        }
-
-        // Both filters off → show everything in the loaded window.
-        if !showThisProjectFilter && !showMyCrewFilter {
-            filteredScheduledTasks = pool
-            return
-        }
-
-        let projectId = itemType.projectId
-        let myCrew = currentItemTeamMemberIds
-
-        // Additive (OR) — a task is visible if it matches any lit chip.
-        filteredScheduledTasks = pool.filter { task in
-            if showThisProjectFilter, let pid = projectId, task.projectId == pid {
-                return true
-            }
-            if showMyCrewFilter, !myCrew.isEmpty {
-                let taskCrew = Set(task.getTeamMemberIds())
-                if !taskCrew.isDisjoint(with: myCrew) {
-                    return true
-                }
-            }
-            return false
-        }
+        return SchedulerDayContext.Item(
+            selfTaskId: selfId,
+            projectId: itemType.projectId,
+            crewIds: crew,
+            dependencies: [],
+            isScheduled: isScheduled
+        )
     }
 
-    private func checkForConflicts() {
-        // Conflict review uses the visible (filtered) set so the conflict
-        // card aligns with what the user is looking at in the grid.
-        conflictingEvents = filteredScheduledTasks.filter { scheduledTask in
-            let isSameItem: Bool
-            switch itemType {
-            case .project:
-                isSameItem = false
-            case .task(let task):
-                isSameItem = scheduledTask.id == task.id
-            case .draftTask:
-                isSameItem = false
-            }
-
-            // Check for date overlap
-            if !isSameItem, let taskStart = scheduledTask.startDate, let taskEnd = scheduledTask.endDate {
-                let taskRange = taskStart...taskEnd
-                let selectedRange = selectedStartDate...selectedEndDate
-                return taskRange.overlaps(selectedRange)
-            }
-            return false
-        }.sorted { ($0.startDate ?? Date.distantPast) < ($1.startDate ?? Date.distantPast) }
-    }
-
-    private func handleConfirmSchedule() {
-        // Async authoritative flows own the success moment after server ACK.
-        // Legacy synchronous callers retain the existing immediate feedback.
-        if emitsSuccessFeedbackOnConfirm {
-            let generator = UINotificationFeedbackGenerator()
-            generator.notificationOccurred(.success)
-        }
-
-        onScheduleUpdate(selectedStartDate, selectedEndDate)
-        isPresented = false
-    }
-
-    private func handleClearDates() {
-        // Bug f3604d52 — Clear resets both the in-sheet picker state AND
-        // (if the item already has dates persisted) fires onClearDates so
-        // the caller can strip them. When no dates are persisted yet the
-        // picker just resets and the sheet closes without a write.
-
-        // Light haptic on tap (reset is not destructive — user is just
-        // undoing their in-progress selection).
-        UIImpactFeedbackGenerator(style: .light).impactOccurred()
-
-        // Reset the in-sheet picker back to a neutral default so if the
-        // sheet reopens without closing, the stale selection is gone.
-        let today = Date()
-        selectedStartDate = today
-        selectedEndDate = Calendar.current.date(byAdding: .day, value: 1, to: today) ?? today
-        viewMode = .selecting
-        conflictingEvents = []
-
-        // If the item currently has persisted dates, warn via success
-        // haptic (the clear will mutate the stored record) and propagate.
-        if currentStartDate != nil || currentEndDate != nil {
-            UINotificationFeedbackGenerator().notificationOccurred(.warning)
-            onClearDates?()
-        }
-        isPresented = false
-    }
-
-    private func previousMonth() {
-        if let newMonth = Calendar.current.date(byAdding: .month, value: -1, to: currentMonth) {
-            currentMonth = newMonth
-        }
-    }
-
-    private func nextMonth() {
-        if let newMonth = Calendar.current.date(byAdding: .month, value: 1, to: currentMonth) {
-            currentMonth = newMonth
-        }
-    }
-
-    private func monthYearString(from date: Date) -> String {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "MMMM yyyy"
-        return formatter.string(from: date)
-    }
-
-    private func formatDate(_ date: Date, short: Bool = false) -> String {
-        let formatter = DateFormatter()
-        formatter.dateFormat = short ? "MMM d" : "EEE, MMM d"
-        return formatter.string(from: date)
-    }
-
-    private func daysBetween(_ start: Date, _ end: Date) -> Int {
-        let calendar = Calendar.current
-        let components = calendar.dateComponents([.day], from: start, to: end)
-        return (components.day ?? 0) + 1
+    static func weekdayDate(_ date: Date) -> String {
+        SchedulerDayContext.weekdayDate(date)
     }
 
     // MARK: - Enums
-    enum ViewMode {
-        case selecting
-        case reviewing
-    }
 
     enum ScheduleItemType {
         case project(Project)
@@ -1266,215 +1119,105 @@ struct CalendarSchedulerSheet: View {
     }
 }
 
-// MARK: - Day Cell Component
-//
-// Encodes three independent signals into a 56pt-tall cell:
-//
-//   1. THIS PROJECT — 2px white stripe on the LEFT edge, present when at
-//      least one visible event on this day belongs to the item's project.
-//      Reads as a primary "ownership" marker without diluting the steel-blue
-//      accent (which is reserved for CTAs and focus rings per OPS spec v2).
-//
-//   2. EVENT COUNT — tabular count chip in the TOP-RIGHT corner. Outlined in
-//      a hairline when there are events; fills in tan when there's a crew
-//      conflict on this day. Empty days show no chip (consistent with the
-//      "empty = nothing" convention; the design system reserves "—" for
-//      empty inline values, not for empty grid cells).
-//
-//   3. CREW BUSY — up to 3 small dots along the BOTTOM, each in the user's
-//      `userColor` (or role color fallback). Tells the user WHO is busy on
-//      this day, not just that something is. `+N` overflow chip past 3.
-//
-// Selection chrome (start/end/range/today) overlays on top of these signals
-// and uses different visual channels (border vs fill) so the encodings stay
-// readable when a day is also selected.
-//
-private struct SchedulerDayCell: View {
-    let date: Date
-    let isInCurrentMonth: Bool
-    let eventCount: Int
-    let isThisProjectDay: Bool
-    let crewColors: [Color]
-    let isSelected: Bool
-    let isInRange: Bool
-    let isStartDate: Bool
-    let isEndDate: Bool
-    let hasConflicts: Bool
-    let hasTeamConflicts: Bool
-    let isToday: Bool
-    let onTap: () -> Void
+// MARK: - Event Row
 
-    private var dayNumber: String {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "d"
-        return formatter.string(from: date)
+/// One named commitment. Shared by the day panel and the long-press inspector
+/// so a conflict reads identically wherever the operator meets it.
+///
+/// A row must answer "whose job, for whom, with which of my crew, how far" —
+/// a task-type name alone ("Installation") identifies nothing when three jobs
+/// share it.
+struct SchedulerEventRow: View {
+    let event: SchedulerDayContext.Event
+    let isConflict: Bool
+    let isThisProject: Bool
+    let attribution: String?
+    let distance: String?
+
+    private var stripeColor: Color {
+        if isConflict { return OPSStyle.Colors.warningStatus }
+        if isThisProject { return OPSStyle.Colors.primaryText }
+        return OPSStyle.Colors.cardBorder
+    }
+
+    private var metadataLine: String {
+        var parts = [SchedulerDayContext.weekdayDate(event.start).uppercased()]
+        if let distance { parts.append(distance) }
+        return parts.joined(separator: " · ")
     }
 
     var body: some View {
-        Button(action: onTap) {
-            ZStack(alignment: .topLeading) {
-                // TODAY indicator — hairline accent ring, not a fill. The
-                // OPS spec reserves steel-blue for "primary CTA + focus ring
-                // ONLY" so an outline reads as a focus marker, not a CTA.
-                if isToday && !isStartDate && !isEndDate && !isInRange {
-                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                        .strokeBorder(OPSStyle.Colors.primaryAccent, lineWidth: OPSStyle.Layout.Border.standard)
-                }
+        HStack(spacing: OPSStyle.Layout.spacing2_5) {
+            RoundedRectangle(cornerRadius: OPSStyle.Layout.progressBarRadius)
+                .fill(stripeColor)
+                .frame(width: OPSStyle.Layout.schedulerSignalBarHeight)
 
-                // THIS PROJECT stripe — 2pt white bar on the leading edge.
-                if isThisProjectDay && isInCurrentMonth {
-                    HStack(spacing: 0) {
-                        RoundedRectangle(cornerRadius: OPSStyle.Layout.progressBarRadius)
-                            .fill(OPSStyle.Colors.primaryText)
-                            .frame(width: 2)
-                            .padding(.vertical, OPSStyle.Layout.spacing2)
-                        Spacer(minLength: 0)
+            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1 / 2) {
+                // Job name first, client second — you recognise a job by the
+                // project, and confirm it by the client. Mohave: these are
+                // names, not data (DESIGN.md §4).
+                HStack(spacing: OPSStyle.Layout.spacing2) {
+                    Text(event.kind == .timeOff ? "\(event.title) · Time off" : event.title)
+                        .font(OPSStyle.Typography.cardBody)
+                        .foregroundColor(OPSStyle.Colors.primaryText)
+                        .lineLimit(1)
+                        .layoutPriority(1)
+                    if event.kind == .job, let subtitle = event.subtitle, !subtitle.isEmpty {
+                        Text(subtitle)
+                            .font(OPSStyle.Typography.smallBody)
+                            .foregroundColor(OPSStyle.Colors.tertiaryText)
+                            .lineLimit(1)
+                            .truncationMode(.tail)
+                            .layoutPriority(0)
                     }
-                }
-
-                // Day number — JetBrains Mono per OPS rule "Numbers are
-                // always mono, tabular-lining, slashed zero." Mohave is for
-                // body and hero numbers; calendar day numbers are data.
-                VStack(alignment: .leading, spacing: 0) {
-                    Text(dayNumber)
-                        .font(OPSStyle.Typography.dataValue)
-                        .foregroundColor(textColor)
                     Spacer(minLength: 0)
                 }
-                .padding(.leading, OPSStyle.Layout.spacing2)
-                .padding(.top, OPSStyle.Layout.spacing2)
-
-                // Event count chip — top-right.
-                if eventCount > 0 && isInCurrentMonth {
-                    VStack {
-                        HStack {
-                            Spacer(minLength: 0)
-                            countChip
-                        }
-                        Spacer(minLength: 0)
-                    }
-                    .padding(.trailing, OPSStyle.Layout.spacing1)
-                    .padding(.top, OPSStyle.Layout.spacing1)
-                }
-
-                // Crew dots — bottom row. Token-correct dot diameter.
-                if !crewColors.isEmpty && isInCurrentMonth {
-                    VStack {
-                        Spacer(minLength: 0)
-                        HStack(spacing: OPSStyle.Layout.spacing1 / 2) {
-                            ForEach(Array(crewColors.prefix(3).enumerated()), id: \.offset) { _, color in
-                                Circle()
-                                    .fill(color)
-                                    .frame(
-                                        width: OPSStyle.Layout.Indicator.dotSM,
-                                        height: OPSStyle.Layout.Indicator.dotSM
-                                    )
-                            }
-                            if crewColors.count > 3 {
-                                Text("+\(crewColors.count - 3)")
-                                    .font(OPSStyle.Typography.metadata)
-                                    .foregroundColor(OPSStyle.Colors.secondaryText)
-                            }
-                        }
-                    }
-                    .padding(.bottom, OPSStyle.Layout.spacing1)
-                }
-
-                // Selection chrome — drawn ON TOP so it stays the dominant
-                // signal whenever a date is part of the user's pick.
-                selectionOverlay
-                    .animation(OPSStyle.Animation.faster, value: isStartDate)
-                    .animation(OPSStyle.Animation.faster, value: isEndDate)
-                    .animation(OPSStyle.Animation.faster, value: isInRange)
-
-                // Conflict halo in reviewing mode — tan ring on dates that
-                // overlap the picked range.
-                if hasConflicts {
-                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                        .strokeBorder(OPSStyle.Colors.warningStatus.opacity(0.5), lineWidth: OPSStyle.Layout.Border.thick)
-                        .padding(OPSStyle.Layout.Border.thick)
-                }
+                Text(metadataLine)
+                    .font(OPSStyle.Typography.metadata)
+                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+                    .lineLimit(1)
             }
-            .frame(height: 56)
-            .contentShape(Rectangle())
+
+            Spacer(minLength: 0)
+
+            trailingChip
         }
-        .disabled(!isInCurrentMonth)
+        .padding(.vertical, OPSStyle.Layout.spacing2)
+        .padding(.horizontal, OPSStyle.Layout.spacing2)
+        .background(
+            RoundedRectangle(cornerRadius: OPSStyle.Layout.smallCornerRadius)
+                .fill(OPSStyle.Colors.background.opacity(0.6))
+        )
     }
 
-    private var countChip: some View {
-        let conflict = hasTeamConflicts && !isStartDate && !isEndDate && !isInRange
-        let fg = conflict ? OPSStyle.Colors.warningStatus : OPSStyle.Colors.secondaryText
-        let border = conflict ? OPSStyle.Colors.warningStatus.opacity(0.6) : OPSStyle.Colors.cardBorder
-        return Text("\(eventCount)")
+    @ViewBuilder
+    private var trailingChip: some View {
+        if event.kind == .timeOff {
+            chip("OFF", foreground: OPSStyle.Colors.tanTextM, border: OPSStyle.Colors.tanLineM)
+        } else if let attribution {
+            chip(attribution, foreground: OPSStyle.Colors.tanTextM, border: OPSStyle.Colors.tanLineM)
+        } else if isThisProject {
+            Text("THIS PROJECT")
+                .font(OPSStyle.Typography.metadata)
+                .foregroundColor(OPSStyle.Colors.invertedText)
+                .padding(.horizontal, OPSStyle.Layout.spacing1)
+                .padding(.vertical, OPSStyle.Layout.Border.standard)
+                .background(
+                    RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius)
+                        .fill(OPSStyle.Colors.primaryText)
+                )
+        }
+    }
+
+    private func chip(_ label: String, foreground: Color, border: Color) -> some View {
+        Text(label)
             .font(OPSStyle.Typography.metadata)
-            .monospacedDigit()
-            .foregroundColor(fg)
+            .foregroundColor(foreground)
             .padding(.horizontal, OPSStyle.Layout.spacing1)
-            .padding(.vertical, 1)
+            .padding(.vertical, OPSStyle.Layout.Border.standard)
             .overlay(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius)
                     .strokeBorder(border, lineWidth: OPSStyle.Layout.Border.standard)
             )
     }
-
-    @ViewBuilder
-    private var selectionOverlay: some View {
-        Group {
-            if isStartDate && isEndDate {
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                    .strokeBorder(OPSStyle.Colors.primaryText, lineWidth: OPSStyle.Layout.Border.thick)
-            } else if isStartDate {
-                UnevenRoundedRectangle(
-                    topLeadingRadius: OPSStyle.Layout.cardCornerRadius,
-                    bottomLeadingRadius: OPSStyle.Layout.cardCornerRadius,
-                    bottomTrailingRadius: 0,
-                    topTrailingRadius: 0
-                )
-                .strokeBorder(OPSStyle.Colors.primaryText, lineWidth: OPSStyle.Layout.Border.thick)
-            } else if isEndDate {
-                UnevenRoundedRectangle(
-                    topLeadingRadius: 0,
-                    bottomLeadingRadius: 0,
-                    bottomTrailingRadius: OPSStyle.Layout.cardCornerRadius,
-                    topTrailingRadius: OPSStyle.Layout.cardCornerRadius
-                )
-                .strokeBorder(OPSStyle.Colors.primaryText, lineWidth: OPSStyle.Layout.Border.thick)
-            } else if isInRange {
-                VStack(spacing: 0) {
-                    Rectangle()
-                        .fill(OPSStyle.Colors.primaryText)
-                        .frame(height: OPSStyle.Layout.Border.thick)
-                    Spacer()
-                    Rectangle()
-                        .fill(OPSStyle.Colors.primaryText)
-                        .frame(height: OPSStyle.Layout.Border.thick)
-                }
-            }
-        }
-        .opacity(isStartDate || isEndDate || isInRange ? 1 : 0)
-    }
-
-    private var textColor: Color {
-        if !isInCurrentMonth {
-            return OPSStyle.Colors.tertiaryText.opacity(0.3)
-        }
-        // Today's day number wears the accent foreground to pair with the
-        // hairline accent ring around the cell — only when not part of an
-        // active selection (selection chrome takes priority).
-        if isToday && !isStartDate && !isEndDate && !isInRange {
-            return OPSStyle.Colors.primaryAccent
-        }
-        return OPSStyle.Colors.primaryText
-    }
-}
-
-// MARK: - BlurView Helper
-struct SchedulerBlurView: UIViewRepresentable {
-    var style: UIBlurEffect.Style
-
-    func makeUIView(context: Context) -> UIVisualEffectView {
-        UIVisualEffectView(effect: UIBlurEffect(style: style))
-    }
-
-    func updateUIView(_ uiView: UIVisualEffectView, context: Context) {}
 }

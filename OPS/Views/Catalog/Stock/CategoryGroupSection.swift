@@ -3,8 +3,8 @@
 //  OPS
 //
 //  Section view used by `StockListView` to group variants by category
-//  with two-level nesting (parent → child → variants). Pinned section
-//  headers keep the active category visible during scroll.
+//  with two-level nesting (parent → child → variants). Compact headers
+//  preserve hierarchy without adding a card shell per stock item.
 //
 
 import SwiftUI
@@ -17,46 +17,41 @@ struct CategoryGroupSection: View {
     let onOpenDetail: (EnrichedVariantRow) -> Void
 
     var body: some View {
-        Section {
-            // Variants directly under the parent category (or under "Uncategorized").
-            ForEach(parentRows) { row in
-                rowButton(row, nested: false)
-            }
-            // Child categories with their variants nested.
-            ForEach(children, id: \.category.id) { entry in
-                childHeader(entry.category)
-                ForEach(entry.rows) { row in
-                    rowButton(row, nested: true)
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
+            parentHeader
+
+            VStack(spacing: 0) {
+                ForEach(Array(parentRows.enumerated()), id: \.element.id) { index, row in
+                    rowButton(row)
+                    if index < parentRows.count - 1 || !children.isEmpty {
+                        rowDivider
+                    }
+                }
+
+                ForEach(Array(children.enumerated()), id: \.element.category.id) { childIndex, entry in
+                    childHeader(entry.category, count: entry.rows.count)
+                    ForEach(Array(entry.rows.enumerated()), id: \.element.id) { rowIndex, row in
+                        rowButton(row)
+                        if rowIndex < entry.rows.count - 1 || childIndex < children.count - 1 {
+                            rowDivider
+                        }
+                    }
                 }
             }
-        } header: {
-            parentHeader
+            .glassSurface()
         }
     }
 
-    @ViewBuilder
-    private func rowButton(_ row: EnrichedVariantRow, nested: Bool) -> some View {
+    private func rowButton(_ row: EnrichedVariantRow) -> some View {
         Button { onTap(row) } label: {
-            if nested {
-                HStack(alignment: .top, spacing: OPSStyle.Layout.spacing2) {
-                    Rectangle()
-                        .fill(OPSStyle.Colors.separator)
-                        .frame(width: OPSStyle.Layout.Border.standard)
-                        .frame(maxHeight: .infinity)
-                        .padding(.vertical, OPSStyle.Layout.spacing1)
-                    VariantCard(row: row, scale: 1.0)
-                }
-                .frame(maxWidth: .infinity)
-            } else {
-                VariantCard(row: row, scale: 1.0)
-            }
+            StockListRow(row: row)
         }
         .buttonStyle(.plain)
         .contextMenu {
             Button {
                 onOpenDetail(row)
             } label: {
-                Label("OPEN FULL DETAIL", systemImage: "arrow.up.right.square")
+                Label("OPEN FULL DETAIL", systemImage: OPSStyle.Icons.openDetail)
             }
         }
     }
@@ -71,26 +66,31 @@ struct CategoryGroupSection: View {
                 .font(OPSStyle.Typography.metadata)
                 .foregroundColor(OPSStyle.Colors.tertiaryText)
         }
-        .padding(.horizontal, OPSStyle.Layout.spacing3)
-        .padding(.vertical, OPSStyle.Layout.spacing2)
+        .padding(.horizontal, OPSStyle.Layout.spacing1)
+        .frame(minHeight: OPSStyle.Layout.chipMinHeight)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(OPSStyle.Colors.background)
-        .overlay(
-            Rectangle()
-                .fill(OPSStyle.Colors.separator)
-                .frame(height: 1),
-            alignment: .bottom
-        )
     }
 
-    private func childHeader(_ category: CatalogCategory) -> some View {
-        Text(category.name)
-            .font(OPSStyle.Typography.category)
-            .foregroundColor(OPSStyle.Colors.tertiaryText)
-            .padding(.horizontal, OPSStyle.Layout.spacing3)
-            .padding(.top, OPSStyle.Layout.spacing2)
-            .padding(.bottom, OPSStyle.Layout.spacing1)
-            .frame(maxWidth: .infinity, alignment: .leading)
+    private func childHeader(_ category: CatalogCategory, count: Int) -> some View {
+        HStack(spacing: OPSStyle.Layout.spacing2) {
+            Text(category.name.uppercased())
+                .font(OPSStyle.Typography.category)
+                .foregroundColor(OPSStyle.Colors.tertiaryText)
+            Spacer()
+            Text("\(count)")
+                .font(OPSStyle.Typography.metadata)
+                .foregroundColor(OPSStyle.Colors.tertiaryText)
+        }
+        .padding(.horizontal, OPSStyle.Layout.spacing3)
+        .frame(minHeight: OPSStyle.Layout.chipMinHeight)
+        .background(OPSStyle.Colors.surfaceActive)
+    }
+
+    private var rowDivider: some View {
+        Divider()
+            .background(OPSStyle.Colors.separator)
+            .padding(.leading, OPSStyle.Layout.spacing5)
     }
 
     private var totalCount: Int {

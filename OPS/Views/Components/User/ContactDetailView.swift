@@ -16,17 +16,19 @@ struct ContactDetailView: View {
     let teamMember: TeamMember?
     let client: Client?
     let project: Project? // Optional project reference for client updates
+    let onClientDeletionRequest: (() -> Void)?
+    let waitForClientDeletionRouteDismissal: (() async -> Void)?
 
     @Environment(\.dismiss) private var dismiss
     @Environment(\.openURL) private var openURL
     @Environment(\.modelContext) private var modelContext
     @EnvironmentObject private var dataController: DataController
     @EnvironmentObject private var permissionStore: PermissionStore
-    @Query private var allClients: [Client]
 
     @State private var showFullContact = false // For animating contact display
     @State private var showingClientEdit = false
     @State private var showingClientDeletion = false
+    @StateObject private var deletionPresentationGate = ClientDeletionPresentationGate()
 
     // Bug c0ed9969 — long-press any client-contact field to edit it
     // inline without opening the full ClientSheet editor. Gated below
@@ -68,6 +70,8 @@ struct ContactDetailView: View {
         self.teamMember = nil
         self.client = nil
         self.project = nil
+        self.onClientDeletionRequest = nil
+        self.waitForClientDeletionRouteDismissal = nil
     }
     
     init(teamMember: TeamMember) {
@@ -75,13 +79,22 @@ struct ContactDetailView: View {
         self.teamMember = teamMember
         self.client = nil
         self.project = nil
+        self.onClientDeletionRequest = nil
+        self.waitForClientDeletionRouteDismissal = nil
     }
     
-    init(client: Client, project: Project? = nil) {
+    init(
+        client: Client,
+        project: Project? = nil,
+        onClientDeletionRequest: (() -> Void)? = nil,
+        waitForClientDeletionRouteDismissal: (() async -> Void)? = nil
+    ) {
         self.user = nil
         self.teamMember = nil
         self.client = client
         self.project = project
+        self.onClientDeletionRequest = onClientDeletionRequest
+        self.waitForClientDeletionRouteDismissal = waitForClientDeletionRouteDismissal
     }
     
     var body: some View {
@@ -230,7 +243,7 @@ struct ContactDetailView: View {
                             .padding(.top, OPSStyle.Layout.spacing3)
 
                         // Delete button at bottom (for clients only)
-                        if isClient && canEditClient {
+                        if isClient && canDeleteClient {
                             Button(action: {
                                 showingClientDeletion = true
                             }) {
@@ -349,131 +362,22 @@ struct ContactDetailView: View {
         }
         .sheet(isPresented: $showingClientDeletion) {
             if let client = client {
-                DeletionSheet(
-                    item: client,
-                    itemType: "Client",
-                    childItems: client.activeProjects.sorted { $0.title < $1.title },
-                    childType: "Project",
-                    availableReassignments: allClients,
-                    getItemDisplay: { client in
-                        AnyView(
-                            Text(client.name)
-                                .font(OPSStyle.Typography.title)
-                                .foregroundColor(OPSStyle.Colors.primaryText)
-                        )
+                ClientDeletionSheet(
+                    client: client,
+                    onRequestOwningDetailDismissal: {
+                        onClientDeletionRequest?()
+                        dismiss()
                     },
-                    filterAvailableItems: { clients in
-                        clients.filter {
-                            $0.id != client.id &&
-                            !$0.id.contains("-") // Filter out UUIDs - only show legacy-synced clients
-                        }
-                    },
-                    getChildId: { $0.id },
-                    getReassignmentId: { $0.id },
-                    renderReassignmentRow: { project, selectedId, markedForDeletion, available, onToggleDelete in
-                        AnyView(
-                            ProjectReassignmentRow(
-                                project: project,
-                                selectedClientId: selectedId,
-                                markedForDeletion: markedForDeletion,
-                                availableClients: available,
-                                onToggleDelete: onToggleDelete
-                            )
-                        )
-                    },
-                    renderSearchField: { selectedId, available in
-                        AnyView(
-                            SearchField(
-                                selectedId: selectedId,
-                                items: available,
-                                placeholder: "Search for client",
-                                leadingIcon: OPSStyle.Icons.client,
-                                getId: { $0.id },
-                                getDisplayText: { $0.name },
-                                getSubtitle: { client in
-                                    client.activeProjects.count > 0
-                                        ? "\(client.activeProjects.count) project\(client.activeProjects.count == 1 ? "" : "s")"
-                                        : nil
-                                }
-                            )
-                        )
-                    },
-                    onDelete: { client, reassignments, deletions in
-                        // Step 1: Handle projects (reassign or delete via Supabase)
-                        let clientProjects = client.activeProjects.sorted { $0.title < $1.title }
-                        let availableClients = allClients.filter {
-                            $0.id != client.id &&
-                            !$0.id.contains("-")
-                        }
-
-                        // Bulk mode check - if all assignments are the same
-                        let uniqueAssignments = Set(reassignments.values)
-                        if uniqueAssignments.count == 1, let bulkClientId = uniqueAssignments.first {
-                            // Bulk reassignment
-                            if let newClient = availableClients.first(where: { $0.id == bulkClientId }) {
-                                print("🔄 Bulk reassigning \(clientProjects.count) projects to client: \(newClient.name) (\(bulkClientId))")
-
-                                for project in clientProjects {
-                                    print("  📋 Updating project: \(project.title) (\(project.id))")
-                                    try await dataController.updateProjectFields(
-                                        projectId: project.id,
-                                        fields: ["client_id": .string(bulkClientId)]
-                                    )
-                                    print("  ✅ Project \(project.title) updated successfully")
-                                    project.client = newClient
-                                    project.clientId = newClient.id
-                                    project.needsSync = false
-                                    project.lastSyncedAt = Date()
-                                }
-
-                                print("✅ All \(clientProjects.count) projects reassigned")
-                            }
-                        } else if deletions.count == clientProjects.count {
-                            // Bulk delete all
-                            for project in clientProjects {
-                                try await dataController.deleteProject(project)
-                            }
-                        } else {
-                            // Individual mode
-                            for project in clientProjects {
-                                if deletions.contains(project.id) {
-                                    try await dataController.deleteProject(project)
-                                } else if let newClientId = reassignments[project.id],
-                                   let newClient = availableClients.first(where: { $0.id == newClientId }) {
-                                    print("  📋 Individual: Updating project \(project.title) to client \(newClient.name)")
-                                    try await dataController.updateProjectFields(
-                                        projectId: project.id,
-                                        fields: ["client_id": .string(newClientId)]
-                                    )
-                                    print("  ✅ Project \(project.title) updated successfully")
-                                    project.client = newClient
-                                    project.clientId = newClient.id
-                                    project.needsSync = false
-                                    project.lastSyncedAt = Date()
-                                }
-                            }
-                        }
-
-                        // Step 2: Save project changes locally
-                        try modelContext.save()
-
-                        // Step 3: Delete the client
-                        try await dataController.deleteClient(client)
-
-                        // Step 4: Trigger sync
-                        print("🔄 Triggering sync to refresh client/project relationships")
-                        try? await dataController.triggerManualFullSync()
-                        print("✅ Sync completed")
+                    waitForOwningDetailDismissal: {
+                        await deletionPresentationGate.waitUntilDismissed()
+                        await waitForClientDeletionRouteDismissal?()
                     }
                 )
                 .environmentObject(dataController)
-                .onDisappear {
-                    if let modelContext = dataController.modelContext,
-                       modelContext.model(for: client.id) == nil {
-                        dismiss()
-                    }
-                }
             }
+        }
+        .onDisappear {
+            deletionPresentationGate.signalDismissed()
         }
     }
     
@@ -1482,6 +1386,10 @@ struct ContactDetailView: View {
     
     private var canEditClient: Bool {
         permissionStore.can("clients.edit")
+    }
+
+    private var canDeleteClient: Bool {
+        permissionStore.can("clients.delete")
     }
     
     private var fullName: String {

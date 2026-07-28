@@ -179,6 +179,167 @@ final class StockRowOrderingTests: XCTestCase {
         ])
     }
 
+    func testCategorySortHonorsParentOrderBeforeChildOrder() {
+        let hardware = CatalogCategory(
+            id: "cat_hardware",
+            companyId: companyId,
+            name: "Hardware",
+            sortOrder: 0
+        )
+        let lumber = CatalogCategory(
+            id: "cat_lumber",
+            companyId: companyId,
+            name: "Lumber",
+            sortOrder: 1
+        )
+        let lateHardwareChild = CatalogCategory(
+            id: "cat_fasteners",
+            companyId: companyId,
+            name: "Fasteners",
+            parentId: hardware.id,
+            sortOrder: 9
+        )
+        let earlyLumberChild = CatalogCategory(
+            id: "cat_decking",
+            companyId: companyId,
+            name: "Decking",
+            parentId: lumber.id,
+            sortOrder: 0
+        )
+        let hardwareRow = categoryRow(
+            id: "v_fastener",
+            familyName: "Fastener",
+            category: lateHardwareChild,
+            options: []
+        )
+        let lumberRow = categoryRow(
+            id: "v_decking",
+            familyName: "Decking",
+            category: earlyLumberChild,
+            options: []
+        )
+
+        let sorted = StockRowOrdering.sorted(
+            [lumberRow, hardwareRow],
+            mode: .category,
+            categories: [hardware, lumber, lateHardwareChild, earlyLumberChild]
+        )
+
+        XCTAssertEqual(sorted.map(\.id), ["v_fastener", "v_decking"])
+    }
+
+    func testParentCategoryFilterMatchesDescendantStockAndScopesMenusToUsedData() {
+        let hardware = CatalogCategory(
+            id: "cat_hardware",
+            companyId: companyId,
+            name: "Hardware",
+            sortOrder: 0
+        )
+        let fasteners = CatalogCategory(
+            id: "cat_fasteners",
+            companyId: companyId,
+            name: "Fasteners",
+            parentId: hardware.id,
+            sortOrder: 0
+        )
+        let unused = CatalogCategory(
+            id: "cat_unused",
+            companyId: companyId,
+            name: "Unused",
+            sortOrder: 1
+        )
+        var taggedRow = categoryRow(
+            id: "v_fastener",
+            familyName: "Fastener",
+            category: fasteners,
+            options: []
+        )
+        taggedRow = EnrichedVariantRow(
+            variant: taggedRow.variant,
+            family: taggedRow.family,
+            category: taggedRow.category,
+            unit: taggedRow.unit,
+            tagIds: ["tag-used"],
+            optionPairs: taggedRow.optionPairs
+        )
+        let categoriesById = Dictionary(uniqueKeysWithValues: [hardware, fasteners, unused].map { ($0.id, $0) })
+
+        XCTAssertTrue(
+            StockCategoryFiltering.matches(
+                rowCategory: fasteners,
+                selectedCategoryId: hardware.id,
+                categoriesById: categoriesById
+            )
+        )
+        XCTAssertEqual(
+            StockFilterScope.categoryIds(rows: [taggedRow], categoriesById: categoriesById),
+            [hardware.id, fasteners.id]
+        )
+        XCTAssertEqual(StockFilterScope.tagIds(rows: [taggedRow]), ["tag-used"])
+    }
+
+    func testFilterVisibilityDependsOnWhetherAChoiceChangesTheResultSet() {
+        let hardware = CatalogCategory(
+            id: "cat_hardware",
+            companyId: companyId,
+            name: "Hardware",
+            sortOrder: 0
+        )
+        let categorized = categoryRow(
+            id: "v_hardware",
+            familyName: "Hardware",
+            category: hardware,
+            options: []
+        )
+        let uncategorized = categoryRow(
+            id: "v_uncategorized",
+            familyName: "Loose",
+            category: nil,
+            options: []
+        )
+        let categoriesById = [hardware.id: hardware]
+
+        XCTAssertTrue(
+            StockFilterVisibility.categoryChangesResults(
+                rows: [categorized, uncategorized],
+                categories: [hardware],
+                categoriesById: categoriesById
+            )
+        )
+        XCTAssertFalse(
+            StockFilterVisibility.categoryChangesResults(
+                rows: [categorized],
+                categories: [hardware],
+                categoriesById: categoriesById
+            )
+        )
+
+        let black = optionRow(
+            id: "v_black",
+            familyName: "Bracket",
+            options: [("Color", "Black")]
+        )
+        let withoutColor = optionRow(
+            id: "v_no_color",
+            familyName: "Fastener",
+            options: []
+        )
+        let colorAxis = StockAttributeFiltering.axes(from: [black, withoutColor])[0]
+
+        XCTAssertTrue(
+            StockFilterVisibility.optionAxisChangesResults(
+                axis: colorAxis,
+                rows: [black, withoutColor]
+            )
+        )
+        XCTAssertFalse(
+            StockFilterVisibility.optionAxisChangesResults(
+                axis: colorAxis,
+                rows: [black]
+            )
+        )
+    }
+
     func testAttributeFilterAxesMergeOptionValuesAcrossFamilies() {
         let blackTopmount = optionRow(
             id: "v_black_topmount",

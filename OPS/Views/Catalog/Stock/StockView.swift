@@ -23,13 +23,37 @@ enum StockViewMode: String, CaseIterable, Identifiable {
     case table = "TABLE"
     var id: String { rawValue }
 
+    var displayLabel: String { rawValue }
+
     var icon: String {
         switch self {
-        case .list:  return "list.bullet"
-        case .grid:  return "square.grid.2x2"
-        case .table: return "tablecells"
+        case .list:  return OPSStyle.Icons.listBullet
+        case .grid:  return OPSStyle.Icons.grid
+        case .table: return OPSStyle.Icons.table
         }
     }
+
+    var operatorPurpose: StockModePurpose {
+        switch self {
+        case .list:  return .scan
+        case .grid:  return .find
+        case .table: return .compare
+        }
+    }
+
+    var accessibilityHint: String {
+        switch operatorPurpose {
+        case .scan:    return "Scan and adjust every stock variant."
+        case .find:    return "Find stock by product family."
+        case .compare: return "Compare the variants in one family."
+        }
+    }
+}
+
+enum StockModePurpose: String, Hashable {
+    case scan
+    case find
+    case compare
 }
 
 // MARK: - Threshold filter
@@ -39,6 +63,14 @@ enum ThresholdFilter: String, CaseIterable, Identifiable {
     case warning = "WARNING+"
     case critical = "CRITICAL"
     var id: String { rawValue }
+
+    var accessibilityValue: String {
+        switch self {
+        case .all: return "All thresholds"
+        case .warning: return "Warning and critical"
+        case .critical: return "Critical only"
+        }
+    }
 }
 
 // MARK: - Stock sort
@@ -160,7 +192,8 @@ struct EnrichedVariantRow: Identifiable, Hashable {
 
 struct StockView: View {
     @EnvironmentObject private var dataController: DataController
-    @Environment(\.modelContext) private var modelContext
+    @EnvironmentObject private var permissionStore: PermissionStore
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     @AppStorage("catalog.stock.viewMode") private var viewModeRaw: String = StockViewMode.list.rawValue
     @AppStorage("catalog.stock.sortMode") private var sortModeRaw: String = StockSortMode.family.rawValue
@@ -169,8 +202,14 @@ struct StockView: View {
     @State private var selectedTagId: String? = nil
     @State private var thresholdFilter: ThresholdFilter = .all
     @State private var selectedOptionValueKeys: [String: String] = [:]
+    @State private var searchText: String = ""
+    @State private var isSearchPresented: Bool = false
+    @State private var isReducedMotionSearchMounted: Bool = false
+    @State private var isReducedMotionSearchOpaque: Bool = false
     @State private var quickAdjustRow: EnrichedVariantRow? = nil
+    @State private var pendingDetailRow: EnrichedVariantRow? = nil
     @State private var detailRow: EnrichedVariantRow? = nil
+    @FocusState private var isSearchFocused: Bool
 
     @Query private var allVariants: [CatalogVariant]
     @Query private var allFamilies: [CatalogItem]
@@ -214,6 +253,26 @@ struct StockView: View {
         allTags
             .filter { $0.companyId == companyId && $0.deletedAt == nil }
             .sorted { $0.name.lowercased() < $1.name.lowercased() }
+    }
+
+    /// Only controls that can change the current stock result belong in the
+    /// filter rail. Unused setup categories/tags stay out of the scan surface.
+    private var stockFilterCategories: [CatalogCategory] {
+        let categoriesById = Dictionary(uniqueKeysWithValues: companyCategories.map { ($0.id, $0) })
+        let visibleIds = StockFilterScope.categoryIds(
+            rows: enrichedVariants(applyFilters: false),
+            categoriesById: categoriesById
+        )
+        return companyCategories
+            .filter { visibleIds.contains($0.id) }
+            .sorted {
+                StockCategoryHierarchy.isOrderedBefore($0, $1, categoriesById: categoriesById)
+            }
+    }
+
+    private var stockFilterTags: [CatalogTag] {
+        let visibleIds = StockFilterScope.tagIds(rows: enrichedVariants(applyFilters: false))
+        return companyTags.filter { visibleIds.contains($0.id) }
     }
 
     // MARK: - Enriched rows
@@ -274,8 +333,13 @@ struct StockView: View {
         guard applyFilters else { return rows }
 
         let filtered = rows.filter { row in
+            if !StockSearch.matches(row.searchText, query: searchText) { return false }
             // Category filter — variant matches if family's category matches.
-            if let cid = selectedCategoryId, row.category?.id != cid { return false }
+            if !StockCategoryFiltering.matches(
+                rowCategory: row.category,
+                selectedCategoryId: selectedCategoryId,
+                categoriesById: categoriesById
+            ) { return false }
             // Tag filter — variant matches if family carries the tag.
             if let tid = selectedTagId, !row.tagIds.contains(tid) { return false }
             // Attribute filters — variant matches if each selected option axis
@@ -291,7 +355,7 @@ struct StockView: View {
             return true
         }
 
-        return StockRowOrdering.sorted(filtered, mode: sortMode)
+        return StockRowOrdering.sorted(filtered, mode: sortMode, categories: companyCategories)
     }
 
     private var hasBelowThreshold: Bool {
@@ -306,44 +370,78 @@ struct StockView: View {
         StockAttributeFiltering.axes(from: enrichedVariants(applyFilters: false))
     }
 
+    private var isSearchVisible: Bool {
+        isSearchPresented || !searchText.isEmpty
+    }
+
     // MARK: - Body
 
     var body: some View {
+        let filteredRows = enrichedVariants(applyFilters: true)
+
         VStack(spacing: 0) {
-            viewModeToggle
+            workbar(filteredCount: filteredRows.count)
                 .padding(.horizontal, OPSStyle.Layout.spacing3)
                 .padding(.vertical, OPSStyle.Layout.spacing2)
 
+            searchArea
+
             filterRow
-                .padding(.horizontal, OPSStyle.Layout.spacing3)
                 .padding(.bottom, OPSStyle.Layout.spacing2)
 
             if hasBelowThreshold {
                 ThresholdBanner(
                     rows: enrichedVariants(applyFilters: false),
+                    opensSuggestedOrders: permissionStore.can("catalog.orders.view"),
                     onTap: {
-                        thresholdFilter = .warning
-                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        if permissionStore.can("catalog.orders.view") {
+                            NotificationCenter.default.post(
+                                name: Notification.Name("OpenCatalogOrders"),
+                                object: nil,
+                                userInfo: ["subSegment": OrdersSubSegment.suggested.rawValue]
+                            )
+                        } else {
+                            thresholdFilter = .warning
+                        }
                     }
                 )
                 .padding(.horizontal, OPSStyle.Layout.spacing3)
                 .padding(.bottom, OPSStyle.Layout.spacing2)
             }
 
-            content
+            content(rows: filteredRows)
         }
-        .sheet(item: $quickAdjustRow) { row in
+        .animation(reduceMotion ? nil : OPSStyle.Animation.panel, value: isSearchPresented)
+        .onAppear {
+            if reduceMotion {
+                updateReducedMotionSearch(isVisible: isSearchVisible)
+            }
+        }
+        .onChange(of: isSearchVisible) { _, isVisible in
+            if reduceMotion {
+                updateReducedMotionSearch(isVisible: isVisible)
+            } else if !isVisible {
+                isSearchFocused = false
+            }
+        }
+        .onChange(of: reduceMotion) { _, isEnabled in
+            if isEnabled {
+                updateReducedMotionSearch(isVisible: isSearchVisible)
+            } else {
+                var transaction = Transaction(animation: nil)
+                transaction.disablesAnimations = true
+                withTransaction(transaction) {
+                    isReducedMotionSearchMounted = false
+                    isReducedMotionSearchOpaque = false
+                }
+            }
+        }
+        .sheet(item: $quickAdjustRow, onDismiss: deliverPendingDetail) { row in
             StockQuickAdjustSheet(
                 row: row,
                 onOpenFullDetail: {
+                    pendingDetailRow = row
                     quickAdjustRow = nil
-                    // Let the quick-adjust sheet finish dismissing before the
-                    // full detail sheet presents. Page-transition duration from
-                    // the design system keeps the hand-off clean rather than
-                    // racing two sheet animations.
-                    DispatchQueue.main.asyncAfter(deadline: .now() + OPSStyle.Animation.durationPage) {
-                        detailRow = row
-                    }
                 }
             )
             .environmentObject(dataController)
@@ -356,75 +454,165 @@ struct StockView: View {
 
     // MARK: - Sub-views
 
-    private var viewModeToggle: some View {
-        HStack(spacing: OPSStyle.Layout.spacing1) {
-            ForEach(StockViewMode.allCases) { mode in
-                Button {
-                    setViewMode(mode)
-                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                } label: {
-                    Image(systemName: mode.icon)
-                        .font(.system(size: OPSStyle.Layout.IconSize.md))
-                        .foregroundColor(
-                            viewMode == mode
-                                ? OPSStyle.Colors.primaryText
-                                : OPSStyle.Colors.tertiaryText
-                        )
-                        .frame(width: OPSStyle.Layout.touchTargetMin, height: OPSStyle.Layout.touchTargetMin)
-                        .background(
-                            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                .fill(viewMode == mode
-                                      ? OPSStyle.Colors.surfaceActive
-                                      : Color.clear)
-                        )
-                        .overlay(
-                            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                .stroke(
-                                    viewMode == mode
-                                        ? OPSStyle.Colors.cardBorder
-                                        : Color.clear,
-                                    lineWidth: OPSStyle.Layout.Border.standard
-                                )
-                        )
-                }
-                .accessibilityLabel("\(mode.rawValue) view")
-                .accessibilityAddTraits(viewMode == mode ? [.isSelected] : [])
+    private func workbar(filteredCount: Int) -> some View {
+        StockModeWorkbar(
+            selectedMode: viewMode,
+            filteredCount: filteredCount,
+            totalCount: totalVariantCount,
+            isSearchActive: isSearchVisible,
+            onSelectMode: { mode in
+                setViewMode(mode)
+            },
+            onToggleSearch: {
+                isSearchPresented.toggle()
             }
-            Spacer()
-            Text("\(totalVariantCount)")
-                .font(OPSStyle.Typography.dataValue)
-                .foregroundColor(OPSStyle.Colors.tertiaryText)
-            Text("variants")
-                .font(OPSStyle.Typography.metadata)
-                .foregroundColor(OPSStyle.Colors.tertiaryText)
+        )
+    }
+
+    @ViewBuilder
+    private var searchArea: some View {
+        if reduceMotion {
+            if isSearchVisible || isReducedMotionSearchMounted {
+                stockSearchField
+                    .padding(.horizontal, OPSStyle.Layout.spacing3)
+                    .padding(.bottom, OPSStyle.Layout.spacing2)
+                    .opacity(isReducedMotionSearchOpaque ? 1 : 0)
+                    .allowsHitTesting(isSearchVisible)
+                    .accessibilityHidden(!isSearchVisible)
+            }
+        } else if isSearchVisible {
+            stockSearchField
+                .padding(.horizontal, OPSStyle.Layout.spacing3)
+                .padding(.bottom, OPSStyle.Layout.spacing2)
+                .transition(.opacity.combined(with: .move(edge: .top)))
+                .onAppear {
+                    if isSearchPresented {
+                        isSearchFocused = true
+                    }
+                }
         }
     }
 
+    private func updateReducedMotionSearch(isVisible: Bool) {
+        if isVisible {
+            var transaction = Transaction(animation: nil)
+            transaction.disablesAnimations = true
+            withTransaction(transaction) {
+                isReducedMotionSearchMounted = true
+            }
+
+            Task { @MainActor in
+                await Task.yield()
+                guard reduceMotion, isSearchVisible else { return }
+                withAnimation(OPSStyle.Animation.reducedFallback) {
+                    isReducedMotionSearchOpaque = true
+                }
+                if isSearchPresented {
+                    isSearchFocused = true
+                }
+            }
+        } else {
+            isSearchFocused = false
+            guard isReducedMotionSearchMounted else {
+                isReducedMotionSearchOpaque = false
+                return
+            }
+
+            withAnimation(
+                OPSStyle.Animation.reducedFallback,
+                completionCriteria: .logicallyComplete
+            ) {
+                isReducedMotionSearchOpaque = false
+            } completion: {
+                guard !isSearchVisible else { return }
+                var transaction = Transaction(animation: nil)
+                transaction.disablesAnimations = true
+                withTransaction(transaction) {
+                    isReducedMotionSearchMounted = false
+                }
+            }
+        }
+    }
+
+    private var stockSearchField: some View {
+        HStack(spacing: OPSStyle.Layout.spacing2) {
+            Image(systemName: OPSStyle.Icons.search)
+                .font(.system(size: OPSStyle.Layout.IconSize.sm))
+                .foregroundColor(OPSStyle.Colors.tertiaryText)
+
+            TextField("SEARCH STOCK", text: $searchText)
+                .font(OPSStyle.Typography.body)
+                .foregroundColor(OPSStyle.Colors.primaryText)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .focused($isSearchFocused)
+                .accessibilityIdentifier("catalog.stock.search.field")
+
+            Button {
+                if searchText.isEmpty {
+                    isSearchPresented = false
+                } else {
+                    searchText = ""
+                }
+            } label: {
+                Image(systemName: searchText.isEmpty ? OPSStyle.Icons.chevronUp : OPSStyle.Icons.xmarkCircleFill)
+                    .font(.system(size: OPSStyle.Layout.IconSize.sm))
+                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+                    .frame(width: OPSStyle.Layout.touchTargetMin, height: OPSStyle.Layout.touchTargetMin)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(searchText.isEmpty ? "Close search" : "Clear search")
+        }
+        .padding(.leading, OPSStyle.Layout.spacing3)
+        .frame(minHeight: OPSStyle.Layout.inputHeight)
+        .background(
+            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                .fill(OPSStyle.Colors.surfaceInput)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: OPSStyle.Layout.Border.standard)
+        )
+    }
+
     private var filterRow: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
+        StockFilterRail {
             HStack(spacing: OPSStyle.Layout.spacing2) {
-                CategoryFilterMenu(
-                    selectedId: $selectedCategoryId,
-                    categories: companyCategories
-                )
-                TagFilterMenu(
-                    selectedId: $selectedTagId,
-                    tags: companyTags
-                )
-                ForEach(optionFilterAxes) { axis in
-                    OptionValueFilterMenu(
-                        axis: axis,
-                        selectedValueKey: Binding(
-                            get: { selectedOptionValueKeys[axis.key] },
-                            set: { newValue in
-                                if let newValue {
-                                    selectedOptionValueKeys[axis.key] = newValue
-                                } else {
-                                    selectedOptionValueKeys.removeValue(forKey: axis.key)
-                                }
-                            }
-                        )
+                if StockFilterVisibility.categoryChangesResults(
+                    rows: enrichedVariants(applyFilters: false),
+                    categories: stockFilterCategories,
+                    categoriesById: Dictionary(uniqueKeysWithValues: companyCategories.map { ($0.id, $0) })
+                ) {
+                    CategoryFilterMenu(
+                        selectedId: $selectedCategoryId,
+                        categories: stockFilterCategories
                     )
+                }
+                if !stockFilterTags.isEmpty {
+                    TagFilterMenu(
+                        selectedId: $selectedTagId,
+                        tags: stockFilterTags
+                    )
+                }
+                ForEach(optionFilterAxes) { axis in
+                    if StockFilterVisibility.optionAxisChangesResults(
+                        axis: axis,
+                        rows: enrichedVariants(applyFilters: false)
+                    ) {
+                        OptionValueFilterMenu(
+                            axis: axis,
+                            selectedValueKey: Binding(
+                                get: { selectedOptionValueKeys[axis.key] },
+                                set: { newValue in
+                                    if let newValue {
+                                        selectedOptionValueKeys[axis.key] = newValue
+                                    } else {
+                                        selectedOptionValueKeys.removeValue(forKey: axis.key)
+                                    }
+                                }
+                            )
+                        )
+                    }
                 }
                 ThresholdFilterMenu(
                     selected: $thresholdFilter
@@ -432,18 +620,26 @@ struct StockView: View {
                 StockSortMenu(selected: sortMode, onSelect: setSortMode)
                 if selectedCategoryId != nil || selectedTagId != nil || !selectedOptionValueKeys.isEmpty || thresholdFilter != .all {
                     Button {
-                        selectedCategoryId = nil
-                        selectedTagId = nil
-                        selectedOptionValueKeys.removeAll()
-                        thresholdFilter = .all
-                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        clearFilters(includeSearch: false)
                     } label: {
                         Text("CLEAR")
                             .font(OPSStyle.Typography.metadata)
-                            .foregroundColor(OPSStyle.Colors.errorText)
-                            .padding(.horizontal, OPSStyle.Layout.spacing2)
-                            .frame(height: 32)
+                            .foregroundColor(OPSStyle.Colors.text2)
+                            .padding(.horizontal, OPSStyle.Layout.spacing2_5)
+                            .frame(minHeight: OPSStyle.Layout.chipMinHeight)
+                            .background(
+                                RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius)
+                                    .fill(OPSStyle.Colors.surfaceInput)
+                            )
+                            .overlay(
+                                RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius)
+                                    .stroke(
+                                        OPSStyle.Colors.line,
+                                        lineWidth: OPSStyle.Layout.Border.standard
+                                    )
+                            )
                     }
+                    .buttonStyle(.plain)
                     .accessibilityLabel("Clear filters")
                 }
             }
@@ -451,9 +647,7 @@ struct StockView: View {
     }
 
     @ViewBuilder
-    private var content: some View {
-        let rows = enrichedVariants(applyFilters: true)
-
+    private func content(rows: [EnrichedVariantRow]) -> some View {
         if rows.isEmpty {
             emptyState
         } else {
@@ -462,20 +656,22 @@ struct StockView: View {
                 StockListView(
                     rows: rows,
                     categories: companyCategories,
+                    groupByCategory: sortMode == .category,
                     onTap: { quickAdjustRow = $0 },
                     onOpenDetail: { detailRow = $0 }
                 )
                     .trackScreen("Catalog.Stock.List")
             case .grid:
-                StockGridView(rows: rows, onTap: { quickAdjustRow = $0 })
+                StockGridView(
+                    rows: rows,
+                    onTap: { quickAdjustRow = $0 },
+                    onOpenDetail: { detailRow = $0 }
+                )
                     .trackScreen("Catalog.Stock.Grid")
             case .table:
                 StockTableView(
                     rows: rows,
-                    categories: companyCategories,
                     allOptions: allOptions,
-                    allOptionValues: allOptionValues,
-                    allVariantOptionValues: allVariantOptionValues,
                     onTap: { quickAdjustRow = $0 }
                 )
                 .trackScreen("Catalog.Stock.Table")
@@ -493,15 +689,33 @@ struct StockView: View {
                 Text("// NO VARIANTS MATCH FILTERS")
                     .font(OPSStyle.Typography.panelTitle)
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
-                Text("Adjust the filters above.")
+                Text("Adjust the search or filters above.")
                     .font(OPSStyle.Typography.body)
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
+                Button {
+                    clearFilters(includeSearch: true)
+                } label: {
+                    Text("CLEAR SEARCH + FILTERS")
+                        .font(OPSStyle.Typography.metadata)
+                        .foregroundColor(OPSStyle.Colors.primaryText)
+                        .padding(.horizontal, OPSStyle.Layout.spacing3)
+                        .frame(minHeight: OPSStyle.Layout.touchTargetMin)
+                        .background(
+                            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                                .fill(OPSStyle.Colors.surfaceInput)
+                        )
+                        .overlay(
+                            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+                        )
+                }
+                .buttonStyle(.plain)
                 Spacer()
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
             // NO STOCK YET — stock system is empty.
-            let canManage = PermissionStore.shared.can("catalog.manage")
+            let canManage = permissionStore.can("catalog.manage")
             VStack(spacing: OPSStyle.Layout.spacing3) {
                 Spacer()
                 Text("// NO STOCK YET")
@@ -513,7 +727,6 @@ struct StockView: View {
                 if canManage {
                     VStack(spacing: OPSStyle.Layout.spacing2) {
                         Button {
-                            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                             NotificationCenter.default.post(
                                 name: Notification.Name("OpenGuidedStockSetup"),
                                 object: nil
@@ -523,7 +736,7 @@ struct StockView: View {
                                 .font(OPSStyle.Typography.buttonLabel)
                                 .foregroundColor(OPSStyle.Colors.buttonText)
                                 .frame(maxWidth: .infinity)
-                                .frame(height: 52)
+                                .frame(height: OPSStyle.Layout.bottomCTAHeight)
                                 .background(OPSStyle.Colors.primaryAccent)
                                 .cornerRadius(OPSStyle.Layout.buttonRadius)
                         }
@@ -533,7 +746,6 @@ struct StockView: View {
                         .accessibilityHint("Opens the guided stock setup flow.")
 
                         Button {
-                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
                             NotificationCenter.default.post(
                                 name: Notification.Name("OpenCatalogSetup"),
                                 object: nil
@@ -542,7 +754,7 @@ struct StockView: View {
                             Text("// ADVANCED")
                                 .font(OPSStyle.Typography.metadata)
                                 .foregroundColor(OPSStyle.Colors.tertiaryText)
-                                .frame(height: OPSStyle.Layout.touchTargetMin)
+                                .frame(minHeight: OPSStyle.Layout.touchTargetMin)
                         }
                         .buttonStyle(.plain)
                         .accessibilityLabel("Advanced stock setup")
@@ -554,9 +766,259 @@ struct StockView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
     }
+
+    private func clearFilters(includeSearch: Bool) {
+        selectedCategoryId = nil
+        selectedTagId = nil
+        selectedOptionValueKeys.removeAll()
+        thresholdFilter = .all
+        if includeSearch { searchText = "" }
+    }
+
+    private func deliverPendingDetail() {
+        guard let pendingDetailRow else { return }
+        self.pendingDetailRow = nil
+        detailRow = pendingDetailRow
+    }
+}
+
+// MARK: - Mode workbar
+
+/// Shared compact command surface for the three Stock jobs. At accessibility
+/// sizes the modes get their own row so labels grow instead of shrinking.
+struct StockModeWorkbar: View {
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
+    let selectedMode: StockViewMode
+    let filteredCount: Int
+    let totalCount: Int
+    let isSearchActive: Bool
+    let onSelectMode: (StockViewMode) -> Void
+    let onToggleSearch: () -> Void
+
+    var body: some View {
+        Group {
+            if dynamicTypeSize.isAccessibilitySize {
+                VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
+                    modePicker
+                    HStack(spacing: OPSStyle.Layout.spacing2) {
+                        searchButton
+                        countLabel
+                        Spacer(minLength: 0)
+                    }
+                }
+            } else {
+                HStack(spacing: OPSStyle.Layout.spacing2) {
+                    modePicker
+                        .layoutPriority(1)
+                    searchButton
+                    countLabel
+                }
+            }
+        }
+    }
+
+    private var modePicker: some View {
+        let modes = StockViewMode.allCases
+
+        return HStack(spacing: 0) {
+            ForEach(Array(modes.enumerated()), id: \.element.id) { index, mode in
+                Button {
+                    onSelectMode(mode)
+                } label: {
+                    HStack(spacing: OPSStyle.Layout.spacing1) {
+                        Image(systemName: mode.icon)
+                            .font(.system(size: OPSStyle.Layout.IconSize.sm))
+                        Text(mode.displayLabel)
+                            .font(OPSStyle.Typography.metadata)
+                    }
+                    .foregroundColor(
+                        selectedMode == mode
+                            ? OPSStyle.Colors.text
+                            : OPSStyle.Colors.text3
+                    )
+                    .frame(maxWidth: .infinity)
+                    .frame(minWidth: OPSStyle.Layout.segmentedItemMinWidth)
+                    .frame(minHeight: OPSStyle.Layout.touchTargetMin)
+                    .padding(.horizontal, OPSStyle.Layout.spacing1)
+                    .background(
+                        RoundedRectangle(cornerRadius: OPSStyle.Layout.segmentedItemRadius)
+                            .fill(selectedMode == mode ? OPSStyle.Colors.surfaceSelected : Color.clear)
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: OPSStyle.Layout.segmentedItemRadius)
+                            .stroke(
+                                selectedMode == mode
+                                    ? OPSStyle.Colors.activeSegmentBorder
+                                    : Color.clear,
+                                lineWidth: OPSStyle.Layout.Border.standard
+                            )
+                    )
+                    .overlay(alignment: .top) {
+                        if selectedMode == mode {
+                            Rectangle()
+                                .fill(OPSStyle.Colors.activeSegmentHighlight)
+                                .frame(height: OPSStyle.Layout.Border.standard)
+                                .padding(.horizontal, OPSStyle.Layout.spacing1)
+                                .padding(.top, OPSStyle.Layout.Border.standard)
+                        }
+                    }
+                    .animation(OPSStyle.Animation.hover, value: selectedMode)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("\(mode.displayLabel) view")
+                .accessibilityHint(mode.accessibilityHint)
+                .accessibilityAddTraits(selectedMode == mode ? [.isSelected] : [])
+                .accessibilityIdentifier("catalog.stock.mode.\(mode.rawValue.lowercased())")
+
+                if index < modes.count - 1 {
+                    let nextMode = modes[index + 1]
+                    Rectangle()
+                        .fill(
+                            selectedMode == mode || selectedMode == nextMode
+                                ? Color.clear
+                                : OPSStyle.Colors.nestedBorder
+                        )
+                        .frame(
+                            width: OPSStyle.Layout.Border.standard,
+                            height: OPSStyle.Layout.spacing3
+                        )
+                }
+            }
+        }
+        .padding(OPSStyle.Layout.segmentedControlInset)
+        .frame(maxWidth: .infinity)
+        .background(
+            RoundedRectangle(cornerRadius: OPSStyle.Layout.segmentedControlRadius)
+                .fill(OPSStyle.Colors.surfaceSegmented)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: OPSStyle.Layout.segmentedControlRadius)
+                .stroke(OPSStyle.Colors.line, lineWidth: OPSStyle.Layout.Border.standard)
+        )
+    }
+
+    private var searchButton: some View {
+        Button(action: onToggleSearch) {
+            Image(systemName: OPSStyle.Icons.search)
+                .font(.system(size: OPSStyle.Layout.IconSize.sm))
+                .foregroundColor(isSearchActive ? OPSStyle.Colors.text : OPSStyle.Colors.text3)
+                .frame(width: OPSStyle.Layout.touchTargetMin)
+                .frame(minHeight: OPSStyle.Layout.touchTargetMin)
+                .background(
+                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                        .fill(isSearchActive ? OPSStyle.Colors.surfaceSelected : OPSStyle.Colors.surfaceInput)
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                        .stroke(
+                            isSearchActive ? OPSStyle.Colors.activeChipBorder : OPSStyle.Colors.line,
+                            lineWidth: OPSStyle.Layout.Border.standard
+                        )
+                )
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Search stock")
+        .accessibilityValue(isSearchActive ? "Active" : "Inactive")
+        .accessibilityIdentifier("catalog.stock.search.toggle")
+    }
+
+    private var countLabel: some View {
+        Text(filteredCount == totalCount ? "\(totalCount)" : "\(filteredCount)/\(totalCount)")
+            .font(OPSStyle.Typography.dataValue)
+            .foregroundColor(OPSStyle.Colors.text3)
+            .monospacedDigit()
+            .fixedSize(horizontal: true, vertical: false)
+            .accessibilityLabel("\(filteredCount) of \(totalCount) stock variants")
+    }
 }
 
 // MARK: - Filter menus
+
+private struct StockFilterViewportWidthKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = max(value, nextValue())
+    }
+}
+
+private struct StockFilterContentFrameKey: PreferenceKey {
+    static var defaultValue: CGRect = .zero
+
+    static func reduce(value: inout CGRect, nextValue: () -> CGRect) {
+        value = nextValue()
+    }
+}
+
+/// Full-bleed filter rail with canvas-aligned content. Edge fades appear only
+/// when more controls exist in that direction, so they never cover a terminal
+/// chip or imply scrolling when the row already fits.
+private struct StockFilterRail<Content: View>: View {
+    @Namespace private var coordinateSpace
+    @State private var viewportWidth: CGFloat = 0
+    @State private var contentFrame: CGRect = .zero
+
+    let content: Content
+
+    init(@ViewBuilder content: () -> Content) {
+        self.content = content()
+    }
+
+    private var hasOverflow: Bool {
+        contentFrame.width > viewportWidth + OPSStyle.Layout.Border.standard
+    }
+
+    private var canScrollLeading: Bool {
+        hasOverflow && contentFrame.minX < -OPSStyle.Layout.Border.standard
+    }
+
+    private var canScrollTrailing: Bool {
+        hasOverflow && contentFrame.maxX > viewportWidth + OPSStyle.Layout.Border.standard
+    }
+
+    var body: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            content
+                .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+                .background {
+                    GeometryReader { proxy in
+                        Color.clear.preference(
+                            key: StockFilterContentFrameKey.self,
+                            value: proxy.frame(in: .named(coordinateSpace))
+                        )
+                    }
+                }
+        }
+        .coordinateSpace(name: coordinateSpace)
+        .background {
+            GeometryReader { proxy in
+                Color.clear.preference(
+                    key: StockFilterViewportWidthKey.self,
+                    value: proxy.size.width
+                )
+            }
+        }
+        .onPreferenceChange(StockFilterViewportWidthKey.self) { viewportWidth = $0 }
+        .onPreferenceChange(StockFilterContentFrameKey.self) { contentFrame = $0 }
+        .overlay(alignment: .leading) {
+            if canScrollLeading {
+                Rectangle()
+                    .fill(OPSStyle.Layout.Gradients.carouselFadeLeft)
+                    .frame(width: OPSStyle.Layout.spacing3_5)
+                    .allowsHitTesting(false)
+            }
+        }
+        .overlay(alignment: .trailing) {
+            if canScrollTrailing {
+                Rectangle()
+                    .fill(OPSStyle.Layout.Gradients.carouselFadeRight)
+                    .frame(width: OPSStyle.Layout.spacing3_5)
+                    .allowsHitTesting(false)
+            }
+        }
+    }
+}
 
 struct CategoryFilterMenu: View {
     @Binding var selectedId: String?
@@ -573,22 +1035,24 @@ struct CategoryFilterMenu: View {
         Menu {
             Button {
                 selectedId = nil
-                UIImpactFeedbackGenerator(style: .light).impactOccurred()
             } label: {
-                Label("All", systemImage: selectedId == nil ? "checkmark" : "")
+                StockMenuOptionLabel(title: "All", isSelected: selectedId == nil)
             }
             ForEach(categories) { category in
                 Button {
                     selectedId = category.id
-                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
                 } label: {
-                    Label(category.name, systemImage: selectedId == category.id ? "checkmark" : "")
+                    StockMenuOptionLabel(title: category.name, isSelected: selectedId == category.id)
                 }
             }
         } label: {
             ChipLabel(text: label, isActive: selectedId != nil)
         }
         .accessibilityLabel("Category filter")
+        .accessibilityValue(
+            selectedId.flatMap { id in categories.first(where: { $0.id == id })?.name }
+                ?? "All categories"
+        )
     }
 }
 
@@ -607,22 +1071,24 @@ struct TagFilterMenu: View {
         Menu {
             Button {
                 selectedId = nil
-                UIImpactFeedbackGenerator(style: .light).impactOccurred()
             } label: {
-                Label("All", systemImage: selectedId == nil ? "checkmark" : "")
+                StockMenuOptionLabel(title: "All", isSelected: selectedId == nil)
             }
             ForEach(tags) { tag in
                 Button {
                     selectedId = tag.id
-                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
                 } label: {
-                    Label(tag.name, systemImage: selectedId == tag.id ? "checkmark" : "")
+                    StockMenuOptionLabel(title: tag.name, isSelected: selectedId == tag.id)
                 }
             }
         } label: {
             ChipLabel(text: label, isActive: selectedId != nil)
         }
         .accessibilityLabel("Tag filter")
+        .accessibilityValue(
+            selectedId.flatMap { id in tags.first(where: { $0.id == id })?.name }
+                ?? "All tags"
+        )
     }
 }
 
@@ -634,9 +1100,8 @@ struct ThresholdFilterMenu: View {
             ForEach(ThresholdFilter.allCases) { filter in
                 Button {
                     selected = filter
-                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
                 } label: {
-                    Label(filter.rawValue, systemImage: selected == filter ? "checkmark" : "")
+                    StockMenuOptionLabel(title: filter.rawValue, isSelected: selected == filter)
                 }
             }
         } label: {
@@ -646,6 +1111,7 @@ struct ThresholdFilterMenu: View {
             )
         }
         .accessibilityLabel("Threshold filter")
+        .accessibilityValue(selected.accessibilityValue)
     }
 }
 
@@ -664,22 +1130,24 @@ struct OptionValueFilterMenu: View {
         Menu {
             Button {
                 selectedValueKey = nil
-                UIImpactFeedbackGenerator(style: .light).impactOccurred()
             } label: {
-                Label("All", systemImage: selectedValueKey == nil ? "checkmark" : "")
+                StockMenuOptionLabel(title: "All", isSelected: selectedValueKey == nil)
             }
             ForEach(axis.values) { value in
                 Button {
                     selectedValueKey = value.key
-                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
                 } label: {
-                    Label(value.display, systemImage: selectedValueKey == value.key ? "checkmark" : "")
+                    StockMenuOptionLabel(title: value.display, isSelected: selectedValueKey == value.key)
                 }
             }
         } label: {
             ChipLabel(text: label, isActive: selectedValueKey != nil)
         }
         .accessibilityLabel("\(axis.display) filter")
+        .accessibilityValue(
+            selectedValueKey.flatMap { key in axis.values.first(where: { $0.key == key })?.display }
+                ?? "All values"
+        )
     }
 }
 
@@ -692,15 +1160,15 @@ struct StockSortMenu: View {
             ForEach(StockSortMode.allCases) { mode in
                 Button {
                     onSelect(mode)
-                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
                 } label: {
-                    Label(mode.rawValue, systemImage: selected == mode ? "checkmark" : "")
+                    StockMenuOptionLabel(title: mode.rawValue, isSelected: selected == mode)
                 }
             }
         } label: {
             ChipLabel(text: "SORT: \(selected.rawValue)", isActive: selected != .family)
         }
         .accessibilityLabel("Stock sort")
+        .accessibilityValue(selected.rawValue.capitalized)
     }
 }
 
@@ -715,27 +1183,228 @@ struct ChipLabel: View {
             Text(text)
                 .font(OPSStyle.Typography.metadata)
                 .foregroundColor(isActive ? OPSStyle.Colors.primaryText : OPSStyle.Colors.tertiaryText)
-            Image(systemName: "chevron.down")
-                .font(.system(size: 10, weight: .semibold))
+            Image(systemName: OPSStyle.Icons.chevronDown)
+                .font(.system(size: OPSStyle.Layout.IconSize.xs, weight: .semibold))
                 .foregroundColor(isActive ? OPSStyle.Colors.primaryText : OPSStyle.Colors.tertiaryText)
         }
-        .padding(.horizontal, OPSStyle.Layout.spacing2)
-        .frame(height: 32)
+        .padding(.horizontal, OPSStyle.Layout.spacing2_5)
+        .frame(minHeight: OPSStyle.Layout.chipMinHeight)
         .background(
             RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius)
-                .fill(isActive ? OPSStyle.Colors.surfaceActive : Color.clear)
+                .fill(isActive ? OPSStyle.Colors.surfaceSelected : OPSStyle.Colors.surfaceInput)
         )
         .overlay(
             RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius)
                 .stroke(
-                    isActive ? OPSStyle.Colors.primaryText : OPSStyle.Colors.cardBorder,
+                    isActive ? OPSStyle.Colors.activeChipBorder : OPSStyle.Colors.line,
                     lineWidth: OPSStyle.Layout.Border.standard
                 )
         )
     }
 }
 
+struct StockMenuOptionLabel: View {
+    let title: String
+    let isSelected: Bool
+
+    @ViewBuilder
+    var body: some View {
+        if isSelected {
+            Label(title, systemImage: OPSStyle.Icons.checkmark)
+        } else {
+            Text(title)
+        }
+    }
+}
+
 // MARK: - Stock helpers
+
+enum StockSearch {
+    static func matches(_ candidate: String, query: String) -> Bool {
+        let terms = query
+            .split(whereSeparator: \.isWhitespace)
+            .map { StockTextKey.normalize(String($0)) }
+            .filter { !$0.isEmpty }
+        guard !terms.isEmpty else { return true }
+
+        let normalizedCandidate = StockTextKey.normalize(candidate)
+        return terms.allSatisfy(normalizedCandidate.contains)
+    }
+}
+
+enum StockCategoryFiltering {
+    static func matches(
+        rowCategory: CatalogCategory?,
+        selectedCategoryId: String?,
+        categoriesById: [String: CatalogCategory]
+    ) -> Bool {
+        guard let selectedCategoryId else { return true }
+        var current = rowCategory
+        var visited = Set<String>()
+
+        while let category = current, visited.insert(category.id).inserted {
+            if category.id == selectedCategoryId { return true }
+            current = category.parentId.flatMap { categoriesById[$0] }
+        }
+        return false
+    }
+}
+
+enum StockFilterScope {
+    static func categoryIds(
+        rows: [EnrichedVariantRow],
+        categoriesById: [String: CatalogCategory]
+    ) -> Set<String> {
+        var result = Set<String>()
+        for row in rows {
+            var current = row.category
+            var visited = Set<String>()
+            while let category = current, visited.insert(category.id).inserted {
+                result.insert(category.id)
+                current = category.parentId.flatMap { categoriesById[$0] }
+            }
+        }
+        return result
+    }
+
+    static func tagIds(rows: [EnrichedVariantRow]) -> Set<String> {
+        rows.reduce(into: Set<String>()) { result, row in
+            result.formUnion(row.tagIds)
+        }
+    }
+}
+
+enum StockFilterVisibility {
+    static func categoryChangesResults(
+        rows: [EnrichedVariantRow],
+        categories: [CatalogCategory],
+        categoriesById: [String: CatalogCategory]
+    ) -> Bool {
+        guard !rows.isEmpty else { return false }
+        return categories.contains { category in
+            let matchCount = rows.filter {
+                StockCategoryFiltering.matches(
+                    rowCategory: $0.category,
+                    selectedCategoryId: category.id,
+                    categoriesById: categoriesById
+                )
+            }.count
+            return matchCount > 0 && matchCount < rows.count
+        }
+    }
+
+    static func optionAxisChangesResults(
+        axis: StockOptionFilterAxis,
+        rows: [EnrichedVariantRow]
+    ) -> Bool {
+        guard !rows.isEmpty else { return false }
+        return axis.values.contains { value in
+            let selected = [axis.key: value.key]
+            let matchCount = rows.filter {
+                StockAttributeFiltering.matches($0, selectedValueKeys: selected)
+            }.count
+            return matchCount > 0 && matchCount < rows.count
+        }
+    }
+}
+
+enum StockCategoryHierarchy {
+    static func isOrderedBefore(
+        _ lhs: CatalogCategory,
+        _ rhs: CatalogCategory,
+        categoriesById: [String: CatalogCategory]
+    ) -> Bool {
+        let lhsPath = path(to: lhs, categoriesById: categoriesById)
+        let rhsPath = path(to: rhs, categoriesById: categoriesById)
+        let sharedCount = min(lhsPath.count, rhsPath.count)
+
+        for index in 0..<sharedCount {
+            let left = lhsPath[index]
+            let right = rhsPath[index]
+            if left.id == right.id { continue }
+            if left.sortOrder != right.sortOrder { return left.sortOrder < right.sortOrder }
+            let nameOrder = left.name.localizedCaseInsensitiveCompare(right.name)
+            if nameOrder != .orderedSame { return nameOrder == .orderedAscending }
+            return left.id < right.id
+        }
+        return lhsPath.count < rhsPath.count
+    }
+
+    private static func path(
+        to category: CatalogCategory,
+        categoriesById: [String: CatalogCategory]
+    ) -> [CatalogCategory] {
+        var path = [category]
+        var current = category
+        var visited: Set<String> = [category.id]
+
+        while let parentId = current.parentId,
+              visited.insert(parentId).inserted,
+              let parent = categoriesById[parentId] {
+            path.insert(parent, at: 0)
+            current = parent
+        }
+        return path
+    }
+}
+
+struct StockGridLayout: Equatable {
+    let columnCount: Int
+    let showsSecondaryMetadata: Bool
+}
+
+enum StockGridDensity {
+    static func clampedScale(_ value: Double) -> Double {
+        min(
+            max(value, Double(OPSStyle.Inventory.CardScale.minScale)),
+            Double(OPSStyle.Inventory.CardScale.maxScale)
+        )
+    }
+
+    static func layout(for scale: Double) -> StockGridLayout {
+        let clamped = clampedScale(scale)
+        if clamped < Double(OPSStyle.Inventory.CardScale.tagVisibilityThreshold) {
+            return StockGridLayout(columnCount: 3, showsSecondaryMetadata: false)
+        }
+        let expandedThreshold = Double(
+            (OPSStyle.Inventory.CardScale.metadataVisibilityThreshold + OPSStyle.Inventory.CardScale.maxScale) / 2
+        )
+        if clamped > expandedThreshold {
+            return StockGridLayout(columnCount: 1, showsSecondaryMetadata: true)
+        }
+        return StockGridLayout(columnCount: 2, showsSecondaryMetadata: true)
+    }
+
+    static func adjustedScale(from scale: Double, towardLargerCards: Bool) -> Double {
+        let stops = [
+            Double(OPSStyle.Inventory.CardScale.minScale),
+            Double(OPSStyle.Inventory.CardScale.metadataVisibilityThreshold),
+            Double(OPSStyle.Inventory.CardScale.maxScale)
+        ]
+        let current = clampedScale(scale)
+
+        if towardLargerCards {
+            return stops.first(where: { $0 > current }) ?? Double(OPSStyle.Inventory.CardScale.maxScale)
+        }
+        return stops.reversed().first(where: { $0 < current }) ?? Double(OPSStyle.Inventory.CardScale.minScale)
+    }
+
+    static func accessibilityValue(for scale: Double) -> String {
+        let layout = layout(for: scale)
+        switch layout.columnCount {
+        case 3: return "Compact, 3 columns"
+        case 1: return "Expanded, 1 column"
+        default: return "Standard, 2 columns"
+        }
+    }
+}
+
+enum StockTableSelection {
+    static func resolve(current: String?, available: [String]) -> String? {
+        if let current, available.contains(current) { return current }
+        return available.first
+    }
+}
 
 enum StockTextKey {
     static func normalize(_ value: String) -> String {
@@ -822,11 +1491,16 @@ enum StockQuantityAdjustment {
 }
 
 enum StockRowOrdering {
-    static func sorted(_ rows: [EnrichedVariantRow], mode: StockSortMode) -> [EnrichedVariantRow] {
-        rows.sorted { lhs, rhs in
+    static func sorted(
+        _ rows: [EnrichedVariantRow],
+        mode: StockSortMode,
+        categories: [CatalogCategory] = []
+    ) -> [EnrichedVariantRow] {
+        let categoriesById = Dictionary(uniqueKeysWithValues: categories.map { ($0.id, $0) })
+        return rows.sorted { lhs, rhs in
             switch mode {
             case .category:
-                return compareCategory(lhs, rhs)
+                return compareCategory(lhs, rhs, categoriesById: categoriesById)
             case .family:
                 return compareFamily(lhs, rhs)
             case .quantity:
@@ -840,14 +1514,20 @@ enum StockRowOrdering {
         }
     }
 
-    private static func compareCategory(_ lhs: EnrichedVariantRow, _ rhs: EnrichedVariantRow) -> Bool {
+    private static func compareCategory(
+        _ lhs: EnrichedVariantRow,
+        _ rhs: EnrichedVariantRow,
+        categoriesById: [String: CatalogCategory]
+    ) -> Bool {
         switch (lhs.category, rhs.category) {
         case let (lhsCategory?, rhsCategory?):
-            if lhsCategory.sortOrder != rhsCategory.sortOrder {
-                return lhsCategory.sortOrder < rhsCategory.sortOrder
+            if lhsCategory.id != rhsCategory.id {
+                return StockCategoryHierarchy.isOrderedBefore(
+                    lhsCategory,
+                    rhsCategory,
+                    categoriesById: categoriesById
+                )
             }
-            let categoryCompare = lhsCategory.name.localizedCaseInsensitiveCompare(rhsCategory.name)
-            if categoryCompare != .orderedSame { return categoryCompare == .orderedAscending }
         case (_?, nil):
             return true
         case (nil, _?):
@@ -895,10 +1575,11 @@ enum StockRowOrdering {
 // MARK: - Threshold banner
 
 /// Aggregate banner shown when any variant has fallen below its effective
-/// warning or critical threshold. Tapping pivots the threshold filter to
-/// surface only the affected variants.
+/// warning or critical threshold. Tapping opens the suggested-order review
+/// when permitted, with a low-stock filter fallback for read-only operators.
 struct ThresholdBanner: View {
     let rows: [EnrichedVariantRow]
+    let opensSuggestedOrders: Bool
     let onTap: () -> Void
 
     private var criticalCount: Int {
@@ -912,33 +1593,36 @@ struct ThresholdBanner: View {
     var body: some View {
         Button(action: onTap) {
             HStack(spacing: OPSStyle.Layout.spacing2) {
-                Image(systemName: "exclamationmark.triangle.fill")
+                Image(systemName: OPSStyle.Icons.alert)
                     .font(.system(size: OPSStyle.Layout.IconSize.sm))
                     .foregroundColor(OPSStyle.Colors.warningStatus)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("BELOW THRESHOLD")
+
+                if criticalCount > 0 {
+                    Text("\(criticalCount) CRITICAL")
                         .font(OPSStyle.Typography.metadata)
-                        .foregroundColor(OPSStyle.Colors.warningStatus)
-                    HStack(spacing: OPSStyle.Layout.spacing2) {
-                        if criticalCount > 0 {
-                            Text("\(criticalCount) critical")
-                                .font(OPSStyle.Typography.captionBold)
-                                .foregroundColor(OPSStyle.Colors.errorText)
-                        }
-                        if warningCount > 0 {
-                            Text("\(warningCount) warning")
-                                .font(OPSStyle.Typography.caption)
-                                .foregroundColor(OPSStyle.Colors.warningText)
-                        }
-                    }
+                        .foregroundColor(OPSStyle.Colors.roseTextM)
                 }
+                if criticalCount > 0 && warningCount > 0 {
+                    Text("·")
+                        .font(OPSStyle.Typography.metadata)
+                        .foregroundColor(OPSStyle.Colors.tertiaryText)
+                }
+                if warningCount > 0 {
+                    Text("\(warningCount) LOW")
+                        .font(OPSStyle.Typography.metadata)
+                        .foregroundColor(OPSStyle.Colors.tanTextM)
+                }
+
                 Spacer()
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 12, weight: .semibold))
+                Text("REVIEW")
+                    .font(OPSStyle.Typography.metadata)
+                    .foregroundColor(OPSStyle.Colors.tanTextM)
+                Image(systemName: OPSStyle.Icons.forward)
+                    .font(.system(size: OPSStyle.Layout.IconSize.xs, weight: .semibold))
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
             }
             .padding(.horizontal, OPSStyle.Layout.spacing3)
-            .padding(.vertical, OPSStyle.Layout.spacing2)
+            .frame(minHeight: OPSStyle.Layout.touchTargetMin)
             .background(OPSStyle.Colors.warningBackground)
             .cornerRadius(OPSStyle.Layout.cornerRadius)
             .overlay(
@@ -947,6 +1631,11 @@ struct ThresholdBanner: View {
             )
         }
         .buttonStyle(.plain)
-        .accessibilityLabel("\(criticalCount) critical, \(warningCount) warning. Filter to view.")
+        .accessibilityLabel("\(criticalCount) critical, \(warningCount) warning")
+        .accessibilityHint(
+            opensSuggestedOrders
+                ? "Opens suggested orders."
+                : "Filters stock to low and critical items."
+        )
     }
 }

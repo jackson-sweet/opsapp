@@ -64,6 +64,9 @@ enum OPSStyle {
         static let cardBorderSubtle = Color.white.opacity(0.05) // Subtle card border for less prominent cards
         static let inputFieldBorder = Color.white.opacity(0.10) // Input fields, text editors — was 0.2, aligned to --line
         static let inputFieldBorderFocus = Color.white.opacity(0.20) // Focused input border — brighter white per DESIGN.md §9 (never accent)
+        static let activeChipBorder = Color.white.opacity(0.18) // Active filter/view chip — DESIGN.md §4.3 field uplift
+        static let activeSegmentBorder = Color.white.opacity(0.22) // Active mode segment — MOBILE.md §4.1
+        static let activeSegmentHighlight = Color.white.opacity(0.06) // Active segment inset top line — MOBILE.md §4.1
         static let buttonBorder = Color.white.opacity(0.10) // Secondary action buttons — was 0.4, aligned to --line
         static let darkBorder = Color.black.opacity(0.5) // Dark borders; used by GracePeriodBanner
         
@@ -211,6 +214,8 @@ enum OPSStyle {
         static let surfaceInput   = Color.white.opacity(0.04)  // Input field fill
         static let surfaceHover   = Color.white.opacity(0.05)  // Interactive row / button hover
         static let surfaceActive  = Color.white.opacity(0.08)  // Active toggle, pressed state
+        static let surfaceSegmented = Color.white.opacity(0.03) // Segmented-control container — MOBILE.md §4.1
+        static let surfaceSelected = Color.white.opacity(0.10) // Selected segment/filter chip — MOBILE.md §4.1/§4.3
 
         // Solid raised command surface — #141416. The Money/Leads command cards
         // (NET PROFIT hero, job profitability, lead triage cards) sit on this
@@ -472,6 +477,10 @@ enum OPSStyle {
         static let inputHeight: CGFloat = 48.0          // §9 text input height (mobile touch)
         static let bottomCTAHeight: CGFloat = 52.0      // §8 bottom-anchored primary CTA (thumb zone)
         static let chipMinHeight: CGFloat = 36.0        // §4.3 filter / form-picker chip — the one sanctioned sub-44pt target
+        static let segmentedControlInset: CGFloat = 3.0 // §4.1 inset between container and segments
+        static let segmentedControlRadius: CGFloat = 5.0
+        static let segmentedItemRadius: CGFloat = 3.0
+        static let segmentedItemMinWidth: CGFloat = 52.0
         static let formMediaPreviewMaxHeight: CGFloat = 360.0
         static let monthGridDayHeaderHeight: CGFloat = 26.0
         static let monthGridCompactBadgeHeight: CGFloat = 10.0
@@ -828,6 +837,11 @@ enum OPSStyle {
         static let ellipsisCircle = "ellipsis.circle"
         static let ellipsisCircleFill = "ellipsis.circle.fill"
         static let listBullet = "list.bullet"
+        static let grid = "square.grid.2x2"
+        static let table = "tablecells"
+        static let inventory = "shippingbox"
+        static let openDetail = "arrow.up.right.square"
+        static let adjust = "slider.horizontal.3"
         static let trash = "trash"
         static let trashFill = "trash.fill"
         static let pencil = "pencil"

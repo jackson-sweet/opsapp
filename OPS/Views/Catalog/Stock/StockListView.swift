@@ -2,8 +2,8 @@
 //  StockListView.swift
 //  OPS
 //
-//  LIST view mode for the STOCK segment. Variant cards grouped by
-//  category with pinned section headers. Supports two-level nesting
+//  LIST view mode for the STOCK segment. Variants render as a dense
+//  operational register, with optional category grouping. Supports two-level nesting
 //  (parent category → child category → variants); variants on
 //  uncategorized families fall under a synthetic "UNCATEGORIZED"
 //  parent so nothing is hidden.
@@ -19,6 +19,9 @@ struct StockListView: View {
     /// children) rendered with a nil parent and the header collapsed to
     /// "UNCATEGORIZED" (bug 9a4bcfae).
     let categories: [CatalogCategory]
+    /// Category grouping is itself a sort mode. Other sorts remain globally
+    /// ordered instead of being silently regrouped and re-sorted by family.
+    let groupByCategory: Bool
     var onTap: ((EnrichedVariantRow) -> Void)? = nil
     var onOpenDetail: ((EnrichedVariantRow) -> Void)? = nil
 
@@ -71,12 +74,18 @@ struct StockListView: View {
             }
         }
 
-        // Build ordered Group structs. Parent name drives sort; uncategorized last.
+        // Build ordered Group structs. The explicit category order drives sort;
+        // names break ties and uncategorized remains last.
         let sortedKeys = byParentId.keys.sorted { lhs, rhs in
             if lhs == "__uncategorized__" { return false }
             if rhs == "__uncategorized__" { return true }
-            let lhsName = byParentId[lhs]?.category?.name ?? categoryById[lhs]?.name ?? ""
-            let rhsName = byParentId[rhs]?.category?.name ?? categoryById[rhs]?.name ?? ""
+            let lhsCategory = byParentId[lhs]?.category ?? categoryById[lhs]
+            let rhsCategory = byParentId[rhs]?.category ?? categoryById[rhs]
+            if lhsCategory?.sortOrder != rhsCategory?.sortOrder {
+                return (lhsCategory?.sortOrder ?? .max) < (rhsCategory?.sortOrder ?? .max)
+            }
+            let lhsName = lhsCategory?.name ?? ""
+            let rhsName = rhsCategory?.name ?? ""
             return lhsName.localizedCaseInsensitiveCompare(rhsName) == .orderedAscending
         }
 
@@ -88,13 +97,18 @@ struct StockListView: View {
             let parent = entry.category ?? categoryById[key]
             let children = entry.childRows
                 .map { (childId, rows) -> (category: CatalogCategory, rows: [EnrichedVariantRow]) in
-                    (category: entry.childById[childId]!, rows: rows.sorted { $0.family.name < $1.family.name })
+                    (category: entry.childById[childId]!, rows: rows)
                 }
-                .sorted { $0.category.name.localizedCaseInsensitiveCompare($1.category.name) == .orderedAscending }
+                .sorted {
+                    if $0.category.sortOrder != $1.category.sortOrder {
+                        return $0.category.sortOrder < $1.category.sortOrder
+                    }
+                    return $0.category.name.localizedCaseInsensitiveCompare($1.category.name) == .orderedAscending
+                }
             return Group(
                 id: key,
                 parent: parent,
-                parentRows: entry.rows.sorted { $0.family.name < $1.family.name },
+                parentRows: entry.rows,
                 children: children
             )
         }
@@ -102,26 +116,58 @@ struct StockListView: View {
 
     var body: some View {
         ScrollView {
-            LazyVStack(spacing: OPSStyle.Layout.spacing2, pinnedViews: .sectionHeaders) {
-                ForEach(groups) { group in
-                    CategoryGroupSection(
-                        parent: group.parent,
-                        parentRows: group.parentRows,
-                        children: group.children,
-                        onTap: { row in
-                            onTap?(row)
-                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                        },
-                        onOpenDetail: { row in
-                            onOpenDetail?(row)
-                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                        }
-                    )
+            if groupByCategory {
+                LazyVStack(spacing: OPSStyle.Layout.spacing3) {
+                    ForEach(groups) { group in
+                        CategoryGroupSection(
+                            parent: group.parent,
+                            parentRows: group.parentRows,
+                            children: group.children,
+                            onTap: handleTap,
+                            onOpenDetail: handleOpenDetail
+                        )
+                    }
+                    Color.clear.frame(height: OPSStyle.Layout.spacing5)
                 }
-                Color.clear.frame(height: 100) // FAB clearance
+                .padding(.horizontal, OPSStyle.Layout.spacing3)
+                .padding(.top, OPSStyle.Layout.spacing1)
+            } else {
+                LazyVStack(spacing: 0) {
+                    ForEach(Array(rows.enumerated()), id: \.element.id) { index, row in
+                        rowButton(row)
+                        if index < rows.count - 1 {
+                            Divider()
+                                .background(OPSStyle.Colors.separator)
+                                .padding(.leading, OPSStyle.Layout.spacing5)
+                        }
+                    }
+                }
+                .glassSurface()
+                .padding(.horizontal, OPSStyle.Layout.spacing3)
+                .padding(.top, OPSStyle.Layout.spacing1)
+
+                Color.clear.frame(height: OPSStyle.Layout.spacing5)
             }
-            .padding(.horizontal, OPSStyle.Layout.spacing3)
-            .padding(.top, OPSStyle.Layout.spacing2)
+        }
+    }
+
+    private func handleTap(_ row: EnrichedVariantRow) {
+        onTap?(row)
+    }
+
+    private func handleOpenDetail(_ row: EnrichedVariantRow) {
+        onOpenDetail?(row)
+    }
+
+    private func rowButton(_ row: EnrichedVariantRow) -> some View {
+        Button { handleTap(row) } label: {
+            StockListRow(row: row)
+        }
+        .buttonStyle(.plain)
+        .contextMenu {
+            Button { handleOpenDetail(row) } label: {
+                Label("OPEN FULL DETAIL", systemImage: OPSStyle.Icons.openDetail)
+            }
         }
     }
 }

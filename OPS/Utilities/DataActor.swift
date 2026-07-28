@@ -730,6 +730,17 @@ actor DataActor {
                 markSpotlightDirty(domain: SpotlightDomain.client, id: id)
             }
         } else {
+            // A pull or realtime echo can arrive after the local Client model has
+            // been removed but before (or just after) its queued soft-delete is
+            // acknowledged. Re-inserting that active server snapshot resurrects
+            // the client in the UI. Match the project/task origin-suppression
+            // contract: any recent local write owns this identity until the
+            // outbound transaction has cleared the race window.
+            if hasRecentLocalWrite(entityType: .client, entityId: id, withinSeconds: 60) {
+                print("[DUPE_TRACE] DataActor.mergeClient SUPPRESSED id=\(id) — recent local write within 60s")
+                return
+            }
+
             let model = dto.toModel()
             model.lastSyncedAt = Date()
             model.needsSync = false

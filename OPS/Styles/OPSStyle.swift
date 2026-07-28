@@ -480,6 +480,24 @@ enum OPSStyle {
         static let monthGridExpandedHeightThreshold: CGFloat = 180.0
         static let wizardInstructionBarClearance: CGFloat = 80.0
 
+        // Schedule sheet — the one-screen date picker (`CalendarSchedulerSheet`).
+        // Fixed chrome around a single scrolling region, so each band's height
+        // is a layout constant rather than a per-view guess.
+        static let schedulerDayCellHeight: CGFloat = 48.0        // ≥ 44pt touch target
+        static let schedulerSignalBarHeight: CGFloat = 3.0       // availability bar in a day cell
+        static let schedulerSignalHatchPitch: CGFloat = 4.0      // 45° time-off hatch spacing
+        static let schedulerIdentityHeight: CGFloat = 32.0
+        static let schedulerRangeStripHeight: CGFloat = 56.0
+        static let schedulerSuggestionHeight: CGFloat = 32.0
+        static let schedulerDayPanelHeight: CGFloat = 150.0      // 812pt-class devices
+        static let schedulerDayPanelCompactHeight: CGFloat = 120.0 // 667pt-class devices
+        static let schedulerCompactHeightThreshold: CGFloat = 700.0
+        static let schedulerCalendarMinHeight: CGFloat = 300.0
+        /// Dependency-floor days stay fully tappable — they only recede.
+        static let schedulerPreFloorOpacity: Double = 0.35
+        /// CLEAR takes 30% of the footer; SAVE keeps the thumb-weighted share.
+        static let schedulerFooterSecondaryWidthRatio: CGFloat = 0.3
+
         // MARK: - Corner radius (spec v2 — sharp, tactical, no 999px pills)
         // Prefer the new semantic names (panelRadius, chipRadius, etc.).
         // Legacy names are kept as aliases so existing call sites still compile.
@@ -649,6 +667,8 @@ enum OPSStyle {
         static let durationChartBar: Double = 0.400  // 400-600ms — chart bar grow (add index delay)
         static let durationFlip:     Double = 0.350  // 350ms — card flip
         static let durationCountUp:  Double = 0.800  // 800ms — hero number count-up
+        /// Long-press hold before a context action fires (MOBILE.md §11 gestures).
+        static let longPressHold:    Double = 0.350
 
         // MARK: Reduce-motion (spec v2 §8/§14 — "always honor prefers-reduced-motion")
         // Every pre-built token below is a COMPUTED value that reads the system

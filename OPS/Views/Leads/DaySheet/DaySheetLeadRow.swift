@@ -112,10 +112,16 @@ struct DaySheetLeadRow: View {
 
     // MARK: - Chips (stage · urgency)
 
+    /// Both chips are `.fixedSize()`: a chip that ellipsizes (`NEGOTIATI… · 6D`)
+    /// has stopped being a token and started being a sentence fragment. The
+    /// name and address lines above absorb the compression instead — they are
+    /// prose, and prose truncates honestly.
     private var chips: some View {
         HStack(spacing: OPSStyle.Layout.spacing2) {
             stageChip
+                .fixedSize()
             urgencyChip
+                .fixedSize()
         }
     }
 
@@ -138,7 +144,8 @@ struct DaySheetLeadRow: View {
                 stage: lead.stage,
                 detail: stageDetail,
                 showsChevron: canEdit || canConvert,
-                neutralized: true
+                neutralized: true,
+                compact: true
             )
         }
     }

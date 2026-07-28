@@ -43,7 +43,7 @@ struct LeadThumbView: View {
 
     @ViewBuilder
     private var source: some View {
-        if let url = firstPhotoURL {
+        if let url = newestPhotoURL {
             AsyncImage(url: url) { phase in
                 switch phase {
                 case .success(let image):
@@ -120,9 +120,13 @@ struct LeadThumbView: View {
 
     private var photoCount: Int { photoURLs.count }
 
-    private var firstPhotoURL: URL? {
-        guard let first = photoURLs.first else { return nil }
-        return URL(string: first)
+    /// The NEWEST shot, not the oldest: the web extract pipeline appends to
+    /// `images`, so the server's order is oldest-first (LeadPhotosSection
+    /// reverses it for the same reason). The tile has to show what the operator
+    /// photographed last, not what the lead looked like the day it landed.
+    private var newestPhotoURL: URL? {
+        guard let newest = photoURLs.last else { return nil }
+        return URL(string: newest)
     }
 
     private var coordinate: CLLocationCoordinate2D? {

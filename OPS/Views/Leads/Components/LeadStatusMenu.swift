@@ -125,15 +125,19 @@ struct LeadStatusMenu<Label: View>: View {
 /// `neutralized` drops the tone entirely (neutral fill / hairline / `--text-2`)
 /// for surfaces where the stage is reference data rather than the headline —
 /// the day-sheet row, where urgency owns the only colour in the chips line.
+/// `compact` swaps `displayName` for `shortLabel` (`NEGOT`, not `NEGOTIATION`)
+/// on width-starved surfaces: the day-sheet row shares one line with the
+/// urgency chip and a full stage name ellipsized to `NEGOTIATI… · 6D`.
 struct StageTag: View {
     let stage: PipelineStage
     var detail: String? = nil
     var showsChevron: Bool = false
     var neutralized: Bool = false
+    var compact: Bool = false
 
     var body: some View {
         HStack(spacing: 4) {
-            Text(stage.displayName)
+            Text(compact ? stage.shortLabel : stage.displayName)
             if let detail {
                 Text("· \(detail)")
                     .monospacedDigit()

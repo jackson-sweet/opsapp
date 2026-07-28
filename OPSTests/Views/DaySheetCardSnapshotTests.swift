@@ -3,10 +3,11 @@
 //  OPSTests
 //
 //  Visual-verification harness for DaySheetLeadCard — the day sheet's expanded
-//  accordion cell. Proves the four states that matter: the full lead (every
-//  block present), the viewer without edit rights (photos yes, stamp no), the
-//  finances-scoped operator (the quiet EST line), and the sparse lead where
-//  most blocks are ABSENT rather than empty.
+//  accordion cell. Proves the states that matter: the full lead (every block
+//  present), the viewer without edit rights (photos yes, stamp no), the
+//  finances-scoped operator (the quiet EST line), the sparse lead where most
+//  blocks are ABSENT rather than empty, and both halves of the milestone's
+//  5-second undo window — pressed with signal, and pressed dark (`QUEUED`).
 //
 //  Harness is DaySheetRowSnapshotTests' verbatim, including the safe-area fix
 //  (a UIWindow inherits the device insets whatever its frame, which pushes the
@@ -174,19 +175,43 @@ final class DaySheetCardSnapshotTests: XCTestCase {
         DaySheetViewModel.Row(lead: lead, urgency: urgency, milestone: milestone)
     }
 
+    /// A committer parked mid-window, so the card can be rendered in the state
+    /// a runner sees the instant his thumb lifts. Every seam is inert — no
+    /// network — and the scheduler never fires, so the window stays open for
+    /// as long as the render needs it.
+    private func heldCommitter(online: Bool) -> LeadMilestoneCommitter {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        return LeadMilestoneCommitter(
+            companyId: "c1",
+            queue: MilestoneWriteQueue(directory: directory, backgroundWorkEnabled: false),
+            isOnline: { online },
+            moveStage: { _, _ in },
+            flipLocalStage: { _, _ in },
+            logActivity: { _ in "activity-1" },
+            deleteActivity: { _ in },
+            currentStageRaw: { _ in PipelineStage.quoting.rawValue },
+            notifyLeadUpdated: { _ in },
+            schedule: { _, _ in LeadMilestoneCommitter.ScheduledExpiry {} }
+        )
+    }
+
     @ViewBuilder
     private func hosted(
         _ row: DaySheetViewModel.Row,
         canEdit: Bool,
         canConvert: Bool,
         store: PermissionStore,
-        deck: DeckDesign? = nil
+        deck: DeckDesign? = nil,
+        committer: LeadMilestoneCommitter? = nil
     ) -> some View {
         DaySheetLeadCard(
             row: row,
             canEdit: canEdit,
             canConvert: canConvert,
             isExpanded: true,
+            committer: committer,
             deckSource: .injected(deck)
         )
         .padding(OPSStyle.Layout.spacing2)
@@ -235,6 +260,47 @@ final class DaySheetCardSnapshotTests: XCTestCase {
                 canConvert: true,
                 store: financesStore(),
                 deck: deckFixture()
+            )
+        }
+    }
+
+    /// The five seconds after the press: the stamp button settles into an
+    /// accent OUTLINE carrying the milestone's own confirmation copy, with
+    /// `UNDO` on the trailing edge. The card has not moved — the sheet is
+    /// frozen on its pre-press groups until the window closes.
+    func testRenderPendingUndoCard() async {
+        let lead = fullLead()
+        let committer = heldCommitter(online: true)
+        await committer.press(.quoteSent, lead: lead, userId: "u1", canEdit: true)
+
+        snapshot("day_sheet_card_pending_undo", size: CGSize(width: Self.cardWidth, height: 700)) {
+            hosted(
+                row(lead, .late(days: 3), .quoteSent),
+                canEdit: true,
+                canConvert: true,
+                store: standardStore(),
+                deck: deckFixture(),
+                committer: committer
+            )
+        }
+    }
+
+    /// The same window, pressed with no signal: identical confirmation, plus a
+    /// quiet neutral `QUEUED` tag. The operator is told the truth — it counted,
+    /// it just has not left the phone yet.
+    func testRenderQueuedPendingCard() async {
+        let lead = fullLead()
+        let committer = heldCommitter(online: false)
+        await committer.press(.quoteSent, lead: lead, userId: "u1", canEdit: true)
+
+        snapshot("day_sheet_card_pending_queued", size: CGSize(width: Self.cardWidth, height: 700)) {
+            hosted(
+                row(lead, .late(days: 3), .quoteSent),
+                canEdit: true,
+                canConvert: true,
+                store: standardStore(),
+                deck: deckFixture(),
+                committer: committer
             )
         }
     }

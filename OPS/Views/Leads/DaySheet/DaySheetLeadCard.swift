@@ -21,9 +21,10 @@
 //  appears only when this operator may edit this lead (the transform already
 //  gates `row.milestone` on edit scope).
 //
-//  No animation here — expansion is a plain conditional. Motion (250ms push,
-//  group re-sort, reduced-motion fallback) is a later task's job, and the
-//  milestone's commit/undo mechanics are Task 5's.
+//  No animation here — expansion is a plain conditional, and the milestone's
+//  press → confirmation → UNDO is a plain state swap read off
+//  `LeadMilestoneCommitter.pending`. Motion (250ms push, group re-sort, the
+//  undo chip's fade, reduced-motion fallback) is a later task's job.
 //
 //  Spec: docs/superpowers/specs/2026-07-27-my-leads-day-sheet-design.md §3.4
 //
@@ -53,8 +54,13 @@ struct DaySheetLeadCard: View {
     /// The screen holds the one-open-id; the card just renders the state.
     let isExpanded: Bool
     var onExpand: () -> Void = {}
-    /// Task 5 wires the commit + 5s UNDO window behind this.
+    /// The press. The screen routes it — `committer.press` for a stamp, the won
+    /// flow for WON — because only the screen holds the operator id.
     var onMilestone: (LeadMilestone) -> Void = { _ in }
+    /// The open undo window, if there is one. Defaulted so previews, snapshot
+    /// harnesses and the sheet's own idle rows construct the card unchanged;
+    /// the screen owns the one instance and hands it to every card.
+    var committer: LeadMilestoneCommitter?
     var onFullLead: () -> Void = {}
     /// The screen presents `DeckBuilderView` full-screen (LeadDetailView's
     /// `deckDesignToOpen` pattern) — it owns the modelContext and syncEngine.
@@ -236,24 +242,21 @@ struct DaySheetLeadCard: View {
     @ViewBuilder
     private var milestoneButton: some View {
         if let milestone = row.milestone {
-            Button {
-                onMilestone(milestone)
-            } label: {
-                Text(milestone.label)
-                    .font(OPSStyle.Typography.buttonLabel)
-                    .kerning(0.27)
-                    .textCase(.uppercase)
-                    .foregroundColor(OPSStyle.Colors.invertedText)
-                    .frame(maxWidth: .infinity)
-                    .frame(height: OPSStyle.Layout.inputHeight)
-                    .background(
-                        RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius, style: .continuous)
-                            .fill(OPSStyle.Colors.opsAccent)
-                    )
-                    .contentShape(Rectangle())
+            if let committer {
+                DaySheetMilestoneStamp(
+                    milestone: milestone,
+                    leadId: lead.id,
+                    committer: committer,
+                    onPress: onMilestone
+                )
+            } else {
+                DaySheetMilestoneControl(
+                    milestone: milestone,
+                    pending: nil,
+                    onPress: { onMilestone(milestone) },
+                    onUndo: {}
+                )
             }
-            .buttonStyle(PlainButtonStyle())
-            .accessibilityLabel("Log \(milestone.label.lowercased())")
         }
     }
 
@@ -615,6 +618,133 @@ private struct DaySheetQuickAction: View {
         }
         .buttonStyle(PlainButtonStyle())
         .accessibilityLabel(label)
+    }
+}
+
+// MARK: - Milestone stamp
+
+/// The observing shim. Kept separate so the card itself does not have to hold
+/// an `@ObservedObject` it may not have been given — and so exactly one card
+/// (the open one) is subscribed to the committer at a time.
+private struct DaySheetMilestoneStamp: View {
+
+    let milestone: LeadMilestone
+    let leadId: String
+    @ObservedObject var committer: LeadMilestoneCommitter
+    let onPress: (LeadMilestone) -> Void
+
+    /// Only THIS lead's window. One is open app-wide at any moment, and a card
+    /// must never render another lead's confirmation.
+    private var pending: LeadMilestoneCommitter.PendingCommit? {
+        guard let pending = committer.pending, pending.leadId == leadId else { return nil }
+        return pending
+    }
+
+    var body: some View {
+        DaySheetMilestoneControl(
+            milestone: pending?.milestone ?? milestone,
+            pending: pending,
+            onPress: { onPress(milestone) },
+            onUndo: { Task { await committer.undo() } }
+        )
+    }
+}
+
+/// Two states of one control (spec §4):
+///
+///   idle     the screen's only accent element — a filled 48pt verb.
+///   pending  the same footprint, settled: accent outline instead of accent
+///            fill (the app's outlined-accent CTA treatment), the milestone's
+///            own confirmation copy, and `UNDO` on the trailing edge.
+///
+/// The pending state is deliberately NOT one big button. The main body has
+/// nothing left to do — pressing it again would not unsend a quote — so only
+/// UNDO is tappable, and it owns a full 44pt target of its own.
+private struct DaySheetMilestoneControl: View {
+
+    let milestone: LeadMilestone
+    let pending: LeadMilestoneCommitter.PendingCommit?
+    let onPress: () -> Void
+    let onUndo: () -> Void
+
+    var body: some View {
+        if let pending {
+            confirmation(queued: pending.queuedRequestId != nil)
+        } else {
+            stamp
+        }
+    }
+
+    // MARK: Idle
+
+    private var stamp: some View {
+        Button(action: onPress) {
+            Text(milestone.label)
+                .font(OPSStyle.Typography.buttonLabel)
+                .kerning(0.27)
+                .textCase(.uppercase)
+                .foregroundColor(OPSStyle.Colors.invertedText)
+                .frame(maxWidth: .infinity)
+                .frame(height: OPSStyle.Layout.inputHeight)
+                .background(
+                    RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius, style: .continuous)
+                        .fill(OPSStyle.Colors.opsAccent)
+                )
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(PlainButtonStyle())
+        .accessibilityLabel("Log \(milestone.label.lowercased())")
+    }
+
+    // MARK: Pending
+
+    private func confirmation(queued: Bool) -> some View {
+        HStack(spacing: OPSStyle.Layout.spacing2) {
+            confirmationLabel
+            // Honest and quiet: the stamp is real, it just has not reached the
+            // server yet. Neutral tone — accent is spoken for by the outline.
+            if queued {
+                ToneTag("QUEUED")
+            }
+            Spacer(minLength: 0)
+            undoControl
+        }
+        .padding(.leading, OPSStyle.Layout.spacing3)
+        .padding(.trailing, OPSStyle.Layout.spacing2)
+        .frame(maxWidth: .infinity)
+        .frame(height: OPSStyle.Layout.inputHeight)
+        .background(
+            RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius, style: .continuous)
+                .fill(OPSStyle.Colors.opsAccent.opacity(OPSStyle.Layout.Opacity.subtle))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius, style: .continuous)
+                .strokeBorder(OPSStyle.Colors.opsAccent, lineWidth: OPSStyle.Layout.Border.standard)
+        )
+    }
+
+    private var confirmationLabel: some View {
+        Text(milestone.confirmationLabel)
+            .font(OPSStyle.Typography.buttonLabel)
+            .kerning(0.27)
+            .textCase(.uppercase)
+            .foregroundColor(OPSStyle.Colors.opsAccent)
+            .lineLimit(1)
+    }
+
+    private var undoControl: some View {
+        Button(action: onUndo) {
+            Text("UNDO")
+                .font(OPSStyle.Typography.buttonLabel)
+                .kerning(0.27)
+                .textCase(.uppercase)
+                .foregroundColor(OPSStyle.Colors.opsAccent)
+                .frame(minWidth: OPSStyle.Layout.touchTargetMin,
+                       minHeight: OPSStyle.Layout.touchTargetMin)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(PlainButtonStyle())
+        .accessibilityLabel("Undo \(milestone.label.lowercased())")
     }
 }
 

@@ -84,9 +84,12 @@
 --                   from the stage pair. <= 32 chars; only the NAME is
 --                   truncated, on a character boundary, with a trailing '…'.
 --   body            '<address> · <job line>' where present, <= 140.
---                   Falls back to the lead's display name when the lead has
---                   neither — §14.3.1 requires a concrete reference, and an
---                   empty body would violate the contract.
+--                   Falls back to 'BY <ACTOR NAME>' when the lead has
+--                   neither — the title already names the lead, so the actor
+--                   is the one new fact the owner doesn't have; the lead's
+--                   display name remains the terminal fallback if the actor
+--                   row is gone (§14.3.1 requires a concrete reference, and
+--                   an empty body would violate the contract).
 --   action_url      '/pipeline?opportunityId=<opportunity_id>'
 --   action_label    'OPEN LEAD'
 --   deep_link_type  'lead'
@@ -186,6 +189,7 @@ declare
   v_opportunity record;
   v_recipient record;
   v_lead_name text;
+  v_actor_name text;
   v_address text;
   v_job_line text;
   v_title text;
@@ -261,8 +265,17 @@ begin
   end if;
 
   -- '<address> · <job line>', capped at 140. The separator only appears
-  -- between two present halves; the lead's name is the last-resort concrete
-  -- reference when it has neither.
+  -- between two present halves. When the lead carries neither, the body
+  -- names WHO advanced it — the title already names the lead, so the actor
+  -- is the one new fact the owner doesn't have (lead name = terminal
+  -- fallback if the actor row is gone).
+  select nullif(btrim(regexp_replace(
+           coalesce(u.first_name, '') || ' ' || coalesce(u.last_name, ''),
+           '\s+', ' ', 'g'
+         )), '')
+    into v_actor_name
+    from public.users u
+   where u.id = new.transitioned_by;
   v_address := nullif(btrim(regexp_replace(
     coalesce(v_opportunity.address, ''), '\s+', ' ', 'g'
   )), '');
@@ -275,7 +288,7 @@ begin
         then v_address || ' · ' || v_job_line
       when v_address is not null then v_address
       when v_job_line is not null then v_job_line
-      else v_lead_name
+      else 'BY ' || upper(coalesce(v_actor_name, v_lead_name))
     end,
     140
   );

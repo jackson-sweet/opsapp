@@ -26,7 +26,6 @@ struct UniversalJobBoardCard: View {
     @Environment(\.wizardStateManager) private var wizardStateManager
     @Environment(\.tutorialMode) private var tutorialMode
     @Environment(\.tutorialPhase) private var tutorialPhase
-    @State private var allClientsForDeletion: [Client] = []
     @State private var tutorialShimmerOffset: CGFloat = -200
     @State private var showingMoreActions = false
     @State private var showingDetails = false
@@ -62,6 +61,14 @@ struct UniversalJobBoardCard: View {
 
     private var canModify: Bool {
         permissionStore.can("projects.edit")
+    }
+
+    private var canCreateProjects: Bool {
+        permissionStore.can("projects.create")
+    }
+
+    private var canDeleteClients: Bool {
+        permissionStore.can("clients.delete")
     }
 
     var body: some View {
@@ -142,115 +149,7 @@ struct UniversalJobBoardCard: View {
         }
         .sheet(isPresented: $showingClientDeletionSheet) {
             if case .client(let client) = cardType {
-                DeletionSheet(
-                    item: client,
-                    itemType: "Client",
-                    childItems: client.activeProjects.sorted { $0.title < $1.title },
-                    childType: "Project",
-                    availableReassignments: allClientsForDeletion,
-                    getItemDisplay: { client in
-                        AnyView(
-                            Text(client.name)
-                                .font(OPSStyle.Typography.title)
-                                .foregroundColor(OPSStyle.Colors.primaryText)
-                        )
-                    },
-                    filterAvailableItems: { clients in
-                        clients.filter {
-                            $0.id != client.id &&
-                            !$0.id.contains("-")
-                        }
-                    },
-                    getChildId: { $0.id },
-                    getReassignmentId: { $0.id },
-                    renderReassignmentRow: { project, selectedId, markedForDeletion, available, onToggleDelete in
-                        AnyView(
-                            ProjectReassignmentRow(
-                                project: project,
-                                selectedClientId: selectedId,
-                                markedForDeletion: markedForDeletion,
-                                availableClients: available,
-                                onToggleDelete: onToggleDelete
-                            )
-                        )
-                    },
-                    renderSearchField: { selectedId, available in
-                        AnyView(
-                            SearchField(
-                                selectedId: selectedId,
-                                items: available,
-                                placeholder: "Search for client",
-                                leadingIcon: OPSStyle.Icons.client,
-                                getId: { $0.id },
-                                getDisplayText: { $0.name },
-                                getSubtitle: { client in
-                                    client.activeProjects.count > 0
-                                        ? "\(client.activeProjects.count) project\(client.activeProjects.count == 1 ? "" : "s")"
-                                        : nil
-                                }
-                            )
-                        )
-                    },
-                    onDelete: { client, reassignments, deletions in
-                        let clientProjects = client.activeProjects.sorted { $0.title < $1.title }
-                        let availableClients = allClientsForDeletion.filter {
-                            $0.id != client.id &&
-                            !$0.id.contains("-")
-                        }
-
-                        let uniqueAssignments = Set(reassignments.values)
-                        if uniqueAssignments.count == 1, let bulkClientId = uniqueAssignments.first {
-                            if let newClient = availableClients.first(where: { $0.id == bulkClientId }) {
-                                print("🔄 Bulk reassigning \(clientProjects.count) projects to client: \(newClient.name) (\(bulkClientId))")
-
-                                for project in clientProjects {
-                                    print("  📋 Updating project: \(project.title) (\(project.id))")
-                                    // In Supabase, update client_id field on the project
-                                    try await dataController.updateProjectFields(
-                                        projectId: project.id,
-                                        fields: ["client_id": .string(bulkClientId)]
-                                    )
-                                    print("  ✅ Project \(project.title) updated successfully")
-                                    project.client = newClient
-                                    project.clientId = newClient.id
-                                    project.needsSync = false
-                                    project.lastSyncedAt = Date()
-                                }
-
-                                print("✅ All \(clientProjects.count) projects reassigned")
-                            }
-                        } else if deletions.count == clientProjects.count {
-                            for project in clientProjects {
-                                try await dataController.deleteProject(project)
-                            }
-                        } else {
-                            for project in clientProjects {
-                                if deletions.contains(project.id) {
-                                    try await dataController.deleteProject(project)
-                                } else if let newClientId = reassignments[project.id],
-                                   let newClient = availableClients.first(where: { $0.id == newClientId }) {
-                                    print("  📋 Individual: Updating project \(project.title) to client \(newClient.name)")
-                                    // In Supabase, update client_id field on the project
-                                    try await dataController.updateProjectFields(
-                                        projectId: project.id,
-                                        fields: ["client_id": .string(newClientId)]
-                                    )
-                                    print("  ✅ Project \(project.title) updated successfully")
-                                    project.client = newClient
-                                    project.clientId = newClient.id
-                                    project.needsSync = false
-                                    project.lastSyncedAt = Date()
-                                }
-                            }
-                        }
-
-                        try modelContext.save()
-                        try await dataController.deleteClient(client)
-                        print("🔄 Triggering sync to refresh client/project relationships")
-                        try? await dataController.triggerManualFullSync()
-                        print("✅ Sync completed")
-                    }
-                )
+                ClientDeletionSheet(client: client)
                 .environmentObject(dataController)
             }
         }
@@ -1100,16 +999,14 @@ struct UniversalJobBoardCard: View {
                 showingDetails = true
             }
 
-            if canModify {
+            if canCreateProjects {
                 Button("Add Project") {
                     showingProjectForm = true
                 }
+            }
 
+            if canDeleteClients {
                 Button("Delete", role: .destructive) {
-                    // Lazy-load all clients only when deletion sheet is needed
-                    if let companyId = dataController.currentUser?.companyId {
-                        allClientsForDeletion = dataController.getAllClients(for: companyId)
-                    }
                     showingClientDeletionSheet = true
                 }
             }

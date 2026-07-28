@@ -161,6 +161,7 @@ class AppState: ObservableObject {
     // Spotlight / deep-link targets for detail sheets
     @Published var selectedClientId: String?
     @Published var showClientDetails: Bool = false
+    private var clientDetailsDismissalWaiters: [CheckedContinuation<Void, Never>] = []
 
     @Published var selectedInvoiceId: String?
     @Published var showInvoiceDetails: Bool = false
@@ -175,6 +176,34 @@ class AppState: ObservableObject {
     func viewClientDetailsById(_ id: String) {
         selectedClientId = id
         showClientDetails = true
+    }
+
+    @MainActor
+    func requestClientDetailsDismissal() {
+        showClientDetails = false
+    }
+
+    @MainActor
+    func dismissClientDetails() {
+        showClientDetails = false
+        selectedClientId = nil
+
+        let waiters = clientDetailsDismissalWaiters
+        clientDetailsDismissalWaiters.removeAll()
+        waiters.forEach { $0.resume() }
+    }
+
+    @MainActor
+    func waitForClientDetailsDismissal() async {
+        guard showClientDetails || selectedClientId != nil else { return }
+
+        await withCheckedContinuation { continuation in
+            if showClientDetails || selectedClientId != nil {
+                clientDetailsDismissalWaiters.append(continuation)
+            } else {
+                continuation.resume()
+            }
+        }
     }
 
     @MainActor

@@ -13,6 +13,47 @@ import SwiftData
 
 // MARK: - SyncEngine
 
+/// Serializes outbound drains while coalescing any request that arrives during
+/// an active pass into one additional pass. Every caller waits until the whole
+/// coalesced drain is idle, which makes push-before-pull ordering deterministic.
+@MainActor
+final class SyncPushDrainCoordinator {
+    private var isRunning = false
+    private var rerunRequested = false
+    private var waiters: [CheckedContinuation<Void, Never>] = []
+
+    func run(_ operation: @MainActor () async -> Void) async {
+        if isRunning {
+            rerunRequested = true
+            await waitUntilIdle()
+            return
+        }
+
+        isRunning = true
+        repeat {
+            rerunRequested = false
+            await operation()
+        } while rerunRequested
+        isRunning = false
+
+        let pendingWaiters = waiters
+        waiters.removeAll()
+        pendingWaiters.forEach { $0.resume() }
+    }
+
+    private func waitUntilIdle() async {
+        guard isRunning else { return }
+
+        await withCheckedContinuation { continuation in
+            if isRunning {
+                waiters.append(continuation)
+            } else {
+                continuation.resume()
+            }
+        }
+    }
+}
+
 @MainActor
 @Observable
 final class SyncEngine {
@@ -31,8 +72,7 @@ final class SyncEngine {
     private var connectivity: ConnectivityManager?
     private var syncInProgress: Bool = false
     private var syncRequestedWhileInProgress: Bool = false
-    private var pushInProgress: Bool = false
-    private var pushRequestedWhileInProgress: Bool = false
+    private let pushDrainCoordinator = SyncPushDrainCoordinator()
     nonisolated(unsafe) private var syncRetryTimer: Timer?
 
     #if DEBUG
@@ -1262,79 +1302,65 @@ final class SyncEngine {
             return
         }
 
-        guard !pushInProgress else {
-            pushRequestedWhileInProgress = true
-            print("[SYNC_ENGINE] Push already in progress — queueing one follow-up drain")
-            return
-        }
-        pushInProgress = true
-        defer {
-            pushInProgress = false
-            if pushRequestedWhileInProgress {
-                pushRequestedWhileInProgress = false
-                Task {
-                    await pushPending()
-                }
-            }
-        }
+        await pushDrainCoordinator.run {
+            // Safety net: recover any task whose local edit never produced an
+            // outbound op (needsSync set without recordOperation) before reading the
+            // pending queue, so a future bypass can't silently drop a write.
+            self.enqueueOrphanedTaskWrites()
 
-        // Safety net: recover any task whose local edit never produced an
-        // outbound op (needsSync set without recordOperation) before reading the
-        // pending queue, so a future bypass can't silently drop a write.
-        enqueueOrphanedTaskWrites()
+            // Same class of safety net for deck→project links: a stranded link
+            // (needsSync set, no op recorded) re-records its update here and
+            // drains in this very pass.
+            self.enqueueStrandedDeckDesignLinks()
 
-        // Same class of safety net for deck→project links: a stranded link
-        // (needsSync set, no op recorded) re-records its update here and
-        // drains in this very pass.
-        enqueueStrandedDeckDesignLinks()
+            // One-time server-orphan heal for deck→lead links (RC3): records a
+            // guarded linkOpportunity op for every locally-linked design whose
+            // server row may still be an orphan (older builds stripped the link).
+            // Idempotent + gated by a UserDefaults flag, so it drains in this pass
+            // exactly once per device.
+            self.enqueueDeckDesignLinkBackfillOnce()
 
-        // One-time server-orphan heal for deck→lead links (RC3): records a
-        // guarded linkOpportunity op for every locally-linked design whose
-        // server row may still be an orphan (older builds stripped the link).
-        // Idempotent + gated by a UserDefaults flag, so it drains in this pass
-        // exactly once per device.
-        enqueueDeckDesignLinkBackfillOnce()
+            // Recover a chain persisted between the instant a predecessor parked
+            // and the normal post-failure reconciliation. A later full replacement
+            // proves the parked payload and its event are safe to supersede.
+            self.reconcileSupersededParkedProjectNoteMentionUpdates()
+            self.reconcileParkedProjectNoteCreateDeleteChains()
 
-        // Recover a chain persisted between the instant a predecessor parked
-        // and the normal post-failure reconciliation. A later full replacement
-        // proves the parked payload and its event are safe to supersede.
-        reconcileSupersededParkedProjectNoteMentionUpdates()
-        reconcileParkedProjectNoteCreateDeleteChains()
-
-        let pending = getPendingOperations()
-        guard !pending.isEmpty else {
-            print("[SYNC_ENGINE] No pending operations to push")
-            return
-        }
-
-        print("[SYNC_ENGINE] pushPending — \(pending.count) operation(s) to push")
-        statusText = "Pushing \(pending.count) change(s)…"
-
-        let pushStartedAt = Date()
-
-        var completedProjectTaskIds = Set<String>()
-        if FeatureFlags.useDataActor, let actor = dataActor {
-            // Connectivity guard lives here (on main) per PM guidance — the actor
-            // method has no connectivity parameter and trusts callers to gate.
-            guard connectivity.shouldAttemptSync else {
-                print("[SYNC_ENGINE] Skipping push — connectivity says do not sync")
+            let pending = self.getPendingOperations()
+            guard !pending.isEmpty else {
+                print("[SYNC_ENGINE] No pending operations to push")
                 return
             }
-            completedProjectTaskIds.formUnion(
-                await actor.processPendingOperations()
-            )
-        } else {
-            await outboundProcessor?.processPendingOperations(
-                context: modelContext,
-                connectivity: connectivity
-            )
-        }
 
-        clearCompletedProjectTaskSyncFlags(
-            since: pushStartedAt,
-            completedProjectTaskIds: completedProjectTaskIds
-        )
-        refreshPendingCount()
+            print("[SYNC_ENGINE] pushPending — \(pending.count) operation(s) to push")
+            self.statusText = "Pushing \(pending.count) change(s)…"
+
+            let pushStartedAt = Date()
+
+            var completedProjectTaskIds = Set<String>()
+            if FeatureFlags.useDataActor, let actor = self.dataActor {
+                // Connectivity guard lives here (on main) per PM guidance — the actor
+                // method has no connectivity parameter and trusts callers to gate.
+                guard connectivity.shouldAttemptSync else {
+                    print("[SYNC_ENGINE] Skipping push — connectivity says do not sync")
+                    return
+                }
+                completedProjectTaskIds.formUnion(
+                    await actor.processPendingOperations()
+                )
+            } else {
+                await self.outboundProcessor?.processPendingOperations(
+                    context: modelContext,
+                    connectivity: connectivity
+                )
+            }
+
+            self.clearCompletedProjectTaskSyncFlags(
+                since: pushStartedAt,
+                completedProjectTaskIds: completedProjectTaskIds
+            )
+            self.refreshPendingCount()
+        }
     }
 
     /// Safety net for the persistence invariant. Task sync runs off the

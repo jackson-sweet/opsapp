@@ -37,6 +37,12 @@ struct DaySheetLeadRow: View {
     /// Accordion state, owned by the screen. The collapsed row looks the same
     /// either way — this only tells VoiceOver whether the card below is open.
     var isExpanded: Bool = false
+    /// Set by `DaySheetLeadCard`, which owns the L1 shell for the whole
+    /// accordion (face + expanded body under ONE glass panel and ONE clip).
+    /// A row rendering its own card inside that shell would draw a second
+    /// hairline across the seam. Default `false` keeps the standalone row —
+    /// previews, harnesses, and any future non-accordion host — unchanged.
+    var embedded: Bool = false
     var onExpand: () -> Void = {}
     // Stage-chip menu routing — wired by the screen.
     var onStage: (PipelineStage) -> Void = { _ in }
@@ -73,8 +79,7 @@ struct DaySheetLeadRow: View {
         .padding(.vertical, OPSStyle.Layout.spacing2_5)
         .frame(minHeight: Self.minHeight)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .commandCard()
-        .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.panelRadius, style: .continuous))
+        .modifier(DaySheetRowShell(embedded: embedded))
         .contentShape(Rectangle())
         .onTapGesture { onExpand() }
         .accessibilityElement(children: .contain)
@@ -285,6 +290,26 @@ struct DaySheetLeadRow: View {
         case .yourMove:         return "your move"
         case .newLead(let age): return "new \(age.lowercased())"
         case .waiting(let back): return back?.lowercased() ?? "waiting"
+        }
+    }
+}
+
+// MARK: - Row shell
+
+/// The row's own L1 glass panel — present when the row stands alone, absent
+/// when `DaySheetLeadCard` has already drawn one around the whole accordion.
+private struct DaySheetRowShell: ViewModifier {
+    let embedded: Bool
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if embedded {
+            content
+        } else {
+            content
+                .commandCard()
+                .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.panelRadius,
+                                            style: .continuous))
         }
     }
 }

@@ -76,6 +76,10 @@ enum LeadPhotoStripPresentation {
 struct LeadPhotosSection: View {
     let opportunity: Opportunity
     let canManage: Bool
+    /// Tile edge. 84 on the detail document, where the strip is the section;
+    /// 52 on the day-sheet card, where it is one band among six (day-sheet
+    /// spec §3.4.1). One strip, two densities — never two strips.
+    var tileSize: CGFloat = 84
     var importingPhotoIDs: [String] = []
     /// Parent presents the camera / library dialog.
     var onAdd: () -> Void = {}
@@ -159,8 +163,6 @@ struct LeadPhotosSection: View {
     }
 
     // MARK: - Tiles
-
-    private let tileSize: CGFloat = 84
 
     private var importingTile: some View {
         ZStack {

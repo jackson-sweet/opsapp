@@ -298,11 +298,7 @@ struct LeadDetailView: View {
         .opsConfirm($archiveConfirm)
         .leadDiscardFlow(
             target: $discardTarget,
-            perform: { lead in
-                _ = try await OpportunityRepository(companyId: lead.companyId)
-                    .moveToStage(opportunityId: lead.id, to: .discarded, userId: dataController.currentUser?.id)
-            },
-            onDiscarded: { _ in dismiss() }
+            onCompleted: { _, _ in dismiss() }
         )
         .sheet(item: $comebackTarget) { lead in
             ComebackChooserSheet(lead: lead, viewModel: chaseVM)

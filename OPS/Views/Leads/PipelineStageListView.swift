@@ -97,8 +97,7 @@ struct PipelineStageListView: View {
         }
         .navigationBarHidden(true)
         .leadDiscardFlow(
-            target: $discardTarget,
-            perform: { lead in try await viewModel.discard(opportunityId: lead.id) }
+            target: $discardTarget
         )
         .opsConfirm($archiveConfirm)
         .sheet(item: $comebackTarget) { lead in

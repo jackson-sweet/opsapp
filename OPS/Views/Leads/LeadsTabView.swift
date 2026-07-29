@@ -163,8 +163,7 @@ struct LeadsTabView: View {
                             Color.clear.frame(height: 120)
                         }
                         .leadDiscardFlow(
-                            target: $discardTarget,
-                            perform: { lead in try await viewModel.discard(opportunityId: lead.id) }
+                            target: $discardTarget
                         )
                         .opsConfirm($archiveConfirm)
                 }

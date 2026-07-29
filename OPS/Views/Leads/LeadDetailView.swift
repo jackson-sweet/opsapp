@@ -371,6 +371,14 @@ struct LeadDetailView: View {
                 LeadImageService.shared.configure(modelContext: context)
             }
             Task { await LeadImageService.shared.drain() }
+            // Bug ced5b3cb-B self-repair. Leads damaged by the old
+            // already-converted path carry a PERSISTED marker that hides MATCH
+            // PROJECT for good. A lead that demonstrably HAS a project link is
+            // proof the marker is stale — clear it silently on open.
+            conversionVisibilityStore.repairIfLinked(
+                leadId: opportunity.id,
+                projectId: opportunity.projectId
+            )
         }
         .onReceive(
             NotificationCenter.default.publisher(

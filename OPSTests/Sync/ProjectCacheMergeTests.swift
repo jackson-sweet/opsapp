@@ -28,6 +28,24 @@ final class ProjectCacheMergeTests: XCTestCase {
     /// `ProjectVinylOrderMarkerSyncTests`, leave part of `Project`'s
     /// relationship graph out of the schema and SwiftData traps (EXC_BREAKPOINT
     /// inside `context.fetch`) rather than throwing.
+    /// The container MUST outlive the context. `try makeContainer().mainContext`
+    /// releases the container at the end of that statement and leaves a
+    /// dangling context — SwiftData then trap-crashes (EXC_BREAKPOINT) or wedges
+    /// the test host on the first fetch, with the stack pointing at whatever
+    /// happened to touch it first.
+    private var container: ModelContainer!
+
+    @MainActor
+    private func makeContext() throws -> ModelContext {
+        container = try makeContainer()
+        return container.mainContext
+    }
+
+    override func tearDown() {
+        container = nil
+        super.tearDown()
+    }
+
     private func makeContainer() throws -> ModelContainer {
         let schema = Schema([
             Project.self,
@@ -79,7 +97,7 @@ final class ProjectCacheMergeTests: XCTestCase {
     /// must become queryable by id the moment the authoritative row arrives.
     @MainActor
     func testAuthoritativeRowInsertsAProjectQueryableById() throws {
-        let context = try makeContainer().mainContext
+        let context = try makeContext()
         let dto = try projectDTO()
 
         let merged = try ProjectCacheMerge.apply(
@@ -102,7 +120,7 @@ final class ProjectCacheMergeTests: XCTestCase {
     /// arrives without one breaks the VINYL ORDERS board's marker joins.
     @MainActor
     func testInsertAlsoMaterializesTheVinylOrderMarker() throws {
-        let context = try makeContainer().mainContext
+        let context = try makeContext()
         let dto = try projectDTO()
 
         _ = try ProjectCacheMerge.apply(
@@ -120,7 +138,7 @@ final class ProjectCacheMergeTests: XCTestCase {
     /// insert would duplicate the project (`Project.id` is not `.unique`).
     @MainActor
     func testReapplyingTheSameRowUpdatesInPlaceInsteadOfDuplicating() throws {
-        let context = try makeContainer().mainContext
+        let context = try makeContext()
 
         _ = try ProjectCacheMerge.apply(
             dto: try projectDTO(), context: context,
@@ -154,11 +172,16 @@ final class ProjectCacheMergeTests: XCTestCase {
     /// pinned here.
     @MainActor
     func testProtectedFieldSurvivesTheMerge() throws {
-        let context = try makeContainer().mainContext
-        _ = try ProjectCacheMerge.apply(
+        let context = try makeContext()
+        let cached = try ProjectCacheMerge.apply(
             dto: try projectDTO(), context: context,
             protectedFields: [], hasPendingWrite: false
         )
+        // The local edit marks the row dirty; the merge's job is only to leave
+        // that alone. (It never SETS needsSync — same contract realtime has
+        // always had.)
+        cached.needsSync = true
+        try context.save()
 
         _ = try ProjectCacheMerge.apply(
             dto: try projectDTO(title: "Server renamed", status: "in_progress"),
@@ -170,17 +193,20 @@ final class ProjectCacheMergeTests: XCTestCase {
         let stored = try context.fetch(FetchDescriptor<Project>()).first
         XCTAssertEqual(stored?.title, "3998 Holland Ave", "protected local title must win")
         XCTAssertEqual(stored?.status, .inProgress, "unprotected fields still merge")
-        XCTAssertTrue(stored?.needsSync ?? false, "an un-pushed local write keeps the row dirty")
+        XCTAssertTrue(stored?.needsSync ?? false, "an un-pushed local write stays dirty")
     }
 
     /// With nothing pending, the merged row is clean and fully server-shaped.
     @MainActor
     func testUnprotectedMergeOverwritesEveryFieldAndClearsTheDirtyFlag() throws {
-        let context = try makeContainer().mainContext
-        _ = try ProjectCacheMerge.apply(
+        let context = try makeContext()
+        let cachedForClearing = try? ProjectCacheMerge.apply(
             dto: try projectDTO(), context: context,
             protectedFields: [], hasPendingWrite: false
         )
+
+        cachedForClearing?.needsSync = true
+        try context.save()
 
         let merged = try ProjectCacheMerge.apply(
             dto: try projectDTO(

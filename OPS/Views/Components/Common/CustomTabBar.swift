@@ -23,6 +23,13 @@ struct CustomTabBar: View {
     /// Sentinel scroll id for the lane's trailing edge — used to fully reveal
     /// the Settings peek when the Settings tab is selected.
     private static let trailingEdgeID = -1
+    /// Sentinel scroll id for the lane's leading edge. It rides on the PADDED
+    /// primary group, so its frame starts at content-x 0 and the resting
+    /// scroll lands the lane fully left. Scrolling to the first tab CELL
+    /// instead parks the lane at `gap/2` — the group's leading padding
+    /// scrolled away and the trailing divider peeking on screen (bug
+    /// df49d9ef).
+    private static let leadingEdgeID = -2
 
     /// Whether tab bar should be disabled during tutorial drag step
     private var isDisabledForTutorial: Bool {
@@ -124,6 +131,7 @@ struct CustomTabBar: View {
                             }
                         }
                         .padding(.horizontal, gap / 2)
+                        .id(Self.leadingEdgeID)
 
                         // Trailing reveal group — begins at the right edge, so the
                         // minimal divider + Settings are hidden until swiped in.
@@ -163,6 +171,10 @@ struct CustomTabBar: View {
             }
             .scrollDisabled(revealDistance <= 0)
             .scrollTargetBehavior(PeekSnapBehavior(revealDistance: revealDistance))
+            // Belt and braces for the resting position: a lane that is re-laid
+            // out (rotation, tab-set change) comes back parked fully left
+            // rather than holding a mid-lane offset.
+            .defaultScrollAnchor(.leading)
             .onChange(of: selectedTab, initial: true) { _, newValue in
                 revealOrHide(proxy: proxy, selected: newValue, lastIndex: lastIndex)
             }
@@ -191,7 +203,11 @@ struct CustomTabBar: View {
                 // landing on the Settings tab shows it, never scrolls it back off.
                 proxy.scrollTo(Self.trailingEdgeID, anchor: .trailing)
             } else {
-                proxy.scrollTo(0, anchor: .leading)
+                // The lane's leading EDGE, not the first tab cell — the cell
+                // sits `gap/2` into the content, so targeting it rests the
+                // lane with its edge padding scrolled off and the trailing
+                // divider showing.
+                proxy.scrollTo(Self.leadingEdgeID, anchor: .leading)
             }
         }
     }

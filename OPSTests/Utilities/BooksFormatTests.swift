@@ -57,6 +57,15 @@ final class BooksFormatTests: XCTestCase {
         XCTAssertEqual(BooksFormat.currency(-500), "-$500")
     }
 
+    /// The empty-money token is "$—", not a bare "—". A money slot keeps its
+    /// currency mark so the reader sees "no dollars recorded", not a dead
+    /// field — and never a lying "$0", which claims a real zero.
+    func testEmptyMoneyToken() {
+        XCTAssertEqual(BooksFormat.emptyCurrency, "$—")
+        XCTAssertNotEqual(BooksFormat.emptyCurrency, "—")
+        XCTAssertNotEqual(BooksFormat.emptyCurrency, "$0")
+    }
+
     /// Catalog price register: whole dollars when even, exact cents when not.
     func testPriceRegister() {
         XCTAssertEqual(BooksFormat.price(250), "$250")

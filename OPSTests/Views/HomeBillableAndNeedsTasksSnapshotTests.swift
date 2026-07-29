@@ -154,6 +154,39 @@ final class HomeBillableAndNeedsTasksSnapshotTests: XCTestCase {
         XCTAssertEqual(unvaluedJobs.totalKnownAmount, 0)
     }
 
+    // MARK: - Empty-money rendering (bug 8c7fdb9e)
+
+    /// A week where nothing carries a value renders the hero as "$—". The bare
+    /// "—" it used to render reads as a dead slot rather than empty money —
+    /// the reader can't tell "no dollars recorded" from "this field is
+    /// broken". "$0" stays banned: it claims a real zero.
+    func testHeroTotalIsEmptyMoneyTokenWhenNothingIsValued() {
+        XCTAssertEqual(
+            HomeBillableThisWeekCard.totalText(for: unvaluedJobs),
+            "$—"
+        )
+    }
+
+    /// A valued week still renders the whole-dollar canon, unchanged.
+    func testHeroTotalIsWholeDollarCanonWhenValued() {
+        XCTAssertEqual(
+            HomeBillableThisWeekCard.totalText(for: fourClosingJobs),
+            "$46,200"
+        )
+    }
+
+    /// Per-row amounts follow the hero: an unvalued job's amount slot reads
+    /// "$—", so the amount column scans as one money column top to bottom.
+    func testRowAmountIsEmptyMoneyTokenWhenUnvalued() {
+        let unvalued = candidate("u1", title: "972 Lyall St", section: .closingThisWeek, tasks: 3, amount: nil)
+        XCTAssertEqual(HomeBillableThisWeekCard.amountText(for: unvalued), "$—")
+    }
+
+    func testRowAmountIsWholeDollarCanonWhenValued() {
+        let valued = candidate("c2", title: "3040 Cedar Hill Rd", section: .closingThisWeek, tasks: 2, amount: 12_600)
+        XCTAssertEqual(HomeBillableThisWeekCard.amountText(for: valued), "$12,600")
+    }
+
     func testRenderBillableExpandedAllJobs() {
         UserDefaults.standard.set(true, forKey: "homeBillableThisWeekExpanded")
         hostSnapshot("home_billable_expanded_all_jobs", height: 380) {

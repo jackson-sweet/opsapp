@@ -176,7 +176,7 @@ struct LeadDeckTile: View {
 
     private static func dominantMaterial(_ data: DeckDrawingData) -> String? {
         let surfaces = data.isMultiLevel ? data.levels.flatMap(\.surfaces) : data.surfaces
-        return mostCommon(surfaces.map(\.boardMaterial))?.uppercased()
+        return mostCommon(surfaces.compactMap(\.boardMaterial))?.uppercased()
     }
 
     private static func dominantRailing(_ data: DeckDrawingData) -> String? {

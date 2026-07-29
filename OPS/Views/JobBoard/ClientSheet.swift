@@ -472,7 +472,7 @@ struct ClientSheet: View {
                     if let imageData = contact.imageData {
                         self.clientImage = UIImage(data: imageData)
                     }
-                }, onDismiss: nil)
+                }, onDismiss: { showingContactPicker = false })
             }
             .sheet(isPresented: $showImagePicker) {
                 ImagePicker(

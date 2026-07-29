@@ -823,7 +823,7 @@ struct ProjectFormSheet: View {
                         await handleContactSelected(contact)
                     }
                 },
-                onDismiss: nil
+                onDismiss: { showingContactPicker = false }
             )
         }
     }

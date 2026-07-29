@@ -615,6 +615,21 @@ struct HomeBillableThisWeekCard: View {
         .onAppear { isExpanded = persistedExpanded }
     }
 
+    // MARK: - Money display (one rule for the hero and the rows)
+
+    /// The hero total. A week where no job carries a value renders the
+    /// empty-money token rather than a fabricated `$0` — an unvalued job is
+    /// "no amount recorded", not "zero dollars billable".
+    static func totalText(for rollup: HomeBillableThisWeekRollup) -> String {
+        rollup.hasKnownAmounts ? BooksFormat.currency(rollup.totalKnownAmount) : BooksFormat.emptyCurrency
+    }
+
+    /// A row's amount slot, on the same rule as the hero so the amount column
+    /// reads as money the whole way down whether or not a job is valued.
+    static func amountText(for candidate: HomeBillableProjectCandidate) -> String {
+        candidate.amount.map(BooksFormat.currency) ?? BooksFormat.emptyCurrency
+    }
+
     /// Up to this many jobs the detail renders inline and the card hugs its
     /// content; beyond it, the detail pins to `expandedDetailMaxHeight` and
     /// scrolls internally so the open card never collides with the tab bar
@@ -646,10 +661,10 @@ struct HomeBillableThisWeekCard: View {
                         .font(OPSStyle.Typography.caption)
                         .foregroundColor(OPSStyle.Colors.textMute)
 
-                    // No project this week carries a value → "—", never a
-                    // lying "$0". A project with no invoice/estimate is
-                    // "no data", not zero dollars billable.
-                    Text(rollup.hasKnownAmounts ? BooksFormat.currency(rollup.totalKnownAmount) : "—")
+                    // No project this week carries a value → the empty-money
+                    // token, never a lying "$0". A project with no
+                    // invoice/estimate is "no data", not zero dollars billable.
+                    Text(Self.totalText(for: rollup))
                         .font(OPSStyle.Typography.dataValueLg)
                         .foregroundColor(rollup.hasKnownAmounts ? OPSStyle.Colors.text : OPSStyle.Colors.text3)
                         .monospacedDigit()
@@ -717,18 +732,13 @@ struct HomeBillableThisWeekCard: View {
                         Spacer()
 
                         // Valued jobs show their dollar figure; unvalued jobs
-                        // show the em-dash empty state — the amount slot never
-                        // silently disappears, so the column scans cleanly.
-                        if let amount = item.amount {
-                            Text(BooksFormat.currency(amount))
-                                .font(OPSStyle.Typography.caption)
-                                .foregroundColor(OPSStyle.Colors.finRevenue)
-                                .monospacedDigit()
-                        } else {
-                            Text("—")
-                                .font(OPSStyle.Typography.caption)
-                                .foregroundColor(OPSStyle.Colors.text3)
-                        }
+                        // show the empty-money token — the amount slot never
+                        // silently disappears, so the column scans cleanly as
+                        // one column of money either way.
+                        Text(Self.amountText(for: item))
+                            .font(OPSStyle.Typography.caption)
+                            .foregroundColor(item.amount == nil ? OPSStyle.Colors.text3 : OPSStyle.Colors.finRevenue)
+                            .monospacedDigit()
 
                         Image(systemName: OPSStyle.Icons.arrowRight)
                             .font(OPSStyle.Typography.microLabel)

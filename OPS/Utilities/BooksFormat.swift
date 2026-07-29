@@ -39,6 +39,12 @@ enum BooksFormat {
         value.formatted(.currency(code: "USD").precision(.fractionLength(0)).locale(locale))
     }
 
+    /// The empty-money token — what a money slot shows when no amount is
+    /// recorded. `—` alone reads as a dead field; the currency mark keeps the
+    /// slot legible as money, so an empty amount column still scans as one
+    /// column of dollars. Never `$0` — that claims a real, recorded zero.
+    static let emptyCurrency = "$—"
+
     /// Exact-cents currency — `$1,223.58`; `CA$50.00` when a record carries
     /// its own ISO code (expense rows, company-currency balances).
     static func exact(_ value: Double, code: String = "USD") -> String {

@@ -708,6 +708,15 @@ struct ActivityDTO: Codable, Identifiable {
     let callSource: String?
     let callerNumber: String?
     let callStartedAt: String?
+    // Per-message email identity (bug 183f7ec9). The server writes one row per
+    // MESSAGE and populates `direction` on 100% of them, but these fields were
+    // never decoded — so the feed could not say who a message was between and
+    // every message in a thread rendered the same.
+    let emailMessageId: String?
+    let emailThreadId: String?
+    let fromEmail: String?
+    let toEmails: [String]?
+    let ccEmails: [String]?
     // Unified-activity parents — an activity can be parented to a lead
     // (opportunity), a client, OR a job (project). All nullable and additive:
     // opportunity-only rows carry nil client_id/project_id.
@@ -733,6 +742,11 @@ struct ActivityDTO: Codable, Identifiable {
         case callSource      = "call_source"
         case callerNumber    = "caller_number"
         case callStartedAt   = "call_started_at"
+        case emailMessageId  = "email_message_id"
+        case emailThreadId   = "email_thread_id"
+        case fromEmail       = "from_email"
+        case toEmails        = "to_emails"
+        case ccEmails        = "cc_emails"
         case clientId        = "client_id"
         case projectId       = "project_id"
         case isRead          = "is_read"
@@ -759,6 +773,11 @@ struct ActivityDTO: Codable, Identifiable {
         act.callSource = callSource
         act.callerNumber = callerNumber
         act.callStartedAt = callStartedAt.flatMap { SupabaseDate.parse($0) }
+        act.emailMessageId = emailMessageId
+        act.emailThreadId = emailThreadId
+        act.fromEmail = fromEmail
+        act.toEmails = toEmails ?? []
+        act.ccEmails = ccEmails ?? []
         act.clientId = clientId
         act.projectId = projectId
         act.isRead = isRead ?? false

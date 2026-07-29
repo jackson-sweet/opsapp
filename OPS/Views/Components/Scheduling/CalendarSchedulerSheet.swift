@@ -154,7 +154,10 @@ struct CalendarSchedulerSheet: View {
                         .padding(.horizontal, OPSStyle.Layout.spacing3_5)
                         .padding(.bottom, OPSStyle.Layout.spacing2)
 
-                    if case .task = itemType, currentStartDate != nil {
+                    // Quick push moves a job that is actually on the calendar; a
+                    // draft has nothing to push. The gate reads the SAVED task,
+                    // never the form's in-flight dates.
+                    if case .task(let task) = itemType, task.startDate != nil {
                         quickPushRow
                             .padding(.bottom, OPSStyle.Layout.spacing2)
                     }
@@ -354,13 +357,13 @@ struct CalendarSchedulerSheet: View {
 
     // MARK: - Suggestion
 
-    private func suggestionChip(_ suggested: Date) -> some View {
+    private func suggestionChip(_ suggested: SchedulerDayContext.Suggestion) -> some View {
         Button {
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
             withAnimation(reduceMotion ? nil : OPSStyle.Animation.fast) {
-                selection = .start(calendar.startOfDay(for: suggested))
+                selection = .start(calendar.startOfDay(for: suggested.date))
             }
-            scrollRequest = calendar.dateInterval(of: .month, for: suggested)?.start
+            scrollRequest = calendar.dateInterval(of: .month, for: suggested.date)?.start
         } label: {
             HStack(spacing: OPSStyle.Layout.spacing2) {
                 Text("SUGGESTED")
@@ -389,10 +392,17 @@ struct CalendarSchedulerSheet: View {
         .transition(.opacity)
     }
 
-    private func suggestionDetail(_ suggested: Date) -> String {
-        let date = Self.weekdayDate(suggested).uppercased()
-        guard let prerequisite = dayContext.floorPrerequisiteTitle else { return date }
-        return "AFTER \(prerequisite.uppercased()) · \(date)"
+    /// The chip states its reason, because a date on its own is a guess. One
+    /// reason only — a prerequisite and a crew opening in the same line is two
+    /// arguments where the operator needs one.
+    private func suggestionDetail(_ suggested: SchedulerDayContext.Suggestion) -> String {
+        let date = Self.weekdayDate(suggested.date).uppercased()
+        switch suggested.reason {
+        case .afterPrerequisite(let prerequisite):
+            return "AFTER \(prerequisite.uppercased()) · \(date)"
+        case .crewClear:
+            return "CREW CLEAR · \(date)"
+        }
     }
 
     // MARK: - Pinned calendar header
@@ -931,11 +941,11 @@ struct CalendarSchedulerSheet: View {
         )
         dayContext = context
 
-        // An unscheduled job with a prerequisite opens on the first week it
-        // could actually start, rather than on a today that is not an option.
+        // An unscheduled job opens on the first week it could actually start,
+        // rather than on a today that is not an option.
         if currentStartDate == nil,
            selection == .none,
-           let suggested = context.suggestion,
+           let suggested = context.suggestion?.date,
            let suggestedMonth = calendar.dateInterval(of: .month, for: suggested)?.start,
            !calendar.isDate(suggestedMonth, equalTo: visibleMonth, toGranularity: .month) {
             scrollRequest = suggestedMonth

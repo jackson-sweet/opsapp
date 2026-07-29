@@ -69,9 +69,12 @@ final class SchedulerSheetSnapshotTests: XCTestCase {
     }
 
     /// Rescheduling an already-dated task: quick-push row and the explicit
-    /// UNSCHEDULE control both present.
+    /// UNSCHEDULE control both present. The task carries its own saved dates,
+    /// because that — not the picker's prefill — is what earns the push row.
     func testRescheduleModeShowsPushRowAndUnschedule() throws {
         let world = try World()
+        world.item.startDate = world.scheduledStart
+        world.item.endDate = world.scheduledEnd
         snapshot("04_reschedule_mode", size: phone) {
             world.sheet(
                 start: world.scheduledStart,
@@ -159,6 +162,48 @@ final class SchedulerSheetSnapshotTests: XCTestCase {
         }
     }
 
+    /// A range that runs across a week boundary. The interior reads as one
+    /// continuous object — brightest against each white cap, quietest at the
+    /// span's middle — and the hairline outline closes only at the two caps,
+    /// staying open where the rows wrap.
+    func testMultiWeekRangeGradientAndOutline() throws {
+        let world = try World()
+        let start = world.preFloorStart
+        let end = calendar.date(byAdding: .day, value: 10, to: start)!
+        snapshot("13_span_gradient_wrap", size: phone) {
+            world.sheet(start: start, end: end)
+        }
+    }
+
+    /// Dates picked on a task that was never saved. The quick-push row must be
+    /// ABSENT — there is nothing on the calendar to push yet.
+    func testDraftShellHidesTheQuickPushRow() throws {
+        let world = try World()
+        snapshot("14_draft_no_push_row", size: phone) {
+            world.draftShellSheet(start: world.scheduledStart, end: world.scheduledEnd)
+        }
+    }
+
+    /// The same dates on a task that genuinely is on the calendar: the
+    /// quick-push row is present. Read 14 and 15 as a pair.
+    func testScheduledTaskShowsTheQuickPushRow() throws {
+        let world = try World()
+        world.item.startDate = world.scheduledStart
+        world.item.endDate = world.scheduledEnd
+        snapshot("15_scheduled_push_row", size: phone) {
+            world.sheet(start: world.scheduledStart, end: world.scheduledEnd)
+        }
+    }
+
+    /// A task with no prerequisite at all. The proposal comes from the crew's
+    /// own calendar instead, and the chip says exactly that.
+    func testCrewClearSuggestionChip() throws {
+        let world = try World()
+        snapshot("16_crew_clear_suggestion", size: phone) {
+            world.sheet(for: world.independent, start: nil, end: nil)
+        }
+    }
+
     /// The footer in all three of its states, side by side.
     func testFooterStates() {
         let day = calendar.startOfDay(for: Date())
@@ -187,6 +232,10 @@ final class SchedulerSheetSnapshotTests: XCTestCase {
         let dataController: DataController
 
         let item: ProjectTask
+        /// A task with a real crew but nothing upstream to wait on — the state
+        /// that earns a CREW CLEAR proposal rather than an AFTER-prerequisite
+        /// one. Deliberately left undated so the suggestion chip appears.
+        let independent: ProjectTask
         let floorDay: Date
         let conflictStart: Date
         let conflictEnd: Date
@@ -304,6 +353,16 @@ final class SchedulerSheetSnapshotTests: XCTestCase {
             item.teamMembers = [marcus, dana]
             context.insert(item)
 
+            // Fence panels on the same site: a dependency-free task type, so
+            // nothing constrains it but Dana's own calendar.
+            independent = ProjectTask(id: "task-fence-harbour", projectId: harbour.id, taskTypeId: fenceType.id, companyId: "company-1")
+            independent.taskType = fenceType
+            independent.project = harbour
+            independent.duration = 1
+            independent.setTeamMemberIds([dana.id])
+            independent.teamMembers = [dana]
+            context.insert(independent)
+
             try? context.save()
 
             conflictStart = calendar.date(byAdding: .day, value: 8, to: monday)!
@@ -316,9 +375,19 @@ final class SchedulerSheetSnapshotTests: XCTestCase {
 
         @ViewBuilder
         func sheet(start: Date?, end: Date?, onClearDates: (() -> Void)? = nil) -> some View {
+            sheet(for: item, start: start, end: end, onClearDates: onClearDates)
+        }
+
+        @ViewBuilder
+        func sheet(
+            for task: ProjectTask,
+            start: Date?,
+            end: Date?,
+            onClearDates: (() -> Void)? = nil
+        ) -> some View {
             CalendarSchedulerSheet(
                 isPresented: .constant(true),
-                itemType: .task(item),
+                itemType: .task(task),
                 currentStartDate: start,
                 currentEndDate: end,
                 onScheduleUpdate: { _, _ in },
@@ -326,6 +395,24 @@ final class SchedulerSheetSnapshotTests: XCTestCase {
             )
             .environmentObject(dataController)
             .modelContainer(container)
+        }
+
+        /// Exactly what TaskFormSheet hands the scheduler before a task has
+        /// ever been saved: a freshly constructed shell carrying no dates of
+        /// its own, alongside the form's in-flight picks.
+        @ViewBuilder
+        func draftShellSheet(start: Date?, end: Date?) -> some View {
+            sheet(
+                for: ProjectTask(
+                    id: UUID().uuidString.lowercased(),
+                    projectId: "project-harbour",
+                    taskTypeId: "type-decking",
+                    companyId: "company-1",
+                    status: .active
+                ),
+                start: start,
+                end: end
+            )
         }
 
         /// The same engine the sheet builds, for rendering the day inspector.

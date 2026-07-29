@@ -521,6 +521,13 @@ enum OPSStyle {
         static let schedulerCalendarMinHeight: CGFloat = 112.0
         /// Dependency-floor days stay fully tappable — they only recede.
         static let schedulerPreFloorOpacity: Double = 0.35
+        /// Brightness of the selection's interior gradient where it meets the
+        /// white caps, easing to nothing at the span's middle. Its job is to
+        /// carry the eye from cap to cap so a range reads as one object — and
+        /// it must stay quiet enough that the signal bars remain the loudest
+        /// marks inside a span. Availability is still the news; the span is
+        /// only its frame.
+        static let schedulerSpanEdgeOpacity: Double = 0.24
         /// CLEAR takes 30% of the footer; SAVE keeps the thumb-weighted share.
         static let schedulerFooterSecondaryWidthRatio: CGFloat = 0.3
 

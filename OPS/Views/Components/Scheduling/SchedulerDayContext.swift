@@ -152,6 +152,24 @@ enum SchedulerSelection: Equatable {
             return (target > first && target < last) ? .interior : .none
         }
     }
+
+    /// Where a day sits inside a completed range: its 0-based index and the
+    /// range's inclusive day count. The day cell draws its slice of one
+    /// continuous curve spanning the whole selection, so it needs to know its
+    /// place in the span rather than just its role in it.
+    ///
+    /// Purely ordinal — no weekday, no row. A span reads as one object whether
+    /// it fits a week row or wraps three of them.
+    func spanPosition(for day: Date, calendar: Calendar = .current) -> (index: Int, count: Int)? {
+        guard case .range(let start, let end) = self else { return nil }
+        let target = calendar.startOfDay(for: day)
+        let first = calendar.startOfDay(for: start)
+        let last = calendar.startOfDay(for: end)
+        guard target >= first, target <= last else { return nil }
+        guard let index = calendar.dateComponents([.day], from: first, to: target).day,
+              let span = calendar.dateComponents([.day], from: first, to: last).day else { return nil }
+        return (index: index, count: span + 1)
+    }
 }
 
 // MARK: - SchedulerDayContext
@@ -287,6 +305,23 @@ struct SchedulerDayContext {
         var isEmpty: Bool {
             !thisProject && !crewBusy && !crewTimeOff && otherCount == 0
         }
+    }
+
+    /// The one date worth proposing, and the reason it is worth proposing. A
+    /// bare date is a guess; a date with a reason is an argument — and the
+    /// chip says the reason out loud.
+    struct Suggestion: Equatable {
+        enum Reason: Equatable {
+            /// A scheduled prerequisite set the earliest legal start. Carries
+            /// its title so the chip can name the job being waited on.
+            case afterPrerequisite(String)
+            /// Nothing upstream to wait for — this is simply the first day the
+            /// item's crew is actually free.
+            case crewClear
+        }
+
+        let date: Date
+        let reason: Reason
     }
 
     /// What a completed range costs.
@@ -463,20 +498,71 @@ struct SchedulerDayContext {
 
     // MARK: Suggestion
 
-    /// The one date worth proposing: the first day the item's prerequisites
-    /// allow. Offered only when the item has no dates yet — re-proposing a
-    /// start for something already on the calendar is noise, not help.
-    var suggestion: Date? {
-        guard !item.isScheduled, let floor = dependencyFloor else { return nil }
-        guard skipsWeekends else { return floor }
-        var day = floor
-        var guardCount = 0
-        while calendar.isDateInWeekend(day) && guardCount < 14 {
-            guard let next = calendar.date(byAdding: .day, value: 1, to: day) else { break }
-            day = next
-            guardCount += 1
+    /// How far past the baseline the walk looks before giving up. A crew booked
+    /// solid for two months has no next opening worth naming, and an honest
+    /// silence beats a date nobody can work.
+    private static let suggestionWalkLimit = 60
+
+    /// The one date worth proposing, found by a single forward walk.
+    ///
+    /// The walk starts at the dependency floor when one exists, and otherwise
+    /// at tomorrow — today is already half spent. Either way it never starts
+    /// earlier than tomorrow: a floor whose prerequisite already ended is
+    /// history, not a constraint, and the walk never proposes a day that is
+    /// gone. From there it takes the first day that is a working day AND that
+    /// the item's crew is genuinely free on, so the proposal survives contact
+    /// with the calendar instead of landing on a day the crew is already
+    /// committed to.
+    ///
+    /// Offered only when the item has no dates yet — re-proposing a start for
+    /// something already on the calendar is noise, not help — and only when
+    /// there is something real to reason from. With neither a prerequisite nor
+    /// a crew, nothing on the calendar recommends one day over another, and a
+    /// suggestion without a reason is noise wearing a chip.
+    var suggestion: Suggestion? {
+        guard !item.isScheduled else { return nil }
+
+        guard let tomorrow = calendar.date(
+            byAdding: .day,
+            value: 1,
+            to: calendar.startOfDay(for: Date())
+        ) else { return nil }
+
+        let baseline: Date
+        if let floor = dependencyFloor {
+            // A prerequisite that has already finished stops being a
+            // constraint and becomes history, so the floor is clamped forward.
+            // An item with no crew rides this same clamp — the old floor-only
+            // contract, now incapable of naming a day that is gone.
+            baseline = max(calendar.startOfDay(for: floor), tomorrow)
+        } else if !item.crewIds.isEmpty {
+            baseline = tomorrow
+        } else {
+            return nil
         }
-        return day
+
+        // Naming both a prerequisite and a crew opening overloads one chip. The
+        // prerequisite is the harder fact, so it is the reason given — and the
+        // date genuinely is after it either way.
+        let reason: Suggestion.Reason = floorPrerequisiteTitle
+            .map(Suggestion.Reason.afterPrerequisite) ?? .crewClear
+
+        var day = baseline
+        for _ in 0...Self.suggestionWalkLimit {
+            if isProposable(day) { return Suggestion(date: day, reason: reason) }
+            guard let next = calendar.date(byAdding: .day, value: 1, to: day) else { return nil }
+            day = next
+        }
+        return nil
+    }
+
+    /// A day the item could actually start on: a working day, with neither the
+    /// crew booked elsewhere nor any of them off. Same-project work and other
+    /// crews' jobs are density, not an obstacle — they never veto a proposal.
+    private func isProposable(_ day: Date) -> Bool {
+        if skipsWeekends && calendar.isDateInWeekend(day) { return false }
+        let signals = signals(for: day)
+        return !signals.crewBusy && !signals.crewTimeOff
     }
 
     // MARK: Distance

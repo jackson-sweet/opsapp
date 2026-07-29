@@ -14,8 +14,13 @@
 //      colour-blind operator, and in direct sun).
 //    • DENSITY DOT — one dim dot when the day holds work that touches neither
 //      this crew nor this project. Presence, not detail.
-//    • SELECTION   — white caps and a soft interior, drawn ABOVE the signals
-//      so the operator's own pick is always the loudest thing on the grid.
+//    • SELECTION   — white caps joined by an interior that brightens toward
+//      each cap and eases to quiet at the span's middle, the whole unit traced
+//      by a hairline outline. The gradient is one continuous curve across the
+//      entire selection, sampled per cell, and the outline stays OPEN where a
+//      week row wraps — so a range reads as a single object however many rows
+//      it crosses. Drawn ABOVE the signals so the operator's own pick is
+//      always the loudest thing on the grid.
 //
 //  Days before the dependency floor recede to 35% — a guide, never a gate.
 //  Every day on the grid is tappable, including those.
@@ -27,6 +32,13 @@ struct SchedulerDayCell: View {
     let date: Date
     let signals: SchedulerDayContext.DaySignals
     let role: SchedulerSelection.DayRole
+    /// This day's place in the selection — 0-based index and inclusive day
+    /// count — so the interior can draw its slice of the span-wide gradient.
+    /// nil outside a completed range.
+    let spanPosition: (index: Int, count: Int)?
+    /// What the selection's outline does at this cell's two horizontal ends.
+    /// Decided by the grid, which owns layout; nil where no outline belongs.
+    let spanEdge: SpanEdgeStroke.Closure?
     let isToday: Bool
     let onTap: () -> Void
     let onLongPress: () -> Void
@@ -42,6 +54,7 @@ struct SchedulerDayCell: View {
     var body: some View {
         ZStack {
             selectionBackground
+            spanOutline
 
             // Today's hairline ring — only when the day isn't already wearing
             // the selection's own chrome.
@@ -110,8 +123,78 @@ struct SchedulerDayCell: View {
             )
             .fill(OPSStyle.Colors.primaryText)
         case .interior:
-            Rectangle()
-                .fill(OPSStyle.Colors.surfaceActive)
+            ZStack {
+                // The quiet base is unchanged — the gradient only lifts the
+                // days nearest the caps, so the middle of a long span stays
+                // exactly as calm as it was.
+                Rectangle()
+                    .fill(OPSStyle.Colors.surfaceActive)
+                Rectangle()
+                    .fill(interiorGradient)
+            }
+        }
+    }
+
+    // MARK: - Span gradient
+
+    /// The selection's brightness curve as a function of position `p` across
+    /// the whole span: 1 hard against either white cap, easing symmetrically to
+    /// 0 at the middle. One global curve — every cell samples the same
+    /// function, so neighbouring cells meet at identical values and the span
+    /// reads as one object rather than a row of tiles.
+    private static func nearnessToCap(_ p: Double) -> Double {
+        1 - min(p, 1 - p) * 2
+    }
+
+    private static func spanFill(at p: Double) -> Color {
+        OPSStyle.Colors.primaryText
+            .opacity(OPSStyle.Layout.schedulerSpanEdgeOpacity * nearnessToCap(p))
+    }
+
+    /// This cell's slice of that curve. Day `i` of `count` owns
+    /// `p ∈ [i/count, (i+1)/count]`, which is a straight ramp — two stops —
+    /// unless the curve's vertex at `p = 0.5` falls inside the cell, in which
+    /// case it needs a third stop there or the kink would flatten into a ramp
+    /// and the span would read lopsided. (A three-day span is the extreme
+    /// case: its single interior day dips in its own centre, which is the
+    /// curve telling the truth about where the middle is.)
+    private var interiorGradient: LinearGradient {
+        guard let span = spanPosition, span.count > 0 else {
+            return LinearGradient(colors: [.clear, .clear], startPoint: .leading, endPoint: .trailing)
+        }
+
+        let width = 1.0 / Double(span.count)
+        let left = Double(span.index) * width
+        let right = left + width
+
+        var stops = [Gradient.Stop(color: Self.spanFill(at: left), location: 0)]
+        if left < 0.5, right > 0.5 {
+            stops.append(
+                Gradient.Stop(
+                    color: Self.spanFill(at: 0.5),
+                    location: CGFloat((0.5 - left) / width)
+                )
+            )
+        }
+        stops.append(Gradient.Stop(color: Self.spanFill(at: right), location: 1))
+
+        return LinearGradient(stops: stops, startPoint: .leading, endPoint: .trailing)
+    }
+
+    // MARK: - Span outline
+
+    /// The hairline that traces the selection as one unit. Above the fill,
+    /// below the content — it frames the pick without competing with the day
+    /// number or the signal bars sitting inside it.
+    @ViewBuilder
+    private var spanOutline: some View {
+        if let spanEdge {
+            SpanEdgeStroke(
+                closure: spanEdge,
+                cornerRadius: OPSStyle.Layout.cardCornerRadius,
+                inset: OPSStyle.Layout.Border.standard / 2
+            )
+            .stroke(OPSStyle.Colors.primaryText, lineWidth: OPSStyle.Layout.Border.standard)
         }
     }
 
@@ -177,6 +260,94 @@ struct SchedulerDayCell: View {
                     )
             }
         }
+    }
+}
+
+// MARK: - Span outline
+
+/// One day's share of the outline around a whole selection: the top and bottom
+/// edges always, plus a rounded closing edge wherever the selection genuinely
+/// ends.
+///
+/// Where a span runs off the side of a week row it is continuing, not ending,
+/// so that edge is left OPEN and the two hairlines run flush to the margin —
+/// the same continuation language wrapped text selection uses. Interior day
+/// boundaries are never stroked vertically; a selection is one object, not a
+/// fence of cells.
+struct SpanEdgeStroke: Shape {
+    /// Which horizontal ends of this cell close the selection off.
+    enum Closure: Equatable {
+        /// Mid-span on both sides — two bare hairlines, top and bottom.
+        case open
+        case leading
+        case trailing
+        case both
+    }
+
+    let closure: Closure
+    let cornerRadius: CGFloat
+    /// Half the stroke width, so a centred hairline sits fully inside the cell
+    /// instead of bleeding into the gap between week rows.
+    let inset: CGFloat
+
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+
+        let closesLeading = closure == .leading || closure == .both
+        let closesTrailing = closure == .trailing || closure == .both
+        let top = rect.minY + inset
+        let bottom = rect.maxY - inset
+        let leading = rect.minX + (closesLeading ? inset : 0)
+        let trailing = rect.maxX - (closesTrailing ? inset : 0)
+        guard bottom > top, trailing > leading else { return path }
+
+        let radius = min(cornerRadius, (bottom - top) / 2, trailing - leading)
+
+        switch closure {
+        case .open:
+            path.move(to: CGPoint(x: leading, y: top))
+            path.addLine(to: CGPoint(x: trailing, y: top))
+            path.move(to: CGPoint(x: leading, y: bottom))
+            path.addLine(to: CGPoint(x: trailing, y: bottom))
+
+        case .leading:
+            // One unbroken run: in along the top, around the cap, back out
+            // along the bottom.
+            path.move(to: CGPoint(x: trailing, y: top))
+            path.addArc(
+                tangent1End: CGPoint(x: leading, y: top),
+                tangent2End: CGPoint(x: leading, y: bottom),
+                radius: radius
+            )
+            path.addArc(
+                tangent1End: CGPoint(x: leading, y: bottom),
+                tangent2End: CGPoint(x: trailing, y: bottom),
+                radius: radius
+            )
+            path.addLine(to: CGPoint(x: trailing, y: bottom))
+
+        case .trailing:
+            path.move(to: CGPoint(x: leading, y: top))
+            path.addArc(
+                tangent1End: CGPoint(x: trailing, y: top),
+                tangent2End: CGPoint(x: trailing, y: bottom),
+                radius: radius
+            )
+            path.addArc(
+                tangent1End: CGPoint(x: trailing, y: bottom),
+                tangent2End: CGPoint(x: leading, y: bottom),
+                radius: radius
+            )
+            path.addLine(to: CGPoint(x: leading, y: bottom))
+
+        case .both:
+            path.addRoundedRect(
+                in: CGRect(x: leading, y: top, width: trailing - leading, height: bottom - top),
+                cornerSize: CGSize(width: radius, height: radius)
+            )
+        }
+
+        return path
     }
 }
 

@@ -21,6 +21,14 @@ final class SchedulerDayContextTests: XCTestCase {
         calendar.date(from: DateComponents(year: year, month: month, day: dayOfMonth))!
     }
 
+    /// The suggestion walk never begins before tomorrow — with no floor that is
+    /// where it starts outright, and with one the floor is clamped forward to
+    /// it. Either way "today" is an input, so suggestion cases are built
+    /// relative to it rather than pinned to a calendar date that will age out.
+    private func daysFromToday(_ offset: Int) -> Date {
+        calendar.date(byAdding: .day, value: offset, to: calendar.startOfDay(for: Date()))!
+    }
+
     // MARK: - Task 1 — Ranged user-event fetch
 
     func testGetUserEventsInRangeReturnsOnlyApprovedOrUnmanagedNonDeletedOverlaps() throws {
@@ -89,6 +97,8 @@ final class SchedulerDayContextTests: XCTestCase {
         )
 
         XCTAssertNil(context.dependencyFloor)
+        // No floor — and no crew on this item either, so the walk has nothing
+        // to reason from and stays quiet.
         XCTAssertNil(context.suggestion)
         for offset in -10...10 {
             let probe = calendar.date(byAdding: .day, value: offset, to: day(2026, 8, 15))!
@@ -397,29 +407,239 @@ final class SchedulerDayContextTests: XCTestCase {
 
     // MARK: - Task 2 — Suggestion
 
-    func testSuggestionOnlyAppearsForAnUnscheduledItemWithAFloor() {
+    func testAFloorSetsTheBaselineAndAScheduledItemIsNeverProposedAnything() throws {
+        // Anchored forward of today: the walk clamps its baseline to tomorrow,
+        // so a floor pinned to a fixed calendar date would quietly start
+        // asserting the clamp instead of the floor once that date went by.
+        let prerequisites: [SchedulerDayContext.Prerequisite] = [
+            .init(taskTypeId: "framing", title: "Framing", start: daysFromToday(10), duration: 3)
+        ]
+
         let unscheduled = makeContext(
             item: item(dependencies: [dependency(on: "framing")], isScheduled: false),
-            prerequisites: [
-                .init(taskTypeId: "framing", title: "Framing", start: day(2026, 8, 10), duration: 3)
-            ]
+            prerequisites: prerequisites
         )
-        XCTAssertEqual(unscheduled.suggestion, day(2026, 8, 13))
+        let proposal = try XCTUnwrap(unscheduled.suggestion)
+        XCTAssertEqual(proposal.date, daysFromToday(13))
+        XCTAssertEqual(proposal.reason, .afterPrerequisite("Framing"))
 
         let scheduled = makeContext(
             item: item(dependencies: [dependency(on: "framing")], isScheduled: true),
-            prerequisites: [
-                .init(taskTypeId: "framing", title: "Framing", start: day(2026, 8, 10), duration: 3)
-            ]
+            prerequisites: prerequisites
         )
         XCTAssertNil(scheduled.suggestion)
+    }
+
+    func testAFloorThatAlreadyPassedNeverProposesADayThatIsGone() throws {
+        // Framing wrapped up last week. A finished prerequisite is history, not
+        // a constraint — so the walk starts at tomorrow rather than behind it.
+        let context = makeContext(
+            item: item(
+                crewIds: ["marcus"],
+                dependencies: [dependency(on: "framing")],
+                isScheduled: false
+            ),
+            prerequisites: [
+                .init(taskTypeId: "framing", title: "Framing", start: daysFromToday(-10), duration: 3)
+            ]
+        )
+
+        let proposal = try XCTUnwrap(context.suggestion)
+        XCTAssertEqual(proposal.date, daysFromToday(1))
+        // The prerequisite is still the reason: tomorrow genuinely is after it.
+        XCTAssertEqual(proposal.reason, .afterPrerequisite("Framing"))
+    }
+
+    func testAPassedFloorStillWalksPastABusyCrewAndKeepsNamingThePrerequisite() throws {
+        let context = makeContext(
+            item: item(
+                crewIds: ["marcus"],
+                dependencies: [dependency(on: "framing")],
+                isScheduled: false
+            ),
+            events: [
+                jobEvent(
+                    id: "booked",
+                    start: daysFromToday(1),
+                    end: daysFromToday(2),
+                    crew: ["marcus": "Marcus"]
+                )
+            ],
+            prerequisites: [
+                .init(taskTypeId: "framing", title: "Framing", start: daysFromToday(-10), duration: 3)
+            ]
+        )
+
+        // Clamped to tomorrow, then walked past the two days Marcus is booked.
+        let proposal = try XCTUnwrap(context.suggestion)
+        XCTAssertEqual(proposal.date, daysFromToday(3))
+        XCTAssertEqual(proposal.reason, .afterPrerequisite("Framing"))
+    }
+
+    func testAnIndependentTaskWithAFreeCrewIsProposedTomorrow() throws {
+        // No prerequisite to wait on, so the walk simply starts at the next day
+        // — today is already half spent — and the crew's own calendar is the
+        // reason the date is worth naming.
+        let context = makeContext(item: item(crewIds: ["marcus"], isScheduled: false))
+
+        let proposal = try XCTUnwrap(context.suggestion)
+        XCTAssertEqual(proposal.date, daysFromToday(1))
+        XCTAssertEqual(proposal.reason, .crewClear)
+    }
+
+    func testTheWalkStepsPastDaysTheCrewIsAlreadyBookedOn() throws {
+        let context = makeContext(
+            item: item(crewIds: ["marcus"], isScheduled: false),
+            events: [
+                jobEvent(
+                    id: "booked",
+                    start: daysFromToday(1),
+                    end: daysFromToday(3),
+                    crew: ["marcus": "Marcus"]
+                )
+            ]
+        )
+
+        // Tomorrow through +3 are spoken for, so the first honest opening is +4.
+        let proposal = try XCTUnwrap(context.suggestion)
+        XCTAssertEqual(proposal.date, daysFromToday(4))
+        XCTAssertEqual(proposal.reason, .crewClear)
+    }
+
+    func testTimeOffBlocksAProposalTheSameWayABookedJobDoes() {
+        let context = makeContext(
+            item: item(crewIds: ["marcus"], isScheduled: false),
+            events: [
+                timeOffEvent(
+                    id: "off",
+                    start: daysFromToday(1),
+                    end: daysFromToday(1),
+                    crew: ["marcus": "Marcus"]
+                )
+            ]
+        )
+
+        XCTAssertEqual(context.suggestion?.date, daysFromToday(2))
+    }
+
+    func testAnotherCrewsWorkNeverPushesTheProposal() {
+        // Density is not an obstacle. Only THIS crew's commitments move a date.
+        let context = makeContext(
+            item: item(crewIds: ["marcus"], isScheduled: false),
+            events: [
+                jobEvent(
+                    id: "elsewhere",
+                    start: daysFromToday(1),
+                    end: daysFromToday(1),
+                    crew: ["dana": "Dana"]
+                )
+            ]
+        )
+
+        XCTAssertEqual(context.suggestion?.date, daysFromToday(1))
+    }
+
+    func testWithNoPrerequisiteAndNoCrewThereIsNothingToProposeFrom() {
+        // Neither a dependency nor a crew calendar to reason from, so any date
+        // would be invention. Silence is the honest answer.
+        XCTAssertNil(makeContext(item: item(crewIds: [], isScheduled: false)).suggestion)
+    }
+
+    func testAFloorPlusABusyCrewLandsOnTheFirstClearDayAndStillNamesThePrerequisite() throws {
+        let context = makeContext(
+            item: item(
+                crewIds: ["marcus"],
+                dependencies: [dependency(on: "framing")],
+                isScheduled: false
+            ),
+            events: [
+                jobEvent(
+                    id: "booked",
+                    start: daysFromToday(13),
+                    end: daysFromToday(14),
+                    crew: ["marcus": "Marcus"]
+                )
+            ],
+            prerequisites: [
+                .init(taskTypeId: "framing", title: "Framing", start: daysFromToday(10), duration: 3)
+            ]
+        )
+
+        // The floor is +13, but Marcus is on another job through +14. The +15
+        // is genuinely after Framing either way, and naming both reasons would
+        // overload one chip — so the prerequisite is what it says.
+        let proposal = try XCTUnwrap(context.suggestion)
+        XCTAssertEqual(proposal.date, daysFromToday(15))
+        XCTAssertEqual(proposal.reason, .afterPrerequisite("Framing"))
+    }
+
+    func testTheCrewWalkHonoursTheCompanysWeekendRule() {
+        // The first working day at or after tomorrow, whenever the suite runs —
+        // and the crew is booked on exactly that day, so the walk has to clear a
+        // weekend AND a booking before it can land.
+        var booked = daysFromToday(1)
+        while calendar.isDateInWeekend(booked) {
+            booked = calendar.date(byAdding: .day, value: 1, to: booked)!
+        }
+        var expected = calendar.date(byAdding: .day, value: 1, to: booked)!
+        while calendar.isDateInWeekend(expected) {
+            expected = calendar.date(byAdding: .day, value: 1, to: expected)!
+        }
+
+        let context = makeContext(
+            item: item(crewIds: ["marcus"], isScheduled: false),
+            events: [
+                jobEvent(id: "booked", start: booked, end: booked, crew: ["marcus": "Marcus"])
+            ],
+            skipsWeekends: true
+        )
+
+        XCTAssertEqual(context.suggestion?.date, expected)
+        XCTAssertFalse(calendar.isDateInWeekend(expected))
+    }
+
+    func testTheLastDayInsideTheCapIsStillProposed() {
+        let context = makeContext(
+            item: item(crewIds: ["marcus"], isScheduled: false),
+            events: [
+                jobEvent(
+                    id: "long",
+                    start: daysFromToday(1),
+                    end: daysFromToday(60),
+                    crew: ["marcus": "Marcus"]
+                )
+            ]
+        )
+
+        // Baseline is tomorrow, so the 60th day past it is the last candidate
+        // the walk looks at — and it is clear.
+        XCTAssertEqual(context.suggestion?.date, daysFromToday(61))
+    }
+
+    func testACalendarWithNoOpeningInsideTheCapProposesNothing() {
+        let context = makeContext(
+            item: item(crewIds: ["marcus"], isScheduled: false),
+            events: [
+                jobEvent(
+                    id: "endless",
+                    start: daysFromToday(1),
+                    end: daysFromToday(120),
+                    crew: ["marcus": "Marcus"]
+                )
+            ]
+        )
+
+        // A crew booked solid for four months has no next opening worth naming.
+        // A slammed calendar earns honest silence, not a fake certainty.
+        XCTAssertNil(context.suggestion)
     }
 
     func testSuggestionStepsOverTheWeekendWhenTheCompanySkipsWeekends() {
         // Anchor the prerequisite so its floor lands on a Saturday, whatever
         // the calendar does — the rule under test is the weekend step, not a
-        // hardcoded date.
-        var saturday = day(2026, 8, 1)
+        // hardcoded date. Starting the search a week out keeps the floor ahead
+        // of today, so the baseline clamp never gets a say in the answer.
+        var saturday = daysFromToday(7)
         while calendar.component(.weekday, from: saturday) != 7 {
             saturday = calendar.date(byAdding: .day, value: 1, to: saturday)!
         }
@@ -435,14 +655,14 @@ final class SchedulerDayContextTests: XCTestCase {
             prerequisites: prerequisites,
             skipsWeekends: true
         )
-        XCTAssertEqual(skipping.suggestion, monday)
+        XCTAssertEqual(skipping.suggestion?.date, monday)
 
         let notSkipping = makeContext(
             item: item(dependencies: [dependency(on: "framing")], isScheduled: false),
             prerequisites: prerequisites,
             skipsWeekends: false
         )
-        XCTAssertEqual(notSkipping.suggestion, saturday)
+        XCTAssertEqual(notSkipping.suggestion?.date, saturday)
     }
 
     // MARK: - Fixtures

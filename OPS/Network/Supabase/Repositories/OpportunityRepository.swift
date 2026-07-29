@@ -21,7 +21,15 @@ class OpportunityRepository {
         static let leadDispositionContext = "get_lead_disposition_context"
         static let applyLeadDisposition = "apply_lead_disposition_feedback"
         static let undoLeadDisposition = "undo_lead_disposition_feedback"
+        static let applyLeadArchive = "apply_lead_archive_feedback"
+        static let undoLeadArchive = "undo_lead_archive_feedback"
     }
+
+    /// Remembers, for the life of the process, that this server has not taken
+    /// the archive-feedback migration — so a pre-migration prod costs one failed
+    /// round-trip, not one per archive. Same pattern as
+    /// `PhotoAnnotationRepository.softDeleteRPCUnavailable`.
+    private static var archiveRPCUnavailable = false
 
     private let client: SupabaseClient
     private let companyId: String
@@ -371,10 +379,23 @@ class OpportunityRepository {
     /// Mark lost. Sets stage to .lost, stores lost_reason + lost_notes + actualCloseDate,
     /// and writes the stage_transitions row via moveToStage.
     func markLost(opportunityId: String, reason: LossReason, notes: String?, userId: String?) async throws -> OpportunityDTO {
+        try await markLost(
+            opportunityId: opportunityId,
+            reason: reason.rawValue,
+            notes: notes,
+            userId: userId
+        )
+    }
+
+    /// Raw-value overload. `opportunities.lost_reason` is unconstrained text and
+    /// already holds server-authored values `LossReason` does not model
+    /// (`operator_no_response`, `not_a_lead`). The sheet preserves those
+    /// verbatim rather than blanking them, so it needs a String door.
+    func markLost(opportunityId: String, reason: String, notes: String?, userId: String?) async throws -> OpportunityDTO {
         _ = try await moveToStage(opportunityId: opportunityId, to: .lost, userId: userId)
 
         var fields = UpdateOpportunityDTO()
-        fields.lostReason = reason.rawValue
+        fields.lostReason = reason
         fields.lostNotes = notes
         fields.actualCloseDate = SupabaseDate.formatDate(Date())
         return try await update(opportunityId, fields: fields)
@@ -441,6 +462,71 @@ class OpportunityRepository {
         return try await client
             .rpc(
                 RPC.undoLeadDisposition,
+                params: Params(
+                    p_feedback_id: feedbackId,
+                    p_idempotency_key: idempotencyKey
+                )
+            )
+            .single()
+            .execute()
+            .value
+    }
+
+    /// Atomically records why a lead was parked and stamps `archived_at`.
+    /// Reason and note are both optional — one-tap archive is a first-class
+    /// path and the server records `archive_unspecified` for it.
+    ///
+    /// Throws `OpportunityRepositoryError.archiveRPCUnavailable` when this
+    /// server predates the migration, so the caller can degrade to `archive(_:)`.
+    func applyLeadArchive(
+        opportunityId: String,
+        reason: LeadArchiveReason?,
+        note: String?,
+        idempotencyKey: String
+    ) async throws -> LeadArchiveResult {
+        if Self.archiveRPCUnavailable {
+            throw OpportunityRepositoryError.archiveRPCUnavailable
+        }
+        struct Params: Encodable {
+            let p_opportunity_id: String
+            let p_reason_code: String
+            let p_optional_note: String?
+            let p_idempotency_key: String
+        }
+        do {
+            return try await client
+                .rpc(
+                    RPC.applyLeadArchive,
+                    params: Params(
+                        p_opportunity_id: opportunityId,
+                        p_reason_code: LeadArchiveReason.submittedCode(for: reason),
+                        p_optional_note: LeadDispositionInteractionPolicy
+                            .normalizedNote(note ?? ""),
+                        p_idempotency_key: idempotencyKey
+                    )
+                )
+                .single()
+                .execute()
+                .value
+        } catch let error as PostgrestError where error.code == "PGRST202" {
+            Self.archiveRPCUnavailable = true
+            throw OpportunityRepositoryError.archiveRPCUnavailable
+        }
+    }
+
+    /// Retracts an archive and restores `archived_at` to its prior value unless
+    /// a later edit has already superseded it.
+    func undoLeadArchive(
+        feedbackId: String,
+        idempotencyKey: String
+    ) async throws -> LeadArchiveResult {
+        struct Params: Encodable {
+            let p_feedback_id: String
+            let p_idempotency_key: String
+        }
+        return try await client
+            .rpc(
+                RPC.undoLeadArchive,
                 params: Params(
                     p_feedback_id: feedbackId,
                     p_idempotency_key: idempotencyKey
@@ -582,6 +668,9 @@ class OpportunityRepository {
 enum OpportunityRepositoryError: LocalizedError, Equatable {
     case guardedCreateRejected
     case guardedConversionRequired
+    /// This server has not taken the archive-feedback migration. Callers fall
+    /// back to the legacy `archived_at` PATCH — never a dead end.
+    case archiveRPCUnavailable
 
     var errorDescription: String? {
         switch self {
@@ -589,6 +678,8 @@ enum OpportunityRepositoryError: LocalizedError, Equatable {
             return "Lead was not created. Refresh and try again."
         case .guardedConversionRequired:
             return "Marking a lead won requires guarded project conversion."
+        case .archiveRPCUnavailable:
+            return "Archive feedback is not available on this server yet."
         }
     }
 }

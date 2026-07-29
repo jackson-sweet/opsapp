@@ -116,6 +116,22 @@ enum LeadDispositionInteractionPolicy {
         return explainerSeen ? .legacyConfirmation : .legacyExplainer
     }
 
+    /// Routing when the server's Phase C gate could not be read at all —
+    /// no signal on a truck, or the RPC timed out.
+    ///
+    /// The shipped Phase C flow blocked on `get_lead_disposition_context`
+    /// before showing anything, so a discard offline showed an error toast and
+    /// nothing else: the operator could not clear junk off their board until
+    /// they found service. Discard is a board-hygiene action, not a financial
+    /// one, so it degrades to the legacy path — same routing as a company with
+    /// Phase C switched off. The structured reason is what is lost, not the
+    /// ability to work.
+    static func routeWhenContextUnavailable(
+        explainerSeen: Bool
+    ) -> LeadDispositionInteractionRoute {
+        route(phaseCEnabled: false, explainerSeen: explainerSeen)
+    }
+
     static func normalizedNote(_ note: String) -> String? {
         let trimmed = note.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return nil }

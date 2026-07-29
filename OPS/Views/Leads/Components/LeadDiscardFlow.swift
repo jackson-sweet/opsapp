@@ -89,24 +89,33 @@ private struct LeadDiscardFlow: ViewModifier {
         isRouting = true
         defer { isRouting = false }
 
+        let route: LeadDispositionInteractionRoute
         do {
             let context = try await OpportunityRepository(companyId: lead.companyId)
                 .fetchLeadDispositionContext(opportunityId: lead.id)
-            switch LeadDispositionInteractionPolicy.route(
+            route = LeadDispositionInteractionPolicy.route(
                 phaseCEnabled: context.phaseCEnabled,
                 explainerSeen: explainerSeen
-            ) {
-            case .structuredReason:
-                reasonLead = lead
-            case .legacyExplainer:
-                explainerLead = lead
-            case .legacyConfirmation:
-                confirmLead = lead
-            }
-        } catch {
-            ToastCenter.shared.present(
-                Toast(label: "// COULD NOT CHECK LEAD · TRY AGAIN", tone: .error)
             )
+        } catch {
+            // The gate could not be read — offline, or the RPC failed. Discard
+            // still has to work in the field, so fall through to the legacy
+            // path rather than stranding the operator on an error toast. The
+            // apply RPC re-checks the gate under the row lock regardless, so
+            // this can never smuggle a structured reason past a disabled
+            // company.
+            route = LeadDispositionInteractionPolicy.routeWhenContextUnavailable(
+                explainerSeen: explainerSeen
+            )
+        }
+
+        switch route {
+        case .structuredReason:
+            reasonLead = lead
+        case .legacyExplainer:
+            explainerLead = lead
+        case .legacyConfirmation:
+            confirmLead = lead
         }
     }
 

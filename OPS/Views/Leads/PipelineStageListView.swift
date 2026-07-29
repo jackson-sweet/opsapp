@@ -57,7 +57,7 @@ struct PipelineStageListView: View {
     /// Lead whose comeback date is being adjusted (ComebackChooserSheet).
     @State private var comebackTarget: Opportunity?
     /// Pending ARCHIVE confirmation (OPSConfirm).
-    @State private var archiveConfirm: OPSConfirmConfig?
+    @State private var archiveTarget: Opportunity?
 
     /// This stage's leads — already sorted stale-first by the view model.
     private var leads: [Opportunity] { viewModel.opportunities(in: stage) }
@@ -99,7 +99,7 @@ struct PipelineStageListView: View {
         .leadDiscardFlow(
             target: $discardTarget
         )
-        .opsConfirm($archiveConfirm)
+        .leadArchiveFlow(target: $archiveTarget)
         .sheet(item: $comebackTarget) { lead in
             ComebackChooserSheet(lead: lead, viewModel: viewModel)
         }
@@ -231,23 +231,12 @@ struct PipelineStageListView: View {
         }
     }
 
-    /// ARCHIVE — guarded by the standardized confirm (spec §6).
+    /// ARCHIVE — hands off to the shared archive flow (spec §6). All three
+    /// lead surfaces raise the same sheet, write the same contract, and offer
+    /// the same undo.
     private func requestArchive(_ lead: Opportunity) {
         guard canEdit(lead) else { return }
-        archiveConfirm = OPSConfirmConfig(
-            title: "ARCHIVE LEAD?",
-            message: "It leaves the queue. Restore any time from the by-stage list.",
-            verb: "ARCHIVE"
-        ) {
-            Task {
-                do {
-                    try await viewModel.archive(opportunityId: lead.id)
-                    ToastCenter.shared.present(Feedback.Lead.archived)
-                } catch {
-                    ToastCenter.shared.present(Toast(label: Feedback.Err.saveFailed, tone: .error))
-                }
-            }
-        }
+        archiveTarget = lead
     }
 
     // MARK: - Helpers

@@ -145,6 +145,47 @@ class PermissionStore: ObservableObject {
         scope(for: "calendar.edit") != nil
     }
 
+    // MARK: - Task-Edit Gates
+
+    /// Whether the current user may edit a task's *fields* (type, description,
+    /// title) — `tasks.edit`, scope-aware on the task's assignees exactly like
+    /// `canEditSchedule`. Distinct from scheduling: a Crew member may well be
+    /// allowed to correct the description of their own job while never being
+    /// allowed to move it on the calendar.
+    ///
+    /// Bug 10b66fce — `ProjectTask.canEdit(user:)` checked `tasks.edit` with a
+    /// bare `can()`, which passes for any grant at any scope. An `assigned`
+    /// operator therefore read as able to edit every task in the company.
+    func canEditTaskFields(assigneeIds: [String]) -> Bool {
+        satisfiesAssignedScope(for: "tasks.edit", assigneeIds: assigneeIds)
+    }
+
+    /// Whether the current user may change which crew a task is assigned to —
+    /// `tasks.assign`. Defined all-only (`PermissionEditorPolicy`), so there is
+    /// no assigned-scope reading: you either reassign anyone's work or nobody's.
+    var canAssignTaskCrew: Bool {
+        hasFullAccess("tasks.assign")
+    }
+
+    /// Whether the current user may complete, reopen, or cancel a task —
+    /// `tasks.change_status`, scope-aware on the task's assignees. This is the
+    /// grant Crew normally holds: act on your own work, don't retype it.
+    func canChangeTaskStatus(assigneeIds: [String]) -> Bool {
+        satisfiesAssignedScope(for: "tasks.change_status", assigneeIds: assigneeIds)
+    }
+
+    /// Shared all/assigned resolution for the per-task gates. Mirrors
+    /// `canEditSchedule`: "all" reaches everything, "assigned" reaches only
+    /// rows carrying the operator's id, no grant reaches nothing. Ids are
+    /// compared case-insensitively — Postgres stores uuids lowercased while
+    /// `UUID().uuidString` is uppercase.
+    private func satisfiesAssignedScope(for permission: String, assigneeIds: [String]) -> Bool {
+        guard let granted = scope(for: permission) else { return false }
+        if granted == "all" { return true }
+        guard let uid = currentUserId?.lowercased() else { return false }
+        return assigneeIds.contains { $0.lowercased() == uid }
+    }
+
     // MARK: - Load from Cache
 
     /// Load permissions from Keychain cache. Call on app startup for instant availability.

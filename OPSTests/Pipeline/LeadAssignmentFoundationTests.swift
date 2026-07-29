@@ -1067,16 +1067,25 @@ final class LeadAssignmentFoundationTests: XCTestCase {
     func testMigrationPlanDeclaresARealAssignmentBoundary() throws {
         // The assignment + chase boundary lives at V18 after the main-line
         // reconciliation (V16 = opportunity media, V17 = vinyl color/PO).
-        // V19 is a later additive lead-ownership boundary and must not move it.
-        XCTAssertEqual(OPSMigrationPlan.schemas.count, 19)
-        XCTAssertEqual(OPSMigrationPlan.stages.count, 18)
+        // Later additive boundaries (V19 ownership, V20 activity email
+        // identity, …) must never move it.
+        //
+        // This asserts the boundary's POSITION and the plan's shape, not the
+        // plan's length: pinning the tip would fail on every future schema
+        // regardless of whether the assignment boundary actually moved, which
+        // is the one thing this test exists to catch.
         let versions = OPSMigrationPlan.schemas.map {
             String(describing: $0.versionIdentifier)
         }
         XCTAssertEqual(versions.firstIndex(of: "18.0.0"), 17)
         XCTAssertEqual(
-            String(describing: try XCTUnwrap(OPSMigrationPlan.schemas.last).versionIdentifier),
-            "19.0.0"
+            OPSMigrationPlan.stages.count,
+            OPSMigrationPlan.schemas.count - 1,
+            "every adjacent schema pair needs exactly one migration stage"
+        )
+        XCTAssertGreaterThanOrEqual(
+            OPSMigrationPlan.schemas.count, 19,
+            "schemas are append-only — a shorter plan means a released version was dropped"
         )
     }
 

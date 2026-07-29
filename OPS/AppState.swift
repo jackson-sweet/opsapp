@@ -31,6 +31,14 @@ class AppState: ObservableObject {
     // Track when a map pin card/tooltip is showing (hides FAB)
     @Published var isShowingMapOverlay: Bool = false
 
+    /// True while the map is presenting a PROJECT surface over Home — the pin
+    /// card or the stacked-group sheet. Mirrored here by `OPSMapContainer`
+    /// because the map coordinator that owns those flags is a private
+    /// `@StateObject` that Home cannot observe. Deliberately narrower than
+    /// `isShowingMapOverlay`, which also counts the crew tooltip: a crew
+    /// tooltip is not a project surface and must not clear Home's cards.
+    @Published var isMapProjectSurfacePresented: Bool = false
+
     // Tutorial restart flag - when true, ContentView should show the tutorial
     @Published var shouldRestartTutorial: Bool = false
 
@@ -140,6 +148,28 @@ class AppState: ObservableObject {
     var isInProjectMode: Bool {
         // Only consider in project mode if we're not just viewing details
         activeProjectID != nil && !isViewingDetailsOnly
+    }
+
+    /// True while ANY project surface is presented over Home — the map's pin
+    /// card, the stacked-group sheet, or the project details surface.
+    ///
+    /// `isInProjectMode` cannot serve here: it is false whenever a project is
+    /// merely being VIEWED (`isViewingDetailsOnly`), which is the state every
+    /// one of those surfaces is presented in. Computed rather than stored so
+    /// it can never latch out of sync with the flags it reads — the same
+    /// shape as `isInProjectMode` directly above.
+    var isProjectSurfacePresented: Bool {
+        isMapProjectSurfacePresented || isProjectDetailsPresented
+    }
+
+    /// The details surface, including the brief window between the request and
+    /// the sheet actually raising: `showProjectDetailsAfterResetById` arms
+    /// `isViewingDetailsOnly` + `activeProjectID` synchronously and flips
+    /// `showProjectDetails` a runloop later. Without the arming window the
+    /// Home cards fade back in for ~100ms between the pin card closing and
+    /// details opening — a visible flicker on the commonest path in.
+    private var isProjectDetailsPresented: Bool {
+        showProjectDetails || (isViewingDetailsOnly && activeProjectID != nil)
     }
     
     func enterProjectMode(projectID: String) {
@@ -319,6 +349,7 @@ class AppState: ObservableObject {
         self.isViewingDetailsOnly = false
         self.activeProjectID = nil
         self.activeTaskID = nil
+        self.isMapProjectSurfacePresented = false
         self.isLoadingProjects = false
         self.projectPendingCompletion = nil
         self.showingGlobalCompletionChecklist = false

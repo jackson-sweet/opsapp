@@ -297,6 +297,12 @@ struct ProjectDetailsView: View {
                             isProjectCompleted: project.status == .completed,
                             onCommitTeam: { committedIds in
                                 commitTaskTeamChanges(memberIds: committedIds)
+                            },
+                            onCommitTaskType: { picked in
+                                commitTaskTypeChange(task: task, taskType: picked)
+                            },
+                            onCommitDescription: { notes in
+                                commitTaskDescriptionChange(task: task, notes: notes)
                             }
                         )
                     }
@@ -1309,6 +1315,57 @@ struct ProjectDetailsView: View {
                     print("[PROJECT_DETAILS] ✅ Task team update complete")
                 } catch {
                     print("[PROJECT_DETAILS] ⚠️ Team update failed: \(error)")
+                }
+            }
+        }
+    }
+
+    /// Bug 10b66fce - a confirmed task-type change from the task detail
+    /// sheet's type eyebrow. Deferred off the sheet's critical path for the
+    /// same reason as `commitTaskTeamChanges`: `updateTaskFields` saves the
+    /// model context, and that notification cascade landing mid sheet
+    /// animation is what tore down ProjectDetails in bugs 0aa825fe / 62481022.
+    /// Routed through DataController so the edit is queued for sync - a bare
+    /// modelContext.save() would strand it on this device.
+    private func commitTaskTypeChange(task: ProjectTask, taskType: TaskType) {
+        guard task.taskTypeId != taskType.id else { return }
+        let taskId = task.id
+        let newTypeId = taskType.id
+
+        DispatchQueue.main.async {
+            Task {
+                do {
+                    try await dataController.updateTaskFields(
+                        taskId: taskId,
+                        fields: ["task_type_id": .string(newTypeId)]
+                    )
+                    // The type drives the job's colour and title on every
+                    // calendar surface, so the calendars must repaint.
+                    dataController.notifyReviewSourcesChanged()
+                } catch {
+                    print("[PROJECT_DETAILS] Task type update failed: \(error)")
+                }
+            }
+        }
+    }
+
+    /// Bug 10b66fce - a confirmed description edit. Same deferred-write
+    /// contract as the type and crew commits above.
+    private func commitTaskDescriptionChange(task: ProjectTask, notes: String) {
+        let trimmed = notes.trimmingCharacters(in: .whitespacesAndNewlines)
+        let current = (task.taskNotes ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed != current else { return }
+        let taskId = task.id
+
+        DispatchQueue.main.async {
+            Task {
+                do {
+                    try await dataController.updateTaskFields(
+                        taskId: taskId,
+                        fields: ["task_notes": trimmed.isEmpty ? .null : .string(trimmed)]
+                    )
+                } catch {
+                    print("[PROJECT_DETAILS] Task notes update failed: \(error)")
                 }
             }
         }

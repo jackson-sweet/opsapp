@@ -31,7 +31,11 @@ final class PhoneContactPickerSnapshotTests: XCTestCase {
     }
 
     private func snapshot<V: View>(_ name: String, size: CGSize, @ViewBuilder _ content: () -> V) {
-        let host = UIHostingController(rootView: content())
+        // A UIWindow inherits the device safe-area insets whatever its frame —
+        // ignoring safe area keeps the row at its natural origin instead of
+        // displaced ~46pt down and bottom-clipped out of the canvas
+        // (same correction as DaySheetRowSnapshotTests).
+        let host = UIHostingController(rootView: content().ignoresSafeArea())
         host.overrideUserInterfaceStyle = .dark
         host.view.frame = CGRect(origin: .zero, size: size)
         host.view.backgroundColor = .black

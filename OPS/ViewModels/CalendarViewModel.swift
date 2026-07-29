@@ -359,8 +359,28 @@ class CalendarViewModel: ObservableObject {
     }
     
     // Helper method to apply all filters to scheduled tasks
+    ///
+    /// The single chokepoint for the week canvas (`rebuildWeekCache`), the
+    /// per-day cache (`getTasksForDate`), and the month grid
+    /// (`MonthGridCache.loadEvents`) — all three funnel through here, so the
+    /// archived cut below lands on every one of them at once.
     func applyTaskFilters(to tasks: [ProjectTask]) -> [ProjectTask] {
-        var filteredTasks = tasks
+        applyTaskFilters(
+            to: tasks,
+            archivedProjectIds: CalendarTaskVisibility.archivedProjectIds(in: dataController?.modelContext)
+        )
+    }
+
+    /// Pure variant — the archived set is resolved once by the caller rather
+    /// than per row. See `CalendarTaskVisibility`.
+    func applyTaskFilters(
+        to tasks: [ProjectTask],
+        archivedProjectIds: Set<String>
+    ) -> [ProjectTask] {
+        // Bug 9997c11c — archived jobs are filed away, not scheduled. This runs
+        // first so nothing downstream (including the crew/type/client filters)
+        // ever gets a chance to surface one.
+        var filteredTasks = CalendarTaskVisibility.visible(tasks, archivedProjectIds: archivedProjectIds)
 
         // Apply team member filter
         if !selectedTeamMemberIds.isEmpty {

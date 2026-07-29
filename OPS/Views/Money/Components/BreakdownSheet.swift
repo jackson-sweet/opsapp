@@ -62,7 +62,7 @@ struct BreakdownSheet: View {
                                 .foregroundColor(OPSStyle.Colors.primaryText)
                                 .lineLimit(1)
                             Spacer()
-                            Text(formatCurrency(item.amount))
+                            Text(BooksFormat.exact(item.amount))
                                 .font(OPSStyle.Typography.bodyBold)
                                 .foregroundColor(color)
                         }
@@ -76,7 +76,4 @@ struct BreakdownSheet: View {
         }
     }
 
-    private func formatCurrency(_ value: Double) -> String {
-        String(format: "$%.2f", value)
-    }
 }

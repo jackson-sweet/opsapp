@@ -305,7 +305,7 @@ struct BundleCompositionEditSheet: View {
                     .foregroundColor(OPSStyle.Colors.primaryText)
                     .lineLimit(1)
                 Spacer()
-                Text(formattedPrice(childProduct.basePrice))
+                Text(BooksFormat.price(childProduct.basePrice))
                     .font(OPSStyle.Typography.metadata)
                     .monospacedDigit()
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
@@ -319,7 +319,7 @@ struct BundleCompositionEditSheet: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Add \(childProduct.name)")
-        .accessibilityValue(formattedPrice(childProduct.basePrice))
+        .accessibilityValue(BooksFormat.price(childProduct.basePrice))
         .accessibilityHint("Adds this product as a required bundle child.")
     }
 
@@ -351,7 +351,7 @@ struct BundleCompositionEditSheet: View {
                                 .font(OPSStyle.Typography.body)
                                 .foregroundColor(OPSStyle.Colors.primaryText)
                                 .lineLimit(2)
-                            Text(formattedPrice(unitPrice) + " ea")
+                            Text(BooksFormat.price(unitPrice) + " ea")
                                 .font(OPSStyle.Typography.metadata)
                                 .monospacedDigit()
                                 .foregroundColor(OPSStyle.Colors.tertiaryText)
@@ -361,7 +361,7 @@ struct BundleCompositionEditSheet: View {
                     HStack(spacing: OPSStyle.Layout.spacing2) {
                         qtyStepper(for: draft)
                         Spacer()
-                        Text(formattedPrice(lineTotal))
+                        Text(BooksFormat.price(lineTotal))
                             .font(OPSStyle.Typography.metadata)
                             .monospacedDigit()
                             .foregroundColor(OPSStyle.Colors.primaryText)
@@ -378,14 +378,14 @@ struct BundleCompositionEditSheet: View {
                             .font(OPSStyle.Typography.body)
                             .foregroundColor(OPSStyle.Colors.primaryText)
                             .lineLimit(1)
-                        Text(formattedPrice(unitPrice) + " ea")
+                        Text(BooksFormat.price(unitPrice) + " ea")
                             .font(OPSStyle.Typography.metadata)
                             .monospacedDigit()
                             .foregroundColor(OPSStyle.Colors.tertiaryText)
                     }
                     Spacer()
                     qtyStepper(for: draft)
-                    Text(formattedPrice(lineTotal))
+                    Text(BooksFormat.price(lineTotal))
                         .font(OPSStyle.Typography.metadata)
                         .monospacedDigit()
                         .foregroundColor(OPSStyle.Colors.primaryText)
@@ -405,7 +405,7 @@ struct BundleCompositionEditSheet: View {
         }
         .accessibilityElement(children: .contain)
         .accessibilityLabel(child?.name ?? "Bundle child")
-        .accessibilityValue("Quantity \(Int(draft.quantity)), unit \(formattedPrice(unitPrice)), total \(formattedPrice(lineTotal))")
+        .accessibilityValue("Quantity \(Int(draft.quantity)), unit \(BooksFormat.price(unitPrice)), total \(BooksFormat.price(lineTotal))")
         .accessibilityAction(named: "Remove") {
             removeChild(draft)
         }
@@ -484,13 +484,13 @@ struct BundleCompositionEditSheet: View {
                     .font(OPSStyle.Typography.body)
                     .foregroundColor(OPSStyle.Colors.primaryText)
                     .lineLimit(1)
-                Text("× \(Int(item.quantity)) · \(formattedPrice(unitPrice)) ea")
+                Text("× \(Int(item.quantity)) · \(BooksFormat.price(unitPrice)) ea")
                     .font(OPSStyle.Typography.metadata)
                     .monospacedDigit()
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
             }
             Spacer()
-            Text("+ \(formattedPrice(lineTotal))")
+            Text("+ \(BooksFormat.price(lineTotal))")
                 .font(OPSStyle.Typography.metadata)
                 .monospacedDigit()
                 .foregroundColor(OPSStyle.Colors.tertiaryText)
@@ -501,7 +501,7 @@ struct BundleCompositionEditSheet: View {
         .glassSurface()
         .accessibilityElement(children: .combine)
         .accessibilityLabel(child?.name ?? "Suggested add-on")
-        .accessibilityValue("Quantity \(Int(item.quantity)), unit \(formattedPrice(unitPrice)), add-on total \(formattedPrice(lineTotal))")
+        .accessibilityValue("Quantity \(Int(item.quantity)), unit \(BooksFormat.price(unitPrice)), add-on total \(BooksFormat.price(lineTotal))")
     }
 
     // MARK: - Pricing
@@ -557,7 +557,7 @@ struct BundleCompositionEditSheet: View {
                 .font(OPSStyle.Typography.metadata)
                 .foregroundColor(OPSStyle.Colors.tertiaryText)
             Spacer()
-            Text(formattedPrice(rolledTotal))
+            Text(BooksFormat.price(rolledTotal))
                 .font(OPSStyle.Typography.bodyBold)
                 .monospacedDigit()
                 .foregroundColor(OPSStyle.Colors.primaryText)
@@ -587,7 +587,7 @@ struct BundleCompositionEditSheet: View {
                     .font(OPSStyle.Typography.metadata)
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
                 Spacer()
-                Text(formattedPrice(rolledTotal))
+                Text(BooksFormat.price(rolledTotal))
                     .font(OPSStyle.Typography.metadata)
                     .monospacedDigit()
                     .foregroundColor(OPSStyle.Colors.secondaryText)
@@ -657,15 +657,6 @@ struct BundleCompositionEditSheet: View {
             .padding(.vertical, OPSStyle.Layout.spacing3)
         }
         .background(OPSStyle.Colors.background)
-    }
-
-    private func formattedPrice(_ value: Double) -> String {
-        let f = NumberFormatter()
-        f.numberStyle = .currency
-        f.currencyCode = "USD"
-        f.maximumFractionDigits = 2
-        f.minimumFractionDigits = 0
-        return f.string(from: NSNumber(value: value)) ?? "$0"
     }
 
     // MARK: - Save (diff against persisted)

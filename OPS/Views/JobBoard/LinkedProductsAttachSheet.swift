@@ -154,7 +154,7 @@ struct LinkedProductsAttachSheet: View {
         let currentParentId = product.taskTypeRef ?? product.taskTypeId
         let isReassign = (currentParentId != nil) && !(currentParentId?.isEmpty ?? true)
         let currentParentName = isReassign ? displayName(forTaskTypeId: currentParentId) : nil
-        let priceText = formatPrice(product.basePrice) + "/" + product.pricingUnit.rawValue
+        let priceText = BooksFormat.price(product.basePrice) + "/" + product.pricingUnit.rawValue
 
         return Button {
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
@@ -242,15 +242,6 @@ struct LinkedProductsAttachSheet: View {
     private func displayName(forTaskTypeId id: String?) -> String {
         guard let id, let name = taskTypeLookup[id] else { return "another task type" }
         return name
-    }
-
-    private func formatPrice(_ value: Double) -> String {
-        let f = NumberFormatter()
-        f.numberStyle = .currency
-        f.currencyCode = "USD"
-        f.minimumFractionDigits = 0
-        f.maximumFractionDigits = 2
-        return f.string(from: NSNumber(value: value)) ?? "$\(value)"
     }
 
     // MARK: - Attach

@@ -445,12 +445,7 @@ private struct ProductRow: View {
     }
 
     private var priceLabel: String {
-        let priceFormatter = NumberFormatter()
-        priceFormatter.numberStyle = .currency
-        priceFormatter.currencyCode = "USD"
-        priceFormatter.maximumFractionDigits = 2
-        priceFormatter.minimumFractionDigits = 0
-        let priceString = priceFormatter.string(from: NSNumber(value: product.basePrice)) ?? "$0"
+        let priceString = BooksFormat.price(product.basePrice)
         let suffix = pricingUnitSuffix(product.pricingUnit)
         return suffix.isEmpty ? priceString : "\(priceString) \(suffix)"
     }

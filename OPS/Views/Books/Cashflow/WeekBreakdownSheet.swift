@@ -17,11 +17,11 @@ struct WeekBreakdownSheet: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing3_5) {
                     section(
-                        title: "+ INFLOWS · \(formatCurrency(week.inflows))",
+                        title: "+ INFLOWS · \(BooksFormat.currency(week.inflows))",
                         rows: inflowRows
                     )
                     section(
-                        title: "− OUTFLOWS · \(formatCurrency(week.outflows))",
+                        title: "− OUTFLOWS · \(BooksFormat.currency(week.outflows))",
                         rows: outflowRows
                     )
                     netRow
@@ -40,7 +40,7 @@ struct WeekBreakdownSheet: View {
             Text("WEEK OF \(formatDate(week.weekStart))")
                 .font(OPSStyle.Typography.microLabel)
                 .foregroundColor(OPSStyle.Colors.secondaryText)
-            Text("BALANCE \(formatCurrency(week.balance))")
+            Text("BALANCE \(BooksFormat.currency(week.balance))")
                 .font(OPSStyle.Typography.dataValueLg)
                 .monospacedDigit()
                 .foregroundColor(week.balance < 0 ? OPSStyle.Colors.errorStatus : OPSStyle.Colors.primaryText)
@@ -88,7 +88,7 @@ struct WeekBreakdownSheet: View {
                     .foregroundColor(OPSStyle.Colors.primaryText)
             }
             Spacer()
-            Text(formatCurrency(row.amount))
+            Text(BooksFormat.currency(row.amount))
                 .font(OPSStyle.Typography.dataValue)
                 .monospacedDigit()
                 .foregroundColor(row.amount < 0 ? OPSStyle.Colors.rose : OPSStyle.Colors.primaryText)
@@ -102,20 +102,12 @@ struct WeekBreakdownSheet: View {
                 .font(OPSStyle.Typography.microLabel)
                 .foregroundColor(OPSStyle.Colors.secondaryText)
             Spacer()
-            Text(formatCurrency(week.net))
+            Text(BooksFormat.currency(week.net))
                 .font(OPSStyle.Typography.dataValueLg)
                 .monospacedDigit()
                 .foregroundColor(week.net < 0 ? OPSStyle.Colors.errorStatus : OPSStyle.Colors.primaryAccent)
         }
         .padding(.top, OPSStyle.Layout.spacing2)
-    }
-
-    private func formatCurrency(_ v: Double) -> String {
-        let f = NumberFormatter()
-        f.numberStyle = .currency
-        f.currencyCode = "USD"
-        f.maximumFractionDigits = 0
-        return f.string(from: NSNumber(value: v)) ?? "$0"
     }
 
     private func formatDate(_ d: Date) -> String {

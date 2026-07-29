@@ -40,7 +40,7 @@ struct ExpenseInstrumentStrip: View {
                             .tracking(1.2)
                     }
 
-                    Text(metrics.spendMTD, format: .currency(code: "USD").precision(.fractionLength(0)))
+                    Text(BooksFormat.currency(metrics.spendMTD))
                         .font(OPSStyle.Typography.title)
                         .foregroundColor(OPSStyle.Colors.primaryText)
                         .monospacedDigit()
@@ -60,7 +60,7 @@ struct ExpenseInstrumentStrip: View {
                 Text("JOBS")
                     .font(OPSStyle.Typography.smallCaption)
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
-                Text(metrics.jobSpendMTD, format: .currency(code: "USD").precision(.fractionLength(0)))
+                Text(BooksFormat.currency(metrics.jobSpendMTD))
                     .font(OPSStyle.Typography.smallCaption)
                     .foregroundColor(OPSStyle.Colors.secondaryText)
                     .monospacedDigit()
@@ -70,7 +70,7 @@ struct ExpenseInstrumentStrip: View {
                 Text("OVERHEAD")
                     .font(OPSStyle.Typography.smallCaption)
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
-                Text(metrics.overheadSpendMTD, format: .currency(code: "USD").precision(.fractionLength(0)))
+                Text(BooksFormat.currency(metrics.overheadSpendMTD))
                     .font(OPSStyle.Typography.smallCaption)
                     .foregroundColor(OPSStyle.Colors.secondaryText)
                     .monospacedDigit()
@@ -175,7 +175,7 @@ struct ExpenseInstrumentStrip: View {
                     .lineLimit(1)
                     .minimumScaleFactor(0.8)
 
-                Text(amount, format: .currency(code: "USD").precision(.fractionLength(0)))
+                Text(BooksFormat.currency(amount))
                     .font(OPSStyle.Typography.captionBold)
                     .foregroundColor(amount > 0 ? OPSStyle.Colors.primaryText : OPSStyle.Colors.tertiaryText)
                     .monospacedDigit()

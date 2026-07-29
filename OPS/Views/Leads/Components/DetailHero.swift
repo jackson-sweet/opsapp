@@ -282,21 +282,20 @@ struct DetailHero: View {
         return s.replacingOccurrences(of: "_", with: " ").uppercased()
     }
 
+    /// Hero-scale compact money — deliberately chunkier than
+    /// `BooksFormat.compact` (whole K above $10K). Number rendering pins to
+    /// the shared canon locale so the hero never reads "1,4M" or "US$".
     private static func formatMoneyCompact(_ v: Double) -> String {
         if v >= 1_000_000 {
-            return "$\((v / 1_000_000).formatted(.number.precision(.fractionLength(1))))M"
+            return "$\((v / 1_000_000).formatted(.number.precision(.fractionLength(1)).locale(BooksFormat.locale)))M"
         }
         if v >= 10_000 {
             return "$\(Int(v / 1_000))K"
         }
         if v >= 1_000 {
-            return "$\((v / 1_000).formatted(.number.precision(.fractionLength(1))))K"
+            return "$\((v / 1_000).formatted(.number.precision(.fractionLength(1)).locale(BooksFormat.locale)))K"
         }
-        let f = NumberFormatter()
-        f.numberStyle = .currency
-        f.currencyCode = "USD"
-        f.maximumFractionDigits = 0
-        return f.string(from: NSNumber(value: v)) ?? "$\(Int(v))"
+        return BooksFormat.currency(v)
     }
 }
 

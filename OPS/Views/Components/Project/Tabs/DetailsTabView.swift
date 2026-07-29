@@ -34,6 +34,11 @@ struct DetailsTabView: View {
     /// ProjectDetailsView via `showingStatusPicker`). Bug f3a300f7 — the
     /// Details surface previously had no affordance to reach that sheet.
     var onChangeStatus: (() -> Void)? = nil
+    /// PROJECT-side lead provenance (bug a3c4e216). Opens the linked lead, or
+    /// the picker when this project has matchable won leads at its address.
+    var leadRowPresentation: ProjectLeadRow.Presentation = .hidden
+    var onOpenLead: (() -> Void)? = nil
+    var onMatchLead: (() -> Void)? = nil
 
     /// All Users in the store. Used to resolve team member avatars from the
     /// authoritative `teamMemberIdsString` CSV on both Project and ProjectTask.
@@ -95,6 +100,15 @@ struct DetailsTabView: View {
                     onAssignClient: onClientLongPress
                 )
             }
+
+            // LEAD — provenance, next to CLIENT because both answer "where
+            // did this job come from?". Absent entirely when there is no lead
+            // and nothing matchable (bug a3c4e216).
+            ProjectLeadSection(
+                presentation: leadRowPresentation,
+                onOpenLead: { onOpenLead?() },
+                onMatchLead: { onMatchLead?() }
+            )
 
             // ADDRESS (below client)
             AddressSection(

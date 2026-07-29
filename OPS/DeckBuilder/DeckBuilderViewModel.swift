@@ -695,6 +695,7 @@ class DeckBuilderViewModel: ObservableObject {
     /// leaves the foreground. The timer is crash recovery; exit/background
     /// must commit the current drawing immediately.
     func flushBeforeExit() {
+        flushPendingSave()
         if shouldPersistExitSnapshot {
             save()
         }
@@ -742,6 +743,7 @@ class DeckBuilderViewModel: ObservableObject {
     func setAutosavePreference(_ enabled: Bool) {
         autosaveEnabled = enabled
         hasPromptedForAutosave = true
+        autosavePromptDeferred = false
         let defaults = UserDefaults.standard
         defaults.set(true, forKey: Self.autosaveDecisionMadeKey)
         defaults.set(enabled, forKey: Self.autosavePreferenceKey)
@@ -3138,7 +3140,7 @@ class DeckBuilderViewModel: ObservableObject {
                 drawingData.surfaces = surfaces
             }
 
-            save()
+            scheduleSave()
             ToastCenter.shared.present(Feedback.Deck.surfacesLabeled)
 
         case .footprint(let levelId):
@@ -3156,7 +3158,7 @@ class DeckBuilderViewModel: ObservableObject {
                 drawingData.footprint.label = value
             }
 
-            save()
+            scheduleSave()
             ToastCenter.shared.present(Feedback.Deck.footprintLabeled)
 
         case .edge(let edgeId, let levelId):
@@ -3180,7 +3182,7 @@ class DeckBuilderViewModel: ObservableObject {
                 drawingData.edges[edgeIndex].label = value
             }
 
-            save()
+            scheduleSave()
             ToastCenter.shared.present(Feedback.Deck.edgeLabeled)
         }
     }
@@ -3600,9 +3602,62 @@ class DeckBuilderViewModel: ObservableObject {
         hapticLight()
     }
 
+    // MARK: - Coalesced persistence (bug 71129ae2)
+
+    /// Label commits arrive in bursts: focus walks from one field to the next
+    /// inside the Properties sheet, and every hand-off commits. Persisting each
+    /// one on the spot ran `reconcileSurfaces()` and a synchronous
+    /// `modelContext.save()` INSIDE the focus transition, which invalidates the
+    /// sheet's `@Query` properties mid-flight and drops the keyboard on the way
+    /// to the next field — the user retypes, gives up, and reports that labels
+    /// don't stick. Mutations still land immediately (undo, the canvas, and the
+    /// next field's source value all read live state); only the write to disk
+    /// is coalesced, then flushed when the sheet goes away.
+    private var deferredSaveTask: Task<Void, Never>?
+
+    /// Debounce for `scheduleSave()`. Long enough to swallow a field-to-field
+    /// hand-off, short enough that someone who walks away mid-edit still gets
+    /// their work written without touching anything.
+    var deferredSaveDebounce: TimeInterval = 0.4
+
+    /// True while a coalesced write is queued but not yet on disk.
+    var hasPendingSave: Bool { deferredSaveTask != nil }
+
+    /// Queues a save instead of running one now. Repeated calls collapse into
+    /// a single write.
+    func scheduleSave() {
+        isLocallySaved = false
+        deferredSaveTask?.cancel()
+        let interval = deferredSaveDebounce
+        deferredSaveTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: UInt64(max(0, interval) * 1_000_000_000))
+            guard !Task.isCancelled, let self else { return }
+            self.deferredSaveTask = nil
+            self.save()
+        }
+    }
+
+    /// Writes any queued change immediately — sheet dismissal, app exit, or
+    /// anything else that ends the burst.
+    func flushPendingSave() {
+        guard deferredSaveTask != nil else { return }
+        cancelPendingSave()
+        save()
+    }
+
+    /// Drops a queued write whose state a newer full `save()` already covers.
+    private func cancelPendingSave() {
+        deferredSaveTask?.cancel()
+        deferredSaveTask = nil
+    }
+
     // MARK: - Persistence
 
     func save() {
+        // A queued write only ever holds state this save is about to persist
+        // anyway — let it go so it can't land again behind an undo.
+        cancelPendingSave()
+
         // Reconcile the per-surface assignment store against current
         // geometry before persisting. Idempotent — surfaces with stable
         // vertex membership pass through unchanged. DECK-NEW-1 follow-up.
@@ -3638,8 +3693,43 @@ class DeckBuilderViewModel: ObservableObject {
         // is already true by then, and the guard prevents recursion).
         if !isNewDrawing && !hasPromptedForAutosave && !autosaveEnabled {
             hasPromptedForAutosave = true
-            showingAutosavePrompt = true
+            requestAutosavePrompt()
         }
+    }
+
+    // MARK: - Autosave prompt presentation (bug 71129ae2)
+
+    /// The autosave alert is bound to the builder's ROOT view, so raising it
+    /// while a sheet is up presents it behind that sheet: the user sees
+    /// nothing, and the next tap lands on a dialog they can't see. The ask
+    /// waits for a clear screen instead.
+    private var autosavePromptDeferred = false
+
+    /// Every modal that can own the screen when a first edit fires the
+    /// autosave question.
+    var isPresentingModal: Bool {
+        showingDimensionInput || showingElevationInput || showingStairConfig
+            || showingAssignmentWheel || showingMaterialPicker || showingVinylOrderSheet
+            || showingPropertySheet || showingSettings || showingClearConfirm
+            || showingARVisualization || showingPhotoSourcePicker || showingPhotoOverlayEditor
+            || showingEstimatePreview || showingShareOptions || showingDuplicateAlert
+            || showingShareSheet
+    }
+
+    private func requestAutosavePrompt() {
+        guard !isPresentingModal else {
+            autosavePromptDeferred = true
+            return
+        }
+        showingAutosavePrompt = true
+    }
+
+    /// Raises a prompt that was held back while a sheet was up. Driven by the
+    /// builder view the moment the last modal closes.
+    func presentDeferredAutosavePromptIfReady() {
+        guard autosavePromptDeferred, !isPresentingModal else { return }
+        autosavePromptDeferred = false
+        showingAutosavePrompt = true
     }
 
     /// Records a SyncOperation so the OutboundProcessor pushes the deck

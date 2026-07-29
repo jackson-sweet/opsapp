@@ -159,6 +159,12 @@ struct PropertySheetView: View {
             // Dismiss when level switches — edge/vertex references may belong to the previous level
             dismiss()
         }
+        .onDisappear {
+            // Label commits inside this sheet queue a coalesced write rather
+            // than persisting inside each focus hand-off (which dropped the
+            // keyboard between fields). Closing the sheet ends the burst.
+            viewModel.flushPendingSave()
+        }
     }
 
     // MARK: - Edge Properties

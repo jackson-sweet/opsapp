@@ -54,6 +54,16 @@ struct ConvertToProjectSheet: View {
 
     @State private var titleText: String = ""
     @State private var addressText: String = ""
+    /// True while `addressText` still holds the value borrowed from the linked
+    /// client record. The field TAGS it: the create path persists whatever is
+    /// visible back onto the opportunity, so the operator has to be able to see
+    /// where it came from before they commit (bug a7df1f37).
+    @State private var addressIsFromClient = false
+    @State private var prefilledLatitude: Double?
+    @State private var prefilledLongitude: Double?
+    /// The lead's linked client, resolved once during preflight. Supplies the
+    /// address and contact fallbacks.
+    @State private var linkedClient: Client?
     @State private var actualValueText: String = ""
     @State private var closingNotes: String = ""
 
@@ -97,6 +107,14 @@ struct ConvertToProjectSheet: View {
     /// RPC before the client may present a committed win. While this flag is
     /// set, the sheet exposes no create/retry action.
     @State private var hiddenConversionRecoveryDetected = false
+    /// The candidate link re-read failed on its own. Reported in the chip area
+    /// — it is NOT a preflight failure and must not close the sheet's only
+    /// committing action (bug 5468b3c6, H7).
+    @State private var candidateLinkCheckFailed = false
+    /// Honest one-liner about why nothing on screen is matchable.
+    @State private var chipNotice: String?
+    /// The project being peeked at, layered over this sheet. Never a dismissal.
+    @State private var peekProject: RelatedProjectRef?
 
     // MARK: - Operation state
 
@@ -195,10 +213,44 @@ struct ConvertToProjectSheet: View {
         }
         .preferredColorScheme(.dark)
         .interactiveDismissDisabled(isSaving)
+        .sheet(item: $peekProject) { project in
+            ProjectPeekSheet(
+                projectId: project.id,
+                fallbackTitle: project.title,
+                fallbackAddress: project.address,
+                linkNote: peekNote(for: project),
+                companyId: opportunity.companyId,
+                onOpenProject: { projectId in
+                    peekProject = nil
+                    openProjectLeavingConversion(projectId)
+                }
+            )
+            .environmentObject(dataController)
+            // A quick look, not a destination — the half detent keeps the
+            // conversion visibly underneath.
+            .presentationDetents([.medium, .large])
+            .presentationDragIndicator(.visible)
+        }
         .task {
             let recoveredCommittedConversion = await loadPreflight()
             guard !recoveredCommittedConversion else { return }
             applyInitialFormValues()
+        }
+    }
+
+    /// What the peek should say about this project's relationship to the lead.
+    private func peekNote(for project: RelatedProjectRef) -> String? {
+        switch project.linkState {
+        case .matchable:
+            return "Same address as this lead. Selecting it links the lead to this project instead of creating a new one."
+        case .linkedElsewhere:
+            return "Same address as this lead, but already linked to a different lead. It cannot be matched until that link is resolved."
+        case .unverified:
+            return "Same address as this lead. Its link could not be checked just now."
+        case .unavailable:
+            return "This project was rejected as a match during the last attempt."
+        case .reviewOnly:
+            return "Another project for this client, at a different address. Projects can only be matched at the same address."
         }
     }
 
@@ -217,6 +269,17 @@ struct ConvertToProjectSheet: View {
 
     // MARK: - Lead summary card
 
+    /// Contact identity for the card, falling back to the linked client so a
+    /// lead created from a client page never shows a bare em dash.
+    private var summaryContact: LeadSummaryContact {
+        Self.leadSummaryContact(
+            opportunityName: opportunity.contactName,
+            opportunityPhone: opportunity.contactPhone,
+            clientName: linkedClient?.name,
+            clientPhone: linkedClient?.phoneNumber
+        )
+    }
+
     private var leadSummaryCard: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 0) {
@@ -229,7 +292,7 @@ struct ConvertToProjectSheet: View {
             .kerning(1.6)
             .textCase(.uppercase)
 
-            Text(opportunity.contactName.isEmpty ? "—" : opportunity.contactName)
+            Text(summaryContact.name)
                 .font(OPSStyle.Typography.bodyBold)
                 .foregroundColor(OPSStyle.Colors.text)
                 .lineLimit(2)
@@ -237,7 +300,7 @@ struct ConvertToProjectSheet: View {
             HStack(spacing: 6) {
                 Text(opportunity.shortDisplayId)
                     .monospacedDigit()
-                if let phone = opportunity.contactPhone, !phone.isEmpty {
+                if let phone = summaryContact.phone {
                     Text("·")
                     Text(phone)
                 }
@@ -321,8 +384,9 @@ struct ConvertToProjectSheet: View {
         ClientOthersBanner(
             projects: clientOtherProjects,
             selectedProjectId: selectedExistingProjectId,
-            onOpen: openExistingProject,
-            onMatch: selectExistingProject
+            onPeek: { peekProject = $0 },
+            onMatch: selectExistingProject,
+            notice: chipNotice
         )
     }
 
@@ -332,8 +396,13 @@ struct ConvertToProjectSheet: View {
     struct ClientOthersBanner: View {
         let projects: [RelatedProjectRef]
         let selectedProjectId: String?
-        let onOpen: (String) -> Void
+        /// Opens a read-only peek LAYERED over the convert sheet. It never
+        /// dismisses or navigates — form state is sacred here.
+        let onPeek: (RelatedProjectRef) -> Void
         let onMatch: (String) -> Void
+        /// One honest line about why nothing is matchable, rendered inside the
+        /// chip area where the problem actually lives.
+        var notice: String? = nil
 
         /// `CLIENT HAS 02 OTHER PROJECTS` — one message, count zero-padded to
         /// match the mono HUD style. The old header also carried "REVIEW
@@ -363,19 +432,17 @@ struct ConvertToProjectSheet: View {
 
                 ChipWrap(spacing: 6) {
                     ForEach(projects.prefix(8)) { project in
-                        Button {
-                            switch project.interaction {
-                            case .match:
-                                onMatch(project.id)
-                            case .open:
-                                onOpen(project.id)
-                            }
-                        } label: {
-                            projectChip(project)
-                        }
-                        .buttonStyle(PlainButtonStyle())
-                        .accessibilityLabel(accessibilityLabel(for: project))
+                        projectChip(project)
                     }
+                }
+
+                if let notice {
+                    Text(notice)
+                        .font(OPSStyle.Typography.miniLabel)
+                        .kerning(1.0)
+                        .foregroundColor(OPSStyle.Colors.tanTextM)
+                        .textCase(.uppercase)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
             }
             .padding(OPSStyle.Layout.spacing2_5)
@@ -390,34 +457,74 @@ struct ConvertToProjectSheet: View {
             )
         }
 
+        /// A chip is two controls, not one. The BODY carries the chip's
+        /// meaning — select it (matchable) or look at it (everything else) —
+        /// and the trailing control always opens the peek, so an operator
+        /// mid-selection can still inspect what they are about to match
+        /// without losing the selection or the form.
         private func projectChip(_ project: RelatedProjectRef) -> some View {
             let isSelected = selectedProjectId == project.id && project.interaction == .match
 
-            return HStack(spacing: 6) {
-                Circle()
-                    .fill(project.statusColor)
-                    .frame(width: 5, height: 5)
-                Text(truncatedTitle(project.title))
-                    .font(OPSStyle.Typography.miniLabelBold)
-                    .kerning(1.2)
-                    .foregroundColor(OPSStyle.Colors.text)
-                    .textCase(.uppercase)
-                if let actionLabel = project.actionLabel {
-                    Text("·")
-                        .foregroundColor(OPSStyle.Colors.textMute)
-                    if isSelected {
-                        Image(systemName: OPSStyle.Icons.checkmarkCircleFill)
-                            .font(.system(size: OPSStyle.Layout.IconSize.xs, weight: .semibold))
-                            .foregroundColor(OPSStyle.Colors.oliveTextM)
+            return HStack(spacing: 0) {
+                Button {
+                    switch project.interaction {
+                    case .match: onMatch(project.id)
+                    case .peek:  onPeek(project)
                     }
-                    Text(isSelected ? "SELECTED" : actionLabel)
-                        .font(OPSStyle.Typography.miniLabel)
-                        .kerning(1.0)
-                        .foregroundColor(isSelected ? OPSStyle.Colors.oliveTextM : OPSStyle.Colors.tanTextM)
-                        .textCase(.uppercase)
+                } label: {
+                    HStack(spacing: 6) {
+                        Circle()
+                            .fill(project.statusColor)
+                            .frame(width: 5, height: 5)
+                        Text(truncatedTitle(project.title))
+                            .font(OPSStyle.Typography.miniLabelBold)
+                            .kerning(1.2)
+                            .foregroundColor(OPSStyle.Colors.text)
+                            .textCase(.uppercase)
+                        if let actionLabel = project.actionLabel {
+                            Text("·")
+                                .foregroundColor(OPSStyle.Colors.textMute)
+                            if isSelected {
+                                Image(systemName: OPSStyle.Icons.checkmarkCircleFill)
+                                    .font(.system(size: OPSStyle.Layout.IconSize.xs, weight: .semibold))
+                                    .foregroundColor(OPSStyle.Colors.oliveTextM)
+                            }
+                            Text(isSelected ? "SELECTED" : actionLabel)
+                                .font(OPSStyle.Typography.miniLabel)
+                                .kerning(1.0)
+                                .foregroundColor(labelColor(for: project, isSelected: isSelected))
+                                .textCase(.uppercase)
+                        }
+                    }
+                    .padding(.leading, 10)
+                    .padding(.trailing, project.interaction == .match ? 6 : 10)
+                    .frame(minHeight: 44)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(PlainButtonStyle())
+                .accessibilityLabel(accessibilityLabel(for: project))
+
+                // Selecting and inspecting are different intents, so a
+                // matchable chip gets its own peek control rather than
+                // overloading the tap.
+                if project.interaction == .match {
+                    Rectangle()
+                        .fill(OPSStyle.Colors.line)
+                        .frame(width: 1, height: 16)
+                    Button {
+                        onPeek(project)
+                    } label: {
+                        Image(systemName: OPSStyle.Icons.magnifyingglass)
+                            .font(.system(size: OPSStyle.Layout.IconSize.xs, weight: .semibold))
+                            .foregroundColor(OPSStyle.Colors.text3)
+                            .padding(.horizontal, 10)
+                            .frame(minHeight: 44)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(PlainButtonStyle())
+                    .accessibilityLabel("Quick view project \(project.title)")
                 }
             }
-            .padding(.horizontal, 10)
             .frame(minHeight: 32)
             .background(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius, style: .continuous)
@@ -427,19 +534,34 @@ struct ConvertToProjectSheet: View {
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius, style: .continuous)
                     .strokeBorder(isSelected ? OPSStyle.Colors.oliveLineM : OPSStyle.Colors.line, lineWidth: 1)
             )
-            // 32pt visible chip · 44pt hit area — MOBILE.md §1 / audit F1.
-            .frame(minHeight: 44)
-            .contentShape(Rectangle())
+        }
+
+        private func labelColor(
+            for project: RelatedProjectRef,
+            isSelected: Bool
+        ) -> Color {
+            if isSelected { return OPSStyle.Colors.oliveTextM }
+            switch project.linkState {
+            case .matchable:                     return OPSStyle.Colors.tanTextM
+            case .linkedElsewhere, .unavailable,
+                 .unverified, .reviewOnly:       return OPSStyle.Colors.text3
+            }
         }
 
         private func accessibilityLabel(for project: RelatedProjectRef) -> String {
-            switch project.interaction {
-            case .match:
+            switch project.linkState {
+            case .matchable:
                 return selectedProjectId == project.id
                     ? "Selected project \(project.title) for matching"
                     : "Match lead to project \(project.title)"
-            case .open:
-                return "Open project \(project.title)"
+            case .linkedElsewhere:
+                return "Project \(project.title) is already linked to another lead. Quick view."
+            case .unverified:
+                return "Project \(project.title) link state unknown. Quick view."
+            case .unavailable:
+                return "Project \(project.title) is unavailable to match. Quick view."
+            case .reviewOnly:
+                return "Quick view project \(project.title)"
             }
         }
 
@@ -452,20 +574,36 @@ struct ConvertToProjectSheet: View {
 
     // MARK: - Form fields
 
+    /// `[FROM CLIENT]` reuses the field-hint grammar already on this sheet
+    /// (`[AUTO]`, `[REQUIRED]`, `[OPTIONAL]`) rather than inventing a badge.
+    /// It outranks `[OPTIONAL]` because provenance is the more useful fact;
+    /// `[REQUIRED]` still wins, since a blocked field is more urgent.
+    private var addressHint: String {
+        if creationBlocker == .addressRequired { return "[REQUIRED]" }
+        if addressIsFromClient { return "[FROM CLIENT]" }
+        return "[OPTIONAL]"
+    }
+
     private var formFields: some View {
         VStack(alignment: .leading, spacing: 14) {
             if submissionTarget.showsProjectIdentityFields {
                 nameField
 
-                LeadField(
-                    label: "ADDRESS",
-                    hint: creationBlocker == .addressRequired ? "[REQUIRED]" : "[OPTIONAL]"
-                ) {
+                LeadField(label: "ADDRESS", hint: addressHint) {
                     LeadTextInput(
                         placeholder: "3185 Fairview Rd",
                         text: $addressText,
                         textContentType: .fullStreetAddress
                     )
+                    .onChange(of: addressText) { _, _ in
+                        // The tag claims provenance. The moment the operator
+                        // edits the value, the claim stops being true.
+                        if addressIsFromClient {
+                            addressIsFromClient = false
+                            prefilledLatitude = nil
+                            prefilledLongitude = nil
+                        }
+                    }
                 }
             }
 
@@ -636,7 +774,7 @@ struct ConvertToProjectSheet: View {
 
             Spacer()
 
-            Text(formatMoney(bundle.estimate.total))
+            Text(BooksFormat.currency(bundle.estimate.total))
                 .font(.custom("JetBrainsMono-Medium", size: 13))
                 .monospacedDigit()
                 .foregroundColor(OPSStyle.Colors.text)
@@ -827,7 +965,7 @@ struct ConvertToProjectSheet: View {
                     .opacity(hasAddress ? 1 : 0.5)
                 } else if creationBlocker == .projectReviewRequired {
                     SheetCTAButton(
-                        label: "ADMIN REVIEW REQUIRED",
+                        label: "ADMIN ACCESS NEEDED",
                         variant: .primary,
                         action: {}
                     )
@@ -873,10 +1011,13 @@ struct ConvertToProjectSheet: View {
     private func loadPreflight() async -> Bool {
         guard !hasLoadedPreflight else { return false }
         let companyId = opportunity.companyId
-        let service = LeadConversionService(companyId: companyId)
+        let service = LeadConversionService(companyId: companyId, modelContext: modelContext)
         preflightFailed = false
         creationBlocker = nil
         errorMessage = nil
+        candidateLinkCheckFailed = false
+        chipNotice = nil
+        resolveLinkedClient()
 
         // SERVER preflight — single source of truth for render state + suggested
         // name. Replaces the prior local SwiftData duplicate/other-projects
@@ -909,33 +1050,35 @@ struct ConvertToProjectSheet: View {
                 )
             }
 
-            let matchableCandidateIds = try await service.matchableCandidateProjectIds(
-                for: opportunity,
-                candidates: preflight.duplicateCandidates
-            )
-            creationBlocker = preflight.creationBlocker
-            if creationBlocker == nil,
-               !preflight.duplicateCandidates.isEmpty,
-               matchableCandidateIds.isEmpty {
-                creationBlocker = .projectReviewRequired
+            // Bug 5468b3c6 (H7) — this read gets its OWN error handling. It
+            // used to share the preflight's `do`, so a transient failure of
+            // the candidate re-read reported as "COULD NOT CHECK PROJECTS"
+            // and closed the sheet's only committing action, even though the
+            // authoritative preflight had already succeeded.
+            var matchableCandidateIds: Set<String> = []
+            do {
+                matchableCandidateIds = try await service.matchableCandidateProjectIds(
+                    for: opportunity,
+                    candidates: preflight.duplicateCandidates
+                )
+            } catch {
+                candidateLinkCheckFailed = true
             }
-            clientOtherProjects = mergeRelatedRefs(
-                candidates: preflight.duplicateCandidates,
-                others: preflight.otherClientProjects,
-                matchableCandidateIds: matchableCandidateIds
+
+            let state = Self.reducePreflight(
+                preflight,
+                matchableCandidateIds: matchableCandidateIds,
+                candidateLinkCheckFailed: candidateLinkCheckFailed,
+                unavailableMatchProjectIds: unavailableMatchProjectIds
             )
+            creationBlocker = state.creationBlocker
+            clientOtherProjects = state.refs
+            chipNotice = state.refs.isEmpty ? nil : state.statusMessage
+            errorMessage = state.refs.isEmpty ? state.statusMessage : nil
             preflightFailed = false
-            switch creationBlocker {
-            case .addressRequired:
-                errorMessage = "ADD AN ADDRESS TO CHECK EXISTING PROJECTS"
-            case .projectReviewRequired:
-                errorMessage = "MATCHING PROJECT REQUIRES ADMIN REVIEW"
-            case nil:
-                break
-            }
         } catch {
             // Fail closed. RETRY CHECK is the only committing footer action
-            // until the authoritative candidate + reciprocal-link reads pass.
+            // until the authoritative preflight read passes.
             preflightFailed = true
             suggestedName = ""
             errorMessage = "COULD NOT CHECK PROJECTS — RETRY"
@@ -993,43 +1136,36 @@ struct ConvertToProjectSheet: View {
         )
     }
 
-    /// Merge candidates (likely-duplicates) + other-client projects into the
-    /// chip list. Dedup by project id, candidates first so the strongest signal
-    /// leads. Maps a status string to a ProjectStatus/color where present.
-    private func mergeRelatedRefs(
-        candidates: [PreflightCandidate],
-        others: [PreflightClientProject],
-        matchableCandidateIds: Set<String>
-    ) -> [RelatedProjectRef] {
-        var seen = Set<String>()
-        var refs: [RelatedProjectRef] = []
+    /// Resolves the lead's linked client from the local store, then the
+    /// repository. The client record holds the address and contact details a
+    /// client-page lead never got its own copy of (bug a7df1f37).
+    private func resolveLinkedClient() {
+        guard linkedClient == nil,
+              let clientId = opportunity.clientId?
+                .trimmingCharacters(in: .whitespacesAndNewlines),
+              !clientId.isEmpty else { return }
 
-        for c in candidates where seen.insert(c.projectId).inserted {
-            refs.append(RelatedProjectRef(
-                id: c.projectId,
-                title: c.title ?? "",
-                address: c.address,
-                status: nil,
-                isLikelyDuplicate: true,
-                isMatchAvailable: matchableCandidateIds.contains(c.projectId.lowercased())
-                    && !unavailableMatchProjectIds.contains(c.projectId.lowercased())
-            ))
-        }
-        for o in others where seen.insert(o.projectId).inserted {
-            refs.append(RelatedProjectRef(
-                id: o.projectId,
-                title: o.title ?? "",
-                address: o.address,
-                status: o.status.flatMap { Status(rawValue: $0) },
-                isLikelyDuplicate: false
-            ))
-        }
-        return refs
+        var descriptor = FetchDescriptor<Client>(
+            predicate: #Predicate<Client> { $0.id == clientId }
+        )
+        descriptor.fetchLimit = 1
+        linkedClient = (try? modelContext.fetch(descriptor))?.first
     }
 
     private func applyInitialFormValues() {
         if addressText.isEmpty {
-            addressText = opportunity.address ?? ""
+            let prefill = Self.addressPrefill(
+                opportunityAddress: opportunity.address,
+                opportunityLatitude: opportunity.latitude,
+                opportunityLongitude: opportunity.longitude,
+                clientAddress: linkedClient?.address,
+                clientLatitude: linkedClient?.latitude,
+                clientLongitude: linkedClient?.longitude
+            )
+            addressText = prefill.text
+            prefilledLatitude = prefill.latitude
+            prefilledLongitude = prefill.longitude
+            addressIsFromClient = prefill.isFromClient
         }
         if actualValueText.isEmpty {
             let prefillValue = estimateBundles.first?.estimate.total
@@ -1051,7 +1187,7 @@ struct ConvertToProjectSheet: View {
         Task {
             do {
                 let companyId = opportunity.companyId
-                let service = LeadConversionService(companyId: companyId)
+                let service = LeadConversionService(companyId: companyId, modelContext: modelContext)
 
                 // A create commits only against the exact address the server
                 // just checked. The first create attempt persists the visible
@@ -1078,6 +1214,10 @@ struct ConvertToProjectSheet: View {
                 switch outcome {
                 case .project(let project):
                     completeConverted(projectId: project.id)
+                case .committedWithKnownProject(let projectId):
+                    // The server named the project; only hydration failed.
+                    // Keeping the link is the whole fix for ced5b3cb-B.
+                    completeConverted(projectId: projectId)
                 case .committedWithoutAccessibleProject:
                     completeConvertedWithoutAccessibleProject()
                 }
@@ -1279,7 +1419,10 @@ struct ConvertToProjectSheet: View {
 
         Task {
             do {
-                let service = LeadConversionService(companyId: opportunity.companyId)
+                let service = LeadConversionService(
+                    companyId: opportunity.companyId,
+                    modelContext: modelContext
+                )
                 let outcome = try await service.convertOpportunityToProject(
                     lead: opportunity,
                     actualValue: parseActualValue(),
@@ -1295,6 +1438,17 @@ struct ConvertToProjectSheet: View {
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
                         appState.viewProjectDetailsById(project.id)
                     }
+                case .committedWithKnownProject(let projectId):
+                    // OPEN PROJECT on the DUPLICATE-EXISTS footer lands on the
+                    // RPC's already-converted branch, which reports
+                    // `project_accessible: false` unconditionally. Acting on
+                    // that flag is what cleared the lead's link and opened
+                    // nothing (bug ced5b3cb-B). Open what the server named;
+                    // the project sheet hydrates itself if the row is late.
+                    completeConverted(projectId: projectId)
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                        appState.viewProjectDetailsById(projectId)
+                    }
                 case .committedWithoutAccessibleProject:
                     completeConvertedWithoutAccessibleProject()
                 }
@@ -1305,8 +1459,10 @@ struct ConvertToProjectSheet: View {
         }
     }
 
-    private func openExistingProject(_ projectId: String) {
-        // CLIENT-HAS-OTHERS info chip — a non-committing review peek.
+    /// The deliberate exit from the peek: the operator asked for the project,
+    /// so the conversion closes and the app-wide project route runs. Nothing
+    /// else in this sheet dismisses on a tap any more.
+    private func openProjectLeavingConversion(_ projectId: String) {
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
         dismiss()
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
@@ -1316,7 +1472,7 @@ struct ConvertToProjectSheet: View {
 
     private func selectExistingProject(_ projectId: String) {
         guard clientOtherProjects.contains(where: {
-            $0.id == projectId && $0.interaction == .match
+            $0.id == projectId && $0.linkState == .matchable
         }) else { return }
 
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
@@ -1335,6 +1491,8 @@ struct ConvertToProjectSheet: View {
         selectedExistingProjectId = nil
         existingProject = nil
         clientOtherProjects = []
+        chipNotice = nil
+        candidateLinkCheckFailed = false
         hasLoadedPreflight = false
         let recovered = await loadPreflight()
         if !preflightFailed {
@@ -1350,6 +1508,8 @@ struct ConvertToProjectSheet: View {
         selectedExistingProjectId = nil
         existingProject = nil
         clientOtherProjects = []
+        chipNotice = nil
+        candidateLinkCheckFailed = false
         hasLoadedPreflight = false
 
         Task {
@@ -1386,13 +1546,29 @@ struct ConvertToProjectSheet: View {
 
         if !canonicalAddress.isEmpty || canonicalAddress != originalAddress {
             let repo = OpportunityRepository(companyId: companyId)
-            _ = try await repo.update(opportunity.id, patch: ["address": canonicalAddress])
+            // A client-sourced address brings the client's geocode with it —
+            // the RPC reads latitude/longitude off the opportunity row, so an
+            // address written without them lands a project with no map pin.
+            let carriesClientGeo = addressIsFromClient
+                && prefilledLatitude != nil
+                && prefilledLongitude != nil
+            _ = try await repo.update(opportunity.id, patch: AddressPatch(
+                address: canonicalAddress,
+                latitude: carriesClientGeo ? prefilledLatitude : nil,
+                longitude: carriesClientGeo ? prefilledLongitude : nil
+            ))
             opportunity.address = canonicalAddress.isEmpty ? nil : canonicalAddress
+            if carriesClientGeo {
+                opportunity.latitude = prefilledLatitude
+                opportunity.longitude = prefilledLongitude
+            }
         }
 
         selectedExistingProjectId = nil
         existingProject = nil
         clientOtherProjects = []
+        chipNotice = nil
+        candidateLinkCheckFailed = false
         hasLoadedPreflight = false
         let recovered = await loadPreflight()
         if recovered { return true }
@@ -1423,6 +1599,26 @@ struct ConvertToProjectSheet: View {
 
     // MARK: - Helpers
 
+    /// Address write-back patch. Coordinates are OMITTED (never encoded as
+    /// null) unless we actually have a pair to write — a null pair would erase
+    /// an existing geocode.
+    private struct AddressPatch: Encodable {
+        let address: String
+        let latitude: Double?
+        let longitude: Double?
+
+        enum CodingKeys: String, CodingKey {
+            case address, latitude, longitude
+        }
+
+        func encode(to encoder: Encoder) throws {
+            var container = encoder.container(keyedBy: CodingKeys.self)
+            try container.encode(address, forKey: .address)
+            try container.encodeIfPresent(latitude, forKey: .latitude)
+            try container.encodeIfPresent(longitude, forKey: .longitude)
+        }
+    }
+
     private func parseActualValue() -> Double? {
         let stripped = actualValueText
             .replacingOccurrences(of: ",", with: "")
@@ -1442,13 +1638,6 @@ struct ConvertToProjectSheet: View {
         return formatter.localizedString(for: date, relativeTo: Date())
     }
 
-    private func formatMoney(_ value: Double) -> String {
-        let fmt = NumberFormatter()
-        fmt.numberStyle = .decimal
-        fmt.maximumFractionDigits = 0
-        return "$" + (fmt.string(from: NSNumber(value: value)) ?? "0")
-    }
-
     private func simplifyError(_ error: Error, target: SubmissionTarget? = nil) -> String {
         if let conversionError = error as? LeadConversionError {
             switch conversionError {
@@ -1456,7 +1645,8 @@ struct ConvertToProjectSheet: View {
             case .accessDenied: return "PERMISSION DENIED"
             case .assignmentChanged: return "ASSIGNMENT CHANGED — REFRESH"
             case .leadChanged: return "LEAD CHANGED — REFRESH"
-            case .projectLinkUnavailable: return "PROJECT CHANGED — REVIEW MATCHES"
+            case .projectLinkUnavailable(let reason):
+                return Self.projectLinkFailureCopy(reason)
             case .unverifiedResult: return "CONVERSION NOT VERIFIED — REFRESH"
             }
         }
@@ -1522,8 +1712,225 @@ extension ConvertToProjectSheet {
     }
 
     enum RelatedProjectInteraction: Equatable {
+        /// Tapping SELECTS this project as the conversion target. Commit still
+        /// belongs to the footer CTA — a chip never converts anything.
         case match
-        case open
+        /// Tapping opens a read-only PEEK layered over this sheet. The old
+        /// `.open` dismissed the convert sheet and navigated away, silently
+        /// destroying everything the operator had typed (bug ced5b3cb-A).
+        case peek
+    }
+
+    /// Why a related project can or cannot be this conversion's target.
+    /// Replaces the old `isLikelyDuplicate` + `isMatchAvailable` pair, which
+    /// could not tell "already belongs to another lead" apart from "we could
+    /// not check" — and the sheet blamed an admin for both.
+    enum RelatedProjectLinkState: Equatable {
+        /// Same address, server-approved, and unlinked (or already this lead's).
+        case matchable
+        /// Same address and server-approved, but it already belongs to a
+        /// DIFFERENT lead. The commit would reject a link; review only.
+        case linkedElsewhere
+        /// Same address, but the link re-read failed. Neither offered nor
+        /// declared taken — we do not know, and we say so.
+        case unverified
+        /// A target this session's commit already rejected.
+        case unavailable
+        /// Another project of the same client at a different address. The
+        /// server forbids cross-address links, so this is context, not an
+        /// option.
+        case reviewOnly
+    }
+
+    /// Everything the sheet renders from one authoritative preflight, resolved
+    /// as a pure value so the dead-end logic is provable without a network.
+    struct PreflightViewState: Equatable {
+        let existingLinkedProjectId: String?
+        let existingLinkedProjectTitle: String?
+        let refs: [RelatedProjectRef]
+        let creationBlocker: ConversionPreflightCreationBlocker?
+        let statusMessage: String?
+        let candidateLinkCheckFailed: Bool
+    }
+
+    /// Reduces the server preflight (plus the client's candidate link re-read)
+    /// into render state.
+    ///
+    /// The blocker is SERVER-AUTHORED ONLY. The old code synthesized
+    /// `.projectReviewRequired` whenever its own re-check filtered every
+    /// candidate away, which disabled MATCH *and* CREATE and told the operator
+    /// an admin had to intervene — for a condition the server had not raised
+    /// (bug 5468b3c6, H1).
+    static func reducePreflight(
+        _ preflight: ConversionPreflight,
+        matchableCandidateIds: Set<String>,
+        candidateLinkCheckFailed: Bool,
+        unavailableMatchProjectIds: Set<String>
+    ) -> PreflightViewState {
+        var seen = Set<String>()
+        var refs: [RelatedProjectRef] = []
+
+        for candidate in preflight.duplicateCandidates
+        where seen.insert(candidate.projectId).inserted {
+            let id = candidate.projectId.lowercased()
+            let linkState: RelatedProjectLinkState
+            if unavailableMatchProjectIds.contains(id) {
+                linkState = .unavailable
+            } else if candidateLinkCheckFailed {
+                linkState = .unverified
+            } else if matchableCandidateIds.contains(id) {
+                linkState = .matchable
+            } else {
+                linkState = .linkedElsewhere
+            }
+            refs.append(RelatedProjectRef(
+                id: candidate.projectId,
+                title: candidate.title ?? "",
+                address: candidate.address,
+                status: nil,
+                linkState: linkState
+            ))
+        }
+        for other in preflight.otherClientProjects
+        where seen.insert(other.projectId).inserted {
+            refs.append(RelatedProjectRef(
+                id: other.projectId,
+                title: other.title ?? "",
+                address: other.address,
+                status: other.status.flatMap { Status(rawValue: $0) },
+                linkState: .reviewOnly
+            ))
+        }
+
+        return PreflightViewState(
+            existingLinkedProjectId: preflight.existingLinkedProject?.id,
+            existingLinkedProjectTitle: preflight.existingLinkedProject?.title,
+            refs: refs,
+            creationBlocker: preflight.creationBlocker,
+            statusMessage: statusMessage(
+                creationBlocker: preflight.creationBlocker,
+                refs: refs,
+                candidateLinkCheckFailed: candidateLinkCheckFailed
+            ),
+            candidateLinkCheckFailed: candidateLinkCheckFailed
+        )
+    }
+
+    /// One honest line about the state the operator is actually in. Every
+    /// message names the obstacle AND leaves a next move on screen — the peek
+    /// affordance stays live on every chip in every one of these states.
+    static func statusMessage(
+        creationBlocker: ConversionPreflightCreationBlocker?,
+        refs: [RelatedProjectRef],
+        candidateLinkCheckFailed: Bool
+    ) -> String? {
+        switch creationBlocker {
+        case .addressRequired:
+            return "ADD AN ADDRESS TO CHECK EXISTING PROJECTS"
+        case .projectReviewRequired:
+            // The server raises this when an active same-address project
+            // exists that this operator cannot see or edit. Naming the real
+            // obstacle beats the old "MATCHING PROJECT REQUIRES ADMIN REVIEW".
+            return "SAME ADDRESS PROJECT — ADMIN ACCESS NEEDED"
+        case nil:
+            break
+        }
+        if candidateLinkCheckFailed {
+            return "COULD NOT CHECK PROJECT LINKS — RETRY"
+        }
+        let duplicates = refs.filter(\.isLikelyDuplicate)
+        if !duplicates.isEmpty, !duplicates.contains(where: { $0.linkState == .matchable }) {
+            return "EVERY MATCH IS LINKED TO ANOTHER LEAD"
+        }
+        return nil
+    }
+
+    /// Operator copy for each door the server can close on a link.
+    static func projectLinkFailureCopy(_ reason: ProjectLinkFailureReason?) -> String {
+        switch reason {
+        case .matchingProjectRequiresReview: return "SAME ADDRESS ALREADY HAS A PROJECT"
+        case .addressRequiredForProjectMatch: return "ADD AN ADDRESS TO MATCH A PROJECT"
+        case .matchingProjectLinkConflict:    return "PROJECT IS LINKED TO ANOTHER LEAD"
+        case .dedupeProofUnavailable:         return "COULD NOT CONFIRM DUPLICATES — RETRY"
+        case nil:                             return "PROJECT CHANGED — REVIEW MATCHES"
+        }
+    }
+
+    // MARK: - Prefill (bug a7df1f37)
+
+    /// The ADDRESS the convert form opens with, and where it came from.
+    struct AddressPrefill: Equatable {
+        let text: String
+        let latitude: Double?
+        let longitude: Double?
+        /// True when the value was borrowed from the linked client record.
+        /// The form TAGS it, because the create path writes the visible
+        /// address back onto the opportunity.
+        let isFromClient: Bool
+    }
+
+    /// A lead created from a client page routinely carries no address of its
+    /// own while the client record holds one. The old prefill read the
+    /// opportunity alone, so the server answered `address_required` and the
+    /// sheet demanded an address the system already had.
+    static func addressPrefill(
+        opportunityAddress: String?,
+        opportunityLatitude: Double?,
+        opportunityLongitude: Double?,
+        clientAddress: String?,
+        clientLatitude: Double?,
+        clientLongitude: Double?
+    ) -> AddressPrefill {
+        if let own = opportunityAddress?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !own.isEmpty {
+            return AddressPrefill(
+                text: own,
+                latitude: opportunityLatitude,
+                longitude: opportunityLongitude,
+                isFromClient: false
+            )
+        }
+        if let borrowed = clientAddress?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !borrowed.isEmpty {
+            // Coordinates travel with the address they were resolved for, or
+            // not at all — never borrow the lead's geo for the client's street.
+            return AddressPrefill(
+                text: borrowed,
+                latitude: clientLatitude,
+                longitude: clientLongitude,
+                isFromClient: true
+            )
+        }
+        return AddressPrefill(text: "", latitude: nil, longitude: nil, isFromClient: false)
+    }
+
+    /// Contact identity for the summary card, falling back field-by-field to
+    /// the client record. A lead with blank contact fields used to render a
+    /// bare em dash while the system knew exactly whose job this was.
+    struct LeadSummaryContact: Equatable {
+        let name: String
+        let phone: String?
+    }
+
+    static func leadSummaryContact(
+        opportunityName: String,
+        opportunityPhone: String?,
+        clientName: String?,
+        clientPhone: String?
+    ) -> LeadSummaryContact {
+        func firstNonBlank(_ values: [String?]) -> String? {
+            for value in values {
+                if let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines),
+                   !trimmed.isEmpty {
+                    return trimmed
+                }
+            }
+            return nil
+        }
+        return LeadSummaryContact(
+            name: firstNonBlank([opportunityName, clientName]) ?? "—",
+            phone: firstNonBlank([opportunityPhone, clientPhone])
+        )
     }
 
     struct SubmissionTarget: Equatable {
@@ -1554,44 +1961,33 @@ extension ConvertToProjectSheet {
     }
 
     /// Chip ref for the CLIENT-HAS-OTHERS list, sourced from the server
-    /// preflight (no local Project required). `isLikelyDuplicate` flags the
-    /// high/medium-confidence candidates so they read distinctly.
-    struct RelatedProjectRef: Identifiable {
+    /// preflight (no local Project required).
+    struct RelatedProjectRef: Identifiable, Equatable {
         let id: String
         let title: String
         let address: String?
         let status: Status?
-        let isLikelyDuplicate: Bool
-        let isMatchAvailable: Bool
+        let linkState: RelatedProjectLinkState
 
-        init(
-            id: String,
-            title: String,
-            address: String?,
-            status: Status?,
-            isLikelyDuplicate: Bool,
-            isMatchAvailable: Bool? = nil
-        ) {
-            self.id = id
-            self.title = title
-            self.address = address
-            self.status = status
-            self.isLikelyDuplicate = isLikelyDuplicate
-            self.isMatchAvailable = isMatchAvailable ?? isLikelyDuplicate
-        }
+        /// A same-address project. These gate CREATE — the server rejects a
+        /// nil-link create alongside one, whatever its link state.
+        var isLikelyDuplicate: Bool { linkState != .reviewOnly }
 
-        /// The server already applied project view/edit authorization to its
-        /// duplicate candidates. Other client projects remain informational.
         var interaction: RelatedProjectInteraction {
-            isLikelyDuplicate && isMatchAvailable ? .match : .open
+            linkState == .matchable ? .match : .peek
         }
 
+        /// What the chip claims, in the operator's terms. `LINKED` is the
+        /// honest word for a same-address project that already belongs to
+        /// another lead — the old copy called it `REVIEW`, which read as a
+        /// suggestion rather than a fact.
         var actionLabel: String? {
-            switch interaction {
-            case .match:
-                return "MATCH"
-            case .open:
-                return isLikelyDuplicate ? "REVIEW" : nil
+            switch linkState {
+            case .matchable:       return "MATCH"
+            case .linkedElsewhere: return "LINKED"
+            case .unverified:      return "UNVERIFIED"
+            case .unavailable:     return "REVIEW"
+            case .reviewOnly:      return nil
             }
         }
 

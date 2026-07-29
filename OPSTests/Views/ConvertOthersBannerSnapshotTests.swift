@@ -96,7 +96,8 @@ final class ConvertOthersBannerSnapshotTests: XCTestCase {
     /// likely-duplicate candidates first, then the rest of the client's book.
     private func refs(
         _ count: Int,
-        unavailableMatchId: String? = nil
+        unavailableMatchId: String? = nil,
+        linkedElsewhere: Bool = false
     ) -> [ConvertToProjectSheet.RelatedProjectRef] {
         let titles = [
             "1240 Maple Ave", "Calloway rear deck", "1240 Maple Ave garage",
@@ -106,13 +107,22 @@ final class ConvertOthersBannerSnapshotTests: XCTestCase {
         ]
         let statuses: [Status?] = [.inProgress, .accepted, .completed, .estimated, nil]
         return (0..<count).map { i in
-            ConvertToProjectSheet.RelatedProjectRef(
+            let linkState: ConvertToProjectSheet.RelatedProjectLinkState
+            if i >= 2 {
+                linkState = .reviewOnly
+            } else if "ref-\(i)" == unavailableMatchId {
+                linkState = .unavailable
+            } else if linkedElsewhere {
+                linkState = .linkedElsewhere
+            } else {
+                linkState = .matchable
+            }
+            return ConvertToProjectSheet.RelatedProjectRef(
                 id: "ref-\(i)",
                 title: titles[i % titles.count],
                 address: nil,
                 status: statuses[i % statuses.count],
-                isLikelyDuplicate: i < 2,
-                isMatchAvailable: i < 2 ? "ref-\(i)" != unavailableMatchId : false
+                linkState: linkState
             )
         }
     }
@@ -123,15 +133,22 @@ final class ConvertOthersBannerSnapshotTests: XCTestCase {
     private func banner(
         _ count: Int,
         selectedProjectId: String? = nil,
-        unavailableMatchId: String? = nil
+        unavailableMatchId: String? = nil,
+        linkedElsewhere: Bool = false,
+        notice: String? = nil
     ) -> some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
                 ConvertToProjectSheet.ClientOthersBanner(
-                    projects: refs(count, unavailableMatchId: unavailableMatchId),
+                    projects: refs(
+                        count,
+                        unavailableMatchId: unavailableMatchId,
+                        linkedElsewhere: linkedElsewhere
+                    ),
                     selectedProjectId: selectedProjectId,
-                    onOpen: { _ in },
-                    onMatch: { _ in }
+                    onPeek: { _ in },
+                    onMatch: { _ in },
+                    notice: notice
                 )
             }
             .padding(.horizontal, OPSStyle.Layout.spacing3_5)
@@ -171,6 +188,31 @@ final class ConvertOthersBannerSnapshotTests: XCTestCase {
     func testRenderBannerRejectedMatch() {
         snapshot("convert_banner_rejected", width: 393, height: 240) {
             banner(3, unavailableMatchId: "ref-0")
+        }
+    }
+
+    /// Bug 5468b3c6 \u{2014} every same-address match already belongs to another
+    /// lead. The sheet used to synthesize an admin-review blocker here and
+    /// disable everything; the chips now read LINKED, stay peek-able, and the
+    /// notice says plainly what is in the way.
+    func testRenderBannerEveryMatchLinkedElsewhere() {
+        snapshot("convert_banner_all_linked", width: 393, height: 280) {
+            banner(
+                3,
+                linkedElsewhere: true,
+                notice: "EVERY MATCH IS LINKED TO ANOTHER LEAD"
+            )
+        }
+    }
+
+    /// The candidate link re-read failed on its own. The preflight's answer
+    /// still stands; the chips just cannot claim to be matchable.
+    func testRenderBannerLinkCheckUnverified() {
+        snapshot("convert_banner_unverified", width: 393, height: 280) {
+            banner(
+                3,
+                notice: "COULD NOT CHECK PROJECT LINKS \u{2014} RETRY"
+            )
         }
     }
 

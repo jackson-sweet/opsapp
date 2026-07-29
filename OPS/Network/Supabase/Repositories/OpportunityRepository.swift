@@ -18,6 +18,9 @@ class OpportunityRepository {
         static let listAssignmentCandidates = "list_opportunity_assignment_candidates"
         static let logQuickTouch = "log_opportunity_quick_touch"
         static let undoQuickTouch = "undo_opportunity_quick_touch"
+        static let leadDispositionContext = "get_lead_disposition_context"
+        static let applyLeadDisposition = "apply_lead_disposition_feedback"
+        static let undoLeadDisposition = "undo_lead_disposition_feedback"
     }
 
     private let client: SupabaseClient
@@ -375,6 +378,77 @@ class OpportunityRepository {
         fields.lostNotes = notes
         fields.actualCloseDate = SupabaseDate.formatDate(Date())
         return try await update(opportunityId, fields: fields)
+    }
+
+    /// Read the server-authoritative Phase C gate before choosing the discard
+    /// interaction. The apply RPC checks it again under the opportunity lock.
+    func fetchLeadDispositionContext(
+        opportunityId: String
+    ) async throws -> LeadDispositionContext {
+        struct Params: Encodable {
+            let p_opportunity_id: String
+        }
+        return try await client
+            .rpc(
+                RPC.leadDispositionContext,
+                params: Params(p_opportunity_id: opportunityId)
+            )
+            .single()
+            .execute()
+            .value
+    }
+
+    /// Atomically records the structured correction and applies its canonical
+    /// lifecycle result. Company, actor, sender evidence, outcome, and policy
+    /// context are all derived by the server.
+    func applyLeadDisposition(
+        opportunityId: String,
+        reason: LeadDispositionReason,
+        note: String?,
+        idempotencyKey: String
+    ) async throws -> LeadDispositionResult {
+        struct Params: Encodable {
+            let p_opportunity_id: String
+            let p_reason_code: String
+            let p_optional_note: String?
+            let p_idempotency_key: String
+        }
+        return try await client
+            .rpc(
+                RPC.applyLeadDisposition,
+                params: Params(
+                    p_opportunity_id: opportunityId,
+                    p_reason_code: reason.rawValue,
+                    p_optional_note: LeadDispositionInteractionPolicy.normalizedNote(note ?? ""),
+                    p_idempotency_key: idempotencyKey
+                )
+            )
+            .single()
+            .execute()
+            .value
+    }
+
+    /// Retracts the learning signal and restores the exact prior lifecycle
+    /// state unless a later human edit has already superseded this action.
+    func undoLeadDisposition(
+        feedbackId: String,
+        idempotencyKey: String
+    ) async throws -> LeadDispositionResult {
+        struct Params: Encodable {
+            let p_feedback_id: String
+            let p_idempotency_key: String
+        }
+        return try await client
+            .rpc(
+                RPC.undoLeadDisposition,
+                params: Params(
+                    p_feedback_id: feedbackId,
+                    p_idempotency_key: idempotencyKey
+                )
+            )
+            .single()
+            .execute()
+            .value
     }
 
     func update(_ opportunityId: String, fields: UpdateOpportunityDTO) async throws -> OpportunityDTO {

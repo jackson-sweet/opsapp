@@ -57,14 +57,7 @@ struct LostReasonSheet: View {
         .interactiveDismissDisabled(isSaving)
         .leadDiscardFlow(
             target: $discardTarget,
-            perform: { lead in
-                _ = try await OpportunityRepository(companyId: lead.companyId)
-                    .moveToStage(opportunityId: lead.id, to: .discarded,
-                                 userId: dataController.currentUser?.id)
-                lead.stage = .discarded
-                lead.stageEnteredAt = Date()
-            },
-            onDiscarded: { _ in dismiss() }
+            onCompleted: { _, _ in dismiss() }
         )
     }
 

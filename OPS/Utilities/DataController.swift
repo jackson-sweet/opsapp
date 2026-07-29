@@ -2562,6 +2562,16 @@ class DataController: ObservableObject {
                 return localProject
             }
 
+            // Bug 4cbf2efe — a delta pull is scope-filtered. At `assigned`
+            // scope a project with no team members yet (exactly what a fresh
+            // conversion produces) NEVER comes back, so "sync then re-read"
+            // can loop forever on an empty cache. Ask for the one row by id
+            // and merge it through the canonical seam; RLS still decides.
+            if let project = try await fetchAndCacheProject(id: projectId, context: context) {
+                await syncProjectTeamMembers(project)
+                return project
+            }
+
             throw NSError(domain: "DataController", code: 4,
                          userInfo: [NSLocalizedDescriptionKey: "Project not found after sync"])
         } catch {
@@ -2571,6 +2581,22 @@ class DataController: ObservableObject {
                 return localProject
             }
             throw error
+        }
+    }
+
+    /// Authoritative single-row project fetch + local cache write. Returns nil
+    /// when the row is not readable (RLS, deleted, or genuinely absent).
+    @MainActor
+    private func fetchAndCacheProject(id: String, context: ModelContext) async throws -> Project? {
+        guard let companyId = currentUser?.companyId, !companyId.isEmpty else { return nil }
+        do {
+            let dto = try await ProjectRepository(companyId: companyId).fetchOne(id)
+            let project = try ProjectCacheMerge.apply(dto: dto, context: context)
+            InboundChangeSignal.post(entityNames: ["Project"])
+            return project
+        } catch {
+            print("[DataController] Direct project fetch failed for \(id): \(error)")
+            return nil
         }
     }
     

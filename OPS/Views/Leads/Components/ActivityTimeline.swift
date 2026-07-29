@@ -161,6 +161,13 @@ struct LeadStreamRow: View {
                 if body != nil { onToggle() }
             } label: {
                 HStack(alignment: .center, spacing: OPSStyle.Layout.spacing2_5) {
+                    // Direction reads at row level, not as a 13pt arrow you
+                    // have to hunt for: a leading rule in the direction's tone
+                    // runs the height of the row, so a feed of inbound and
+                    // outbound messages separates at a glance on a bright
+                    // job-site screen.
+                    directionRule(activity)
+
                     glyph(activity)
                         .frame(width: 20)
 
@@ -176,6 +183,7 @@ struct LeadStreamRow: View {
                                 .font(OPSStyle.Typography.metadata)
                                 .foregroundColor(metadataColor(activity))
                                 .lineLimit(1)
+                                .truncationMode(.tail)
                         }
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -217,15 +225,17 @@ struct LeadStreamRow: View {
         }
     }
 
-    /// Direction glyph — ↓ steel inbound (their move tone), ↑ olive outbound,
-    /// the type icon otherwise.
+    /// Direction glyph — ↓ tan inbound (their move), ↑ olive outbound (yours),
+    /// the type icon otherwise. Shares `directionTone` with the row rule so the
+    /// two cues can never disagree, and keeps the steel accent reserved for the
+    /// screen's primary CTA.
     @ViewBuilder
     private func glyph(_ activity: Activity) -> some View {
         switch activity.direction {
         case "inbound":
             Text("↓")
                 .font(.system(size: 13, weight: .semibold))
-                .foregroundColor(OPSStyle.Colors.opsAccent)
+                .foregroundColor(OPSStyle.Colors.tanTextM)
         case "outbound":
             Text("↑")
                 .font(.system(size: 13, weight: .semibold))
@@ -237,32 +247,114 @@ struct LeadStreamRow: View {
         }
     }
 
+    /// Leading rule carrying the message's direction — tan (attention: they
+    /// moved, it may be your turn) versus olive (handled: you moved). Invisible
+    /// for anything with no direction (notes, stage changes) so the feed never
+    /// grows decorative furniture.
+    ///
+    /// Earth tones, never the steel accent: the accent is the primary CTA and
+    /// focus ring only, and a feed of six inbound messages would put six accent
+    /// marks on one screen.
+    @ViewBuilder
+    private func directionRule(_ activity: Activity) -> some View {
+        Rectangle()
+            .fill(directionTone(activity) ?? Color.clear)
+            .frame(width: 2)
+            .frame(maxHeight: .infinity)
+            .accessibilityHidden(true)
+    }
+
+    private func directionTone(_ activity: Activity) -> Color? {
+        switch activity.direction {
+        case "inbound":  return OPSStyle.Colors.tanTextM
+        case "outbound": return OPSStyle.Colors.oliveTextM
+        default:         return nil
+        }
+    }
+
+    /// Who the message was between, from the operator's side. Bug 183f7ec9: the
+    /// title used to be the SUBJECT, and every message in a thread shares one
+    /// subject — so a five-message exchange rendered as five identical rows and
+    /// the feed read as a thread dump. Naming the two ends makes each row a
+    /// distinct fact; the subject drops to the metadata line where it belongs.
     private func titleText(_ activity: Activity) -> String {
+        if let participants = participantsText(activity) { return participants }
         if let subject = activity.subject, !subject.isEmpty { return subject }
-        if let body = activity.displayBody, !body.isEmpty { return body }
+        if let body = activity.displayBody, !body.isEmpty {
+            return EmailBodyCleaner.preview(body, limit: 80)
+        }
         return activity.type.rawValue
             .replacingOccurrences(of: "_", with: " ")
             .uppercased()
     }
 
-    /// The inline-expandable body — only when it adds something beyond the
-    /// title line.
-    private func expandableBody(_ activity: Activity) -> String? {
-        guard let subject = activity.subject, !subject.isEmpty else { return nil }
-        guard let body = activity.displayBody, !body.isEmpty, body != subject else { return nil }
-        return body
+    /// `Helen Calloway → You` / `You → Helen Calloway`. Nil when the row has no
+    /// email identity, which is every note, call, and pre-sync row.
+    private func participantsText(_ activity: Activity) -> String? {
+        guard let counterparty = Self.displayName(for: activity.counterpartyEmail) else {
+            return nil
+        }
+        switch activity.direction {
+        case "inbound":  return "\(counterparty) → You"
+        case "outbound": return "You → \(counterparty)"
+        default:         return counterparty
+        }
     }
 
-    /// Duration and/or outcome, joined with a middot.
-    private func metadataText(_ activity: Activity) -> String? {
-        let duration = activity.durationMinutes.flatMap(formatDuration)
-        let outcome = activity.outcome.flatMap(formatOutcome)
-        switch (duration, outcome) {
-        case let (.some(d), .some(o)): return "\(d) · \(o)"
-        case let (.some(d), .none):    return d
-        case let (.none, .some(o)):    return o
-        case (.none, .none):           return nil
+    /// The local part of an address, title-cased — `helen.calloway@x.com`
+    /// reads as `Helen Calloway`. Falls back to the raw address when that
+    /// would produce nothing useful.
+    static func displayName(for email: String?) -> String? {
+        guard let email = email?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !email.isEmpty else { return nil }
+        guard let local = email.split(separator: "@").first, !local.isEmpty else {
+            return email
         }
+        let words = local
+            .replacingOccurrences(of: "_", with: ".")
+            .replacingOccurrences(of: "-", with: ".")
+            .split(separator: ".")
+            .filter { !$0.isEmpty }
+        // A local part that is all digits or a single opaque token (`info`,
+        // `x7fa92`) is not a name — show the address, which at least identifies.
+        guard words.count > 1 else { return email }
+        return words
+            .map { $0.prefix(1).uppercased() + $0.dropFirst().lowercased() }
+            .joined(separator: " ")
+    }
+
+    /// The inline-expandable body — only when it adds something beyond the
+    /// title line. Quoted reply chains and signatures are stripped so an
+    /// expanded email shows what its sender actually wrote, not the thread.
+    private func expandableBody(_ activity: Activity) -> String? {
+        guard let raw = activity.displayBody, !raw.isEmpty else { return nil }
+        let cleaned = EmailBodyCleaner.clean(raw)
+        guard !cleaned.isEmpty, cleaned != activity.subject else { return nil }
+        // With participants as the title, the subject is no longer the title —
+        // so a body that merely repeats it still adds nothing.
+        if participantsText(activity) == nil,
+           activity.subject == nil || activity.subject?.isEmpty == true {
+            return nil
+        }
+        return cleaned
+    }
+
+    /// Subject, duration, and/or outcome, joined with a middot. The subject
+    /// lives here now that the title names the two ends of the message.
+    private func metadataText(_ activity: Activity) -> String? {
+        var parts: [String] = []
+        if participantsText(activity) != nil,
+           let subject = activity.subject?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !subject.isEmpty {
+            parts.append(subject)
+        }
+        if let duration = activity.durationMinutes.flatMap(formatDuration) {
+            parts.append(duration)
+        }
+        if let outcome = activity.outcome.flatMap(formatOutcome) {
+            parts.append(outcome)
+        }
+        return parts.isEmpty ? nil : parts.joined(separator: " · ")
     }
 
     private func metadataColor(_ activity: Activity) -> Color {
@@ -311,7 +403,17 @@ struct LeadStreamRow: View {
         case "outbound": parts.append("Outbound")
         default:         break
         }
-        parts.append(titleText(activity))
+        // Spoken, an arrow is noise — say the relationship instead.
+        if let counterparty = Self.displayName(for: activity.counterpartyEmail) {
+            switch activity.direction {
+            case "inbound":  parts.append("from \(counterparty)")
+            case "outbound": parts.append("to \(counterparty)")
+            default:         parts.append(counterparty)
+            }
+        } else {
+            parts.append(titleText(activity))
+        }
+        if let metadata = metadataText(activity) { parts.append(metadata) }
         parts.append(Self.ageString(entry.date).lowercased())
         if hasBody { parts.append(isExpanded ? "expanded" : "collapsed") }
         return parts.joined(separator: ", ")
@@ -326,10 +428,15 @@ struct LeadStreamRow: View {
                 .foregroundColor(OPSStyle.Colors.text3)
                 .frame(width: 20)
 
+            // Bug e13be3bb: a stage transition is a one-line fact. Uncapped,
+            // two long stage names side by side pushed the feed wider than the
+            // screen and the whole dossier panned.
             HStack(spacing: 5) {
                 Text("Stage:")
                     .font(.custom("Mohave-Regular", size: 13))
                     .foregroundColor(OPSStyle.Colors.text3)
+                    .lineLimit(1)
+                    .layoutPriority(-1)
                 if let from = transition.fromStage {
                     Text(from.shortLabel)
                         .font(OPSStyle.Typography.nanoLabel)
@@ -337,6 +444,8 @@ struct LeadStreamRow: View {
                         .kerning(1.0)
                         .foregroundColor(OPSStyle.Colors.text3)
                         .textCase(.uppercase)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
                     Image(systemName: "arrow.right")
                         .font(.system(size: 9, weight: .regular))
                         .foregroundColor(OPSStyle.Colors.textMute)
@@ -347,6 +456,8 @@ struct LeadStreamRow: View {
                     .kerning(1.0)
                     .foregroundColor(OPSStyle.Colors.text2)
                     .textCase(.uppercase)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
 
@@ -356,6 +467,8 @@ struct LeadStreamRow: View {
                 .kerning(1.0)
                 .textCase(.uppercase)
                 .monospacedDigit()
+                .lineLimit(1)
+                .layoutPriority(1)
         }
         .padding(.horizontal, 14)
         .padding(.vertical, OPSStyle.Layout.spacing2_5)

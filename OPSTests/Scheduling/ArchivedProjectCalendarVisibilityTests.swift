@@ -150,6 +150,78 @@ final class ArchivedProjectCalendarVisibilityTests: XCTestCase {
         )
     }
 
+    // MARK: - End-to-end through the real calendar surfaces
+
+    /// The week canvas, driven all the way through `loadProjectsForDate` ->
+    /// `rebuildWeekCache` -> `scheduledTasks(for:)` against a real SwiftData
+    /// store. Proves the fix at the surface the operator actually looks at,
+    /// not just at the predicate.
+    func testWeekCanvasDropsTasksOnArchivedProjectsEndToEnd() throws {
+        let fixture = try makeCalendarFixture()
+        defer { fixture.restorePermissions() }
+
+        fixture.viewModel.loadProjectsForDate(fixture.today)
+        let visible = fixture.viewModel.scheduledTasks(for: fixture.today)
+
+        XCTAssertEqual(
+            visible.map(\.id).sorted(),
+            ["task-live"],
+            "The archived job's task must not reach the week canvas."
+        )
+    }
+
+    /// The month grid, driven through `MonthGridCache.loadEvents` ->
+    /// `getAllScheduledTasks` -> `applyTaskFilters` against the same store.
+    func testMonthGridDropsTasksOnArchivedProjectsEndToEnd() throws {
+        let fixture = try makeCalendarFixture()
+        defer { fixture.restorePermissions() }
+
+        let cache = MonthGridCache()
+        cache.loadEvents(from: fixture.dataController, viewModel: fixture.viewModel)
+
+        // loadEvents hops to a MainActor Task; wait on the published result
+        // rather than a fixed sleep, and fail loudly if it never lands.
+        let deadline = Date(timeIntervalSinceNow: 5)
+        while cache.isLoading, Date() < deadline {
+            RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.02))
+        }
+        XCTAssertFalse(cache.isLoading, "loadEvents never completed")
+        XCTAssertNotNil(
+            fixture.dataController.currentUser,
+            "Harness check: the operator must survive the async load, or every guarded fetch returns []."
+        )
+
+        let eventIds = Set(cache.eventsByDate.values.flatMap { $0 }.map(\.eventId))
+        XCTAssertTrue(eventIds.contains("task-live"), "The live job still draws on the month grid.")
+        XCTAssertFalse(
+            eventIds.contains("task-archived"),
+            "The archived job's task must not hold a month-grid row."
+        )
+    }
+
+    /// Archiving a project must repaint the calendars rather than leaving the
+    /// job on screen until the next sync. `updateProjectStatus` publishes
+    /// `scheduledTasksDidChange`, which every calendar surface observes, and
+    /// the reload clears `cachedWeekStart` so the week actually re-fetches.
+    func testArchivingRepaintsTheWeekCanvas() throws {
+        let fixture = try makeCalendarFixture()
+        defer { fixture.restorePermissions() }
+
+        fixture.viewModel.loadProjectsForDate(fixture.today)
+        XCTAssertEqual(fixture.viewModel.scheduledTasks(for: fixture.today).map(\.id), ["task-live"])
+
+        fixture.liveProject.status = .archived
+        try fixture.context.save()
+
+        // What ScheduleView does on the scheduledTasksDidChange signal.
+        fixture.viewModel.reloadCalendarData()
+
+        XCTAssertTrue(
+            fixture.viewModel.scheduledTasks(for: fixture.today).isEmpty,
+            "Archiving must clear the cached week, not leave the job drawn."
+        )
+    }
+
     // MARK: - Scheduler sheet (conflict math)
 
     /// The day inspector counted archived jobs as clashes, so picking a day
@@ -251,6 +323,86 @@ final class ArchivedProjectCalendarVisibilityTests: XCTestCase {
 
     private func task(id: String, projectId: String, taskTypeId: String = "tt") -> ProjectTask {
         ProjectTask(id: id, projectId: projectId, taskTypeId: taskTypeId, companyId: "co")
+    }
+
+    /// A real store with one live job and one archived job, each carrying a
+    /// task scheduled for today, plus a DataController and CalendarViewModel
+    /// wired the way the app wires them.
+    private struct CalendarFixture {
+        let context: ModelContext
+        let dataController: DataController
+        let viewModel: CalendarViewModel
+        let liveProject: Project
+        let today: Date
+        let restorePermissions: () -> Void
+    }
+
+    private func makeCalendarFixture() throws -> CalendarFixture {
+        let container = try makeInMemoryContainer()
+        let context = ModelContext(container)
+
+        let previousPermissions = PermissionStore.shared.permissions
+        let previousBlocked = PermissionStore.shared.blockedByFlags
+        PermissionStore.shared.permissions = ["tasks.view": "all", "calendar.view": "all"]
+        PermissionStore.shared.blockedByFlags = []
+
+        let dataController = DataController()
+        dataController.setModelContext(context)
+
+        let user = User(
+            id: "user-1", firstName: "Marcus", lastName: "Hale",
+            role: .crew, companyId: "co"
+        )
+        context.insert(user)
+
+        // `DataController.init` fires a one-shot `checkExistingAuth()`; with no
+        // stored credentials it calls `clearAuthentication()`, which nils
+        // `currentUser`. Seed the operator, wait for that clear to actually
+        // land, then seed again — otherwise the async clear lands mid-test and
+        // every fetch guarded on `currentUser` silently returns []. Waiting on
+        // the observed event, not a fixed sleep; the bound only guards the case
+        // where the environment never clears at all.
+        dataController.currentUser = user
+        let authSettled = Date(timeIntervalSinceNow: 5)
+        while dataController.currentUser != nil, Date() < authSettled {
+            RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.02))
+        }
+        dataController.currentUser = user
+
+        let today = Calendar.current.startOfDay(for: Date())
+
+        let liveProject = Project(id: "p-live", title: "South deck rebuild", status: .inProgress)
+        liveProject.companyId = "co"
+        let archivedProject = Project(id: "p-archived", title: "Filed away", status: .archived)
+        archivedProject.companyId = "co"
+        context.insert(liveProject)
+        context.insert(archivedProject)
+
+        for (id, project) in [("task-live", liveProject), ("task-archived", archivedProject)] {
+            let scheduled = task(id: id, projectId: project.id)
+            scheduled.startDate = today
+            scheduled.endDate = today
+            scheduled.teamMemberIdsString = "user-1"
+            scheduled.project = project
+            context.insert(scheduled)
+        }
+        try context.save()
+
+        let viewModel = CalendarViewModel()
+        viewModel.dataController = dataController
+        viewModel.selectedDate = today
+
+        return CalendarFixture(
+            context: context,
+            dataController: dataController,
+            viewModel: viewModel,
+            liveProject: liveProject,
+            today: today,
+            restorePermissions: {
+                PermissionStore.shared.permissions = previousPermissions
+                PermissionStore.shared.blockedByFlags = previousBlocked
+            }
+        )
     }
 
     private func makeInMemoryContainer() throws -> ModelContainer {

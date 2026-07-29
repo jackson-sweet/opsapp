@@ -110,9 +110,18 @@ private struct CommittingDeckLabelField: View {
 }
 
 struct PropertySheetView: View {
+    /// A free-text vocabulary value being typed. Held here so one alert
+    /// serves every field on the sheet.
+    private struct VocabularyEdit {
+        let title: String
+        var text: String
+        let commit: (String?) -> Void
+    }
+
     @ObservedObject var viewModel: DeckBuilderViewModel
     @Environment(\.dismiss) private var dismiss
     @State private var showingNestedMaterialPicker = false
+    @State private var vocabularyEdit: VocabularyEdit?
 
     // Catalog data — feeds the metadata-field pickers when the company has
     // a default Product configured for the surface context. When the
@@ -154,6 +163,23 @@ struct PropertySheetView: View {
         .presentationDetents([.medium, .large])
         .sheet(isPresented: $showingNestedMaterialPicker) {
             MaterialPickerSheet(viewModel: viewModel)
+        }
+        .alert(vocabularyEdit?.title ?? "", isPresented: Binding(
+            get: { vocabularyEdit != nil },
+            set: { if !$0 { vocabularyEdit = nil } }
+        )) {
+            TextField("Value", text: Binding(
+                get: { vocabularyEdit?.text ?? "" },
+                set: { vocabularyEdit?.text = $0 }
+            ))
+            Button("Save") {
+                if let edit = vocabularyEdit {
+                    let trimmed = edit.text.trimmingCharacters(in: .whitespacesAndNewlines)
+                    edit.commit(trimmed.isEmpty ? nil : trimmed)
+                }
+                vocabularyEdit = nil
+            }
+            Button("Cancel", role: .cancel) { vocabularyEdit = nil }
         }
         .onChange(of: viewModel.activeLevelIndex) { _, _ in
             // Dismiss when level switches — edge/vertex references may belong to the previous level
@@ -208,19 +234,6 @@ struct PropertySheetView: View {
                 // reporter's two-level design. Bug 6d1c0a2a / 0b55c546.
                 if let edge = viewModel.findEdge(byId: edgeId) {
                     VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
-                        // Dimension
-                        if let dim = edge.dimension {
-                            HStack {
-                                Text("Length")
-                                    .font(OPSStyle.Typography.caption)
-                                    .foregroundColor(OPSStyle.Colors.secondaryText)
-                                Spacer()
-                                Text(DimensionEngine.format(dim, system: viewModel.drawingData.config.measurementSystem))
-                                    .font(OPSStyle.Typography.dataValue)
-                                    .foregroundColor(OPSStyle.Colors.primaryText)
-                            }
-                        }
-
                         // Edge type — single-select only; the bulk control
                         // above owns Type when multiple edges are selected.
                         if selectedIds.count == 1 {
@@ -266,6 +279,16 @@ struct PropertySheetView: View {
 
                         // Stairs
                         stairSection(edgeId: edgeId, edge: edge)
+
+                        // Measured length, below everything that changes the
+                        // edge — the operator opened this card to edit, not
+                        // to re-read a number the canvas already shows.
+                        readoutRow(
+                            "Length",
+                            value: edge.dimension.map {
+                                DimensionEngine.format($0, system: viewModel.drawingData.config.measurementSystem)
+                            }
+                        )
                     }
                     .padding(OPSStyle.Layout.spacing3)
                     .background(OPSStyle.Colors.cardBackground)
@@ -335,59 +358,56 @@ struct PropertySheetView: View {
                         parapetFinishPicker(edgeIds: [edgeId], activeMaterial: railing.wallMaterial)
                     }
                 } else {
-                    // Post spacing
-                    HStack {
-                        Text("Max post spacing")
-                            .font(OPSStyle.Typography.smallCaption)
-                            .foregroundColor(OPSStyle.Colors.secondaryText)
-                        Spacer()
-                        Text(DimensionEngine.formatImperial(railing.maxPostSpacing))
-                            .font(OPSStyle.Typography.dataValue)
-                            .foregroundColor(OPSStyle.Colors.primaryText)
-                    }
-
-                    // Post count
-                    if let dim = edge.dimension {
-                        let posts = DimensionEngine.postCount(edgeLengthInches: dim, maxSpacing: railing.maxPostSpacing)
-                        HStack {
-                            Text("Posts needed")
-                                .font(OPSStyle.Typography.smallCaption)
-                                .foregroundColor(OPSStyle.Colors.secondaryText)
-                            Spacer()
-                            Text("\(posts)")
-                                .font(OPSStyle.Typography.bodyBold)
-                                .foregroundColor(OPSStyle.Colors.primaryText)
-                        }
-                    }
-
                     // Catalog metadata vocabulary — what the adapter reads off
-                    // the design when generating estimates. Pickers when the
-                    // company default Product exposes the matching axis;
-                    // free-text fallback otherwise.
-                    metadataPicker(
+                    // the design when generating estimates.
+                    vocabularyRow(
                         label: "Color",
                         value: railing.color,
                         sourceKey: "color",
                         componentType: .railing,
-                        onChange: { viewModel.setRailingMetadata(edgeId: edgeId, color: $0) }
+                        allowsClearing: false,
+                        onChange: { value in
+                            guard let value else { return }
+                            viewModel.setRailingMetadata(edgeId: edgeId, color: value)
+                        }
                     )
-                    metadataPicker(
+                    vocabularyRow(
                         label: "Mount type",
                         value: railing.mountType,
                         sourceKey: "mount_type",
                         componentType: .railing,
-                        onChange: { viewModel.setRailingMetadata(edgeId: edgeId, mountType: $0) }
+                        allowsClearing: false,
+                        onChange: { value in
+                            guard let value else { return }
+                            viewModel.setRailingMetadata(edgeId: edgeId, mountType: value)
+                        }
                     )
-                    metadataPicker(
+                    vocabularyRow(
                         label: "Mount surface",
                         value: railing.mountSurface,
                         sourceKey: "mount_surface",
                         componentType: .railing,
-                        onChange: { viewModel.setRailingMetadata(edgeId: edgeId, mountSurface: $0) }
+                        allowsClearing: false,
+                        onChange: { value in
+                            guard let value else { return }
+                            viewModel.setRailingMetadata(edgeId: edgeId, mountSurface: value)
+                        }
                     )
                     postHeightStepper(
                         edgeId: edgeId,
                         current: railing.postHeight
+                    )
+
+                    // Derived figures, below the controls that drive them.
+                    readoutRow(
+                        "Max post spacing",
+                        value: DimensionEngine.formatImperial(railing.maxPostSpacing)
+                    )
+                    readoutRow(
+                        "Posts needed",
+                        value: edge.dimension.map {
+                            "\(DimensionEngine.postCount(edgeLengthInches: $0, maxSpacing: railing.maxPostSpacing))"
+                        }
                     )
                 }
             } else {
@@ -417,15 +437,24 @@ struct PropertySheetView: View {
 
     @ViewBuilder
     private func stairSection(edgeId: String, edge: DeckEdge) -> some View {
+        // An edge carries ONE stair — a fixed-rise config OR a level
+        // connection. This block only ever looked at `stairConfig`, so an
+        // edge whose stairs run down to another level still offered "Add
+        // Stairs" as though it had none. Bug ee41a0a0.
+        let connection = viewModel.connection(forEdgeId: edgeId)
+        let stair = edge.stairConfig ?? connection?.stairConfig
         VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
             HStack {
                 Text("Stairs")
                     .font(OPSStyle.Typography.bodyBold)
                     .foregroundColor(OPSStyle.Colors.primaryText)
                 Spacer()
-                if edge.stairConfig != nil {
+                if stair != nil {
                     Button("Remove") {
-                        viewModel.setStairs(edgeId, config: nil)
+                        // Clears whichever kind the edge carries. `setStairs(nil)`
+                        // only ever cleared the fixed-rise config and left a
+                        // connection in place.
+                        viewModel.removeStairs(edgeId: edgeId)
                     }
                     .font(OPSStyle.Typography.smallCaption)
                     .foregroundColor(OPSStyle.Colors.errorStatus)
@@ -439,34 +468,52 @@ struct PropertySheetView: View {
                 }
             }
 
-            if let stair = edge.stairConfig {
-                VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
-                    infoRow("Width", value: DimensionEngine.formatImperial(stair.width))
-                    if let treads = stair.treadCount {
-                        infoRow("Treads", value: "\(treads)")
-                    }
-                    infoRow("Rise/step", value: String(format: "%.1f\"", stair.risePerStep))
-                    infoRow("Run/tread", value: String(format: "%.0f\"", stair.runPerTread))
+            if let stair {
+                if connection != nil {
+                    Text("Connects to \(connectedLevelName(for: connection) ?? "another level")")
+                        .font(OPSStyle.Typography.smallCaption)
+                        .foregroundColor(OPSStyle.Colors.secondaryText)
                 }
 
                 // Catalog metadata for stairs — vocabulary differs from
                 // railing (Surface | Top | Side instead of Topmount etc).
-                metadataPicker(
+                vocabularyRow(
                     label: "Color",
                     value: stair.color,
                     sourceKey: "color",
                     componentType: .stairSet,
-                    onChange: { viewModel.setStairMetadata(edgeId: edgeId, color: $0) }
+                    allowsClearing: false,
+                    onChange: { value in
+                        guard let value else { return }
+                        viewModel.setStairMetadata(edgeId: edgeId, color: value)
+                    }
                 )
-                metadataPicker(
+                vocabularyRow(
                     label: "Mount type",
                     value: stair.mountType,
                     sourceKey: "mount_type",
                     componentType: .stairSet,
-                    onChange: { viewModel.setStairMetadata(edgeId: edgeId, mountType: $0) }
+                    allowsClearing: false,
+                    onChange: { value in
+                        guard let value else { return }
+                        viewModel.setStairMetadata(edgeId: edgeId, mountType: value)
+                    }
                 )
+
+                // Built figures, below the controls that change them.
+                VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
+                    readoutRow("Width", value: DimensionEngine.formatImperial(stair.width))
+                    readoutRow("Treads", value: stair.treadCount.map { "\($0)" })
+                    readoutRow("Rise/step", value: String(format: "%.1f\"", stair.risePerStep))
+                    readoutRow("Run/tread", value: String(format: "%.0f\"", stair.runPerTread))
+                }
             }
         }
+    }
+
+    private func connectedLevelName(for connection: LevelConnection?) -> String? {
+        guard let connection else { return nil }
+        return viewModel.drawingData.levels.first { $0.id == connection.lowerLevelId }?.name
     }
 
     // MARK: - Edge Label (bug 4a03f507)
@@ -615,24 +662,11 @@ struct PropertySheetView: View {
             ForEach(Array(viewModel.selection.selectedVertexIds), id: \.self) { vertexId in
                 if let vertex = viewModel.findVertex(byId: vertexId) {
                     VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
-                        // Elevation
-                        HStack {
-                            Text("Elevation")
-                                .font(OPSStyle.Typography.caption)
-                                .foregroundColor(OPSStyle.Colors.secondaryText)
-                            Spacer()
-                            if let elev = vertex.elevation {
-                                Text(String(format: "%.1f'", elev))
-                                    .font(OPSStyle.Typography.dataValue)
-                                    .foregroundColor(OPSStyle.Colors.primaryText)
-                            } else {
-                                Text("Not set")
-                                    .font(OPSStyle.Typography.caption)
-                                    .foregroundColor(OPSStyle.Colors.secondaryText)
-                            }
-                        }
-
-                        // Footing type
+                        // The only control on this card leads. Footing writes
+                        // now route through the active level with undo — the
+                        // old path wrote to the top-level vertices array, which
+                        // is empty on a multi-level drawing, so the picker
+                        // silently did nothing there.
                         HStack {
                             Text("Footing")
                                 .font(OPSStyle.Typography.caption)
@@ -640,12 +674,7 @@ struct PropertySheetView: View {
                             Spacer()
                             Picker("", selection: Binding(
                                 get: { vertex.footingType ?? .sonoTube },
-                                set: { type in
-                                    var v = vertex
-                                    v.footingType = type
-                                    viewModel.drawingData.updateVertex(v)
-                                    viewModel.save()
-                                }
+                                set: { viewModel.setFootingType($0, forVertexId: vertexId) }
                             )) {
                                 ForEach(FootingType.allCases, id: \.self) { type in
                                     Text(type.rawValue.replacingOccurrences(of: "_", with: " ").capitalized)
@@ -653,7 +682,13 @@ struct PropertySheetView: View {
                                 }
                             }
                             .pickerStyle(.menu)
+                            .tint(OPSStyle.Colors.text)
                         }
+
+                        readoutRow(
+                            "Elevation",
+                            value: vertex.elevation.map { String(format: "%.1f'", $0) }
+                        )
                     }
                     .padding(OPSStyle.Layout.spacing3)
                     .background(OPSStyle.Colors.cardBackground)
@@ -671,42 +706,19 @@ struct PropertySheetView: View {
         VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2_5) {
             sectionHeader("Surface Properties", icon: "square.fill")
 
+            // Naming and specifying the surface is what the operator came
+            // here to do — those lead. Area and perimeter are figures the
+            // canvas already shows; they sit at the bottom as reference.
+            surfaceLabelField
+
+            // Catalog metadata for the surface(s) — drives `deck_board`
+            // metadata in the components projection.
+            surfaceMetadataSection
+
             materialPickerEntry(
                 title: "Material",
                 detail: "Assign catalog material to selected surfaces"
             )
-
-            // Surface label — the field worker's own name for this area
-            // ("BBQ pad", "Hot tub deck"). Floats over the canvas via the
-            // surface label renderer. Bug 4a03f507.
-            surfaceLabelField
-
-            // Area display
-            if let summary {
-                VStack(spacing: OPSStyle.Layout.spacing2) {
-                    HStack {
-                        Text("Area")
-                            .font(OPSStyle.Typography.caption)
-                            .foregroundColor(OPSStyle.Colors.secondaryText)
-                        Spacer()
-                        Text(DimensionEngine.formatArea(summary.areaSquareInches, system: viewModel.drawingData.config.measurementSystem))
-                            .font(OPSStyle.Typography.dataValueLg)
-                            .foregroundColor(OPSStyle.Colors.primaryAccent)
-                    }
-                    HStack {
-                        Text("Perimeter")
-                            .font(OPSStyle.Typography.caption)
-                            .foregroundColor(OPSStyle.Colors.secondaryText)
-                        Spacer()
-                        Text(DimensionEngine.format(summary.perimeterInches, system: viewModel.drawingData.config.measurementSystem))
-                            .font(OPSStyle.Typography.dataValue)
-                            .foregroundColor(OPSStyle.Colors.primaryText)
-                    }
-                }
-                .padding(OPSStyle.Layout.spacing3)
-                .background(OPSStyle.Colors.cardBackground)
-                .cornerRadius(OPSStyle.Layout.cornerRadius)
-            }
 
             // Assigned surface items
             VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
@@ -744,33 +756,51 @@ struct PropertySheetView: View {
             .background(OPSStyle.Colors.cardBackground)
             .cornerRadius(OPSStyle.Layout.cornerRadius)
 
-            // Catalog metadata for the surface(s) — drives `deck_board`
-            // metadata in the components projection. Only renders when at
-            // least one persisted surface is selected; the legacy single-
-            // footprint store doesn't carry color/material today.
-            surfaceMetadataSection
+            if let summary {
+                VStack(spacing: OPSStyle.Layout.spacing2) {
+                    readoutRow(
+                        "Area",
+                        value: DimensionEngine.formatArea(
+                            summary.areaSquareInches,
+                            system: viewModel.drawingData.config.measurementSystem
+                        )
+                    )
+                    readoutRow(
+                        "Perimeter",
+                        value: DimensionEngine.format(
+                            summary.perimeterInches,
+                            system: viewModel.drawingData.config.measurementSystem
+                        )
+                    )
+                }
+                .padding(OPSStyle.Layout.spacing3)
+                .background(OPSStyle.Colors.cardBackground)
+                .cornerRadius(OPSStyle.Layout.cornerRadius)
+            }
         }
     }
 
     // MARK: - Surface label field (bug 4a03f507)
 
-    /// Free-text label that floats on the canvas over the active surface.
-    /// Writes to per-surface labels when any persisted DeckSurface ids are
-    /// selected, otherwise falls back to the legacy footprint label so
-    /// single-shape decks (the common case) still get a name. Empty input
-    /// clears the label, returning the surface to its material-name (or
-    /// blank) state.
+    /// Free-text label that floats on the canvas over the selected surfaces.
+    /// One label per selection, by design — naming three surfaces at once
+    /// names all three. Empty input clears it.
+    ///
+    /// This section only renders when at least one surface is selected
+    /// (`selectedFootprint` IS `!selectedSurfaceIds.isEmpty`), so the old
+    /// legacy-footprint fallback branch was unreachable — it has been
+    /// removed rather than left to imply a path that never runs.
     @ViewBuilder
     private var surfaceLabelField: some View {
         let selectedSurfaceIds = viewModel.selection.selectedSurfaceIds
         let surfaces = selectedSurfaceIds.compactMap { viewModel.findSurface(byId: $0) }
-        let activeLabel: String = {
-            if let first = surfaces.first { return first.label ?? "" }
-            return viewModel.drawingData.footprint.label ?? ""
-        }()
-        let labelTarget: DeckLabelEditTarget = selectedSurfaceIds.isEmpty
-            ? .footprint(levelId: viewModel.activeLevel?.id)
-            : .surfaces(ids: selectedSurfaceIds, levelId: viewModel.activeLevel?.id)
+        // Seed from the value they all share. Showing the first one's name
+        // for a mixed selection would claim the others answer to it too.
+        let activeLabel = commonValue(surfaces.map(\.label)).value ?? ""
+        let labelTarget = DeckLabelEditTarget.surfaces(
+            ids: selectedSurfaceIds,
+            levelId: viewModel.activeLevel?.id
+        )
 
         VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
             Text("Label")
@@ -813,22 +843,28 @@ struct PropertySheetView: View {
     private var surfaceMetadataSection: some View {
         let selectedIds = viewModel.selection.selectedSurfaceIds
         let selectedSurfaces = selectedIds.compactMap { viewModel.findSurface(byId: $0) }
-        if let first = selectedSurfaces.first {
+        if !selectedSurfaces.isEmpty {
+            // Across the whole selection, not just the first one. Editing
+            // three surfaces used to look exactly like editing one.
+            let colour = commonValue(selectedSurfaces.map(\.color))
+            let material = commonValue(selectedSurfaces.map(\.boardMaterial))
             VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
                 Text("Decking")
                     .font(OPSStyle.Typography.bodyBold)
                     .foregroundColor(OPSStyle.Colors.primaryText)
 
-                metadataPicker(
+                vocabularyRow(
                     label: "Color",
-                    value: first.color,
+                    value: colour.value,
+                    isMixed: colour.isMixed,
                     sourceKey: "color",
                     componentType: .deckBoard,
                     onChange: { viewModel.setColorOnSelectedSurfaces($0) }
                 )
-                metadataPicker(
+                vocabularyRow(
                     label: "Material",
-                    value: first.boardMaterial,
+                    value: material.value,
+                    isMixed: material.isMixed,
                     sourceKey: "material",
                     componentType: .deckBoard,
                     onChange: { viewModel.setMaterialOnSelectedSurfaces($0) }
@@ -899,70 +935,104 @@ struct PropertySheetView: View {
             .foregroundColor(OPSStyle.Colors.primaryText)
     }
 
+    // MARK: - Catalog metadata helpers
+
+    /// One vocabulary field. When the company has a default Product for this
+    /// component type, the menu offers that Product's authored option values
+    /// — those strings have to match exactly or the adapter's pricing
+    /// modifiers never fire. A crew is never blocked by a catalog that hasn't
+    /// caught up, so free text stays available either way, and a value that
+    /// isn't in the list is marked custom rather than flagged as wrong.
+    ///
+    /// Unset reads `—`. It used to read whatever the model defaulted to,
+    /// which presented a choice nobody had made (bug ee41a0a0).
     @ViewBuilder
-    private func infoRow(_ label: String, value: String) -> some View {
+    private func vocabularyRow(
+        label: String,
+        value: String?,
+        isMixed: Bool = false,
+        sourceKey: String,
+        componentType: DesignComponentType,
+        allowsClearing: Bool = true,
+        onChange: @escaping (String?) -> Void
+    ) -> some View {
+        let values = optionValues(forSourceKey: sourceKey, componentType: componentType) ?? []
+        let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let resolved = (trimmed?.isEmpty ?? true) ? nil : trimmed
+        let isCustom = resolved.map { !values.isEmpty && !values.contains($0) } ?? false
+
         HStack {
             Text(label)
                 .font(OPSStyle.Typography.smallCaption)
                 .foregroundColor(OPSStyle.Colors.secondaryText)
             Spacer()
-            Text(value)
-                .font(OPSStyle.Typography.dataValue)
-                .foregroundColor(OPSStyle.Colors.primaryText)
+            Menu {
+                ForEach(values, id: \.self) { option in
+                    Button(option) { onChange(option) }
+                }
+                Button("Custom\u{2026}") {
+                    vocabularyEdit = VocabularyEdit(
+                        title: label,
+                        text: resolved ?? "",
+                        commit: onChange
+                    )
+                }
+                if allowsClearing, resolved != nil {
+                    Button("Clear", role: .destructive) { onChange(nil) }
+                }
+            } label: {
+                HStack(spacing: OPSStyle.Layout.spacing1) {
+                    if isCustom {
+                        Text("CUSTOM")
+                            .font(OPSStyle.Typography.microLabel)
+                            .foregroundColor(OPSStyle.Colors.tertiaryText)
+                            .padding(.horizontal, OPSStyle.Layout.spacing1)
+                            .padding(.vertical, 2)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius)
+                                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
+                            )
+                    }
+                    Text(isMixed ? "Mixed" : (resolved ?? "\u{2014}"))
+                        .font(OPSStyle.Typography.caption)
+                        .foregroundColor(
+                            (isMixed || resolved == nil)
+                                ? OPSStyle.Colors.tertiaryText
+                                : OPSStyle.Colors.primaryText
+                        )
+                        .lineLimit(1)
+                    Image(systemName: "chevron.down")
+                        .font(.system(size: OPSStyle.Layout.IconSize.xs))
+                        .foregroundColor(OPSStyle.Colors.secondaryText)
+                }
+                .frame(minHeight: OPSStyle.Layout.touchTargetMin)
+            }
         }
     }
 
-    // MARK: - Catalog metadata helpers
-
-    /// One row that renders either a Picker (when the company default
-    /// Product for `componentType` exposes an axis bound to
-    /// `$design.<sourceKey>`) or a TextField (free-text fallback).
-    /// Mirrors the catalog spec's "same form, different fields" pattern —
-    /// the user sees the data the projection is committing to whether or
-    /// not a Product is configured.
+    /// A measured or derived figure — never editable, always below the
+    /// controls that change it. `—` when there is nothing to show.
     @ViewBuilder
-    private func metadataPicker(
-        label: String,
-        value: String,
-        sourceKey: String,
-        componentType: DesignComponentType,
-        onChange: @escaping (String) -> Void
-    ) -> some View {
-        let values = optionValues(forSourceKey: sourceKey, componentType: componentType)
+    private func readoutRow(_ label: String, value: String?) -> some View {
         HStack {
             Text(label)
                 .font(OPSStyle.Typography.smallCaption)
                 .foregroundColor(OPSStyle.Colors.secondaryText)
             Spacer()
-            if let values, !values.isEmpty {
-                Picker("", selection: Binding(
-                    get: { value },
-                    set: { onChange($0) }
-                )) {
-                    // Surface the current value even when it's not in the
-                    // axis's authored values — covers free-text data saved
-                    // before the company set a default product.
-                    if !values.contains(value) {
-                        Text(value).tag(value)
-                    }
-                    ForEach(values, id: \.self) { v in
-                        Text(v).tag(v)
-                    }
-                }
-                .pickerStyle(.menu)
-                .tint(OPSStyle.Colors.text)
-            } else {
-                TextField(label, text: Binding(
-                    get: { value },
-                    set: { onChange($0) }
-                ))
-                .multilineTextAlignment(.trailing)
-                .font(OPSStyle.Typography.caption)
-                .foregroundColor(OPSStyle.Colors.primaryText)
-                .frame(maxWidth: 180)
-                .textFieldStyle(.roundedBorder)
-            }
+            Text(value ?? "\u{2014}")
+                .font(OPSStyle.Typography.dataValue)
+                .foregroundColor(value == nil ? OPSStyle.Colors.tertiaryText : OPSStyle.Colors.primaryText)
         }
+    }
+
+    /// The one value every selected element agrees on, plus whether they
+    /// disagree. The sheet used to render the FIRST selection's value as if
+    /// it spoke for all of them, so editing three surfaces looked like
+    /// editing one. Bug ee41a0a0.
+    private func commonValue(_ values: [String?]) -> (value: String?, isMixed: Bool) {
+        guard let first = values.first else { return (nil, false) }
+        let allAgree = values.allSatisfy { $0 == first }
+        return allAgree ? (first, false) : (nil, true)
     }
 
     @ViewBuilder

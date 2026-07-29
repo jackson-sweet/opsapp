@@ -242,7 +242,10 @@ final class SiteVisitType: Identifiable {
                     fields: [
                         .init(id: "client-goals", label: "What the client wants", kind: .longText, sortOrder: 10),
                         .init(id: "existing-structure", label: "Existing structure", kind: .photoMarkup, sortOrder: 20),
-                        .init(id: "field-measurements", label: "Field measurements", kind: .measurement, required: true, sortOrder: 30),
+                        // No measurement row: measuring is what the visit's
+                        // capture tools are for (LiDAR / scaled / dimensioned).
+                        // A checklist item demanding the same thing was a second
+                        // gate that blocked completion after the work was done.
                         .init(id: "deck-design", label: "Deck design", kind: .deckDesign, required: true, sortOrder: 40),
                     ]
                 )

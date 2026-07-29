@@ -151,7 +151,9 @@ enum DeckSelectionReadout {
         if let item = payload.assignedItems.first?.name.trimmingCharacters(in: .whitespacesAndNewlines), !item.isEmpty {
             return item.uppercased()
         }
-        let m = payload.boardMaterial.replacingOccurrences(of: "_", with: " ").trimmingCharacters(in: .whitespacesAndNewlines)
+        let m = (payload.boardMaterial ?? "")
+            .replacingOccurrences(of: "_", with: " ")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
         return m.isEmpty ? "DECKING" : m.uppercased()
     }
 

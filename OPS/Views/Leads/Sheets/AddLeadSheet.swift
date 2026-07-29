@@ -210,7 +210,23 @@ struct AddLeadSheet: View {
         if let seedClient {
             clientId = seedClient.id
         } else {
-            clientId = await resolveClientId(companyId: companyId, name: trimmedName)
+            let resolved = await resolveClient(companyId: companyId, name: trimmedName)
+            clientId = resolved.id
+
+            // Bug 13c66762 (same race, different surface) — a client created
+            // just now exists LOCALLY first, and `create_opportunity_guarded`
+            // rejects a lead whose client the server cannot see yet
+            // (`client_not_found_in_company`), rolling the whole transaction
+            // back. Wait for the parent before writing the child. If the wait
+            // runs out the create proceeds and, on failure, stays retryable:
+            // the client is durably saved locally and `resolveClient` matches
+            // it on the next attempt rather than forking a duplicate.
+            if resolved.isNew, let newClientId = resolved.id {
+                _ = await ClientServerVisibility.wait(
+                    clientId: newClientId,
+                    companyId: companyId
+                )
+            }
         }
 
         let dto = CreateOpportunityDTO(
@@ -248,13 +264,21 @@ struct AddLeadSheet: View {
         return opp
     }
 
+    /// A resolved client for the lead about to be written, and whether this call
+    /// is what created it. Only a brand-new client needs the server-visibility
+    /// wait — a matched one is already server-side.
+    private struct ResolvedLeadClient {
+        let id: String?
+        let isNew: Bool
+    }
+
     /// Match-first (phone → email → name) against the local client cache so a
     /// repeat caller links to their existing record instead of forking a
     /// duplicate; otherwise create through `DataController.createClient` — the
     /// durable local-insert + sync-op path, so the client survives offline
     /// even though the lead insert itself needs the network.
     @MainActor
-    private func resolveClientId(companyId: String, name: String) async -> String? {
+    private func resolveClient(companyId: String, name: String) async -> ResolvedLeadClient {
         let email = form.email.isEmpty ? nil : form.email
         let phone = form.phone.isEmpty ? nil : form.phone
 
@@ -268,7 +292,7 @@ struct AddLeadSheet: View {
         }
 
         if let existing = LeadClientMatcher.match(in: clients, name: name, email: email, phone: phone) {
-            return existing.id
+            return ResolvedLeadClient(id: existing.id, isNew: false)
         }
 
         let dto = SupabaseClientDTO(
@@ -286,10 +310,10 @@ struct AddLeadSheet: View {
             deletedAt: nil
         )
         do {
-            return try await dataController.createClient(dto: dto)
+            return ResolvedLeadClient(id: try await dataController.createClient(dto: dto), isNew: true)
         } catch {
             print("[ADD_LEAD] client autocreate failed — saving lead unlinked: \(error)")
-            return nil
+            return ResolvedLeadClient(id: nil, isNew: false)
         }
     }
 

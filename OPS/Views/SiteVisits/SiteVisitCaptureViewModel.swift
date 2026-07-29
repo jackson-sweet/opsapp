@@ -5,15 +5,29 @@
 //  Local-first capture packet orchestration for field site visits.
 //
 
+import Contacts
 import Foundation
 import SwiftData
 import SwiftUI
 import UIKit
 import CoreLocation
 
+/// What a CREATE LEAD tap actually did. A failed server call is NOT
+/// automatically a failure for the operator: when the client landed and the
+/// durable queue took the lead, the work is safe and this visit binds itself on
+/// delivery. That is `.queued` — and it must never render as an error
+/// (bug 13c66762: the lead arrived seconds later, under a red toast).
+enum SiteVisitLeadCreateOutcome {
+    case created(Opportunity)
+    case queued(offline: Bool)
+    case failed
+}
+
 @MainActor
 final class SiteVisitCaptureViewModel: ObservableObject {
-    @Published private(set) var siteVisit: SiteVisit?
+    @Published private(set) var siteVisit: SiteVisit? {
+        didSet { activeSiteVisitId = siteVisit?.id }
+    }
     @Published private(set) var artifacts: [SiteVisitCaptureArtifact] = []
     @Published private(set) var siteVisitTypes: [SiteVisitType] = []
     @Published private(set) var selectedSiteVisitType: SiteVisitType?
@@ -29,11 +43,51 @@ final class SiteVisitCaptureViewModel: ObservableObject {
     /// Surfaced so the operator can deliberately resume it instead of having it
     /// silently reopened underneath a brand-new visit (the old collision bug).
     @Published private(set) var resumableVisit: SiteVisit?
+    /// Bumped when a device contact is imported into the identity draft. The
+    /// identity panel mirrors the draft in local view state, and this is the
+    /// ONLY signal that re-hydrates that mirror — so routine autosaves never
+    /// fight the operator's keystrokes (bug 5d5df5b0).
+    @Published private(set) var contactImportGeneration = 0
 
     private let companyId: String
     private let userId: String?
     private let modelContext: ModelContext
     private var autosavedNoteArtifactId: String?
+    private var leadBoundObserver: NSObjectProtocol?
+
+    /// The active visit's id, mirrored as a plain String.
+    ///
+    /// `SiteVisitLeadBound` is broadcast to every live view model, and a view
+    /// model can outlive its store — a logout or company switch resets the
+    /// context, and every console that was open still receives the post. Reading
+    /// `siteVisit?.id` there traps ("model instance was destroyed by calling
+    /// ModelContext.reset"), so the identity check that runs on EVERY delivery
+    /// never touches a SwiftData instance. Only a match proceeds to the store,
+    /// and a match means the delivery is for this view model's own live visit.
+    private var activeSiteVisitId: String?
+
+    // MARK: - Injectable seams
+    //
+    // Production wires the live repositories, the shared durable queue, and the
+    // wall clock. Tests substitute doubles so the whole lead-create path —
+    // visibility wait, guarded create, queue handoff — runs with no network and
+    // without sleeping.
+
+    /// Asks the server whether it can see a client yet. See
+    /// `ClientServerVisibility` for why this exists at all.
+    var probeClientVisibility: (String, String) async throws -> Void = ClientServerVisibility.liveProbe
+    var clientVisibilityBackoff: (Int) async -> Void = ClientServerVisibility.liveBackoff
+    var clientVisibilityAttempts = ClientServerVisibility.defaultAttempts
+    var createOpportunityRemotely: (CreateOpportunityDTO, String) async throws -> OpportunityDTO = { dto, companyId in
+        try await OpportunityRepository(companyId: companyId).create(dto)
+    }
+    var leadAutocreateQueue: ClientLeadAutocreateQueueing = ClientLeadAutocreateQueue.shared
+    var currentDate: () -> Date = { Date() }
+
+    /// How recently an abandoned unlinked visit must have been touched for
+    /// re-entry to continue it instead of starting a clean one. See
+    /// `loadOrCreateVisit`.
+    static let autoResumeWindow: TimeInterval = 15 * 60
 
     init(
         opportunity: Opportunity?,
@@ -45,6 +99,26 @@ final class SiteVisitCaptureViewModel: ObservableObject {
         self.companyId = companyId
         self.userId = userId
         self.modelContext = modelContext
+
+        // The durable queue writes the delivered lead's binding straight into
+        // the store; this is how an OPEN console learns about it and flips to
+        // LINKED without waiting for an unrelated redraw.
+        leadBoundObserver = NotificationCenter.default.addObserver(
+            forName: Notification.Name("SiteVisitLeadBound"),
+            object: nil,
+            queue: .main
+        ) { [weak self] notification in
+            let visitId = notification.userInfo?["siteVisitId"] as? String
+            MainActor.assumeIsolated {
+                self?.adoptQueueDeliveredLead(forVisitId: visitId)
+            }
+        }
+    }
+
+    deinit {
+        if let leadBoundObserver {
+            NotificationCenter.default.removeObserver(leadBoundObserver)
+        }
     }
 
     var summary: SiteVisitCaptureReviewSummary {
@@ -159,16 +233,38 @@ final class SiteVisitCaptureViewModel: ObservableObject {
             siteVisit = openVisits().first { $0.opportunityId == opportunity.id }
                 ?? createVisit()
         } else {
-            // Unlinked start (FAB): NEVER silently reopen a prior visit. Sweep
-            // away empty abandoned unlinked visits, surface any that still hold
-            // evidence so the operator can deliberately resume, and begin on a
-            // clean visit. This kills the cross-site data-mixing bug.
+            // Unlinked start (FAB). Sweep away empty abandoned unlinked visits,
+            // then decide what to do with one that still holds evidence.
+            //
+            // The old rule NEVER reopened a prior visit, to kill a cross-site
+            // data-mixing bug: a visit abandoned at one address must not be
+            // silently reopened at the next. That intent is preserved — but it
+            // punished the far more common case, where the console was torn
+            // down seconds ago (a modal stealing the presentation, an
+            // accidental close) and the operator is still standing at the SAME
+            // site. Rebuilding a blank visit there loses the capture they just
+            // made (bug 5d5df5b0).
+            //
+            // So: only an unlinked visit, only one that holds content, and only
+            // one touched inside `autoResumeWindow`, is continued. Anything
+            // older is a different site — it stays behind the resume banner,
+            // exactly as before.
             let priorUnlinked = openVisits().filter { $0.opportunityId == nil }
             let withContent = priorUnlinked.filter { visitHasContent($0) }
             let empties = priorUnlinked.filter { !visitHasContent($0) }
-            resumableVisit = withContent.sorted { $0.createdAt > $1.createdAt }.first
             for empty in empties { hardDeleteVisit(empty) }
-            siteVisit = createVisit()
+
+            let mostRecent = withContent
+                .sorted { lastActivity(of: $0) > lastActivity(of: $1) }
+                .first
+            if let mostRecent,
+               currentDate().timeIntervalSince(lastActivity(of: mostRecent)) < Self.autoResumeWindow {
+                siteVisit = mostRecent
+                resumableVisit = nil
+            } else {
+                resumableVisit = mostRecent
+                siteVisit = createVisit()
+            }
         }
 
         loadOrCreateIdentityDraft()
@@ -804,19 +900,19 @@ final class SiteVisitCaptureViewModel: ObservableObject {
         objectWillChange.send()
     }
 
-    func createLeadFromIdentityDraft(dataController: DataController) async -> Opportunity? {
+    func createLeadFromIdentityDraft(dataController: DataController) async -> SiteVisitLeadCreateOutcome {
         if let currentOpportunity {
-            return currentOpportunity
+            return .created(currentOpportunity)
         }
 
-        guard let draft = requireIdentityDraft() else { return nil }
+        guard let draft = requireIdentityDraft() else { return .failed }
         guard let clientName = draft.clientName.trimmedNilIfEmpty ?? draft.contactName.trimmedNilIfEmpty else {
             errorMessage = "CLIENT NAME REQUIRED"
-            return nil
+            return .failed
         }
         guard draft.preferredEmail.trimmedNilIfEmpty != nil || draft.phoneNumber.trimmedNilIfEmpty != nil else {
             errorMessage = "CONTACT REQUIRED"
-            return nil
+            return .failed
         }
 
         isCommittingIdentity = true
@@ -824,17 +920,34 @@ final class SiteVisitCaptureViewModel: ObservableObject {
 
         var upsertedClient: Client?
         do {
-            let client = try await upsertClientFromIdentityDraft(
+            let upserted = try await upsertClientFromIdentityDraft(
                 draft,
                 clientName: clientName,
                 dataController: dataController
             )
+            let client = upserted.client
             upsertedClient = client
             try await createMissingSubContacts(
                 from: draft,
                 client: client,
                 dataController: dataController
             )
+
+            // A client this draft just created exists LOCALLY first, and the
+            // guarded RPC refuses a lead whose client the server cannot see
+            // (`client_not_found_in_company`, 22023) — rolling the whole
+            // transaction back. Wait for the parent before writing the child.
+            // Clients we merely updated are already server-side.
+            if upserted.isNew {
+                switch await awaitClientServerVisibility(clientId: client.id) {
+                case .visible:
+                    break
+                case .offline:
+                    return handOffLeadDelivery(client, draft: draft, offline: true)
+                case .notVisible:
+                    return handOffLeadDelivery(client, draft: draft, offline: false)
+                }
+            }
 
             let contactName = draft.contactName.trimmedNilIfEmpty ?? clientName
             let dto = CreateOpportunityDTO(
@@ -849,60 +962,120 @@ final class SiteVisitCaptureViewModel: ObservableObject {
                 priority: ClientLeadAutocreate.schemaAllowedPriority,
                 clientId: client.id
             )
-            let created = try await OpportunityRepository(companyId: companyId).create(dto)
+            let created = try await createOpportunityRemotely(dto, companyId)
             let opportunity = upsertLocalOpportunity(created.toModel())
 
             draft.opportunityId = opportunity.id
             draft.clientId = client.id
-            draft.lastCommittedAt = Date()
+            draft.lastCommittedAt = currentDate()
             draft.touch()
             reassignVisit(to: opportunity)
+            errorMessage = nil
             saveContext()
-            return opportunity
+            return .created(opportunity)
         } catch {
-            // The capture packet and identity draft are already persisted
-            // locally — only the server-side lead create failed. Reassure
-            // instead of alarm: nothing re-entered, nothing lost. The lead
-            // delivery is handed to ClientLeadAutocreateQueue, which retries it
-            // durably (classify → backoff → park) across app launches and, on
-            // success, binds this draft + visit to the delivered lead. The direct
-            // DTO above and the queued retry share a source_thread_key, so they
-            // reconcile to one lead and can never duplicate.
             draft.touch()
             saveContext()
 
-            // Only enqueue when the client upsert actually landed — a failure
-            // before that point has no client to attach a lead to.
+            // Only the server-side lead create failed — the capture packet, the
+            // identity draft, and the client are all persisted locally. That is
+            // a handoff, not a failure: `ClientLeadAutocreateQueue` retries the
+            // delivery durably (classify → backoff → park) across app launches
+            // and, on success, binds this draft + visit to the delivered lead.
+            // The direct DTO above and the queued retry share a
+            // `source_thread_key`, and the RPC is idempotent on
+            // (company_id, source_thread_key), so they reconcile to ONE lead and
+            // can never duplicate.
             if let client = upsertedClient {
-                ClientLeadAutocreateQueue.shared.enqueueAndDrainInBackground(
-                    client,
-                    companyId: companyId
-                )
+                return handOffLeadDelivery(client, draft: draft, offline: isLikelyOfflineError(error))
             }
 
+            // Nothing landed — there is no client to hang a lead on, so this is
+            // a real failure the operator has to retry.
             errorMessage = isLikelyOfflineError(error)
                 ? "NO SIGNAL · DRAFT SAVED · RETRY WHEN ONLINE"
                 : "LEAD CREATE FAILED · DRAFT SAVED · RETRY"
-            return nil
+            return .failed
         }
+    }
+
+    /// Bounded wait for a just-created client to become readable by this
+    /// session. Mirrors the guard the durable queue has always had.
+    private func awaitClientServerVisibility(clientId: String) async -> ClientServerVisibility.Outcome {
+        await ClientServerVisibility.wait(
+            clientId: clientId,
+            companyId: companyId,
+            attempts: clientVisibilityAttempts,
+            probe: probeClientVisibility,
+            backoff: clientVisibilityBackoff,
+            isOffline: isLikelyOfflineError
+        )
+    }
+
+    /// The client is saved and the lead's server insert has not happened yet.
+    /// Hand delivery to the durable queue and report `.queued` — this is not an
+    /// error and must never be rendered as one (bug 13c66762).
+    private func handOffLeadDelivery(
+        _ client: Client,
+        draft: SiteVisitIdentityDraft,
+        offline: Bool
+    ) -> SiteVisitLeadCreateOutcome {
+        draft.clientId = client.id
+        draft.touch()
+        errorMessage = nil
+        saveContext()
+        leadAutocreateQueue.enqueueAndDrainInBackground(client, companyId: companyId)
+        return .queued(offline: offline)
+    }
+
+    /// The durable queue delivered a lead and wrote its binding into the store.
+    /// Re-read it so an OPEN console flips to LINKED immediately instead of
+    /// waiting for some unrelated redraw.
+    func adoptQueueDeliveredLead(forVisitId visitId: String?) {
+        guard let visitId, visitId == activeSiteVisitId else { return }
+        guard currentOpportunity == nil else { return }
+
+        // Re-read the draft the queue just wrote rather than trusting the cached
+        // instance — the binding happened outside this view model.
+        let draftDescriptor = FetchDescriptor<SiteVisitIdentityDraft>(
+            predicate: #Predicate<SiteVisitIdentityDraft> { $0.siteVisitId == visitId },
+            sortBy: [SortDescriptor(\.updatedAt, order: .reverse)]
+        )
+        guard let draft = try? modelContext.fetch(draftDescriptor).first,
+              let opportunityId = draft.opportunityId?.trimmedNilIfEmpty else { return }
+
+        let opportunityDescriptor = FetchDescriptor<Opportunity>(
+            predicate: #Predicate<Opportunity> { $0.id == opportunityId }
+        )
+        guard let delivered = try? modelContext.fetch(opportunityDescriptor).first else { return }
+
+        identityDraft = draft
+        currentOpportunity = delivered
+
+        let visitDescriptor = FetchDescriptor<SiteVisit>(
+            predicate: #Predicate<SiteVisit> { $0.id == visitId }
+        )
+        if let visit = try? modelContext.fetch(visitDescriptor).first {
+            siteVisit = visit
+            if visit.opportunityId == nil {
+                visit.opportunityId = delivered.id
+            }
+        }
+        saveContext()
+        objectWillChange.send()
     }
 
     private func isLikelyOfflineError(_ error: Error) -> Bool {
-        if let urlError = error as? URLError {
-            switch urlError.code {
-            case .notConnectedToInternet, .networkConnectionLost, .timedOut, .cannotConnectToHost, .dataNotAllowed:
-                return true
-            default:
-                break
-            }
-        }
-        let text = String(describing: error).lowercased()
-        return text.contains("offline")
-            || text.contains("network")
-            || text.contains("connection")
-            || text.contains("timed out")
+        ClientServerVisibility.isLikelyOfflineError(error)
     }
 
+    /// - Parameter isHydrated: whether the caller's field mirror has been filled
+    ///   from this draft yet. A panel that has not hydrated holds empty strings,
+    ///   not edits — committing them would erase a saved draft. That is the
+    ///   form-wipe half of bug 5d5df5b0: the identity panel's `.task` awaited a
+    ///   network fetch BEFORE hydrating, leaving a window in which autosave or
+    ///   `onDisappear` could write the empty mirror back. Deliberate clears go
+    ///   through `clearIdentityBinding()` and are unaffected.
     func updateIdentityDraft(
         searchText: String,
         clientName: String,
@@ -911,8 +1084,10 @@ final class SiteVisitCaptureViewModel: ObservableObject {
         additionalEmailsText: String,
         phoneNumber: String,
         address: String,
-        notes: String
+        notes: String,
+        isHydrated: Bool = true
     ) {
+        guard isHydrated else { return }
         guard let draft = requireIdentityDraft() else { return }
         draft.searchText = searchText
         draft.clientName = clientName
@@ -940,6 +1115,74 @@ final class SiteVisitCaptureViewModel: ObservableObject {
         }
         saveContext()
         objectWillChange.send()
+    }
+
+    /// Fill the identity draft from a device contact the operator picked.
+    ///
+    /// This lives on the model, not in the panel, for two reasons: the picker is
+    /// presented from the console root (so it survives the identity panel being
+    /// scrolled out of existence), and an import must be durable the moment it
+    /// happens — the panel's field mirror re-hydrates from the draft afterwards
+    /// via `contactImportGeneration`.
+    ///
+    /// Each field is only overwritten when the contact actually carries a value,
+    /// so a partly typed form is never wiped by an import.
+    func applyImportedContact(_ contact: CNContact) {
+        guard let draft = requireIdentityDraft() else { return }
+
+        let given = contact.givenName.trimmingCharacters(in: .whitespaces)
+        let family = contact.familyName.trimmingCharacters(in: .whitespaces)
+        let fullName = [given, family].filter { !$0.isEmpty }.joined(separator: " ")
+        if !fullName.isEmpty { draft.contactName = fullName }
+
+        let organization = contact.organizationName.trimmingCharacters(in: .whitespaces)
+        if !organization.isEmpty { draft.clientName = organization }
+
+        if let email = contact.emailAddresses.first
+            .map({ ($0.value as String).trimmingCharacters(in: .whitespaces) }),
+           !email.isEmpty {
+            draft.preferredEmail = email
+        }
+
+        if let phone = contact.phoneNumbers.first?.value.stringValue
+            .trimmingCharacters(in: .whitespaces), !phone.isEmpty {
+            draft.phoneNumber = phone
+        }
+
+        // A picked postal address is a commit (like an autocomplete selection),
+        // so it lands on the visit as well as the draft. No geocode here, so
+        // coordinates stay nil.
+        let composedAddress = Self.composeAddress(from: contact)
+        if let composedAddress {
+            let canonical = ProjectAutoNamer.canonicalizedAddress(composedAddress)
+            draft.address = canonical
+            siteVisit?.address = canonical.trimmedNilIfEmpty
+        }
+
+        draft.touch()
+        saveContext()
+        contactImportGeneration += 1
+        objectWillChange.send()
+
+        // Import is only offered on an unlinked visit, but if a lead IS bound,
+        // push the address to its server row the same way an autocomplete
+        // selection does.
+        if composedAddress != nil, currentOpportunity != nil {
+            applySelectedSiteAddress(draft.address, coordinate: nil)
+        }
+    }
+
+    /// Single comma-separated line from the contact's first postal address,
+    /// matching `AddressAutocompleteField`'s output shape.
+    static func composeAddress(from contact: CNContact) -> String? {
+        guard let postal = contact.postalAddresses.first?.value else { return nil }
+        var components: [String] = []
+        if !postal.street.isEmpty { components.append(postal.street) }
+        if !postal.city.isEmpty { components.append(postal.city) }
+        if !postal.state.isEmpty { components.append(postal.state) }
+        if !postal.postalCode.isEmpty { components.append(postal.postalCode) }
+        let joined = components.joined(separator: ", ")
+        return joined.isEmpty ? nil : joined
     }
 
     /// An autocomplete selection is a deliberate commit (unlike keystrokes):
@@ -1028,6 +1271,22 @@ final class SiteVisitCaptureViewModel: ObservableObject {
             return true
         }
         return false
+    }
+
+    /// The last moment the operator actually touched a visit. `SiteVisit` itself
+    /// is local-only and carries no `updatedAt`, so recency is read off the work
+    /// hanging from it — the identity draft and the capture artifacts — falling
+    /// back to when the visit was opened.
+    private func lastActivity(of visit: SiteVisit) -> Date {
+        var latest = visit.createdAt
+        for draft in childDrafts(of: visit.id) where draft.updatedAt > latest {
+            latest = draft.updatedAt
+        }
+        for artifact in childArtifacts(of: visit.id) {
+            let touched = max(artifact.capturedAt, artifact.updatedAt ?? artifact.capturedAt)
+            if touched > latest { latest = touched }
+        }
+        return latest
     }
 
     /// Hard-removes an empty/abandoned visit and any stray children. Used only
@@ -1192,11 +1451,19 @@ final class SiteVisitCaptureViewModel: ObservableObject {
         draft.touch()
     }
 
+    /// A client the lead-create path resolved, and whether this call is what
+    /// brought it into existence. Only a brand-new client needs the
+    /// server-visibility wait — an updated one is already server-side.
+    private struct UpsertedIdentityClient {
+        let client: Client
+        let isNew: Bool
+    }
+
     private func upsertClientFromIdentityDraft(
         _ draft: SiteVisitIdentityDraft,
         clientName: String,
         dataController: DataController
-    ) async throws -> Client {
+    ) async throws -> UpsertedIdentityClient {
         if let clientId = draft.clientId?.trimmedNilIfEmpty,
            let existing = fetchClient(id: clientId) {
             try await dataController.updateClientContact(
@@ -1209,7 +1476,7 @@ final class SiteVisitCaptureViewModel: ObservableObject {
             if let notes = draft.notes.trimmedNilIfEmpty {
                 try await dataController.updateClientNotes(clientId: existing.id, notes: notes)
             }
-            return fetchClient(id: existing.id) ?? existing
+            return UpsertedIdentityClient(client: fetchClient(id: existing.id) ?? existing, isNew: false)
         }
 
         let clientId = UUID().uuidString.lowercased()
@@ -1233,7 +1500,7 @@ final class SiteVisitCaptureViewModel: ObservableObject {
         saveContext()
 
         if let created = fetchClient(id: clientId) {
-            return created
+            return UpsertedIdentityClient(client: created, isNew: true)
         }
 
         let fallback = Client(
@@ -1249,7 +1516,7 @@ final class SiteVisitCaptureViewModel: ObservableObject {
         modelContext.insert(fallback)
         saveContext()
         dataController.triggerBackgroundSync()
-        return fallback
+        return UpsertedIdentityClient(client: fallback, isNew: true)
     }
 
     private func createMissingSubContacts(

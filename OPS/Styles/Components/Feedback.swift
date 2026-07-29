@@ -334,6 +334,22 @@ enum Feedback {
     // MARK: - Leads (parity with the legacy LeadsToastSubscriber)
 
     enum Lead {
+        /// CREATE LEAD landed the client but the lead's server insert has been
+        /// handed to the durable queue (the client row has not reached the
+        /// server yet). Nothing is lost and nothing must be re-entered, so this
+        /// is a success, not the red error it used to be (bug 13c66762).
+        static let savedSyncing = Toast(
+            label: "// LEAD SAVED · SYNCING",
+            tone: .success,
+            autoDismissAfter: 6
+        )
+        /// Same handoff, no signal. The fact is worth a beat of the operator's
+        /// attention — nothing is required of them.
+        static let savedOffline = Toast(
+            label: "// NO SIGNAL · LEAD SAVED · SENDS LATER",
+            tone: .warning,
+            autoDismissAfter: 6
+        )
         static let archived      = Toast(label: "// LEAD ARCHIVED", tone: .warning)
         static let discarded     = Toast(label: "// LEAD DISCARDED", tone: .warning)
         static let stageAdvanced = Toast(label: "// STAGE ADVANCED", tone: .success)
@@ -480,7 +496,7 @@ enum Feedback {
         Deck.railingUpdated, Deck.wallMaterialSet, Deck.itemRemoved, Deck.surfacesLabeled, Deck.footprintLabeled,
         Deck.edgeLabeled, Deck.surfacesMoved, Deck.edgesMoved, Deck.levelCreatedSurfaces, Deck.levelCreatedEdges, Deck.arWalkSaved,
         Measure.pdfReady, Measure.dimensionsSaved(view: {}),
-        Lead.archived, Lead.stageAdvanced,
+        Lead.archived, Lead.stageAdvanced, Lead.savedSyncing, Lead.savedOffline,
         Sync.restored, Sync.failed(retry: {}),
     ]
 }

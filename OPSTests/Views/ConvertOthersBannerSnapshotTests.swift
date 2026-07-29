@@ -47,6 +47,10 @@ final class ConvertOthersBannerSnapshotTests: XCTestCase {
                 .frame(width: width)
                 .background(OPSStyle.Colors.background)
                 .environment(\.colorScheme, .dark)
+                // A UIWindow inherits the device safe-area insets whatever its
+                // frame — without this the content renders displaced and
+                // bottom-clipped (same correction as DaySheetRowSnapshotTests).
+                .ignoresSafeArea()
         )
         host.view.backgroundColor = .black
 
@@ -144,7 +148,9 @@ final class ConvertOthersBannerSnapshotTests: XCTestCase {
 
     /// Smallest supported iPhone width — the strictest single-line proof.
     func testRenderBannerTwelveOthersNarrow() {
-        snapshot("convert_banner_12_narrow375", width: 375, height: 340) { banner(12) }
+        // 440pt canvas: at 375pt width the chip grid wraps taller than the
+        // 393pt-wide variant — 340pt cut the last chip row off the canvas.
+        snapshot("convert_banner_12_narrow375", width: 375, height: 440) { banner(12) }
     }
 
     /// Singular copy path.
@@ -170,7 +176,8 @@ final class ConvertOthersBannerSnapshotTests: XCTestCase {
 
     /// Defensive ceiling — a 3-digit count must still hold one line.
     func testRenderBannerHundredsOthers() {
-        snapshot("convert_banner_120", width: 375, height: 340) { banner(120) }
+        // 440pt canvas: same narrow-width wrap as convert_banner_12_narrow375.
+        snapshot("convert_banner_120", width: 375, height: 440) { banner(120) }
     }
 }
 #endif

@@ -935,9 +935,8 @@ final class RealtimeProcessor: ObservableObject {
                 // both team-based and mention-based grant. Any row delivered here
                 // has already passed RLS and is valid to persist.
 
-                let model = dto.toModel()
                 let pendingFields = protectedFieldsForEntity(entityType: .project, entityId: dto.id, context: context)
-                try upsertProject(context: context, id: dto.id, dto: dto, model: model, pendingFields: pendingFields)
+                try upsertProject(context: context, id: dto.id, dto: dto, pendingFields: pendingFields)
                 // Legacy path saves on mainContext, which never fires the
                 // actor's didSave rebroadcast — post the inbound signal
                 // directly so snapshot caches (calendar) invalidate.
@@ -1446,11 +1445,10 @@ final class RealtimeProcessor: ObservableObject {
         Task { @MainActor in
             do {
                 let dto = try await ProjectRepository(companyId: companyId).fetchOne(projectId)
-                let model = dto.toModel()
                 let pendingFields = self.protectedFieldsForEntity(
                     entityType: .project, entityId: dto.id, context: context
                 )
-                try self.upsertProject(context: context, id: dto.id, dto: dto, model: model, pendingFields: pendingFields)
+                try self.upsertProject(context: context, id: dto.id, dto: dto, pendingFields: pendingFields)
                 try context.save()
                 print("[RealtimeProcessor] G9 — fetched mention-granted project \(projectId)")
             } catch {
@@ -1576,101 +1574,45 @@ final class RealtimeProcessor: ObservableObject {
         context: ModelContext,
         id: String,
         dto: SupabaseProjectDTO,
-        model: Project,
         pendingFields: Set<String>
     ) throws {
         let descriptor = FetchDescriptor<Project>(predicate: #Predicate { $0.id == id })
         let existingCount = (try? context.fetchCount(descriptor)) ?? 0
         print("[DUPE_TRACE] RT.upsertProject id=\(id) existing_count=\(existingCount) ctx=\(ObjectIdentifier(context))")
 
-        if let existing = try context.fetch(descriptor).first {
-            // Bug 209281ba — pendingFields is built from SyncOperation.changedFields
-            // which uses server-side wire names ("project_images",
-            // "team_member_ids", "company_id", etc.). Compare against those, not
-            // Swift property names, otherwise the protection silently fails and
-            // realtime overwrites local optimistic writes (e.g., comment-photo
-            // URLs appended to projectImagesString disappear).
-            if !pendingFields.contains("title")             { existing.title = model.title }
-            if !pendingFields.contains("status")            { existing.status = model.status }
-            if !pendingFields.contains("company_id")        { existing.companyId = model.companyId }
-            if !pendingFields.contains("client_id")         { existing.clientId = model.clientId }
-            if !pendingFields.contains("opportunity_id")    { existing.opportunityId = model.opportunityId }
-            if !pendingFields.contains("address")           { existing.address = model.address }
-            if !pendingFields.contains("latitude")          { existing.latitude = model.latitude }
-            if !pendingFields.contains("longitude")         { existing.longitude = model.longitude }
-            if !pendingFields.contains("start_date")        { existing.startDate = model.startDate }
-            if !pendingFields.contains("end_date")          { existing.endDate = model.endDate }
-            if !pendingFields.contains("duration")          { existing.duration = model.duration }
-            if !pendingFields.contains("notes")             { existing.notes = model.notes }
-            if !pendingFields.contains("description")       { existing.projectDescription = model.projectDescription }
-            if !pendingFields.contains("all_day")           { existing.allDay = model.allDay }
-            if !pendingFields.contains("team_member_ids")   { existing.teamMemberIdsString = model.teamMemberIdsString }
-            if !pendingFields.contains("project_images")    { existing.projectImagesString = model.projectImagesString }
-            if !pendingFields.contains("deleted_at")        { existing.deletedAt = model.deletedAt }
-            try upsertProjectVinylOrderMarker(context: context, dto: dto, pendingFields: pendingFields)
-            existing.lastSyncedAt = Date()
-            let pendingFieldsForSync = pendingFieldsForEntity(entityType: .project, entityId: existing.id, context: context)
-            if pendingFieldsForSync.isEmpty {
-                existing.needsSync = false
-            }
-        } else {
+        // Bug 209281ba — pendingFields is built from SyncOperation.changedFields
+        // which uses server-side wire names ("project_images",
+        // "team_member_ids", "company_id", etc.). ProjectCacheMerge compares
+        // against those, not Swift property names, otherwise the protection
+        // silently fails and realtime overwrites local optimistic writes
+        // (e.g., comment-photo URLs appended to projectImagesString disappear).
+        if try context.fetch(descriptor).first == nil {
             // Origin suppression: if we wrote this entityId locally within the
             // last 60s — regardless of SyncOperation status (pending, inProgress,
             // completed) — the realtime payload is our own write echoing back.
             // Inserting here would produce a duplicate because Project.id
             // lacks @Attribute(.unique). Mirrors the ProjectTask suppression
-            // below (bug f86cf554 / 858fa5e).
+            // below (bug f86cf554 / 858fa5e). This stays a REALTIME concern:
+            // the conversion path shares the merge but must never suppress,
+            // because materializing a brand-new project is its whole job.
             if hasRecentLocalWrite(entityType: .project, entityId: id, withinSeconds: 60, context: context) {
                 print("[DUPE_TRACE] RT.upsertProject SUPPRESSED id=\(id) — recent local write within 60s")
                 try context.save()
                 return
             }
-
             print("[DUPE_TRACE] RT.upsertProject INSERT id=\(id) — no recent local write, treating as remote create")
-            model.lastSyncedAt = Date()
-            model.needsSync = false
-            context.insert(model)
-            let marker = dto.toVinylOrderMarkerModel()
-            marker.lastSyncedAt = Date()
-            context.insert(marker)
         }
-        try context.save()
-    }
 
-    private func upsertProjectVinylOrderMarker(
-        context: ModelContext,
-        dto: SupabaseProjectDTO,
-        pendingFields: Set<String>
-    ) throws {
-        let projectId = dto.id
-        let descriptor = FetchDescriptor<ProjectVinylOrderMarker>(
-            predicate: #Predicate { $0.id == projectId }
+        _ = try ProjectCacheMerge.apply(
+            dto: dto,
+            context: context,
+            protectedFields: pendingFields,
+            hasPendingWrite: !pendingFieldsForEntity(
+                entityType: .project,
+                entityId: id,
+                context: context
+            ).isEmpty
         )
-        let marker: ProjectVinylOrderMarker
-        if let existing = try context.fetch(descriptor).first {
-            marker = existing
-        } else {
-            marker = ProjectVinylOrderMarker(projectId: projectId)
-            context.insert(marker)
-        }
-
-        if !pendingFields.contains(ProjectVinylOrderFields.status) {
-            marker.status = dto.resolvedVinylOrderStatus
-        }
-        if !pendingFields.contains(ProjectVinylOrderFields.orderedAt) {
-            marker.orderedAt = dto.vinylOrderedAt.flatMap { SupabaseDate.parse($0) }
-        }
-        if !pendingFields.contains(ProjectVinylOrderFields.orderedBy) {
-            marker.orderedBy = dto.vinylOrderedBy
-        }
-        if !pendingFields.contains(ProjectVinylOrderFields.color) {
-            marker.vinylColor = dto.vinylColor
-        }
-        if !pendingFields.contains(ProjectVinylOrderFields.po) {
-            marker.vinylPO = dto.vinylPO
-        }
-        marker.sourceProjectUpdatedAt = dto.updatedAt.flatMap { SupabaseDate.parse($0) }
-        marker.lastSyncedAt = Date()
     }
 
     private func upsertProjectTask(context: ModelContext, id: String, model: ProjectTask, pendingFields: Set<String>) throws {

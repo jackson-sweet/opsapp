@@ -1,5 +1,7 @@
 -- =====================================================================
--- STAGED — NOT APPLIED. DO NOT RUN THIS FILE.
+-- APPLIED 2026-07-28 (Jackson-approved). Live in prod as ops-web migration
+-- 20260728210000_lead_assignment_copy_alignment (ops-web main 74dc849e).
+-- This copy remains as the review artifact. DO NOT RUN THIS FILE.
 -- =====================================================================
 --
 -- Lead-assignment notification copy alignment (MY LEADS day sheet, Task 8).

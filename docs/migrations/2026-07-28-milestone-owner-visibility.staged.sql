@@ -1,5 +1,7 @@
 -- =====================================================================
--- STAGED — NOT APPLIED. DO NOT RUN THIS FILE.
+-- APPLIED 2026-07-28 (Jackson-approved). Live in prod as ops-web migration
+-- 20260728210100_milestone_owner_visibility (ops-web main 74dc849e).
+-- This copy remains as the review artifact. DO NOT RUN THIS FILE.
 -- =====================================================================
 --
 -- Milestone owner visibility (MY LEADS day sheet, Task 8 addendum).

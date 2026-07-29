@@ -21,7 +21,8 @@ struct OPSApp: App {
         #if DEBUG
         if ClientSearchActionsQARuntime.isEnabled() ||
             CatalogSetupQARuntime.isEnabled() ||
-            ScheduleLongPressQARuntime.isEnabled() {
+            ScheduleLongPressQARuntime.isEnabled() ||
+            SiteVisitCaptureQARuntime.isEnabled() {
             return
         }
         #endif
@@ -70,7 +71,8 @@ struct OPSApp: App {
         #if DEBUG
         let isHermeticQALaunch = ClientSearchActionsQARuntime.isEnabled() ||
             CatalogSetupQARuntime.isEnabled() ||
-            ScheduleLongPressQARuntime.isEnabled()
+            ScheduleLongPressQARuntime.isEnabled() ||
+            SiteVisitCaptureQARuntime.isEnabled()
         #else
         let isHermeticQALaunch = false
         #endif
@@ -111,6 +113,11 @@ struct OPSApp: App {
                 .preferredColorScheme(.dark)
         } else if ScheduleLongPressQARuntime.isEnabled() {
             ScheduleLongPressQAHost()
+                .environmentObject(dataController)
+                .environmentObject(permissionStore)
+                .preferredColorScheme(.dark)
+        } else if SiteVisitCaptureQARuntime.isEnabled() {
+            SiteVisitCaptureQAHost()
                 .environmentObject(dataController)
                 .environmentObject(permissionStore)
                 .preferredColorScheme(.dark)

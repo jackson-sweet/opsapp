@@ -155,6 +155,8 @@ enum Feedback {
         static let datesCleared  = Toast(label: "// DATES CLEARED", tone: .success)
         static let statusUpdated = Toast(label: "// STATUS UPDATED", tone: .success)
         static let teamUpdated   = Toast(label: "// CREW UPDATED", tone: .success)
+        static let typeUpdated   = Toast(label: "// TYPE UPDATED", tone: .success)
+        static let notesUpdated  = Toast(label: "// NOTES UPDATED", tone: .success)
         static let subCreated    = Toast(label: "// SUB-TASK ADDED", tone: .success)
         static let subUpdated    = Toast(label: "// SUB-TASK UPDATED", tone: .success)
         static let subDeleted    = Toast(label: "// SUB-TASK DELETED", tone: .success)

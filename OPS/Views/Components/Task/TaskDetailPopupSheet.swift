@@ -36,10 +36,25 @@ struct TaskDetailPopupSheet: View {
     /// cascade triggered mid-animation by updateTaskTeamMembers' multiple
     /// modelContext.save() calls).
     var onCommitTeam: ((Set<String>) -> Void)? = nil
+    /// Bug 10b66fce — a confirmed task-type change. Same contract as
+    /// `onCommitTeam`: fired only on an explicit pick, never on dismiss, and
+    /// the parent performs the write off the sheet's critical path.
+    var onCommitTaskType: ((TaskType) -> Void)? = nil
+    /// Bug 10b66fce — a confirmed description edit. Fired only when the
+    /// operator taps SAVE; abandoning the editor or dragging the sheet away
+    /// discards the draft and writes nothing.
+    var onCommitDescription: ((String) -> Void)? = nil
+
+    @EnvironmentObject private var dataController: DataController
 
     @State private var showReopenAlert = false
     @State private var showCancelAlert = false
     @State private var showTeamPicker = false
+    @State private var showTypePicker = false
+    /// Draft description, live only while the editor is open. Seeded from the
+    /// task every time the editor opens so an abandoned edit leaves no trace.
+    @State private var isEditingDescription = false
+    @State private var draftDescription = ""
     /// Draft team selection that lives only inside this sheet — the operator
     /// can tap rows freely without each tap immediately mutating the parent
     /// state. Only committed back to `selectedTeamMemberIds` when DONE is
@@ -55,6 +70,27 @@ struct TaskDetailPopupSheet: View {
         draftTeamMemberIds != selectedTeamMemberIds
     }
 
+    private var descriptionDraftIsDirty: Bool {
+        draftDescription.trimmingCharacters(in: .whitespacesAndNewlines)
+            != (task.taskNotes ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    // MARK: - Permission Gates (bug 10b66fce)
+    //
+    // Before this, only DATES was gated. TEAM reassignment and every status
+    // button were wide open, and the task type and description could not be
+    // touched at all. Each control now reads the grant that actually governs
+    // it, scope-aware on this task's crew.
+
+    /// `tasks.edit` — task type and description.
+    private var canEditFields: Bool { task.canEditFields }
+
+    /// `tasks.assign` — which crew is on the job.
+    private var canAssignCrew: Bool { task.canAssignCrew }
+
+    /// `tasks.change_status` — complete, reopen, cancel.
+    private var canChangeStatus: Bool { task.canChangeStatus }
+
     var body: some View {
         VStack(spacing: 0) {
             // Drag indicator
@@ -67,10 +103,15 @@ struct TaskDetailPopupSheet: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing3_5) {
                     header
-                    if task.status == .active {
-                        completeButton
-                    } else if task.status == .completed {
-                        reopenButton
+                    // Bug 10b66fce — status changes are gated on
+                    // tasks.change_status. Crew without the grant see the job,
+                    // not a button that will refuse them.
+                    if canChangeStatus {
+                        if task.status == .active {
+                            completeButton
+                        } else if task.status == .completed {
+                            reopenButton
+                        }
                     }
                     infoCard
                     descriptionCard
@@ -100,39 +141,129 @@ struct TaskDetailPopupSheet: View {
         } message: {
             Text("This task will be marked as cancelled.")
         }
+        // Bug 10b66fce — task type is now editable behind tasks.edit. Picking a
+        // type fires the parent's commit closure; dismissing the picker without
+        // a pick writes nothing.
+        .sheet(isPresented: $showTypePicker) {
+            TaskTypePickerSheet(
+                selectedTaskTypeId: task.taskTypeId.isEmpty ? nil : task.taskTypeId,
+                onSelect: { picked in
+                    guard picked.id != task.taskTypeId else { return }
+                    UINotificationFeedbackGenerator().notificationOccurred(.success)
+                    onCommitTaskType?(picked)
+                    ToastCenter.shared.present(Feedback.Task.typeUpdated)
+                }
+            )
+            .environmentObject(dataController)
+        }
     }
 
     // MARK: - Header
 
+    /// Bug 10b66fce — the old header sat two 9pt mono pills alone on a
+    /// full-width row above a 22pt title: tiny, floating, and disproportionate.
+    ///
+    /// The two badges carried different kinds of information and should never
+    /// have been peers. Task type is what the job IS — an attribute of the
+    /// title — so it became a colored eyebrow directly above it, carrying the
+    /// same identity color the calendar draws the job in. Status is a state —
+    /// one glanceable token, right-aligned on the title line where the eye
+    /// lands after reading the name.
+    ///
+    /// The eyebrow doubles as the type control (see `typeEyebrow`) rather than
+    /// repeating the type as a separate row in the card below: one datum, one
+    /// place on screen.
     private var header: some View {
-        let taskColor = Color(hex: task.effectiveColor) ?? OPSStyle.Colors.primaryAccent
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
+            typeEyebrow
 
-        return VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2_5) {
-            // Task type badge + status pill
-            HStack(spacing: OPSStyle.Layout.spacing2) {
-                TaskBadge(
-                    name: task.taskType?.display ?? "Task",
-                    color: taskColor,
-                    size: .medium,
-                    faded: task.status == .completed
-                )
+            HStack(alignment: .firstTextBaseline, spacing: OPSStyle.Layout.spacing2_5) {
+                Text(task.displayTitle)
+                    .font(OPSStyle.Typography.pageTitle)
+                    .textCase(.uppercase)
+                    .foregroundColor(OPSStyle.Colors.text)
+                    .opacity(task.status == .completed ? 0.5 : 1.0)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
 
+                Spacer(minLength: OPSStyle.Layout.spacing2)
+
+                // Never truncates — the job's state is the one thing that must
+                // stay readable no matter how long the title runs.
                 StatusBadgePill(
                     text: task.status.displayName.uppercased(),
                     color: task.status.color,
                     size: .medium
                 )
+                .fixedSize()
+            }
+        }
+    }
 
-                Spacer()
+    /// The task type, rendered as a colored eyebrow. Tappable — with a chevron
+    /// and a full 44pt target — only when the operator holds `tasks.edit` for
+    /// this task; otherwise it is plain text with no affordance, so the sheet
+    /// shows the operator's actual reality rather than a control that refuses.
+    private var typeEyebrow: some View {
+        let taskColor = Color(hex: task.effectiveColor) ?? OPSStyle.Colors.primaryAccent
+        let tint = taskColor.opacity(task.status == .completed ? 0.5 : 1.0)
+
+        return Group {
+            if canEditFields {
+                Button(action: {
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    showTypePicker = true
+                }) {
+                    typeEyebrowContent(tint: tint, showsChevron: true)
+                        .frame(minHeight: OPSStyle.Layout.touchTargetMin, alignment: .leading)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(PlainButtonStyle())
+                .accessibilityLabel("Task type")
+                .accessibilityValue(typeLabel)
+                .accessibilityHint("Change the task type")
+                .accessibilityIdentifier("taskDetailTypeButton")
+            } else {
+                typeEyebrowContent(tint: tint, showsChevron: false)
+                    .accessibilityElement(children: .combine)
+                    .accessibilityLabel("Task type")
+                    .accessibilityValue(typeLabel)
+                    .accessibilityIdentifier("taskDetailTypeLabel")
+            }
+        }
+    }
+
+    private func typeEyebrowContent(tint: Color, showsChevron: Bool) -> some View {
+        HStack(spacing: OPSStyle.Layout.spacing2) {
+            // A 2pt tick, not a boxed pill — the mark reads as the job's
+            // identity colour without competing with the title above it.
+            RoundedRectangle(cornerRadius: OPSStyle.Layout.Border.standard)
+                .fill(tint)
+                .frame(
+                    width: OPSStyle.Layout.Border.thick,
+                    height: OPSStyle.Layout.IconSize.xs
+                )
+
+            Text(typeLabel)
+                .font(OPSStyle.Typography.smallCaption)
+                .tracking(0.6)
+                .textCase(.uppercase)
+                .foregroundColor(tint)
+                .lineLimit(1)
+
+            if showsChevron {
+                Image(systemName: OPSStyle.Icons.chevronRight)
+                    .font(.system(size: OPSStyle.Layout.IconSize.xs))
+                    .foregroundColor(OPSStyle.Colors.tertiaryText)
             }
 
-            // Title
-            Text(task.displayTitle)
-                .font(OPSStyle.Typography.pageTitle)
-                .textCase(.uppercase)
-                .foregroundColor(OPSStyle.Colors.text)
-                .opacity(task.status == .completed ? 0.5 : 1.0)
+            Spacer(minLength: 0)
         }
+    }
+
+    private var typeLabel: String {
+        if let display = task.taskType?.display, !display.isEmpty { return display }
+        return canEditFields ? "Set type" : "—"
     }
 
     // MARK: - Complete Button
@@ -216,29 +347,108 @@ struct TaskDetailPopupSheet: View {
     // MARK: - Description Card
 
     private var descriptionCard: some View {
-        let presentation = TaskDetailDescriptionPresentation(notes: task.taskNotes)
-
-        return VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
             Text("DESCRIPTION")
                 .font(OPSStyle.Typography.smallCaption)
                 .foregroundColor(OPSStyle.Colors.tertiaryText)
 
-            Text(presentation.text)
-                .font(OPSStyle.Typography.body)
-                .foregroundColor(
-                    presentation.isEmpty
-                        ? OPSStyle.Colors.tertiaryText
-                        : OPSStyle.Colors.primaryText
-                )
-                .fixedSize(horizontal: false, vertical: true)
+            if isEditingDescription {
+                descriptionEditor
+            } else {
+                descriptionReadout
+            }
         }
         .padding(OPSStyle.Layout.spacing3)
         .frame(maxWidth: .infinity, alignment: .leading)
         .glassSurface()
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("Task description")
-        .accessibilityValue(presentation.text)
-        .accessibilityIdentifier("taskDetailDescriptionArea")
+    }
+
+    /// Read state. Tappable only when the operator holds `tasks.edit` on this
+    /// task — otherwise it stays a plain readout with no false affordance.
+    private var descriptionReadout: some View {
+        let presentation = TaskDetailDescriptionPresentation(notes: task.taskNotes)
+        // An editable empty description says what to do; a read-only one shows
+        // the design system's empty mark.
+        let text = presentation.isEmpty && canEditFields ? "Tap to add notes" : presentation.text
+
+        return Group {
+            if canEditFields {
+                Button(action: {
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    // Seed from the task on every open so an abandoned edit
+                    // can never resurface later.
+                    draftDescription = task.taskNotes ?? ""
+                    withAnimation(OPSStyle.Animation.panel) { isEditingDescription = true }
+                }) {
+                    descriptionText(text, isPlaceholder: presentation.isEmpty)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(PlainButtonStyle())
+                .accessibilityLabel("Task description")
+                .accessibilityValue(presentation.text)
+                .accessibilityHint("Edit the description")
+                .accessibilityIdentifier("taskDetailDescriptionArea")
+            } else {
+                descriptionText(text, isPlaceholder: presentation.isEmpty)
+                    .accessibilityElement(children: .combine)
+                    .accessibilityLabel("Task description")
+                    .accessibilityValue(presentation.text)
+                    .accessibilityIdentifier("taskDetailDescriptionArea")
+            }
+        }
+    }
+
+    private func descriptionText(_ text: String, isPlaceholder: Bool) -> some View {
+        Text(text)
+            .font(OPSStyle.Typography.body)
+            .foregroundColor(
+                isPlaceholder
+                    ? OPSStyle.Colors.tertiaryText
+                    : OPSStyle.Colors.primaryText
+            )
+            .fixedSize(horizontal: false, vertical: true)
+            .multilineTextAlignment(.leading)
+    }
+
+    /// Edit state. Explicit commit only — SAVE writes, CANCEL and sheet
+    /// dismissal both discard. Nothing is ever written on the dismiss path
+    /// (bugs 0aa825fe / 62481022).
+    private var descriptionEditor: some View {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
+            TextEditor(text: $draftDescription)
+                .font(OPSStyle.Typography.body)
+                .foregroundColor(OPSStyle.Colors.primaryText)
+                .scrollContentBackground(.hidden)
+                // Two input rows tall — enough to see a couple of lines of
+                // notes without the editor swallowing the sheet.
+                .frame(minHeight: OPSStyle.Layout.inputHeight * 2)
+                .padding(OPSStyle.Layout.spacing2)
+                .background(OPSStyle.Colors.surfaceInput)
+                .cornerRadius(OPSStyle.Layout.buttonRadius)
+                .overlay(
+                    RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius)
+                        .stroke(OPSStyle.Colors.line, lineWidth: OPSStyle.Layout.Border.standard)
+                )
+                .accessibilityIdentifier("taskDetailDescriptionEditor")
+
+            commitRow(
+                saveTitle: "SAVE",
+                isDirty: descriptionDraftIsDirty,
+                cancelIdentifier: "taskDetailDescriptionCancelButton",
+                saveIdentifier: "taskDetailDescriptionSaveButton",
+                onCancel: {
+                    withAnimation(OPSStyle.Animation.panel) { isEditingDescription = false }
+                },
+                onSave: {
+                    let committed = draftDescription.trimmingCharacters(in: .whitespacesAndNewlines)
+                    onCommitDescription?(committed)
+                    ToastCenter.shared.present(Feedback.Task.notesUpdated)
+                    withAnimation(OPSStyle.Animation.panel) { isEditingDescription = false }
+                }
+            )
+        }
+        .transition(.opacity)
     }
 
     // MARK: - Dates Row (tappable — opens scheduler)
@@ -266,9 +476,13 @@ struct TaskDetailPopupSheet: View {
 
                 Spacer()
 
-                Image(systemName: OPSStyle.Icons.chevronRight)
-                    .font(.system(size: OPSStyle.Layout.IconSize.xs))
-                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+                // No chevron when the operator cannot reschedule — a row that
+                // advertises an action it will refuse is worse than a plain row.
+                if task.canEditSchedule {
+                    Image(systemName: OPSStyle.Icons.chevronRight)
+                        .font(.system(size: OPSStyle.Layout.IconSize.xs))
+                        .foregroundColor(OPSStyle.Colors.tertiaryText)
+                }
             }
             .padding(.horizontal, OPSStyle.Layout.spacing3)
             .padding(.vertical, OPSStyle.Layout.spacing2_5)
@@ -288,6 +502,9 @@ struct TaskDetailPopupSheet: View {
 
     private var teamHeader: some View {
         Button(action: {
+            // Bug 10b66fce — reassigning crew is gated on tasks.assign, which
+            // this row previously ignored entirely.
+            guard canAssignCrew else { return }
             withAnimation(OPSStyle.Animation.panel) {
                 if showTeamPicker {
                     // Collapsing without DONE = discard. Draft is reset on
@@ -353,9 +570,11 @@ struct TaskDetailPopupSheet: View {
 
                 Spacer()
 
-                Image(systemName: showTeamPicker ? "chevron.down" : OPSStyle.Icons.chevronRight)
-                    .font(.system(size: OPSStyle.Layout.IconSize.xs))
-                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+                if canAssignCrew {
+                    Image(systemName: showTeamPicker ? "chevron.down" : OPSStyle.Icons.chevronRight)
+                        .font(.system(size: OPSStyle.Layout.IconSize.xs))
+                        .foregroundColor(OPSStyle.Colors.tertiaryText)
+                }
             }
             .padding(.horizontal, OPSStyle.Layout.spacing3)
             .padding(.vertical, OPSStyle.Layout.spacing2_5)
@@ -421,32 +640,16 @@ struct TaskDetailPopupSheet: View {
     }
 
     private var teamCommitRow: some View {
-        HStack(spacing: 10) {
-            Button(action: {
-                UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                withAnimation(OPSStyle.Animation.panel) {
-                    showTeamPicker = false
-                }
-            }) {
-                Text("CANCEL")
-                    .font(OPSStyle.Typography.captionBold)
-                    .tracking(0.5)
-                    .foregroundColor(OPSStyle.Colors.secondaryText)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 10)
-                    .background(OPSStyle.Colors.surfaceInput)
-                    .cornerRadius(OPSStyle.Layout.buttonRadius)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius)
-                            .stroke(OPSStyle.Colors.line, lineWidth: 1)
-                    )
-            }
-            .buttonStyle(PlainButtonStyle())
-            .accessibilityIdentifier("taskDetailTeamCancelButton")
-
-            Button(action: {
+        commitRow(
+            saveTitle: "DONE",
+            isDirty: teamDraftIsDirty,
+            cancelIdentifier: "taskDetailTeamCancelButton",
+            saveIdentifier: "taskDetailTeamDoneButton",
+            onCancel: {
+                withAnimation(OPSStyle.Animation.panel) { showTeamPicker = false }
+            },
+            onSave: {
                 let committed = draftTeamMemberIds
-                UINotificationFeedbackGenerator().notificationOccurred(.success)
                 // Update the binding so subsequent reads see the new
                 // committed value, then collapse the picker. The actual
                 // SwiftData write happens via onCommitTeam in the parent —
@@ -454,30 +657,74 @@ struct TaskDetailPopupSheet: View {
                 selectedTeamMemberIds = committed
                 onCommitTeam?(committed)
                 ToastCenter.shared.present(Feedback.Task.teamUpdated)
-                withAnimation(OPSStyle.Animation.panel) {
-                    showTeamPicker = false
-                }
+                withAnimation(OPSStyle.Animation.panel) { showTeamPicker = false }
+            }
+        )
+        .padding(.horizontal, OPSStyle.Layout.spacing3)
+        .padding(.top, OPSStyle.Layout.spacing2)
+        .padding(.bottom, OPSStyle.Layout.spacing1)
+    }
+
+    // MARK: - Shared Commit Row
+
+    /// The explicit-commit control shared by the crew picker and the
+    /// description editor. Both inline editors in this sheet commit the same
+    /// way and must look identical, so they are literally the same view.
+    ///
+    /// The contract that matters: SAVE is the ONLY path that writes. CANCEL
+    /// and sheet dismissal both discard — no write ever rides the dismiss
+    /// animation, which is what tore down ProjectDetails in bugs 0aa825fe /
+    /// 62481022.
+    private func commitRow(
+        saveTitle: String,
+        isDirty: Bool,
+        cancelIdentifier: String,
+        saveIdentifier: String,
+        onCancel: @escaping () -> Void,
+        onSave: @escaping () -> Void
+    ) -> some View {
+        HStack(spacing: OPSStyle.Layout.spacing2) {
+            Button(action: {
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                onCancel()
             }) {
-                Text("DONE")
+                Text("CANCEL")
                     .font(OPSStyle.Typography.captionBold)
                     .tracking(0.5)
-                    .foregroundColor(teamDraftIsDirty
+                    .foregroundColor(OPSStyle.Colors.secondaryText)
+                    .frame(maxWidth: .infinity)
+                    .frame(minHeight: OPSStyle.Layout.chipMinHeight)
+                    .background(OPSStyle.Colors.surfaceInput)
+                    .cornerRadius(OPSStyle.Layout.buttonRadius)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius)
+                            .stroke(OPSStyle.Colors.line, lineWidth: OPSStyle.Layout.Border.standard)
+                    )
+            }
+            .buttonStyle(PlainButtonStyle())
+            .accessibilityIdentifier(cancelIdentifier)
+
+            Button(action: {
+                UINotificationFeedbackGenerator().notificationOccurred(.success)
+                onSave()
+            }) {
+                Text(saveTitle)
+                    .font(OPSStyle.Typography.captionBold)
+                    .tracking(0.5)
+                    .foregroundColor(isDirty
                         ? OPSStyle.Colors.invertedText
                         : OPSStyle.Colors.tertiaryText)
                     .frame(maxWidth: .infinity)
-                    .padding(.vertical, 10)
-                    .background(teamDraftIsDirty
+                    .frame(minHeight: OPSStyle.Layout.chipMinHeight)
+                    .background(isDirty
                         ? OPSStyle.Colors.primaryAccent
                         : OPSStyle.Colors.surfaceInput)
                     .cornerRadius(OPSStyle.Layout.buttonRadius)
             }
             .buttonStyle(PlainButtonStyle())
-            .disabled(!teamDraftIsDirty)
-            .accessibilityIdentifier("taskDetailTeamDoneButton")
+            .disabled(!isDirty)
+            .accessibilityIdentifier(saveIdentifier)
         }
-        .padding(.horizontal, OPSStyle.Layout.spacing3)
-        .padding(.top, OPSStyle.Layout.spacing2)
-        .padding(.bottom, OPSStyle.Layout.spacing1)
     }
 
     // MARK: - Static Info Row
@@ -516,24 +763,29 @@ struct TaskDetailPopupSheet: View {
 
     private var actionButtons: some View {
         VStack(spacing: 10) {
+            // Reopening is a status change (tasks.change_status). Without the
+            // grant an inactive task simply has no action — SELECT is not an
+            // option either, since selecting requires reopening first.
             if isInactive {
-                Button(action: {
-                    showReopenAlert = true
-                }) {
-                    Text("REOPEN TO SELECT")
-                        .font(OPSStyle.Typography.captionBold)
-                        .tracking(0.5)
-                        .foregroundColor(OPSStyle.Colors.warningStatus)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 14)
-                        .background(OPSStyle.Colors.warningStatus.opacity(0.1))
-                        .cornerRadius(OPSStyle.Layout.buttonRadius)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius)
-                                .stroke(OPSStyle.Colors.warningStatus.opacity(0.3), lineWidth: 1)
-                        )
+                if canChangeStatus {
+                    Button(action: {
+                        showReopenAlert = true
+                    }) {
+                        Text("REOPEN TO SELECT")
+                            .font(OPSStyle.Typography.captionBold)
+                            .tracking(0.5)
+                            .foregroundColor(OPSStyle.Colors.warningStatus)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 14)
+                            .background(OPSStyle.Colors.warningStatus.opacity(0.1))
+                            .cornerRadius(OPSStyle.Layout.buttonRadius)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius)
+                                    .stroke(OPSStyle.Colors.warningStatus.opacity(0.3), lineWidth: 1)
+                            )
+                    }
+                    .buttonStyle(PlainButtonStyle())
                 }
-                .buttonStyle(PlainButtonStyle())
             } else {
                 Button(action: {
                     onSelect(task)
@@ -550,7 +802,7 @@ struct TaskDetailPopupSheet: View {
                 .buttonStyle(PlainButtonStyle())
             }
 
-            if task.status == .active && !isProjectCompleted {
+            if task.status == .active && !isProjectCompleted && canChangeStatus {
                 Button(action: {
                     showCancelAlert = true
                 }) {

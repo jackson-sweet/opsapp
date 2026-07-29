@@ -832,7 +832,16 @@ struct CalendarSchedulerSheet: View {
         let windowEnd = calendar.date(byAdding: .month, value: 13, to: anchorMonth) ?? anchorMonth
 
         let crewIds = currentItemTeamMemberIds
-        let tasks = dataController.getScheduledTasks(in: windowStart...windowEnd)
+
+        // Bug 9997c11c — an archived job is not a commitment. Filtered here,
+        // post-fetch, rather than inside `getScheduledTasks(in:)`: that fetcher
+        // is shared with conflict math and auto-scheduling owned elsewhere.
+        // Left unfiltered, a filed-away job manufactured a phantom clash and
+        // steered the operator off a day that was actually free.
+        let tasks = CalendarTaskVisibility.visible(
+            dataController.getScheduledTasks(in: windowStart...windowEnd),
+            archivedProjectIds: CalendarTaskVisibility.archivedProjectIds(in: modelContext)
+        )
         let userEvents = dataController.getUserEvents(in: windowStart...windowEnd)
 
         // Resolve crew names from the company roster ONCE, by id. A task's

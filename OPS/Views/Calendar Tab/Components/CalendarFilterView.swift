@@ -235,7 +235,10 @@ struct CalendarFilterView: View {
 
                 Divider().background(OPSStyle.Colors.separator)
 
-                ForEach(Array(Status.allCases.enumerated()), id: \.offset) { index, status in
+                // Archived is deliberately absent — the calendar can never show
+                // an archived job (bug 9997c11c), so offering it would ship a
+                // filter that always returns nothing.
+                ForEach(Array(CalendarTaskVisibility.filterableStatuses.enumerated()), id: \.offset) { index, status in
                     HStack(spacing: OPSStyle.Layout.spacing2_5) {
                         Circle()
                             .fill(status.color)
@@ -264,7 +267,7 @@ struct CalendarFilterView: View {
                         }
                     }
 
-                    if index < Status.allCases.count - 1 {
+                    if index < CalendarTaskVisibility.filterableStatuses.count - 1 {
                         Divider()
                             .background(OPSStyle.Colors.separator)
                             .padding(.leading, OPSStyle.Layout.spacing3)

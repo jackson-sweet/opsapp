@@ -109,6 +109,11 @@ class DeckBuilderViewModel: ObservableObject {
     @Published var showingClearConfirm: Bool = false
     @Published var isEditingTitle: Bool = false
     @Published var editingEdgeId: String?
+    /// Edge the stair sheet's picker is currently focused on. The canvas
+    /// paints it so the operator can see WHICH edge a picker row means —
+    /// row text alone never told them (bug 2f717747). Cleared when the sheet
+    /// goes away.
+    @Published var highlightedEdgeId: String?
     @Published var editingVertexId: String?
 
     // MARK: - 3D Mode
@@ -223,15 +228,6 @@ class DeckBuilderViewModel: ObservableObject {
     var isMultiLevel: Bool { drawingData.isMultiLevel }
     var levelCount: Int { drawingData.levels.count }
     var canAddLevel: Bool { !drawingData.isMultiLevel || drawingData.levels.count < 3 }
-    /// Two closed levels are enough to connect — heights resolve through the
-    /// render ladder even before the user sets them explicitly, so gating on a
-    /// non-nil `elevation` just hid the CONNECT entry point on real drawings
-    /// (saved levels almost never carried one).
-    var canConnectLevels: Bool {
-        drawingData.levels.count >= 2 &&
-        drawingData.levels.filter({ $0.isClosed }).count >= 2
-    }
-
     // MARK: - Active Level Routing
 
     /// Vertices for the currently active drawing context
@@ -2821,10 +2817,23 @@ class DeckBuilderViewModel: ObservableObject {
         save()
     }
 
+    /// Sets a vertex's footing type through the ACTIVE level's store, with
+    /// undo. The Properties sheet used to write straight through
+    /// `drawingData.updateVertex`, which only touches the top-level vertices
+    /// array — empty on a multi-level drawing, so the picker silently did
+    /// nothing there — and it recorded no undo step. Bug ee41a0a0.
+    func setFootingType(_ type: FootingType, forVertexId id: String) {
+        guard var vertex = findVertex(byId: id), vertex.footingType != type else { return }
+        pushUndo("set footing")
+        vertex.footingType = type
+        activeUpdateVertex(vertex)
+        save()
+    }
+
     /// Sets `color` on every currently-selected surface. Falls back to
     /// the active footprint when no surface is selected (mirrors
     /// `assignItemToFootprint`'s legacy fallback). DEC-CAT-1.
-    func setColorOnSelectedSurfaces(_ color: String) {
+    func setColorOnSelectedSurfaces(_ color: String?) {
         let targetIds = selection.selectedSurfaceIds
         guard !targetIds.isEmpty else { return }
         pushUndo("set surface color")
@@ -2837,7 +2846,7 @@ class DeckBuilderViewModel: ObservableObject {
     }
 
     /// Sets `boardMaterial` on every currently-selected surface.
-    func setMaterialOnSelectedSurfaces(_ material: String) {
+    func setMaterialOnSelectedSurfaces(_ material: String?) {
         let targetIds = selection.selectedSurfaceIds
         guard !targetIds.isEmpty else { return }
         pushUndo("set surface material")

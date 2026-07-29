@@ -15,28 +15,11 @@ struct LevelTabBar: View {
                     levelTab(level: level, index: index)
                 }
 
-                // Connect levels button (Add Level moved to toolbar) — opens
-                // the stair sheet in Level mode with its edge picker, the same
-                // surface an edge tap reaches. One stair flow, two doors.
-                if viewModel.canConnectLevels {
-                    Button {
-                        viewModel.editingEdgeId = nil
-                        viewModel.showingStairConfig = true
-                    } label: {
-                        HStack(spacing: OPSStyle.Layout.spacing1) {
-                            Image(systemName: "arrow.up.arrow.down")
-                                .font(OPSStyle.Typography.smallCaption)
-                            Text("Connect")
-                                .font(OPSStyle.Typography.caption)
-                        }
-                        .foregroundColor(LevelColor.amber.swiftUIColor)
-                        .padding(.horizontal, OPSStyle.Layout.spacing2_5)
-                        .padding(.vertical, OPSStyle.Layout.spacing2)
-                        .background(LevelColor.amber.swiftUIColor.opacity(0.1))
-                        .cornerRadius(OPSStyle.Layout.cornerRadius)
-                    }
-                    .frame(minHeight: OPSStyle.Layout.touchTargetMin)
-                }
+                // No CONNECT button. It opened the stair sheet with no edge
+                // chosen — a second door into the same flow that dropped the
+                // operator on a picker instead of the stairs they asked for,
+                // and that nothing on the canvas explained. Stairs are added
+                // where they exist: tap the edge (bug 2f717747).
 
                 Spacer()
             }

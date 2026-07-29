@@ -386,7 +386,11 @@ final class VinylOrdersBoardSnapshotTests: XCTestCase {
     // MARK: - Harness (UIHostingController + drawHierarchy — never ImageRenderer)
 
     private func renderToPNG(_ name: String, settle: TimeInterval = 0.6, @ViewBuilder _ make: () -> some View) {
-        let host = UIHostingController(rootView: make().frame(width: frameSize.width, height: frameSize.height))
+        // A UIWindow inherits the device safe-area insets whatever its frame —
+        // ignoring safe area keeps the board at its natural origin instead of
+        // displaced down with the wizard CTAs bottom-clipped
+        // (same correction as DaySheetRowSnapshotTests).
+        let host = UIHostingController(rootView: make().frame(width: frameSize.width, height: frameSize.height).ignoresSafeArea())
         host.overrideUserInterfaceStyle = .dark
         host.view.frame = CGRect(origin: .zero, size: frameSize)
         host.view.backgroundColor = .black

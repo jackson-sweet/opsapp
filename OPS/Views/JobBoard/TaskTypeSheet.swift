@@ -824,13 +824,7 @@ struct TaskTypeSheet: View {
     }
 
     private func formatLinkedProductPrice(_ product: Product) -> String {
-        let f = NumberFormatter()
-        f.numberStyle = .currency
-        f.currencyCode = "USD"
-        f.minimumFractionDigits = 0
-        f.maximumFractionDigits = 2
-        let priceStr = f.string(from: NSNumber(value: product.basePrice)) ?? "$\(product.basePrice)"
-        return "\(priceStr)/\(product.pricingUnit.rawValue)".uppercased()
+        "\(BooksFormat.price(product.basePrice))/\(product.pricingUnit.rawValue)".uppercased()
     }
 
     // MARK: - Default Sub-Tasks Section (bug 4dadd96c)

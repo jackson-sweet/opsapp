@@ -118,7 +118,7 @@ struct InvoiceDetailView: View {
             }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("This will write off \(invoice.invoiceNumber) (\(LineItemDisplay.money(invoice.balanceDue))) as bad debt. This action cannot be undone.")
+            Text("This will write off \(invoice.invoiceNumber) (\(BooksFormat.exact(invoice.balanceDue))) as bad debt. This action cannot be undone.")
         }
         .sheet(isPresented: $showPaymentSheet) {
             PaymentRecordSheet(invoice: invoice, viewModel: viewModel)
@@ -145,7 +145,7 @@ struct InvoiceDetailView: View {
             }
 
             HStack(spacing: OPSStyle.Layout.spacing2) {
-                Text(LineItemDisplay.money(invoice.total))
+                Text(BooksFormat.exact(invoice.total))
                     .font(OPSStyle.Typography.body)
                     .foregroundColor(OPSStyle.Colors.primaryText)
 
@@ -251,7 +251,7 @@ struct InvoiceDetailView: View {
                     .foregroundColor(OPSStyle.Colors.primaryText)
                     .lineLimit(1)
                 Spacer()
-                Text(LineItemDisplay.money(item.lineTotal))
+                Text(BooksFormat.exact(item.lineTotal))
                     .font(OPSStyle.Typography.body)
                     .foregroundColor(OPSStyle.Colors.primaryText)
             }
@@ -298,7 +298,7 @@ struct InvoiceDetailView: View {
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
             }
             Spacer()
-            Text(LineItemDisplay.money(item.lineTotal))
+            Text(BooksFormat.exact(item.lineTotal))
                 .font(OPSStyle.Typography.caption)
                 .foregroundColor(OPSStyle.Colors.secondaryText)
         }
@@ -336,7 +336,7 @@ struct InvoiceDetailView: View {
                         .font(OPSStyle.Typography.smallCaption)
                         .foregroundColor(OPSStyle.Colors.secondaryText)
                     Spacer()
-                    Text(LineItemDisplay.money(invoice.subtotal))
+                    Text(BooksFormat.exact(invoice.subtotal))
                         .font(OPSStyle.Typography.body)
                         .foregroundColor(OPSStyle.Colors.secondaryText)
                 }
@@ -354,7 +354,7 @@ struct InvoiceDetailView: View {
                             .font(OPSStyle.Typography.smallCaption)
                             .foregroundColor(OPSStyle.Colors.secondaryText)
                         Spacer()
-                        Text("−\(LineItemDisplay.money(discount))")
+                        Text("−\(BooksFormat.exact(discount))")
                             .font(OPSStyle.Typography.body)
                             .foregroundColor(OPSStyle.Colors.secondaryText)
                     }
@@ -366,7 +366,7 @@ struct InvoiceDetailView: View {
                             .font(OPSStyle.Typography.smallCaption)
                             .foregroundColor(OPSStyle.Colors.secondaryText)
                         Spacer()
-                        Text(LineItemDisplay.money(invoice.taxAmount))
+                        Text(BooksFormat.exact(invoice.taxAmount))
                             .font(OPSStyle.Typography.body)
                             .foregroundColor(OPSStyle.Colors.secondaryText)
                     }
@@ -378,7 +378,7 @@ struct InvoiceDetailView: View {
                         .fontWeight(.semibold)
                         .foregroundColor(OPSStyle.Colors.primaryText)
                     Spacer()
-                    Text(LineItemDisplay.money(invoice.total))
+                    Text(BooksFormat.exact(invoice.total))
                         .font(OPSStyle.Typography.body)
                         .fontWeight(.semibold)
                         .foregroundColor(OPSStyle.Colors.primaryText)
@@ -390,7 +390,7 @@ struct InvoiceDetailView: View {
                             .font(OPSStyle.Typography.smallCaption)
                             .foregroundColor(OPSStyle.Colors.successStatus)
                         Spacer()
-                        Text(LineItemDisplay.money(invoice.amountPaid))
+                        Text(BooksFormat.exact(invoice.amountPaid))
                             .font(OPSStyle.Typography.body)
                             .foregroundColor(OPSStyle.Colors.successStatus)
                     }
@@ -401,7 +401,7 @@ struct InvoiceDetailView: View {
                             .fontWeight(.semibold)
                             .foregroundColor(invoice.isOverdue ? OPSStyle.Colors.errorStatus : OPSStyle.Colors.primaryText)
                         Spacer()
-                        Text(LineItemDisplay.money(invoice.balanceDue))
+                        Text(BooksFormat.exact(invoice.balanceDue))
                             .font(OPSStyle.Typography.body)
                             .fontWeight(.semibold)
                             .foregroundColor(invoice.isOverdue ? OPSStyle.Colors.errorStatus : OPSStyle.Colors.primaryText)
@@ -449,7 +449,7 @@ struct InvoiceDetailView: View {
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
             }
             Spacer()
-            Text(LineItemDisplay.money(payment.amount))
+            Text(BooksFormat.exact(payment.amount))
                 .font(OPSStyle.Typography.body)
                 .foregroundColor(payment.isVoided ? OPSStyle.Colors.tertiaryText : OPSStyle.Colors.successStatus)
             if payment.isVoided {
@@ -479,7 +479,7 @@ struct InvoiceDetailView: View {
                         Text("BALANCE DUE")
                             .font(OPSStyle.Typography.smallCaption)
                             .foregroundColor(OPSStyle.Colors.secondaryText)
-                        Text(LineItemDisplay.money(invoice.balanceDue))
+                        Text(BooksFormat.exact(invoice.balanceDue))
                             .font(OPSStyle.Typography.subtitle)
                             .foregroundColor(invoice.isOverdue ? OPSStyle.Colors.errorStatus : OPSStyle.Colors.primaryText)
                     }

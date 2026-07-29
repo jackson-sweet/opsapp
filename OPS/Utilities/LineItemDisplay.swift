@@ -8,42 +8,32 @@
 //  and estimate form all present the same document the same way (and match
 //  the web's canonical rendering: name / qty unit × unit price / line total).
 //
-//  Money on document surfaces always shows exact cents. Line totals are a
-//  server-generated column (`round(qty × price × (1 − discount), 2)`), so the
-//  meta this file produces always reconciles with the stored total — rounding
-//  to whole dollars is what made rows read as "not displaying properly"
-//  (bug a8e156a2: a 2 × $250 row rendered with no math at all).
+//  Money on document surfaces always shows exact cents — `BooksFormat.exact`,
+//  the app-wide en_US-pinned money formatter (this file's `money` helper grew
+//  into it). Line totals are a server-generated column
+//  (`round(qty × price × (1 − discount), 2)`), so the meta this file produces
+//  always reconciles with the stored total — rounding to whole dollars is
+//  what made rows read as "not displaying properly" (bug a8e156a2: a
+//  2 × $250 row rendered with no math at all).
 //
 
 import Foundation
 
 enum LineItemDisplay {
 
-    /// Money and numbers on financial documents are locked to en_US — the
-    /// same canon as web's `formatCurrency` (`Intl.NumberFormat("en-US")`).
-    /// Left to the device locale, `.currency(code: "USD")` renders "US$500.00"
-    /// on Canadian-region phones — a wrong-looking document for the exact
-    /// users OPS serves. One document, one rendering, on every device.
-    private static let documentLocale = Locale(identifier: "en_US")
-
-    /// Exact money for document surfaces: always "$1,223.58" — two decimals,
-    /// plain dollar sign, device region irrelevant.
-    static func money(_ value: Double) -> String {
-        value.formatted(.currency(code: "USD").locale(documentLocale))
-    }
-
     /// Quantities trimmed of trailing zeros, up to 3 decimal places —
     /// `line_items.quantity` is numeric with 3-decimal scale.
     /// 2 → "2", 2.5 → "2.5", 2.25 → "2.25", 0.125 → "0.125".
+    /// Pinned to the shared canon locale so decimals never render "2,5".
     static func quantityString(_ quantity: Double) -> String {
-        quantity.formatted(.number.precision(.fractionLength(0...3)).locale(documentLocale))
+        quantity.formatted(.number.precision(.fractionLength(0...3)).locale(BooksFormat.locale))
     }
 
     /// Tax rates trimmed of trailing zeros — `estimates.tax_rate` is numeric
     /// with 4-decimal scale, so fractional rates (7.5, 8.25) are live data.
     /// 13.0000 → "13", 7.5 → "7.5", 8.25 → "8.25".
     static func taxRateString(_ rate: Double) -> String {
-        rate.formatted(.number.precision(.fractionLength(0...4)).grouping(.never).locale(documentLocale))
+        rate.formatted(.number.precision(.fractionLength(0...4)).grouping(.never).locale(BooksFormat.locale))
     }
 
     /// The per-row math meta: "2 each × $250.00" (or "2 × $250.00" with no
@@ -55,7 +45,7 @@ enum LineItemDisplay {
         unitPrice: Double,
         resolvedUnitPrice: Double? = nil
     ) -> String {
-        let price = money(resolvedUnitPrice ?? unitPrice)
+        let price = BooksFormat.exact(resolvedUnitPrice ?? unitPrice)
         let qty = quantityString(quantity)
         if let unit, !unit.isEmpty {
             return "\(qty) \(unit) × \(price)"

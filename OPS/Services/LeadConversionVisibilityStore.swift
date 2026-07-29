@@ -48,6 +48,23 @@ final class LeadConversionVisibilityStore: ObservableObject {
         persist()
     }
 
+    /// Self-repair for leads damaged before bug ced5b3cb was fixed.
+    ///
+    /// The old already-converted path read the RPC's hardcoded
+    /// `project_accessible = false` as a real access denial: it nulled the
+    /// lead's project link AND set this marker, which is persisted — so MATCH
+    /// PROJECT stayed hidden on that lead across relaunches, forever, with no
+    /// way back. A lead that demonstrably HAS a project link is proof the
+    /// marker is stale. Clear it the next time the lead is opened; no operator
+    /// action, no announcement.
+    func repairIfLinked(leadId: String, projectId: String?) {
+        guard let projectId,
+              !projectId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return
+        }
+        clear(leadId)
+    }
+
     private func persist() {
         defaults.set(
             committedWithoutAccessibleProjectLeadIds.sorted(),

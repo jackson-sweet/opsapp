@@ -555,7 +555,7 @@ class AppState: ObservableObject {
 
         let overdueCount = overdueInvoices.count
         let totalOverdue = overdueInvoices.reduce(0.0) { $0 + $1.balanceDue }
-        let formattedTotal = String(format: "$%.2f", totalOverdue)
+        let formattedTotal = BooksFormat.exact(totalOverdue)
 
         Task {
             // Notify users with invoices.record_payment — they can act on the

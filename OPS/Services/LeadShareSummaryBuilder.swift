@@ -89,10 +89,7 @@ enum LeadShareSummaryBuilder {
     }
 
     static func formatMoney(_ value: Double) -> String {
-        let formatter = NumberFormatter()
-        formatter.numberStyle = .decimal
-        formatter.maximumFractionDigits = 0
-        return "$" + (formatter.string(from: NSNumber(value: value)) ?? String(Int(value)))
+        BooksFormat.currency(value)
     }
 
     // MARK: - Packet assembly

@@ -33,7 +33,7 @@ struct PaymentRecordSheet: View {
                             .font(OPSStyle.Typography.body)
                             .foregroundColor(OPSStyle.Colors.primaryText)
                         Spacer()
-                        Text("Balance: \(invoice.balanceDue, format: .currency(code: "USD").precision(.fractionLength(2)))")
+                        Text("Balance: \(BooksFormat.exact(invoice.balanceDue))")
                             .font(OPSStyle.Typography.body)
                             .foregroundColor(OPSStyle.Colors.secondaryText)
                     }

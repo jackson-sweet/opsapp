@@ -119,6 +119,15 @@
 //  The exact released V18 Opportunity graph is frozen under
 //  `OPSSchemaLegacyOpportunityV18`; the widened live model starts at V19.
 //
+//  V19 → V20 stage: per-message email identity on the activity feed. Activity
+//  gains five additive attributes (`emailMessageId`, `emailThreadId`,
+//  `fromEmail`, plus the `toEmails` / `ccEmails` string arrays) so the lead
+//  feed can say who a message was actually between instead of rendering every
+//  message in a thread identically (bug 183f7ec9). New optionals and defaulted
+//  arrays are an inferable lightweight transform. Activity is version-scoped at
+//  this boundary — the frozen `OPSSchemaLegacyActivityV19` backs V14–V19, the
+//  widened live model backs V20+ — so six released fingerprints stay exact.
+//
 
 import Foundation
 import SwiftData
@@ -144,7 +153,8 @@ enum OPSMigrationPlan: SchemaMigrationPlan {
             OPSSchemaV16.self,
             OPSSchemaV17.self,
             OPSSchemaV18.self,
-            OPSSchemaV19.self
+            OPSSchemaV19.self,
+            OPSSchemaV20.self
         ]
     }
 
@@ -167,9 +177,19 @@ enum OPSMigrationPlan: SchemaMigrationPlan {
             addOpportunityMediaAndDeckLeadV15toV16,
             addVinylOrderColorPOV16toV17,
             addOpportunityAssignmentAndChaseV17toV18,
-            addOpportunityActionRequiredV18toV19
+            addOpportunityActionRequiredV18toV19,
+            addActivityEmailIdentityV19toV20
         ]
     }
+
+    /// V19 → V20: additive per-message email identity on `Activity`. Existing
+    /// rows receive nil for the three optionals and empty arrays for
+    /// `toEmails` / `ccEmails`; the frozen V19 Activity shape preserves the
+    /// released checksums while V20 registers the widened live model.
+    static let addActivityEmailIdentityV19toV20 = MigrationStage.lightweight(
+        fromVersion: OPSSchemaV19.self,
+        toVersion: OPSSchemaV20.self
+    )
 
     /// V18 → V19: additive lead-ownership correction signal. Existing leads
     /// receive nil; the frozen V18 Opportunity shape preserves the released

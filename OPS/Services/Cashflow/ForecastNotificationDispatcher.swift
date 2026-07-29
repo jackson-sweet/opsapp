@@ -100,7 +100,7 @@ actor ForecastNotificationDispatcher {
 
     private func fireDipNotification(result: ForecastResult, prior: ForecastAlertDTO?) async {
         let lowestWeek = result.weeks[result.lowestWeekIndex]
-        let body = "Balance drops to \(formatCurrency(result.lowestBalance)) the week of \(formatWeek(lowestWeek.weekStart))."
+        let body = "Balance drops to \(BooksFormat.currency(result.lowestBalance)) the week of \(formatWeek(lowestWeek.weekStart))."
 
         let recipients: [String]
         do {
@@ -176,14 +176,6 @@ actor ForecastNotificationDispatcher {
             dismissedUntilBalance: nil
         )
         _ = try? await alertRepo.upsert(payload)
-    }
-
-    private func formatCurrency(_ amount: Double) -> String {
-        let f = NumberFormatter()
-        f.numberStyle = .currency
-        f.currencyCode = "USD"
-        f.maximumFractionDigits = 0
-        return f.string(from: NSNumber(value: amount)) ?? "$\(Int(amount))"
     }
 
     private func formatWeek(_ date: Date) -> String {

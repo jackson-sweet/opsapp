@@ -34,7 +34,9 @@ struct LeadActivityHistoryView: View {
                             .padding(.top, OPSStyle.Layout.spacing2_5)
                             .padding(.bottom, 10)
 
-                        VStack(spacing: 0) {
+                        // Uncapped history — lazy so a lead with hundreds of
+                        // messages does not build every row up front.
+                        LazyVStack(spacing: 0) {
                             ForEach(entries) { entry in
                                 LeadStreamRow(
                                     entry: entry,

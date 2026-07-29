@@ -884,6 +884,56 @@ enum OPSSchemaLegacyActivity {
     }
 }
 
+/// `Activity` exactly as it shipped from V14 through V19 — unified lead/client/
+/// job parents and call provenance, but WITHOUT the per-message email identity
+/// (`emailMessageId` / `emailThreadId` / `fromEmail` / `toEmails` / `ccEmails`).
+/// The live model gains those five at V20. Freezing this graph keeps every
+/// released V14–V19 fingerprint exact — the same version-scoping used at the
+/// V13→V14 boundary (`OPSSchemaLegacyActivity`). Migration-fingerprint only;
+/// runtime code always uses the top-level `Activity`.
+enum OPSSchemaLegacyActivityV19 {
+    @Model
+    final class Activity: Identifiable {
+        @Attribute(.unique) var id: String
+        var opportunityId: String?
+        var clientId: String?
+        var projectId: String?
+        var companyId: String
+        var type: ActivityType
+        var subject: String?
+        var bodyText: String?
+        var content: String?
+        var direction: String?
+        var outcome: String?
+        var durationMinutes: Int?
+        var callSource: String?
+        var callerNumber: String?
+        var callStartedAt: Date?
+        var isRead: Bool
+        var hasAttachments: Bool
+        var attachmentCount: Int
+        var createdBy: String?
+        var createdAt: Date
+
+        init(
+            id: String = UUID().uuidString,
+            opportunityId: String? = nil,
+            companyId: String,
+            type: ActivityType,
+            createdAt: Date = Date()
+        ) {
+            self.id = id
+            self.opportunityId = opportunityId
+            self.companyId = companyId
+            self.type = type
+            self.isRead = false
+            self.hasAttachments = false
+            self.attachmentCount = 0
+            self.createdAt = createdAt
+        }
+    }
+}
+
 /// Frozen `ProjectNote` shape as it shipped through V1–V12 — WITHOUT the
 /// `eventKind` / `contentMetadataJSON` system-event columns. The live top-level
 /// `ProjectNote` adds those two optional attributes (live `project_notes`
@@ -1258,12 +1308,21 @@ enum OPSSchemaCommon {
         OPSSchemaLegacyActivity.Activity.self
     ]
 
-    /// Activity from V14 onward — the live model with optional `opportunityId`
-    /// plus `clientId`/`projectId`, so an activity can be parented to a lead,
-    /// a client, OR a job. Mirror of `v11SiteVisitModel`. (The `v13` suffix is
-    /// the pre-consolidation introduction version; after the three-way schema
-    /// reconciliation this live shape first appears at V14.)
+    /// Activity across V14–V19 — optional `opportunityId` plus `clientId` /
+    /// `projectId`, so an activity can be parented to a lead, a client, OR a
+    /// job. Frozen at `OPSSchemaLegacyActivityV19` because V20 widens the live
+    /// model with per-message email identity; without the freeze that addition
+    /// would rewrite six released fingerprints. Mirror of `v11SiteVisitModel`.
+    /// (The `v13` suffix is the pre-consolidation introduction version; after
+    /// the three-way schema reconciliation this shape first appears at V14.)
     static let v13ActivityModel: [any PersistentModel.Type] = [
+        OPSSchemaLegacyActivityV19.Activity.self
+    ]
+
+    /// Activity from V20 onward — the live model, including the per-message
+    /// email identity the lead activity feed reads (bug 183f7ec9). Mirror of
+    /// `v19OpportunityModel`.
+    static let v20ActivityModel: [any PersistentModel.Type] = [
         Activity.self
     ]
 

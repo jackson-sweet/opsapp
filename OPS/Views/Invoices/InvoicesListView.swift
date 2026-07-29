@@ -131,7 +131,7 @@ struct InvoicesListView: View {
             Button("Cancel", role: .cancel) {}
         } message: {
             if let inv = writeOffTarget {
-                Text("This will write off \(inv.invoiceNumber) (\(inv.balanceDue, format: .currency(code: "USD"))) as bad debt. This action cannot be undone.")
+                Text("This will write off \(inv.invoiceNumber) (\(BooksFormat.exact(inv.balanceDue))) as bad debt. This action cannot be undone.")
             }
         }
         .errorToast($viewModel.error, label: Feedback.Err.operationFailed)

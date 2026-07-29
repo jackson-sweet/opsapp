@@ -167,7 +167,7 @@ struct ProjectPaymentReviewView: View {
         } message: {
             if let project = pendingWriteOffProject,
                let summary = financialsByProjectID[project.id] {
-                Text("This writes off \(summary.outstandingBalance.formatted(.currency(code: summary.currencyCode))) and closes the project. This cannot be undone.")
+                Text("This writes off \(BooksFormat.exact(summary.outstandingBalance, code: summary.currencyCode)) and closes the project. This cannot be undone.")
             }
         }
     }

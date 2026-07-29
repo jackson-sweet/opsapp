@@ -58,13 +58,6 @@ struct ProgressInvoiceSheet: View {
         selections.values.contains { $0.isSelected && $0.percentage > 0 }
     }
 
-    private static let currencyFormatter: NumberFormatter = {
-        let f = NumberFormatter()
-        f.numberStyle = .currency
-        f.locale = .current
-        return f
-    }()
-
     // MARK: - Body
 
     var body: some View {
@@ -398,7 +391,7 @@ struct ProgressInvoiceSheet: View {
     }
 
     private func formatted(_ value: Double) -> String {
-        Self.currencyFormatter.string(from: NSNumber(value: value)) ?? "$\(value)"
+        BooksFormat.exact(value)
     }
 
     private func percentageString(_ value: Double) -> String {

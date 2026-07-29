@@ -49,7 +49,8 @@ final class SpotlightItemBuilderTests: XCTestCase {
         XCTAssertEqual(item.uniqueIdentifier, "co.opsapp.spotlight.invoice:inv1")
         XCTAssertTrue(item.attributeSet.contentDescription?.contains("Kitchen reno") ?? false)
         XCTAssertTrue(item.attributeSet.contentDescription?.contains("Acme Corp") ?? false)
-        XCTAssertTrue(item.attributeSet.contentDescription?.contains("1234.56") ?? false)
+        // Money in Spotlight follows the BooksFormat canon — grouped, exact cents.
+        XCTAssertTrue(item.attributeSet.contentDescription?.contains("$1,234.56") ?? false)
     }
 
     func test_estimate_item_falls_back_to_default_title_when_empty() {

@@ -30,6 +30,7 @@
 //
 
 import Foundation
+import SwiftData
 import Supabase
 
 private struct MatchCandidateProjectLinkRow: Decodable {
@@ -112,11 +113,16 @@ final class LeadConversionService {
     private let client: SupabaseClient
     private let projectRepo: ProjectRepository
     private let companyId: String
+    /// The local store the committed project must land in. Required, not
+    /// optional: a conversion whose project is never cached leaves every
+    /// project-by-id lookup in the app empty-handed (bug 4cbf2efe).
+    private let modelContext: ModelContext
 
-    init(companyId: String) {
+    init(companyId: String, modelContext: ModelContext) {
         self.client = SupabaseService.shared.client
         self.companyId = companyId
         self.projectRepo = ProjectRepository(companyId: companyId)
+        self.modelContext = modelContext
     }
 
     // MARK: - Network fetches
@@ -312,8 +318,7 @@ final class LeadConversionService {
 
         case .fetchProject(let projectId):
             do {
-                let dto = try await projectRepo.fetchOne(projectId)
-                return .project(dto.toModel())
+                return .project(try await hydrateAndCacheProject(projectId))
             } catch {
                 // The guarded transaction already committed. A secondary read
                 // failure must never invite a retry of the conversion or leak a
@@ -321,7 +326,29 @@ final class LeadConversionService {
                 print("[CONVERT] Project committed; hydration unavailable: \(error)")
                 return .committedWithoutAccessibleProject
             }
+
+        case .recoverConvertedProject(let projectId):
+            do {
+                return .project(try await hydrateAndCacheProject(projectId))
+            } catch {
+                // The idempotent branch already told us WHICH project this lead
+                // owns; only the hydrating read failed. Surfacing that as "no
+                // accessible project" is what let the client wipe the lead's
+                // local link (bug ced5b3cb-B). Keep the identity.
+                print("[CONVERT] Already-converted project \(projectId) not hydratable: \(error)")
+                return .committedWithKnownProject(projectId: projectId)
+            }
         }
+    }
+
+    /// Fetches the authoritative project row and writes it into the local
+    /// store through the same seam realtime uses, returning the CACHED model.
+    /// A detached `toModel()` result is precisely the bug this replaces.
+    private func hydrateAndCacheProject(_ projectId: String) async throws -> Project {
+        let dto = try await projectRepo.fetchOne(projectId)
+        let project = try ProjectCacheMerge.apply(dto: dto, context: modelContext)
+        InboundChangeSignal.post(entityNames: ["Project"])
+        return project
     }
 
     // MARK: - Error mapping
@@ -342,7 +369,13 @@ final class LeadConversionService {
             || description.contains("belongs to another opportunity")
             || description.contains("opportunity is already linked to another project")
             || description.contains("opportunity project mirrors disagree") {
-            return LeadConversionError.projectLinkUnavailable
+            // The RPC suffixes `project_link_unavailable` with WHY the door is
+            // closed. Collapsing all four into one message told the operator
+            // nothing about which corrective action was theirs to take.
+            let reason = ProjectLinkFailureReason.allCases.first {
+                description.contains($0.rawValue)
+            }
+            return LeadConversionError.projectLinkUnavailable(reason: reason)
         }
         if description.contains("invalid_assignment_snapshot") {
             return LeadConversionError.assignmentChanged
@@ -358,13 +391,25 @@ final class LeadConversionService {
 
 enum LeadConversionOutcome {
     case project(Project)
+    /// Committed, and the server named the project — but the row could not be
+    /// hydrated on this attempt. The identity is authoritative: callers keep
+    /// the lead's local link and let the project sheet self-heal.
+    case committedWithKnownProject(projectId: String)
     /// The conversion is committed, but there is no project identity the
     /// current operator may safely use for navigation or retry behavior.
     case committedWithoutAccessibleProject
 }
 
 enum LeadConversionDisposition: Equatable {
+    /// Fresh commit whose `project_accessible` was genuinely computed.
     case fetchProject(projectId: String)
+    /// Idempotent already-converted branch. It returns a REAL project id while
+    /// hardcoding `project_accessible = false` (verified in prod 2026-07-29 —
+    /// only the success branch computes the flag). Its access answer proves
+    /// nothing, so recover by identity and never destroy local link state.
+    /// A drafted server migration makes the flag honest; this disposition
+    /// simply stops being reached once it lands.
+    case recoverConvertedProject(projectId: String)
     case committedWithoutAccessibleProject
 }
 
@@ -386,14 +431,42 @@ enum LeadConversionOutcomeResolver {
               let projectAccessible = result.projectAccessible else {
             throw LeadConversionError.unverifiedResult
         }
+
+        let projectId = result.projectId?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .nilIfEmpty
+
         guard projectAccessible else {
+            // Only the already-converted branch pairs a real id with a
+            // hardcoded-false flag. A FRESH commit reporting inaccessible is a
+            // computed answer and keeps withholding the identity.
+            if result.alreadyConverted == true, let projectId {
+                return .recoverConvertedProject(projectId: projectId)
+            }
             return .committedWithoutAccessibleProject
         }
-        guard let projectId = result.projectId, !projectId.isEmpty else {
+        guard let projectId else {
             throw LeadConversionError.unverifiedResult
         }
         return .fetchProject(projectId: projectId)
     }
+}
+
+private extension String {
+    var nilIfEmpty: String? { isEmpty ? nil : self }
+}
+
+/// The reason suffix the RPC appends to `project_link_unavailable`. Each is a
+/// different closed door, and each has a different corrective action.
+enum ProjectLinkFailureReason: String, CaseIterable, Equatable {
+    /// A nil-link CREATE was blocked by an active project at the same address.
+    case matchingProjectRequiresReview = "matching_project_requires_review"
+    /// Candidates exist, but this lead has no address to prove sameness with.
+    case addressRequiredForProjectMatch = "address_required_for_project_match"
+    /// The chosen target already belongs to a different lead.
+    case matchingProjectLinkConflict = "matching_project_link_conflict"
+    /// The server could not establish the dedupe evidence it needs.
+    case dedupeProofUnavailable = "dedupe_proof_unavailable"
 }
 
 enum LeadConversionError: LocalizedError {
@@ -406,8 +479,9 @@ enum LeadConversionError: LocalizedError {
     /// The stage or another guarded lead snapshot changed after sheet load.
     case leadChanged
     /// The selected project changed, disappeared, or no longer satisfies the
-    /// server's guarded evidence/link contract.
-    case projectLinkUnavailable
+    /// server's guarded evidence/link contract. The reason, when the server
+    /// named one, selects the operator copy.
+    case projectLinkUnavailable(reason: ProjectLinkFailureReason?)
     /// The server did not provide enough authoritative fields to prove commit.
     case unverifiedResult
 
@@ -421,8 +495,19 @@ enum LeadConversionError: LocalizedError {
             return "Lead assignment changed. Refresh before converting."
         case .leadChanged:
             return "Lead changed. Refresh before converting."
-        case .projectLinkUnavailable:
-            return "The project changed and must be reviewed before matching."
+        case .projectLinkUnavailable(let reason):
+            switch reason {
+            case .matchingProjectRequiresReview:
+                return "A project already exists at this address."
+            case .addressRequiredForProjectMatch:
+                return "Add an address before matching a project."
+            case .matchingProjectLinkConflict:
+                return "That project is already linked to another lead."
+            case .dedupeProofUnavailable:
+                return "Duplicate projects could not be confirmed. Try again."
+            case nil:
+                return "The project changed and must be reviewed before matching."
+            }
         case .unverifiedResult:
             return "Conversion could not be verified. Refresh before trying again."
         }

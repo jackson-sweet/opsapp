@@ -45,7 +45,7 @@ struct OPSApp: App {
     @State private var realtimeStopTask: Task<Void, Never>?
 
     // Create the model container for SwiftData.
-    // Schema is driven by the LATEST VersionedSchema (currently `OPSSchemaV19`)
+    // Schema is driven by the LATEST VersionedSchema (currently `OPSSchemaV20`)
     // and the container runs `OPSMigrationPlan` on launch so stores written by
     // earlier builds (e.g. pre-`WizardState.id`, pre-catalog, pre-reminders)
     // are migrated in place. **When you add a new VersionedSchema (V7, V8, …),
@@ -64,7 +64,7 @@ struct OPSApp: App {
     // unsynced data, so startup must preserve it and fail visibly rather than
     // attempting destructive recovery.
     var sharedModelContainer: ModelContainer = {
-        let schema = Schema(versionedSchema: OPSSchemaV19.self)
+        let schema = Schema(versionedSchema: OPSSchemaV20.self)
 
         let isHostedXCTest = ProcessInfo.processInfo.environment["XCTestBundlePath"] != nil
         #if DEBUG

@@ -64,6 +64,11 @@ final class ActivityMigrationTests: XCTestCase {
         // 2. Reopen the SAME file with the full migration plan + V14 schema.
         //    This drives V13 → V14 (opportunityId becomes optional; clientId /
         //    projectId columns are added).
+        //
+        //    NOTE: V14's `Activity` is the FROZEN V14–V19 shape
+        //    (`OPSSchemaLegacyActivityV19.Activity`), not the live model — the
+        //    live one starts at V20, where the per-message email identity was
+        //    added. A V14 container can only see the type V14 declares.
         let v14Schema = Schema(versionedSchema: OPSSchemaV14.self)
         let v14Config = ModelConfiguration(schema: v14Schema, url: storeURL)
         let migrated = try ModelContainer(
@@ -75,7 +80,9 @@ final class ActivityMigrationTests: XCTestCase {
 
         // 3. The pre-existing opportunity-linked activity survives with its
         //    opportunityId intact, and the new columns default to nil.
-        let activities = try context.fetch(FetchDescriptor<Activity>())
+        let activities = try context.fetch(
+            FetchDescriptor<OPSSchemaLegacyActivityV19.Activity>()
+        )
         XCTAssertEqual(activities.count, 1, "The V13 activity row must survive migration.")
         let migratedActivity = try XCTUnwrap(activities.first)
         XCTAssertEqual(migratedActivity.id, "act-v13")
@@ -89,7 +96,7 @@ final class ActivityMigrationTests: XCTestCase {
 
         // 4. The migrated (V14) store can now persist a CLIENT-parented activity
         //    (nil opportunityId, set clientId) — the point of the widening.
-        let clientActivity = Activity(
+        let clientActivity = OPSSchemaLegacyActivityV19.Activity(
             id: "act-client",
             opportunityId: nil,
             companyId: "company-1",
@@ -102,7 +109,7 @@ final class ActivityMigrationTests: XCTestCase {
                          "A client-parented activity (nil opportunityId, set clientId) must persist on the migrated store.")
 
         // 5. And a JOB-parented activity (projectId set).
-        let jobActivity = Activity(
+        let jobActivity = OPSSchemaLegacyActivityV19.Activity(
             id: "act-job",
             opportunityId: nil,
             companyId: "company-1",
@@ -113,7 +120,9 @@ final class ActivityMigrationTests: XCTestCase {
         XCTAssertNoThrow(try context.save(),
                          "A job-parented activity (nil opportunityId, set projectId) must persist on the migrated store.")
 
-        let all = try context.fetch(FetchDescriptor<Activity>())
+        let all = try context.fetch(
+            FetchDescriptor<OPSSchemaLegacyActivityV19.Activity>()
+        )
         XCTAssertEqual(all.count, 3)
         XCTAssertEqual(all.filter { $0.opportunityId == nil }.count, 2,
                        "Two client/job-parented activities should have a nil opportunityId.")

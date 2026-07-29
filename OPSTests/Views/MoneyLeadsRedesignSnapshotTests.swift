@@ -61,6 +61,10 @@ final class MoneyLeadsRedesignSnapshotTests: XCTestCase {
                 .frame(width: w)
                 .background(OPSStyle.Colors.background)
                 .environment(\.colorScheme, .dark)
+                // A UIWindow inherits the device safe-area insets whatever its
+                // frame — without this the content renders displaced and
+                // bottom-clipped (same correction as DaySheetRowSnapshotTests).
+                .ignoresSafeArea()
         )
         let fitted = host.sizeThatFits(in: CGSize(width: w, height: .greatestFiniteMagnitude))
         let size = CGSize(width: w, height: max(fitted.height, 10))

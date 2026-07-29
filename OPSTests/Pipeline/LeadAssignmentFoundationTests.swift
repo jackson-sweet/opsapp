@@ -177,36 +177,45 @@ final class LeadAssignmentFoundationTests: XCTestCase {
         )
     }
 
+    /// Bugs 5468b3c6 / ced5b3cb rewrote this contract deliberately. A chip that
+    /// cannot be matched no longer routes to `.open` (which DISMISSED the
+    /// convert sheet and navigated away, destroying the operator's form state);
+    /// it routes to `.peek`, a layer over the sheet. And "already linked to
+    /// another lead" gets its own honest label instead of borrowing REVIEW.
     func testConversionPreflightRoutesOnlyEligibleDuplicateCandidatesToMatch() {
         let matchCandidate = ConvertToProjectSheet.RelatedProjectRef(
             id: "project-match",
             title: "3998 Holland Ave",
             address: "3998 Holland Ave, Victoria bc",
             status: nil,
-            isLikelyDuplicate: true
+            linkState: .matchable
         )
         let reviewOnlyProject = ConvertToProjectSheet.RelatedProjectRef(
             id: "project-review",
             title: "Other client project",
             address: "12 Douglas St",
             status: .accepted,
-            isLikelyDuplicate: false
+            linkState: .reviewOnly
         )
-        let rejectedStaleCandidate = ConvertToProjectSheet.RelatedProjectRef(
+        let linkedElsewhereCandidate = ConvertToProjectSheet.RelatedProjectRef(
             id: "project-stale",
             title: "Already linked project",
             address: "3998 Holland Ave, Victoria bc",
             status: .accepted,
-            isLikelyDuplicate: true,
-            isMatchAvailable: false
+            linkState: .linkedElsewhere
         )
 
         XCTAssertEqual(matchCandidate.interaction, .match)
         XCTAssertEqual(matchCandidate.actionLabel, "MATCH")
-        XCTAssertEqual(reviewOnlyProject.interaction, .open)
+        XCTAssertEqual(reviewOnlyProject.interaction, .peek)
         XCTAssertNil(reviewOnlyProject.actionLabel)
-        XCTAssertEqual(rejectedStaleCandidate.interaction, .open)
-        XCTAssertEqual(rejectedStaleCandidate.actionLabel, "REVIEW")
+        XCTAssertFalse(reviewOnlyProject.isLikelyDuplicate)
+        XCTAssertEqual(linkedElsewhereCandidate.interaction, .peek)
+        XCTAssertEqual(linkedElsewhereCandidate.actionLabel, "LINKED")
+        XCTAssertTrue(
+            linkedElsewhereCandidate.isLikelyDuplicate,
+            "a same-address project still gates CREATE whatever its link state"
+        )
     }
 
     func testCandidateProjectMustBeUnlinkedOrAlreadyBelongToThisLead() {
@@ -403,9 +412,17 @@ final class LeadAssignmentFoundationTests: XCTestCase {
             }
         }
 
+        // The error now carries the server's reason suffix (bug 5468b3c6) so
+        // each closed door gets its own copy; a bare failure keeps the old text.
         XCTAssertEqual(
-            LeadConversionError.projectLinkUnavailable.errorDescription,
+            LeadConversionError.projectLinkUnavailable(reason: nil).errorDescription,
             "The project changed and must be reviewed before matching."
+        )
+        XCTAssertEqual(
+            LeadConversionError
+                .projectLinkUnavailable(reason: .matchingProjectLinkConflict)
+                .errorDescription,
+            "That project is already linked to another lead."
         )
     }
 
@@ -943,7 +960,22 @@ final class LeadAssignmentFoundationTests: XCTestCase {
         )
     }
 
-    func testInaccessibleConvertedProjectIsACommittedSuccessWithoutIdentity() throws {
+    /// Bug ced5b3cb-B rewrote this expectation deliberately.
+    ///
+    /// This payload is the RPC's IDEMPOTENT already-converted branch, and its
+    /// `project_accessible: false` is HARDCODED — verified against prod
+    /// 2026-07-29, where exactly one return path (the success branch) actually
+    /// calls `private.user_can_view_project`. Treating that literal as an
+    /// access denial is what let the client clear the lead's project link and
+    /// set a persisted marker that hid MATCH PROJECT permanently, while
+    /// opening nothing. A branch that hands back a real project id gets
+    /// recovered by identity, not discarded.
+    ///
+    /// The genuine no-identity case is covered by
+    /// `ConvertSheetMatchingTests.testFreshCommitReportingInaccessibleProjectStillWithholdsIdentity`
+    /// (a FRESH commit, where the flag is computed) and by the
+    /// already-converted-without-a-project-id case in the same suite.
+    func testInaccessibleConvertedProjectIsRecoveredByIdentity() throws {
         let result = try JSONDecoder().decode(
             ConvertOpportunityResult.self,
             from: Data("""
@@ -962,7 +994,7 @@ final class LeadAssignmentFoundationTests: XCTestCase {
 
         XCTAssertEqual(
             try LeadConversionOutcomeResolver.disposition(for: result),
-            .committedWithoutAccessibleProject
+            .recoverConvertedProject(projectId: "secret-project")
         )
     }
 
@@ -1067,16 +1099,25 @@ final class LeadAssignmentFoundationTests: XCTestCase {
     func testMigrationPlanDeclaresARealAssignmentBoundary() throws {
         // The assignment + chase boundary lives at V18 after the main-line
         // reconciliation (V16 = opportunity media, V17 = vinyl color/PO).
-        // V19 is a later additive lead-ownership boundary and must not move it.
-        XCTAssertEqual(OPSMigrationPlan.schemas.count, 19)
-        XCTAssertEqual(OPSMigrationPlan.stages.count, 18)
+        // Later additive boundaries (V19 ownership, V20 activity email
+        // identity, …) must never move it.
+        //
+        // This asserts the boundary's POSITION and the plan's shape, not the
+        // plan's length: pinning the tip would fail on every future schema
+        // regardless of whether the assignment boundary actually moved, which
+        // is the one thing this test exists to catch.
         let versions = OPSMigrationPlan.schemas.map {
             String(describing: $0.versionIdentifier)
         }
         XCTAssertEqual(versions.firstIndex(of: "18.0.0"), 17)
         XCTAssertEqual(
-            String(describing: try XCTUnwrap(OPSMigrationPlan.schemas.last).versionIdentifier),
-            "19.0.0"
+            OPSMigrationPlan.stages.count,
+            OPSMigrationPlan.schemas.count - 1,
+            "every adjacent schema pair needs exactly one migration stage"
+        )
+        XCTAssertGreaterThanOrEqual(
+            OPSMigrationPlan.schemas.count, 19,
+            "schemas are append-only — a shorter plan means a released version was dropped"
         )
     }
 

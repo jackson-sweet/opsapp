@@ -76,7 +76,7 @@ struct LeadsTabView: View {
     /// Lead whose comeback date is being adjusted (ComebackChooserSheet).
     @State private var comebackTarget: Opportunity?
     /// Pending ARCHIVE confirmation (OPSConfirm).
-    @State private var archiveConfirm: OPSConfirmConfig?
+    @State private var archiveTarget: Opportunity?
 
     /// Guards the deep-link drain so a single tap resolves once even if both
     /// the `.task` load and the `pendingLeadDeepLinkId` change fire.
@@ -163,10 +163,9 @@ struct LeadsTabView: View {
                             Color.clear.frame(height: 120)
                         }
                         .leadDiscardFlow(
-                            target: $discardTarget,
-                            perform: { lead in try await viewModel.discard(opportunityId: lead.id) }
+                            target: $discardTarget
                         )
-                        .opsConfirm($archiveConfirm)
+                        .leadArchiveFlow(target: $archiveTarget)
                 }
             }
             .navigationBarHidden(true)
@@ -780,22 +779,12 @@ struct LeadsTabView: View {
     }
 
     /// ARCHIVE — guarded by the standardized confirm (spec §6).
+    /// Hands off to the shared archive flow — the same sheet, contract, and
+    /// undo the dossier raises. The reload listener on `LeadArchivedSuccess`
+    /// takes the row off the board.
     private func requestArchive(_ lead: Opportunity) {
         guard canEdit(lead) else { return }
-        archiveConfirm = OPSConfirmConfig(
-            title: "ARCHIVE LEAD?",
-            message: "It leaves the queue. Restore any time from the by-stage list.",
-            verb: "ARCHIVE"
-        ) {
-            Task {
-                do {
-                    try await viewModel.archive(opportunityId: lead.id)
-                    ToastCenter.shared.present(Feedback.Lead.archived)
-                } catch {
-                    ToastCenter.shared.present(Toast(label: Feedback.Err.saveFailed, tone: .error))
-                }
-            }
-        }
+        archiveTarget = lead
     }
 }
 

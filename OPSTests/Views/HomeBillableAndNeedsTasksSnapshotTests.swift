@@ -50,6 +50,10 @@ final class HomeBillableAndNeedsTasksSnapshotTests: XCTestCase {
             }
             .frame(width: size.width, height: size.height)
             .environment(\.colorScheme, .dark)
+            // A UIWindow inherits the device safe-area insets whatever its
+            // frame — without this the content renders displaced and
+            // bottom-clipped (same correction as DaySheetRowSnapshotTests).
+            .ignoresSafeArea()
         )
         host.overrideUserInterfaceStyle = .dark
         host.view.frame = CGRect(origin: .zero, size: size)

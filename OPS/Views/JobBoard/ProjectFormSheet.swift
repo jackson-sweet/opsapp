@@ -816,16 +816,13 @@ struct ProjectFormSheet: View {
         // `clientSearchField` flips `showingContactPicker`, and the
         // selected contact is funnelled to `handleContactSelected` which
         // auto-creates the matching client and selects it on the form.
-        .sheet(isPresented: $showingContactPicker) {
-            ContactPicker(
-                onContactSelected: { contact in
-                    Task { @MainActor in
-                        await handleContactSelected(contact)
-                    }
-                },
-                onDismiss: { showingContactPicker = false }
-            )
-        }
+        .background(
+            ContactPicker(isPresented: $showingContactPicker) { contact in
+                Task { @MainActor in
+                    await handleContactSelected(contact)
+                }
+            }
+        )
     }
 
     // MARK: - Mandatory Fields Section

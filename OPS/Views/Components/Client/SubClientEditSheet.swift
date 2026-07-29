@@ -281,9 +281,8 @@ struct SubClientEditSheet: View {
                 // Load data when the sheet appears
                 viewModel.loadFromSubClient(subClient)
             }
-            .sheet(isPresented: $showingContactPicker) {
-                ContactPicker(
-                    onContactSelected: { contact in
+            .background(
+                ContactPicker(isPresented: $showingContactPicker) { contact in
                         // Prepare imported data
                         let importedName = "\(contact.givenName) \(contact.familyName)".trimmingCharacters(in: .whitespaces)
                         let importedEmail = contact.emailAddresses.first?.value as String?
@@ -336,12 +335,8 @@ struct SubClientEditSheet: View {
                             pendingCompanyName = contact.organizationName
                             showingCompanyConfirmation = true
                         }
-                    },
-                    onDismiss: {
-                        showingContactPicker = false
-                    }
-                )
-            }
+                }
+            )
         }
     }
 

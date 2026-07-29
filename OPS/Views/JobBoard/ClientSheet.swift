@@ -442,8 +442,8 @@ struct ClientSheet: View {
             .loadingOverlay(isPresented: $isSaving, message: "Saving...")
             .interactiveDismissDisabled()
             .errorToast($errorMessage, label: Feedback.Err.saveFailed)
-            .sheet(isPresented: $showingContactPicker) {
-                ContactPicker(onContactSelected: { contact in
+            .background(
+                ContactPicker(isPresented: $showingContactPicker) { contact in
                     // Populate form fields with contact data
                     name = "\(contact.givenName) \(contact.familyName)".trimmingCharacters(in: .whitespaces)
 
@@ -472,8 +472,8 @@ struct ClientSheet: View {
                     if let imageData = contact.imageData {
                         self.clientImage = UIImage(data: imageData)
                     }
-                }, onDismiss: { showingContactPicker = false })
-            }
+                }
+            )
             .sheet(isPresented: $showImagePicker) {
                 ImagePicker(
                     images: Binding(

@@ -29,6 +29,7 @@ struct SiteVisitCaptureQAHost: View {
     @State private var isReady = false
     @State private var showingVisit = false
     @State private var contactsStatus = "CONTACTS · PENDING"
+    @State private var operatorStatus = "OPERATOR · —"
 
     private static let companyId = "qa_site_visit_company"
     private static let userId = "qa_site_visit_user"
@@ -60,6 +61,11 @@ struct SiteVisitCaptureQAHost: View {
                     .font(OPSStyle.Typography.metadata)
                     .foregroundColor(OPSStyle.Colors.text3)
                     .accessibilityIdentifier("qa_contacts_state")
+
+                Text(operatorStatus)
+                    .font(OPSStyle.Typography.metadata)
+                    .foregroundColor(OPSStyle.Colors.text3)
+                    .accessibilityIdentifier("qa_operator_state")
 
                 Text(showingVisit ? "VISIT PRESENTED" : "VISIT CLOSED")
                     .font(OPSStyle.Typography.dataValueLg)
@@ -95,12 +101,35 @@ struct SiteVisitCaptureQAHost: View {
                 .modelContainer(Self.modelContainer)
         }
         .task { await prepare() }
+        .onReceive(dataController.$currentUser) { user in
+            // The real DataController restores (and clears) its own session on
+            // launch. This host owns the fiction of a signed-in operator, so any
+            // value that is not ours is put back — otherwise the capture console
+            // reads an empty company id and never leaves its spinner.
+            guard user?.id != Self.userId else { return }
+            DispatchQueue.main.async { restoreOperator() }
+        }
     }
 
     @MainActor
     private func prepare() async {
         let context = Self.modelContainer.mainContext
 
+        dataController.setModelContext(context)
+        dataController.syncEngine.configure(
+            modelContext: context,
+            connectivity: dataController.connectivity
+        )
+        restoreOperator()
+
+        contactsStatus = await seedDeviceContact()
+        restoreOperator()
+        isReady = true
+    }
+
+    @MainActor
+    private func restoreOperator() {
+        let context = Self.modelContainer.mainContext
         let users = (try? context.fetch(FetchDescriptor<User>())) ?? []
         let user = users.first { $0.id == Self.userId } ?? User(
             id: Self.userId,
@@ -114,16 +143,9 @@ struct SiteVisitCaptureQAHost: View {
             try? context.save()
         }
 
-        dataController.setModelContext(context)
-        dataController.syncEngine.configure(
-            modelContext: context,
-            connectivity: dataController.connectivity
-        )
         dataController.currentUser = user
         dataController.isAuthenticated = true
-
-        contactsStatus = await seedDeviceContact()
-        isReady = true
+        operatorStatus = "OPERATOR · \(user.companyId ?? "—")"
     }
 
     /// Puts a known person in the simulator's address book so the real picker

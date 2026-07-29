@@ -287,13 +287,11 @@ private struct SiteVisitCaptureConsole: View {
                 }
             }
         }
-        .sheet(isPresented: $showingContactPicker) {
-            ContactPicker(
-                onContactSelected: { contact in viewModel.applyImportedContact(contact) },
-                onDismiss: { showingContactPicker = false }
-            )
-            .ignoresSafeArea()
-        }
+        .background(
+            ContactPicker(isPresented: $showingContactPicker) { contact in
+                viewModel.applyImportedContact(contact)
+            }
+        )
         .sheet(isPresented: $showingReview) {
             SiteVisitReviewSheet(
                 viewModel: viewModel,

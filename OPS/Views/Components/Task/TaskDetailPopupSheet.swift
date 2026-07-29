@@ -768,23 +768,23 @@ struct TaskDetailPopupSheet: View {
             // option either, since selecting requires reopening first.
             if isInactive {
                 if canChangeStatus {
-                Button(action: {
-                    showReopenAlert = true
-                }) {
-                    Text("REOPEN TO SELECT")
-                        .font(OPSStyle.Typography.captionBold)
-                        .tracking(0.5)
-                        .foregroundColor(OPSStyle.Colors.warningStatus)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 14)
-                        .background(OPSStyle.Colors.warningStatus.opacity(0.1))
-                        .cornerRadius(OPSStyle.Layout.buttonRadius)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius)
-                                .stroke(OPSStyle.Colors.warningStatus.opacity(0.3), lineWidth: 1)
-                        )
-                }
-                .buttonStyle(PlainButtonStyle())
+                    Button(action: {
+                        showReopenAlert = true
+                    }) {
+                        Text("REOPEN TO SELECT")
+                            .font(OPSStyle.Typography.captionBold)
+                            .tracking(0.5)
+                            .foregroundColor(OPSStyle.Colors.warningStatus)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 14)
+                            .background(OPSStyle.Colors.warningStatus.opacity(0.1))
+                            .cornerRadius(OPSStyle.Layout.buttonRadius)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius)
+                                    .stroke(OPSStyle.Colors.warningStatus.opacity(0.3), lineWidth: 1)
+                            )
+                    }
+                    .buttonStyle(PlainButtonStyle())
                 }
             } else {
                 Button(action: {

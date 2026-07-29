@@ -3,13 +3,13 @@
 //  OPS
 //
 //  Money & Leads redesign (2026-06-30) — shared foundation for the command-grid
-//  surfaces. Three primitives reused across both screens:
+//  surfaces. Two primitives reused across both screens:
 //    • `.commandCard()`  — the solid #141416 raised L1 card (NET PROFIT hero,
 //      job-profitability, lead triage cards).
-//    • `BooksFormat`     — currency / compact / signed-percent number formatting
-//      (always tabular mono at the call site).
 //    • `CountUpText`     — a reduce-motion-aware 0→target hero count-up on the
 //      single OPS easing curve (Money profit hero, Leads forecast hero).
+//  (`BooksFormat` began here and is now the app-wide en_US-pinned money
+//   formatter — see Utilities/BooksFormat.swift.)
 //
 
 import SwiftUI
@@ -82,45 +82,6 @@ extension View {
     /// Applies the `cardIn` entrance stagger at `index` (delay capped at 280ms).
     func booksCardIn(index: Int) -> some View {
         modifier(BooksCardIn(index: index))
-    }
-}
-
-// MARK: - Number formatting
-
-/// Money-screen number formatting. Every value is formatted (never raw) and
-/// rendered in JetBrains Mono / Mohave with `.monospacedDigit()` at the call
-/// site (DESIGN.md §2 — numbers are always mono, tabular, slashed-zero).
-enum BooksFormat {
-    /// Full currency, no cents — `$18,240`. Hero numbers and lead values.
-    static func currency(_ value: Double) -> String {
-        value.formatted(.currency(code: "USD").precision(.fractionLength(0)))
-    }
-
-    /// Compact currency for dense tiles — `$34.8K`, `$1.2M`, `$640`. Drops a
-    /// trailing `.0` so round thousands read `$34K` not `$34.0K`.
-    static func compact(_ value: Double) -> String {
-        let sign = value < 0 ? "-" : ""
-        let magnitude = abs(value)
-        if magnitude >= 1_000_000 {
-            return "\(sign)$\(trim(magnitude / 1_000_000))M"
-        }
-        if magnitude >= 1_000 {
-            return "\(sign)$\(trim(magnitude / 1_000))K"
-        }
-        return "\(sign)$\(Int(magnitude.rounded()))"
-    }
-
-    /// Signed percent — `+14%`, `-3%`, `0%`. Caller colors it olive/rose.
-    static func signedPct(_ value: Double) -> String {
-        let rounded = Int(value.rounded())
-        if rounded > 0 { return "+\(rounded)%" }
-        return "\(rounded)%"
-    }
-
-    /// One-decimal with a stripped trailing `.0` (`34.8`, `12`, `1.2`).
-    private static func trim(_ value: Double) -> String {
-        let s = String(format: "%.1f", value)
-        return s.hasSuffix(".0") ? String(s.dropLast(2)) : s
     }
 }
 

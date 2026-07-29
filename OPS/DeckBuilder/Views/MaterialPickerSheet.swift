@@ -252,7 +252,7 @@ struct MaterialPickerSheet: View {
                     }
 
                     HStack(spacing: OPSStyle.Layout.spacing1) {
-                        Text(String(format: "$%.2f / %@", product.basePrice, isLinearMode ? "lin ft" : "sq ft"))
+                        Text("\(BooksFormat.exact(product.basePrice)) / \(isLinearMode ? "lin ft" : "sq ft")")
                             .font(OPSStyle.Typography.caption)
                             .foregroundColor(OPSStyle.Colors.secondaryText)
 

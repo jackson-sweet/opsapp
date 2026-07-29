@@ -130,7 +130,7 @@ struct MyExpensesView: View {
                     .font(OPSStyle.Typography.smallCaption)
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
                 Spacer()
-                Text(f.total, format: .currency(code: "USD").precision(.fractionLength(0)))
+                Text(BooksFormat.currency(f.total))
                     .font(OPSStyle.Typography.captionBold)
                     .foregroundColor(OPSStyle.Colors.primaryText)
                     .contentTransition(.numericText())

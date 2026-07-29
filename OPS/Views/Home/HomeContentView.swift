@@ -649,7 +649,7 @@ struct HomeBillableThisWeekCard: View {
                     // No project this week carries a value → "—", never a
                     // lying "$0". A project with no invoice/estimate is
                     // "no data", not zero dollars billable.
-                    Text(rollup.hasKnownAmounts ? currency(rollup.totalKnownAmount) : "—")
+                    Text(rollup.hasKnownAmounts ? BooksFormat.currency(rollup.totalKnownAmount) : "—")
                         .font(OPSStyle.Typography.dataValueLg)
                         .foregroundColor(rollup.hasKnownAmounts ? OPSStyle.Colors.text : OPSStyle.Colors.text3)
                         .monospacedDigit()
@@ -720,7 +720,7 @@ struct HomeBillableThisWeekCard: View {
                         // show the em-dash empty state — the amount slot never
                         // silently disappears, so the column scans cleanly.
                         if let amount = item.amount {
-                            Text(currency(amount))
+                            Text(BooksFormat.currency(amount))
                                 .font(OPSStyle.Typography.caption)
                                 .foregroundColor(OPSStyle.Colors.finRevenue)
                                 .monospacedDigit()
@@ -742,16 +742,6 @@ struct HomeBillableThisWeekCard: View {
         }
     }
 
-    private func currency(_ amount: Double) -> String {
-        Self.currencyFormatter.string(from: NSNumber(value: amount)) ?? "$0"
-    }
-
-    private static let currencyFormatter: NumberFormatter = {
-        let formatter = NumberFormatter()
-        formatter.numberStyle = .currency
-        formatter.maximumFractionDigits = 0
-        return formatter
-    }()
 }
 
 // MARK: - Needs-Tasks Strip

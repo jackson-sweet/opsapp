@@ -84,13 +84,13 @@ struct BundleCompositionReadOnlyView: View {
                     .font(OPSStyle.Typography.body)
                     .foregroundColor(OPSStyle.Colors.primaryText)
                     .lineLimit(2)
-                Text("× \(Int(item.quantity)) · \(formattedPrice(unitPrice)) ea")
+                Text("× \(Int(item.quantity)) · \(BooksFormat.price(unitPrice)) ea")
                     .font(OPSStyle.Typography.metadata)
                     .monospacedDigit()
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
             }
             Spacer()
-            Text(participatesInPrice ? formattedPrice(lineTotal) : "+ \(formattedPrice(lineTotal))")
+            Text(participatesInPrice ? BooksFormat.price(lineTotal) : "+ \(BooksFormat.price(lineTotal))")
                 .font(OPSStyle.Typography.metadata)
                 .monospacedDigit()
                 .foregroundColor(participatesInPrice
@@ -100,7 +100,7 @@ struct BundleCompositionReadOnlyView: View {
         .accessibilityElement(children: .combine)
         .accessibilityLabel(child?.name ?? "Bundle child")
         .accessibilityValue(
-            "\(participatesInPrice ? "Required" : "Suggested add-on"), quantity \(Int(item.quantity)), unit \(formattedPrice(unitPrice)), total \(formattedPrice(lineTotal))"
+            "\(participatesInPrice ? "Required" : "Suggested add-on"), quantity \(Int(item.quantity)), unit \(BooksFormat.price(unitPrice)), total \(BooksFormat.price(lineTotal))"
         )
     }
 
@@ -117,7 +117,7 @@ struct BundleCompositionReadOnlyView: View {
                 .font(OPSStyle.Typography.metadata)
                 .foregroundColor(OPSStyle.Colors.tertiaryText)
             Spacer()
-            Text(formattedPrice(rolledTotal))
+            Text(BooksFormat.price(rolledTotal))
                 .font(OPSStyle.Typography.bodyBold)
                 .monospacedDigit()
                 .foregroundColor(OPSStyle.Colors.primaryText)
@@ -125,7 +125,7 @@ struct BundleCompositionReadOnlyView: View {
         .padding(.top, OPSStyle.Layout.spacing1)
         .accessibilityElement(children: .combine)
         .accessibilityLabel("Rolled total")
-        .accessibilityValue(formattedPrice(rolledTotal))
+        .accessibilityValue(BooksFormat.price(rolledTotal))
     }
 
     @ViewBuilder
@@ -140,7 +140,7 @@ struct BundleCompositionReadOnlyView: View {
                 .font(OPSStyle.Typography.metadata)
                 .foregroundColor(OPSStyle.Colors.tertiaryText)
             Spacer()
-            Text(formattedPrice(price))
+            Text(BooksFormat.price(price))
                 .font(OPSStyle.Typography.metadata)
                 .monospacedDigit()
                 .foregroundColor(OPSStyle.Colors.primaryText)
@@ -156,16 +156,7 @@ struct BundleCompositionReadOnlyView: View {
         .accessibilityElement(children: .combine)
         .accessibilityLabel("Override price")
         .accessibilityValue(
-            margin.map { "\(formattedPrice(price)), margin \(Int($0.rounded())) percent" } ?? formattedPrice(price)
+            margin.map { "\(BooksFormat.price(price)), margin \(Int($0.rounded())) percent" } ?? BooksFormat.price(price)
         )
-    }
-
-    private func formattedPrice(_ value: Double) -> String {
-        let f = NumberFormatter()
-        f.numberStyle = .currency
-        f.currencyCode = "USD"
-        f.maximumFractionDigits = 2
-        f.minimumFractionDigits = 0
-        return f.string(from: NSNumber(value: value)) ?? "$0"
     }
 }

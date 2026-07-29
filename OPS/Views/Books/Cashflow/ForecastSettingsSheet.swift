@@ -45,7 +45,7 @@ struct ForecastSettingsSheet: View {
                                             .foregroundColor(OPSStyle.Colors.secondaryText)
                                     }
                                     Spacer()
-                                    Text(formatCurrency(r.amount))
+                                    Text(BooksFormat.currency(r.amount))
                                         .font(OPSStyle.Typography.dataValue)
                                         .monospacedDigit()
                                         .foregroundColor(OPSStyle.Colors.primaryText)
@@ -99,10 +99,4 @@ struct ForecastSettingsSheet: View {
         await viewModel.load()
     }
 
-    private func formatCurrency(_ v: Double) -> String {
-        let f = NumberFormatter()
-        f.numberStyle = .currency
-        f.maximumFractionDigits = 0
-        return f.string(from: NSNumber(value: v)) ?? "$0"
-    }
 }

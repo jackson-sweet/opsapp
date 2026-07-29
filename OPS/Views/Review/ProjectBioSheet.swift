@@ -236,10 +236,7 @@ struct ProjectBioSheet: View {
                 HStack(spacing: OPSStyle.Layout.spacing4) {
                     financialMetric(
                         label: "BALANCE",
-                        value: summary.unresolvedBalance.formatted(
-                            .currency(code: summary.currencyCode)
-                                .precision(.fractionLength(2))
-                        )
+                        value: BooksFormat.exact(summary.unresolvedBalance, code: summary.currencyCode)
                     )
                     financialMetric(
                         label: "OUTSTANDING",

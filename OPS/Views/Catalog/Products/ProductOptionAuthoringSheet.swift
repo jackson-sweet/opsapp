@@ -1598,13 +1598,7 @@ private func metadataChip(_ label: String) -> some View {
 
 private func formatMoney(_ amount: Double) -> String {
     let sign = amount >= 0 ? "+" : "-"
-    let formatter = NumberFormatter()
-    formatter.numberStyle = .currency
-    formatter.currencyCode = "USD"
-    formatter.maximumFractionDigits = 2
-    formatter.minimumFractionDigits = 0
-    let absString = formatter.string(from: NSNumber(value: abs(amount))) ?? "$0"
-    return "\(sign)\(absString)"
+    return "\(sign)\(BooksFormat.price(abs(amount)))"
 }
 
 private func formatNumber(_ amount: Double) -> String {

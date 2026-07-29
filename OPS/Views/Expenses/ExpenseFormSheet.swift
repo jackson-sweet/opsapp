@@ -132,10 +132,7 @@ struct ExpenseFormSheet: View {
     /// for CAD). Falls back to the ISO code itself if Foundation can't
     /// produce one.
     private var currencySymbol: String {
-        let formatter = NumberFormatter()
-        formatter.numberStyle = .currency
-        formatter.currencyCode = selectedCurrency
-        return formatter.currencySymbol ?? selectedCurrency
+        BooksFormat.symbol(for: selectedCurrency)
     }
 
     // Keyboard state
@@ -2105,10 +2102,7 @@ private struct ExpenseCurrencyPickerSheet: View {
     }
 
     private func currencySymbol(for code: String) -> String {
-        let formatter = NumberFormatter()
-        formatter.numberStyle = .currency
-        formatter.currencyCode = code
-        return formatter.currencySymbol ?? code
+        BooksFormat.symbol(for: code)
     }
 
     var body: some View {

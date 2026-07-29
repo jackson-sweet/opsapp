@@ -552,10 +552,7 @@ final class GuidedCatalogSetupModel: ObservableObject {
 
     /// Currency string for display (whole dollars when even, else 2 decimals).
     nonisolated func formatMoney(_ value: Double) -> String {
-        let formatter = NumberFormatter()
-        formatter.numberStyle = .currency
-        formatter.maximumFractionDigits = value.rounded() == value ? 0 : 2
-        return formatter.string(from: NSNumber(value: value)) ?? "$0"
+        BooksFormat.price(value)
     }
 
     // MARK: - Tier derivation (option-priced lines; pure, testable)

@@ -73,7 +73,7 @@ struct LeadDetailView: View {
     @State private var isAssemblingShare = false
 
     // Status-menu guarded exits (Leads redesign spec §6)
-    @State private var archiveConfirm: OPSConfirmConfig?
+    @State private var archiveTarget: Opportunity?
     @State private var discardTarget: Opportunity?
 
     // Chase strip on detail (spec §5.6) — a single-lead PipelineViewModel so
@@ -177,7 +177,12 @@ struct LeadDetailView: View {
                     .background(navScrim)
 
                     ScrollView {
-                        VStack(spacing: 0) {
+                        // Pinned identity (bug 73f7381b): the lead's title rides
+                        // to the top of the viewport and stays there while the
+                        // document scrolls under it — the ProjectDetailsView
+                        // mechanism, LazyVStack + a Section header. iOS 17.6:
+                        // pinning is the pinnedViews API, not scroll geometry.
+                        LazyVStack(alignment: .leading, spacing: 0, pinnedViews: [.sectionHeaders]) {
                             if mapCoordinates != nil {
                                 // Open map area — taps anywhere over the visible
                                 // map launch directions (the spacer sits on top
@@ -194,93 +199,112 @@ struct LeadDetailView: View {
                                 mapScrollGradient
                             }
 
-                            VStack(spacing: 0) {
-                                DetailHero(
-                                    opportunity: opportunity,
-                                    clientName: vm.client?.name,
-                                    assigneeName: currentAssigneeName,
-                                    canChangeAssignee: canChangeAssignee,
-                                    onAssigneeTap: {
-                                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                                        showingAssignmentPicker = true
-                                    }
-                                )
-
-                                // Chase strip — the same control as the card (spec §5.6)
-                                if !opportunity.stage.isTerminal {
-                                    LeadChaseStrip(
-                                        lead: opportunity,
-                                        bucket: chaseVM.bucketOf(opportunity),
-                                        canAct: canEdit,
-                                        canSendFollowUp: chaseVM.canSendFollowUp(for: opportunity),
-                                        followUpProgress: chaseVM.followUpProgress(for: opportunity.id),
-                                        onHandled: { markHandledFromDetail() },
-                                        onSendFollowUp: { sendFollowUpFromDetail() },
-                                        onAdjust: { comebackTarget = opportunity }
+                            Section {
+                                VStack(spacing: 0) {
+                                    DetailHero(
+                                        opportunity: opportunity,
+                                        clientName: vm.client?.name,
+                                        assigneeName: currentAssigneeName,
+                                        canChangeAssignee: canChangeAssignee,
+                                        onAssigneeTap: {
+                                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                                            showingAssignmentPicker = true
+                                        }
                                     )
-                                    .padding(.horizontal, OPSStyle.Layout.spacing3_5)
-                                }
 
-                                // Agent summary — always open on detail (spec §5.7)
-                                if let summary = agentSummary {
-                                    summarySection(summary)
+                                    // Chase strip — the same control as the card (spec §5.6)
+                                    if !opportunity.stage.isTerminal {
+                                        LeadChaseStrip(
+                                            lead: opportunity,
+                                            bucket: chaseVM.bucketOf(opportunity),
+                                            canAct: canEdit,
+                                            canSendFollowUp: chaseVM.canSendFollowUp(for: opportunity),
+                                            followUpProgress: chaseVM.followUpProgress(for: opportunity.id),
+                                            onHandled: { markHandledFromDetail() },
+                                            onSendFollowUp: { sendFollowUpFromDetail() },
+                                            onAdjust: { comebackTarget = opportunity }
+                                        )
+                                        .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+                                    }
+
+                                    // Agent summary — always open on detail (spec §5.7)
+                                    if let summary = agentSummary {
+                                        summarySection(summary)
+                                            .padding(.top, 22)
+                                    }
+
+                                    // CONTACT ▾ + ⋯ action pair (spec §5.8)
+                                    actionPair
                                         .padding(.top, 22)
-                                }
 
-                                // CONTACT ▾ + ⋯ action pair (spec §5.8)
-                                actionPair
+                                    if canConvert && showWonNotConverted {
+                                        WonNotConvertedCard(onConvert: onMarkWon)
+                                            .padding(.top, 22)
+                                    }
+
+                                    LeadDetailsDocument(
+                                        lead: opportunity,
+                                        client: vm.client,
+                                        rosterState: rosterState,
+                                        canEdit: canEdit,
+                                        canMatchProject: canConvert && showWonNotConverted,
+                                        projectName: linkedProjectName,
+                                        attachments: vm.attachments,
+                                        estimates: vm.estimates,
+                                        correspondence: vm.latestCorrespondence,
+                                        isAddingToClient: isAddingToClient,
+                                        onAddToClient: { addContactToClient() },
+                                        onOpenClient: {
+                                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                                            showingClientDetail = true
+                                        },
+                                        onOpenProject: { openLinkedProject() },
+                                        onMatchProject: {
+                                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                                            onMarkWon()
+                                        },
+                                        onOpenDeck: { design in deckDesignToOpen = design },
+                                        onCreateDeck: { showingDeckCreationPicker = true },
+                                        importingPhotoIDs: importingPhotoIDs,
+                                        onAddPhotos: { showingAddPhotoDialog = true },
+                                        onTapPhoto: { items, index in
+                                            photoViewerState = LeadPhotoViewerState(items: items, initialIndex: index)
+                                        },
+                                        onOpenAttachment: { openAttachment($0) },
+                                        onOpenEstimate: { estimateToOpen = $0 }
+                                    )
                                     .padding(.top, 22)
 
-                                if canConvert && showWonNotConverted {
-                                    WonNotConvertedCard(onConvert: onMarkWon)
-                                        .padding(.top, 22)
+                                    ActivityTimeline(
+                                        activities: vm.activities,
+                                        transitions: vm.stageTransitions,
+                                        onViewAll: { showingActivityHistory = true }
+                                    )
+                                    .padding(.top, 22)
                                 }
-
-                                LeadDetailsDocument(
-                                    lead: opportunity,
-                                    client: vm.client,
-                                    rosterState: rosterState,
-                                    canEdit: canEdit,
-                                    canMatchProject: canConvert && showWonNotConverted,
-                                    projectName: linkedProjectName,
-                                    attachments: vm.attachments,
-                                    estimates: vm.estimates,
-                                    correspondence: vm.latestCorrespondence,
-                                    isAddingToClient: isAddingToClient,
-                                    onAddToClient: { addContactToClient() },
-                                    onOpenClient: {
-                                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                                        showingClientDetail = true
-                                    },
-                                    onOpenProject: { openLinkedProject() },
-                                    onMatchProject: {
-                                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                                        onMarkWon()
-                                    },
-                                    onOpenDeck: { design in deckDesignToOpen = design },
-                                    onCreateDeck: { showingDeckCreationPicker = true },
-                                    importingPhotoIDs: importingPhotoIDs,
-                                    onAddPhotos: { showingAddPhotoDialog = true },
-                                    onTapPhoto: { items, index in
-                                        photoViewerState = LeadPhotoViewerState(items: items, initialIndex: index)
-                                    },
-                                    onOpenAttachment: { openAttachment($0) },
-                                    onOpenEstimate: { estimateToOpen = $0 }
+                                // A LazyVStack does not inherit the old outer
+                                // VStack's paint, so Section content carries its own
+                                // solid background (mirrors ProjectDetailsView).
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .background(OPSStyle.Colors.background)
+                            } header: {
+                                LeadDetailStickyHeader(
+                                    opportunity: opportunity,
+                                    clientName: vm.client?.name
                                 )
-                                .padding(.top, 22)
-
-                                ActivityTimeline(
-                                    activities: vm.activities,
-                                    transitions: vm.stageTransitions,
-                                    onViewAll: { showingActivityHistory = true }
-                                )
-                                .padding(.top, 22)
                             }
-                            .background(OPSStyle.Colors.background)
                         }
+                        // Bug e13be3bb: a vertical document must never pan
+                        // sideways. The column caps at the viewport width and
+                        // the scroll clips anything that still tries to exceed
+                        // it, so an oversized label truncates instead of
+                        // widening the page.
+                        .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.bottom, 200)   // clears the sticky action bar
                     }
+                    .frame(maxWidth: .infinity)
                     .scrollIndicators(.hidden)
+                    .clipped()
                 }
             }
 
@@ -295,7 +319,10 @@ struct LeadDetailView: View {
             }
         }
         .navigationBarHidden(true)
-        .opsConfirm($archiveConfirm)
+        .leadArchiveFlow(
+            target: $archiveTarget,
+            onCompleted: { _ in dismiss() }
+        )
         .leadDiscardFlow(
             target: $discardTarget,
             onCompleted: { _, _ in dismiss() }
@@ -982,34 +1009,12 @@ struct LeadDetailView: View {
         }
     }
 
-    /// ARCHIVE — guarded by the standardized confirm; an archived lead leaves
-    /// the queue, so the detail pops with it.
+    /// ARCHIVE — hands off to the shared archive flow so the dossier and the
+    /// day sheet capture the same reason, note, and undo. An archived lead
+    /// leaves the queue, so the detail pops with it.
     private func requestArchive() {
         guard canEdit else { return }
-        archiveConfirm = OPSConfirmConfig(
-            title: "ARCHIVE LEAD?",
-            message: "It leaves the queue. Restore any time from the by-stage list.",
-            verb: "ARCHIVE"
-        ) {
-            Task {
-                do {
-                    try await OpportunityRepository(companyId: opportunity.companyId)
-                        .archive(opportunity.id)
-                    await MainActor.run {
-                        NotificationCenter.default.post(
-                            name: Notification.Name("LeadArchivedSuccess"),
-                            object: nil, userInfo: ["leadId": opportunity.id]
-                        )
-                        ToastCenter.shared.present(Feedback.Lead.archived)
-                        dismiss()
-                    }
-                } catch {
-                    await MainActor.run {
-                        ToastCenter.shared.present(Toast(label: Feedback.Err.saveFailed, tone: .error))
-                    }
-                }
-            }
-        }
+        archiveTarget = opportunity
     }
 
     // MARK: - Derived state

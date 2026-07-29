@@ -157,7 +157,17 @@ struct LeadChaseStrip: View {
                     .padding(.vertical, 4)
                     .background(RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius, style: .continuous).fill(c.tone.opacity(0.12)))
                     .overlay(RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius, style: .continuous).strokeBorder(c.tone.opacity(0.30), lineWidth: 1))
-                    .fixedSize()
+                    // Bug e13be3bb: bare .fixedSize() let this chip claim its
+                    // full intrinsic width, and at accessibility type sizes
+                    // `SEND FOLLOW-UP` alone ran wider than the strip and panned
+                    // the whole dossier sideways. Keep the vertical fix (the
+                    // chip must never be squashed) and let the width negotiate;
+                    // minimumScaleFactor shrinks the label a little before
+                    // truncation so the verb stays readable rather than
+                    // ending as `SEND FOL…`.
+                    .fixedSize(horizontal: false, vertical: true)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.75)
             }
         }
         .padding(.horizontal, 11)

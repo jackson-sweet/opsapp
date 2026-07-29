@@ -130,6 +130,9 @@ struct LeadPhotosSection: View {
             // Empty + can manage — one quiet tile-sized affordance.
             addTile
         } else {
+            // Bug e13be3bb: a horizontal ScrollView reports its content's
+            // intrinsic width to the vertical parent unless it is capped, so
+            // the photo strip was widening the whole dossier.
             ScrollView(.horizontal) {
                 HStack(spacing: OPSStyle.Layout.spacing2_5) {
                     if canManage {
@@ -159,6 +162,7 @@ struct LeadPhotosSection: View {
                 }
             }
             .scrollIndicators(.hidden)
+            .frame(maxWidth: .infinity)
         }
     }
 

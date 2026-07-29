@@ -35,15 +35,14 @@ struct StairConfigView: View {
     }
 
     @State private var mode: RiseMode = .height
-    @State private var treadCount: Int = 4
-    @State private var riseFeet: Int = 2
-    @State private var riseInches: Int = 6
+    /// Treads and height are two readings of ONE drop, so they live in one
+    /// value that keeps them in step — entering either moves the other, and
+    /// switching modes can never show a stale number (bug 46c2d6eb).
+    @State private var riseEntry = DeckStairRiseEntry(totalRiseInches: 30, risePerStep: 7.5)
     @State private var targetLevelId: String?
-    /// Edge chosen inside the sheet when it was opened without a selection
-    /// (the Connect entry point on the level bar).
+    /// Edge chosen inside the sheet when it opened without one.
     @State private var pickedEdgeId: String?
     @State private var widthText: String = "48"
-    @State private var risePerStep: Double = 7.5
     @State private var runPerTread: Double = 10.0
     @State private var addRailing: Bool = false
     @State private var railingType: RailingType = .parapetWall
@@ -55,9 +54,30 @@ struct StairConfigView: View {
 
     // MARK: - Context
 
-    private var editingEdgeId: String? {
-        viewModel.editingEdgeId ?? pickedEdgeId
+    /// The single deck edge the operator has selected, if the selection is
+    /// unambiguous. Selecting an edge by marquee (or toggling one off a
+    /// multi-selection) leaves `editingEdgeId` nil while the selection still
+    /// names exactly one edge — without this, opening Stairs from the toolbar
+    /// in that state showed a sheet with nothing in it.
+    private var soleSelectedDeckEdgeId: String? {
+        let ids = viewModel.selection.selectedEdgeIds
+        guard ids.count == 1, let id = ids.first,
+              viewModel.findEdge(byId: id)?.edgeType != .houseEdge else { return nil }
+        return id
     }
+
+    private var editingEdgeId: String? {
+        viewModel.editingEdgeId ?? pickedEdgeId ?? soleSelectedDeckEdgeId
+    }
+
+    /// The sheet has to ask which edge only when nothing else answered it.
+    private var needsEdgeChoice: Bool {
+        viewModel.editingEdgeId == nil && soleSelectedDeckEdgeId == nil
+    }
+
+    /// Rise-per-step lives on the entry so a code-envelope change re-derives
+    /// whichever vocabulary the operator is NOT currently typing in.
+    private var risePerStep: Double { riseEntry.risePerStep }
 
     /// Level-aware edge resolution — never the top-level array.
     private var targetEdge: DeckEdge? {
@@ -144,9 +164,9 @@ struct StairConfigView: View {
     private var totalRise: Double {
         switch mode {
         case .treads:
-            return Double(treadCount) * risePerStep
+            return riseEntry.treadRiseInches
         case .height:
-            return Double(riseFeet * 12 + riseInches)
+            return riseEntry.heightRiseInches
         case .level:
             guard let index = selectedTargetIndex else { return 0 }
             return max(0, drop(toLevelAt: index) * 12.0)
@@ -160,7 +180,7 @@ struct StairConfigView: View {
             width: width,
             risePerStep: risePerStep,
             runPerTread: runPerTread,
-            treadCountOverride: mode == .treads ? treadCount : nil
+            treadCountOverride: mode == .treads ? riseEntry.treadCount : nil
         )
     }
 
@@ -202,14 +222,14 @@ struct StairConfigView: View {
             ScrollView {
                 VStack(spacing: OPSStyle.Layout.spacing3_5) {
                     if targetEdge == nil {
-                        if viewModel.isMultiLevel, let level = viewModel.activeLevel, !pickableEdges.isEmpty {
-                            edgePickerCard(level: level)
+                        if !pickableEdges.isEmpty {
+                            edgePickerCard
                         } else {
                             emptyState
                         }
                     } else {
-                        if viewModel.editingEdgeId == nil, let level = viewModel.activeLevel {
-                            edgePickerCard(level: level)
+                        if needsEdgeChoice {
+                            edgePickerCard
                         }
                         riseCard
                         widthInput
@@ -249,14 +269,21 @@ struct StairConfigView: View {
                 }
             }
         }
-        .presentationDetents([.large])
+        // When the sheet has to ask which edge, it must not cover the canvas
+        // it is asking about — the candidate edge highlights out there while
+        // its row is selected. Opened on a known edge, it stays full height
+        // for the whole configuration.
+        .presentationDetents(needsEdgeChoice ? [.medium, .large] : [.large])
         .fullScreenCover(isPresented: $showingARHeight) {
             ARHeightMeasureView { heightInches, _ in
-                setRise(fromInches: heightInches)
+                riseEntry.setTotalRiseInches(heightInches)
                 showingARHeight = false
             }
         }
         .onAppear(perform: loadExisting)
+        .onDisappear {
+            viewModel.highlightedEdgeId = nil
+        }
     }
 
     // MARK: - Empty state
@@ -266,7 +293,7 @@ struct StairConfigView: View {
             Text("No edge selected")
                 .font(OPSStyle.Typography.bodyBold)
                 .foregroundColor(OPSStyle.Colors.primaryText)
-            Text("Select a deck edge, then add stairs from its toolbar.")
+            Text("Tap a deck edge on the canvas, then add stairs.")
                 .font(OPSStyle.Typography.caption)
                 .foregroundColor(OPSStyle.Colors.secondaryText)
         }
@@ -276,13 +303,23 @@ struct StairConfigView: View {
         .cornerRadius(OPSStyle.Layout.cornerRadius)
     }
 
-    // MARK: - Edge picker (Connect entry — sheet opened without a selection)
+    // MARK: - Edge picker (sheet opened without an edge)
 
-    private var pickableEdges: [DeckEdge] {
-        viewModel.activeLevel?.edges.filter { $0.edgeType != .houseEdge } ?? []
+    /// The level whose edges the picker offers. Multi-level drawings pick
+    /// from the active level; single-level drawings from the root arrays.
+    private var pickerLevel: DeckLevel? {
+        if let active = viewModel.activeLevel { return active }
+        var synthetic = DeckLevel(id: "root", name: "Deck")
+        synthetic.vertices = viewModel.drawingData.vertices
+        synthetic.edges = viewModel.drawingData.edges
+        return synthetic
     }
 
-    private func edgePickerCard(level: DeckLevel) -> some View {
+    private var pickableEdges: [DeckEdge] {
+        (pickerLevel?.edges ?? []).filter { $0.edgeType != .houseEdge }
+    }
+
+    private var edgePickerCard: some View {
         VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
             Text("Stairs Descend From")
                 .font(OPSStyle.Typography.caption)
@@ -292,20 +329,18 @@ struct StairConfigView: View {
                 let isSelected = pickedEdgeId == edge.id
                 Button {
                     pickedEdgeId = edge.id
+                    viewModel.highlightedEdgeId = edge.id
                     prefill(forEdge: edge)
                 } label: {
                     HStack {
                         Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
                             .foregroundColor(isSelected ? OPSStyle.Colors.text : OPSStyle.Colors.secondaryText)
-                        Text(edgeLabel(edge, level: level))
+                        Text(edgeLabel(edge))
                             .font(OPSStyle.Typography.body)
                             .foregroundColor(OPSStyle.Colors.primaryText)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.85)
                         Spacer()
-                        if let dim = edge.dimension {
-                            Text(DimensionEngine.formatImperial(dim))
-                                .font(OPSStyle.Typography.monoValue)
-                                .foregroundColor(OPSStyle.Colors.secondaryText)
-                        }
                     }
                     .padding(.horizontal, OPSStyle.Layout.spacing2_5)
                     .padding(.vertical, OPSStyle.Layout.spacing2)
@@ -320,10 +355,16 @@ struct StairConfigView: View {
         .cornerRadius(OPSStyle.Layout.cornerRadius)
     }
 
-    private func edgeLabel(_ edge: DeckEdge, level: DeckLevel) -> String {
-        let startIdx = level.vertices.firstIndex(where: { $0.id == edge.startVertexId }).map { $0 + 1 } ?? 0
-        let endIdx = level.vertices.firstIndex(where: { $0.id == edge.endVertexId }).map { $0 + 1 } ?? 0
-        return "Edge \(startIdx)\u{2013}\(endIdx)"
+    /// The operator's own name for the edge, else the side it faces and how
+    /// long it is. Vertex indices ("Edge 1–2") appear nowhere on the canvas,
+    /// so they named nothing the operator could find. Bug 2f717747.
+    private func edgeLabel(_ edge: DeckEdge) -> String {
+        guard let level = pickerLevel else { return "Edge" }
+        return DeckEdgeNaming.displayName(
+            forEdgeId: edge.id,
+            in: level,
+            system: viewModel.drawingData.config.measurementSystem
+        )
     }
 
     // MARK: - Rise card
@@ -349,12 +390,7 @@ struct StairConfigView: View {
                     .cornerRadius(OPSStyle.Layout.smallCornerRadius)
             }
 
-            Picker("Rise input", selection: $mode) {
-                ForEach(availableModes, id: \.self) { mode in
-                    Text(mode.displayName).tag(mode)
-                }
-            }
-            .pickerStyle(.segmented)
+            modePicker
 
             switch mode {
             case .treads:
@@ -370,8 +406,60 @@ struct StairConfigView: View {
         .cornerRadius(OPSStyle.Layout.cornerRadius)
     }
 
-    private var availableModes: [RiseMode] {
-        showsLevelMode ? RiseMode.allCases : [.treads, .height]
+    /// All three vocabularies are always listed. Level used to VANISH on a
+    /// single-level drawing, which reads as a missing feature rather than a
+    /// precondition — so it stays, greyed, with the one thing that unlocks it
+    /// spelled out underneath. Bug 46c2d6eb (A2).
+    private var modePicker: some View {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
+            HStack(spacing: 0) {
+                ForEach(RiseMode.allCases, id: \.self) { candidate in
+                    modeSegment(candidate)
+                }
+            }
+            .padding(OPSStyle.Layout.spacing1 / 2)
+            .background(OPSStyle.Colors.background)
+            .overlay(
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                    .stroke(OPSStyle.Colors.line, lineWidth: 1)
+            )
+            .cornerRadius(OPSStyle.Layout.cornerRadius)
+
+            if !showsLevelMode {
+                Text("ADD A LEVEL TO CONNECT")
+                    .font(OPSStyle.Typography.microLabel)
+                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+            }
+        }
+    }
+
+    private func modeSegment(_ candidate: RiseMode) -> some View {
+        let isEnabled = isModeEnabled(candidate)
+        let isActive = mode == candidate
+        return Button {
+            mode = candidate
+        } label: {
+            Text(candidate.displayName)
+                .font(OPSStyle.Typography.smallButton)
+                .foregroundColor(
+                    isActive
+                        ? OPSStyle.Colors.primaryText
+                        : (isEnabled ? OPSStyle.Colors.secondaryText : OPSStyle.Colors.tertiaryText)
+                )
+                .frame(maxWidth: .infinity)
+                .frame(height: OPSStyle.Layout.touchTargetMin - OPSStyle.Layout.spacing2)
+                .background(isActive ? OPSStyle.Colors.surfaceActive : Color.clear)
+                .overlay(
+                    RoundedRectangle(cornerRadius: OPSStyle.Layout.smallCornerRadius)
+                        .stroke(isActive ? OPSStyle.Colors.cardBorder : Color.clear, lineWidth: 1)
+                )
+                .cornerRadius(OPSStyle.Layout.smallCornerRadius)
+        }
+        .disabled(!isEnabled)
+    }
+
+    private func isModeEnabled(_ candidate: RiseMode) -> Bool {
+        candidate == .level ? showsLevelMode : true
     }
 
     // MARK: - Treads mode
@@ -379,27 +467,35 @@ struct StairConfigView: View {
     private var treadsInput: some View {
         VStack(spacing: OPSStyle.Layout.spacing2) {
             HStack(spacing: OPSStyle.Layout.spacing3) {
-                stepButton(systemImage: "minus", enabled: treadCount > 1) {
-                    treadCount = max(1, treadCount - 1)
+                stepButton(
+                    systemImage: "minus",
+                    enabled: riseEntry.treadCount > DeckStairRiseEntry.treadRange.lowerBound
+                ) {
+                    riseEntry.setTreadCount(riseEntry.treadCount - 1)
                 }
 
                 VStack(spacing: 0) {
-                    Text("\(treadCount)")
+                    Text("\(riseEntry.treadCount)")
                         .font(OPSStyle.Typography.headlineMono)
                         .foregroundColor(OPSStyle.Colors.primaryText)
                         .monospacedDigit()
-                    Text(treadCount == 1 ? "tread" : "treads")
+                    Text(riseEntry.treadCount == 1 ? "tread" : "treads")
                         .font(OPSStyle.Typography.smallCaption)
                         .foregroundColor(OPSStyle.Colors.secondaryText)
                 }
                 .frame(maxWidth: .infinity)
 
-                stepButton(systemImage: "plus", enabled: treadCount < 30) {
-                    treadCount = min(30, treadCount + 1)
+                stepButton(
+                    systemImage: "plus",
+                    enabled: riseEntry.treadCount < DeckStairRiseEntry.treadRange.upperBound
+                ) {
+                    riseEntry.setTreadCount(riseEntry.treadCount + 1)
                 }
             }
 
-            Text("\(String(format: "%.1f", risePerStep))\u{2033} per step")
+            // The height this count spans — the number the operator can't see
+            // from the dial, and the one the stair is actually built to.
+            Text("\(DimensionEngine.formatImperial(riseEntry.treadRiseInches)) total \u{00b7} \(String(format: "%.1f", risePerStep))\u{2033} per step")
                 .font(OPSStyle.Typography.smallCaption)
                 .foregroundColor(OPSStyle.Colors.secondaryText)
         }
@@ -427,13 +523,27 @@ struct StairConfigView: View {
 
     private var heightInput: some View {
         VStack(spacing: OPSStyle.Layout.spacing2) {
-            DeckFeetInchesWheels(feet: $riseFeet, inches: $riseInches)
+            DeckFeetInchesWheels(
+                feet: Binding(
+                    get: { riseEntry.feet },
+                    set: { riseEntry.setHeight(feet: $0, inches: riseEntry.inches) }
+                ),
+                inches: Binding(
+                    get: { riseEntry.inches },
+                    set: { riseEntry.setHeight(feet: riseEntry.feet, inches: $0) }
+                )
+            )
+
+            // The step count this height needs — what Treads mode will show,
+            // surfaced here so the operator never has to switch to find out.
+            Text("\(riseEntry.treadCount) \(riseEntry.treadCount == 1 ? "tread" : "treads") \u{00b7} \(String(format: "%.1f", actualRisePerStep))\u{2033} per step")
+                .font(OPSStyle.Typography.smallCaption)
+                .foregroundColor(OPSStyle.Colors.secondaryText)
 
             HStack(spacing: OPSStyle.Layout.spacing2) {
                 ForEach(heightPresets, id: \.label) { preset in
                     Button {
-                        riseFeet = preset.feet
-                        riseInches = preset.inches
+                        riseEntry.setHeight(feet: preset.feet, inches: preset.inches)
                     } label: {
                         Text(preset.label)
                             .font(OPSStyle.Typography.smallButton)
@@ -467,6 +577,13 @@ struct StairConfigView: View {
 
     private var heightPresets: [(label: String, feet: Int, inches: Int)] {
         [("2'", 2, 0), ("2' 6\"", 2, 6), ("3'", 3, 0), ("4'", 4, 0)]
+    }
+
+    /// Rise per step once the drop is divided into whole treads — the built
+    /// figure, always at or under the code maximum the stepper enforces.
+    private var actualRisePerStep: Double {
+        guard riseEntry.treadCount > 0 else { return risePerStep }
+        return riseEntry.heightRiseInches / Double(riseEntry.treadCount)
     }
 
     // MARK: - Level mode
@@ -665,9 +782,19 @@ struct StairConfigView: View {
                 Text(String(format: "%.1f\"", risePerStep))
                     .font(OPSStyle.Typography.monoValue)
                     .foregroundColor(OPSStyle.Colors.primaryText)
-                Stepper("", value: $risePerStep, in: 7.0...7.75, step: 0.25)
-                    .labelsHidden()
-                    .frame(width: 100)
+                // Changing the code envelope re-derives whichever vocabulary
+                // the operator is NOT typing in, so the two never drift.
+                Stepper(
+                    "",
+                    value: Binding(
+                        get: { riseEntry.risePerStep },
+                        set: { riseEntry.setRisePerStep($0, authority: mode == .treads ? .treads : .height) }
+                    ),
+                    in: 7.0...7.75,
+                    step: 0.25
+                )
+                .labelsHidden()
+                .frame(width: 100)
             }
 
             HStack {
@@ -770,7 +897,7 @@ struct StairConfigView: View {
         if let edge = targetEdge {
             prefill(forEdge: edge)
         }
-        if let initialMode, availableModes.contains(initialMode) {
+        if let initialMode, isModeEnabled(initialMode) {
             mode = initialMode
         }
     }
@@ -781,7 +908,7 @@ struct StairConfigView: View {
             targetLevelId = connection.lowerLevelId
             let config = connection.stairConfig
             widthText = String(format: "%.0f", config.width)
-            risePerStep = config.risePerStep
+            riseEntry.setRisePerStep(config.risePerStep, authority: .height)
             runPerTread = config.runPerTread
             flipDirection = config.flipDirection
             if let railing = config.railingConfig {
@@ -794,19 +921,18 @@ struct StairConfigView: View {
         if let existing = edge.stairConfig {
             mode = .height
             widthText = String(format: "%.0f", existing.width)
-            risePerStep = existing.risePerStep
+            riseEntry.setRisePerStep(existing.risePerStep, authority: .height)
             runPerTread = existing.runPerTread
             alignment = existing.alignment
             offsetText = String(format: "%.0f", existing.offset)
             flipDirection = existing.flipDirection
-            if let treads = existing.treadCount, treads > 0 {
-                treadCount = treads
-            }
             if let railing = existing.railingConfig {
                 addRailing = true
                 railingType = railing.railingType
             }
-            setRise(fromInches: existing.totalRiseInches ?? activeLevelResolvedFeet * 12.0)
+            // The stored drop is authoritative; the tread count follows it,
+            // exactly as it did before this state was unified.
+            riseEntry.setTotalRiseInches(existing.totalRiseInches ?? activeLevelResolvedFeet * 12.0)
             return
         }
 
@@ -817,15 +943,7 @@ struct StairConfigView: View {
         if let edgeLen = edge.dimension {
             widthText = String(format: "%.0f", edgeLen)
         }
-        setRise(fromInches: activeLevelResolvedFeet * 12.0)
-    }
-
-    private func setRise(fromInches inches: Double) {
-        let clamped = max(0, inches)
-        let components = DeckFeetInchesWheels.components(fromFeet: clamped / 12.0)
-        riseFeet = components.feet
-        riseInches = components.inches
-        treadCount = max(1, StairConfig.calculateTreadCount(totalRise: clamped, risePerStep: risePerStep))
+        riseEntry.setTotalRiseInches(activeLevelResolvedFeet * 12.0)
     }
 
     private func formatFeet(_ feet: Double) -> String {

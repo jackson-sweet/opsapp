@@ -176,6 +176,15 @@ struct SiteVisitProjectPayload: Equatable {
     let deckDesignIds: [String]
     let checklistAnswerIds: [String]
     let checklistLines: [String]
+    // Record fields — additive, defaulted, and declared LAST so every existing
+    // caller's memberwise init is unaffected. They travel into the site-visit
+    // packet so the SITE VISIT RECORD can name who was met and what the lead
+    // was worth on a teammate's device that holds none of the local artifacts.
+    var contactName: String? = nil
+    var companyName: String? = nil
+    /// The lead's value at the time of the visit. Written to the packet, then
+    /// filtered at render for viewers without financial visibility.
+    var estimatedValue: Double? = nil
 }
 
 enum SiteVisitProjectPayloadBuilder {
@@ -184,7 +193,10 @@ enum SiteVisitProjectPayloadBuilder {
         opportunityId: String,
         address: String?,
         artifacts: [SiteVisitCaptureArtifact],
-        checklistAnswers: [SiteVisitChecklistAnswer] = []
+        checklistAnswers: [SiteVisitChecklistAnswer] = [],
+        contactName: String? = nil,
+        companyName: String? = nil,
+        estimatedValue: Double? = nil
     ) -> SiteVisitProjectPayload {
         let included = artifacts
             .filter { $0.isActive && $0.includedInProjectReview }
@@ -209,7 +221,10 @@ enum SiteVisitProjectPayloadBuilder {
                 artifact.pipesToProjectDeckDesign ? artifact.deckDesignId : nil
             },
             checklistAnswerIds: includedAnswers.map(\.id),
-            checklistLines: includedAnswers.compactMap(Self.checklistLine)
+            checklistLines: includedAnswers.compactMap(Self.checklistLine),
+            contactName: contactName,
+            companyName: companyName,
+            estimatedValue: estimatedValue
         )
     }
 

@@ -38,8 +38,13 @@ final class SiteVisitRecordSnapshotTests: XCTestCase {
         return dir
     }
 
-    /// A visit that captured everything, including a value — so the two
-    /// permission states have something to actually differ about.
+    /// The lead's value, as the surface resolves it from the local opportunity
+    /// at render time. It is NOT in the packet below — the packet syncs to a
+    /// column OPS-Web renders ungated, so money never travels in it.
+    private let leadValue: Double = 18_400
+
+    /// A visit that captured everything — so the two permission states have
+    /// something to actually differ about once the value is resolved.
     private func fullMetadata() -> SiteVisitPacketMetadata {
         SiteVisitPacketMetadata(
             siteVisitId: "visit-1",
@@ -54,8 +59,7 @@ final class SiteVisitRecordSnapshotTests: XCTestCase {
             address: "1100 Maple Ave, Springfield",
             contactName: "Helen Calloway",
             companyName: "Calloway Ltd",
-            deckDesignId: "design-1",
-            estimatedValue: 18_400
+            deckDesignId: "design-1"
         )
     }
 
@@ -65,6 +69,7 @@ final class SiteVisitRecordSnapshotTests: XCTestCase {
             photoURLs: [],
             capturedAt: Date(timeIntervalSince1970: 1_780_000_000),
             operatorName: "Dale Harmon",
+            estimatedValue: leadValue,
             canViewFinancials: canViewFinancials
         )
     }
@@ -105,11 +110,12 @@ final class SiteVisitRecordSnapshotTests: XCTestCase {
                 photoCount: 3,
                 measurements: nil, notes: nil, checklist: nil,
                 address: nil, contactName: nil, companyName: nil,
-                deckDesignId: nil, estimatedValue: nil
+                deckDesignId: nil
             ),
             photoURLs: [],
             capturedAt: Date(timeIntervalSince1970: 1_780_000_000),
             operatorName: "Dale Harmon",
+            estimatedValue: nil,
             canViewFinancials: true
         )
         snapshot("04_record_photos_only", height: 420) {

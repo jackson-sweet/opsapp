@@ -800,11 +800,11 @@ final class SiteVisitCaptureViewModel: ObservableObject {
             artifacts: artifacts,
             checklistAnswers: checklistAnswers,
             // Carried into the packet so the SITE VISIT RECORD can name who was
-            // met on a teammate's device. The value rides along too and is
-            // filtered at render for viewers without financial visibility.
+            // met on a teammate's device. The lead's VALUE is deliberately not
+            // carried — the packet syncs to a column OPS-Web renders ungated,
+            // so money is resolved at render time from the local opportunity.
             contactName: currentOpportunity?.displayContactName ?? identityDraft?.contactName.trimmedNilIfEmpty,
-            companyName: identityDraft?.clientName.trimmedNilIfEmpty,
-            estimatedValue: currentOpportunity?.estimatedValue
+            companyName: identityDraft?.clientName.trimmedNilIfEmpty
         )
     }
 

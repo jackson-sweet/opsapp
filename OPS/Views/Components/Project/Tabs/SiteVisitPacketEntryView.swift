@@ -16,6 +16,11 @@
 //  viewer, and handed to the assembler as a single boolean. Everything money
 //  is then filtered out before any view sees it.
 //
+//  The value itself is resolved here too, from the job's own lead on THIS
+//  device. It is deliberately not carried in the packet: `content_metadata`
+//  syncs to OPS-Web, which renders it with no financial gate, so a figure in
+//  the packet would be a figure published past `finances.view`.
+//
 //  Also renders `status_change` system notes (written by OPS-Web) as a quiet
 //  one-line system row instead of the bogus "Team Member / Status changed"
 //  user card they previously masqueraded as.
@@ -34,6 +39,8 @@ struct SiteVisitPacketEntryView: View {
     @EnvironmentObject private var dataController: DataController
     @EnvironmentObject private var permissionStore: PermissionStore
     @Query private var projectPhotos: [ProjectPhoto]
+    /// The lead this job came from — the only place the visit's value is read.
+    @Query private var linkedOpportunities: [Opportunity]
 
     @State private var showRecord = false
     @State private var viewerState: RecordViewerState?
@@ -52,6 +59,9 @@ struct SiteVisitPacketEntryView: View {
         _projectPhotos = Query(
             filter: #Predicate<ProjectPhoto> { $0.projectId == pid && $0.deletedAt == nil },
             sort: [SortDescriptor(\ProjectPhoto.createdAt, order: .forward)]
+        )
+        _linkedOpportunities = Query(
+            filter: #Predicate<Opportunity> { $0.projectId == pid }
         )
     }
 
@@ -74,12 +84,18 @@ struct SiteVisitPacketEntryView: View {
     /// The one place financial visibility is decided for this surface.
     /// `finances.view` is the app's money gate — the same key the lead day
     /// sheet, the Books tab, and the billable roll-up read.
+    ///
+    /// The amount comes from the job's lead as it stands NOW, not as it stood
+    /// at the visit — a record read a month later should show what the lead is
+    /// worth, not a stale figure frozen into a note. A device without the lead
+    /// synced simply gets no money line.
     private var record: SiteVisitRecord {
         SiteVisitRecord.assemble(
             metadata: metadata,
             photoURLs: visitPhotoURLs,
             capturedAt: note.createdAt,
             operatorName: authorName,
+            estimatedValue: linkedOpportunities.first?.estimatedValue,
             canViewFinancials: permissionStore.can("finances.view")
         )
     }

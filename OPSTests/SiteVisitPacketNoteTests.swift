@@ -111,6 +111,55 @@ final class SiteVisitPacketNoteTests: XCTestCase {
         XCTAssertEqual(measurements.first?["value"], "22 ft")
     }
 
+    // MARK: - Money never travels in the packet
+
+    /// `content_metadata` is a SYNCED blob on `project_notes`. OPS-Web reads
+    /// that column with no financial gate of its own, so anything money-shaped
+    /// written here is money published to every viewer of the web activity
+    /// feed — the exact leak the record's `finances.view` gate exists to
+    /// prevent. The lead's value is therefore resolved at render time from the
+    /// local opportunity and never authored into the packet.
+    ///
+    /// Asserted as an allowlist rather than a single absent key: a future
+    /// `deck_price` or `quote_total` would slip past a `estimated_value` check
+    /// and leak just the same.
+    func testPacketMetadataCarriesNoMoney() throws {
+        let packet = try XCTUnwrap(SiteVisitPacketNote.build(
+            artifacts: [
+                artifact(kind: .photo),
+                artifact(kind: .measurement, title: "Deck width", body: "14 ft 6 in"),
+                artifact(kind: .note, body: "Client wants composite boards")
+            ],
+            payload: payload(checklistLines: ["Power on site — yes"])
+        ))
+        let metadata = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: Data(packet.metadataJSON.utf8)) as? [String: Any]
+        )
+
+        let permitted: Set<String> = [
+            "site_visit_id", "photo_count", "measurements", "notes",
+            "checklist", "address", "contact_name", "company_name", "deck_design_id"
+        ]
+        XCTAssertTrue(
+            Set(metadata.keys).isSubset(of: permitted),
+            "Unlisted key in the synced packet: \(Set(metadata.keys).subtracting(permitted)). Every key here is published to the web activity feed ungated — money must never be one of them."
+        )
+        XCTAssertFalse(
+            metadata.keys.contains("estimated_value"),
+            "The lead's value must be resolved at render time behind finances.view, never synced in the packet."
+        )
+    }
+
+    /// The legacy plain-text half of the packet syncs to the same ungated
+    /// column pair — a currency figure in `content` would leak exactly as hard.
+    func testLegacyPacketContentCarriesNoCurrencyFigure() throws {
+        let packet = try XCTUnwrap(SiteVisitPacketNote.build(
+            artifacts: [artifact(kind: .measurement, title: "Deck width", body: "14 ft 6 in")],
+            payload: payload()
+        ))
+        XCTAssertFalse(packet.content.contains("$"))
+    }
+
     func testExcludesInactiveAndExcludedArtifacts() throws {
         let excluded = artifact(kind: .note, body: "should not appear")
         excluded.includedInProjectReview = false

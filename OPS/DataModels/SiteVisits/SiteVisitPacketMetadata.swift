@@ -11,6 +11,13 @@
 //  artifacts. Every field is optional so partial, legacy, and future shapes
 //  all decode; new keys are additive only, for the same reason.
 //
+//  NOTHING DENOMINATED IN CURRENCY BELONGS HERE. This blob syncs into
+//  `project_notes.content_metadata`, which OPS-Web renders with no financial
+//  gate of its own — a figure written here is a figure published past
+//  `finances.view` to every web viewer of the project's activity feed. Money
+//  is resolved at render time from the local opportunity instead
+//  (`SiteVisitRecord.assemble`), where the gate actually applies.
+//
 
 import Foundation
 
@@ -33,9 +40,6 @@ struct SiteVisitPacketMetadata: Decodable, Equatable {
     let companyName: String?
     /// Set when the visit produced or continued a deck design. Additive.
     let deckDesignId: String?
-    /// The lead's value at the time of the visit. Additive — and never
-    /// rendered without financial visibility (see `SiteVisitRecord.assemble`).
-    let estimatedValue: Double?
 
     enum CodingKeys: String, CodingKey {
         case siteVisitId    = "site_visit_id"
@@ -47,7 +51,6 @@ struct SiteVisitPacketMetadata: Decodable, Equatable {
         case contactName    = "contact_name"
         case companyName    = "company_name"
         case deckDesignId   = "deck_design_id"
-        case estimatedValue = "estimated_value"
     }
 
     static func decode(from json: String?) -> SiteVisitPacketMetadata? {

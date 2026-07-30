@@ -178,13 +178,14 @@ struct SiteVisitProjectPayload: Equatable {
     let checklistLines: [String]
     // Record fields — additive, defaulted, and declared LAST so every existing
     // caller's memberwise init is unaffected. They travel into the site-visit
-    // packet so the SITE VISIT RECORD can name who was met and what the lead
-    // was worth on a teammate's device that holds none of the local artifacts.
+    // packet so the SITE VISIT RECORD can name who was met on a teammate's
+    // device that holds none of the local artifacts.
+    //
+    // The lead's VALUE deliberately does not travel with them: the packet syncs
+    // into a column OPS-Web renders ungated, so money is resolved at render
+    // time from the local opportunity instead, behind `finances.view`.
     var contactName: String? = nil
     var companyName: String? = nil
-    /// The lead's value at the time of the visit. Written to the packet, then
-    /// filtered at render for viewers without financial visibility.
-    var estimatedValue: Double? = nil
 }
 
 enum SiteVisitProjectPayloadBuilder {
@@ -195,8 +196,7 @@ enum SiteVisitProjectPayloadBuilder {
         artifacts: [SiteVisitCaptureArtifact],
         checklistAnswers: [SiteVisitChecklistAnswer] = [],
         contactName: String? = nil,
-        companyName: String? = nil,
-        estimatedValue: Double? = nil
+        companyName: String? = nil
     ) -> SiteVisitProjectPayload {
         let included = artifacts
             .filter { $0.isActive && $0.includedInProjectReview }
@@ -223,8 +223,7 @@ enum SiteVisitProjectPayloadBuilder {
             checklistAnswerIds: includedAnswers.map(\.id),
             checklistLines: includedAnswers.compactMap(Self.checklistLine),
             contactName: contactName,
-            companyName: companyName,
-            estimatedValue: estimatedValue
+            companyName: companyName
         )
     }
 

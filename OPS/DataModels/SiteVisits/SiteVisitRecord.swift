@@ -22,6 +22,13 @@
 //  plus synced photo URLs — never the capturing device's local artifacts — so
 //  the record renders identically on every teammate's phone.
 //
+//  The one thing the packet does NOT carry is the money. `content_metadata`
+//  crosses to OPS-Web, which renders it with no financial gate of its own, so
+//  a figure written into the packet is a figure published past `finances.view`
+//  the moment the note syncs. The value is therefore resolved by the surface
+//  at RENDER time, from the local opportunity, and handed in here — where the
+//  gate is applied and where it can never leave the device.
+//
 
 import Foundation
 
@@ -90,11 +97,18 @@ struct SiteVisitRecord: Equatable {
 
     // MARK: - Assembly
 
+    /// - Parameter estimatedValue: the lead's value, read from the LOCAL
+    ///   opportunity by the surface that renders the record. Nil when the
+    ///   opportunity is not on this device (or carries no value) — in which
+    ///   case the record simply has no money line, exactly as it does for a
+    ///   viewer the gate turns away. The two cases are indistinguishable
+    ///   downstream, by design.
     static func assemble(
         metadata: SiteVisitPacketMetadata?,
         photoURLs: [String],
         capturedAt: Date,
         operatorName: String,
+        estimatedValue: Double?,
         canViewFinancials: Bool
     ) -> SiteVisitRecord {
         let measurements = metadata?.measurements ?? []
@@ -115,10 +129,11 @@ struct SiteVisitRecord: Equatable {
         let overflow = max(0, photoURLs.count - visible.count)
 
         // The single gate. A restricted viewer never receives the number, so
-        // no downstream view can leak it by accident.
+        // no downstream view can leak it by accident. The amount comes from the
+        // caller's local opportunity — never from the packet, which syncs.
         let value: String? = {
             guard canViewFinancials,
-                  let amount = metadata?.estimatedValue,
+                  let amount = estimatedValue,
                   amount > 0 else { return nil }
             return BooksFormat.currency(amount)
         }()

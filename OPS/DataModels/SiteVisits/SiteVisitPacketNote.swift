@@ -92,9 +92,11 @@ struct SiteVisitPacketNote {
         if let deckDesignId = payload.deckDesignIds.first, !deckDesignId.isEmpty {
             metadata["deck_design_id"] = deckDesignId
         }
-        if let estimatedValue = payload.estimatedValue, estimatedValue > 0 {
-            metadata["estimated_value"] = estimatedValue
-        }
+        // NO MONEY. This dictionary becomes `project_notes.content_metadata`,
+        // which syncs to OPS-Web and renders there with no financial gate —
+        // so a currency figure written here is published straight past
+        // `finances.view`. The record resolves the lead's value at render time
+        // from the local opportunity instead.
 
         let metadataJSON = (try? JSONSerialization.data(withJSONObject: metadata, options: [.sortedKeys]))
             .flatMap { String(data: $0, encoding: .utf8) } ?? "{}"

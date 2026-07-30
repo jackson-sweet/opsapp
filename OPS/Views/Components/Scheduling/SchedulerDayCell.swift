@@ -297,21 +297,38 @@ struct SchedulerDayCell: View {
 /// whole span is the point: a fortnight-long booking then looks exactly like a
 /// three-day one at both ends and says nothing in between, which is honest —
 /// the middle of a long range has nothing to report.
+///
+/// The two seams' ramps ADD, clamped at the caps' own white. On every span of
+/// four days or more they never reach each other, so the sum is just whichever
+/// ramp is in range and nothing about a long span changes. It matters on
+/// exactly one length: a three-day booking, whose single interior day sits
+/// inside both ramps at once. Adding there leaves that day white at both seams
+/// and merely soft in the middle. Taking the nearer seam instead would drive it
+/// to the quiet base dead centre — a dark stripe through the middle of a
+/// three-day pill, which is the abrupt step this whole curve exists to erase,
+/// reintroduced at the one span short enough to make it obvious.
 enum SchedulerSpanCurve {
 
-    /// How far the glow reaches in from each seam. Clamped to half the
-    /// interior so on a short span the two sides meet exactly in the middle
-    /// instead of overlapping. A three-day span is the extreme case: its lone
-    /// interior day leaves both seams white and dips to nothing dead centre.
+    /// How far the glow reaches in from each seam. Clamped to the interior's
+    /// own width, so a seam always spends its full budget and stops only where
+    /// the interior does. On a three-day span — the only span short enough for
+    /// the clamp to bite — both ramps therefore cover the lone interior day end
+    /// to end and overlap across all of it, which is what holds that day at the
+    /// caps' white on both edges instead of pinching it out in the middle.
     static func blendWidth(interiorCount: Int) -> Double {
         guard interiorCount > 0 else { return 0 }
-        return min(OPSStyle.Layout.schedulerSpanBlendCells, Double(interiorCount) / 2)
+        return min(OPSStyle.Layout.schedulerSpanBlendCells, Double(interiorCount))
     }
 
     /// Brightness `x` cells in from the start cap's seam, where the interior
-    /// runs 0…`interiorCount`. Quadratic ease-out from whichever seam is
-    /// nearer — the app's one easing curve held still: fast off the mark, long
-    /// settle.
+    /// runs 0…`interiorCount`. A quadratic ease-out from each seam — the app's
+    /// one easing curve held still: fast off the mark, long settle — with the
+    /// two summed and the sum clamped at 1 so the interior can never outshine
+    /// the caps it is fusing with. Summing rather than taking the nearer seam
+    /// changes nothing wherever the two ramps stay out of each other's way,
+    /// which is every span of four days or more; on a three-day span it is what
+    /// holds the lone interior at half the caps' white through its middle
+    /// instead of letting it fall to the quiet base and read as a break.
     static func brightness(at x: Double, interiorCount: Int) -> Double {
         let interior = Double(interiorCount)
         let blend = blendWidth(interiorCount: interiorCount)
@@ -320,7 +337,7 @@ enum SchedulerSpanCurve {
         let position = min(max(x, 0), interior)
         let fromStart = max(0, 1 - position / blend)
         let fromEnd = max(0, 1 - (interior - position) / blend)
-        return max(fromStart * fromStart, fromEnd * fromEnd)
+        return min(1, fromStart * fromStart + fromEnd * fromEnd)
     }
 
     /// Where interior cell `interiorIndex` has to be sampled, in span

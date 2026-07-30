@@ -4,7 +4,8 @@
 //
 //  Timeline event per opportunity — Supabase-backed.
 //  Covers note/call/email/stage_change plus the per-message email identity
-//  (who sent it, who received it, which message and thread it belongs to).
+//  (who sent it, who received it, which message and thread it belongs to) and
+//  the site-visit link that turns a `site_visit` row into a rendered record.
 //  Classifier fields are still deferred.
 //
 
@@ -46,6 +47,14 @@ class Activity: Identifiable {
     var fromEmail: String?            // DB: from_email
     var toEmails: [String]            // DB: to_emails
     var ccEmails: [String]            // DB: cc_emails
+
+    /// The site visit this activity reports (DB: `site_visit_id`). iOS has
+    /// always WRITTEN it — `ActivityRepository.logActivity(siteVisitId:)`
+    /// stamps it when a visit completes — but never decoded it back, so a
+    /// completed visit landed on the lead's timeline as an unremarkable row
+    /// with no way to reach what the visit actually captured. Nullable and
+    /// additive: every non-visit row carries nil.
+    var siteVisitId: String?
 
     var isRead: Bool
     var hasAttachments: Bool

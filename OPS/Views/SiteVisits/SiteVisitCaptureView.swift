@@ -935,23 +935,24 @@ private struct SiteVisitIdentityPanel: View {
     }
 
     private var isComplete: Bool {
-        hasName && hasContactMethod && hasAddress
+        requirements.isComplete
     }
 
     // Bug (site-visit report) — the required-field groups, surfaced per field
     // so the operator can see exactly what a lead needs. A lead needs an
     // identity (a person's name OR a company), a way to reach them (email OR
-    // phone), and a site address.
-    private var hasName: Bool {
-        clientName.trimmedNilIfEmpty != nil || contactName.trimmedNilIfEmpty != nil
-    }
-    private var hasContactMethod: Bool {
-        preferredEmail.trimmedNilIfEmpty != nil
-            || additionalEmailsText.trimmedNilIfEmpty != nil
-            || phoneNumber.trimmedNilIfEmpty != nil
-    }
-    private var hasAddress: Bool {
-        address.trimmedNilIfEmpty != nil
+    // phone), and a site address. COMPANY is optional — see
+    // `SiteVisitIdentityRequirements`, which owns the rule for form and tests
+    // alike.
+    private var requirements: SiteVisitIdentityRequirements {
+        .resolve(
+            name: contactName,
+            company: clientName,
+            email: preferredEmail,
+            additionalEmails: additionalEmailsText,
+            phone: phoneNumber,
+            address: address
+        )
     }
 
     private var badgeText: String {
@@ -1018,22 +1019,25 @@ private struct SiteVisitIdentityPanel: View {
                     importContactsButton
                 }
 
+                let requirements = self.requirements
                 VStack(spacing: OPSStyle.Layout.spacing2) {
-                    // Name OR company satisfies the identity requirement — both
-                    // fields light up once either is filled.
+                    // NAME carries the identity requirement — a person's name,
+                    // or a business when the business IS the client. COMPANY
+                    // never advertises one: most visits are residential and
+                    // there is no business to name.
                     identityField(
                         "NAME",
                         text: $contactName,
                         placeholder: "WHO YOU MET",
                         capitalization: .words,
-                        requirement: .required(satisfied: hasName)
+                        requirement: requirements.name
                     )
                     identityField(
                         "COMPANY",
                         text: $clientName,
                         placeholder: "BUSINESS",
                         capitalization: .words,
-                        requirement: .required(satisfied: hasName)
+                        requirement: requirements.company
                     )
                     // Email OR phone satisfies the contact-method requirement.
                     identityField(
@@ -1042,7 +1046,7 @@ private struct SiteVisitIdentityPanel: View {
                         placeholder: "PRIMARY EMAIL",
                         keyboard: .emailAddress,
                         capitalization: .never,
-                        requirement: .required(satisfied: hasContactMethod)
+                        requirement: requirements.email
                     )
                     identityField(
                         "OTHER EMAILS",
@@ -1059,7 +1063,7 @@ private struct SiteVisitIdentityPanel: View {
                         placeholder: "PHONE",
                         keyboard: .phonePad,
                         capitalization: .never,
-                        requirement: .required(satisfied: hasContactMethod)
+                        requirement: requirements.phone
                     )
                     // Address is an autocomplete, not a free-text field
                     // (bugs e6a700ff / 0adf456b): suggestions-as-you-type plus
@@ -1074,7 +1078,7 @@ private struct SiteVisitIdentityPanel: View {
                                 .font(OPSStyle.Typography.miniLabel)
                                 .foregroundColor(OPSStyle.Colors.text3)
                             Spacer(minLength: 0)
-                            requirementMarker(.required(satisfied: hasAddress))
+                            requirementMarker(requirements.address)
                         }
 
                         AddressAutocompleteField(
@@ -1364,19 +1368,12 @@ private struct SiteVisitIdentityPanel: View {
         }
     }
 
-    /// Per-field required/optional state for the lead form. `.required`
-    /// carries its own satisfied flag so either-or groups (name-or-company,
-    /// email-or-phone) can light up both members once one is filled.
-    private enum IdentityFieldRequirement {
-        case optional
-        case required(satisfied: Bool)
-    }
-
     /// Trailing REQUIRED → DONE marker. Speaks the same language as the
     /// checklist row's status label (tan when outstanding, olive when met)
-    /// so the two halves of the form read as one checklist.
+    /// so the two halves of the form read as one checklist. `.optional`
+    /// fields render no marker at all — an optional field says nothing.
     @ViewBuilder
-    private func requirementMarker(_ requirement: IdentityFieldRequirement) -> some View {
+    private func requirementMarker(_ requirement: SiteVisitIdentityFieldRequirement) -> some View {
         switch requirement {
         case .optional:
             EmptyView()
@@ -1400,7 +1397,7 @@ private struct SiteVisitIdentityPanel: View {
         capitalization: TextInputAutocapitalization = .words,
         axis: Axis = .horizontal,
         caption: String? = nil,
-        requirement: IdentityFieldRequirement = .optional
+        requirement: SiteVisitIdentityFieldRequirement = .optional
     ) -> some View {
         VStack(alignment: .leading, spacing: 5) {
             HStack(spacing: OPSStyle.Layout.spacing1) {

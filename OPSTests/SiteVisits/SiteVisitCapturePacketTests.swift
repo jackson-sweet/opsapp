@@ -458,18 +458,37 @@ final class SiteVisitCapturePacketTests: XCTestCase {
         XCTAssertEqual(viewModel.selectedSiteVisitType?.id, deckType.id)
         XCTAssertEqual(viewModel.checklistAnswers.count, deckType.fields.count)
         XCTAssertTrue(viewModel.checklistAnswers.allSatisfy { $0.siteVisitId == viewModel.siteVisit?.id })
+        // The deck template's one required row is the design. "Field
+        // measurements" was retired from the built-in — measuring is what the
+        // visit's LiDAR / scaled / dimensioned capture tools are for, and a
+        // checklist row demanding it again was a second gate that blocked
+        // completion after the work was already done.
         XCTAssertEqual(
             viewModel.missingRequiredChecklistAnswers.map(\.label),
-            ["Field measurements", "Deck design"]
+            ["Deck design"]
+        )
+        XCTAssertFalse(
+            viewModel.checklistAnswers.contains { $0.label == "Field measurements" },
+            "The retired measurement row must not be seeded onto a new visit."
         )
 
-        let measurement = try XCTUnwrap(
-            viewModel.checklistAnswers.first { $0.label == "Field measurements" }
+        // Answering an OPTIONAL row persists but must not clear the required one.
+        let goals = try XCTUnwrap(
+            viewModel.checklistAnswers.first { $0.label == "What the client wants" }
         )
-        viewModel.updateChecklistAnswer(measurement, value: .text("12 ft by 16 ft"))
+        viewModel.updateChecklistAnswer(goals, value: .text("Composite, not cedar"))
 
-        XCTAssertEqual(measurement.answerValue, .text("12 ft by 16 ft"))
+        XCTAssertEqual(goals.answerValue, .text("Composite, not cedar"))
         XCTAssertEqual(viewModel.missingRequiredChecklistAnswers.map(\.label), ["Deck design"])
+
+        // Answering the required row clears it.
+        let design = try XCTUnwrap(
+            viewModel.checklistAnswers.first { $0.label == "Deck design" }
+        )
+        viewModel.updateChecklistAnswer(design, value: .deckDesign("design-1"))
+
+        XCTAssertEqual(design.answerValue, .deckDesign("design-1"))
+        XCTAssertTrue(viewModel.missingRequiredChecklistAnswers.isEmpty)
 
         viewModel.addAdHocChecklistQuestion(label: "Gate code", kind: .shortText)
 

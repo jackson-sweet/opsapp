@@ -19,9 +19,25 @@
 //  Empty state: a single muted `// NO ACTIVITY LOGGED` line inside the
 //  card. Card itself always renders so the section heading stays anchored.
 //
+//  One row breaks the rail's grammar on purpose: a completed SITE VISIT. A
+//  message is one touch in a conversation; a visit is somebody standing on the
+//  property with a tape measure, and it carries everything the estimate will be
+//  built from. It renders as the SITE VISIT RECORD card — the same card the
+//  project activity tab shows — and opens the same full record. Prominence
+//  proportional to weight; it is the thing you scan this rail to find.
+//
 
 import SwiftUI
+import SwiftData
 import UIKit
+
+/// Geometry the lead rail shares across its pieces.
+enum LeadStreamMetrics {
+    /// The rail's horizontal inset. Every row, every hairline, and the
+    /// site-visit record card sit on it, so the column reads as one edge —
+    /// the value lives here once precisely so they cannot drift apart.
+    static let rowInset: CGFloat = 14
+}
 
 /// One stream entry — an activity or a stage change folded into the rail.
 enum LeadStreamEntry: Identifiable {
@@ -52,6 +68,9 @@ enum LeadStreamEntry: Identifiable {
 struct ActivityTimeline: View {
     let activities: [Activity]
     let transitions: [StageTransition]
+    /// The lead this rail belongs to. Supplies the site-visit record its
+    /// identity and its value; nil keeps every row plain.
+    var opportunity: Opportunity? = nil
     var maxItems: Int = 6
     var onViewAll: () -> Void = {}
 
@@ -83,8 +102,9 @@ struct ActivityTimeline: View {
             let shown = Array(entries.prefix(maxItems))
             VStack(spacing: 0) {
                 ForEach(shown) { entry in
-                    LeadStreamRow(
+                    LeadStreamEntryView(
                         entry: entry,
+                        opportunity: opportunity,
                         isExpanded: expanded.contains(entry.id),
                         onToggle: { toggle(entry.id) }
                     )
@@ -92,7 +112,7 @@ struct ActivityTimeline: View {
                         Rectangle()
                             .fill(OPSStyle.Colors.surfaceInput)
                             .frame(height: 1)
-                            .padding(.horizontal, 14)
+                            .padding(.horizontal, LeadStreamMetrics.rowInset)
                     }
                 }
 
@@ -116,7 +136,7 @@ struct ActivityTimeline: View {
                         .tracking(1.2)
                         .textCase(.uppercase)
                         .foregroundColor(OPSStyle.Colors.text3)
-                        .padding(.horizontal, 14)
+                        .padding(.horizontal, LeadStreamMetrics.rowInset)
                         .frame(maxWidth: .infinity, minHeight: OPSStyle.Layout.touchTargetMin)
                         .contentShape(Rectangle())
                     }
@@ -131,6 +151,132 @@ struct ActivityTimeline: View {
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
         withAnimation(OPSStyle.Animation.curve(OPSStyle.Animation.durationHover)) {
             if expanded.contains(id) { expanded.remove(id) } else { expanded.insert(id) }
+        }
+    }
+}
+
+// MARK: - Entry (row, or the site-visit record behind it)
+
+/// One rail entry. Everything renders as `LeadStreamRow` except a completed
+/// site visit whose visit is on this device — that becomes the SITE VISIT
+/// RECORD card.
+///
+/// The device check is the whole gate, and it is not a technicality: site
+/// visits and their capture artifacts never leave the phone that took them, so
+/// on anyone else's phone there is no record to build. Rather than invent one
+/// from an empty shell, the row stays exactly the plain row it has always been.
+struct LeadStreamEntryView: View {
+    let entry: LeadStreamEntry
+    var opportunity: Opportunity? = nil
+    let isExpanded: Bool
+    var onToggle: () -> Void = {}
+
+    var body: some View {
+        if case .activity(let activity) = entry,
+           activity.type == .siteVisit,
+           let visitId = activity.siteVisitId,
+           !visitId.isEmpty {
+            LeadSiteVisitEntryView(
+                entry: entry,
+                activity: activity,
+                visitId: visitId,
+                opportunity: opportunity,
+                isExpanded: isExpanded,
+                onToggle: onToggle
+            )
+        } else {
+            LeadStreamRow(entry: entry, isExpanded: isExpanded, onToggle: onToggle)
+        }
+    }
+}
+
+/// Resolves a site-visit activity against this device's local capture and
+/// renders the record card when it is all there.
+private struct LeadSiteVisitEntryView: View {
+    let entry: LeadStreamEntry
+    let activity: Activity
+    let visitId: String
+    let opportunity: Opportunity?
+    let isExpanded: Bool
+    var onToggle: () -> Void = {}
+
+    @EnvironmentObject private var permissionStore: PermissionStore
+    @Query private var visits: [SiteVisit]
+    @Query private var artifacts: [SiteVisitCaptureArtifact]
+    @Query private var checklistAnswers: [SiteVisitChecklistAnswer]
+    @Query private var identityDrafts: [SiteVisitIdentityDraft]
+    @Query private var authors: [TeamMember]
+
+    @State private var showRecord = false
+
+    init(
+        entry: LeadStreamEntry,
+        activity: Activity,
+        visitId: String,
+        opportunity: Opportunity?,
+        isExpanded: Bool,
+        onToggle: @escaping () -> Void
+    ) {
+        self.entry = entry
+        self.activity = activity
+        self.visitId = visitId
+        self.opportunity = opportunity
+        self.isExpanded = isExpanded
+        self.onToggle = onToggle
+
+        _visits = Query(filter: #Predicate<SiteVisit> { $0.id == visitId })
+        _artifacts = Query(
+            filter: #Predicate<SiteVisitCaptureArtifact> { $0.siteVisitId == visitId },
+            sort: [SortDescriptor(\SiteVisitCaptureArtifact.capturedAt, order: .forward)]
+        )
+        _checklistAnswers = Query(
+            filter: #Predicate<SiteVisitChecklistAnswer> { $0.siteVisitId == visitId }
+        )
+        _identityDrafts = Query(
+            filter: #Predicate<SiteVisitIdentityDraft> { $0.siteVisitId == visitId }
+        )
+        let authorId = activity.createdBy ?? ""
+        _authors = Query(filter: #Predicate<TeamMember> { $0.id == authorId })
+    }
+
+    private var teamMember: TeamMember? { authors.first }
+
+    /// Matches the project feed's author fallback so one visit reads the same
+    /// on both surfaces.
+    private var operatorName: String { teamMember?.fullName ?? "Team Member" }
+
+    private var record: SiteVisitRecord? {
+        guard let visit = visits.first else { return nil }
+        return SiteVisitRecord.assembleFromLocalCapture(
+            visit: visit,
+            artifacts: artifacts,
+            checklistAnswers: checklistAnswers,
+            identity: identityDrafts.first,
+            opportunity: opportunity,
+            capturedAt: activity.createdAt,
+            operatorName: operatorName,
+            canViewFinancials: permissionStore.can("finances.view")
+        )
+    }
+
+    var body: some View {
+        if let record {
+            SiteVisitRecordCard(
+                record: record,
+                teamMember: teamMember,
+                onOpen: { showRecord = true }
+            )
+            // Sits on the rail's own inset so the card's edges line up with
+            // the hairlines above and below it.
+            .padding(.horizontal, LeadStreamMetrics.rowInset)
+            .padding(.vertical, OPSStyle.Layout.spacing2)
+            .sheet(isPresented: $showRecord) {
+                // No photo tap-through: a lead has no project gallery to open
+                // into, and a dead-end tap is worse than no tap.
+                SiteVisitRecordView(record: record)
+            }
+        } else {
+            LeadStreamRow(entry: entry, isExpanded: isExpanded, onToggle: onToggle)
         }
     }
 }
@@ -202,7 +348,7 @@ struct LeadStreamRow: View {
                             .rotationEffect(.degrees(isExpanded ? 180 : 0))
                     }
                 }
-                .padding(.horizontal, 14)
+                .padding(.horizontal, LeadStreamMetrics.rowInset)
                 .padding(.vertical, OPSStyle.Layout.spacing2_5)
                 .frame(minHeight: OPSStyle.Layout.touchTargetMin)
                 .contentShape(Rectangle())
@@ -217,7 +363,7 @@ struct LeadStreamRow: View {
                     .foregroundColor(OPSStyle.Colors.text2)
                     .fixedSize(horizontal: false, vertical: true)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, 14)
+                    .padding(.horizontal, LeadStreamMetrics.rowInset)
                     .padding(.leading, 20 + OPSStyle.Layout.spacing2_5)
                     .padding(.bottom, OPSStyle.Layout.spacing2_5)
                     .transition(.opacity)
@@ -470,7 +616,7 @@ struct LeadStreamRow: View {
                 .lineLimit(1)
                 .layoutPriority(1)
         }
-        .padding(.horizontal, 14)
+        .padding(.horizontal, LeadStreamMetrics.rowInset)
         .padding(.vertical, OPSStyle.Layout.spacing2_5)
         .accessibilityElement(children: .combine)
         .accessibilityLabel(stageAccessibilityLabel(transition))
@@ -511,7 +657,7 @@ private struct EmptyLine: View {
             .foregroundColor(OPSStyle.Colors.textMute)
             .textCase(.uppercase)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, 14)
-            .padding(.vertical, 14)
+            .padding(.horizontal, LeadStreamMetrics.rowInset)
+            .padding(.vertical, LeadStreamMetrics.rowInset)
     }
 }

@@ -129,4 +129,86 @@ final class ActivityMigrationTests: XCTestCase {
         XCTAssertEqual(all.first(where: { $0.id == "act-client" })?.clientId, "client-99")
         XCTAssertEqual(all.first(where: { $0.id == "act-job" })?.projectId, "job-77")
     }
+
+    /// V20 → V21 adds the site-visit link. A store written by a V20 build must
+    /// open, keep every row and its email identity, default the new column to
+    /// nil, and then persist a real link — the whole point of the widening.
+    func test_v20StoreMigratesToV21_preservingEmailIdentityAndAddingTheSiteVisitLink() throws {
+        try autoreleasepool {
+            let v20Schema = Schema(versionedSchema: OPSSchemaV20.self)
+            let v20Config = ModelConfiguration(schema: v20Schema, url: storeURL)
+            let v20Container = try ModelContainer(for: v20Schema, configurations: v20Config)
+            let context = ModelContext(v20Container)
+
+            let legacy = OPSSchemaLegacyActivityV20.Activity(
+                id: "act-v20",
+                opportunityId: "lead-123",
+                companyId: "company-1",
+                type: .email
+            )
+            legacy.subject = "Re: Roof tear-off quote"
+            legacy.direction = "inbound"
+            legacy.emailMessageId = "msg-1"
+            legacy.emailThreadId = "thread-1"
+            legacy.fromEmail = "helen.calloway@example.com"
+            legacy.toEmails = ["dale@ops.test"]
+            legacy.ccEmails = ["office@ops.test"]
+            context.insert(legacy)
+            try context.save()
+        }
+
+        let v21Schema = Schema(versionedSchema: OPSSchemaV21.self)
+        let v21Config = ModelConfiguration(schema: v21Schema, url: storeURL)
+        let migrated = try ModelContainer(
+            for: v21Schema,
+            migrationPlan: OPSMigrationPlan.self,
+            configurations: v21Config
+        )
+        let context = ModelContext(migrated)
+
+        let activities = try context.fetch(FetchDescriptor<Activity>())
+        XCTAssertEqual(activities.count, 1, "The V20 activity row must survive migration.")
+        let migratedActivity = try XCTUnwrap(activities.first)
+        XCTAssertEqual(migratedActivity.id, "act-v20")
+        XCTAssertEqual(migratedActivity.opportunityId, "lead-123")
+        XCTAssertEqual(migratedActivity.subject, "Re: Roof tear-off quote")
+        XCTAssertEqual(migratedActivity.direction, "inbound")
+        XCTAssertEqual(migratedActivity.emailMessageId, "msg-1")
+        XCTAssertEqual(migratedActivity.emailThreadId, "thread-1")
+        XCTAssertEqual(migratedActivity.fromEmail, "helen.calloway@example.com")
+        XCTAssertEqual(migratedActivity.toEmails, ["dale@ops.test"])
+        XCTAssertEqual(migratedActivity.ccEmails, ["office@ops.test"])
+        XCTAssertNil(
+            migratedActivity.siteVisitId,
+            "The additive V21 link must default to nil for V20 rows."
+        )
+
+        migratedActivity.siteVisitId = "visit-77"
+        try context.save()
+
+        let rereadContext = ModelContext(migrated)
+        let reread = try XCTUnwrap(
+            try rereadContext.fetch(FetchDescriptor<Activity>()).first
+        )
+        XCTAssertEqual(
+            reread.siteVisitId,
+            "visit-77",
+            "The V21 site-visit link must persist after the migration."
+        )
+    }
+
+    func test_v20DoesNotReferenceTheWidenedLiveActivity() {
+        XCTAssertFalse(
+            OPSSchemaV20.models.contains { $0 == Activity.self },
+            "V20 must keep the Activity shape released before siteVisitId was added"
+        )
+        XCTAssertTrue(
+            OPSSchemaV20.models.contains { $0 == OPSSchemaLegacyActivityV20.Activity.self },
+            "V20 must register its frozen released Activity shape"
+        )
+        XCTAssertTrue(
+            OPSSchemaV21.models.contains { $0 == Activity.self },
+            "V21 must register the widened live Activity"
+        )
+    }
 }

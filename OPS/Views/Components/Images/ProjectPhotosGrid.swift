@@ -280,8 +280,16 @@ struct PhotoThumbnail: View {
     /// Optional + defaulted so legacy call sites keep compiling unchanged.
     var remoteThumbnailURL: String? = nil
 
-    /// 72 pt tile at 3× — the decode cap for every tile image.
-    static let tileMaxPixelSize: CGFloat = 216
+    /// The photo tile's edge, in points. The app's one photo-tile size — every
+    /// thumbnail strip and grid sizes its frames from here rather than writing
+    /// its own literal, so a tile can never drift out of step with the decode
+    /// cap below.
+    static let tileSize: CGFloat = 72
+
+    /// The decode cap for every tile image — the tile at 3×. Derived, so
+    /// resizing the tile moves the cap with it (a cap left behind either
+    /// decodes blurry or burns memory on pixels the tile never shows).
+    static let tileMaxPixelSize: CGFloat = tileSize * 3
 
     /// Phase F — driven by the parent grid. When true, overlays a small
     /// `ruler` SF Symbol bottom-right per the LiDAR Dimensioned Capture spec

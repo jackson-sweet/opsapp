@@ -128,6 +128,14 @@
 //  this boundary — the frozen `OPSSchemaLegacyActivityV19` backs V14–V19, the
 //  widened live model backs V20+ — so six released fingerprints stay exact.
 //
+//  V20 → V21 stage: the site-visit link on the activity feed. Activity gains
+//  one additive nullable attribute, `siteVisitId` — the column iOS has always
+//  written on a completed visit but never decoded, which left a site visit
+//  indistinguishable from any other row on the lead's timeline. A new optional
+//  is an inferable lightweight transform. Activity is version-scoped again at
+//  this boundary — frozen `OPSSchemaLegacyActivityV20` backs V20, the widened
+//  live model backs V21+ — so the released V20 fingerprint stays exact.
+//
 
 import Foundation
 import SwiftData
@@ -154,7 +162,8 @@ enum OPSMigrationPlan: SchemaMigrationPlan {
             OPSSchemaV17.self,
             OPSSchemaV18.self,
             OPSSchemaV19.self,
-            OPSSchemaV20.self
+            OPSSchemaV20.self,
+            OPSSchemaV21.self
         ]
     }
 
@@ -178,9 +187,18 @@ enum OPSMigrationPlan: SchemaMigrationPlan {
             addVinylOrderColorPOV16toV17,
             addOpportunityAssignmentAndChaseV17toV18,
             addOpportunityActionRequiredV18toV19,
-            addActivityEmailIdentityV19toV20
+            addActivityEmailIdentityV19toV20,
+            addActivitySiteVisitIdV20toV21
         ]
     }
+
+    /// V20 → V21: additive site-visit link on `Activity`. Existing rows receive
+    /// nil for `siteVisitId`; the frozen V20 Activity shape preserves the
+    /// released checksum while V21 registers the widened live model.
+    static let addActivitySiteVisitIdV20toV21 = MigrationStage.lightweight(
+        fromVersion: OPSSchemaV20.self,
+        toVersion: OPSSchemaV21.self
+    )
 
     /// V19 → V20: additive per-message email identity on `Activity`. Existing
     /// rows receive nil for the three optionals and empty arrays for

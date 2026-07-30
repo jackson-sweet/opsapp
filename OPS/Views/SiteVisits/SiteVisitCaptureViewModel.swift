@@ -798,7 +798,13 @@ final class SiteVisitCaptureViewModel: ObservableObject {
             opportunityId: opportunityId,
             address: identityDraft?.address.trimmedNilIfEmpty ?? visit.address ?? currentOpportunity?.address,
             artifacts: artifacts,
-            checklistAnswers: checklistAnswers
+            checklistAnswers: checklistAnswers,
+            // Carried into the packet so the SITE VISIT RECORD can name who was
+            // met on a teammate's device. The lead's VALUE is deliberately not
+            // carried — the packet syncs to a column OPS-Web renders ungated,
+            // so money is resolved at render time from the local opportunity.
+            contactName: currentOpportunity?.displayContactName ?? identityDraft?.contactName.trimmedNilIfEmpty,
+            companyName: identityDraft?.clientName.trimmedNilIfEmpty
         )
     }
 

@@ -16,6 +16,52 @@ final class LeadFollowUpServiceTests: XCTestCase {
     private let firstKey = "11111111-2222-3333-4444-555555555555"
     private let secondKey = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
 
+    func testPreviewBuildsAuthenticatedReadOnlyRequestAndDecodesServerContent() async {
+        let client = LeadFollowUpHTTPClientSpy()
+        client.stubs = [
+            .response(
+                statusCode: 200,
+                body: """
+                {
+                  "recipient": {
+                    "name": "Crystal",
+                    "email": "crystal@example.com"
+                  },
+                  "from": "office@example.com",
+                  "subject": "Re: Front deck quote",
+                  "body": "Hi Crystal, checking in on the quote.",
+                  "previewFingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                  "templateSettingsPath": "Settings → Comms → Lifecycle"
+                }
+                """
+            ),
+        ]
+        let service = makeService(
+            client: client,
+            keyStore: InMemoryLeadFollowUpRequestKeyStore()
+        )
+
+        let result = await service.previewFollowUp(opportunityId: opportunityId)
+
+        guard case .ready(let preview) = result else {
+            return XCTFail("Expected ready preview, got \(result)")
+        }
+        XCTAssertEqual(preview.recipient.name, "Crystal")
+        XCTAssertEqual(preview.recipient.email, "crystal@example.com")
+        XCTAssertEqual(preview.subject, "Re: Front deck quote")
+        XCTAssertEqual(
+            preview.previewFingerprint,
+            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        )
+        XCTAssertEqual(preview.templateSettingsPath, "Settings → Comms → Lifecycle")
+        XCTAssertEqual(client.requests.first?.httpMethod, "GET")
+        XCTAssertNil(client.requests.first?.httpBody)
+        XCTAssertEqual(
+            client.requests.first?.value(forHTTPHeaderField: "Authorization"),
+            "Bearer firebase-token"
+        )
+    }
+
     func testReconciledSendBuildsAuthenticatedRequestDecodesCanonicalOpportunityAndClearsKey() async throws {
         let client = LeadFollowUpHTTPClientSpy()
         client.stubs = [
@@ -49,6 +95,30 @@ final class LeadFollowUpServiceTests: XCTestCase {
         let body = try XCTUnwrap(request.httpBody)
         let json = try XCTUnwrap(JSONSerialization.jsonObject(with: body) as? [String: String])
         XCTAssertEqual(json, ["idempotencyKey": firstKey])
+    }
+
+    func testReviewedSendIncludesTheExactPreviewFingerprint() async throws {
+        let client = LeadFollowUpHTTPClientSpy()
+        client.stubs = [
+            .response(statusCode: 200, body: reconciledResponse()),
+        ]
+        let service = makeService(
+            client: client,
+            keyStore: InMemoryLeadFollowUpRequestKeyStore()
+        )
+        let previewFingerprint =
+            "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+
+        _ = await service.sendFollowUp(
+            opportunityId: opportunityId,
+            scope: testScope(previewFingerprint: previewFingerprint)
+        )
+
+        let request = try XCTUnwrap(client.requests.first)
+        let body = try XCTUnwrap(request.httpBody)
+        let json = try XCTUnwrap(JSONSerialization.jsonObject(with: body) as? [String: String])
+        XCTAssertEqual(json["idempotencyKey"], firstKey)
+        XCTAssertEqual(json["previewFingerprint"], previewFingerprint)
     }
 
     func testNetworkFailureRetainsAndReusesRequestKey() async {
@@ -620,6 +690,24 @@ final class LeadFollowUpServiceTests: XCTestCase {
         )
     }
 
+    func testReviewPreferenceIsScopedPerActorAndCompany() throws {
+        let suiteName = "LeadFollowUpReviewPreferenceTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defaults.removePersistentDomain(forName: suiteName)
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let store = UserDefaultsLeadFollowUpReviewPreferenceStore(defaults: defaults)
+
+        XCTAssertFalse(store.skipsReview(companyId: "company-a", actorUserId: "user-a"))
+        store.setSkipsReview(
+            true,
+            companyId: "COMPANY-A",
+            actorUserId: "USER-A"
+        )
+        XCTAssertTrue(store.skipsReview(companyId: "company-a", actorUserId: "user-a"))
+        XCTAssertFalse(store.skipsReview(companyId: "company-b", actorUserId: "user-a"))
+        XCTAssertFalse(store.skipsReview(companyId: "company-a", actorUserId: "user-b"))
+    }
+
     // MARK: - Helpers
 
     private func makeService(
@@ -642,14 +730,16 @@ final class LeadFollowUpServiceTests: XCTestCase {
         actorUserId: String = "user-id",
         nextFollowUpAt: Date? = SupabaseDate.parse("2026-07-23T08:00:00Z"),
         handledAt: Date? = nil,
-        lastOutboundAt: Date? = nil
+        lastOutboundAt: Date? = nil,
+        previewFingerprint: String? = nil
     ) -> LeadFollowUpAttemptScope {
         LeadFollowUpAttemptScope(
             companyId: companyId,
             actorUserId: actorUserId,
             nextFollowUpAt: nextFollowUpAt,
             handledAt: handledAt,
-            lastOutboundAt: lastOutboundAt
+            lastOutboundAt: lastOutboundAt,
+            previewFingerprint: previewFingerprint
         )
     }
 

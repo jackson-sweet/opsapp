@@ -51,7 +51,7 @@ struct LeadActivityHistoryView: View {
                                     Rectangle()
                                         .fill(OPSStyle.Colors.surfaceInput)
                                         .frame(height: 1)
-                                        .padding(.horizontal, 14)
+                                        .padding(.horizontal, LeadStreamMetrics.rowInset)
                                 }
                             }
                         }

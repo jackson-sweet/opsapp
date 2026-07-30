@@ -31,6 +31,14 @@ import SwiftUI
 import SwiftData
 import UIKit
 
+/// Geometry the lead rail shares across its pieces.
+enum LeadStreamMetrics {
+    /// The rail's horizontal inset. Every row, every hairline, and the
+    /// site-visit record card sit on it, so the column reads as one edge —
+    /// the value lives here once precisely so they cannot drift apart.
+    static let rowInset: CGFloat = 14
+}
+
 /// One stream entry — an activity or a stage change folded into the rail.
 enum LeadStreamEntry: Identifiable {
     case activity(Activity)
@@ -104,7 +112,7 @@ struct ActivityTimeline: View {
                         Rectangle()
                             .fill(OPSStyle.Colors.surfaceInput)
                             .frame(height: 1)
-                            .padding(.horizontal, 14)
+                            .padding(.horizontal, LeadStreamMetrics.rowInset)
                     }
                 }
 
@@ -128,7 +136,7 @@ struct ActivityTimeline: View {
                         .tracking(1.2)
                         .textCase(.uppercase)
                         .foregroundColor(OPSStyle.Colors.text3)
-                        .padding(.horizontal, 14)
+                        .padding(.horizontal, LeadStreamMetrics.rowInset)
                         .frame(maxWidth: .infinity, minHeight: OPSStyle.Layout.touchTargetMin)
                         .contentShape(Rectangle())
                     }
@@ -260,7 +268,7 @@ private struct LeadSiteVisitEntryView: View {
             )
             // Sits on the rail's own inset so the card's edges line up with
             // the hairlines above and below it.
-            .padding(.horizontal, 14)
+            .padding(.horizontal, LeadStreamMetrics.rowInset)
             .padding(.vertical, OPSStyle.Layout.spacing2)
             .sheet(isPresented: $showRecord) {
                 // No photo tap-through: a lead has no project gallery to open
@@ -340,7 +348,7 @@ struct LeadStreamRow: View {
                             .rotationEffect(.degrees(isExpanded ? 180 : 0))
                     }
                 }
-                .padding(.horizontal, 14)
+                .padding(.horizontal, LeadStreamMetrics.rowInset)
                 .padding(.vertical, OPSStyle.Layout.spacing2_5)
                 .frame(minHeight: OPSStyle.Layout.touchTargetMin)
                 .contentShape(Rectangle())
@@ -355,7 +363,7 @@ struct LeadStreamRow: View {
                     .foregroundColor(OPSStyle.Colors.text2)
                     .fixedSize(horizontal: false, vertical: true)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, 14)
+                    .padding(.horizontal, LeadStreamMetrics.rowInset)
                     .padding(.leading, 20 + OPSStyle.Layout.spacing2_5)
                     .padding(.bottom, OPSStyle.Layout.spacing2_5)
                     .transition(.opacity)
@@ -608,7 +616,7 @@ struct LeadStreamRow: View {
                 .lineLimit(1)
                 .layoutPriority(1)
         }
-        .padding(.horizontal, 14)
+        .padding(.horizontal, LeadStreamMetrics.rowInset)
         .padding(.vertical, OPSStyle.Layout.spacing2_5)
         .accessibilityElement(children: .combine)
         .accessibilityLabel(stageAccessibilityLabel(transition))
@@ -649,7 +657,7 @@ private struct EmptyLine: View {
             .foregroundColor(OPSStyle.Colors.textMute)
             .textCase(.uppercase)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, 14)
-            .padding(.vertical, 14)
+            .padding(.horizontal, LeadStreamMetrics.rowInset)
+            .padding(.vertical, LeadStreamMetrics.rowInset)
     }
 }

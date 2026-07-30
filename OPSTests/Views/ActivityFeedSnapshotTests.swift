@@ -137,6 +137,9 @@ final class ActivityFeedSnapshotTests: XCTestCase {
                 teamMember: member()
             )
             .environmentObject(DataController())
+            // The card reads the visit's value through the finance gate, so the
+            // permission store is a hard dependency — without it SwiftUI traps.
+            .environmentObject(PermissionStore.previewWithFullAccess())
             .padding(OPSStyle.Layout.spacing3)
         }
     }

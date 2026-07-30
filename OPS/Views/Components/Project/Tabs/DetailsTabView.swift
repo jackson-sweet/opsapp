@@ -302,14 +302,14 @@ struct DetailsTabAccess {
 
 // MARK: - Project Timeline Row
 
-/// START——END: the project's span, with task progress drawn between the two
-/// dates. The bar sits on the date line rather than beneath the whole block, so
-/// its fill reads as ground covered from start to finish — one glance answers
-/// "when does this run, and how far in are we".
+/// WHEN the job runs. One field, one label: the span reads start——end across a
+/// single value line, with task progress drawn between the two dates so its
+/// fill is ground covered from start to finish — one glance answers "when does
+/// this run, and how far in are we".
 ///
-/// The track mirrors the date columns' own type metrics — an unseen label line,
-/// then an unseen date line it centres itself inside — instead of carrying a
-/// hand-tuned offset, so it stays on the dates at any type size.
+/// The track mirrors the date line's own type metrics — an unseen date it
+/// centres itself inside — instead of carrying a hand-tuned offset, so it
+/// stays on the dates at any type size.
 private struct ProjectTimelineRow: View {
     let project: Project
 
@@ -330,49 +330,46 @@ private struct ProjectTimelineRow: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
-            HStack(alignment: .top, spacing: OPSStyle.Layout.spacing2_5) {
-                dateColumn("START", date: project.computedStartDate, alignment: .leading)
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
+            rowLabel("TIMELINE")
 
-                VStack(spacing: OPSStyle.Layout.spacing1) {
-                    rowLabel("START")
-                        .hidden()
+            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
+                HStack(spacing: OPSStyle.Layout.spacing2_5) {
+                    dateText(project.computedStartDate)
 
                     Text("—")
                         .font(OPSStyle.Typography.body)
                         .hidden()
                         .frame(maxWidth: .infinity)
                         .overlay { progressTrack }
+
+                    dateText(project.computedEndDate)
                 }
 
-                dateColumn("END", date: project.computedEndDate, alignment: .trailing)
-            }
-
-            // Only a project with live tasks has a count to report; one whose
-            // tasks are all cancelled keeps the empty track and says nothing.
-            if totalCount > 0 {
-                Text("\(completedCount) of \(totalCount) TASKS COMPLETE")
-                    .font(OPSStyle.Typography.smallCaption)
-                    .foregroundColor(OPSStyle.Colors.tertiaryText)
-                    .frame(maxWidth: .infinity, alignment: .center)
+                // Only a project with live tasks has a count to report; one
+                // whose tasks are all cancelled keeps the empty track and says
+                // nothing.
+                if totalCount > 0 {
+                    Text("\(completedCount) of \(totalCount) TASKS COMPLETE")
+                        .font(OPSStyle.Typography.smallCaption)
+                        .foregroundColor(OPSStyle.Colors.tertiaryText)
+                        .frame(maxWidth: .infinity, alignment: .center)
+                }
             }
         }
         .padding(14)
     }
 
-    private func dateColumn(_ label: String, date: Date?, alignment: HorizontalAlignment) -> some View {
-        VStack(alignment: alignment, spacing: OPSStyle.Layout.spacing1) {
-            rowLabel(label)
-
-            if let date {
-                Text(DateHelper.simpleDateString(from: date))
-                    .font(OPSStyle.Typography.body)
-                    .foregroundColor(OPSStyle.Colors.primaryText)
-            } else {
-                Text("—")
-                    .font(OPSStyle.Typography.body)
-                    .foregroundColor(OPSStyle.Colors.tertiaryText)
-            }
+    @ViewBuilder
+    private func dateText(_ date: Date?) -> some View {
+        if let date {
+            Text(DateHelper.simpleDateString(from: date))
+                .font(OPSStyle.Typography.body)
+                .foregroundColor(OPSStyle.Colors.primaryText)
+        } else {
+            Text("—")
+                .font(OPSStyle.Typography.body)
+                .foregroundColor(OPSStyle.Colors.tertiaryText)
         }
     }
 
@@ -465,8 +462,11 @@ private struct StatusSection: View {
 
 // MARK: - Client Row
 
-/// WHO the job is for, and the two ways to reach them. Tap opens the contact;
-/// a long press reassigns (with edit permission).
+/// WHO the job is for, and the two ways to reach them. Tap the name (or the
+/// chevron) to open the contact; long press to hand the job to a different
+/// client. The name carries no avatar and no "Client" sublabel — the row's own
+/// CLIENT label already says which field this is, and a portrait of one person
+/// tells the reader nothing they are not already reading.
 private struct ClientRow: View {
     let project: Project
     let canEdit: Bool
@@ -476,13 +476,16 @@ private struct ClientRow: View {
     var onAssignClient: (() -> Void)? = nil
 
     private var hasClient: Bool { project.client != nil }
+    private var hasPhone: Bool { !(project.effectiveClientPhone ?? "").isEmpty }
+    private var hasEmail: Bool { !(project.effectiveClientEmail ?? "").isEmpty }
 
     var body: some View {
         if hasClient {
             // Client assigned — tap to view contact, long press to reassign
             assignedRow
         } else if canEdit {
-            // No client, user can assign — tap to pick
+            // No client, user can assign — tap to pick. An empty field cannot
+            // advertise a long press, so it carries a visible invitation.
             emptyRow
                 .onTapGesture {
                     if let assign = onAssignClient {
@@ -497,98 +500,86 @@ private struct ClientRow: View {
     }
 
     private var assignedRow: some View {
-        HStack(spacing: OPSStyle.Layout.spacing2_5) {
-            // Left side — tap to open contact details
-            Button(action: onContactTap) {
-                HStack(spacing: OPSStyle.Layout.spacing2_5) {
-                    if let client = project.client {
-                        UserAvatar(client: client, size: 36)
-                    }
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
+            rowLabel("CLIENT")
 
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(project.effectiveClientName)
-                            .font(OPSStyle.Typography.body)
-                            .foregroundColor(OPSStyle.Colors.primaryText)
-                        Text("Client")
-                            .font(OPSStyle.Typography.smallCaption)
-                            .foregroundColor(OPSStyle.Colors.tertiaryText)
-                    }
-                }
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(PlainButtonStyle())
-
-            Spacer()
-
-            // Contact action buttons — independent tap targets
-            HStack(spacing: OPSStyle.Layout.spacing3) {
-                let hasPhone = project.effectiveClientPhone != nil && !project.effectiveClientPhone!.isEmpty
-                let hasEmail = project.effectiveClientEmail != nil && !project.effectiveClientEmail!.isEmpty
-
-                Button(action: onCall) {
-                    Image(systemName: "phone.fill")
-                        .font(.system(size: OPSStyle.Layout.IconSize.md))
-                        .foregroundColor(hasPhone ? OPSStyle.Colors.primaryText : OPSStyle.Colors.tertiaryText.opacity(0.3))
+            HStack(spacing: OPSStyle.Layout.spacing2_5) {
+                Button(action: onContactTap) {
+                    Text(project.effectiveClientName)
+                        .font(OPSStyle.Typography.body)
+                        .foregroundColor(OPSStyle.Colors.primaryText)
+                        .multilineTextAlignment(.leading)
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(PlainButtonStyle())
-                .disabled(!hasPhone)
-                .frame(minWidth: OPSStyle.Layout.touchTargetMin, minHeight: OPSStyle.Layout.touchTargetMin)
 
-                Button(action: onEmail) {
-                    Image(systemName: "envelope.fill")
-                        .font(.system(size: OPSStyle.Layout.IconSize.md))
-                        .foregroundColor(hasEmail ? OPSStyle.Colors.primaryText : OPSStyle.Colors.tertiaryText.opacity(0.3))
+                Spacer(minLength: OPSStyle.Layout.spacing2)
+
+                // Contact action buttons — independent tap targets
+                HStack(spacing: OPSStyle.Layout.spacing3) {
+                    Button(action: onCall) {
+                        Image(systemName: OPSStyle.Icons.phoneFill)
+                            .font(.system(size: OPSStyle.Layout.IconSize.md))
+                            .foregroundColor(hasPhone ? OPSStyle.Colors.primaryText : OPSStyle.Colors.tertiaryText.opacity(0.3))
+                    }
+                    .buttonStyle(PlainButtonStyle())
+                    .disabled(!hasPhone)
+                    .frame(minWidth: OPSStyle.Layout.touchTargetMin, minHeight: OPSStyle.Layout.touchTargetMin)
+                    .accessibilityLabel("Call client")
+
+                    Button(action: onEmail) {
+                        Image(systemName: OPSStyle.Icons.envelopeFill)
+                            .font(.system(size: OPSStyle.Layout.IconSize.md))
+                            .foregroundColor(hasEmail ? OPSStyle.Colors.primaryText : OPSStyle.Colors.tertiaryText.opacity(0.3))
+                    }
+                    .buttonStyle(PlainButtonStyle())
+                    .disabled(!hasEmail)
+                    .frame(minWidth: OPSStyle.Layout.touchTargetMin, minHeight: OPSStyle.Layout.touchTargetMin)
+                    .accessibilityLabel("Email client")
+                }
+
+                Button(action: onContactTap) {
+                    Image(systemName: OPSStyle.Icons.chevronRight)
+                        .font(.system(size: OPSStyle.Layout.IconSize.xs))
+                        .foregroundColor(OPSStyle.Colors.tertiaryText)
                 }
                 .buttonStyle(PlainButtonStyle())
-                .disabled(!hasEmail)
-                .frame(minWidth: OPSStyle.Layout.touchTargetMin, minHeight: OPSStyle.Layout.touchTargetMin)
+                .accessibilityLabel("Open client contact")
             }
-
-            Button(action: onContactTap) {
-                Image(systemName: OPSStyle.Icons.chevronRight)
-                    .font(.system(size: OPSStyle.Layout.IconSize.xs))
-                    .foregroundColor(OPSStyle.Colors.tertiaryText)
-            }
-            .buttonStyle(PlainButtonStyle())
         }
         .padding(14)
         .contentShape(Rectangle())
-        .simultaneousGesture(
-            LongPressGesture(minimumDuration: 0.5)
-                .onEnded { _ in
-                    if canEdit, let assign = onAssignClient {
-                        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                        assign()
-                    }
-                }
-        )
+        .rowEditAction(
+            isEnabled: InfoRowEdit.offersLongPressEdit(canEdit: canEdit, hasValue: hasClient),
+            title: "Change client"
+        ) {
+            if let assign = onAssignClient {
+                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                assign()
+            }
+        }
     }
 
     private var emptyRow: some View {
-        HStack(spacing: OPSStyle.Layout.spacing2_5) {
-            Circle()
-                .fill(OPSStyle.Colors.background)
-                .frame(width: 36, height: 36)
-                .overlay(
-                    Image(systemName: "building.2")
-                        .font(.system(size: OPSStyle.Layout.IconSize.sm))
-                        .foregroundColor(OPSStyle.Colors.tertiaryText)
-                )
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
+            rowLabel("CLIENT")
 
-            Text("NO CLIENT ASSIGNED")
-                .font(OPSStyle.Typography.body)
-                .foregroundColor(OPSStyle.Colors.tertiaryText)
+            HStack(spacing: OPSStyle.Layout.spacing2_5) {
+                Text("NO CLIENT ASSIGNED")
+                    .font(OPSStyle.Typography.body)
+                    .foregroundColor(OPSStyle.Colors.tertiaryText)
 
-            Spacer()
+                Spacer(minLength: OPSStyle.Layout.spacing2)
 
-            if canEdit {
-                Text("ASSIGN")
-                    .font(OPSStyle.Typography.captionBold)
-                    .foregroundColor(OPSStyle.Colors.primaryAccent)
+                if canEdit {
+                    Text("ASSIGN")
+                        .font(OPSStyle.Typography.captionBold)
+                        .foregroundColor(OPSStyle.Colors.primaryAccent)
+                }
             }
         }
-        .contentShape(Rectangle())
         .padding(14)
+        .contentShape(Rectangle())
     }
 }
 
@@ -932,6 +923,9 @@ struct TaskListSection: View {
 /// WHAT the job is, in the operator's own words. Nothing written and no way to
 /// write it means the row does not render at all — see
 /// `DetailsTabView.shows(_:)`, which owns that decision for the whole card.
+///
+/// Written text is edited by long press; an empty field keeps its visible ADD
+/// invitation, because a long press on nothing cannot be discovered.
 private struct DescriptionRow: View {
     @Bindable var project: Project
     let canEdit: Bool
@@ -939,86 +933,98 @@ private struct DescriptionRow: View {
     @Binding var editText: String
     let onSave: () -> Void
 
+    private var writtenDescription: String {
+        project.projectDescription ?? ""
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
             rowLabel("DESCRIPTION")
 
-            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
-                if isEditing {
-                    TextEditor(text: $editText)
-                        .font(OPSStyle.Typography.body)
-                        .foregroundColor(OPSStyle.Colors.primaryText)
-                        .scrollContentBackground(.hidden)
-                        .background(Color.clear)
-                        .frame(minHeight: 80)
-                        .padding(10)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                .stroke(OPSStyle.Colors.primaryAccent, lineWidth: 1)
-                        )
-
-                    HStack {
-                        Button("Cancel") {
-                            isEditing = false
-                            editText = ""
-                        }
-                        .font(OPSStyle.Typography.caption)
-                        .foregroundColor(OPSStyle.Colors.secondaryText)
-
-                        Spacer()
-
-                        Button("Save") {
-                            onSave()
-                        }
-                        .font(OPSStyle.Typography.captionBold)
-                        .foregroundColor(OPSStyle.Colors.primaryAccent)
-                    }
-                } else if let description = project.projectDescription, !description.isEmpty {
-                    HStack(alignment: .top) {
-                        Text(description)
-                            .font(OPSStyle.Typography.body)
-                            .foregroundColor(OPSStyle.Colors.primaryText)
-
-                        Spacer()
-
-                        if canEdit {
-                            Button(action: {
-                                editText = description
-                                isEditing = true
-                            }) {
-                                Image(systemName: OPSStyle.Icons.pencil)
-                                    .font(.system(size: OPSStyle.Layout.IconSize.sm))
-                                    .foregroundColor(OPSStyle.Colors.primaryAccent)
-                            }
-                            .buttonStyle(PlainButtonStyle())
-                        }
-                    }
-                } else if canEdit {
-                    Button(action: {
-                        editText = ""
-                        isEditing = true
-                    }) {
-                        HStack(spacing: 6) {
-                            Image(systemName: "plus")
-                                .font(.system(size: OPSStyle.Layout.IconSize.sm))
-                            Text("ADD DESCRIPTION")
-                                .font(OPSStyle.Typography.captionBold)
-                            Spacer()
-                        }
-                        .foregroundColor(OPSStyle.Colors.primaryAccent)
-                    }
-                    .buttonStyle(PlainButtonStyle())
-                }
+            if isEditing {
+                editor
+            } else if !writtenDescription.isEmpty {
+                Text(writtenDescription)
+                    .font(OPSStyle.Typography.body)
+                    .foregroundColor(OPSStyle.Colors.primaryText)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            } else if canEdit {
+                addButton
             }
         }
         .padding(14)
+        .contentShape(Rectangle())
+        .rowEditAction(
+            isEnabled: InfoRowEdit.offersLongPressEdit(
+                canEdit: canEdit,
+                hasValue: !writtenDescription.isEmpty,
+                isEditing: isEditing
+            ),
+            title: "Edit description"
+        ) {
+            editText = writtenDescription
+            isEditing = true
+        }
+    }
+
+    private var editor: some View {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
+            TextEditor(text: $editText)
+                .font(OPSStyle.Typography.body)
+                .foregroundColor(OPSStyle.Colors.primaryText)
+                .scrollContentBackground(.hidden)
+                .background(Color.clear)
+                .frame(minHeight: 80)
+                .padding(10)
+                .overlay(
+                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                        .stroke(OPSStyle.Colors.primaryAccent, lineWidth: 1)
+                )
+
+            HStack {
+                Button("Cancel") {
+                    isEditing = false
+                    editText = ""
+                }
+                .font(OPSStyle.Typography.caption)
+                .foregroundColor(OPSStyle.Colors.secondaryText)
+
+                Spacer()
+
+                Button("Save") {
+                    onSave()
+                }
+                .font(OPSStyle.Typography.captionBold)
+                .foregroundColor(OPSStyle.Colors.primaryAccent)
+            }
+        }
+    }
+
+    private var addButton: some View {
+        Button(action: {
+            editText = ""
+            isEditing = true
+        }) {
+            HStack(spacing: 6) {
+                Image(systemName: OPSStyle.Icons.plus)
+                    .font(.system(size: OPSStyle.Layout.IconSize.sm))
+                Text("ADD DESCRIPTION")
+                    .font(OPSStyle.Typography.captionBold)
+                Spacer()
+            }
+            .foregroundColor(OPSStyle.Colors.primaryAccent)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(PlainButtonStyle())
     }
 }
 
 // MARK: - Address Row
 
-/// WHERE the job is. Tap the address for directions; the pencil opens an inline
-/// field whose suggestions expand inside the row.
+/// WHERE the job is. Tap the address for directions; long press to open an
+/// inline field whose suggestions expand inside the row. The ADDRESS label
+/// stays put through both modes, so the row does not reshape under the reader
+/// when it starts being edited.
 ///
 /// The row does not tint the card while editing. The card carries four other
 /// fields now, so an accent edge around the whole surface would announce "this
@@ -1035,39 +1041,44 @@ private struct AddressRow: View {
     @StateObject private var completer = InlineAddressCompleter()
     @FocusState private var fieldFocused: Bool
 
+    private var writtenAddress: String {
+        address ?? ""
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             if isEditing {
                 // Inline edit mode
                 VStack(alignment: .leading, spacing: 0) {
-                    HStack(spacing: OPSStyle.Layout.spacing2) {
-                        Image(systemName: "mappin.circle")
-                            .font(.system(size: OPSStyle.Layout.IconSize.md))
-                            .foregroundColor(OPSStyle.Colors.primaryAccent)
+                    VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
+                        rowLabel("ADDRESS")
 
-                        TextField("Start typing an address...", text: $draft)
-                            .font(OPSStyle.Typography.body)
-                            .foregroundColor(OPSStyle.Colors.primaryText)
-                            .focused($fieldFocused)
-                            .onSubmit { saveAndClose() }
-                            .onChange(of: draft) { _, newValue in
-                                completer.search(newValue)
+                        HStack(spacing: OPSStyle.Layout.spacing2) {
+                            TextField("Start typing an address...", text: $draft)
+                                .font(OPSStyle.Typography.body)
+                                .foregroundColor(OPSStyle.Colors.primaryText)
+                                .focused($fieldFocused)
+                                .onSubmit { saveAndClose() }
+                                .onChange(of: draft) { _, newValue in
+                                    completer.search(newValue)
+                                }
+
+                            // Save / Cancel
+                            Button(action: saveAndClose) {
+                                Text("SAVE")
+                                    .font(OPSStyle.Typography.captionBold)
+                                    .foregroundColor(OPSStyle.Colors.primaryAccent)
                             }
+                            .buttonStyle(PlainButtonStyle())
 
-                        // Save / Cancel
-                        Button(action: saveAndClose) {
-                            Text("SAVE")
-                                .font(OPSStyle.Typography.captionBold)
-                                .foregroundColor(OPSStyle.Colors.primaryAccent)
+                            Button(action: cancelEdit) {
+                                Image(systemName: OPSStyle.Icons.xmark)
+                                    .font(.system(size: OPSStyle.Layout.IconSize.xs))
+                                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+                            }
+                            .buttonStyle(PlainButtonStyle())
+                            .accessibilityLabel("Cancel")
                         }
-                        .buttonStyle(PlainButtonStyle())
-
-                        Button(action: cancelEdit) {
-                            Image(systemName: OPSStyle.Icons.xmark)
-                                .font(.system(size: OPSStyle.Layout.IconSize.xs))
-                                .foregroundColor(OPSStyle.Colors.tertiaryText)
-                        }
-                        .buttonStyle(PlainButtonStyle())
                     }
                     .padding(14)
 
@@ -1116,38 +1127,51 @@ private struct AddressRow: View {
                 }
             } else {
                 // Display mode
-                HStack {
-                    if let address = address, !address.isEmpty {
+                VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
+                    rowLabel("ADDRESS")
+
+                    if !writtenAddress.isEmpty {
                         Button(action: onDirections) {
-                            HStack(spacing: OPSStyle.Layout.spacing2) {
-                                Image(systemName: "mappin.circle")
-                                    .font(.system(size: OPSStyle.Layout.IconSize.md))
-                                    .foregroundColor(OPSStyle.Colors.primaryText)
-                                Text(address)
-                                    .font(OPSStyle.Typography.body)
-                                    .foregroundColor(OPSStyle.Colors.primaryText)
-                                    .multilineTextAlignment(.leading)
-                            }
+                            Text(writtenAddress)
+                                .font(OPSStyle.Typography.body)
+                                .foregroundColor(OPSStyle.Colors.primaryText)
+                                .multilineTextAlignment(.leading)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .contentShape(Rectangle())
                         }
                         .buttonStyle(PlainButtonStyle())
+                        .accessibilityLabel(writtenAddress)
+                        .accessibilityHint("Opens directions")
+                    } else if canEdit {
+                        // An empty field cannot advertise a long press, so the
+                        // absent value is itself the way in.
+                        Button(action: startEditing) {
+                            Text("No address set")
+                                .font(OPSStyle.Typography.body)
+                                .foregroundColor(OPSStyle.Colors.tertiaryText)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(PlainButtonStyle())
+                        .accessibilityHint("Sets the job address")
                     } else {
                         Text("No address set")
-                            .font(OPSStyle.Typography.caption)
+                            .font(OPSStyle.Typography.body)
                             .foregroundColor(OPSStyle.Colors.tertiaryText)
-                    }
-
-                    Spacer()
-
-                    if canEdit {
-                        Button(action: startEditing) {
-                            Image(systemName: OPSStyle.Icons.pencil)
-                                .font(.system(size: OPSStyle.Layout.IconSize.sm))
-                                .foregroundColor(OPSStyle.Colors.primaryAccent)
-                        }
-                        .buttonStyle(PlainButtonStyle())
                     }
                 }
                 .padding(14)
+                .contentShape(Rectangle())
+                .rowEditAction(
+                    isEnabled: InfoRowEdit.offersLongPressEdit(
+                        canEdit: canEdit,
+                        hasValue: !writtenAddress.isEmpty,
+                        isEditing: isEditing
+                    ),
+                    title: "Edit address"
+                ) {
+                    startEditing()
+                }
             }
         }
         // Scoped to this row: the expansion is the only thing that moves, and
@@ -1432,8 +1456,71 @@ func sectionLabel(_ title: String) -> some View {
 /// has no header, so its rows name themselves — this is the in-card label
 /// treatment the VINYL card already uses for "ORDER STATUS", not the
 /// `[ LABEL ]` header that sits outside a card.
+///
+/// Every row in the card wears it identically — same face, same case, same
+/// tracking — so five different fields read as one system rather than five
+/// components that happened to land in the same box.
 private func rowLabel(_ title: String) -> some View {
     Text(title)
         .font(OPSStyle.Typography.smallCaption)
+        .textCase(.uppercase)
+        .tracking(1)
         .foregroundColor(OPSStyle.Colors.tertiaryText)
+}
+
+// MARK: - Long-Press Editing
+
+/// When a project-info row offers long-press editing.
+///
+/// Two conditions, and both are load-bearing. The viewer must hold
+/// `projects.edit` — a read-only viewer gets no menu at all, so the gesture
+/// can never surface an action they aren't entitled to take. And the field
+/// must already hold a value: an empty field shows an explicit ADD/ASSIGN
+/// affordance instead, because a long press on nothing is undiscoverable.
+/// A field already in its inline edit mode offers nothing further.
+///
+/// One place answers this for CLIENT, ADDRESS and DESCRIPTION, so the three
+/// rows cannot drift apart and the rule stays assertable on its own.
+enum InfoRowEdit {
+    static func offersLongPressEdit(canEdit: Bool, hasValue: Bool, isEditing: Bool = false) -> Bool {
+        canEdit && hasValue && !isEditing
+    }
+}
+
+/// Attaches a named long-press edit action to a filled info row.
+///
+/// `.contextMenu` rather than a bare `LongPressGesture`: it is the iOS-standard
+/// long-press affordance, it *names* the action instead of firing a hidden one,
+/// and it brings its own preview and haptics. The matching
+/// `.accessibilityAction` keeps the same edit path reachable for anyone who
+/// cannot perform a long press.
+private struct RowEditAction: ViewModifier {
+    let isEnabled: Bool
+    let title: String
+    let action: () -> Void
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if isEnabled {
+            content
+                .contextMenu {
+                    Button(action: action) {
+                        Label(title, systemImage: OPSStyle.Icons.pencil)
+                    }
+                }
+                .accessibilityAction(named: Text(title), action)
+        } else {
+            content
+        }
+    }
+}
+
+private extension View {
+    func rowEditAction(
+        isEnabled: Bool,
+        title: String,
+        action: @escaping () -> Void
+    ) -> some View {
+        modifier(RowEditAction(isEnabled: isEnabled, title: title, action: action))
+    }
 }

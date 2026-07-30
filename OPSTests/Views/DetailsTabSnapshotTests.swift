@@ -3,10 +3,20 @@
 //  OPSTests
 //
 //  Visual proof for the project Details tab. Renders the real `DetailsTabView`
-//  against a seeded in-memory store in two permission shapes — the office
-//  viewer who sees every section, and the crew viewer whose client row stays
-//  but whose team roster, vinyl ordering, and edit affordances are scoped away.
-//  NOT pass/fail: writes PNGs for inspection.
+//  against a seeded in-memory store in three permission shapes — the office
+//  viewer who sees every section, the read-only viewer who sees the same rows
+//  with no edit affordance on any of them, and the crew viewer whose client row
+//  stays but whose team roster, vinyl ordering, and edit affordances are scoped
+//  away — plus the sparse project in both editable and read-only form. It also
+//  renders `ClientPickerSheet` at the two moments its create-a-client row has
+//  to be findable — an empty client list, and a search that returns nothing —
+//  and once while browsing a populated list, where that row has to stay quiet.
+//  Those renders are NOT pass/fail: they write PNGs for inspection.
+//
+//  The class DOES carry pass/fail assertions for one thing a snapshot cannot
+//  reach: a context menu cannot be opened from a test, so `InfoRowEdit` — the
+//  single gate the CLIENT, ADDRESS and DESCRIPTION rows share — is asserted
+//  directly at the bottom of this file.
 //
 //  Rendered via FixedSizeSnapshot — hosted in the APP'S OWN window at a fixed
 //  logical size, so asset-catalog colors resolve, onAppear runs, and the
@@ -98,6 +108,16 @@ final class DetailsTabSnapshotTests: XCTestCase {
         ]
     }
 
+    /// Office grants with `projects.edit` withdrawn: every section still
+    /// renders, and not one of them offers a way in. This is the viewer that
+    /// proves long-press editing is permission-scoped — CLIENT, ADDRESS and
+    /// DESCRIPTION must show their values with no menu, no ASSIGN, no ADD.
+    private var readOnlyGrants: [String: String] {
+        var grants = officeGrants
+        grants.removeValue(forKey: "projects.edit")
+        return grants
+    }
+
     /// Exact preset Crew grants (Supabase `role_permissions`, verified
     /// 2026-07-04): client contact stays, team roster and vinyl ordering do
     /// not, and nothing is editable.
@@ -117,6 +137,32 @@ final class DetailsTabSnapshotTests: XCTestCase {
         let project: Project
     }
 
+    /// Every model the Details tab or the client picker can reach. SwiftData
+    /// wants the whole relationship closure, not just the rows a test seeds.
+    private var snapshotSchema: Schema {
+        Schema([
+            Project.self,
+            ProjectTask.self,
+            TaskType.self,
+            TaskTypeReminder.self,
+            TaskReminder.self,
+            User.self,
+            Client.self,
+            SubClient.self,
+            ProjectVinylOrderMarker.self,
+            DeckDesign.self
+        ])
+    }
+
+    private func makeContainer() throws -> ModelContainer {
+        let configuration = ModelConfiguration(
+            schema: snapshotSchema,
+            isStoredInMemoryOnly: true,
+            allowsSave: true
+        )
+        return try ModelContainer(for: snapshotSchema, configurations: [configuration])
+    }
+
     /// One project with everything the tab can show: a client with both
     /// contact channels, an address, a two-line description, five tasks in
     /// mixed states (so the progress bar lands at a partial fill and the
@@ -129,20 +175,7 @@ final class DetailsTabSnapshotTests: XCTestCase {
         withTasks: Bool = true,
         withTeam: Bool = true
     ) throws -> Fixture {
-        let schema = Schema([
-            Project.self,
-            ProjectTask.self,
-            TaskType.self,
-            TaskTypeReminder.self,
-            TaskReminder.self,
-            User.self,
-            Client.self,
-            SubClient.self,
-            ProjectVinylOrderMarker.self,
-            DeckDesign.self
-        ])
-        let configuration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true, allowsSave: true)
-        let container = try ModelContainer(for: schema, configurations: [configuration])
+        let container = try makeContainer()
         let context = ModelContext(container)
 
         // Crew — ids are lowercase because `UUID().uuidString` is uppercase and
@@ -246,6 +279,48 @@ final class DetailsTabSnapshotTests: XCTestCase {
         .environmentObject(DataController())
     }
 
+    /// A container of clients for the picker, with no project attached — the
+    /// picker only ever reads `Client` rows for the company.
+    private func makeClientPickerFixture(names: [String]) throws -> ModelContainer {
+        let container = try makeContainer()
+        let context = ModelContext(container)
+        for (index, name) in names.enumerated() {
+            context.insert(
+                Client(
+                    id: "picker-client-\(index)",
+                    name: name,
+                    email: nil,
+                    phoneNumber: nil,
+                    address: nil,
+                    companyId: "co-1"
+                )
+            )
+        }
+        try context.save()
+        return container
+    }
+
+    /// `searchText` is seeded through the picker's own initialiser, so the
+    /// no-results moment renders without driving a keyboard. The device
+    /// address book stays out of it: Contacts access is undetermined in the
+    /// simulator, and `prepare()` only runs on a keystroke that never happens.
+    @ViewBuilder
+    private func hostedClientPicker(_ container: ModelContainer, searchText: String) -> some View {
+        ZStack(alignment: .top) {
+            OPSStyle.Colors.background.ignoresSafeArea()
+
+            ClientPickerSheet(
+                currentClientId: nil,
+                companyId: "co-1",
+                searchText: searchText,
+                onSelect: { _ in }
+            )
+        }
+        .frame(width: tabWidth)
+        .modelContainer(container)
+        .environmentObject(DataController())
+    }
+
     // MARK: - Renders
 
     /// The full tab as an owner/office viewer sees it: every section, every
@@ -254,6 +329,17 @@ final class DetailsTabSnapshotTests: XCTestCase {
         let fixture = try makeFixture()
         withPermissions(officeGrants) {
             snapshot("details_tab_office", view: hosted(fixture), height: 1500)
+        }
+    }
+
+    /// The same project, same rows, viewer without `projects.edit`. CLIENT,
+    /// ADDRESS and DESCRIPTION carry their values and nothing else — no pencil
+    /// (there are none left anywhere), and no long-press menu is attached at
+    /// all, so the gesture cannot surface an action this viewer may not take.
+    func testRenderDetailsTabReadOnlyViewer() throws {
+        let fixture = try makeFixture()
+        withPermissions(readOnlyGrants) {
+            snapshot("details_tab_read_only", view: hosted(fixture), height: 1400)
         }
     }
 
@@ -281,6 +367,90 @@ final class DetailsTabSnapshotTests: XCTestCase {
         withPermissions(officeGrants) {
             snapshot("details_tab_empty_states", view: hosted(fixture), height: 900)
         }
+    }
+
+    /// The sparse project without edit permission — the harder empty case.
+    /// No invitations render, and DESCRIPTION drops out of the card entirely
+    /// (nothing written, no way to write it), so this is also the proof that
+    /// a departing row takes its hairline with it.
+    func testRenderDetailsTabEmptyStatesReadOnly() throws {
+        let fixture = try makeFixture(
+            withClient: false,
+            address: nil,
+            description: nil,
+            withTasks: false,
+            withTeam: false
+        )
+        withPermissions(readOnlyGrants) {
+            snapshot("details_tab_empty_states_read_only", view: hosted(fixture), height: 700)
+        }
+    }
+
+    /// The client picker with nothing in it — the first moment the create row
+    /// has to be findable. Nothing to browse, so the way forward is the only
+    /// thing on offer.
+    func testRenderClientPickerEmptyList() throws {
+        let container = try makeClientPickerFixture(names: [])
+        snapshot(
+            "client_picker_empty_list",
+            view: hostedClientPicker(container, searchText: ""),
+            height: 700
+        )
+    }
+
+    /// The second moment: a search that matches nobody. The typed name rides
+    /// into the create row, so the user never types it twice.
+    func testRenderClientPickerNoSearchResults() throws {
+        let container = try makeClientPickerFixture(
+            names: ["Sam Rivera", "Priya Nandakumar", "Bert Colwell"]
+        )
+        snapshot(
+            "client_picker_no_search_results",
+            view: hostedClientPicker(container, searchText: "Dave Chen"),
+            height: 700
+        )
+    }
+
+    /// The browse case, for contrast: a populated list where the create row is
+    /// the quiet last rung rather than the headline.
+    func testRenderClientPickerBrowsing() throws {
+        let container = try makeClientPickerFixture(
+            names: ["Sam Rivera", "Priya Nandakumar", "Bert Colwell"]
+        )
+        snapshot(
+            "client_picker_browsing",
+            view: hostedClientPicker(container, searchText: ""),
+            height: 700
+        )
+    }
+
+    // MARK: - Long-press edit gating (pass/fail)
+
+    /// A context menu cannot be opened from a test, so the rule the three
+    /// editable rows share is asserted where it is decided. Both conditions are
+    /// load-bearing: the viewer must hold `projects.edit`, and the field must
+    /// already hold a value — an empty field shows an explicit ADD / ASSIGN
+    /// affordance instead, because a long press on nothing is undiscoverable.
+    func testLongPressEditIsOfferedOnlyToEditorsOfFilledFields() {
+        XCTAssertTrue(InfoRowEdit.offersLongPressEdit(canEdit: true, hasValue: true))
+
+        // Read-only viewer: no menu at all, in either field state.
+        XCTAssertFalse(InfoRowEdit.offersLongPressEdit(canEdit: false, hasValue: true))
+        XCTAssertFalse(InfoRowEdit.offersLongPressEdit(canEdit: false, hasValue: false))
+
+        // Editor, empty field: the visible invitation owns it.
+        XCTAssertFalse(InfoRowEdit.offersLongPressEdit(canEdit: true, hasValue: false))
+    }
+
+    /// A field already open for inline editing offers nothing further — the
+    /// focused field and its SAVE / CANCEL are the whole interaction.
+    func testLongPressEditIsWithdrawnWhileFieldIsBeingEdited() {
+        XCTAssertFalse(
+            InfoRowEdit.offersLongPressEdit(canEdit: true, hasValue: true, isEditing: true)
+        )
+        XCTAssertTrue(
+            InfoRowEdit.offersLongPressEdit(canEdit: true, hasValue: true, isEditing: false)
+        )
     }
 }
 #endif

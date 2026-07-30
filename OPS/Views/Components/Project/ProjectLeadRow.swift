@@ -12,12 +12,13 @@
 //
 //  Design decisions, and why:
 //
-//  · A LEAD row sits with CLIENT, not in a section of its own. Both answer
-//    "where did this job come from?", and provenance is one glance, not a
-//    content area.
-//  · It borrows StatusSection's compact labelled-value grammar, not
-//    ClientSection's glass card. Linking a lead happens once per project,
-//    ever; a card would give a once-ever action permanent prime real estate.
+//  · A LEAD row sits directly under CLIENT inside the project-info card, not
+//    in a section of its own. Both answer "where did this job come from?", and
+//    provenance is one glance, not a content area.
+//  · It keeps the compact labelled-value grammar of the STATUS field above the
+//    card rather than a card of its own. Linking a lead happens once per
+//    project, ever; a card would give a once-ever action permanent prime real
+//    estate. The card owns the hairline above it — see DetailsTabView.shows(_:).
 //  · When there is nothing to match — no candidate leads, or no permission —
 //    the row is ABSENT, not an em dash and not a disabled button. An
 //    affordance advertising an impossible action is worse than no affordance,
@@ -126,7 +127,8 @@ enum ProjectLeadRow {
 
 // MARK: - Row view
 
-/// Compact labelled-value row, mirroring `StatusSection`'s grammar.
+/// Compact labelled-value row inside the project-info card. Same grammar as
+/// the STATUS field above the card; separators belong to the card, not here.
 struct ProjectLeadSection: View {
     let presentation: ProjectLeadRow.Presentation
     let onOpenLead: () -> Void
@@ -175,43 +177,37 @@ struct ProjectLeadSection: View {
         }
     }
 
+    /// No separator of its own: the project-info card draws the hairline above
+    /// every row it holds, from one `shows(_:)` answer, so a row that drew its
+    /// own rule would double the line under CLIENT.
     private func row(
         accessory: @escaping () -> AnyView,
         accessibilityLabel: String,
         action: @escaping () -> Void
     ) -> some View {
-        VStack(spacing: 0) {
-            Button {
-                UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                action()
-            } label: {
-                HStack(spacing: OPSStyle.Layout.spacing2_5) {
-                    Text("[ LEAD ]")
-                        .font(OPSStyle.Typography.smallCaption)
-                        .textCase(.uppercase)
-                        .tracking(1)
-                        .foregroundColor(OPSStyle.Colors.tertiaryText)
+        Button {
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            action()
+        } label: {
+            HStack(spacing: OPSStyle.Layout.spacing2_5) {
+                // The row lives INSIDE the consolidated project-info card, whose
+                // rows name themselves bare. The bracketed `[ LABEL ]` form is the
+                // header treatment for sections that stand OUTSIDE a card.
+                rowLabel("LEAD")
 
-                    Spacer(minLength: 12)
+                Spacer(minLength: 12)
 
-                    accessory()
+                accessory()
 
-                    Image(systemName: OPSStyle.Icons.chevronRight)
-                        .font(.system(size: OPSStyle.Layout.IconSize.xs))
-                        .foregroundColor(OPSStyle.Colors.tertiaryText)
-                }
-                .frame(minHeight: OPSStyle.Layout.touchTargetMin)
-                .padding(.horizontal, OPSStyle.Layout.spacing3)
-                .contentShape(Rectangle())
+                Image(systemName: OPSStyle.Icons.chevronRight)
+                    .font(.system(size: OPSStyle.Layout.IconSize.xs))
+                    .foregroundColor(OPSStyle.Colors.tertiaryText)
             }
-            .buttonStyle(PlainButtonStyle())
-            .accessibilityLabel(accessibilityLabel)
-
-            Rectangle()
-                .fill(OPSStyle.Colors.separator)
-                .frame(height: 1)
-                .padding(.horizontal, OPSStyle.Layout.spacing3)
-                .padding(.top, OPSStyle.Layout.spacing2)
+            .frame(minHeight: OPSStyle.Layout.touchTargetMin)
+            .padding(.horizontal, OPSStyle.Layout.spacing3)
+            .contentShape(Rectangle())
         }
+        .buttonStyle(PlainButtonStyle())
+        .accessibilityLabel(accessibilityLabel)
     }
 }

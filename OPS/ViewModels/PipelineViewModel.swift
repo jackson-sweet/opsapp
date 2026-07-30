@@ -16,10 +16,12 @@ class PipelineViewModel: ObservableObject {
     @Published var isLoading: Bool = false
     @Published var loadError: String? = nil
     @Published var selectedStage: PipelineStage = .newLead
+    @Published private(set) var followUpReviewingLeadIDs: Set<String> = []
     @Published private(set) var followUpInFlightLeadIDs: Set<String> = []
     @Published private(set) var followUpReconcilingLeadIDs: Set<String> = []
     @Published private(set) var followUpUnknownLeadIDs: Set<String> = []
     @Published private(set) var followUpUnavailableLeadIDs: Set<String> = []
+    private var followUpPreviewFingerprints: [String: String] = [:]
 
     /// Identity of the operator whose pipeline this is. Used by in-court
     /// computations to scope "ball in your court" leads to the current user.
@@ -32,6 +34,7 @@ class PipelineViewModel: ObservableObject {
 
     enum FollowUpProgress: Equatable {
         case idle
+        case reviewing
         case sending
         case syncing
         case unknown
@@ -313,18 +316,24 @@ class PipelineViewModel: ObservableObject {
         return comeback
     }
 
-    // MARK: - One-tap follow-up
+    // MARK: - Deliberate follow-up
 
     /// Local eligibility controls whether a due/overdue strip offers the
-    /// server-backed stock reply or falls back to HANDLED. The server remains
-    /// authoritative for mailbox, thread, recipient, signature, and newest
-    /// message safety.
+    /// server-backed stock reply or falls back to HANDLED. It deliberately
+    /// mirrors the server's cycle checks so a stage change or newer manual
+    /// outbound removes stale affordances before the provider preflight.
     func canSendFollowUp(for opportunity: Opportunity) -> Bool {
         guard [.quoted, .followUp, .negotiation].contains(opportunity.stage),
               !Self.isAwaitingReply(opportunity),
               !followUpUnavailableLeadIDs.contains(opportunity.id),
               companyId?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false,
               currentUserId?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false,
+              let dueAt = opportunity.nextFollowUpAt,
+              let lastOutboundAt = opportunity.lastOutboundAt,
+              dueAt >= opportunity.stageEnteredAt,
+              lastOutboundAt < dueAt,
+              Calendar.current.startOfDay(for: dueAt)
+                  <= Calendar.current.startOfDay(for: Date()),
               let email = opportunity.contactEmail else {
             return false
         }
@@ -333,9 +342,41 @@ class PipelineViewModel: ObservableObject {
 
     func followUpProgress(for opportunityId: String) -> FollowUpProgress {
         if followUpInFlightLeadIDs.contains(opportunityId) { return .sending }
+        if followUpReviewingLeadIDs.contains(opportunityId) { return .reviewing }
         if followUpUnknownLeadIDs.contains(opportunityId) { return .unknown }
         if followUpReconcilingLeadIDs.contains(opportunityId) { return .syncing }
         return .idle
+    }
+
+    /// Fetches the exact server-rendered message after a provider-fresh,
+    /// read-only preflight. No idempotency key is created and no lead state is
+    /// mutated until the operator explicitly sends from the review sheet.
+    func previewFollowUp(opportunityId: String) async -> LeadFollowUpPreviewResult {
+        guard
+            let opportunity = allOpportunities.first(where: { $0.id == opportunityId }),
+            canSendFollowUp(for: opportunity),
+            followUpProgress(for: opportunityId) == .idle
+        else {
+            return .unavailable(reason: "follow_up_not_available")
+        }
+
+        followUpReviewingLeadIDs.insert(opportunityId)
+        defer { followUpReviewingLeadIDs.remove(opportunityId) }
+
+        let result = await followUpService.previewFollowUp(
+            opportunityId: opportunityId
+        )
+        switch result {
+        case .ready(let preview):
+            followUpPreviewFingerprints[opportunityId] =
+                preview.previewFingerprint
+        case .unavailable, .permissionDenied:
+            followUpUnavailableLeadIDs.insert(opportunityId)
+            followUpPreviewFingerprints.removeValue(forKey: opportunityId)
+        case .networkError:
+            break
+        }
+        return result
     }
 
     /// Sends the standardized reply through the connected mailbox. No local
@@ -349,6 +390,8 @@ class PipelineViewModel: ObservableObject {
         }
 
         switch followUpProgress(for: opportunityId) {
+        case .reviewing:
+            return .busy
         case .sending:
             return .busy
         case .syncing:
@@ -371,7 +414,8 @@ class PipelineViewModel: ObservableObject {
             actorUserId: currentUserId,
             nextFollowUpAt: opportunity.nextFollowUpAt,
             handledAt: opportunity.handledAt,
-            lastOutboundAt: opportunity.lastOutboundAt
+            lastOutboundAt: opportunity.lastOutboundAt,
+            previewFingerprint: followUpPreviewFingerprints[opportunityId]
         )
 
         switch await followUpService.sendFollowUp(
@@ -385,6 +429,7 @@ class PipelineViewModel: ObservableObject {
             followUpReconcilingLeadIDs.remove(opportunityId)
             followUpUnknownLeadIDs.remove(opportunityId)
             followUpUnavailableLeadIDs.remove(opportunityId)
+            followUpPreviewFingerprints.removeValue(forKey: opportunityId)
             NotificationCenter.default.post(
                 name: Notification.Name("LeadUpdatedSuccess"),
                 object: nil,
@@ -396,6 +441,7 @@ class PipelineViewModel: ObservableObject {
             followUpReconcilingLeadIDs.remove(opportunityId)
             followUpUnknownLeadIDs.remove(opportunityId)
             followUpUnavailableLeadIDs.remove(opportunityId)
+            followUpPreviewFingerprints.removeValue(forKey: opportunityId)
             scheduleRefresh(debounce: .zero)
             NotificationCenter.default.post(
                 name: Notification.Name("LeadUpdatedSuccess"),
@@ -422,9 +468,11 @@ class PipelineViewModel: ObservableObject {
 
         case .unavailable:
             followUpUnavailableLeadIDs.insert(opportunityId)
+            followUpPreviewFingerprints.removeValue(forKey: opportunityId)
             return .unavailable
 
         case .rejected:
+            followUpPreviewFingerprints.removeValue(forKey: opportunityId)
             return .rejected
 
         case .busy:

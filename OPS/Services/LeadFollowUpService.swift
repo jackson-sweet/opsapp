@@ -2,9 +2,10 @@
 //  LeadFollowUpService.swift
 //  OPS
 //
-//  Authenticated transport for the operator-triggered one-tap lead follow-up.
+//  Authenticated preview + transport for the operator-triggered lead follow-up.
 //  The server owns recipient, mailbox, thread, template, signature, delivery,
-//  and reconciliation. The client owns only a durable idempotency key.
+//  and reconciliation. The client owns review preference and a durable
+//  idempotency key.
 //
 
 import Foundation
@@ -13,6 +14,8 @@ import Foundation
 
 @MainActor
 protocol LeadFollowUpServiceProtocol {
+    func previewFollowUp(opportunityId: String) async -> LeadFollowUpPreviewResult
+
     func sendFollowUp(
         opportunityId: String,
         scope: LeadFollowUpAttemptScope
@@ -25,6 +28,32 @@ struct LeadFollowUpAttemptScope: Equatable {
     let nextFollowUpAt: Date?
     let handledAt: Date?
     let lastOutboundAt: Date?
+    var previewFingerprint: String? = nil
+}
+
+struct LeadFollowUpPreview: Decodable, Equatable, Identifiable {
+    struct Recipient: Decodable, Equatable {
+        let name: String?
+        let email: String
+    }
+
+    let recipient: Recipient
+    let from: String
+    let subject: String
+    let body: String
+    let previewFingerprint: String
+    let templateSettingsPath: String
+
+    var id: String {
+        [recipient.email, from, subject, body].joined(separator: "\u{1F}")
+    }
+}
+
+enum LeadFollowUpPreviewResult {
+    case ready(LeadFollowUpPreview)
+    case unavailable(reason: String?)
+    case permissionDenied
+    case networkError
 }
 
 enum LeadFollowUpResult {
@@ -65,6 +94,55 @@ enum LeadFollowUpResult {
 
     /// Authentication refresh or transport failed without a definitive response.
     case networkError
+}
+
+// MARK: - Review preference
+
+protocol LeadFollowUpReviewPreferenceStoring: AnyObject {
+    func skipsReview(companyId: String, actorUserId: String) -> Bool
+    func setSkipsReview(_ skipsReview: Bool, companyId: String, actorUserId: String)
+}
+
+final class UserDefaultsLeadFollowUpReviewPreferenceStore:
+    LeadFollowUpReviewPreferenceStoring
+{
+    static let shared = UserDefaultsLeadFollowUpReviewPreferenceStore()
+
+    private static let keyPrefix = "ops.leads.followUp.skipReview.v1."
+    private let defaults: UserDefaults
+
+    init(defaults: UserDefaults = .standard) {
+        self.defaults = defaults
+    }
+
+    func skipsReview(companyId: String, actorUserId: String) -> Bool {
+        guard let key = storageKey(companyId: companyId, actorUserId: actorUserId) else {
+            return false
+        }
+        return defaults.bool(forKey: key)
+    }
+
+    func setSkipsReview(
+        _ skipsReview: Bool,
+        companyId: String,
+        actorUserId: String
+    ) {
+        guard let key = storageKey(companyId: companyId, actorUserId: actorUserId) else {
+            return
+        }
+        defaults.set(skipsReview, forKey: key)
+    }
+
+    private func storageKey(companyId: String, actorUserId: String) -> String? {
+        let company = Self.normalizedIdentifier(companyId)
+        let actor = Self.normalizedIdentifier(actorUserId)
+        guard !company.isEmpty, !actor.isEmpty else { return nil }
+        return "\(Self.keyPrefix)\(company).\(actor)"
+    }
+
+    private static func normalizedIdentifier(_ identifier: String) -> String {
+        identifier.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    }
 }
 
 // MARK: - Durable request-key storage
@@ -228,6 +306,62 @@ final class LeadFollowUpService: LeadFollowUpServiceProtocol {
         self.requestKeyGenerator = requestKeyGenerator
     }
 
+    func previewFollowUp(opportunityId: String) async -> LeadFollowUpPreviewResult {
+        let normalizedOpportunityId = opportunityId
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+        guard UUID(uuidString: normalizedOpportunityId) != nil else {
+            return .unavailable(reason: "invalid_opportunity")
+        }
+
+        let token: String
+        do {
+            token = try await tokenProvider()
+        } catch {
+            return isDefiniteAuthenticationFailure(error)
+                ? .permissionDenied
+                : .networkError
+        }
+
+        var request = URLRequest(
+            url: followUpEndpoint(opportunityId: normalizedOpportunityId)
+        )
+        request.httpMethod = "GET"
+        request.timeoutInterval = 30
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+
+        let data: Data
+        let response: URLResponse
+        do {
+            (data, response) = try await httpClient.data(for: request)
+        } catch {
+            return .networkError
+        }
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            return .networkError
+        }
+        if httpResponse.statusCode == 401 || httpResponse.statusCode == 403 {
+            return .permissionDenied
+        }
+        guard httpResponse.statusCode == 200 else {
+            let payload = try? JSONDecoder().decode(LeadFollowUpAPIResponse.self, from: data)
+            return .unavailable(reason: payload?.reason ?? payload?.error)
+        }
+        guard
+            let preview = try? JSONDecoder().decode(LeadFollowUpPreview.self, from: data),
+            !preview.recipient.email
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .isEmpty,
+            !preview.from.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+            !preview.subject.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+            !preview.body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        else {
+            return .unavailable(reason: "invalid_preview")
+        }
+        return .ready(preview)
+    }
+
     func sendFollowUp(
         opportunityId: String,
         scope: LeadFollowUpAttemptScope
@@ -255,7 +389,8 @@ final class LeadFollowUpService: LeadFollowUpServiceProtocol {
             actorUserId: normalizedActorUserId,
             nextFollowUpAt: scope.nextFollowUpAt,
             handledAt: scope.handledAt,
-            lastOutboundAt: scope.lastOutboundAt
+            lastOutboundAt: scope.lastOutboundAt,
+            previewFingerprint: scope.previewFingerprint
         )
         let requestKey = durableRequestKey(
             for: normalizedOpportunityId,
@@ -277,6 +412,7 @@ final class LeadFollowUpService: LeadFollowUpServiceProtocol {
             request = try makeRequest(
                 opportunityId: normalizedOpportunityId,
                 requestKey: requestKey,
+                previewFingerprint: normalizedScope.previewFingerprint,
                 token: token
             )
         } catch {
@@ -365,23 +501,27 @@ final class LeadFollowUpService: LeadFollowUpServiceProtocol {
     private func makeRequest(
         opportunityId: String,
         requestKey: String,
+        previewFingerprint: String?,
         token: String
     ) throws -> URLRequest {
-        let endpoint = baseURL
-            .appendingPathComponent("api")
-            .appendingPathComponent("leads")
-            .appendingPathComponent(opportunityId)
-            .appendingPathComponent("follow-up")
-
-        var request = URLRequest(url: endpoint)
+        var request = URLRequest(url: followUpEndpoint(opportunityId: opportunityId))
         request.httpMethod = "POST"
         request.timeoutInterval = 30
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-        request.httpBody = try JSONEncoder().encode(
-            LeadFollowUpRequest(idempotencyKey: requestKey)
-        )
+        request.httpBody = try JSONEncoder().encode(LeadFollowUpRequest(
+            idempotencyKey: requestKey,
+            previewFingerprint: previewFingerprint
+        ))
         return request
+    }
+
+    private func followUpEndpoint(opportunityId: String) -> URL {
+        baseURL
+            .appendingPathComponent("api")
+            .appendingPathComponent("leads")
+            .appendingPathComponent(opportunityId)
+            .appendingPathComponent("follow-up")
     }
 
     private func classify(
@@ -570,6 +710,7 @@ final class LeadFollowUpService: LeadFollowUpServiceProtocol {
             || reason.contains("lead_follow_up_draft_conflict")
             || reason.contains("lead_follow_up_timezone_invalid")
             || reason.contains("lead_follow_up_conversation_changed")
+            || reason.contains("lead_follow_up_review_changed")
             || reason.contains("response_required")
             || reason.contains("recipient_required")
             || reason.contains("thread_mismatch")
@@ -582,6 +723,7 @@ final class LeadFollowUpService: LeadFollowUpServiceProtocol {
 
 private struct LeadFollowUpRequest: Encodable {
     let idempotencyKey: String
+    let previewFingerprint: String?
 }
 
 private struct LeadFollowUpAPIResponse: Decodable {

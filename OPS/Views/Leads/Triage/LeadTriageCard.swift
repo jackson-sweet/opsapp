@@ -193,7 +193,11 @@ struct LeadTriageCard: View {
                         canAct: canEdit,
                         canSendFollowUp: viewModel.canSendFollowUp(for: lead),
                         followUpProgress: viewModel.followUpProgress(for: lead.id),
+                        actorUserId: viewModel.currentUserId,
                         onHandled: onHandled,
+                        onReviewFollowUp: {
+                            await viewModel.previewFollowUp(opportunityId: lead.id)
+                        },
                         onSendFollowUp: onSendFollowUp,
                         onAdjust: onAdjust
                     )

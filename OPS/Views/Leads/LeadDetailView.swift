@@ -278,6 +278,7 @@ struct LeadDetailView: View {
                                     ActivityTimeline(
                                         activities: vm.activities,
                                         transitions: vm.stageTransitions,
+                                        opportunity: opportunity,
                                         onViewAll: { showingActivityHistory = true }
                                     )
                                     .padding(.top, 22)
@@ -341,7 +342,8 @@ struct LeadDetailView: View {
         .navigationDestination(isPresented: $showingActivityHistory) {
             LeadActivityHistoryView(
                 activities: vm.activities,
-                transitions: vm.stageTransitions
+                transitions: vm.stageTransitions,
+                opportunity: opportunity
             )
         }
         .confirmationDialog(

@@ -165,6 +165,68 @@ struct SiteVisitRecord: Equatable {
         )
     }
 
+    // MARK: - Assembly from a device-local visit
+
+    /// The record for a visit that lives on THIS device.
+    ///
+    /// The project activity tab reads a visit's SYNCED packet, written once at
+    /// handoff. A lead's timeline usually has no such packet: the visit happens
+    /// before the lead ever becomes a job, so there is no project note to read.
+    /// It assembles from the local capture instead.
+    ///
+    /// That is not a lesser path — site visits, their artifacts, their
+    /// checklist answers, and their identity draft are all local-only and never
+    /// sync, so the capturing device is the only device where this record can
+    /// exist at all. Everywhere else the caller must fall back to a plain row
+    /// rather than invent one.
+    ///
+    /// Built through the SAME payload + packet builders the project handoff
+    /// uses, so a visit reads identically before and after it becomes a job.
+    ///
+    /// - Returns: nil when the visit captured nothing renderable — the same
+    ///   condition under which handoff writes no packet at all.
+    static func assembleFromLocalCapture(
+        visit: SiteVisit,
+        artifacts: [SiteVisitCaptureArtifact],
+        checklistAnswers: [SiteVisitChecklistAnswer],
+        identity: SiteVisitIdentityDraft?,
+        opportunity: Opportunity?,
+        capturedAt: Date,
+        operatorName: String,
+        canViewFinancials: Bool
+    ) -> SiteVisitRecord? {
+        let payload = SiteVisitProjectPayloadBuilder.payload(
+            siteVisitId: visit.id,
+            opportunityId: visit.opportunityId ?? opportunity?.id ?? "",
+            address: identity?.address.trimmedOrNil ?? visit.address ?? opportunity?.address,
+            artifacts: artifacts,
+            checklistAnswers: checklistAnswers,
+            contactName: opportunity?.displayContactName ?? identity?.contactName.trimmedOrNil,
+            companyName: identity?.clientName.trimmedOrNil
+        )
+
+        guard let packet = SiteVisitPacketNote.build(artifacts: artifacts, payload: payload),
+              let metadata = SiteVisitPacketMetadata.decode(from: packet.metadataJSON) else {
+            return nil
+        }
+
+        // The photos are on this device as capture artifacts, so the strip
+        // shows the real thumbnails rather than a "not downloaded" tally.
+        let photoURLs = artifacts
+            .filter { $0.isActive && $0.includedInProjectReview && $0.pipesToProjectPhotos }
+            .sorted { $0.capturedAt < $1.capturedAt }
+            .compactMap(\.previewAssetURL)
+
+        return assemble(
+            metadata: metadata,
+            photoURLs: photoURLs,
+            capturedAt: capturedAt,
+            operatorName: operatorName,
+            estimatedValue: opportunity?.estimatedValue,
+            canViewFinancials: canViewFinancials
+        )
+    }
+
     /// `HELEN CALLOWAY · CALLOWAY LTD` — whichever halves exist. Uppercase is
     /// the record's authority register; the identity is a fact, not prose.
     private static func identityLine(contactName: String?, companyName: String?) -> String? {

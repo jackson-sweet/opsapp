@@ -7,17 +7,18 @@
 //  The cell carries four independent readings without ever becoming a chart:
 //
 //    • DAY NUMBER  — mono, top-left. Today wears the accent (number + hairline
-//      ring); the accent is a focus marker here, not a CTA.
+//      ring); the accent is a focus marker here, not a CTA. Inside a
+//      selection it wears whichever ink survives the ground beneath it.
 //    • SIGNAL BARS — up to three 3pt bars along the bottom. White = this
 //      project. Tan = the crew is booked. Tan + 45° hatch = the crew is off
 //      (the hatch is a second, non-colour cue so the day still reads for a
 //      colour-blind operator, and in direct sun).
 //    • DENSITY DOT — one dim dot when the day holds work that touches neither
 //      this crew nor this project. Presence, not detail.
-//    • SELECTION   — white caps joined by an interior that brightens toward
-//      each cap and eases to quiet at the span's middle, the whole unit traced
-//      by a hairline outline. The gradient is one continuous curve across the
-//      entire selection, sampled per cell, and the outline stays OPEN where a
+//    • SELECTION   — white caps whose fill runs on into the span. The interior
+//      leaves each cap at exactly the cap's own white and eases to quiet about
+//      a day in, so there is no seam to find: cap and interior are one object.
+//      The whole unit is traced by a hairline outline that stays OPEN where a
 //      week row wraps — so a range reads as a single object however many rows
 //      it crosses. Drawn ABOVE the signals so the operator's own pick is
 //      always the loudest thing on the grid.
@@ -124,8 +125,9 @@ struct SchedulerDayCell: View {
             .fill(OPSStyle.Colors.primaryText)
         case .interior:
             ZStack {
-                // The quiet base is unchanged — the gradient only lifts the
-                // days nearest the caps, so the middle of a long span stays
+                // The quiet base carries the whole interior; the curve on top
+                // reaches the caps' own white at each seam and is out of the
+                // way within a day of it, so the middle of a long span stays
                 // exactly as calm as it was.
                 Rectangle()
                     .fill(OPSStyle.Colors.surfaceActive)
@@ -137,49 +139,45 @@ struct SchedulerDayCell: View {
 
     // MARK: - Span gradient
 
-    /// The selection's brightness curve as a function of position `p` across
-    /// the whole span: 1 hard against either white cap, easing symmetrically to
-    /// 0 at the middle. One global curve — every cell samples the same
-    /// function, so neighbouring cells meet at identical values and the span
-    /// reads as one object rather than a row of tiles.
-    private static func nearnessToCap(_ p: Double) -> Double {
-        1 - min(p, 1 - p) * 2
+    /// Where this cell sits inside the selection's interior — which interior
+    /// cell it is, and how many there are. nil unless the cell genuinely is
+    /// one, so the caps and the outside never pay for the curve.
+    private var interiorPosition: (index: Int, count: Int)? {
+        guard let span = spanPosition else { return nil }
+        let count = span.count - 2          // the two caps are not interior
+        let index = span.index - 1
+        guard count > 0, index >= 0, index < count else { return nil }
+        return (index: index, count: count)
     }
 
-    private static func spanFill(at p: Double) -> Color {
-        OPSStyle.Colors.primaryText
-            .opacity(OPSStyle.Layout.schedulerSpanEdgeOpacity * nearnessToCap(p))
-    }
-
-    /// This cell's slice of that curve. Day `i` of `count` owns
-    /// `p ∈ [i/count, (i+1)/count]`, which is a straight ramp — two stops —
-    /// unless the curve's vertex at `p = 0.5` falls inside the cell, in which
-    /// case it needs a third stop there or the kink would flatten into a ramp
-    /// and the span would read lopsided. (A three-day span is the extreme
-    /// case: its single interior day dips in its own centre, which is the
-    /// curve telling the truth about where the middle is.)
+    /// This cell's slice of the span curve. The curve decides where it has to
+    /// be sampled; the cell only turns those samples into stops.
     private var interiorGradient: LinearGradient {
-        guard let span = spanPosition, span.count > 0 else {
-            return LinearGradient(colors: [.clear, .clear], startPoint: .leading, endPoint: .trailing)
-        }
+        guard let interior = interiorPosition else { return Self.emptyGradient }
 
-        let width = 1.0 / Double(span.count)
-        let left = Double(span.index) * width
-        let right = left + width
-
-        var stops = [Gradient.Stop(color: Self.spanFill(at: left), location: 0)]
-        if left < 0.5, right > 0.5 {
-            stops.append(
+        let stops = SchedulerSpanCurve
+            .stopPositions(interiorIndex: interior.index, interiorCount: interior.count)
+            .map { position -> Gradient.Stop in
+                // A cell is exactly one unit wide in span coordinates, so the
+                // position's offset into the cell is already the stop's
+                // location. Brightness 1 resolves to `primaryText` at full
+                // strength — the caps' fill exactly, which is what makes the
+                // seam disappear.
                 Gradient.Stop(
-                    color: Self.spanFill(at: 0.5),
-                    location: CGFloat((0.5 - left) / width)
+                    color: OPSStyle.Colors.primaryText
+                        .opacity(SchedulerSpanCurve.brightness(at: position, interiorCount: interior.count)),
+                    location: CGFloat(position - Double(interior.index))
                 )
-            )
-        }
-        stops.append(Gradient.Stop(color: Self.spanFill(at: right), location: 1))
+            }
 
         return LinearGradient(stops: stops, startPoint: .leading, endPoint: .trailing)
     }
+
+    private static let emptyGradient = LinearGradient(
+        colors: [.clear, .clear],
+        startPoint: .leading,
+        endPoint: .trailing
+    )
 
     // MARK: - Span outline
 
@@ -203,10 +201,27 @@ struct SchedulerDayCell: View {
         case .single, .start, .end:
             return OPSStyle.Colors.invertedText
         case .interior:
-            return OPSStyle.Colors.primaryText
+            // The cap's white now carries a full day into the span, so an
+            // interior number can be sitting on near-white ground. Read the
+            // curve where the glyphs actually are, and wear whichever ink
+            // survives it — the caps' own black, or the usual white.
+            return numberPrefersInvertedInk
+                ? OPSStyle.Colors.invertedText
+                : OPSStyle.Colors.primaryText
         case .none:
             return isToday ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.primaryText
         }
+    }
+
+    /// Whether the ground under the day number carries more of the cap's white
+    /// than it does the quiet base. Judged across the whole glyph run rather
+    /// than at one point, because a cap-adjacent cell is a ramp, not a tone.
+    private var numberPrefersInvertedInk: Bool {
+        guard let interior = interiorPosition else { return false }
+        return SchedulerSpanCurve.numberBandBrightness(
+            interiorIndex: interior.index,
+            interiorCount: interior.count
+        ) > OPSStyle.Layout.schedulerSpanNumberFlipBrightness
     }
 
     // MARK: - Signals
@@ -222,6 +237,12 @@ struct SchedulerDayCell: View {
             signals.thisProject ? SignalBar.thisProject : nil
         ].compactMap { $0 }
 
+        // The bars keep their own colours across the blend, deliberately. A
+        // full-width bar lying over a white-to-quiet ramp cannot be one
+        // correct colour, and a bar that changed tone mid-span would read as
+        // the day's availability changing rather than its background. These
+        // are presence signals, not values — tan and the hatch hold on both
+        // grounds — so only the caps, flat white end to end, invert.
         if !bars.isEmpty {
             VStack(spacing: OPSStyle.Layout.Border.standard) {
                 ForEach(bars, id: \.self) { bar in
@@ -260,6 +281,96 @@ struct SchedulerDayCell: View {
                     )
             }
         }
+    }
+}
+
+// MARK: - Span curve
+
+/// The brightness a selection wears across its interior, as a function of
+/// position measured in day cells from the start cap's seam.
+///
+/// Brightness 1 is the cap's own fill — `primaryText` at full strength — and
+/// that is precisely the value at each seam, so a cap and the day beside it
+/// meet at one colour and fuse. From there the white eases out quadratically
+/// over `schedulerSpanBlendCells` and everything deeper stays at the quiet
+/// base. Anchoring the blend to the seams rather than stretching it across the
+/// whole span is the point: a fortnight-long booking then looks exactly like a
+/// three-day one at both ends and says nothing in between, which is honest —
+/// the middle of a long range has nothing to report.
+enum SchedulerSpanCurve {
+
+    /// How far the glow reaches in from each seam. Clamped to half the
+    /// interior so on a short span the two sides meet exactly in the middle
+    /// instead of overlapping. A three-day span is the extreme case: its lone
+    /// interior day leaves both seams white and dips to nothing dead centre.
+    static func blendWidth(interiorCount: Int) -> Double {
+        guard interiorCount > 0 else { return 0 }
+        return min(OPSStyle.Layout.schedulerSpanBlendCells, Double(interiorCount) / 2)
+    }
+
+    /// Brightness `x` cells in from the start cap's seam, where the interior
+    /// runs 0…`interiorCount`. Quadratic ease-out from whichever seam is
+    /// nearer — the app's one easing curve held still: fast off the mark, long
+    /// settle.
+    static func brightness(at x: Double, interiorCount: Int) -> Double {
+        let interior = Double(interiorCount)
+        let blend = blendWidth(interiorCount: interiorCount)
+        guard blend > 0 else { return 0 }
+
+        let position = min(max(x, 0), interior)
+        let fromStart = max(0, 1 - position / blend)
+        let fromEnd = max(0, 1 - (interior - position) / blend)
+        return max(fromStart * fromStart, fromEnd * fromEnd)
+    }
+
+    /// Where interior cell `interiorIndex` has to be sampled, in span
+    /// coordinates, for a LinearGradient to tell the truth about it.
+    ///
+    /// A gradient runs straight lines between its stops, so a cell needs its
+    /// two edges, every knee that lands inside it — where a blend runs out,
+    /// and where the two sides meet — and one sample through the middle of
+    /// each remaining segment the quadratic actually bends across. That is
+    /// enough to keep the ease honest at a 48pt cell without pretending a
+    /// gradient is a shader, and a flat stretch (the whole middle of a long
+    /// span) pays nothing for it. Fixed positions, never a sweep at some
+    /// arbitrary resolution.
+    static func stopPositions(interiorIndex: Int, interiorCount: Int) -> [Double] {
+        let cellStart = Double(interiorIndex)
+        let cellEnd = cellStart + 1
+        let blend = blendWidth(interiorCount: interiorCount)
+
+        // Ascending, ties collapsed — on a short span all three knees land on
+        // the same spot.
+        var edges = [cellStart]
+        for knee in [blend, Double(interiorCount) / 2, Double(interiorCount) - blend].sorted() {
+            guard knee > edges[edges.count - 1], knee < cellEnd else { continue }
+            edges.append(knee)
+        }
+        edges.append(cellEnd)
+
+        var positions: [Double] = []
+        for (position, next) in zip(edges, edges.dropFirst()) {
+            positions.append(position)
+            let bends = brightness(at: position, interiorCount: interiorCount) > 0
+                || brightness(at: next, interiorCount: interiorCount) > 0
+            if bends {
+                positions.append((position + next) / 2)
+            }
+        }
+        positions.append(cellEnd)
+        return positions
+    }
+
+    /// Mean brightness under the day number of interior cell `interiorIndex`
+    /// — three samples across the glyph run, which is all it takes to
+    /// characterise a monotone ramp, and the number never straddles more.
+    static func numberBandBrightness(interiorIndex: Int, interiorCount: Int) -> Double {
+        let origin = Double(interiorIndex)
+        let start = origin + OPSStyle.Layout.schedulerSpanNumberBandStart
+        let end = origin + OPSStyle.Layout.schedulerSpanNumberBandEnd
+        let samples = [start, (start + end) / 2, end]
+        let total = samples.reduce(0.0) { $0 + brightness(at: $1, interiorCount: interiorCount) }
+        return total / Double(samples.count)
     }
 }
 

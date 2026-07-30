@@ -162,10 +162,11 @@ final class SchedulerSheetSnapshotTests: XCTestCase {
         }
     }
 
-    /// A range that runs across a week boundary. The interior reads as one
-    /// continuous object — brightest against each white cap, quietest at the
-    /// span's middle — and the hairline outline closes only at the two caps,
-    /// staying open where the rows wrap.
+    /// A range that runs across a week boundary. The interior leaves each
+    /// white cap at exactly the cap's own fill and eases to quiet about a day
+    /// in, so there is no seam to find; everything deeper than that stays
+    /// calm. The hairline outline closes only at the two caps, staying open
+    /// where the rows wrap.
     func testMultiWeekRangeGradientAndOutline() throws {
         let world = try World()
         let start = world.preFloorStart
@@ -201,6 +202,50 @@ final class SchedulerSheetSnapshotTests: XCTestCase {
         let world = try World()
         snapshot("16_crew_clear_suggestion", size: phone) {
             world.sheet(for: world.independent, start: nil, end: nil)
+        }
+    }
+
+    /// The two short spans, each on its own clean week row — the cases the
+    /// curve is judged on. A sheet holds one selection at a time, so they are
+    /// two frames rather than one.
+    ///
+    /// 17: three days. The lone interior belongs to both caps at once, so it
+    /// leaves each seam at the cap's own white and dips to nothing dead
+    /// centre — the loudest the curve ever gets, and correct.
+    /// 18: five days. Only the cap-adjacent days glow; the day between them is
+    /// flat quiet. Read as a pair with 13, where the same shape holds at both
+    /// ends of an eleven-day range.
+    func testShortSpanGradients() throws {
+        let world = try World()
+
+        // Both ranges open on the dependency floor or later and clear every
+        // seeded job, so nothing dims and no signal bar crowds the read. Each
+        // one also lands inside a single week row: the point is how a cap and
+        // its neighbour meet, and a wrap is not what is on trial here.
+        let shortStart = world.floorDay
+        let shortEnd = calendar.date(byAdding: .day, value: 2, to: shortStart)!
+        snapshot("17_short_span_gradient", size: phone) {
+            world.sheet(start: shortStart, end: shortEnd)
+        }
+
+        let fiveStart = calendar.date(byAdding: .day, value: 10, to: world.floorDay)!
+        let fiveEnd = calendar.date(byAdding: .day, value: 4, to: fiveStart)!
+        snapshot("18_five_day_gradient", size: phone) {
+            world.sheet(start: fiveStart, end: fiveEnd)
+        }
+    }
+
+    /// The same empty state as 01, on a job whose project has a measured deck
+    /// and whose company has already finished three comparable ones. The chip
+    /// gains a third clause — "~2 DAYS" — read off those jobs, and one tap now
+    /// picks the whole span instead of only a start, so SAVE is live
+    /// immediately. Read 01 and 19 as a pair: nothing else about the sheet
+    /// moves, and 16 stays date-only because fence work has no such history.
+    func testLengthSuggestionChip() throws {
+        let world = try World()
+        world.stageComparableDeckHistory()
+        snapshot("19_length_suggestion_chip", size: phone) {
+            world.sheet(start: nil, end: nil)
         }
     }
 
@@ -258,7 +303,8 @@ final class SchedulerSheetSnapshotTests: XCTestCase {
                 Client.self,
                 SubClient.self,
                 SyncOperation.self,
-                CalendarUserEvent.self
+                CalendarUserEvent.self,
+                DeckDesign.self
             ])
             container = try ModelContainer(
                 for: schema,
@@ -413,6 +459,90 @@ final class SchedulerSheetSnapshotTests: XCTestCase {
                 start: start,
                 end: end
             )
+        }
+
+        /// A measured deck on the job's own project, plus three finished
+        /// decking jobs on decks of a comparable size — the history the
+        /// duration suggestion reads.
+        ///
+        /// Staged on request rather than in `init` so every other state keeps
+        /// its date-only chip and 01 / 19 read as a before-and-after pair. The
+        /// comps sit six months back: genuinely finished work, and far enough
+        /// behind the month the grid opens on that no existing state picks up a
+        /// signal from them.
+        func stageComparableDeckHistory() {
+            stageDeck(id: "design-harbour", projectId: "project-harbour", areaSqFt: 400)
+
+            // 380 / 420 / 440 sqft against a 400 sqft deck: all inside the
+            // 1.3× band, days 2 / 2 / 3, so the middle job is two days.
+            let comps: [(title: String, areaSqFt: Double, dayCount: Int)] = [
+                (title: "Ferndale Deck", areaSqFt: 380, dayCount: 2),
+                (title: "Quadra Deck", areaSqFt: 420, dayCount: 2),
+                (title: "Sooke Deck", areaSqFt: 440, dayCount: 3)
+            ]
+
+            let today = calendar.startOfDay(for: Date())
+            for (index, comp) in comps.enumerated() {
+                let projectId = "project-comp-\(index)"
+                let project = Project(id: projectId, title: comp.title, status: .completed)
+                project.companyId = "company-1"
+                context.insert(project)
+
+                stageDeck(id: "design-comp-\(index)", projectId: projectId, areaSqFt: comp.areaSqFt)
+
+                let end = calendar.date(byAdding: .day, value: -180 + index * 7, to: today)!
+                let job = ProjectTask(
+                    id: "task-comp-\(index)",
+                    projectId: projectId,
+                    taskTypeId: "type-decking",
+                    companyId: "company-1",
+                    status: .completed
+                )
+                job.project = project
+                job.startDate = calendar.date(byAdding: .day, value: -(comp.dayCount - 1), to: end)!
+                job.endDate = end
+                job.duration = comp.dayCount
+                context.insert(job)
+            }
+
+            try? context.save()
+        }
+
+        /// One rectangular deck at a known real-world size, serialized the way
+        /// the builder saves one: a canvas point per inch, so 240 × 240 is
+        /// 20' × 20' — 400 sqft.
+        private func stageDeck(id: String, projectId: String, areaSqFt: Double) {
+            let width = 240.0
+            let depth = areaSqFt * 144.0 / width
+            let corners: [CGPoint] = [
+                CGPoint(x: 0, y: 0),
+                CGPoint(x: width, y: 0),
+                CGPoint(x: width, y: depth),
+                CGPoint(x: 0, y: depth)
+            ]
+
+            var drawing = DeckDrawingData()
+            drawing.scaleFactor = 1
+            drawing.vertices = corners.enumerated().map { index, point in
+                DeckVertex(id: "\(id)-v\(index)", position: point)
+            }
+            drawing.edges = corners.indices.map { index in
+                DeckEdge(
+                    id: "\(id)-e\(index)",
+                    startVertexId: "\(id)-v\(index)",
+                    endVertexId: "\(id)-v\((index + 1) % corners.count)"
+                )
+            }
+
+            let design = DeckDesign(
+                id: id,
+                companyId: "company-1",
+                projectId: projectId,
+                title: "Deck",
+                drawingDataJSON: drawing.toJSON()
+            )
+            design.updatedAt = Date()
+            context.insert(design)
         }
 
         /// The same engine the sheet builds, for rendering the day inspector.

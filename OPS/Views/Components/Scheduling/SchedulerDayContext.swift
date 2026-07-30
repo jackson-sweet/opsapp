@@ -9,7 +9,7 @@
 //  It answers four questions for the person picking dates:
 //    1. What is already on this day?          → `signals(for:)`, `events(on:)`
 //    2. What breaks if I pick this range?     → `rangeReview(start:end:)`
-//    3. Where should I start?                 → `suggestion`
+//    3. Where should I start, and for how long? → `suggestion`
 //    4. What does this day mean, in words?    → `interpretation(for:)`
 //
 //  NOTHING here blocks a date. Every signal is a guide: the dependency floor
@@ -322,6 +322,13 @@ struct SchedulerDayContext {
 
         let date: Date
         let reason: Reason
+        /// How many days the job should run, read off the company's own
+        /// finished jobs of this type on decks this size. Resolved by the
+        /// caller — the history lives in the store, and this engine does not
+        /// touch the store — and simply carried here. Nil whenever that
+        /// comparison could not be made honestly, in which case the chip
+        /// proposes a start and says nothing about length.
+        let lengthDays: Int?
     }
 
     /// What a completed range costs.
@@ -344,6 +351,12 @@ struct SchedulerDayContext {
     let dependencyFloor: Date?
     /// Title of the prerequisite that set the floor, so the note can name it.
     let floorPrerequisiteTitle: String?
+    /// Days this job should take, already resolved from the company's finished
+    /// work by `ComparableJobLength`. An input, not a computation: measuring a
+    /// deck and reading job history both mean reading the store, and this
+    /// engine stays pure so every rule in it remains testable in isolation.
+    /// Nil is the normal, honest case — see that type's gates.
+    let suggestedLengthDays: Int?
 
     private let calendar: Calendar
     /// day → commitments spanning it. Built once, in a single pass over the
@@ -359,10 +372,12 @@ struct SchedulerDayContext {
         events: [Event],
         prerequisites: [Prerequisite] = [],
         skipsWeekends: Bool = false,
+        suggestedLengthDays: Int? = nil,
         calendar: Calendar = .current
     ) {
         self.item = item
         self.skipsWeekends = skipsWeekends
+        self.suggestedLengthDays = suggestedLengthDays
         self.calendar = calendar
 
         // The item never competes with itself.
@@ -549,7 +564,13 @@ struct SchedulerDayContext {
 
         var day = baseline
         for _ in 0...Self.suggestionWalkLimit {
-            if isProposable(day) { return Suggestion(date: day, reason: reason) }
+            if isProposable(day) {
+                // Length rides along on whatever date the walk lands on: the
+                // two answers are independent — history says how long the job
+                // takes, the calendar says when it can start — so a missing
+                // length never costs the operator the date, and vice versa.
+                return Suggestion(date: day, reason: reason, lengthDays: suggestedLengthDays)
+            }
             guard let next = calendar.date(byAdding: .day, value: 1, to: day) else { return nil }
             day = next
         }

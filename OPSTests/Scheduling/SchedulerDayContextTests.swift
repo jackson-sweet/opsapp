@@ -665,19 +665,83 @@ final class SchedulerDayContextTests: XCTestCase {
         XCTAssertEqual(notSkipping.suggestion?.date, saturday)
     }
 
+    // MARK: - Task 2 — Suggested length pass-through
+
+    func testTheProposalCarriesWhateverLengthTheCallerResolved() throws {
+        // The engine does not measure decks or read job history — that means
+        // reading the store, which it never does. It carries the caller's
+        // number onto whatever date its own walk lands on.
+        let withLength = makeContext(
+            item: item(crewIds: ["marcus"], isScheduled: false),
+            suggestedLengthDays: 2
+        )
+        let proposal = try XCTUnwrap(withLength.suggestion)
+        XCTAssertEqual(proposal.date, daysFromToday(1))
+        XCTAssertEqual(proposal.reason, .crewClear)
+        XCTAssertEqual(proposal.lengthDays, 2)
+    }
+
+    func testALengthRidesAPrerequisiteProposalTheSameWay() throws {
+        let context = makeContext(
+            item: item(dependencies: [dependency(on: "framing")], isScheduled: false),
+            prerequisites: [
+                .init(taskTypeId: "framing", title: "Framing", start: daysFromToday(10), duration: 3)
+            ],
+            suggestedLengthDays: 3
+        )
+
+        // Date and length are independent answers: the floor still decides
+        // when, and the history still decides how long.
+        let proposal = try XCTUnwrap(context.suggestion)
+        XCTAssertEqual(proposal.date, daysFromToday(13))
+        XCTAssertEqual(proposal.reason, .afterPrerequisite("Framing"))
+        XCTAssertEqual(proposal.lengthDays, 3)
+    }
+
+    func testWithoutAResolvedLengthTheProposalStillNamesADay() throws {
+        // The default, and the common case in the field: too little comparable
+        // history to speak to length. The date must survive that silence.
+        let context = makeContext(item: item(crewIds: ["marcus"], isScheduled: false))
+
+        let proposal = try XCTUnwrap(context.suggestion)
+        XCTAssertEqual(proposal.date, daysFromToday(1))
+        XCTAssertNil(proposal.lengthDays)
+    }
+
+    func testALengthNeverManufacturesAProposalThatWasNotThere() {
+        // No prerequisite and no crew: nothing on the calendar recommends one
+        // day over another, so knowing the duration changes nothing. A length
+        // is not a reason to schedule.
+        XCTAssertNil(
+            makeContext(
+                item: item(crewIds: [], isScheduled: false),
+                suggestedLengthDays: 2
+            ).suggestion
+        )
+        // Nor does it re-open a proposal for a job already on the calendar.
+        XCTAssertNil(
+            makeContext(
+                item: item(crewIds: ["marcus"], isScheduled: true),
+                suggestedLengthDays: 2
+            ).suggestion
+        )
+    }
+
     // MARK: - Fixtures
 
     private func makeContext(
         item: SchedulerDayContext.Item,
         events: [SchedulerDayContext.Event] = [],
         prerequisites: [SchedulerDayContext.Prerequisite] = [],
-        skipsWeekends: Bool = false
+        skipsWeekends: Bool = false,
+        suggestedLengthDays: Int? = nil
     ) -> SchedulerDayContext {
         SchedulerDayContext(
             item: item,
             events: events,
             prerequisites: prerequisites,
             skipsWeekends: skipsWeekends,
+            suggestedLengthDays: suggestedLengthDays,
             calendar: calendar
         )
     }

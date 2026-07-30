@@ -717,6 +717,10 @@ struct ActivityDTO: Codable, Identifiable {
     let fromEmail: String?
     let toEmails: [String]?
     let ccEmails: [String]?
+    // The site visit this row reports. iOS writes it on every completed visit
+    // (`ActivityRepository.logActivity(siteVisitId:)`) but never read it back,
+    // so the lead's timeline could not tell a site visit from any other note.
+    let siteVisitId: String?
     // Unified-activity parents — an activity can be parented to a lead
     // (opportunity), a client, OR a job (project). All nullable and additive:
     // opportunity-only rows carry nil client_id/project_id.
@@ -747,6 +751,7 @@ struct ActivityDTO: Codable, Identifiable {
         case fromEmail       = "from_email"
         case toEmails        = "to_emails"
         case ccEmails        = "cc_emails"
+        case siteVisitId     = "site_visit_id"
         case clientId        = "client_id"
         case projectId       = "project_id"
         case isRead          = "is_read"
@@ -778,6 +783,7 @@ struct ActivityDTO: Codable, Identifiable {
         act.fromEmail = fromEmail
         act.toEmails = toEmails ?? []
         act.ccEmails = ccEmails ?? []
+        act.siteVisitId = siteVisitId
         act.clientId = clientId
         act.projectId = projectId
         act.isRead = isRead ?? false

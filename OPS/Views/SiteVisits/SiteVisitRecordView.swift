@@ -66,7 +66,7 @@ struct SiteVisitRecordCard: View {
                     }
                 }
             }
-            .padding(14)
+            .padding(OPSStyle.Layout.spacing3)
             .frame(maxWidth: .infinity, alignment: .leading)
             .glassSurface()
             .contentShape(Rectangle())
@@ -261,7 +261,7 @@ struct SiteVisitRecordView: View {
                             onPhotoTap(record.visiblePhotoURLs, index)
                         } label: {
                             PhotoThumbnail(url: url, project: nil, remoteThumbnailURL: nil)
-                                .frame(width: 72, height: 72)
+                                .frame(width: PhotoThumbnail.tileSize, height: PhotoThumbnail.tileSize)
                                 .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius))
                                 .overlay(
                                     RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
@@ -277,7 +277,7 @@ struct SiteVisitRecordView: View {
                             .font(OPSStyle.Typography.captionBold)
                             .foregroundColor(OPSStyle.Colors.secondaryText)
                             .monospacedDigit()
-                            .frame(width: 72, height: 72)
+                            .frame(width: PhotoThumbnail.tileSize, height: PhotoThumbnail.tileSize)
                             .background(
                                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
                                     .fill(OPSStyle.Colors.surfaceInput)
@@ -418,7 +418,7 @@ struct SiteVisitRecordView: View {
             content()
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(14)
+        .padding(OPSStyle.Layout.spacing3)
         .glassSurface()
     }
 }

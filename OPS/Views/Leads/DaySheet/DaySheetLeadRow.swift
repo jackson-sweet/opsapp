@@ -12,6 +12,8 @@
 //    • anywhere on the row     → expand (accordion, owned by the screen)
 //    • the stage chip, tapped  → expand too (it is part of the row)
 //    • the stage chip, held    → LeadStatusMenu, for honest corrections
+//    • the address, tapped     → directions, on the ROUTE verb's own contract
+//    • the address, held       → the address on the pasteboard
 //    • CALL / ROUTE            → their own 44pt targets, never the row
 //
 //  Deviation from the plan's letter, deliberately: the row is NOT wrapped in a
@@ -101,18 +103,82 @@ struct DaySheetLeadRow: View {
             // No address, no line — a placeholder dash on a scan surface is
             // noise the operator has to read past.
             if let address = trimmedAddress {
-                Text(address)
-                    .font(OPSStyle.Typography.miniLabel)
-                    .tracking(0.8)
-                    .textCase(.uppercase)
-                    .foregroundColor(OPSStyle.Colors.text3)
-                    .lineLimit(1)
-                    .truncationMode(.tail)
+                addressLine(address)
             }
 
             chips
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    // MARK: - Address (route · copy)
+
+    /// The address is already a verb; it just never behaved like one. A runner
+    /// reading `1841 BECKWITH AVE` is deciding whether to drive there, and the
+    /// thing he wants is under his thumb.
+    ///
+    ///   tap    → `openRoute()`, the ROUTE button's own contract, verbatim
+    ///            (exact coordinates when the lead has them, the address as a
+    ///            Maps query when it does not). One route contract on this row
+    ///            — the trailing verb and the line it points at can never
+    ///            disagree about where the job is.
+    ///   hold   → the address on the pasteboard, for the text to the crew.
+    ///
+    /// Composition is `UniversalJobBoardCard`'s, verbatim: `contentShape`, then
+    /// a tap, then a long press on the SAME view. That pairing ships today on
+    /// the job-board card, the scheduler day cell, and the activity photo strip
+    /// — tap-primary, hold-secondary, inside a scrolling list — so the hold
+    /// yields to a flick (the recognizer fails past its default 10pt) and the
+    /// two never both fire.
+    ///
+    /// The tap must reach here rather than expanding the card, which is the
+    /// documented default (a descendant's gesture is recognized before an
+    /// ancestor's — the reason `.highPriorityGesture` exists on the parent
+    /// side) and the behaviour the row already depends on: the stage chip has
+    /// to be handed `primaryAction: onExpand` precisely because the row's tap
+    /// does not reach a child that handles its own.
+    ///
+    /// Hit area is the rendered line and nothing more. Real padding here would
+    /// push the identity column past the thumb and make every addressed row on
+    /// the sheet taller than every un-addressed one, which is a worse trade
+    /// than a short target on a wide line.
+    private func addressLine(_ address: String) -> some View {
+        Text(address)
+            .font(OPSStyle.Typography.miniLabel)
+            .tracking(0.8)
+            .textCase(.uppercase)
+            .foregroundColor(OPSStyle.Colors.text3)
+            .lineLimit(1)
+            .truncationMode(.tail)
+            .contentShape(Rectangle())
+            .onTapGesture { openRoute() }
+            .onLongPressGesture(minimumDuration: OPSStyle.Animation.longPressHold) {
+                copyAddress(address)
+            }
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("Address, \(address)")
+            .accessibilityAddTraits(.isButton)
+            .accessibilityHint("Opens directions")
+            .accessibilityAction(named: Text("Copy address")) { copyAddress(address) }
+    }
+
+    /// Copy, then say so. The toast is the confirmation — a long press that
+    /// only changed the pasteboard has told the operator nothing.
+    ///
+    /// Deliberately NO impact generator alongside it. `ToastHostView` fires
+    /// `notificationOccurred(.success)` when the banner appears, so the press
+    /// is already answered in the hand; a second generator would buzz twice for
+    /// one copy. (`LeadContactBlock`'s COPY sits inside a context menu, where
+    /// the menu dismissing is the visual answer and the impact is the only
+    /// signal there is — same intent, different surface.)
+    ///
+    /// Label follows the shipped copy form (`Feedback.Settings.roleDuplicated`
+    /// is `// ROLE COPIED`). Built inline rather than added to the catalog only
+    /// because `Feedback.swift` is outside this change's blast radius; it
+    /// belongs in `Feedback.Lead` the next time that file is opened.
+    private func copyAddress(_ address: String) {
+        UIPasteboard.general.string = address
+        ToastCenter.shared.present(Toast(label: "// ADDRESS COPIED", tone: .success))
     }
 
     // MARK: - Chips (stage · urgency)

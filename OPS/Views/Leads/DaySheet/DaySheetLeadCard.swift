@@ -40,16 +40,21 @@ import UIKit
 
 struct DaySheetLeadCard: View {
 
-    /// Where the deck tile's design comes from.
+    /// Where the deck panel's design comes from.
     ///
     /// `resolve` is production: a `@Query` over local designs plus a one-shot
     /// remote self-repair. Both need a ModelContainer in the environment, which
     /// a bare snapshot host and an Xcode preview do not have — so harnesses
     /// hand the card its design (or explicitly none) and the resolver, and its
     /// `@Query`, is never constructed at all.
+    ///
+    /// `preview` is the second half of the same seam: the panel's image comes
+    /// from an S3 URL, which a harness cannot fetch, so a rendered preview can
+    /// be handed in alongside the design. Nil renders the panel's own
+    /// placeholder — which is exactly what an offline device shows too.
     enum DeckSource {
         case resolve
-        case injected(DeckDesign?)
+        case injected(DeckDesign?, preview: UIImage?)
     }
 
     let row: DaySheetViewModel.Row
@@ -66,9 +71,10 @@ struct DaySheetLeadCard: View {
     /// the screen owns the one instance and hands it to every card.
     var committer: LeadMilestoneCommitter?
     var onFullLead: () -> Void = {}
-    /// The screen presents `DeckBuilderView` full-screen (LeadDetailView's
-    /// `deckDesignToOpen` pattern) — it owns the modelContext and syncEngine.
-    var onOpenDeck: (DeckDesign) -> Void = { _ in }
+    /// Expand the drawing. The screen presents `DeckFullscreenViewer` — it owns
+    /// the viewer's tool state, which has to outlive this card (a milestone
+    /// press re-derives the groups and rebuilds the row's view).
+    var onViewDeck: (DeckDesign) -> Void = { _ in }
     var onStage: (PipelineStage) -> Void = { _ in }
     var onWon: () -> Void = {}
     var onLost: () -> Void = {}
@@ -78,7 +84,7 @@ struct DaySheetLeadCard: View {
     var deckSource: DeckSource = .resolve
 
     /// Read the INJECTED store, never `PermissionStore.shared`: the shared
-    /// store fails closed before hydration, which would blank the deck tile and
+    /// store fails closed before hydration, which would blank the deck panel and
     /// the EST line on a cold-launch race and in every preview.
     @EnvironmentObject private var permissionStore: PermissionStore
 
@@ -126,7 +132,7 @@ struct DaySheetLeadCard: View {
         VStack(alignment: .leading, spacing: 0) {
             VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2_5) {
                 photoStrip
-                deckTile
+                deckPanel
                 summaryBand
                 contactBlock
                 quickActions
@@ -149,14 +155,16 @@ struct DaySheetLeadCard: View {
     // MARK: - 2 · Deck
 
     @ViewBuilder
-    private var deckTile: some View {
+    private var deckPanel: some View {
         if permissionStore.isFeatureEnabled("deck_builder") {
             switch deckSource {
             case .resolve:
-                DaySheetDeckResolver(opportunity: lead, onOpen: onOpenDeck)
-            case .injected(let design):
+                DaySheetDeckResolver(opportunity: lead, onOpen: onViewDeck)
+            case .injected(let design, let preview):
                 if let design = design {
-                    LeadDeckTile(design: design, onOpen: onOpenDeck)
+                    LeadDeckPanel(design: design,
+                                  injectedPreview: preview,
+                                  onOpen: onViewDeck)
                 }
             }
         }
@@ -564,7 +572,7 @@ private struct DaySheetDeckResolver: View {
         // empty resolver would never run its self-repair fetch.
         VStack(spacing: 0) {
             if let design = candidate {
-                LeadDeckTile(design: design, onOpen: onOpen)
+                LeadDeckPanel(design: design, onOpen: onOpen)
             }
         }
         .task(id: opportunity.id) {
@@ -793,11 +801,14 @@ private struct DaySheetMilestoneControl: View {
                 canConvert: true,
                 isExpanded: true,
                 // Injected: an Xcode preview has no ModelContainer, so the
-                // resolver's @Query must never be constructed here.
+                // resolver's @Query must never be constructed here. No preview
+                // image either — a canvas render has no network, so the panel
+                // shows its offline placeholder.
                 deckSource: .injected(
                     DeckDesign(companyId: "preview-company",
                                opportunityId: "preview-lead",
-                               title: "Back deck — wraparound")
+                               title: "Back deck — wraparound"),
+                    preview: nil
                 )
             )
 
@@ -817,7 +828,7 @@ private struct DaySheetMilestoneControl: View {
                 canEdit: false,
                 canConvert: false,
                 isExpanded: true,
-                deckSource: .injected(nil)
+                deckSource: .injected(nil, preview: nil)
             )
         }
         .padding(OPSStyle.Layout.spacing3_5)

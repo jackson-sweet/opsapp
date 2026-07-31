@@ -39,13 +39,22 @@ final class DeckFullscreenSnapshotTests: XCTestCase {
     /// `ImageRenderer`, this resolves asset-catalog colors (OPS's canvas/accent
     /// colors are `Color("…")`) AND runs the SwiftUI lifecycle — so
     /// `DeckTab2DView.centerViewport()` fires in `onAppear` and the plan is framed.
-    private func snapshot(_ name: String, toolState: DeckViewerToolState, drawingData: DeckDrawingData, title: String) {
+    private func snapshot(
+        _ name: String,
+        toolState: DeckViewerToolState,
+        drawingData: DeckDrawingData,
+        title: String,
+        canEdit: Bool = false
+    ) {
         let view = DeckFullscreenViewer(
             title: title,
             drawingData: drawingData,
             viewMode: .constant(.twoD),
             toolState: toolState,
-            onClose: {}
+            onClose: {},
+            // The viewer never resolves permission itself — the HOST hands it a
+            // closure or nil. Passing nil here IS the denied case.
+            onEdit: canEdit ? {} : nil
         )
 
         let host = UIHostingController(rootView: view)
@@ -149,6 +158,23 @@ final class DeckFullscreenSnapshotTests: XCTestCase {
         splitting.recordSplitTap(CGPoint(x: 196, y: 470))
         snapshot("08-select-split", toolState: splitting,
                  drawingData: splitData, title: "MERIDIAN DECK")
+    }
+
+    /// The EDIT affordance, both ways. The viewer is entity-agnostic: it shows
+    /// the verb when the host passes a closure and shows NOTHING when the host
+    /// passes nil — never a greyed-out button advertising an action that can
+    /// only refuse. The pair is the proof that the gate is the host's call.
+    func testRenderEditAffordance() {
+        // Granted — EDIT sits between the mode control and close, in the deck
+        // tab's own accent/weight, one 44pt target.
+        snapshot("10-edit-granted", toolState: DeckViewerToolState(),
+                 drawingData: Self.centeredSingleLevel(), title: "MERIDIAN DECK",
+                 canEdit: true)
+
+        // Denied — the top bar is byte-for-byte the shipped bar again.
+        snapshot("11-edit-denied", toolState: DeckViewerToolState(),
+                 drawingData: Self.centeredSingleLevel(), title: "MERIDIAN DECK",
+                 canEdit: false)
     }
 
     func testRenderUnnamedDisconnectedSurfaceLabels() {

@@ -1,18 +1,28 @@
 //
-//  LeadDeckTile.swift
+//  LeadDeckPanel.swift
 //  OPS
 //
-//  The deck design on the expanded day-sheet card — one L2 tile that says what
-//  was drawn and opens it. A runner standing at the door needs to recognize the
-//  drawing he's about to talk through, not author it: creating and attaching
-//  decks stays in FULL LEAD and the site-visit flow (spec §3.4.2).
+//  The deck design on the expanded day-sheet card — a viewer, not a list row.
+//  A runner standing at the door opens the card, RECOGNISES the drawing, and
+//  taps it to fill the screen and talk the homeowner through it. The tap goes
+//  to the same fullscreen viewer the project deck tab expands into, so a deck
+//  reads and behaves identically wherever it was drawn.
 //
-//  Thumbnail reuses the SHIPPED deck preview asset — `DeckDesign.thumbnailURL`,
-//  the PNG `DeckRenderer` renders and uploads on every builder save (the same
-//  image `TemplatePickerView`'s recents list shows). No bespoke renderer: a
-//  design saved offline, or saved before the thumbnail upload landed, falls
-//  back to the deck surface's own empty glyph rather than re-drawing geometry
-//  inside a scrolling list.
+//  The preview is the SHIPPED deck render — `DeckDesign.thumbnailURL`, the PNG
+//  `DeckRenderer` writes and uploads on every builder save that has geometry
+//  (the same image `TemplatePickerView`'s recents list shows). Deliberately a
+//  STATIC image: the day sheet is a scrolling list of cards, and a live
+//  SceneKit or blueprint canvas inline would pay a full render per card.
+//  Interaction lives in fullscreen, one tap away.
+//
+//  Aspect is 1:1 because the asset is: `DeckRenderer.renderToPNG` defaults to
+//  1024×1024 and fits the geometry inside it, and the project deck tab frames
+//  its own viewport the same way. Any other ratio either crops the drawing or
+//  letterboxes it inside dead space.
+//
+//  A design saved offline, saved before thumbnail upload landed, or whose URL
+//  will not load falls back to the deck surface's own `square.dashed` glyph at
+//  full panel size — never a blank plate, never a spinner in an open card.
 //
 //  This view is deliberately dumb — it takes a design and a closure. Resolution
 //  (display-candidate + remote self-repair) lives in the card, matching
@@ -24,7 +34,7 @@
 import SwiftUI
 import UIKit
 
-struct LeadDeckTile: View {
+struct LeadDeckPanel: View {
 
     let design: DeckDesign
     var onOpen: (DeckDesign) -> Void = { _ in }
@@ -34,14 +44,23 @@ struct LeadDeckTile: View {
     /// sit in a computed property the body re-evaluates.
     private let meta: String?
 
-    /// Square preview, sized to the row thumb (`LeadThumbView.side`) so the
-    /// card's two images sit on the same grid.
-    private static var previewSide: CGFloat { LeadThumbView.side }
+    /// Test seam: an already-decoded preview, so a snapshot harness can prove
+    /// the LOADED panel without a network round trip. Always nil in production
+    /// — the app resolves its preview from `thumbnailURL` like every other deck
+    /// surface. Same spirit as `DaySheetLeadCard.DeckSource`, and left out of
+    /// `#if DEBUG` for the same reason that enum is: the card's production
+    /// switch has to construct this initializer in every configuration.
+    private let injectedPreview: UIImage?
 
-    init(design: DeckDesign, onOpen: @escaping (DeckDesign) -> Void = { _ in }) {
+    init(
+        design: DeckDesign,
+        injectedPreview: UIImage? = nil,
+        onOpen: @escaping (DeckDesign) -> Void = { _ in }
+    ) {
         self.design = design
         self.onOpen = onOpen
         self.meta = Self.metaLine(for: design)
+        self.injectedPreview = injectedPreview
     }
 
     var body: some View {
@@ -49,21 +68,16 @@ struct LeadDeckTile: View {
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
             onOpen(design)
         } label: {
-            HStack(spacing: OPSStyle.Layout.spacing2_5) {
-                thumbnail
-                identity
-                Spacer(minLength: 0)
-                Image(systemName: OPSStyle.Icons.forward)
-                    .font(.system(size: OPSStyle.Layout.IconSize.xs, weight: .regular))
-                    .foregroundColor(OPSStyle.Colors.text3)
+            VStack(spacing: 0) {
+                preview
+                caption
             }
-            .padding(OPSStyle.Layout.spacing2)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .frame(minHeight: OPSStyle.Layout.touchTargetMin)
+            .frame(maxWidth: .infinity)
             .background(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cardRadius, style: .continuous)
                     .fill(OPSStyle.Colors.surfaceInput)
             )
+            .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.cardRadius, style: .continuous))
             .overlay(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cardRadius, style: .continuous)
                     .strokeBorder(OPSStyle.Colors.nestedBorder,
@@ -73,65 +87,85 @@ struct LeadDeckTile: View {
         }
         .buttonStyle(PlainButtonStyle())
         .accessibilityLabel(accessibilityLabelText)
+        .accessibilityHint("Opens the drawing full screen")
     }
 
-    // MARK: - Thumbnail
+    // MARK: - Preview
 
+    /// The drawing itself, square and full width. Loading and failure both land
+    /// on the placeholder: a spinner inside a card the operator has already
+    /// opened reads as a stall, not as progress.
     @ViewBuilder
-    private var thumbnail: some View {
-        if let url = thumbnailURL {
-            AsyncImage(url: url) { phase in
-                switch phase {
-                case .success(let image):
-                    image.resizable().scaledToFill()
-                default:
-                    // Loading and failure both land on the placeholder — a
-                    // spinner inside a card that is already open reads as a
-                    // stall, not as progress.
-                    placeholderTile
+    private var preview: some View {
+        Group {
+            if let injectedPreview = injectedPreview {
+                Image(uiImage: injectedPreview).resizable().scaledToFill()
+            } else if let url = thumbnailURL {
+                AsyncImage(url: url) { phase in
+                    switch phase {
+                    case .success(let image):
+                        image.resizable().scaledToFill()
+                    default:
+                        placeholder
+                    }
                 }
+            } else {
+                placeholder
             }
-            .frame(width: Self.previewSide, height: Self.previewSide)
-            .clipped()
-            .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius, style: .continuous))
-        } else {
-            placeholderTile
         }
+        .frame(maxWidth: .infinity)
+        .aspectRatio(1, contentMode: .fit)
+        .clipped()
     }
 
     /// The deck surface's own "nothing drawn yet" glyph (`DeckTabView`), so an
     /// un-rendered design reads the same here as it does on the project tab.
-    private var placeholderTile: some View {
-        RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius, style: .continuous)
+    private var placeholder: some View {
+        Rectangle()
             .fill(OPSStyle.Colors.fillNeutralDim)
             .overlay(
                 Image(systemName: "square.dashed")
-                    .font(.system(size: OPSStyle.Layout.IconSize.md, weight: .light))
+                    .font(.system(size: OPSStyle.Layout.IconSize.xxl, weight: .light))
                     .foregroundColor(OPSStyle.Colors.textMute)
             )
-            .frame(width: Self.previewSide, height: Self.previewSide)
     }
 
-    // MARK: - Identity
+    // MARK: - Caption
 
-    private var identity: some View {
-        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
-            Text(design.title)
-                .font(OPSStyle.Typography.cardBody)
-                .foregroundColor(OPSStyle.Colors.text)
-                .lineLimit(1)
-                .truncationMode(.tail)
-
-            if let meta = meta {
-                Text(meta)
-                    .font(OPSStyle.Typography.nanoLabel)
-                    .tracking(0.8)
-                    .textCase(.uppercase)
-                    .foregroundColor(OPSStyle.Colors.text3)
+    /// Identity plate under the drawing, not floating on it: the render is a
+    /// plan on white paper, and a dark glass pill laid over it would fight the
+    /// thing it is labelling. The expand glyph is the panel's only mark of a
+    /// verb — tap-to-fullscreen is otherwise invisible.
+    private var caption: some View {
+        HStack(spacing: OPSStyle.Layout.spacing2_5) {
+            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
+                Text(design.title)
+                    .font(OPSStyle.Typography.cardBody)
+                    .foregroundColor(OPSStyle.Colors.text)
                     .lineLimit(1)
                     .truncationMode(.tail)
+
+                if let meta = meta {
+                    Text(meta)
+                        .font(OPSStyle.Typography.nanoLabel)
+                        .tracking(0.8)
+                        .textCase(.uppercase)
+                        .foregroundColor(OPSStyle.Colors.text3)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                }
             }
+
+            Spacer(minLength: 0)
+
+            Image(systemName: OPSStyle.Icons.expand)
+                .font(.system(size: OPSStyle.Layout.IconSize.xs, weight: .regular))
+                .foregroundColor(OPSStyle.Colors.text3)
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(minHeight: OPSStyle.Layout.touchTargetMin)
+        .padding(.horizontal, OPSStyle.Layout.spacing2_5)
+        .padding(.vertical, OPSStyle.Layout.spacing2)
     }
 
     private var thumbnailURL: URL? {

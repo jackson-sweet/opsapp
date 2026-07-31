@@ -108,7 +108,7 @@ struct DeckRenderer {
                                 p1: p1, p2: p2,
                                 config: config,
                                 treadCount: tc,
-                                polygonInTransformed: level.orderedPositions.map(transform),
+                                polygonInTransformed: drawingData.stairFacePolygon(forEdgeId: edge.id).map(transform),
                                 scaleFactor: drawingData.scaleFactor.map { $0 * Double(fitScale) }
                             )
                         }
@@ -212,7 +212,7 @@ struct DeckRenderer {
                             p2: p2,
                             config: config,
                             treadCount: tc,
-                            polygonInTransformed: drawingData.orderedPositions.map(transform),
+                            polygonInTransformed: drawingData.stairFacePolygon(forEdgeId: edge.id).map(transform),
                             scaleFactor: drawingData.scaleFactor.map { $0 * Double(fitScale) }
                         )
                     }

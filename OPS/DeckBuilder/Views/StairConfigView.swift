@@ -34,6 +34,12 @@ struct StairConfigView: View {
         }
     }
 
+    /// Standard stair width in inches — matches the first width preset and
+    /// the code-typical 4' residential run.
+    private enum StairDefaults {
+        static let width: Double = 48
+    }
+
     @State private var mode: RiseMode = .height
     @State private var treadCount: Int = 4
     @State private var riseFeet: Int = 2
@@ -172,16 +178,42 @@ struct StairConfigView: View {
 
     // MARK: - Edge geometry
 
+    /// Edge length in inches — the typed dimension when the user set one,
+    /// otherwise measured from the drawn geometry through the effective
+    /// scale. Reading `dimension` alone left this nil on every undimensioned
+    /// edge, which silently hid the position control (an edge almost never
+    /// carries a typed dimension when stairs are first attached).
     private var edgeLengthInches: Double? {
-        targetEdge?.dimension
+        if let dimension = targetEdge?.dimension, dimension > 0 { return dimension }
+        guard let edge = targetEdge,
+              let start = viewModel.findVertex(byId: edge.startVertexId),
+              let end = viewModel.findVertex(byId: edge.endVertexId) else { return nil }
+        let canvasLength = hypot(end.position.x - start.position.x, end.position.y - start.position.y)
+        let scale = viewModel.drawingData.effectiveScaleFactor
+        guard canvasLength > 0, scale > 0 else { return nil }
+        return Double(canvasLength) / scale
     }
 
-    private var needsAlignment: Bool {
-        guard mode != .level,
-              let edgeLen = edgeLengthInches,
-              let width = Double(widthText) else { return false }
-        return width < edgeLen - 1  // 1" tolerance
+    private var offsetValue: Double { Double(offsetText) ?? 0 }
+
+    /// Clamp the nudge to the slack so a stair can never be pushed past the
+    /// end of its own edge.
+    private func setOffset(_ value: Double, limit: Double) {
+        let lower = alignment == .center ? -limit : 0
+        offsetText = String(format: "%.0f", min(max(value, lower), limit))
+        // stepButton already fires the light impact — no double tap.
     }
+
+    /// Slack between the stair and its edge — how far the stair can slide.
+    private var positionSlackInches: Double? {
+        guard let edgeLen = edgeLengthInches, let width = Double(widthText) else { return nil }
+        let slack = edgeLen - width
+        return slack > 1 ? slack : nil   // 1" tolerance
+    }
+
+    /// Position controls appear whenever the stair is narrower than its edge —
+    /// including connection stairs, whose alignment the planner honors too.
+    private var needsAlignment: Bool { positionSlackInches != nil }
 
     private var gapMeasurements: (left: Double, right: Double)? {
         guard let edgeLen = edgeLengthInches,
@@ -593,33 +625,44 @@ struct StairConfigView: View {
             }
             .pickerStyle(.segmented)
 
-            HStack {
-                Text("Offset")
-                    .font(OPSStyle.Typography.caption)
-                    .foregroundColor(OPSStyle.Colors.secondaryText)
-                Spacer()
-                TextField("0", text: $offsetText)
-                    .font(OPSStyle.Typography.monoValue)
-                    .foregroundColor(OPSStyle.Colors.primaryText)
-                    .keyboardType(.numberPad)
-                    .frame(width: 60)
-                    .multilineTextAlignment(.trailing)
-                Text("inches")
-                    .font(OPSStyle.Typography.caption)
-                    .foregroundColor(OPSStyle.Colors.secondaryText)
-            }
+            // Nudge the stair along the edge from its alignment. Stepper
+            // rather than a keypad: it can't exceed the slack, and it works
+            // one-handed. CENTER nudges both ways, so it takes the full slack
+            // split either side.
+            if let slack = positionSlackInches {
+                let offsetLimit = alignment == .center ? slack / 2 : slack
+                HStack(spacing: OPSStyle.Layout.spacing3) {
+                    Text("Nudge")
+                        .font(OPSStyle.Typography.caption)
+                        .foregroundColor(OPSStyle.Colors.secondaryText)
 
-            if let gaps = gapMeasurements {
-                HStack {
-                    Text("Left gap: \(DimensionEngine.formatImperial(gaps.left))")
-                        .font(OPSStyle.Typography.caption)
-                        .foregroundColor(OPSStyle.Colors.secondaryText)
                     Spacer()
-                    Text("Right gap: \(DimensionEngine.formatImperial(gaps.right))")
-                        .font(OPSStyle.Typography.caption)
-                        .foregroundColor(OPSStyle.Colors.secondaryText)
+
+                    stepButton(systemImage: "minus", enabled: offsetValue > (alignment == .center ? -offsetLimit : 0)) {
+                        setOffset(offsetValue - 2, limit: offsetLimit)
+                    }
+
+                    Text(DimensionEngine.formatImperial(abs(offsetValue)))
+                        .font(OPSStyle.Typography.monoValue)
+                        .foregroundColor(OPSStyle.Colors.primaryText)
+                        .frame(minWidth: 64)
+
+                    stepButton(systemImage: "plus", enabled: offsetValue < offsetLimit) {
+                        setOffset(offsetValue + 2, limit: offsetLimit)
+                    }
                 }
-                .padding(.top, OPSStyle.Layout.spacing1)
+
+                HStack {
+                    Text("Slides \(DimensionEngine.formatImperial(slack))")
+                        .font(OPSStyle.Typography.smallCaption)
+                        .foregroundColor(OPSStyle.Colors.tertiaryText)
+                    Spacer()
+                    if let gaps = gapMeasurements {
+                        Text("\(DimensionEngine.formatImperial(max(0, gaps.left))) | \(DimensionEngine.formatImperial(max(0, gaps.right)))")
+                            .font(OPSStyle.Typography.smallCaption)
+                            .foregroundColor(OPSStyle.Colors.secondaryText)
+                    }
+                }
             }
         }
         .padding(OPSStyle.Layout.spacing3)
@@ -810,13 +853,14 @@ struct StairConfigView: View {
             return
         }
 
-        // New stair: width defaults to the edge, rise to the level's resolved
-        // height — a stair to grade spans exactly that, so most commits are
-        // a straight Apply.
+        // New stair: a real stair width (48" — the code-standard default and
+        // the first width preset), never the whole edge. Defaulting to the
+        // full edge made every new stair span the deck AND hid the position
+        // control, since a full-width stair has nowhere to slide. Narrower
+        // edges just take the edge.
         mode = .height
-        if let edgeLen = edge.dimension {
-            widthText = String(format: "%.0f", edgeLen)
-        }
+        let defaultWidth = min(StairDefaults.width, edgeLengthInches ?? StairDefaults.width)
+        widthText = String(format: "%.0f", defaultWidth)
         setRise(fromInches: activeLevelResolvedFeet * 12.0)
     }
 
@@ -837,6 +881,10 @@ struct StairConfigView: View {
 
         var config = StairConfig(width: spec.width, risePerStep: risePerStep, runPerTread: runPerTread)
         config.flipDirection = flipDirection
+        // Position rides on BOTH stair kinds — the planner honors alignment
+        // and offset for connection stairs exactly like edge stairs.
+        config.alignment = alignment
+        config.offset = offsetValue
         if addRailing {
             config.railingConfig = RailingConfig(
                 railingType: railingType,
@@ -858,8 +906,6 @@ struct StairConfigView: View {
 
         config.treadCount = spec.treadCount
         config.totalRiseInches = totalRise
-        config.alignment = alignment
-        config.offset = Double(offsetText) ?? 0
         viewModel.setStairs(edge.id, config: config)
     }
 }

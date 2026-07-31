@@ -254,6 +254,86 @@ final class DeckStairLevelHeightTests: XCTestCase {
         XCTAssertNil(vm.drawingData.levels[1].edge(byId: "be2")?.stairConfig)
     }
 
+    // MARK: - Stair facing (away from the deck surface)
+
+    /// The field failure: a drawing holding TWO shapes. Every vertex still
+    /// has two connections within its own loop, but the whole-drawing ring
+    /// walk fails, so `orderedPositions` collapses to an unordered vertex
+    /// dump — and the direction test built on it returned an essentially
+    /// random side. Resolving the owning FACE keeps each stair correct.
+    func testStairFacePolygon_twoShapeDrawing_resolvesOwningFaceNotTheVertexDump() {
+        var data = DeckDrawingData()
+        data.scaleFactor = 1.0
+        data.vertices = [
+            DeckVertex(id: "a1", position: CGPoint(x: 0, y: 0)),
+            DeckVertex(id: "a2", position: CGPoint(x: 100, y: 0)),
+            DeckVertex(id: "a3", position: CGPoint(x: 100, y: 100)),
+            DeckVertex(id: "a4", position: CGPoint(x: 0, y: 100)),
+            DeckVertex(id: "b1", position: CGPoint(x: 200, y: 0)),
+            DeckVertex(id: "b2", position: CGPoint(x: 300, y: 0)),
+            DeckVertex(id: "b3", position: CGPoint(x: 300, y: 100)),
+            DeckVertex(id: "b4", position: CGPoint(x: 200, y: 100)),
+        ]
+        data.edges = [
+            DeckEdge(id: "ae1", startVertexId: "a1", endVertexId: "a2"),
+            DeckEdge(id: "ae2", startVertexId: "a2", endVertexId: "a3"),
+            DeckEdge(id: "ae3", startVertexId: "a3", endVertexId: "a4"),
+            DeckEdge(id: "ae4", startVertexId: "a4", endVertexId: "a1"),
+            DeckEdge(id: "be1", startVertexId: "b1", endVertexId: "b2"),
+            DeckEdge(id: "be2", startVertexId: "b2", endVertexId: "b3"),
+            DeckEdge(id: "be3", startVertexId: "b3", endVertexId: "b4"),
+            DeckEdge(id: "be4", startVertexId: "b4", endVertexId: "b1"),
+        ]
+
+        XCTAssertEqual(data.detectedSurfaces.count, 2)
+
+        // The face for an edge of shape A is shape A — 4 points, not the
+        // 8-vertex dump the old path handed the direction test.
+        let facePolygon = data.stairFacePolygon(forEdgeId: "ae1")
+        XCTAssertEqual(facePolygon.count, 4)
+        XCTAssertFalse(facePolygon.contains(CGPoint(x: 200, y: 0)),
+                       "shape B's corners must not leak into shape A's face")
+
+        // And the resulting stair direction leaves shape A.
+        let normal = PolygonMath.outwardPerpendicular(
+            edgeStart: CGPoint(x: 0, y: 0),
+            edgeEnd: CGPoint(x: 100, y: 0),
+            polygonVertices: facePolygon
+        )
+        XCTAssertEqual(normal.y, -1.0, accuracy: 0.001, "top edge → stairs run up, away from the deck")
+        XCTAssertEqual(normal.x, 0.0, accuracy: 0.001)
+    }
+
+    /// An interior divider shared by two surfaces has no outward side; the
+    /// resolver reports that rather than inventing one.
+    func testStairFacePolygon_sharedInteriorEdge_hasNoOutwardFace() {
+        var data = DeckDrawingData()
+        data.scaleFactor = 1.0
+        data.vertices = [
+            DeckVertex(id: "v1", position: CGPoint(x: 0, y: 0)),
+            DeckVertex(id: "v2", position: CGPoint(x: 100, y: 0)),
+            DeckVertex(id: "v3", position: CGPoint(x: 100, y: 100)),
+            DeckVertex(id: "v4", position: CGPoint(x: 0, y: 100)),
+            DeckVertex(id: "v5", position: CGPoint(x: 200, y: 0)),
+            DeckVertex(id: "v6", position: CGPoint(x: 200, y: 100)),
+        ]
+        data.edges = [
+            DeckEdge(id: "e1", startVertexId: "v1", endVertexId: "v2"),
+            DeckEdge(id: "shared", startVertexId: "v2", endVertexId: "v3"),
+            DeckEdge(id: "e3", startVertexId: "v3", endVertexId: "v4"),
+            DeckEdge(id: "e4", startVertexId: "v4", endVertexId: "v1"),
+            DeckEdge(id: "e5", startVertexId: "v2", endVertexId: "v5"),
+            DeckEdge(id: "e6", startVertexId: "v5", endVertexId: "v6"),
+            DeckEdge(id: "e7", startVertexId: "v6", endVertexId: "v3"),
+        ]
+
+        XCTAssertTrue(data.stairFacePolygon(forEdgeId: "shared").isEmpty,
+                      "an edge between two surfaces has no outward side")
+        XCTAssertNil(data.stairFaceVertexIds(forEdgeId: "shared"))
+        // A true perimeter edge of the same drawing still resolves.
+        XCTAssertFalse(data.stairFacePolygon(forEdgeId: "e1").isEmpty)
+    }
+
     // MARK: - Rail run labels (2D)
 
     func testStairRailInfo_edgeStair_usesStoredRiseHypotenuse() {

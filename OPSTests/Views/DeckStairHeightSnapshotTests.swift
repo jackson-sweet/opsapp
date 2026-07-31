@@ -197,6 +197,55 @@ final class DeckStairHeightSnapshotTests: XCTestCase {
         )
     }
 
+    /// 9. The field failure, rendered: a two-shape drawing with stairs on
+    ///    each shape. Both must run AWAY from their own deck (up from the
+    ///    top edges), and each stair is narrower than its edge so its
+    ///    position along the edge is visible. Before the face-polygon fix
+    ///    the whole-drawing ring collapsed to an unordered vertex dump and
+    ///    the direction test picked an essentially random side.
+    func testRenderStairFacingOnTwoShapeDeck() {
+        var data = DeckDrawingData()
+        data.scaleFactor = 1.0
+        data.overallElevation = 2.5
+        data.vertices = [
+            DeckVertex(id: "a1", position: CGPoint(x: 40, y: 150)),
+            DeckVertex(id: "a2", position: CGPoint(x: 190, y: 150)),
+            DeckVertex(id: "a3", position: CGPoint(x: 190, y: 300)),
+            DeckVertex(id: "a4", position: CGPoint(x: 40, y: 300)),
+            DeckVertex(id: "b1", position: CGPoint(x: 250, y: 150)),
+            DeckVertex(id: "b2", position: CGPoint(x: 400, y: 150)),
+            DeckVertex(id: "b3", position: CGPoint(x: 400, y: 300)),
+            DeckVertex(id: "b4", position: CGPoint(x: 250, y: 300)),
+        ]
+        // Stairs on the TOP edge of shape A (left-aligned) and the BOTTOM
+        // edge of shape B — opposite outward directions, same drawing.
+        var aTop = DeckEdge(id: "ae1", startVertexId: "a1", endVertexId: "a2")
+        aTop.stairConfig = StairConfig(
+            width: 60, runPerTread: 10, treadCount: 4,
+            alignment: .left, offset: 12, totalRiseInches: 30
+        )
+        var bBottom = DeckEdge(id: "be3", startVertexId: "b3", endVertexId: "b4")
+        bBottom.stairConfig = StairConfig(
+            width: 60, runPerTread: 10, treadCount: 4,
+            alignment: .right, offset: 0, totalRiseInches: 30
+        )
+        data.edges = [
+            aTop,
+            DeckEdge(id: "ae2", startVertexId: "a2", endVertexId: "a3"),
+            DeckEdge(id: "ae3", startVertexId: "a3", endVertexId: "a4"),
+            DeckEdge(id: "ae4", startVertexId: "a4", endVertexId: "a1"),
+            DeckEdge(id: "be1", startVertexId: "b1", endVertexId: "b2"),
+            DeckEdge(id: "be2", startVertexId: "b2", endVertexId: "b3"),
+            bBottom,
+            DeckEdge(id: "be4", startVertexId: "b4", endVertexId: "b1"),
+        ]
+
+        snapshot(
+            "09-2d-stair-facing-two-shape-deck",
+            view: DeckTab2DView(drawingData: data, toolState: DeckViewerToolState())
+        )
+    }
+
     // MARK: - Height sheet
 
     func testRenderHeightSheetScopes() {

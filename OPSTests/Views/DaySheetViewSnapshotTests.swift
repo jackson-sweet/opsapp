@@ -244,6 +244,7 @@ private struct DaySheetHost: View {
                 onLost: { _ in },
                 onArchive: { _ in },
                 onDiscard: { _ in },
+                onStartSiteVisit: { _ in },
                 onAddLead: canCreate ? {} : nil
             )
         }

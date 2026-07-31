@@ -56,6 +56,10 @@ struct LeadDaySheetView: View {
     var onLost: (Opportunity) -> Void
     var onArchive: (Opportunity) -> Void
     var onDiscard: (Opportunity) -> Void
+    /// Start or resume this lead's site visit. Routed straight into the tab's
+    /// existing `activeSiteVisitLead` cover — the day sheet adds a way IN to the
+    /// shipped capture flow, not a second copy of it.
+    var onStartSiteVisit: (Opportunity) -> Void
     /// Nil when this operator cannot create leads — the empty state then has no
     /// CTA rather than a button that refuses.
     var onAddLead: (() -> Void)?
@@ -327,8 +331,26 @@ struct LeadDaySheetView: View {
             onWon: { onWon(lead) },
             onLost: { onLost(lead) },
             onArchive: { onArchive(lead) },
-            onDiscard: { onDiscard(lead) }
+            onDiscard: { onDiscard(lead) },
+            onStartSiteVisit: canStartSiteVisit(lead) ? { onStartSiteVisit(lead) } : nil
         )
+    }
+
+    /// `LeadDetailView`'s gate, unchanged: convert scope on THIS lead, and the
+    /// lead still open (`LeadDetailView.swift` — `canConvert` is
+    /// `leadAccessPolicy.can(.convert, assignedTo:)`, and the menu item is
+    /// wrapped in `canConvert && !opportunity.stage.isTerminal`). Entity-
+    /// relative, so a delegate may capture on HIS lead and not on someone
+    /// else's — deliberately NOT the tab's `canConvertAny`, which is the right
+    /// gate for the FAB and the add-lead sheet because those start a visit with
+    /// no lead attached yet, and the wrong one here because this row belongs to
+    /// a specific lead.
+    ///
+    /// The terminal check is redundant today — `DaySheetViewModel.groups`
+    /// already filters `!stage.isTerminal` — and is kept so the two gates read
+    /// identically and cannot drift apart.
+    private func canStartSiteVisit(_ lead: Opportunity) -> Bool {
+        policy.can(.convert, assignedTo: lead.assignedTo) && !lead.stage.isTerminal
     }
 
     /// WON is a conversion, not a stamp: the iOS repository refuses a direct
@@ -573,6 +595,7 @@ private struct LeadDaySheetPreview: View {
                 onLost: { _ in },
                 onArchive: { _ in },
                 onDiscard: { _ in },
+                onStartSiteVisit: { _ in },
                 onAddLead: canCreate ? {} : nil
             )
         }

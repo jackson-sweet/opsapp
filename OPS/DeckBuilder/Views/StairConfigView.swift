@@ -2,17 +2,24 @@
 
 import SwiftUI
 
-/// The single stair authoring surface. A stair's vertical drop is entered in
-/// exactly one of three vocabularies — a tread count, a measured height, or
-/// the level it connects down to — because those are the three ways a deck
-/// builder actually knows the number. Treads/Height commit a fixed-rise stair
-/// on the edge; Level commits a `LevelConnection` whose rise keeps tracking
-/// the two levels' heights. An edge carries one stair, never both kinds.
+/// The single stair authoring surface, built around how a stair is actually
+/// specified in the field: a vertical drop and a rise/run pair, which together
+/// determine the tread count.
+///
+/// The drop is known one of three ways — the deck's ELEVATION, a counted
+/// number of TREADS, or the LEVEL the flight lands on. Each mode authors one
+/// number and derives the rest through the same rise/run pair, which stays
+/// visible and adjustable because it is the conversion between them (code
+/// standard most days, a longer run or a taller/shallower rise when the job
+/// calls for it).
+///
+/// ELEVATION / TREADS commit a fixed-rise stair on the edge; LEVEL commits a
+/// `LevelConnection` whose rise keeps tracking the two levels' heights. An
+/// edge carries one stair, never both kinds.
 ///
 /// Every geometry lookup goes through the view model's level-aware accessors
-/// (`findEdge` / `activeLevel`) — the previous sheet read the top-level
-/// vertex/edge arrays, which are empty on multi-level drawings, so its rise
-/// silently collapsed to 0 and its inputs reset on every open.
+/// (`findEdge` / `activeLevel`) — the top-level vertex/edge arrays are empty
+/// on multi-level drawings.
 struct StairConfigView: View {
     @ObservedObject var viewModel: DeckBuilderViewModel
     @Environment(\.dismiss) private var dismiss
@@ -21,40 +28,44 @@ struct StairConfigView: View {
     var initialMode: RiseMode? = nil
 
     enum RiseMode: String, CaseIterable {
+        case elevation
         case treads
-        case height
         case level
 
-        var displayName: String {
+        var label: String {
             switch self {
-            case .treads: return "Treads"
-            case .height: return "Height"
-            case .level:  return "Level"
+            case .elevation: return "ELEVATION"
+            case .treads:    return "TREADS"
+            case .level:     return "LEVEL"
             }
         }
     }
 
-    /// Standard stair width in inches — matches the first width preset and
-    /// the code-typical 4' residential run.
-    private enum StairDefaults {
-        static let width: Double = 48
+    /// Code reference points. Values stay adjustable — these mark where the
+    /// entered pair sits relative to IRC R311.7, they don't constrain it.
+    private enum Code {
+        static let standardRise: Double = 7.5
+        static let standardRun: Double = 10.0
+        static let maxRise: Double = 7.75
+        static let minRun: Double = 10.0
+        static let riseRange: ClosedRange<Double> = 5.0...8.5
+        static let runRange: ClosedRange<Double> = 9.0...18.0
     }
 
-    @State private var mode: RiseMode = .height
+    @State private var mode: RiseMode = .elevation
     @State private var treadCount: Int = 4
     @State private var riseFeet: Int = 2
     @State private var riseInches: Int = 6
     @State private var targetLevelId: String?
     /// Edge chosen inside the sheet when it was opened without a selection
-    /// (the Connect entry point on the level bar).
+    /// (the CONNECT entry point on the level bar).
     @State private var pickedEdgeId: String?
-    @State private var widthText: String = "48"
-    @State private var risePerStep: Double = 7.5
-    @State private var runPerTread: Double = 10.0
+    @State private var widthInches: Double = 48
+    @State private var risePerStep: Double = Code.standardRise
+    @State private var runPerTread: Double = Code.standardRun
     @State private var addRailing: Bool = false
-    @State private var railingType: RailingType = .parapetWall
     @State private var alignment: StairAlignment = .center
-    @State private var offsetText: String = "0"
+    @State private var offsetInches: Double = 0
     @State private var flipDirection: Bool = false
     @State private var showingARHeight = false
     @State private var didLoad = false
@@ -65,7 +76,6 @@ struct StairConfigView: View {
         viewModel.editingEdgeId ?? pickedEdgeId
     }
 
-    /// Level-aware edge resolution — never the top-level array.
     private var targetEdge: DeckEdge? {
         guard let id = editingEdgeId,
               let edge = viewModel.findEdge(byId: id),
@@ -82,10 +92,11 @@ struct StairConfigView: View {
         targetEdge?.stairConfig != nil || existingConnection != nil
     }
 
-    /// Levels this edge's stair could descend to — every level except the
-    /// active one. Rows above the active level render disabled: a connection
-    /// descends from an upper-level edge (spec § 7.1), so connecting UP means
-    /// switching to that level and tapping one of its edges.
+    private var measurementSystem: MeasurementSystem {
+        viewModel.drawingData.config.measurementSystem
+    }
+
+    /// Levels this flight could land on — every level except the active one.
     private var connectableLevels: [(index: Int, level: DeckLevel)] {
         guard viewModel.isMultiLevel else { return [] }
         return Array(viewModel.drawingData.levels.enumerated())
@@ -93,14 +104,14 @@ struct StairConfigView: View {
             .map { (index: $0.offset, level: $0.element) }
     }
 
-    private var showsLevelMode: Bool { !connectableLevels.isEmpty }
+    private var availableModes: [RiseMode] {
+        connectableLevels.isEmpty ? [.elevation, .treads] : RiseMode.allCases
+    }
 
     /// The drawing with THIS edge's fixed-rise stair removed — the world the
-    /// commit creates. All resolved-height math reads from it so the drop the
-    /// sheet previews equals the drop `connectLevels` commits: an existing
-    /// stair being replaced can be the very thing an implicit level height
-    /// derives from, and previewing against it would show a rise the commit
-    /// itself invalidates.
+    /// commit creates, so a LEVEL preview can't be skewed by the stair it
+    /// replaces (an existing stair can be what an implicit level height
+    /// derives from).
     private var probeData: DeckDrawingData {
         guard let id = editingEdgeId else { return viewModel.drawingData }
         var probe = viewModel.drawingData
@@ -115,8 +126,6 @@ struct StairConfigView: View {
         return probe
     }
 
-    /// The active drawing context's own resolved height in feet — what this
-    /// edge's stair descends FROM.
     private var activeLevelResolvedFeet: Double {
         let data = probeData
         if viewModel.isMultiLevel, viewModel.activeLevelIndex < data.levels.count {
@@ -134,7 +143,6 @@ struct StairConfigView: View {
         return data.renderElevationFeet(for: data.levels[index], levelIndex: index)
     }
 
-    /// Drop in feet from the active level down to a candidate target.
     private func drop(toLevelAt index: Int) -> Double {
         activeLevelResolvedFeet - resolvedFeet(forLevelAt: index)
     }
@@ -144,15 +152,17 @@ struct StairConfigView: View {
         return viewModel.drawingData.levels.firstIndex { $0.id == targetLevelId }
     }
 
-    // MARK: - Rise
+    // MARK: - The stair
 
-    /// Total rise in inches under the current mode.
+    /// Total rise in inches under the current mode. ELEVATION and LEVEL author
+    /// the drop directly; TREADS authors the count and the drop follows from
+    /// the rise-per-step.
     private var totalRise: Double {
         switch mode {
+        case .elevation:
+            return Double(riseFeet * 12 + riseInches)
         case .treads:
             return Double(treadCount) * risePerStep
-        case .height:
-            return Double(riseFeet * 12 + riseInches)
         case .level:
             guard let index = selectedTargetIndex else { return 0 }
             return max(0, drop(toLevelAt: index) * 12.0)
@@ -160,10 +170,10 @@ struct StairConfigView: View {
     }
 
     private var stairSpec: StairCalculator.StairSpec? {
-        guard let width = Double(widthText), width > 0, totalRise > 0 else { return nil }
+        guard widthInches > 0, totalRise > 0 else { return nil }
         return StairCalculator.calculate(
             totalRise: totalRise,
-            width: width,
+            width: widthInches,
             risePerStep: risePerStep,
             runPerTread: runPerTread,
             treadCountOverride: mode == .treads ? treadCount : nil
@@ -176,13 +186,20 @@ struct StairConfigView: View {
         return true
     }
 
+    private var railRunInches: Double? {
+        guard let spec = stairSpec, spec.treadCount > 0 else { return nil }
+        return StairConfig.stringerLength(
+            totalRise: totalRise,
+            treadCount: spec.treadCount,
+            runPerTread: runPerTread
+        )
+    }
+
     // MARK: - Edge geometry
 
-    /// Edge length in inches — the typed dimension when the user set one,
-    /// otherwise measured from the drawn geometry through the effective
-    /// scale. Reading `dimension` alone left this nil on every undimensioned
-    /// edge, which silently hid the position control (an edge almost never
-    /// carries a typed dimension when stairs are first attached).
+    /// Edge length in inches — the typed dimension when set, otherwise
+    /// measured from the drawn geometry (stairs are usually attached before
+    /// an edge is dimensioned).
     private var edgeLengthInches: Double? {
         if let dimension = targetEdge?.dimension, dimension > 0 { return dimension }
         guard let edge = targetEdge,
@@ -194,45 +211,29 @@ struct StairConfigView: View {
         return Double(canvasLength) / scale
     }
 
-    private var offsetValue: Double { Double(offsetText) ?? 0 }
-
-    /// Clamp the nudge to the slack so a stair can never be pushed past the
-    /// end of its own edge.
-    private func setOffset(_ value: Double, limit: Double) {
-        let lower = alignment == .center ? -limit : 0
-        offsetText = String(format: "%.0f", min(max(value, lower), limit))
-        // stepButton already fires the light impact — no double tap.
-    }
-
-    /// Slack between the stair and its edge — how far the stair can slide.
+    /// How far the stair can slide along its edge. Nil when it spans the edge.
     private var positionSlackInches: Double? {
-        guard let edgeLen = edgeLengthInches, let width = Double(widthText) else { return nil }
-        let slack = edgeLen - width
+        guard let edgeLen = edgeLengthInches else { return nil }
+        let slack = edgeLen - widthInches
         return slack > 1 ? slack : nil   // 1" tolerance
     }
 
-    /// Position controls appear whenever the stair is narrower than its edge —
-    /// including connection stairs, whose alignment the planner honors too.
-    private var needsAlignment: Bool { positionSlackInches != nil }
-
     private var gapMeasurements: (left: Double, right: Double)? {
-        guard let edgeLen = edgeLengthInches,
-              let width = Double(widthText), width < edgeLen else { return nil }
-        let offset = Double(offsetText) ?? 0
-        let gap = edgeLen - width
+        guard let edgeLen = edgeLengthInches, widthInches < edgeLen else { return nil }
+        let gap = edgeLen - widthInches
         switch alignment {
-        case .left:   return (left: offset, right: gap - offset)
-        case .center: return (left: gap / 2 + offset, right: gap / 2 - offset)
-        case .right:  return (left: gap - offset, right: offset)
+        case .left:   return (left: offsetInches, right: gap - offsetInches)
+        case .center: return (left: gap / 2 + offsetInches, right: gap / 2 - offsetInches)
+        case .right:  return (left: gap - offsetInches, right: offsetInches)
         }
     }
 
     // MARK: - Body
 
     var body: some View {
-        NavigationView {
+        NavigationStack {
             ScrollView {
-                VStack(spacing: OPSStyle.Layout.spacing3_5) {
+                VStack(spacing: OPSStyle.Layout.spacing3) {
                     if targetEdge == nil {
                         if viewModel.isMultiLevel, let level = viewModel.activeLevel, !pickableEdges.isEmpty {
                             edgePickerCard(level: level)
@@ -244,42 +245,29 @@ struct StairConfigView: View {
                             edgePickerCard(level: level)
                         }
                         riseCard
-                        widthInput
-                        if needsAlignment {
-                            alignmentSection
-                        }
-                        directionSection
-                        codeParameters
-                        if let spec = stairSpec {
-                            calculatedValues(spec: spec)
-                        }
-                        railingSection
+                        stepCard
+                        stairCard
+                        takeoffCard
+                        railingCard
                         if hasExistingStair {
-                            removeSection
+                            removeButton
                         }
                     }
-
-                    Spacer()
                 }
-                .padding(OPSStyle.Layout.spacing3_5)
+                .padding(.horizontal, OPSStyle.Layout.spacing3)
+                .padding(.vertical, OPSStyle.Layout.spacing3)
             }
             .background(OPSStyle.Colors.background)
-            .navigationTitle("Stairs")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }
-                        .foregroundColor(OPSStyle.Colors.secondaryText)
+            .standardSheetToolbar(
+                title: "Stairs",
+                actionText: hasExistingStair ? "UPDATE" : "ADD",
+                isActionEnabled: canApply,
+                onCancel: { dismiss() },
+                onAction: {
+                    applyStairs()
+                    dismiss()
                 }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Apply") {
-                        applyStairs()
-                        dismiss()
-                    }
-                    .foregroundColor(OPSStyle.Colors.primaryAccent)
-                    .disabled(!canApply)
-                }
-            }
+            )
         }
         .presentationDetents([.large])
         .fullScreenCover(isPresented: $showingARHeight) {
@@ -295,61 +283,58 @@ struct StairConfigView: View {
 
     private var emptyState: some View {
         VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
-            Text("No edge selected")
-                .font(OPSStyle.Typography.bodyBold)
-                .foregroundColor(OPSStyle.Colors.primaryText)
+            Text("—")
+                .font(OPSStyle.Typography.emptyStateFigure)
+                .foregroundColor(OPSStyle.Colors.text3)
+            PanelSectionHeader(label: "No edge selected")
             Text("Select a deck edge, then add stairs from its toolbar.")
-                .font(OPSStyle.Typography.caption)
-                .foregroundColor(OPSStyle.Colors.secondaryText)
+                .font(OPSStyle.Typography.smallBody)
+                .foregroundColor(OPSStyle.Colors.text3)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(OPSStyle.Layout.spacing3)
-        .background(OPSStyle.Colors.cardBackground)
-        .cornerRadius(OPSStyle.Layout.cornerRadius)
+        .padding(OPSStyle.Layout.spacing4)
+        .glassSurface()
     }
 
-    // MARK: - Edge picker (Connect entry — sheet opened without a selection)
+    // MARK: - Edge picker (CONNECT entry — opened without a selection)
 
     private var pickableEdges: [DeckEdge] {
         viewModel.activeLevel?.edges.filter { $0.edgeType != .houseEdge } ?? []
     }
 
     private func edgePickerCard(level: DeckLevel) -> some View {
-        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
-            Text("Stairs Descend From")
-                .font(OPSStyle.Typography.caption)
-                .foregroundColor(OPSStyle.Colors.secondaryText)
-
-            ForEach(pickableEdges, id: \.id) { edge in
-                let isSelected = pickedEdgeId == edge.id
-                Button {
-                    pickedEdgeId = edge.id
-                    prefill(forEdge: edge)
-                } label: {
-                    HStack {
-                        Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                            .foregroundColor(isSelected ? OPSStyle.Colors.text : OPSStyle.Colors.secondaryText)
-                        Text(edgeLabel(edge, level: level))
-                            .font(OPSStyle.Typography.body)
-                            .foregroundColor(OPSStyle.Colors.primaryText)
-                        Spacer()
-                        if let dim = edge.dimension {
-                            Text(DimensionEngine.formatImperial(dim))
-                                .font(OPSStyle.Typography.monoValue)
-                                .foregroundColor(OPSStyle.Colors.secondaryText)
+        SectionCard(title: "Descends From") {
+            VStack(spacing: OPSStyle.Layout.spacing2) {
+                ForEach(pickableEdges, id: \.id) { edge in
+                    let isSelected = pickedEdgeId == edge.id
+                    Button {
+                        pickedEdgeId = edge.id
+                        prefill(forEdge: edge)
+                    } label: {
+                        HStack(spacing: OPSStyle.Layout.spacing2) {
+                            Image(systemName: isSelected ? "largecircle.fill.circle" : "circle")
+                                .font(OPSStyle.Typography.smallCaption)
+                                .foregroundColor(isSelected ? OPSStyle.Colors.text : OPSStyle.Colors.text3)
+                            Text(edgeLabel(edge, level: level))
+                                .font(OPSStyle.Typography.body)
+                                .foregroundColor(OPSStyle.Colors.text)
+                            Spacer(minLength: 0)
+                            if let dim = edge.dimension {
+                                Text(DimensionEngine.format(dim, system: measurementSystem))
+                                    .font(OPSStyle.Typography.dataValue)
+                                    .foregroundColor(OPSStyle.Colors.text2)
+                            }
                         }
+                        .padding(.horizontal, OPSStyle.Layout.spacing3)
+                        .frame(minHeight: OPSStyle.Layout.touchTargetMin)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(isSelected ? OPSStyle.Colors.surfaceActive : Color.clear)
+                        .nestedCard()
                     }
-                    .padding(.horizontal, OPSStyle.Layout.spacing2_5)
-                    .padding(.vertical, OPSStyle.Layout.spacing2)
-                    .background(isSelected ? OPSStyle.Colors.surfaceActive : OPSStyle.Colors.background)
-                    .cornerRadius(OPSStyle.Layout.smallCornerRadius)
+                    .buttonStyle(.plain)
                 }
-                .frame(minHeight: OPSStyle.Layout.touchTargetMin)
             }
         }
-        .padding(OPSStyle.Layout.spacing3)
-        .background(OPSStyle.Colors.cardBackground)
-        .cornerRadius(OPSStyle.Layout.cornerRadius)
     }
 
     private func edgeLabel(_ edge: DeckEdge, level: DeckLevel) -> String {
@@ -358,161 +343,68 @@ struct StairConfigView: View {
         return "Edge \(startIdx)\u{2013}\(endIdx)"
     }
 
-    // MARK: - Rise card
+    // MARK: - RISE — how far down
 
     private var riseCard: some View {
-        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2_5) {
-            HStack {
-                VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
-                    Text("Total Rise")
-                        .font(OPSStyle.Typography.smallCaption)
-                        .foregroundColor(OPSStyle.Colors.secondaryText)
-                    Text(totalRise > 0 ? DimensionEngine.formatImperial(totalRise) : "\u{2014}")
-                        .font(OPSStyle.Typography.headlineMono)
-                        .foregroundColor(OPSStyle.Colors.primaryText)
-                }
-                Spacer()
-                Text("IRC R311.7")
-                    .font(OPSStyle.Typography.microLabel)
-                    .foregroundColor(OPSStyle.Colors.primaryAccent)
-                    .padding(.horizontal, OPSStyle.Layout.spacing2)
-                    .padding(.vertical, OPSStyle.Layout.spacing1)
-                    .background(OPSStyle.Colors.primaryAccent.opacity(0.15))
-                    .cornerRadius(OPSStyle.Layout.smallCornerRadius)
-            }
+        SectionCard(title: "Rise") {
+            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing3) {
+                SegmentedControl(
+                    selection: $mode,
+                    options: availableModes.map { ($0, $0.label) }
+                )
 
-            Picker("Rise input", selection: $mode) {
-                ForEach(availableModes, id: \.self) { mode in
-                    Text(mode.displayName).tag(mode)
+                switch mode {
+                case .elevation: elevationInput
+                case .treads:    treadsInput
+                case .level:     levelInput
                 }
-            }
-            .pickerStyle(.segmented)
 
-            switch mode {
-            case .treads:
-                treadsInput
-            case .height:
-                heightInput
-            case .level:
-                levelInput
+                derivedReadout
             }
         }
-        .padding(OPSStyle.Layout.spacing3)
-        .background(OPSStyle.Colors.cardBackground)
-        .cornerRadius(OPSStyle.Layout.cornerRadius)
     }
 
-    private var availableModes: [RiseMode] {
-        showsLevelMode ? RiseMode.allCases : [.treads, .height]
-    }
-
-    // MARK: - Treads mode
-
-    private var treadsInput: some View {
-        VStack(spacing: OPSStyle.Layout.spacing2) {
-            HStack(spacing: OPSStyle.Layout.spacing3) {
-                stepButton(systemImage: "minus", enabled: treadCount > 1) {
-                    treadCount = max(1, treadCount - 1)
-                }
-
-                VStack(spacing: 0) {
-                    Text("\(treadCount)")
-                        .font(OPSStyle.Typography.headlineMono)
-                        .foregroundColor(OPSStyle.Colors.primaryText)
-                        .monospacedDigit()
-                    Text(treadCount == 1 ? "tread" : "treads")
-                        .font(OPSStyle.Typography.smallCaption)
-                        .foregroundColor(OPSStyle.Colors.secondaryText)
-                }
-                .frame(maxWidth: .infinity)
-
-                stepButton(systemImage: "plus", enabled: treadCount < 30) {
-                    treadCount = min(30, treadCount + 1)
-                }
-            }
-
-            Text("\(String(format: "%.1f", risePerStep))\u{2033} per step")
-                .font(OPSStyle.Typography.smallCaption)
-                .foregroundColor(OPSStyle.Colors.secondaryText)
-        }
-        .padding(OPSStyle.Layout.spacing2_5)
-        .background(OPSStyle.Colors.background)
-        .cornerRadius(OPSStyle.Layout.smallCornerRadius)
-    }
-
-    private func stepButton(systemImage: String, enabled: Bool, action: @escaping () -> Void) -> some View {
-        Button {
-            action()
-            UIImpactFeedbackGenerator(style: .light).impactOccurred()
-        } label: {
-            Image(systemName: systemImage)
-                .font(.system(size: OPSStyle.Layout.IconSize.md, weight: .semibold))
-                .foregroundColor(enabled ? OPSStyle.Colors.primaryText : OPSStyle.Colors.tertiaryText)
-                .frame(width: OPSStyle.Layout.touchTargetMin, height: OPSStyle.Layout.touchTargetMin)
-                .background(OPSStyle.Colors.cardBackground)
-                .cornerRadius(OPSStyle.Layout.smallCornerRadius)
-        }
-        .disabled(!enabled)
-    }
-
-    // MARK: - Height mode
-
-    private var heightInput: some View {
+    private var elevationInput: some View {
         VStack(spacing: OPSStyle.Layout.spacing2) {
             DeckFeetInchesWheels(feet: $riseFeet, inches: $riseInches)
 
             HStack(spacing: OPSStyle.Layout.spacing2) {
-                ForEach(heightPresets, id: \.label) { preset in
-                    Button {
+                ForEach(risePresets, id: \.label) { preset in
+                    StairChip(
+                        label: preset.label,
+                        isSelected: riseFeet == preset.feet && riseInches == preset.inches
+                    ) {
                         riseFeet = preset.feet
                         riseInches = preset.inches
-                    } label: {
-                        Text(preset.label)
-                            .font(OPSStyle.Typography.smallButton)
-                            .foregroundColor(OPSStyle.Colors.primaryText)
-                            .padding(.horizontal, OPSStyle.Layout.spacing2_5)
-                            .padding(.vertical, OPSStyle.Layout.spacing1)
-                            .background(OPSStyle.Colors.background)
-                            .cornerRadius(OPSStyle.Layout.smallCornerRadius)
                     }
                 }
-
-                Spacer()
-
-                Button {
+                Spacer(minLength: 0)
+                StairChip(label: "AR", systemImage: "camera.viewfinder", isSelected: false) {
                     showingARHeight = true
-                } label: {
-                    HStack(spacing: OPSStyle.Layout.spacing1) {
-                        Image(systemName: "camera.viewfinder")
-                        Text("AR")
-                    }
-                    .font(OPSStyle.Typography.smallButton)
-                    .foregroundColor(OPSStyle.Colors.primaryAccent)
-                    .padding(.horizontal, OPSStyle.Layout.spacing2_5)
-                    .padding(.vertical, OPSStyle.Layout.spacing1)
-                    .background(OPSStyle.Colors.background)
-                    .cornerRadius(OPSStyle.Layout.smallCornerRadius)
                 }
             }
         }
     }
 
-    private var heightPresets: [(label: String, feet: Int, inches: Int)] {
+    private var risePresets: [(label: String, feet: Int, inches: Int)] {
         [("2'", 2, 0), ("2' 6\"", 2, 6), ("3'", 3, 0), ("4'", 4, 0)]
     }
 
-    // MARK: - Level mode
+    private var treadsInput: some View {
+        StairCounterRow(
+            label: "Treads",
+            value: "\(treadCount)",
+            canDecrement: treadCount > 1,
+            canIncrement: treadCount < 30,
+            onDecrement: { treadCount = max(1, treadCount - 1) },
+            onIncrement: { treadCount = min(30, treadCount + 1) }
+        )
+    }
 
     private var levelInput: some View {
-        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
+        VStack(spacing: OPSStyle.Layout.spacing2) {
             ForEach(connectableLevels, id: \.level.id) { candidate in
                 levelRow(index: candidate.index, level: candidate.level)
-            }
-
-            if let index = selectedTargetIndex, let spec = stairSpec {
-                Text("Drop \(DimensionEngine.formatImperial(drop(toLevelAt: index) * 12.0)) \u{00b7} \(spec.treadCount) treads")
-                    .font(OPSStyle.Typography.smallCaption)
-                    .foregroundColor(OPSStyle.Colors.secondaryText)
             }
         }
     }
@@ -526,283 +418,290 @@ struct StairConfigView: View {
             targetLevelId = level.id
         } label: {
             HStack(spacing: OPSStyle.Layout.spacing2) {
-                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                    .foregroundColor(isSelected ? OPSStyle.Colors.text : OPSStyle.Colors.secondaryText)
+                Image(systemName: isSelected ? "largecircle.fill.circle" : "circle")
+                    .font(OPSStyle.Typography.smallCaption)
+                    .foregroundColor(isSelected ? OPSStyle.Colors.text : OPSStyle.Colors.text3)
 
                 Circle()
                     .fill(level.displayColor.swiftUIColor)
-                    .frame(width: OPSStyle.Layout.Indicator.dotMD, height: OPSStyle.Layout.Indicator.dotMD)
+                    .frame(width: OPSStyle.Layout.Indicator.dotSM, height: OPSStyle.Layout.Indicator.dotSM)
 
                 Text(level.name)
                     .font(OPSStyle.Typography.body)
-                    .foregroundColor(connectable ? OPSStyle.Colors.primaryText : OPSStyle.Colors.tertiaryText)
+                    .foregroundColor(connectable ? OPSStyle.Colors.text : OPSStyle.Colors.textMute)
 
-                Spacer()
+                Spacer(minLength: 0)
 
-                Text(heightBadge(forLevelAt: index, level: level))
-                    .font(OPSStyle.Typography.monoValue)
-                    .foregroundColor(OPSStyle.Colors.secondaryText)
+                Text(connectable
+                     ? "\u{2193} \(DimensionEngine.format(levelDrop * 12, system: measurementSystem))"
+                     : (abs(levelDrop) <= 0.01 ? "SAME HEIGHT" : "HIGHER"))
+                    .font(OPSStyle.Typography.dataValue)
+                    .foregroundColor(connectable ? OPSStyle.Colors.text2 : OPSStyle.Colors.textMute)
             }
-            .padding(.horizontal, OPSStyle.Layout.spacing2_5)
-            .padding(.vertical, OPSStyle.Layout.spacing2)
-            .background(isSelected ? OPSStyle.Colors.surfaceActive : OPSStyle.Colors.background)
-            .cornerRadius(OPSStyle.Layout.smallCornerRadius)
+            .padding(.horizontal, OPSStyle.Layout.spacing3)
+            .frame(minHeight: OPSStyle.Layout.touchTargetMin)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(isSelected ? OPSStyle.Colors.surfaceActive : Color.clear)
+            .nestedCard()
         }
-        .frame(minHeight: OPSStyle.Layout.touchTargetMin)
+        .buttonStyle(.plain)
         .disabled(!connectable)
-        .overlay(alignment: .bottomLeading) {
-            if !connectable {
-                Text(abs(levelDrop) <= 0.01 ? "Same height" : "Higher \u{2014} connect from that level's edge")
-                    .font(OPSStyle.Typography.microLabel)
-                    .foregroundColor(OPSStyle.Colors.tertiaryText)
-                    .padding(.leading, OPSStyle.Layout.spacing2_5)
-                    .padding(.bottom, OPSStyle.Layout.spacing1)
+    }
+
+    /// The payoff line: whichever numbers this mode did NOT author, plus the
+    /// evened rise per step a builder actually cuts to.
+    private var derivedReadout: some View {
+        HStack(spacing: 0) {
+            StairReadout(
+                label: "Total Rise",
+                value: totalRise > 0 ? DimensionEngine.format(totalRise, system: measurementSystem) : "—",
+                isAuthored: mode == .elevation
+            )
+            Divider().frame(height: OPSStyle.Layout.spacing4).overlay(OPSStyle.Colors.line)
+            StairReadout(
+                label: "Treads",
+                value: stairSpec.map { "\($0.treadCount)" } ?? "—",
+                isAuthored: mode == .treads
+            )
+            Divider().frame(height: OPSStyle.Layout.spacing4).overlay(OPSStyle.Colors.line)
+            StairReadout(
+                label: "Actual Rise",
+                value: stairSpec.map { String(format: "%.2f\"", $0.risePerStep) } ?? "—",
+                isAuthored: false
+            )
+        }
+        .padding(.vertical, OPSStyle.Layout.spacing2)
+        .frame(maxWidth: .infinity)
+        .nestedCard()
+    }
+
+    // MARK: - STEP — the rise/run pair that converts drop ⇄ treads
+
+    private var stepCard: some View {
+        SectionCard(title: "Step") {
+            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
+                StairCounterRow(
+                    label: "Rise / Step",
+                    value: String(format: "%.2f\"", risePerStep),
+                    canDecrement: risePerStep > Code.riseRange.lowerBound,
+                    canIncrement: risePerStep < Code.riseRange.upperBound,
+                    onDecrement: { risePerStep = max(Code.riseRange.lowerBound, risePerStep - 0.25) },
+                    onIncrement: { risePerStep = min(Code.riseRange.upperBound, risePerStep + 0.25) }
+                )
+
+                StairCounterRow(
+                    label: "Run / Tread",
+                    value: String(format: "%.1f\"", runPerTread),
+                    canDecrement: runPerTread > Code.runRange.lowerBound,
+                    canIncrement: runPerTread < Code.runRange.upperBound,
+                    onDecrement: { runPerTread = max(Code.runRange.lowerBound, runPerTread - 0.5) },
+                    onIncrement: { runPerTread = min(Code.runRange.upperBound, runPerTread + 0.5) }
+                )
+
+                codeNote
             }
         }
     }
 
-    private func heightBadge(forLevelAt index: Int, level: DeckLevel) -> String {
-        let resolved = resolvedFeet(forLevelAt: index)
-        let formatted = formatFeet(resolved)
-        return level.elevation != nil ? formatted : "\(formatted) \u{00b7} auto"
+    /// Objective reference, never a verdict — states where the entered pair
+    /// sits against IRC R311.7 without claiming the design passes or fails.
+    private var codeNote: some View {
+        let riseOver = risePerStep > Code.maxRise + 0.001
+        let runUnder = runPerTread < Code.minRun - 0.001
+        let outside = riseOver || runUnder
+        let text: String = {
+            guard outside else { return "IRC R311.7 · RISE \u{2264}7.75\" RUN \u{2265}10\"" }
+            var parts: [String] = []
+            if riseOver { parts.append("RISE OVER 7.75\"") }
+            if runUnder { parts.append("RUN UNDER 10\"") }
+            return parts.joined(separator: " · ")
+        }()
+
+        return HStack(spacing: OPSStyle.Layout.spacing1) {
+            Text("//")
+                .foregroundColor(OPSStyle.Colors.textMute)
+            Text(text)
+                .foregroundColor(outside ? OPSStyle.Colors.tanTextM : OPSStyle.Colors.textMute)
+            Spacer(minLength: 0)
+        }
+        .font(OPSStyle.Typography.microLabel)
+        .kerning(1.4)
+        // One line always — a wrapped reference line orphans its tail and
+        // reads as an error state.
+        .lineLimit(1)
+        .minimumScaleFactor(0.75)
     }
 
-    // MARK: - Width
+    // MARK: - STAIR — width, position, direction
 
-    private var widthInput: some View {
-        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
-            Text("Stair Width")
-                .font(OPSStyle.Typography.caption)
-                .foregroundColor(OPSStyle.Colors.secondaryText)
+    private var stairCard: some View {
+        SectionCard(title: "Stair") {
+            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing3) {
+                widthSection
 
-            HStack {
-                TextField("48", text: $widthText)
-                    .font(OPSStyle.Typography.titleMono)
-                    .foregroundColor(OPSStyle.Colors.primaryText)
-                    .keyboardType(.numberPad)
+                if positionSlackInches != nil {
+                    Divider().overlay(OPSStyle.Colors.line)
+                    positionSection
+                }
 
-                Text("inches")
-                    .font(OPSStyle.Typography.caption)
-                    .foregroundColor(OPSStyle.Colors.secondaryText)
+                Divider().overlay(OPSStyle.Colors.line)
+
+                Toggle(isOn: $flipDirection) {
+                    VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
+                        Text("FLIP DIRECTION")
+                            .font(OPSStyle.Typography.body)
+                            .foregroundColor(OPSStyle.Colors.text)
+                        Text("Stairs run away from the deck. Flip to land them the other way.")
+                            .font(OPSStyle.Typography.smallBody)
+                            .foregroundColor(OPSStyle.Colors.text3)
+                    }
+                }
+                .toggleStyle(SwitchToggleStyle(tint: OPSStyle.Colors.text))
+                .frame(minHeight: OPSStyle.Layout.touchTargetMin)
             }
-            .padding(OPSStyle.Layout.spacing2_5)
-            .background(OPSStyle.Colors.background)
-            .cornerRadius(OPSStyle.Layout.smallCornerRadius)
+        }
+    }
+
+    private var widthSection: some View {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
+            HStack {
+                Text("WIDTH")
+                    .font(OPSStyle.Typography.metadata)
+                    .kerning(1.4)
+                    .foregroundColor(OPSStyle.Colors.text3)
+                Spacer()
+                Text(DimensionEngine.format(widthInches, system: measurementSystem))
+                    .font(OPSStyle.Typography.dataValueLg)
+                    .foregroundColor(OPSStyle.Colors.text)
+            }
 
             HStack(spacing: OPSStyle.Layout.spacing2) {
-                ForEach([36, 42, 48, 60], id: \.self) { width in
-                    Button {
-                        widthText = "\(width)"
-                    } label: {
-                        Text("\(width)\"")
-                            .font(OPSStyle.Typography.smallButton)
-                            .foregroundColor(OPSStyle.Colors.primaryText)
-                            .padding(.horizontal, OPSStyle.Layout.spacing2_5)
-                            .padding(.vertical, OPSStyle.Layout.spacing1)
-                            .background(OPSStyle.Colors.background)
-                            .cornerRadius(OPSStyle.Layout.smallCornerRadius)
+                if let edgeLen = edgeLengthInches {
+                    StairChip(label: "FULL", isSelected: abs(widthInches - edgeLen) < 1) {
+                        widthInches = edgeLen
+                        offsetInches = 0
                     }
                 }
+                ForEach(widthPresets, id: \.self) { preset in
+                    StairChip(label: "\(Int(preset))\"", isSelected: abs(widthInches - preset) < 0.5) {
+                        widthInches = preset
+                        offsetInches = 0
+                    }
+                }
+                Spacer(minLength: 0)
             }
         }
-        .padding(OPSStyle.Layout.spacing3)
-        .background(OPSStyle.Colors.cardBackground)
-        .cornerRadius(OPSStyle.Layout.cornerRadius)
     }
 
-    // MARK: - Alignment & Offset
+    /// Presets narrower than the edge — a wider-than-the-edge stair is not a
+    /// choice worth offering.
+    private var widthPresets: [Double] {
+        let all: [Double] = [36, 42, 48, 60]
+        guard let edgeLen = edgeLengthInches else { return all }
+        return all.filter { $0 < edgeLen - 1 }
+    }
 
-    private var alignmentSection: some View {
-        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2_5) {
-            Text("Position Along Edge")
-                .font(OPSStyle.Typography.bodyBold)
-                .foregroundColor(OPSStyle.Colors.primaryText)
+    private var positionSection: some View {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
+            Text("POSITION")
+                .font(OPSStyle.Typography.metadata)
+                .kerning(1.4)
+                .foregroundColor(OPSStyle.Colors.text3)
 
-            Picker("Alignment", selection: $alignment) {
-                ForEach(StairAlignment.allCases, id: \.self) { align in
-                    Text(align.displayName).tag(align)
-                }
-            }
-            .pickerStyle(.segmented)
+            SegmentedControl(
+                selection: $alignment,
+                options: StairAlignment.allCases.map { ($0, $0.displayName.uppercased()) }
+            )
 
-            // Nudge the stair along the edge from its alignment. Stepper
-            // rather than a keypad: it can't exceed the slack, and it works
-            // one-handed. CENTER nudges both ways, so it takes the full slack
-            // split either side.
             if let slack = positionSlackInches {
-                let offsetLimit = alignment == .center ? slack / 2 : slack
-                HStack(spacing: OPSStyle.Layout.spacing3) {
-                    Text("Nudge")
-                        .font(OPSStyle.Typography.caption)
-                        .foregroundColor(OPSStyle.Colors.secondaryText)
+                let limit = alignment == .center ? slack / 2 : slack
+                let lower = alignment == .center ? -limit : 0
 
-                    Spacer()
+                StairCounterRow(
+                    label: "Nudge",
+                    value: DimensionEngine.format(abs(offsetInches), system: measurementSystem),
+                    canDecrement: offsetInches > lower,
+                    canIncrement: offsetInches < limit,
+                    onDecrement: { offsetInches = min(max(offsetInches - 2, lower), limit) },
+                    onIncrement: { offsetInches = min(max(offsetInches + 2, lower), limit) }
+                )
 
-                    stepButton(systemImage: "minus", enabled: offsetValue > (alignment == .center ? -offsetLimit : 0)) {
-                        setOffset(offsetValue - 2, limit: offsetLimit)
+                if let gaps = gapMeasurements {
+                    HStack(spacing: OPSStyle.Layout.spacing1) {
+                        Text("//")
+                            .foregroundColor(OPSStyle.Colors.textMute)
+                        Text("\(DimensionEngine.format(max(0, gaps.left), system: measurementSystem)) LEFT · \(DimensionEngine.format(max(0, gaps.right), system: measurementSystem)) RIGHT")
+                            .foregroundColor(OPSStyle.Colors.textMute)
                     }
-
-                    Text(DimensionEngine.formatImperial(abs(offsetValue)))
-                        .font(OPSStyle.Typography.monoValue)
-                        .foregroundColor(OPSStyle.Colors.primaryText)
-                        .frame(minWidth: 64)
-
-                    stepButton(systemImage: "plus", enabled: offsetValue < offsetLimit) {
-                        setOffset(offsetValue + 2, limit: offsetLimit)
-                    }
-                }
-
-                HStack {
-                    Text("Slides \(DimensionEngine.formatImperial(slack))")
-                        .font(OPSStyle.Typography.smallCaption)
-                        .foregroundColor(OPSStyle.Colors.tertiaryText)
-                    Spacer()
-                    if let gaps = gapMeasurements {
-                        Text("\(DimensionEngine.formatImperial(max(0, gaps.left))) | \(DimensionEngine.formatImperial(max(0, gaps.right)))")
-                            .font(OPSStyle.Typography.smallCaption)
-                            .foregroundColor(OPSStyle.Colors.secondaryText)
-                    }
+                    .font(OPSStyle.Typography.microLabel)
+                    .kerning(1.4)
                 }
             }
         }
-        .padding(OPSStyle.Layout.spacing3)
-        .background(OPSStyle.Colors.cardBackground)
-        .cornerRadius(OPSStyle.Layout.cornerRadius)
     }
 
-    // MARK: - Direction
+    // MARK: - TAKEOFF — what it takes to build
 
-    private var directionSection: some View {
-        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
-            Toggle(isOn: $flipDirection) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Flip Direction")
-                        .font(OPSStyle.Typography.bodyBold)
-                        .foregroundColor(OPSStyle.Colors.primaryText)
-                    Text("Stairs run away from the deck. Flip if they should land the other way.")
-                        .font(OPSStyle.Typography.smallCaption)
-                        .foregroundColor(OPSStyle.Colors.secondaryText)
-                        .lineLimit(2)
+    @ViewBuilder
+    private var takeoffCard: some View {
+        if let spec = stairSpec {
+            SectionCard(title: "Takeoff") {
+                VStack(spacing: OPSStyle.Layout.spacing2) {
+                    takeoffRow("Total Run", DimensionEngine.format(spec.totalRun, system: measurementSystem))
+                    takeoffRow("Rail Run", railRunInches.map { DimensionEngine.format($0, system: measurementSystem) } ?? "—")
+                    takeoffRow("Stringers", "\(spec.stringerCount) @ \(DimensionEngine.format(spec.stringerLength, system: measurementSystem))")
                 }
             }
-            .tint(OPSStyle.Colors.text)
         }
-        .padding(OPSStyle.Layout.spacing3)
-        .background(OPSStyle.Colors.cardBackground)
-        .cornerRadius(OPSStyle.Layout.cornerRadius)
     }
 
-    // MARK: - Code Parameters
-
-    private var codeParameters: some View {
-        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2_5) {
-            Text("Building Code (IRC R311.7)")
-                .font(OPSStyle.Typography.bodyBold)
-                .foregroundColor(OPSStyle.Colors.primaryText)
-
-            HStack {
-                Text("Rise per step")
-                    .font(OPSStyle.Typography.caption)
-                    .foregroundColor(OPSStyle.Colors.secondaryText)
-                Spacer()
-                Text(String(format: "%.1f\"", risePerStep))
-                    .font(OPSStyle.Typography.monoValue)
-                    .foregroundColor(OPSStyle.Colors.primaryText)
-                Stepper("", value: $risePerStep, in: 7.0...7.75, step: 0.25)
-                    .labelsHidden()
-                    .frame(width: 100)
-            }
-
-            HStack {
-                Text("Run per tread")
-                    .font(OPSStyle.Typography.caption)
-                    .foregroundColor(OPSStyle.Colors.secondaryText)
-                Spacer()
-                Text(String(format: "%.0f\"", runPerTread))
-                    .font(OPSStyle.Typography.monoValue)
-                    .foregroundColor(OPSStyle.Colors.primaryText)
-                Stepper("", value: $runPerTread, in: 10.0...12.0, step: 0.5)
-                    .labelsHidden()
-                    .frame(width: 100)
-            }
-        }
-        .padding(OPSStyle.Layout.spacing3)
-        .background(OPSStyle.Colors.cardBackground)
-        .cornerRadius(OPSStyle.Layout.cornerRadius)
-    }
-
-    // MARK: - Calculated Values
-
-    private func calculatedValues(spec: StairCalculator.StairSpec) -> some View {
-        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
-            Text(mode == .treads ? "Manual Count" : "Auto-Calculated")
-                .font(OPSStyle.Typography.bodyBold)
-                .foregroundColor(OPSStyle.Colors.primaryAccent)
-
-            calcRow("Treads", value: "\(spec.treadCount)")
-            calcRow("Actual rise/step", value: String(format: "%.2f\"", spec.risePerStep))
-            calcRow("Total run", value: DimensionEngine.formatImperial(spec.totalRun))
-            calcRow("Stringer length", value: DimensionEngine.formatImperial(spec.stringerLength))
-            calcRow("Stringers needed", value: "\(spec.stringerCount)")
-        }
-        .padding(OPSStyle.Layout.spacing3)
-        .background(OPSStyle.Colors.primaryAccent.opacity(0.08))
-        .cornerRadius(OPSStyle.Layout.cornerRadius)
-    }
-
-    private func calcRow(_ label: String, value: String) -> some View {
+    private func takeoffRow(_ label: String, _ value: String) -> some View {
         HStack {
-            Text(label)
-                .font(OPSStyle.Typography.caption)
-                .foregroundColor(OPSStyle.Colors.secondaryText)
+            Text(label.uppercased())
+                .font(OPSStyle.Typography.metadata)
+                .kerning(1.4)
+                .foregroundColor(OPSStyle.Colors.text3)
             Spacer()
             Text(value)
-                .font(OPSStyle.Typography.monoValue)
-                .foregroundColor(OPSStyle.Colors.primaryText)
+                .font(OPSStyle.Typography.dataValue)
+                .foregroundColor(OPSStyle.Colors.text)
         }
+        .frame(minHeight: OPSStyle.Layout.chipMinHeight)
     }
 
-    // MARK: - Railing
+    // MARK: - RAILING
 
-    private var railingSection: some View {
-        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
+    private var railingCard: some View {
+        SectionCard {
             Toggle(isOn: $addRailing) {
-                Text("Add Railing")
-                    .font(OPSStyle.Typography.bodyBold)
-                    .foregroundColor(OPSStyle.Colors.primaryText)
+                Text("ADD RAILING")
+                    .font(OPSStyle.Typography.body)
+                    .foregroundColor(OPSStyle.Colors.text)
             }
-            .tint(OPSStyle.Colors.text)
-
-            if addRailing {
-                Picker("Railing Type", selection: $railingType) {
-                    ForEach(RailingType.assignableDefaultTypes, id: \.self) { type in
-                        Text(type.displayName).tag(type)
-                    }
-                }
-                .pickerStyle(.segmented)
-            }
+            .toggleStyle(SwitchToggleStyle(tint: OPSStyle.Colors.text))
+            .frame(minHeight: OPSStyle.Layout.touchTargetMin)
         }
-        .padding(OPSStyle.Layout.spacing3)
-        .background(OPSStyle.Colors.cardBackground)
-        .cornerRadius(OPSStyle.Layout.cornerRadius)
     }
 
     // MARK: - Remove
 
-    private var removeSection: some View {
+    private var removeButton: some View {
         Button {
             guard let edgeId = editingEdgeId else { return }
             viewModel.removeStairs(edgeId: edgeId)
             dismiss()
         } label: {
-            Text("Remove Stairs")
-                .font(OPSStyle.Typography.bodyBold)
+            Text("REMOVE STAIRS")
+                .font(OPSStyle.Typography.buttonLabel)
                 .foregroundColor(OPSStyle.Colors.errorStatus)
                 .frame(maxWidth: .infinity)
                 .frame(height: OPSStyle.Layout.touchTargetMin)
-                .background(OPSStyle.Colors.errorStatus.opacity(0.1))
-                .cornerRadius(OPSStyle.Layout.cornerRadius)
+                .overlay(
+                    RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius)
+                        .stroke(OPSStyle.Colors.roseLineM, lineWidth: OPSStyle.Layout.Border.standard)
+                )
         }
+        .buttonStyle(.plain)
     }
 
     // MARK: - Load / Apply
@@ -822,46 +721,37 @@ struct StairConfigView: View {
         if let connection = viewModel.connection(forEdgeId: edge.id) {
             mode = .level
             targetLevelId = connection.lowerLevelId
-            let config = connection.stairConfig
-            widthText = String(format: "%.0f", config.width)
-            risePerStep = config.risePerStep
-            runPerTread = config.runPerTread
-            flipDirection = config.flipDirection
-            if let railing = config.railingConfig {
-                addRailing = true
-                railingType = railing.railingType
-            }
+            applyConfigDefaults(connection.stairConfig, edge: edge)
             return
         }
 
         if let existing = edge.stairConfig {
-            mode = .height
-            widthText = String(format: "%.0f", existing.width)
-            risePerStep = existing.risePerStep
-            runPerTread = existing.runPerTread
-            alignment = existing.alignment
-            offsetText = String(format: "%.0f", existing.offset)
-            flipDirection = existing.flipDirection
+            mode = .elevation
+            applyConfigDefaults(existing, edge: edge)
             if let treads = existing.treadCount, treads > 0 {
                 treadCount = treads
-            }
-            if let railing = existing.railingConfig {
-                addRailing = true
-                railingType = railing.railingType
             }
             setRise(fromInches: existing.totalRiseInches ?? activeLevelResolvedFeet * 12.0)
             return
         }
 
-        // New stair: a real stair width (48" — the code-standard default and
-        // the first width preset), never the whole edge. Defaulting to the
-        // full edge made every new stair span the deck AND hid the position
-        // control, since a full-width stair has nowhere to slide. Narrower
-        // edges just take the edge.
-        mode = .height
-        let defaultWidth = min(StairDefaults.width, edgeLengthInches ?? StairDefaults.width)
-        widthText = String(format: "%.0f", defaultWidth)
+        // New stair: spans its edge (the common case — a stair is cut to the
+        // opening), rise from the level's resolved height, code-standard step.
+        mode = .elevation
+        widthInches = edgeLengthInches ?? 48
+        alignment = .center
+        offsetInches = 0
         setRise(fromInches: activeLevelResolvedFeet * 12.0)
+    }
+
+    private func applyConfigDefaults(_ config: StairConfig, edge: DeckEdge) {
+        widthInches = config.width > 0 ? config.width : (edgeLengthInches ?? 48)
+        risePerStep = config.risePerStep
+        runPerTread = config.runPerTread
+        alignment = config.alignment
+        offsetInches = config.offset
+        flipDirection = config.flipDirection
+        addRailing = config.railingConfig != nil
     }
 
     private func setRise(fromInches inches: Double) {
@@ -872,10 +762,6 @@ struct StairConfigView: View {
         treadCount = max(1, StairConfig.calculateTreadCount(totalRise: clamped, risePerStep: risePerStep))
     }
 
-    private func formatFeet(_ feet: Double) -> String {
-        DimensionEngine.formatImperial(feet * 12.0)
-    }
-
     private func applyStairs() {
         guard let edge = targetEdge, let spec = stairSpec else { return }
 
@@ -884,11 +770,11 @@ struct StairConfigView: View {
         // Position rides on BOTH stair kinds — the planner honors alignment
         // and offset for connection stairs exactly like edge stairs.
         config.alignment = alignment
-        config.offset = offsetValue
+        config.offset = offsetInches
         if addRailing {
             config.railingConfig = RailingConfig(
-                railingType: railingType,
-                maxPostSpacing: railingType.defaultMaxPostSpacing
+                railingType: .parapetWall,
+                maxPostSpacing: RailingType.parapetWall.defaultMaxPostSpacing
             )
         }
 
@@ -907,5 +793,120 @@ struct StairConfigView: View {
         config.treadCount = spec.treadCount
         config.totalRiseInches = totalRise
         viewModel.setStairs(edge.id, config: config)
+    }
+}
+
+// MARK: - Stair sheet primitives
+
+/// A −/+ counter row. The house pattern for a bounded numeric value: no
+/// keyboard, 44pt targets, mono value, disabled ends instead of clamping
+/// silently.
+private struct StairCounterRow: View {
+    let label: String
+    let value: String
+    let canDecrement: Bool
+    let canIncrement: Bool
+    let onDecrement: () -> Void
+    let onIncrement: () -> Void
+
+    var body: some View {
+        HStack(spacing: OPSStyle.Layout.spacing2) {
+            Text(label.uppercased())
+                .font(OPSStyle.Typography.metadata)
+                .kerning(1.4)
+                .foregroundColor(OPSStyle.Colors.text3)
+
+            Spacer(minLength: 0)
+
+            Text(value)
+                .font(OPSStyle.Typography.dataValueLg)
+                .foregroundColor(OPSStyle.Colors.text)
+                .monospacedDigit()
+
+            HStack(spacing: 0) {
+                stepButton(systemImage: "minus", enabled: canDecrement, action: onDecrement)
+                Divider()
+                    .frame(height: OPSStyle.Layout.touchTargetMin / 2)
+                    .overlay(OPSStyle.Colors.line)
+                stepButton(systemImage: "plus", enabled: canIncrement, action: onIncrement)
+            }
+            .nestedCard()
+        }
+        .frame(minHeight: OPSStyle.Layout.touchTargetMin)
+    }
+
+    private func stepButton(systemImage: String, enabled: Bool, action: @escaping () -> Void) -> some View {
+        Button {
+            action()
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        } label: {
+            Image(systemName: systemImage)
+                .font(OPSStyle.Typography.smallCaption)
+                .foregroundColor(enabled ? OPSStyle.Colors.text : OPSStyle.Colors.textMute)
+                .frame(width: OPSStyle.Layout.touchTargetMin, height: OPSStyle.Layout.touchTargetMin)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(!enabled)
+    }
+}
+
+/// One number in the derived readout strip. The authored value reads at full
+/// strength; the numbers this mode computed sit one step back.
+private struct StairReadout: View {
+    let label: String
+    let value: String
+    let isAuthored: Bool
+
+    var body: some View {
+        VStack(spacing: OPSStyle.Layout.spacing1) {
+            Text(label.uppercased())
+                .font(OPSStyle.Typography.microLabel)
+                .kerning(1.4)
+                .foregroundColor(OPSStyle.Colors.textMute)
+            Text(value)
+                .font(OPSStyle.Typography.dataValue)
+                .foregroundColor(isAuthored ? OPSStyle.Colors.text : OPSStyle.Colors.text2)
+        }
+        .frame(maxWidth: .infinity)
+    }
+}
+
+/// Chip in the sanctioned 36pt form-picker grammar (MOBILE.md §4.3).
+private struct StairChip: View {
+    let label: String
+    var systemImage: String? = nil
+    let isSelected: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button {
+            action()
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        } label: {
+            HStack(spacing: OPSStyle.Layout.spacing1) {
+                if let systemImage {
+                    Image(systemName: systemImage)
+                        .font(OPSStyle.Typography.microLabel)
+                }
+                Text(label)
+                    .font(OPSStyle.Typography.metadata)
+                    .kerning(1.2)
+            }
+            .foregroundColor(isSelected ? OPSStyle.Colors.text : OPSStyle.Colors.text3)
+            .padding(.horizontal, OPSStyle.Layout.spacing3)
+            .frame(minHeight: OPSStyle.Layout.chipMinHeight)
+            .background(isSelected ? OPSStyle.Colors.surfaceActive : Color.clear)
+            .overlay(
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius)
+                    .stroke(
+                        isSelected ? OPSStyle.Colors.fillNeutral : OPSStyle.Colors.line,
+                        lineWidth: OPSStyle.Layout.Border.standard
+                    )
+            )
+            .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
     }
 }

@@ -112,18 +112,18 @@ final class DeckStairHeightSnapshotTests: XCTestCase {
             size: CGSize(width: 393, height: 1400)
         )
 
-        // 2. Height mode — feet/inches dials, prefilled from the level's
-        //    height (5' — the stair spans grade to this level).
+        // 2. Elevation mode — feet/inches dials prefilled from the level's
+        //    height (5'), rise/run pair visible as the conversion.
         let heightVM = multiLevelViewModel()
         heightVM.editingEdgeId = "be1"
         snapshot(
-            "02-stair-height-mode",
-            view: StairConfigView(viewModel: heightVM, initialMode: .height),
+            "02-stair-elevation-mode",
+            view: StairConfigView(viewModel: heightVM, initialMode: .elevation),
             size: CGSize(width: 393, height: 1400)
         )
 
-        // 3. Level mode — pick the level the stairs connect down to; the
-        //    drop and tread count derive from the two levels' heights.
+        // 3. Level mode — pick the level the flight lands on; the drop and
+        //    tread count derive from the two levels' heights.
         let levelVM = multiLevelViewModel()
         levelVM.editingEdgeId = "be1"
         snapshot(
@@ -139,6 +139,35 @@ final class DeckStairHeightSnapshotTests: XCTestCase {
         snapshot(
             "04-stair-connect-entry-edge-picker",
             view: StairConfigView(viewModel: connectVM, initialMode: .level),
+            size: CGSize(width: 393, height: 1400)
+        )
+    }
+
+    /// Width defaults to the full edge, so POSITION stays hidden — there is
+    /// nowhere to slide. Narrowing the stair reveals alignment + nudge.
+    func testRenderStairPositionRevealOnNarrowerWidth() {
+        let fullWidthVM = multiLevelViewModel()
+        fullWidthVM.editingEdgeId = "be1"
+        snapshot(
+            "10-stair-width-full-no-position",
+            view: StairConfigView(viewModel: fullWidthVM, initialMode: .elevation),
+            size: CGSize(width: 393, height: 1400)
+        )
+
+        // Same edge with a narrower stair already committed → POSITION shows.
+        let narrowVM = multiLevelViewModel()
+        var narrowed = narrowVM.drawingData
+        if let edgeIndex = narrowed.levels[1].edges.firstIndex(where: { $0.id == "be1" }) {
+            narrowed.levels[1].edges[edgeIndex].stairConfig = StairConfig(
+                width: 48, runPerTread: 10, treadCount: 8,
+                alignment: .center, offset: 6, totalRiseInches: 60
+            )
+        }
+        narrowVM.drawingData = narrowed
+        narrowVM.editingEdgeId = "be1"
+        snapshot(
+            "11-stair-width-narrow-position-revealed",
+            view: StairConfigView(viewModel: narrowVM, initialMode: .elevation),
             size: CGSize(width: 393, height: 1400)
         )
     }

@@ -106,7 +106,7 @@ final class DeckTabModeSnapshotTests: XCTestCase {
         let view = ZStack(alignment: .top) {
             OPSStyle.Colors.background.ignoresSafeArea()
             DeckTabView(
-                project: stage.project,
+                owner: .project(stage.project),
                 onCreateDeckDesign: {},
                 onEditDeckDesign: { _ in },
                 viewMode: .constant(mode)

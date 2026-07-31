@@ -24,7 +24,7 @@
 6. Retrying completion returns the same completed visit and the same activity; it never creates a second activity.
 7. A later lead/client/project binding on an already completed visit re-invokes the completion RPC so a previously unbound visit gains its one activity when it becomes linkable.
 8. `site_visits.company_id`, new child `company_id` columns, and `project_photos.company_id` remain `text`; `activities.company_id` remains `uuid`. The completion RPC resolves and verifies the canonical UUID instead of blindly casting legacy text.
-9. Every new server table is classified in the company-data manifest, customer export, privilege snapshot, transactional purge, and deletion rehearsal in the same feature.
+9. Every new server table—including any newly discovered queue, receipt, event, outbox, delivery, or storage-linkage table—is classified in the company-data manifest, customer export decision, scope/privilege snapshots, transactional purge order, regression tests, deletion rehearsal, and Software Bible in the same feature.
 10. No trigger, purge path, or test may use `session_replication_role`, disable triggers, or bypass foreign keys.
 11. Voluntary logout cannot silently destroy unsent visit work. Forced authentication teardown stores an encrypted, company- and user-scoped local recovery bundle that only the same identity can restore.
 12. Project conversion reuses already-uploaded site-visit objects and keeps `site_visit_id` provenance; it does not upload a second copy.
@@ -37,10 +37,10 @@
 
 The work spans three repositories and must be integrated in this order:
 
-1. Finish and rehearse the transactional account deletion/export work currently isolated at `/Users/jacksonsweet/Projects/OPS/ops-web-data-cascade`; merge it into the newest local `ops-web/main` through that task's owner. Do not edit or absorb that dirty worktree here.
-2. Create dedicated feature worktrees from the then-current local `ops-web/main` and `ops-ios/main`. Recommended paths:
-   - `/Users/jacksonsweet/Projects/OPS/ops-web-site-visit-sync`
-   - `/Users/jacksonsweet/Projects/OPS/ops-ios-site-visit-sync`
+1. **Satisfied baseline:** Wave 1 is merged into local `ops-web/main` at `c709ad2b` (W1-6 account-deletion parent `d8fef5f0`; nothing pushed or deployed). The combined tree passed type-check, lint, and 139 focused Wave 1 tests. Its manifest audits 220 tables, exports 96, and supplies one 199-step transactional purge.
+2. Create dedicated feature worktrees from `ops-web/main` at `c709ad2b` (or a verified descendant containing it) and the current local `ops-ios/main`. Recommended paths:
+   - `/Users/jacksonsweet/Projects/OPS/ops-web/.worktrees/site-visit-cloud-sync`
+   - `/Users/jacksonsweet/Projects/OPS/ops-ios/.worktrees/site-visit-cloud-sync`
 3. Land database + deletion/export + web contract changes first. Do not deploy web or apply the production migration without Jackson's explicit live-schema/deploy approval.
 4. Land iOS schema, sync, capture, recovery, and logout changes against the verified database contract.
 5. Update the Software Bible in the same release before any merge is considered complete.
@@ -54,14 +54,14 @@ The existing unrelated edits in the primary `ops-ios` checkout (`OPSStyle.swift`
 
 **Files:**
 
-- Read: `/Users/jacksonsweet/Projects/OPS/ops-web-data-cascade/src/lib/data/company-data-manifest.ts`
-- Read: `/Users/jacksonsweet/Projects/OPS/ops-web-data-cascade/supabase/migrations/20260731161122_transactional_company_data_purge.sql`
-- Read: `/Users/jacksonsweet/Projects/OPS/ops-web-data-cascade/supabase/migrations/20260731170226_account_purge_immutable_event_exception.sql`
+- Read: `/Users/jacksonsweet/Projects/OPS/ops-web/.worktrees/site-visit-cloud-sync/src/lib/data/company-data-manifest.ts`
+- Read: `/Users/jacksonsweet/Projects/OPS/ops-web/.worktrees/site-visit-cloud-sync/supabase/migrations/20260731161122_transactional_company_data_purge.sql`
+- Read: `/Users/jacksonsweet/Projects/OPS/ops-web/.worktrees/site-visit-cloud-sync/supabase/migrations/20260731170226_account_purge_immutable_event_exception.sql`
 - Read: `/Users/jacksonsweet/Projects/OPS/ops-ios/docs/superpowers/specs/2026-07-31-site-visit-cloud-sync-design.md`
 
 ### Step 1: Gate on the finished erasure contract
 
-Confirm the data-cascade task has been rehearsed and its route, manifest, snapshots, migrations, and tests are present on the local `ops-web/main`. Do not copy files out of the dirty worktree. The gate is failed if `public.purge_company_data(company_id, manifest_plan)` or the transaction-local marker `ops.company_data_purge_company_id` is absent from main.
+Confirm `c709ad2b` is an ancestor of the web feature branch and its route, manifest, snapshots, migrations, and tests are present. The gate is failed if `public.purge_company_data(company_id, manifest_plan)`, the transaction-local marker `ops.company_data_purge_company_id`, or the W1-6 site-visit rehearsal proof is absent. Record the 220-table / 96-export / 199-step counts as the relative baseline; do not hardcode them as permanent constants.
 
 ### Step 2: Create isolated feature worktrees
 
@@ -83,7 +83,7 @@ Abort and reconcile the plan if live types differ from these verified planning f
 Web:
 
 ```bash
-cd /Users/jacksonsweet/Projects/OPS/ops-web-site-visit-sync
+cd /Users/jacksonsweet/Projects/OPS/ops-web/.worktrees/site-visit-cloud-sync
 npm test -- --run tests/integration/company-data-manifest.test.ts tests/integration/data-export-route.test.ts tests/integration/data-delete-account-route.test.ts tests/integration/uploads-presign-s3.test.ts tests/unit/s3-path-auth.test.ts
 ```
 
@@ -92,7 +92,7 @@ Expected: all selected tests pass on the feature base.
 iOS:
 
 ```bash
-cd /Users/jacksonsweet/Projects/OPS/ops-ios-site-visit-sync
+cd /Users/jacksonsweet/Projects/OPS/ops-ios/.worktrees/site-visit-cloud-sync
 xcodebuild test -project OPS.xcodeproj -scheme OPS -destination 'platform=iOS Simulator,name=iPhone 17,OS=26.5' -derivedDataPath /private/tmp/ops-site-visit-sync-baseline -clonedSourcePackagesDirPath .spm-local -only-testing:OPSTests/SiteVisitCapturePacketTests -only-testing:OPSTests/SiteVisitHandoffDurabilityTests -only-testing:OPSTests/SiteVisitMigrationTests -only-testing:OPSTests/RecoveryInventoryTests
 ```
 
@@ -104,13 +104,13 @@ Expected: `TEST SUCCEEDED`. If a shared Xcode process is active, use a unique De
 
 **Files:**
 
-- Create: `/Users/jacksonsweet/Projects/OPS/ops-web-site-visit-sync/tests/integration/site-visit-cloud-sync-migration.test.ts`
-- Create: `/Users/jacksonsweet/Projects/OPS/ops-web-site-visit-sync/tests/lib/api/services/site-visit-service.test.ts`
-- Modify: `/Users/jacksonsweet/Projects/OPS/ops-web-site-visit-sync/tests/integration/company-data-manifest.test.ts`
-- Modify: `/Users/jacksonsweet/Projects/OPS/ops-web-site-visit-sync/tests/integration/data-export-route.test.ts`
-- Modify: `/Users/jacksonsweet/Projects/OPS/ops-web-site-visit-sync/tests/integration/data-delete-account-route.test.ts`
-- Create: `/Users/jacksonsweet/Projects/OPS/ops-web-site-visit-sync/tests/rehearsal/company-data-purge/site-visit-sync-fixture.sql`
-- Create: `/Users/jacksonsweet/Projects/OPS/ops-web-site-visit-sync/tests/rehearsal/company-data-purge/site-visit-sync-rehearsal.test.ts`
+- Create: `/Users/jacksonsweet/Projects/OPS/ops-web/.worktrees/site-visit-cloud-sync/tests/integration/site-visit-cloud-sync-migration.test.ts`
+- Create: `/Users/jacksonsweet/Projects/OPS/ops-web/.worktrees/site-visit-cloud-sync/tests/lib/api/services/site-visit-service.test.ts`
+- Modify: `/Users/jacksonsweet/Projects/OPS/ops-web/.worktrees/site-visit-cloud-sync/tests/integration/company-data-manifest.test.ts`
+- Modify: `/Users/jacksonsweet/Projects/OPS/ops-web/.worktrees/site-visit-cloud-sync/tests/integration/data-export-route.test.ts`
+- Modify: `/Users/jacksonsweet/Projects/OPS/ops-web/.worktrees/site-visit-cloud-sync/tests/integration/data-delete-account-route.test.ts`
+- Create: `/Users/jacksonsweet/Projects/OPS/ops-web/.worktrees/site-visit-cloud-sync/tests/rehearsal/company-data-purge/site-visit-sync-fixture.sql`
+- Create: `/Users/jacksonsweet/Projects/OPS/ops-web/.worktrees/site-visit-cloud-sync/tests/rehearsal/company-data-purge/site-visit-sync-rehearsal.test.ts`
 
 ### Step 1: Write the migration-shape tests first
 
@@ -147,7 +147,7 @@ Mock the Supabase client and assert `SiteVisitService.completeSiteVisit` calls `
 ### Step 4: Run the red tests
 
 ```bash
-cd /Users/jacksonsweet/Projects/OPS/ops-web-site-visit-sync
+cd /Users/jacksonsweet/Projects/OPS/ops-web/.worktrees/site-visit-cloud-sync
 npm test -- --run tests/integration/site-visit-cloud-sync-migration.test.ts tests/lib/api/services/site-visit-service.test.ts tests/integration/company-data-manifest.test.ts tests/integration/data-export-route.test.ts tests/integration/data-delete-account-route.test.ts
 ```
 
@@ -168,13 +168,13 @@ Use the actual landed rehearsal paths if they changed before execution.
 
 **Files:**
 
-- Create: `/Users/jacksonsweet/Projects/OPS/ops-web-site-visit-sync/supabase/migrations/20260731183000_site_visit_cloud_sync.sql`
-- Modify: `/Users/jacksonsweet/Projects/OPS/ops-web-site-visit-sync/src/lib/data/company-data-manifest.ts`
-- Modify: `/Users/jacksonsweet/Projects/OPS/ops-web-site-visit-sync/src/lib/data/company-data-scope-snapshot.ts`
-- Modify: `/Users/jacksonsweet/Projects/OPS/ops-web-site-visit-sync/src/lib/data/company-data-privilege-snapshot.ts`
+- Create: `/Users/jacksonsweet/Projects/OPS/ops-web/.worktrees/site-visit-cloud-sync/supabase/migrations/20260731183000_site_visit_cloud_sync.sql`
+- Modify: `/Users/jacksonsweet/Projects/OPS/ops-web/.worktrees/site-visit-cloud-sync/src/lib/data/company-data-manifest.ts`
+- Modify: `/Users/jacksonsweet/Projects/OPS/ops-web/.worktrees/site-visit-cloud-sync/src/lib/data/company-data-scope-snapshot.ts`
+- Modify: `/Users/jacksonsweet/Projects/OPS/ops-web/.worktrees/site-visit-cloud-sync/src/lib/data/company-data-privilege-snapshot.ts`
 - Modify: the landed transactional purge allowlist only if Task 2 proves it is necessary.
-- Modify: `/Users/jacksonsweet/Projects/OPS/ops-web-site-visit-sync/tests/rehearsal/company-data-purge/site-visit-sync-fixture.sql`
-- Modify: `/Users/jacksonsweet/Projects/OPS/ops-web-site-visit-sync/tests/rehearsal/company-data-purge/site-visit-sync-rehearsal.test.ts`
+- Modify: `/Users/jacksonsweet/Projects/OPS/ops-web/.worktrees/site-visit-cloud-sync/tests/rehearsal/company-data-purge/site-visit-sync-fixture.sql`
+- Modify: `/Users/jacksonsweet/Projects/OPS/ops-web/.worktrees/site-visit-cloud-sync/tests/rehearsal/company-data-purge/site-visit-sync-rehearsal.test.ts`
 
 ### Step 1: Create business tables, not sync machinery
 
@@ -241,6 +241,8 @@ public.site_visit_identity_drafts
   deleted_at timestamptz null;
 ```
 
+Against the W1-6 baseline and absent unrelated concurrent schema additions, these three direct, exported, soft-delete tables produce relative deltas of +3 audited tables, +3 exported datasets, and +3 purge steps (223 / 99 / 202). Tests must derive the real totals from the manifest so concurrent legitimate additions cannot make the contract stale.
+
 Do not sync `SiteVisitIdentityDraft.searchText`; it is transient UI state and may contain unrelated search fragments. Add length/JSON-shape constraints that match the current client limits, indexes on active `company_id`, `site_visit_id`, `opportunity_id`, and one active checklist row per `(site_visit_id, field_id)`. Add a trigger/helper that rejects a child whose `company_id` differs from its parent while retaining the required direct single-column parent FK.
 
 ### Step 2: Add RLS and explicit Data API privileges
@@ -282,7 +284,7 @@ Bump `MANIFEST_VERSION`, add the three direct company-scoped soft-delete/export 
 ### Step 7: Run the focused suite
 
 ```bash
-cd /Users/jacksonsweet/Projects/OPS/ops-web-site-visit-sync
+cd /Users/jacksonsweet/Projects/OPS/ops-web/.worktrees/site-visit-cloud-sync
 npm test -- --run tests/integration/site-visit-cloud-sync-migration.test.ts tests/integration/company-data-manifest.test.ts tests/integration/data-export-route.test.ts tests/integration/data-delete-account-route.test.ts tests/rehearsal/company-data-purge/site-visit-sync-rehearsal.test.ts
 ```
 
@@ -301,13 +303,18 @@ git commit -m "feat(site-visits): add durable cloud data contract"
 
 **Files:**
 
-- Modify: `/Users/jacksonsweet/Projects/OPS/ops-web-site-visit-sync/src/lib/api/services/site-visit-service.ts`
-- Modify: `/Users/jacksonsweet/Projects/OPS/ops-web-site-visit-sync/src/app/api/uploads/presign/route.ts`
-- Modify: `/Users/jacksonsweet/Projects/OPS/ops-web-site-visit-sync/src/lib/supabase/user-client.ts` only if a small reusable authenticated-query helper is necessary.
-- Modify: `/Users/jacksonsweet/Projects/OPS/ops-web-site-visit-sync/tests/lib/api/services/site-visit-service.test.ts`
-- Modify: `/Users/jacksonsweet/Projects/OPS/ops-web-site-visit-sync/tests/integration/uploads-presign-s3.test.ts`
-- Modify: `/Users/jacksonsweet/Projects/OPS/ops-web-site-visit-sync/tests/integration/uploads-presign.test.ts`
-- Modify: `/Users/jacksonsweet/Projects/OPS/ops-web-site-visit-sync/tests/unit/s3-path-auth.test.ts` only for retained generic-folder coverage.
+- Modify: `/Users/jacksonsweet/Projects/OPS/ops-web/.worktrees/site-visit-cloud-sync/src/lib/api/services/site-visit-service.ts`
+- Modify: `/Users/jacksonsweet/Projects/OPS/ops-web/.worktrees/site-visit-cloud-sync/src/app/api/uploads/presign/route.ts`
+- Modify: `/Users/jacksonsweet/Projects/OPS/ops-web/.worktrees/site-visit-cloud-sync/src/lib/supabase/user-client.ts` only if a small reusable authenticated-query helper is necessary.
+- Modify: `/Users/jacksonsweet/Projects/OPS/ops-web/.worktrees/site-visit-cloud-sync/tests/lib/api/services/site-visit-service.test.ts`
+- Modify: `/Users/jacksonsweet/Projects/OPS/ops-web/.worktrees/site-visit-cloud-sync/tests/integration/uploads-presign-s3.test.ts`
+- Modify: `/Users/jacksonsweet/Projects/OPS/ops-web/.worktrees/site-visit-cloud-sync/tests/integration/uploads-presign.test.ts`
+- Modify: `/Users/jacksonsweet/Projects/OPS/ops-web/.worktrees/site-visit-cloud-sync/tests/unit/s3-path-auth.test.ts` only for retained generic-folder coverage.
+- Create: `/Users/jacksonsweet/Projects/OPS/ops-web/.worktrees/site-visit-cloud-sync/src/lib/s3/site-visit-prefix-erasure.ts`
+- Create: `/Users/jacksonsweet/Projects/OPS/ops-web/.worktrees/site-visit-cloud-sync/src/app/api/cron/storage/site-visit-erasure/route.ts`
+- Modify: `/Users/jacksonsweet/Projects/OPS/ops-web/.worktrees/site-visit-cloud-sync/src/app/api/data/delete-account/route.ts`
+- Create: `/Users/jacksonsweet/Projects/OPS/ops-web/.worktrees/site-visit-cloud-sync/tests/unit/s3/site-visit-prefix-erasure.test.ts`
+- Create: `/Users/jacksonsweet/Projects/OPS/ops-web/.worktrees/site-visit-cloud-sync/tests/integration/site-visit-erasure-cron.test.ts`
 
 ### Step 1: Make completion one RPC call
 
@@ -356,9 +363,13 @@ Add tests for:
 
 ### Step 4: Run tests and build
 
+Before the build, implement idempotent account-closure media erasure. The delete-account route deletes the deterministic `site-visits/{companyId}/` prefix only after `purge_company_data` commits. A cron protected by the existing cron-secret pattern scans only soft-deleted companies and retries the same prefix deletion until it is empty. Paginate S3 listing, batch `DeleteObjects`, reject unsafe/broad prefixes, and treat an already-empty prefix as success. Do not create a queue/receipt table; if implementation evidence proves one is unavoidable, stop and add it to the manifest, snapshots, privilege contract, purge allowlist/order, export decision, rehearsal, tests, and Bible before continuing.
+
+Tests must prove an active company is never swept, cross-company keys remain, partial S3 failure is retried, pagination deletes every visit object, and a second run is a no-op.
+
 ```bash
-cd /Users/jacksonsweet/Projects/OPS/ops-web-site-visit-sync
-npm test -- --run tests/lib/api/services/site-visit-service.test.ts tests/integration/uploads-presign-s3.test.ts tests/integration/uploads-presign.test.ts tests/unit/s3-path-auth.test.ts
+cd /Users/jacksonsweet/Projects/OPS/ops-web/.worktrees/site-visit-cloud-sync
+npm test -- --run tests/lib/api/services/site-visit-service.test.ts tests/integration/uploads-presign-s3.test.ts tests/integration/uploads-presign.test.ts tests/unit/s3-path-auth.test.ts tests/unit/s3/site-visit-prefix-erasure.test.ts tests/integration/site-visit-erasure-cron.test.ts tests/integration/data-delete-account-route.test.ts
 npm run build
 ```
 
@@ -367,7 +378,7 @@ Expected: all tests pass and Next.js reports a successful production build.
 ### Step 5: Commit
 
 ```bash
-git add src/lib/api/services/site-visit-service.ts src/app/api/uploads/presign/route.ts src/lib/supabase/user-client.ts tests/lib/api/services/site-visit-service.test.ts tests/integration/uploads-presign-s3.test.ts tests/integration/uploads-presign.test.ts tests/unit/s3-path-auth.test.ts
+git add src/lib/api/services/site-visit-service.ts src/app/api/uploads/presign/route.ts src/lib/supabase/user-client.ts src/lib/s3/site-visit-prefix-erasure.ts src/app/api/cron/storage/site-visit-erasure/route.ts src/app/api/data/delete-account/route.ts tests/lib/api/services/site-visit-service.test.ts tests/integration/uploads-presign-s3.test.ts tests/integration/uploads-presign.test.ts tests/unit/s3-path-auth.test.ts tests/unit/s3/site-visit-prefix-erasure.test.ts tests/integration/site-visit-erasure-cron.test.ts tests/integration/data-delete-account-route.test.ts
 git commit -m "fix(site-visits): unify completion and authorize media uploads"
 ```
 
@@ -379,14 +390,14 @@ Stage only files actually changed.
 
 **Files:**
 
-- Create: `/Users/jacksonsweet/Projects/OPS/ops-ios-site-visit-sync/OPS/DataModels/Migrations/OPSSchemaV20.swift`
-- Modify: `/Users/jacksonsweet/Projects/OPS/ops-ios-site-visit-sync/OPS/DataModels/Migrations/OPSMigrationPlan.swift`
-- Modify: `/Users/jacksonsweet/Projects/OPS/ops-ios-site-visit-sync/OPS/OPSApp.swift`
-- Modify: `/Users/jacksonsweet/Projects/OPS/ops-ios-site-visit-sync/OPS/DataModels/Supabase/SiteVisit.swift`
-- Modify: `/Users/jacksonsweet/Projects/OPS/ops-ios-site-visit-sync/OPS/DataModels/SiteVisits/SiteVisitIdentityDraft.swift`
-- Modify: `/Users/jacksonsweet/Projects/OPS/ops-ios-site-visit-sync/OPS/DataModels/Enums/FinancialEnums.swift`
-- Modify: `/Users/jacksonsweet/Projects/OPS/ops-ios-site-visit-sync/OPSTests/SiteVisits/SiteVisitMigrationTests.swift`
-- Create: `/Users/jacksonsweet/Projects/OPS/ops-ios-site-visit-sync/OPSTests/SiteVisits/SiteVisitCloudModelTests.swift`
+- Create: `/Users/jacksonsweet/Projects/OPS/ops-ios/.worktrees/site-visit-cloud-sync/OPS/DataModels/Migrations/OPSSchemaV20.swift`
+- Modify: `/Users/jacksonsweet/Projects/OPS/ops-ios/.worktrees/site-visit-cloud-sync/OPS/DataModels/Migrations/OPSMigrationPlan.swift`
+- Modify: `/Users/jacksonsweet/Projects/OPS/ops-ios/.worktrees/site-visit-cloud-sync/OPS/OPSApp.swift`
+- Modify: `/Users/jacksonsweet/Projects/OPS/ops-ios/.worktrees/site-visit-cloud-sync/OPS/DataModels/Supabase/SiteVisit.swift`
+- Modify: `/Users/jacksonsweet/Projects/OPS/ops-ios/.worktrees/site-visit-cloud-sync/OPS/DataModels/SiteVisits/SiteVisitIdentityDraft.swift`
+- Modify: `/Users/jacksonsweet/Projects/OPS/ops-ios/.worktrees/site-visit-cloud-sync/OPS/DataModels/Enums/FinancialEnums.swift`
+- Modify: `/Users/jacksonsweet/Projects/OPS/ops-ios/.worktrees/site-visit-cloud-sync/OPSTests/SiteVisits/SiteVisitMigrationTests.swift`
+- Create: `/Users/jacksonsweet/Projects/OPS/ops-ios/.worktrees/site-visit-cloud-sync/OPSTests/SiteVisits/SiteVisitCloudModelTests.swift`
 
 ### Step 1: Reserve the actual next schema version
 
@@ -407,7 +418,7 @@ Add model tests for:
 ### Step 3: Run red tests
 
 ```bash
-cd /Users/jacksonsweet/Projects/OPS/ops-ios-site-visit-sync
+cd /Users/jacksonsweet/Projects/OPS/ops-ios/.worktrees/site-visit-cloud-sync
 xcodebuild test -project OPS.xcodeproj -scheme OPS -destination 'platform=iOS Simulator,name=iPhone 17,OS=26.5' -derivedDataPath /private/tmp/ops-site-visit-model-red -clonedSourcePackagesDirPath .spm-local -only-testing:OPSTests/SiteVisitMigrationTests -only-testing:OPSTests/SiteVisitCloudModelTests
 ```
 
@@ -445,12 +456,12 @@ git commit -m "feat(site-visits): add cloud-backed local schema"
 
 **Files:**
 
-- Create: `/Users/jacksonsweet/Projects/OPS/ops-ios-site-visit-sync/OPS/Network/Supabase/DTOs/SiteVisitDTOs.swift`
-- Create: `/Users/jacksonsweet/Projects/OPS/ops-ios-site-visit-sync/OPS/Network/Supabase/Repositories/SiteVisitRepository.swift`
-- Create: `/Users/jacksonsweet/Projects/OPS/ops-ios-site-visit-sync/OPS/Network/Sync/SiteVisitServerMerge.swift`
-- Create: `/Users/jacksonsweet/Projects/OPS/ops-ios-site-visit-sync/OPSTests/SiteVisits/SiteVisitDTOTests.swift`
-- Create: `/Users/jacksonsweet/Projects/OPS/ops-ios-site-visit-sync/OPSTests/SiteVisits/SiteVisitRepositoryTests.swift`
-- Create: `/Users/jacksonsweet/Projects/OPS/ops-ios-site-visit-sync/OPSTests/Sync/SiteVisitServerMergeTests.swift`
+- Create: `/Users/jacksonsweet/Projects/OPS/ops-ios/.worktrees/site-visit-cloud-sync/OPS/Network/Supabase/DTOs/SiteVisitDTOs.swift`
+- Create: `/Users/jacksonsweet/Projects/OPS/ops-ios/.worktrees/site-visit-cloud-sync/OPS/Network/Supabase/Repositories/SiteVisitRepository.swift`
+- Create: `/Users/jacksonsweet/Projects/OPS/ops-ios/.worktrees/site-visit-cloud-sync/OPS/Network/Sync/SiteVisitServerMerge.swift`
+- Create: `/Users/jacksonsweet/Projects/OPS/ops-ios/.worktrees/site-visit-cloud-sync/OPSTests/SiteVisits/SiteVisitDTOTests.swift`
+- Create: `/Users/jacksonsweet/Projects/OPS/ops-ios/.worktrees/site-visit-cloud-sync/OPSTests/SiteVisits/SiteVisitRepositoryTests.swift`
+- Create: `/Users/jacksonsweet/Projects/OPS/ops-ios/.worktrees/site-visit-cloud-sync/OPSTests/Sync/SiteVisitServerMergeTests.swift`
 
 ### Step 1: Write contract tests first
 
@@ -504,12 +515,12 @@ git commit -m "feat(site-visits): add Supabase repository contract"
 
 **Files:**
 
-- Create: `/Users/jacksonsweet/Projects/OPS/ops-ios-site-visit-sync/OPS/Network/Sync/SiteVisitSyncOperation.swift`
-- Create: `/Users/jacksonsweet/Projects/OPS/ops-ios-site-visit-sync/OPS/Services/SiteVisitPersistenceCoordinator.swift`
-- Modify: `/Users/jacksonsweet/Projects/OPS/ops-ios-site-visit-sync/OPS/Views/SiteVisits/SiteVisitCaptureViewModel.swift`
-- Modify: `/Users/jacksonsweet/Projects/OPS/ops-ios-site-visit-sync/OPS/Views/SiteVisits/SiteVisitDimensionedCaptureStore.swift`
+- Create: `/Users/jacksonsweet/Projects/OPS/ops-ios/.worktrees/site-visit-cloud-sync/OPS/Network/Sync/SiteVisitSyncOperation.swift`
+- Create: `/Users/jacksonsweet/Projects/OPS/ops-ios/.worktrees/site-visit-cloud-sync/OPS/Services/SiteVisitPersistenceCoordinator.swift`
+- Modify: `/Users/jacksonsweet/Projects/OPS/ops-ios/.worktrees/site-visit-cloud-sync/OPS/Views/SiteVisits/SiteVisitCaptureViewModel.swift`
+- Modify: `/Users/jacksonsweet/Projects/OPS/ops-ios/.worktrees/site-visit-cloud-sync/OPS/Views/SiteVisits/SiteVisitDimensionedCaptureStore.swift`
 - Modify: other site-visit capture helpers discovered by a full mutation-site search.
-- Create: `/Users/jacksonsweet/Projects/OPS/ops-ios-site-visit-sync/OPSTests/SiteVisits/SiteVisitPersistenceCoordinatorTests.swift`
+- Create: `/Users/jacksonsweet/Projects/OPS/ops-ios/.worktrees/site-visit-cloud-sync/OPSTests/SiteVisits/SiteVisitPersistenceCoordinatorTests.swift`
 
 ### Step 1: Inventory every mutation site
 
@@ -558,14 +569,14 @@ git commit -m "fix(site-visits): make local capture and queue atomic"
 
 **Files:**
 
-- Create: `/Users/jacksonsweet/Projects/OPS/ops-ios-site-visit-sync/OPS/Network/Sync/SiteVisitOutboundSync.swift`
-- Create: `/Users/jacksonsweet/Projects/OPS/ops-ios-site-visit-sync/OPS/Network/Sync/SiteVisitMediaSyncManager.swift`
-- Modify: `/Users/jacksonsweet/Projects/OPS/ops-ios-site-visit-sync/OPS/Network/PresignedURLUploadService.swift`
-- Modify: `/Users/jacksonsweet/Projects/OPS/ops-ios-site-visit-sync/OPS/Network/Sync/OutboundProcessor.swift`
-- Modify: `/Users/jacksonsweet/Projects/OPS/ops-ios-site-visit-sync/OPS/Utilities/DataActor.swift`
-- Modify: `/Users/jacksonsweet/Projects/OPS/ops-ios-site-visit-sync/OPS/Network/Sync/SyncEngine.swift`
-- Create: `/Users/jacksonsweet/Projects/OPS/ops-ios-site-visit-sync/OPSTests/Sync/SiteVisitOutboundSyncTests.swift`
-- Create: `/Users/jacksonsweet/Projects/OPS/ops-ios-site-visit-sync/OPSTests/Sync/SiteVisitMediaSyncManagerTests.swift`
+- Create: `/Users/jacksonsweet/Projects/OPS/ops-ios/.worktrees/site-visit-cloud-sync/OPS/Network/Sync/SiteVisitOutboundSync.swift`
+- Create: `/Users/jacksonsweet/Projects/OPS/ops-ios/.worktrees/site-visit-cloud-sync/OPS/Network/Sync/SiteVisitMediaSyncManager.swift`
+- Modify: `/Users/jacksonsweet/Projects/OPS/ops-ios/.worktrees/site-visit-cloud-sync/OPS/Network/PresignedURLUploadService.swift`
+- Modify: `/Users/jacksonsweet/Projects/OPS/ops-ios/.worktrees/site-visit-cloud-sync/OPS/Network/Sync/OutboundProcessor.swift`
+- Modify: `/Users/jacksonsweet/Projects/OPS/ops-ios/.worktrees/site-visit-cloud-sync/OPS/Utilities/DataActor.swift`
+- Modify: `/Users/jacksonsweet/Projects/OPS/ops-ios/.worktrees/site-visit-cloud-sync/OPS/Network/Sync/SyncEngine.swift`
+- Create: `/Users/jacksonsweet/Projects/OPS/ops-ios/.worktrees/site-visit-cloud-sync/OPSTests/Sync/SiteVisitOutboundSyncTests.swift`
+- Create: `/Users/jacksonsweet/Projects/OPS/ops-ios/.worktrees/site-visit-cloud-sync/OPSTests/Sync/SiteVisitMediaSyncManagerTests.swift`
 
 ### Step 1: Write dependency and retry tests first
 
@@ -628,13 +639,13 @@ git commit -m "feat(site-visits): sync durable packets and media"
 
 **Files:**
 
-- Modify: `/Users/jacksonsweet/Projects/OPS/ops-ios-site-visit-sync/OPS/Network/Sync/InboundProcessor.swift`
-- Modify: `/Users/jacksonsweet/Projects/OPS/ops-ios-site-visit-sync/OPS/Utilities/DataActor.swift`
-- Modify: `/Users/jacksonsweet/Projects/OPS/ops-ios-site-visit-sync/OPS/Network/Sync/RealtimeProcessor.swift`
-- Modify: `/Users/jacksonsweet/Projects/OPS/ops-ios-site-visit-sync/OPS/Network/Sync/SyncFieldGuard.swift`
-- Modify: `/Users/jacksonsweet/Projects/OPS/ops-ios-site-visit-sync/OPS/Network/Sync/SyncEngine.swift`
-- Create: `/Users/jacksonsweet/Projects/OPS/ops-ios-site-visit-sync/OPSTests/Sync/SiteVisitInboundSyncTests.swift`
-- Create: `/Users/jacksonsweet/Projects/OPS/ops-ios-site-visit-sync/OPSTests/Sync/SiteVisitRealtimeSyncTests.swift`
+- Modify: `/Users/jacksonsweet/Projects/OPS/ops-ios/.worktrees/site-visit-cloud-sync/OPS/Network/Sync/InboundProcessor.swift`
+- Modify: `/Users/jacksonsweet/Projects/OPS/ops-ios/.worktrees/site-visit-cloud-sync/OPS/Utilities/DataActor.swift`
+- Modify: `/Users/jacksonsweet/Projects/OPS/ops-ios/.worktrees/site-visit-cloud-sync/OPS/Network/Sync/RealtimeProcessor.swift`
+- Modify: `/Users/jacksonsweet/Projects/OPS/ops-ios/.worktrees/site-visit-cloud-sync/OPS/Network/Sync/SyncFieldGuard.swift`
+- Modify: `/Users/jacksonsweet/Projects/OPS/ops-ios/.worktrees/site-visit-cloud-sync/OPS/Network/Sync/SyncEngine.swift`
+- Create: `/Users/jacksonsweet/Projects/OPS/ops-ios/.worktrees/site-visit-cloud-sync/OPSTests/Sync/SiteVisitInboundSyncTests.swift`
+- Create: `/Users/jacksonsweet/Projects/OPS/ops-ios/.worktrees/site-visit-cloud-sync/OPSTests/Sync/SiteVisitRealtimeSyncTests.swift`
 
 ### Step 1: Write merge matrix tests
 
@@ -679,15 +690,15 @@ git commit -m "feat(site-visits): resume visits across devices"
 
 **Files:**
 
-- Modify: `/Users/jacksonsweet/Projects/OPS/ops-ios-site-visit-sync/OPS/Views/SiteVisits/SiteVisitCaptureViewModel.swift`
-- Modify: `/Users/jacksonsweet/Projects/OPS/ops-ios-site-visit-sync/OPS/Views/SiteVisits/SiteVisitCaptureView.swift`
-- Modify: `/Users/jacksonsweet/Projects/OPS/ops-ios-site-visit-sync/OPS/Network/Sync/RecoveryInventory.swift`
-- Modify: `/Users/jacksonsweet/Projects/OPS/ops-ios-site-visit-sync/OPS/Views/Components/Sync/PendingWorkView.swift`
-- Modify: `/Users/jacksonsweet/Projects/OPS/ops-ios-site-visit-sync/OPS/Network/Sync/SyncStatusCopy.swift` or the actual centralized copy source discovered during execution.
-- Modify: `/Users/jacksonsweet/Projects/OPS/ops-ios-site-visit-sync/OPSTests/SiteVisits/SiteVisitCapturePacketTests.swift`
-- Modify: `/Users/jacksonsweet/Projects/OPS/ops-ios-site-visit-sync/OPSTests/Sync/RecoveryInventoryTests.swift`
-- Modify: `/Users/jacksonsweet/Projects/OPS/ops-ios-site-visit-sync/OPSTests/Sync/SyncStatusCopyPendingWorkTests.swift`
-- Modify: `/Users/jacksonsweet/Projects/OPS/ops-ios-site-visit-sync/OPSTests/Views/SiteVisitFormSnapshotTests.swift` only if visible output changes.
+- Modify: `/Users/jacksonsweet/Projects/OPS/ops-ios/.worktrees/site-visit-cloud-sync/OPS/Views/SiteVisits/SiteVisitCaptureViewModel.swift`
+- Modify: `/Users/jacksonsweet/Projects/OPS/ops-ios/.worktrees/site-visit-cloud-sync/OPS/Views/SiteVisits/SiteVisitCaptureView.swift`
+- Modify: `/Users/jacksonsweet/Projects/OPS/ops-ios/.worktrees/site-visit-cloud-sync/OPS/Network/Sync/RecoveryInventory.swift`
+- Modify: `/Users/jacksonsweet/Projects/OPS/ops-ios/.worktrees/site-visit-cloud-sync/OPS/Views/Components/Sync/PendingWorkView.swift`
+- Modify: `/Users/jacksonsweet/Projects/OPS/ops-ios/.worktrees/site-visit-cloud-sync/OPS/Network/Sync/SyncStatusCopy.swift` or the actual centralized copy source discovered during execution.
+- Modify: `/Users/jacksonsweet/Projects/OPS/ops-ios/.worktrees/site-visit-cloud-sync/OPSTests/SiteVisits/SiteVisitCapturePacketTests.swift`
+- Modify: `/Users/jacksonsweet/Projects/OPS/ops-ios/.worktrees/site-visit-cloud-sync/OPSTests/Sync/RecoveryInventoryTests.swift`
+- Modify: `/Users/jacksonsweet/Projects/OPS/ops-ios/.worktrees/site-visit-cloud-sync/OPSTests/Sync/SyncStatusCopyPendingWorkTests.swift`
+- Modify: `/Users/jacksonsweet/Projects/OPS/ops-ios/.worktrees/site-visit-cloud-sync/OPSTests/Views/SiteVisitFormSnapshotTests.swift` only if visible output changes.
 
 ### Step 1: Write user-outcome tests first
 
@@ -741,11 +752,11 @@ Stage the actual centralized copy file if its name differs.
 
 **Files:**
 
-- Modify: `/Users/jacksonsweet/Projects/OPS/ops-ios-site-visit-sync/OPS/Views/SiteVisits/SiteVisitProjectHandoff.swift`
-- Modify: `/Users/jacksonsweet/Projects/OPS/ops-ios-site-visit-sync/OPS/Network/ImageSyncManager.swift`
-- Modify: `/Users/jacksonsweet/Projects/OPS/ops-ios-site-visit-sync/OPS/Network/DimensionedPhotoSyncManager.swift` if its project-row contract requires it.
-- Modify: `/Users/jacksonsweet/Projects/OPS/ops-ios-site-visit-sync/OPS/Network/Supabase/DTOs/ProjectPhotoDTOs.swift` only if provenance is not already encoded.
-- Modify: `/Users/jacksonsweet/Projects/OPS/ops-ios-site-visit-sync/OPSTests/SiteVisits/SiteVisitHandoffDurabilityTests.swift`
+- Modify: `/Users/jacksonsweet/Projects/OPS/ops-ios/.worktrees/site-visit-cloud-sync/OPS/Views/SiteVisits/SiteVisitProjectHandoff.swift`
+- Modify: `/Users/jacksonsweet/Projects/OPS/ops-ios/.worktrees/site-visit-cloud-sync/OPS/Network/ImageSyncManager.swift`
+- Modify: `/Users/jacksonsweet/Projects/OPS/ops-ios/.worktrees/site-visit-cloud-sync/OPS/Network/DimensionedPhotoSyncManager.swift` if its project-row contract requires it.
+- Modify: `/Users/jacksonsweet/Projects/OPS/ops-ios/.worktrees/site-visit-cloud-sync/OPS/Network/Supabase/DTOs/ProjectPhotoDTOs.swift` only if provenance is not already encoded.
+- Modify: `/Users/jacksonsweet/Projects/OPS/ops-ios/.worktrees/site-visit-cloud-sync/OPSTests/SiteVisits/SiteVisitHandoffDurabilityTests.swift`
 - Modify: relevant image/dimension sync tests discovered during execution.
 
 ### Step 1: Write reuse/idempotency tests first
@@ -782,13 +793,13 @@ Stage only changed files.
 
 **Files:**
 
-- Create: `/Users/jacksonsweet/Projects/OPS/ops-ios-site-visit-sync/OPS/Network/Sync/SiteVisitOrphanRecovery.swift`
-- Create: `/Users/jacksonsweet/Projects/OPS/ops-ios-site-visit-sync/OPS/Network/Sync/SiteVisitRecoveryVault.swift`
-- Modify: `/Users/jacksonsweet/Projects/OPS/ops-ios-site-visit-sync/OPS/Utilities/DataController.swift`
-- Modify: `/Users/jacksonsweet/Projects/OPS/ops-ios-site-visit-sync/OPS/Views/SettingsView.swift`
-- Modify: `/Users/jacksonsweet/Projects/OPS/ops-ios-site-visit-sync/OPS/Network/Sync/RecoveryInventory.swift`
-- Create: `/Users/jacksonsweet/Projects/OPS/ops-ios-site-visit-sync/OPSTests/Sync/SiteVisitOrphanRecoveryTests.swift`
-- Create: `/Users/jacksonsweet/Projects/OPS/ops-ios-site-visit-sync/OPSTests/Sync/SiteVisitRecoveryVaultTests.swift`
+- Create: `/Users/jacksonsweet/Projects/OPS/ops-ios/.worktrees/site-visit-cloud-sync/OPS/Network/Sync/SiteVisitOrphanRecovery.swift`
+- Create: `/Users/jacksonsweet/Projects/OPS/ops-ios/.worktrees/site-visit-cloud-sync/OPS/Network/Sync/SiteVisitRecoveryVault.swift`
+- Modify: `/Users/jacksonsweet/Projects/OPS/ops-ios/.worktrees/site-visit-cloud-sync/OPS/Utilities/DataController.swift`
+- Modify: `/Users/jacksonsweet/Projects/OPS/ops-ios/.worktrees/site-visit-cloud-sync/OPS/Views/SettingsView.swift`
+- Modify: `/Users/jacksonsweet/Projects/OPS/ops-ios/.worktrees/site-visit-cloud-sync/OPS/Network/Sync/RecoveryInventory.swift`
+- Create: `/Users/jacksonsweet/Projects/OPS/ops-ios/.worktrees/site-visit-cloud-sync/OPSTests/Sync/SiteVisitOrphanRecoveryTests.swift`
+- Create: `/Users/jacksonsweet/Projects/OPS/ops-ios/.worktrees/site-visit-cloud-sync/OPSTests/Sync/SiteVisitRecoveryVaultTests.swift`
 - Modify: logout/data-wipe tests discovered by search.
 
 ### Step 1: Write recovery matrix tests first
@@ -845,7 +856,7 @@ git commit -m "fix(site-visits): recover orphaned work across logout"
 
 **Files:**
 
-- Regenerate: `/Users/jacksonsweet/Projects/OPS/ops-web-site-visit-sync/src/lib/types/database.types.ts`
+- Regenerate: `/Users/jacksonsweet/Projects/OPS/ops-web/.worktrees/site-visit-cloud-sync/src/lib/types/database.types.ts`
 - Create mirror: `/Users/jacksonsweet/Projects/OPS/ops-software-bible/migrations/20260731183000_site_visit_cloud_sync.sql`
 - Modify: `/Users/jacksonsweet/Projects/OPS/ops-software-bible/03_DATA_ARCHITECTURE.md`
 - Modify: `/Users/jacksonsweet/Projects/OPS/ops-software-bible/04_API_AND_INTEGRATION.md`
@@ -883,7 +894,7 @@ Document that `SiteVisitType` is a local template while the checklist snapshot i
 The mirror SQL must byte-match the app migration. Verify with:
 
 ```bash
-cmp /Users/jacksonsweet/Projects/OPS/ops-web-site-visit-sync/supabase/migrations/20260731183000_site_visit_cloud_sync.sql /Users/jacksonsweet/Projects/OPS/ops-software-bible/migrations/20260731183000_site_visit_cloud_sync.sql
+cmp /Users/jacksonsweet/Projects/OPS/ops-web/.worktrees/site-visit-cloud-sync/supabase/migrations/20260731183000_site_visit_cloud_sync.sql /Users/jacksonsweet/Projects/OPS/ops-software-bible/migrations/20260731183000_site_visit_cloud_sync.sql
 ```
 
 Expected: no output and exit 0.
@@ -893,7 +904,7 @@ Expected: no output and exit 0.
 Web:
 
 ```bash
-cd /Users/jacksonsweet/Projects/OPS/ops-web-site-visit-sync
+cd /Users/jacksonsweet/Projects/OPS/ops-web/.worktrees/site-visit-cloud-sync
 git add src/lib/types/database.types.ts
 git commit -m "chore(site-visits): regenerate database types"
 ```
@@ -914,13 +925,13 @@ Stage only the Bible files actually changed and preserve unrelated work.
 
 **Files:**
 
-- Create as useful proof only: `/Users/jacksonsweet/Projects/OPS/ops-ios-site-visit-sync/docs/artifacts/site-visit-sync/`
+- Create as useful proof only: `/Users/jacksonsweet/Projects/OPS/ops-ios/.worktrees/site-visit-cloud-sync/docs/artifacts/site-visit-sync/`
 - No production source changes unless a failing proof uncovers a defect; fix each defect test-first in the owning task/commit.
 
 ### Step 1: Run the complete focused web gate
 
 ```bash
-cd /Users/jacksonsweet/Projects/OPS/ops-web-site-visit-sync
+cd /Users/jacksonsweet/Projects/OPS/ops-web/.worktrees/site-visit-cloud-sync
 npm test -- --run tests/integration/site-visit-cloud-sync-migration.test.ts tests/lib/api/services/site-visit-service.test.ts tests/integration/uploads-presign-s3.test.ts tests/integration/uploads-presign.test.ts tests/unit/s3-path-auth.test.ts tests/integration/company-data-manifest.test.ts tests/integration/data-export-route.test.ts tests/integration/data-delete-account-route.test.ts tests/rehearsal/company-data-purge/site-visit-sync-rehearsal.test.ts
 npm run build
 ```
@@ -944,7 +955,7 @@ Provide clickable remediation URLs for any advisor finding. Do not dismiss warni
 ### Step 3: Run the full site-visit iOS suite
 
 ```bash
-cd /Users/jacksonsweet/Projects/OPS/ops-ios-site-visit-sync
+cd /Users/jacksonsweet/Projects/OPS/ops-ios/.worktrees/site-visit-cloud-sync
 xcodebuild test -project OPS.xcodeproj -scheme OPS -destination 'platform=iOS Simulator,name=iPhone 17,OS=26.5' -derivedDataPath /private/tmp/ops-site-visit-full-tests -clonedSourcePackagesDirPath .spm-local -only-testing:OPSTests/SiteVisitCapturePacketTests -only-testing:OPSTests/SiteVisitHandoffDurabilityTests -only-testing:OPSTests/SiteVisitMigrationTests -only-testing:OPSTests/SiteVisitCloudModelTests -only-testing:OPSTests/SiteVisitDTOTests -only-testing:OPSTests/SiteVisitRepositoryTests -only-testing:OPSTests/SiteVisitPersistenceCoordinatorTests -only-testing:OPSTests/SiteVisitOutboundSyncTests -only-testing:OPSTests/SiteVisitMediaSyncManagerTests -only-testing:OPSTests/SiteVisitInboundSyncTests -only-testing:OPSTests/SiteVisitRealtimeSyncTests -only-testing:OPSTests/SiteVisitOrphanRecoveryTests -only-testing:OPSTests/SiteVisitRecoveryVaultTests -only-testing:OPSTests/RecoveryInventoryTests
 xcodebuild -project OPS.xcodeproj -scheme OPS -destination 'generic/platform=iOS' -derivedDataPath /private/tmp/ops-site-visit-final-device -clonedSourcePackagesDirPath .spm-local build
 ```

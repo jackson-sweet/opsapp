@@ -8,9 +8,74 @@
 //  precedence over the existing pending/syncing states, and its count comes from
 //  the same `RecoveryInventory` the recovery screen reads (not raw pending).
 //
+//  Placement: `MainTabView` floats this in a band offset by the tab header's
+//  measured height (`AppHeaderHeightKey`), so it can never land on the header's
+//  trailing action cluster. It used to start at the top safe area — the same
+//  rectangle the search button occupies — which put the button's translucent
+//  disc on top of the pill and swallowed taps. See `SyncPillHeaderLayoutTests`.
+//
 
 import SwiftUI
 import SwiftData
+
+/// The needs-a-look pill — "<n> NEED A LOOK", tan normally, rose when anything
+/// is parked. Extracted from `SyncStatusIndicator` so the visual can be rendered
+/// and geometrically verified without a DataController or a live SwiftData
+/// context (see `SyncPillHeaderLayoutTests`).
+///
+/// The pill floats above whatever tab is scrolling underneath it, so two things
+/// are deliberate here:
+///
+/// * **Opaque base under the tone wash.** The tint alone (`tone × 0.15`) let the
+///   content behind bleed through and made the label unreadable over a busy
+///   list. The capsule now sits on `background` first, exactly as `syncingPill`
+///   already did, and the shadow reads against a solid edge instead of tinting
+///   the fill unevenly.
+/// * **The one sanctioned shadow.** `Layout.floatingElevation` — MOBILE.md §8's
+///   documented exception for elements that float over scrolling content.
+struct SyncAttentionPill: View {
+    let count: Int
+    let isParked: Bool
+
+    /// Stable hook for the layout regression test — not user-facing copy.
+    static let accessibilityID = "sync.attention.pill"
+
+    private var tone: Color { isParked ? OPSStyle.Colors.rose : OPSStyle.Colors.tan }
+
+    var body: some View {
+        HStack(spacing: OPSStyle.Layout.spacing2) {
+            Image(systemName: isParked ? "exclamationmark.circle.fill" : "exclamationmark.circle")
+                .font(.system(size: OPSStyle.Layout.IconSize.xs, weight: .semibold))
+                .foregroundColor(tone)
+
+            Text(SyncStatusCopy.PendingWork.pillBadge(count: count))
+                .font(OPSStyle.Typography.smallCaption.weight(.bold))
+                .foregroundColor(tone)
+                .tracking(0.8)
+                // The reported symptom was a clipped "LOOK". Never wrap, never
+                // truncate — the pill grows instead, at any count and any
+                // Dynamic Type size.
+                .lineLimit(1)
+                .fixedSize(horizontal: true, vertical: false)
+        }
+        .padding(.horizontal, OPSStyle.Layout.spacing2)
+        .padding(.vertical, OPSStyle.Layout.spacing1)
+        .background(
+            Capsule()
+                .fill(OPSStyle.Colors.background)
+                .overlay(Capsule().fill(tone.opacity(0.15)))
+        )
+        .overlay(Capsule().strokeBorder(tone.opacity(0.55), lineWidth: OPSStyle.Layout.Border.standard))
+        .shadow(
+            color: OPSStyle.Layout.floatingElevation.color,
+            radius: OPSStyle.Layout.floatingElevation.radius,
+            x: OPSStyle.Layout.floatingElevation.x,
+            y: OPSStyle.Layout.floatingElevation.y
+        )
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier(Self.accessibilityID)
+    }
+}
 
 /// Compact indicator showing pending / attention sync status. Tap → PENDING WORK.
 struct SyncStatusIndicator: View {
@@ -63,21 +128,7 @@ struct SyncStatusIndicator: View {
 
     /// NEW — needs-a-look state. Tan, or rose when a permanent rejection is parked.
     private var attentionPill: some View {
-        let tone = anyParked ? OPSStyle.Colors.rose : OPSStyle.Colors.tan
-        return HStack(spacing: OPSStyle.Layout.spacing2) {
-            Image(systemName: anyParked ? "exclamationmark.circle.fill" : "exclamationmark.circle")
-                .font(.system(size: OPSStyle.Layout.IconSize.xs, weight: .semibold))
-                .foregroundColor(tone)
-
-            Text(SyncStatusCopy.PendingWork.pillBadge(count: attentionCount))
-                .font(OPSStyle.Typography.smallCaption.weight(.bold))
-                .foregroundColor(tone)
-                .tracking(0.8)
-        }
-        .padding(.horizontal, OPSStyle.Layout.spacing2)
-        .padding(.vertical, OPSStyle.Layout.spacing1)
-        .background(Capsule().fill(tone.opacity(0.15)))
-        .overlay(Capsule().strokeBorder(tone.opacity(0.55), lineWidth: OPSStyle.Layout.Border.standard))
+        SyncAttentionPill(count: attentionCount, isParked: anyParked)
     }
 
     private var pendingPill: some View {

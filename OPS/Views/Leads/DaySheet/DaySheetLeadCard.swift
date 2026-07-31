@@ -4,8 +4,16 @@
 //
 //  The day sheet's accordion cell: the collapsed row (scan) plus, behind one
 //  tap, everything the runner needs to work the lead without leaving the sheet
-//  (act). Both live under ONE L1 glass shell — the row renders `embedded`
-//  precisely so the seam between face and body has no hairline across it.
+//  (act). Both live under ONE L1 glass shell — the row renders `embedded` so it
+//  never draws a second panel inside that shell.
+//
+//  COLLAPSED, the face IS the card: no fill of its own, no seam, nothing but
+//  the row. OPEN, the face becomes a HEADER — a `surfaceHover` band and an L1
+//  `line` rule under it (bug 594da411: shipped without either, the open card
+//  read as one undifferentiated column and nothing marked where scanning ended
+//  and working began). The treatment is expansion-scoped on purpose: a rule
+//  drawn on a collapsed row would be chrome on a pure scan surface, separating
+//  a header from a body that is not there.
 //
 //  Section order is the spec's and is not negotiable (§3.4): photos → deck →
 //  summary → contact → quick actions → milestone → est → footer. It is ordered
@@ -93,6 +101,7 @@ struct DaySheetLeadCard: View {
     var body: some View {
         VStack(spacing: 0) {
             face
+                .modifier(DaySheetCardHeaderShell(isExpanded: isExpanded))
             if isExpanded {
                 // Opacity only. A move/slide on top of the height change would
                 // give one tap two motions, and the clip below already keeps
@@ -394,6 +403,41 @@ struct DaySheetLeadCard: View {
         let hours = Int(interval / 3600)
         if hours < 24 { return "\(hours)H AGO" }
         return "\(hours / 24)D AGO"
+    }
+}
+
+// MARK: - Header shell
+
+/// Turns the face into a HEADER for the duration of the expansion, and into
+/// nothing at all the rest of the time.
+///
+/// Two marks, because one does not carry it: `surfaceHover` lifts the whole
+/// 80pt band a step off `surfaceRaised` so the eye reads two zones before it
+/// reads any text, and the rule under it draws the actual seam. The rule is
+/// `line`, not the footer's `lineSoft` — this separates the card's two ZONES,
+/// while the footer's rule fences off one tertiary link, and the weights say
+/// so. Both are inside the card's clip, so the band runs edge to edge and the
+/// rule terminates on the panel's own hairline rather than floating short of
+/// it.
+///
+/// Collapsed returns `content` untouched — byte-identical to the shipped scan
+/// row, which is the point.
+private struct DaySheetCardHeaderShell: ViewModifier {
+    let isExpanded: Bool
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if isExpanded {
+            content
+                .background(OPSStyle.Colors.surfaceHover)
+                .overlay(alignment: .bottom) {
+                    Rectangle()
+                        .fill(OPSStyle.Colors.line)
+                        .frame(height: OPSStyle.Layout.Border.standard)
+                }
+        } else {
+            content
+        }
     }
 }
 

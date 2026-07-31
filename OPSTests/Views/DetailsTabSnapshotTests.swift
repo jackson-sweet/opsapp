@@ -13,10 +13,19 @@
 //  and once while browsing a populated list, where that row has to stay quiet.
 //  Those renders are NOT pass/fail: they write PNGs for inspection.
 //
-//  The class DOES carry pass/fail assertions for one thing a snapshot cannot
-//  reach: a context menu cannot be opened from a test, so `InfoRowEdit` — the
-//  single gate the CLIENT, ADDRESS and DESCRIPTION rows share — is asserted
-//  directly at the bottom of this file.
+//  `leads_details_document_reference` renders the lead dossier
+//  (`LeadDetailsDocument`) through the SAME capture path, at the same width, so
+//  the two documents can be laid side by side. That comparison is the
+//  acceptance test for "the project card matches the lead formatting".
+//
+//  The class DOES carry pass/fail assertions for three things a snapshot cannot
+//  reach on its own:
+//    • `InfoRowEdit` — the single gate the CLIENT, ADDRESS and NOTES rows
+//      share (a context menu cannot be opened from a test).
+//    • every project-info label clears the label column by a real margin, so
+//      no label can wrap mid-word the way DESCRIPTION once did.
+//    • `DocRow`'s default column is still 58 — the lead dossier passes no
+//      width, and the project card now passes that same 58.
 //
 //  Rendered via FixedSizeSnapshot — hosted in the APP'S OWN window at a fixed
 //  logical size, so asset-catalog colors resolve, onAppear runs, and the
@@ -111,7 +120,7 @@ final class DetailsTabSnapshotTests: XCTestCase {
     /// Office grants with `projects.edit` withdrawn: every section still
     /// renders, and not one of them offers a way in. This is the viewer that
     /// proves long-press editing is permission-scoped — CLIENT, ADDRESS and
-    /// DESCRIPTION must show their values with no menu, no ASSIGN, no ADD.
+    /// DESCRIPTION must show their values with no menu, no chip, no ADD.
     private var readOnlyGrants: [String: String] {
         var grants = officeGrants
         grants.removeValue(forKey: "projects.edit")
@@ -137,8 +146,9 @@ final class DetailsTabSnapshotTests: XCTestCase {
         let project: Project
     }
 
-    /// Every model the Details tab or the client picker can reach. SwiftData
-    /// wants the whole relationship closure, not just the rows a test seeds.
+    /// Every model the Details tab, the client picker, or the lead dossier
+    /// reference render can reach. SwiftData wants the whole relationship
+    /// closure, not just the rows a test seeds.
     private var snapshotSchema: Schema {
         Schema([
             Project.self,
@@ -259,6 +269,10 @@ final class DetailsTabSnapshotTests: XCTestCase {
 
     // MARK: - Host
 
+    /// `onClientLongPress` is wired here exactly as `ProjectDetailsView` wires
+    /// it (it opens the client picker). Without it the CLIENT row would have no
+    /// action to offer and would honestly print `—` instead of its chip, and
+    /// the empty-state alignment render would be proving the wrong thing.
     @ViewBuilder
     private func hosted(_ fixture: Fixture) -> some View {
         ZStack(alignment: .top) {
@@ -271,6 +285,7 @@ final class DetailsTabSnapshotTests: XCTestCase {
                 onTeamMemberTap: { _ in },
                 onTaskTap: { _ in },
                 onAddTask: {},
+                onClientLongPress: {},
                 onChangeStatus: {}
             )
         }
@@ -333,9 +348,9 @@ final class DetailsTabSnapshotTests: XCTestCase {
     }
 
     /// The same project, same rows, viewer without `projects.edit`. CLIENT,
-    /// ADDRESS and DESCRIPTION carry their values and nothing else — no pencil
-    /// (there are none left anywhere), and no long-press menu is attached at
-    /// all, so the gesture cannot surface an action this viewer may not take.
+    /// ADDRESS and DESCRIPTION carry their values and nothing else — no chip,
+    /// and no long-press menu is attached at all, so the gesture cannot
+    /// surface an action this viewer may not take.
     func testRenderDetailsTabReadOnlyViewer() throws {
         let fixture = try makeFixture()
         withPermissions(readOnlyGrants) {
@@ -354,8 +369,13 @@ final class DetailsTabSnapshotTests: XCTestCase {
     }
 
     /// The sparse project: no client, no address, no description, no tasks —
-    /// every empty state at once, with edit permission so the invitations
-    /// (ASSIGN / ADD DESCRIPTION) are the ones that render.
+    /// every empty state at once, with edit permission so the invitations are
+    /// the ones that render.
+    ///
+    /// THIS is the founder's second complaint made visible. ASSIGN CLIENT, ADD
+    /// ADDRESS and ADD DESCRIPTION all start at the same x — directly right of
+    /// their labels, at the head of the content region — and TIMELINE and TEAM
+    /// print `—` at that identical x. Five rows, one column, one place to look.
     func testRenderDetailsTabEmptyStates() throws {
         let fixture = try makeFixture(
             withClient: false,
@@ -370,9 +390,9 @@ final class DetailsTabSnapshotTests: XCTestCase {
     }
 
     /// The sparse project without edit permission — the harder empty case.
-    /// No invitations render, and DESCRIPTION drops out of the card entirely
-    /// (nothing written, no way to write it), so this is also the proof that
-    /// a departing row takes its hairline with it.
+    /// No invitations render; every one of the five rows still renders, each
+    /// printing `—` at the same x the chips occupied above. The card's shape is
+    /// a property of the viewer, never of how much has been filled in.
     func testRenderDetailsTabEmptyStatesReadOnly() throws {
         let fixture = try makeFixture(
             withClient: false,
@@ -385,6 +405,111 @@ final class DetailsTabSnapshotTests: XCTestCase {
             snapshot("details_tab_empty_states_read_only", view: hosted(fixture), height: 700)
         }
     }
+
+    // MARK: - The reference document
+
+    /// The lead dossier, captured through the same path at the same width — the
+    /// document the project info card was reformatted to match. Lay this beside
+    /// `details_tab_office` / `details_tab_empty_states`: same `// DETAILS`
+    /// header, same solid card, same mono label column, same value line + meta
+    /// line row anatomy, same chip, same `—`.
+    func testRenderLeadDetailsDocumentReference() throws {
+        let container = try makeContainer()
+
+        let lead = Opportunity.preview(
+            title: "Roof tear-off, 28 sq",
+            contactName: "Helen Calloway",
+            stage: .quoted,
+            estimatedValue: 14_200,
+            daysInStage: 9
+        )
+        lead.contactPhone = "(555) 123-4567"
+        lead.contactEmail = "helen@example.com"
+
+        let client = Client(id: "lead-c-1", name: "Calloway Homes")
+        let estimate = Estimate(id: "lead-e-1", companyId: "co-1", estimateNumber: "EST-0142")
+        estimate.title = "Roof tear-off"
+        estimate.total = 14_200
+        let attachment = LeadAttachment(
+            id: "lead-a-1",
+            filename: "roof-photos.pdf",
+            mimeType: "application/pdf",
+            sourceUrl: nil,
+            fromEmail: "helen@example.com",
+            ingestStatus: "stored",
+            occurredAt: "2026-07-14T10:00:00Z",
+            createdAt: "2026-07-14T10:00:00Z"
+        )
+
+        let view = ZStack(alignment: .top) {
+            OPSStyle.Colors.background.ignoresSafeArea()
+
+            LeadDetailsDocument(
+                lead: lead,
+                client: client,
+                rosterState: .onFile,
+                canEdit: true,
+                projectName: "Calloway roof tear-off",
+                attachments: [attachment],
+                estimates: [estimate]
+            )
+            .padding(.top, OPSStyle.Layout.spacing3)
+        }
+        .frame(width: tabWidth)
+        .modelContainer(container)
+        .environmentObject(PermissionStore.previewWithFullAccess())
+
+        snapshot("leads_details_document_reference", view: view, height: 800)
+    }
+
+    // MARK: - Label column (pass/fail)
+
+    /// The label column has to hold every project-info label on one line.
+    ///
+    /// This assertion previously demanded the column be "no wider than it has
+    /// to be", and passed at 68pt while the real render wrapped DESCRIPTION to
+    /// DESCRIPTIO / N: UIKit's `size(withAttributes:)` is close to, but not the
+    /// same as, SwiftUI laying `Text` out inside a fixed frame, so a hairline
+    /// fit measured green and shipped broken. It now demands the opposite —
+    /// real slack — and the labels were shortened to earn it.
+    func testLabelColumnHoldsEveryProjectInfoLabelOnOneLine() throws {
+        let font = try XCTUnwrap(
+            UIFont(name: "JetBrainsMono-Medium", size: 8.5),
+            "JetBrainsMono-Medium must be registered in the app bundle"
+        )
+        let attributes: [NSAttributedString.Key: Any] = [.font: font, .kern: 0.9]
+
+        // Every label clears the column by a real margin. 6pt is the guard band
+        // that a measured-fits/renders-wrapped label would have failed.
+        let slack: CGFloat = 6
+        for label in ProjectInfoDoc.labels {
+            let width = (label as NSString).size(withAttributes: attributes).width
+            XCTAssertLessThanOrEqual(
+                width,
+                ProjectInfoDoc.labelColumnWidth - slack,
+                "\(label) renders \(width)pt wide — too close to the \(ProjectInfoDoc.labelColumnWidth)pt column to trust it will not wrap"
+            )
+        }
+
+        // The card shares the lead dossier's column exactly. If a future label
+        // cannot live inside it, shorten the label — do not widen the column
+        // and re-open the drift this document exists to close.
+        XCTAssertEqual(
+            ProjectInfoDoc.labelColumnWidth,
+            58,
+            "the project info card should share the lead dossier's own column"
+        )
+    }
+
+    /// `DocRow`'s default column is still 58pt, so every existing caller — the
+    /// whole lead dossier — renders exactly as it did before the project card
+    /// started passing its own width.
+    func testDocRowDefaultColumnIsUnchangedForTheLeadDossier() {
+        let row = DocRow(label: "CLIENT") { EmptyView() }
+        XCTAssertEqual(row.labelWidth, 58)
+    }
+
+    // MARK: - Client picker
 
     /// The client picker with nothing in it — the first moment the create row
     /// has to be findable. Nothing to browse, so the way forward is the only
@@ -429,8 +554,8 @@ final class DetailsTabSnapshotTests: XCTestCase {
     /// A context menu cannot be opened from a test, so the rule the three
     /// editable rows share is asserted where it is decided. Both conditions are
     /// load-bearing: the viewer must hold `projects.edit`, and the field must
-    /// already hold a value — an empty field shows an explicit ADD / ASSIGN
-    /// affordance instead, because a long press on nothing is undiscoverable.
+    /// already hold a value — an empty field shows an explicit chip instead,
+    /// because a long press on nothing is undiscoverable.
     func testLongPressEditIsOfferedOnlyToEditorsOfFilledFields() {
         XCTAssertTrue(InfoRowEdit.offersLongPressEdit(canEdit: true, hasValue: true))
 

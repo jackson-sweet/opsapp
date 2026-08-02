@@ -614,15 +614,18 @@ class ImageSyncManager: ObservableObject {
     /// The `project_photos` insert for a drained handoff photo. Carries the
     /// LOCAL row's identity + metadata so provenance survives the drain.
     ///
-    /// Deliberately has NO `site_visit_id` field: iOS `SiteVisit` ids are
-    /// local-only (UPPERCASE `UUID().uuidString`, never written to the server
-    /// `site_visits` table), so sending one would FK-reject the entire insert.
+    /// Site visits are now cloud-backed. A canonical UUID provenance link is
+    /// included when present; malformed legacy phone-only ids are omitted so a
+    /// historical row cannot 22P02/FK-reject an otherwise recoverable photo.
     struct HandoffProjectPhotoInsert: Encodable {
         let id: String
         let projectId: String
         let companyId: String
         let url: String
+        let thumbnailUrl: String?
+        let renderedUrl: String?
         let source: String
+        let siteVisitId: String?
         let uploadedBy: String?
         let caption: String?
         let takenAt: String
@@ -633,7 +636,10 @@ class ImageSyncManager: ObservableObject {
             case projectId = "project_id"
             case companyId = "company_id"
             case url
+            case thumbnailUrl = "thumbnail_url"
+            case renderedUrl = "rendered_url"
             case source
+            case siteVisitId = "site_visit_id"
             case uploadedBy = "uploaded_by"
             case caption
             case takenAt = "taken_at"
@@ -648,13 +654,33 @@ class ImageSyncManager: ObservableObject {
     /// empty string would 22P02 the whole insert.
     static func handoffPhotoInsert(for row: ProjectPhoto, remoteURL: String) -> HandoffProjectPhotoInsert {
         let uploader = row.uploadedBy.trimmingCharacters(in: .whitespacesAndNewlines)
+        let canonicalVisitId = row.siteVisitId.flatMap {
+            UUID(uuidString: $0.trimmingCharacters(in: .whitespacesAndNewlines))?
+                .uuidString
+                .lowercased()
+        }
+        let renderedURL: String?
+        if row.renderedURL == row.url {
+            renderedURL = remoteURL
+        } else if let value = row.renderedURL,
+                  SiteVisitMediaSyncManager.isRemoteURL(value) {
+            renderedURL = value
+        } else {
+            renderedURL = nil
+        }
+        let thumbnailURL = row.thumbnailURL.flatMap {
+            SiteVisitMediaSyncManager.isRemoteURL($0) ? $0 : nil
+        }
         return HandoffProjectPhotoInsert(
             id: row.id.lowercased(),
             projectId: row.projectId,
             companyId: row.companyId,
             url: remoteURL,
+            thumbnailUrl: thumbnailURL,
+            renderedUrl: renderedURL,
             source: row.source,
-            uploadedBy: uploader.isEmpty ? nil : uploader,
+            siteVisitId: canonicalVisitId,
+            uploadedBy: ProjectPhotoUploaderIdentity.canonicalUserID(uploader),
             caption: row.caption,
             takenAt: ISO8601DateFormatter().string(from: row.takenAt ?? row.createdAt),
             isClientVisible: false
@@ -1010,11 +1036,10 @@ class ImageSyncManager: ObservableObject {
         }
 
         // Drain the handoff-owned uploads: per-photo server insert carrying
-        // the row's own id/source/caption (never site_visit_id — iOS visit ids
-        // have no server row), then the local row heals local:// → S3 in
-        // place. A failed insert keeps the entry queued so the next pass
-        // retries; the S3 bytes are re-uploaded then, which is the price of
-        // never losing the portal row.
+        // the row's own id/source/caption/site_visit_id, then the local row
+        // heals local:// → S3 in place. A failed insert keeps the entry queued
+        // so the next pass retries; the S3 bytes are re-uploaded then, which is
+        // the price of never losing the portal row.
         var healedAny = false
         for (localURL, outcome) in handoffResults {
             guard let remoteURL = outcome.url,

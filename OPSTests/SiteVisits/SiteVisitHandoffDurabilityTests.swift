@@ -23,6 +23,11 @@ import SwiftData
 
 final class SiteVisitHandoffDurabilityTests: XCTestCase {
 
+    private let cloudVisitID = "d6ec5372-607f-4dc1-8733-c52f14e2d4e2"
+    private let cloudProjectID = "5f90388c-69af-4bb9-ba26-f8d74487d344"
+    private let cloudCompanyID = "a612edc0-5c18-4c4d-af97-55b9410dd077"
+    private let cloudUserID = "310fbd03-4ffd-4432-b502-e20aff43d548"
+
     private var savedLocalIDs: [String] = []
     private var priorPendingUploads: Data?
 
@@ -93,6 +98,15 @@ final class SiteVisitHandoffDurabilityTests: XCTestCase {
             modelContext: context,
             imageSync: imageSync
         )
+        SiteVisitProjectHandoff.apply(
+            payload: payload,
+            artifacts: [photo, annotated],
+            projectId: "project-1",
+            companyId: "company-1",
+            userId: "user-1",
+            modelContext: context,
+            imageSync: imageSync
+        )
 
         // The gallery row is optimistic AND the upload is durably queued — the
         // queue survives restarts (UserDefaults) and drains on connectivity.
@@ -105,12 +119,254 @@ final class SiteVisitHandoffDurabilityTests: XCTestCase {
         XCTAssertTrue(queued.allSatisfy { $0.projectId == "project-1" && $0.companyId == "company-1" })
 
         let rows = try context.fetch(FetchDescriptor<ProjectPhoto>())
-        XCTAssertEqual(rows.count, 2)
+        XCTAssertEqual(rows.count, 2, "retrying handoff must reuse the optimistic rows")
         XCTAssertTrue(rows.allSatisfy(\.needsSync))
         XCTAssertTrue(
             rows.allSatisfy { $0.id == $0.id.lowercased() },
             "row ids must be lowercase so the server insert echo merges back into the same row (Postgres uuids are lowercase)"
         )
+    }
+
+    @MainActor
+    func test_remoteArtifactReusesCloudObjectAndQueuesOnlyProjectPhotoRow() throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+        let originalURL = "https://example.supabase.co/storage/v1/object/public/site-visit-media/original.jpg"
+        let thumbnailURL = "https://example.supabase.co/storage/v1/object/public/site-visit-media/thumb.jpg"
+
+        let photo = SiteVisitCaptureArtifact.durabilityFixture(
+            kind: .photo,
+            siteVisitId: cloudVisitID.uppercased(),
+            capturedAt: Date(timeIntervalSince1970: 1)
+        )
+        photo.localAssetURL = originalURL
+        photo.thumbnailURL = thumbnailURL
+
+        let payload = SiteVisitProjectPayloadBuilder.payload(
+            siteVisitId: cloudVisitID.uppercased(),
+            opportunityId: "lead-1",
+            address: nil,
+            artifacts: [photo]
+        )
+        let imageSync = ImageSyncManager(modelContext: nil, connectivity: ConnectivityManager())
+
+        SiteVisitProjectHandoff.apply(
+            payload: payload,
+            artifacts: [photo],
+            projectId: cloudProjectID,
+            companyId: cloudCompanyID,
+            userId: cloudUserID,
+            modelContext: context,
+            imageSync: imageSync
+        )
+
+        XCTAssertTrue(imageSync.getPendingUploads().isEmpty, "a cloud object must never be uploaded a second time")
+
+        let row = try XCTUnwrap(context.fetch(FetchDescriptor<ProjectPhoto>()).first)
+        XCTAssertEqual(row.url, originalURL)
+        XCTAssertEqual(row.thumbnailURL, thumbnailURL)
+        XCTAssertEqual(row.siteVisitId, cloudVisitID)
+        XCTAssertEqual(row.source, "site_visit")
+
+        let ops = try context.fetch(FetchDescriptor<SyncOperation>())
+            .filter { $0.entityType == SyncEntityType.projectPhoto.rawValue }
+        XCTAssertEqual(ops.count, 1, "the remote object only needs its project_photos row queued")
+        let opPayload = try XCTUnwrap(
+            try JSONSerialization.jsonObject(with: try XCTUnwrap(ops.first).payload) as? [String: Any]
+        )
+        XCTAssertEqual(opPayload["url"] as? String, originalURL)
+        XCTAssertEqual(opPayload["thumbnail_url"] as? String, thumbnailURL)
+        XCTAssertEqual(opPayload["site_visit_id"] as? String, cloudVisitID)
+    }
+
+    @MainActor
+    func test_repeatedHandoffDoesNotDuplicatePhotoPacketOrDeckLink() throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+        let remoteURL = "https://example.supabase.co/storage/v1/object/public/site-visit-media/retry.jpg"
+
+        let photo = SiteVisitCaptureArtifact.durabilityFixture(
+            kind: .photo,
+            siteVisitId: cloudVisitID,
+            capturedAt: Date(timeIntervalSince1970: 1)
+        )
+        photo.localAssetURL = remoteURL
+        let note = SiteVisitCaptureArtifact.durabilityFixture(
+            kind: .note,
+            siteVisitId: cloudVisitID,
+            capturedAt: Date(timeIntervalSince1970: 2)
+        )
+        note.body = "Confirm gate access."
+        let deck = DeckDesign(
+            id: "bff17fb7-af08-457b-9062-822d25270e9a",
+            companyId: cloudCompanyID,
+            projectId: nil,
+            title: "Visit deck",
+            createdBy: cloudUserID
+        )
+        context.insert(deck)
+        let deckArtifact = SiteVisitCaptureArtifact.durabilityFixture(
+            kind: .deckDesign,
+            siteVisitId: cloudVisitID,
+            deckDesignId: deck.id,
+            capturedAt: Date(timeIntervalSince1970: 3)
+        )
+        let artifacts = [photo, note, deckArtifact]
+        let payload = SiteVisitProjectPayloadBuilder.payload(
+            siteVisitId: cloudVisitID,
+            opportunityId: "lead-1",
+            address: nil,
+            artifacts: artifacts
+        )
+        let syncEngine = SyncEngine()
+        syncEngine.configure(modelContext: context, connectivity: ConnectivityManager())
+
+        for _ in 0..<2 {
+            SiteVisitProjectHandoff.apply(
+                payload: payload,
+                artifacts: artifacts,
+                projectId: cloudProjectID,
+                companyId: cloudCompanyID,
+                userId: cloudUserID,
+                modelContext: context,
+                syncEngine: syncEngine
+            )
+        }
+
+        XCTAssertEqual(try context.fetchCount(FetchDescriptor<ProjectPhoto>()), 1)
+        XCTAssertEqual(try context.fetchCount(FetchDescriptor<ProjectNote>()), 1)
+        XCTAssertEqual(deck.projectId, cloudProjectID)
+
+        let ops = try context.fetch(FetchDescriptor<SyncOperation>())
+        XCTAssertEqual(ops.filter { $0.entityType == SyncEntityType.projectPhoto.rawValue }.count, 1)
+        XCTAssertEqual(ops.filter { $0.entityType == SyncEntityType.projectNote.rawValue }.count, 1)
+        XCTAssertEqual(ops.filter { $0.entityType == SyncEntityType.deckDesign.rawValue }.count, 1)
+    }
+
+    @MainActor
+    func test_remoteDimensionedArtifactReusesVariantsAndQueuesAnnotation() throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+        let originalURL = "https://example.supabase.co/storage/v1/object/public/site-visit-media/depth.heic"
+        let renderedURL = "https://example.supabase.co/storage/v1/object/public/site-visit-media/depth.rendered.png"
+
+        var dimensions = try DimensionsData.jsonDecoder.decode(
+            DimensionsData.self,
+            from: try XCTUnwrap(fixtureDimensionsJSON().data(using: .utf8))
+        )
+        dimensions.sidecarMetadataUrl = "https://example.supabase.co/storage/v1/object/public/site-visit-media/depth.metadata.json"
+        dimensions.depthAssetUrl = "https://example.supabase.co/storage/v1/object/public/site-visit-media/depth.fp32"
+
+        let artifact = SiteVisitCaptureArtifact.durabilityFixture(
+            kind: .dimensionedPhoto,
+            siteVisitId: cloudVisitID,
+            capturedAt: Date(timeIntervalSince1970: 1)
+        )
+        artifact.localAssetURL = originalURL
+        artifact.renderedAssetURL = renderedURL
+        artifact.dimensionsJSON = String(
+            data: try DimensionsData.jsonEncoder.encode(dimensions),
+            encoding: .utf8
+        )
+        let payload = SiteVisitProjectPayloadBuilder.payload(
+            siteVisitId: cloudVisitID,
+            opportunityId: "lead-1",
+            address: nil,
+            artifacts: [artifact]
+        )
+        let imageSync = ImageSyncManager(modelContext: nil, connectivity: ConnectivityManager())
+
+        SiteVisitProjectHandoff.apply(
+            payload: payload,
+            artifacts: [artifact],
+            projectId: cloudProjectID,
+            companyId: cloudCompanyID,
+            userId: cloudUserID,
+            modelContext: context,
+            imageSync: imageSync
+        )
+
+        XCTAssertTrue(imageSync.getPendingUploads().isEmpty)
+        let photo = try XCTUnwrap(context.fetch(FetchDescriptor<ProjectPhoto>()).first)
+        XCTAssertEqual(photo.url, originalURL)
+        XCTAssertEqual(photo.renderedURL, renderedURL)
+        XCTAssertEqual(photo.siteVisitId, cloudVisitID)
+
+        let annotation = try XCTUnwrap(context.fetch(FetchDescriptor<PhotoAnnotation>()).first)
+        XCTAssertEqual(annotation.photoURL, originalURL)
+        XCTAssertEqual(annotation.renderedPhotoURL, renderedURL)
+        XCTAssertEqual(annotation.dimensions?.depthAssetUrl, dimensions.depthAssetUrl)
+        XCTAssertNil(annotation.localDepthMapPath)
+        XCTAssertNil(annotation.localSidecarPath)
+
+        let ops = try context.fetch(FetchDescriptor<SyncOperation>())
+        XCTAssertEqual(ops.filter { $0.entityType == SyncEntityType.projectPhoto.rawValue }.count, 1)
+        let annotationOp = try XCTUnwrap(
+            ops.first { $0.entityType == SyncEntityType.photoAnnotation.rawValue }
+        )
+        let annotationPayload = try XCTUnwrap(
+            try JSONSerialization.jsonObject(with: annotationOp.payload) as? [String: Any]
+        )
+        XCTAssertEqual(annotationPayload["photo_url"] as? String, originalURL)
+        XCTAssertEqual(annotationPayload["rendered_photo_url"] as? String, renderedURL)
+        XCTAssertNotNil(annotationPayload["dimensions"] as? [String: Any])
+    }
+
+    @MainActor
+    func test_softDeletingProjectPhotoLeavesVisitArtifactEvidenceIntact() throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+        let remoteURL = "https://example.supabase.co/storage/v1/object/public/site-visit-media/retained.jpg"
+        let artifact = SiteVisitCaptureArtifact.durabilityFixture(
+            kind: .photo,
+            siteVisitId: cloudVisitID,
+            capturedAt: Date(timeIntervalSince1970: 1)
+        )
+        artifact.localAssetURL = remoteURL
+        context.insert(artifact)
+        let payload = SiteVisitProjectPayloadBuilder.payload(
+            siteVisitId: cloudVisitID,
+            opportunityId: "lead-1",
+            address: nil,
+            artifacts: [artifact]
+        )
+
+        SiteVisitProjectHandoff.apply(
+            payload: payload,
+            artifacts: [artifact],
+            projectId: cloudProjectID,
+            companyId: cloudCompanyID,
+            userId: cloudUserID,
+            modelContext: context
+        )
+        let row = try XCTUnwrap(context.fetch(FetchDescriptor<ProjectPhoto>()).first)
+        row.deletedAt = Date()
+        try context.save()
+
+        XCTAssertTrue(artifact.isActive)
+        XCTAssertEqual(artifact.localAssetURL, remoteURL)
+    }
+
+    @MainActor
+    func test_localHandoffInsertCarriesCanonicalSiteVisitProvenance() throws {
+        let row = ProjectPhoto(
+            id: UUID().uuidString,
+            projectId: cloudProjectID,
+            companyId: cloudCompanyID,
+            url: "local://project_images/site-visit.jpg",
+            source: "site_visit",
+            siteVisitId: cloudVisitID.uppercased(),
+            uploadedBy: cloudUserID
+        )
+
+        let insert = ImageSyncManager.handoffPhotoInsert(
+            for: row,
+            remoteURL: "https://example.supabase.co/storage/v1/object/public/project-images/site-visit.jpg"
+        )
+        let object = try XCTUnwrap(
+            try JSONSerialization.jsonObject(with: JSONEncoder().encode(insert)) as? [String: Any]
+        )
+        XCTAssertEqual(object["site_visit_id"] as? String, cloudVisitID)
     }
 
     @MainActor
@@ -419,13 +675,14 @@ private extension SiteVisitCaptureArtifact {
     static func durabilityFixture(
         id: String = UUID().uuidString,
         kind: SiteVisitCaptureArtifactKind,
+        siteVisitId: String = "visit-1",
         opportunityId: String? = "lead-1",
         deckDesignId: String? = nil,
         capturedAt: Date
     ) -> SiteVisitCaptureArtifact {
         SiteVisitCaptureArtifact(
             id: id,
-            siteVisitId: "visit-1",
+            siteVisitId: siteVisitId,
             companyId: "company-1",
             opportunityId: opportunityId,
             kind: kind,

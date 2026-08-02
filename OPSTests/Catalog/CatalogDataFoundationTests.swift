@@ -175,13 +175,19 @@ final class CatalogDataFoundationTests: XCTestCase {
             targetSchema: OPSSchemaV19.self,
             plan: V18ToV19OnlyMigrationPlan.self
         )
+        try assertMigrates(
+            name: "V19->V20",
+            sourceSchema: OPSSchemaV19.self,
+            targetSchema: OPSSchemaV20.self,
+            plan: V19ToV20OnlyMigrationPlan.self
+        )
     }
 
     func testMigrationPlanStagesHaveModelSetDeltasAcrossAllVersions() {
         let schemas = OPSMigrationPlan.schemas
         // One migration stage per adjacent schema pair — the plan currently spans
-        // V1…V19 (18 stages). Keep in lockstep as new schema versions are added.
-        XCTAssertEqual(OPSMigrationPlan.stages.count, 18)
+        // V1…V20 (19 stages). Keep in lockstep as new schema versions are added.
+        XCTAssertEqual(OPSMigrationPlan.stages.count, 19)
 
         let versionIdentifiers = schemas.map { String(describing: $0.versionIdentifier) }
         XCTAssertEqual(versionIdentifiers, [
@@ -203,7 +209,8 @@ final class CatalogDataFoundationTests: XCTestCase {
             "16.0.0",
             "17.0.0",
             "18.0.0",
-            "19.0.0"
+            "19.0.0",
+            "20.0.0"
         ])
 
         for pair in zip(schemas, schemas.dropFirst()) {
@@ -1742,7 +1749,7 @@ final class CatalogDataFoundationTests: XCTestCase {
         let sourceConfiguration = ModelConfiguration(schema: source, url: storeURL, allowsSave: true)
         _ = try ModelContainer(for: source, configurations: [sourceConfiguration])
 
-        let current = Schema(versionedSchema: OPSSchemaV19.self)
+        let current = Schema(versionedSchema: OPSSchemaV20.self)
         let currentConfiguration = ModelConfiguration(schema: current, url: storeURL, allowsSave: true)
 
         do {
@@ -1834,5 +1841,15 @@ private enum V18ToV19OnlyMigrationPlan: SchemaMigrationPlan {
 
     static var stages: [MigrationStage] {
         [OPSMigrationPlan.addOpportunityActionRequiredV18toV19]
+    }
+}
+
+private enum V19ToV20OnlyMigrationPlan: SchemaMigrationPlan {
+    static var schemas: [any VersionedSchema.Type] {
+        [OPSSchemaV19.self, OPSSchemaV20.self]
+    }
+
+    static var stages: [MigrationStage] {
+        [OPSMigrationPlan.addSiteVisitCloudFieldsV19toV20]
     }
 }

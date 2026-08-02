@@ -27,12 +27,16 @@ final class SiteVisitIdentityDraft: Identifiable {
     var address: String
     var notes: String
 
+    var createdBy: String?
     var createdAt: Date
     var updatedAt: Date
     var lastCommittedAt: Date?
+    var deletedAt: Date?
+    var needsSync: Bool = false
+    var lastSyncedAt: Date?
 
     init(
-        id: String = UUID().uuidString,
+        id: String = UUID().uuidString.lowercased(),
         siteVisitId: String,
         companyId: String,
         opportunityId: String? = nil,
@@ -46,14 +50,15 @@ final class SiteVisitIdentityDraft: Identifiable {
         phoneNumber: String = "",
         address: String = "",
         notes: String = "",
+        createdBy: String? = nil,
         createdAt: Date = Date()
     ) {
-        self.id = id
-        self.siteVisitId = siteVisitId
-        self.companyId = companyId
-        self.opportunityId = opportunityId
-        self.clientId = clientId
-        self.subClientId = subClientId
+        self.id = id.lowercased()
+        self.siteVisitId = siteVisitId.lowercased()
+        self.companyId = companyId.lowercased()
+        self.opportunityId = opportunityId?.lowercased()
+        self.clientId = clientId?.lowercased()
+        self.subClientId = subClientId?.lowercased()
         self.searchText = searchText
         self.clientName = clientName
         self.contactName = contactName
@@ -62,8 +67,10 @@ final class SiteVisitIdentityDraft: Identifiable {
         self.phoneNumber = phoneNumber
         self.address = address
         self.notes = notes
+        self.createdBy = createdBy?.lowercased()
         self.createdAt = createdAt
         self.updatedAt = createdAt
+        self.needsSync = true
     }
 
     var additionalEmails: [String] {

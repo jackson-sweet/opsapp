@@ -6,7 +6,7 @@
 //  required→optional relaxation. A real shipped store sits at V10 with a NOT NULL
 //  `opportunityId`; this test stands up that exact on-disk shape (the frozen
 //  `OPSSchemaLegacySiteVisit.SiteVisit`), then reopens the same file with the
-//  full migration plan and the current (V19) schema and asserts the row survives
+//  full migration plan and the current (V20) schema and asserts the row survives
 //  with its `opportunityId` intact — and that the migrated store can now persist
 //  an unlinked visit with a nil `opportunityId`. (The migrated store must be
 //  opened at the CURRENT schema so the live `SiteVisit` type — which V15+
@@ -56,12 +56,12 @@ final class SiteVisitMigrationTests: XCTestCase {
             try context.save()
         }
 
-        // 2. Reopen the SAME file with the full migration plan + CURRENT (V19)
+        // 2. Reopen the SAME file with the full migration plan + CURRENT (V20)
         //    schema. This drives V10 → V11 (opportunityId becomes optional) → V12
-        //    → V13 → V14 → V15 (adds loggedActivityId) → … → V19. Opening at V19 means the
+        //    → V13 → V14 → V15 (adds loggedActivityId) → … → V20. Opening at V20 means the
         //    live `SiteVisit` type is the registered entity (V11–V14 register the
         //    frozen `OPSSchemaLegacySiteVisitV11.SiteVisit` after version-scoping).
-        let currentSchema = Schema(versionedSchema: OPSSchemaV19.self)
+        let currentSchema = Schema(versionedSchema: OPSSchemaV20.self)
         let currentConfig = ModelConfiguration(schema: currentSchema, url: storeURL)
         let migrated = try ModelContainer(
             for: currentSchema,
@@ -132,7 +132,7 @@ final class SiteVisitMigrationTests: XCTestCase {
 
         // 3. The pre-existing visit survives with its fields intact; the new
         //    column defaults to nil for the historical row.
-        let visits = try context.fetch(FetchDescriptor<SiteVisit>())
+        let visits = try context.fetch(FetchDescriptor<OPSSchemaLegacySiteVisitV19.SiteVisit>())
         XCTAssertEqual(visits.count, 1, "The V14 visit row must survive migration.")
         let migratedVisit = try XCTUnwrap(visits.first)
         XCTAssertEqual(migratedVisit.id, "visit-v14")
@@ -145,7 +145,127 @@ final class SiteVisitMigrationTests: XCTestCase {
         migratedVisit.loggedActivityId = "activity-abc"
         XCTAssertNoThrow(try context.save(), "A visit carrying a loggedActivityId must persist on the migrated store.")
 
-        let reread = try XCTUnwrap(try context.fetch(FetchDescriptor<SiteVisit>()).first)
+        let reread = try XCTUnwrap(
+            try context.fetch(FetchDescriptor<OPSSchemaLegacySiteVisitV19.SiteVisit>()).first
+        )
         XCTAssertEqual(reread.loggedActivityId, "activity-abc")
+    }
+
+    func test_v19StoreMigratesToV20_preservingEntireVisitPacketAndDefaultingCloudFields() throws {
+        let visitID = "AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAAA"
+        let artifactID = "BBBBBBBB-BBBB-4BBB-8BBB-BBBBBBBBBBBB"
+        let answerID = "CCCCCCCC-CCCC-4CCC-8CCC-CCCCCCCCCCCC"
+        let draftID = "DDDDDDDD-DDDD-4DDD-8DDD-DDDDDDDDDDDD"
+        let companyID = "EEEEEEEE-EEEE-4EEE-8EEE-EEEEEEEEEEEE"
+
+        try autoreleasepool {
+            let sourceSchema = Schema(versionedSchema: OPSSchemaV19.self)
+            let sourceConfiguration = ModelConfiguration(schema: sourceSchema, url: storeURL)
+            let sourceContainer = try ModelContainer(
+                for: sourceSchema,
+                configurations: sourceConfiguration
+            )
+            let context = ModelContext(sourceContainer)
+
+            let visit = OPSSchemaLegacySiteVisitV19.SiteVisit(
+                id: visitID,
+                opportunityId: "FFFFFFFF-FFFF-4FFF-8FFF-FFFFFFFFFFFF",
+                companyId: companyID,
+                status: .completed,
+                createdAt: Date(timeIntervalSince1970: 1_000)
+            )
+            visit.scheduledAt = Date(timeIntervalSince1970: 2_000)
+            visit.completedAt = Date(timeIntervalSince1970: 3_000)
+            visit.notes = "Existing visit notes"
+            visit.loggedActivityId = "11111111-1111-4111-8111-111111111111"
+            context.insert(visit)
+
+            let artifact = SiteVisitCaptureArtifact(
+                id: artifactID,
+                siteVisitId: visitID,
+                companyId: companyID,
+                opportunityId: visit.opportunityId,
+                kind: .photo,
+                source: .camera,
+                title: "North elevation",
+                localAssetURL: "file:///visit/north.jpg",
+                capturedAt: Date(timeIntervalSince1970: 2_100),
+                createdBy: "user-1"
+            )
+            context.insert(artifact)
+
+            let answer = SiteVisitChecklistAnswer(
+                id: answerID,
+                siteVisitId: visitID,
+                companyId: companyID,
+                opportunityId: visit.opportunityId,
+                siteVisitTypeId: "estimate",
+                fieldId: "access",
+                label: "Access",
+                kind: .shortText,
+                required: true,
+                sortOrder: 10,
+                answerValue: SiteVisitChecklistValue(text: "North gate"),
+                createdBy: "user-1",
+                createdAt: Date(timeIntervalSince1970: 2_200)
+            )
+            context.insert(answer)
+
+            let draft = OPSSchemaLegacySiteVisitIdentityDraftV19.SiteVisitIdentityDraft(
+                id: draftID,
+                siteVisitId: visitID,
+                companyId: companyID,
+                opportunityId: visit.opportunityId,
+                searchText: "temporary lookup",
+                clientName: "North Shore Homes",
+                contactName: "Helen Calloway",
+                preferredEmail: "helen@example.com",
+                address: "88 Birch Rd",
+                createdAt: Date(timeIntervalSince1970: 1_900)
+            )
+            context.insert(draft)
+            try context.save()
+        }
+
+        let targetSchema = Schema(versionedSchema: OPSSchemaV20.self)
+        let targetConfiguration = ModelConfiguration(schema: targetSchema, url: storeURL)
+        let migratedContainer = try ModelContainer(
+            for: targetSchema,
+            migrationPlan: OPSMigrationPlan.self,
+            configurations: targetConfiguration
+        )
+        let context = ModelContext(migratedContainer)
+
+        let visit = try XCTUnwrap(try context.fetch(FetchDescriptor<SiteVisit>()).first)
+        XCTAssertEqual(visit.id, visitID, "Migration must preserve historical uppercase ids; recovery canonicalizes them later.")
+        XCTAssertEqual(visit.notes, "Existing visit notes")
+        XCTAssertEqual(visit.loggedActivityId, "11111111-1111-4111-8111-111111111111")
+        XCTAssertNil(visit.projectId)
+        XCTAssertNil(visit.projectRef)
+        XCTAssertNil(visit.clientId)
+        XCTAssertNil(visit.clientRef)
+        XCTAssertEqual(visit.durationMinutes, 60)
+        XCTAssertEqual(visit.assigneeIds, [])
+        XCTAssertEqual(visit.photos, [])
+        XCTAssertFalse(visit.needsSync)
+        XCTAssertNil(visit.lastSyncedAt)
+        XCTAssertNil(visit.deletedAt)
+
+        let artifact = try XCTUnwrap(try context.fetch(FetchDescriptor<SiteVisitCaptureArtifact>()).first)
+        XCTAssertEqual(artifact.id, artifactID)
+        XCTAssertEqual(artifact.title, "North elevation")
+        XCTAssertEqual(artifact.localAssetURL, "file:///visit/north.jpg")
+
+        let answer = try XCTUnwrap(try context.fetch(FetchDescriptor<SiteVisitChecklistAnswer>()).first)
+        XCTAssertEqual(answer.id, answerID)
+        XCTAssertEqual(answer.answerValue.text, "North gate")
+
+        let draft = try XCTUnwrap(try context.fetch(FetchDescriptor<SiteVisitIdentityDraft>()).first)
+        XCTAssertEqual(draft.id, draftID)
+        XCTAssertEqual(draft.searchText, "temporary lookup")
+        XCTAssertEqual(draft.clientName, "North Shore Homes")
+        XCTAssertFalse(draft.needsSync)
+        XCTAssertNil(draft.lastSyncedAt)
+        XCTAssertNil(draft.deletedAt)
     }
 }

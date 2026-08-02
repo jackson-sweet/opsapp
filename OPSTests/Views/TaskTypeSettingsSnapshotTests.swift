@@ -116,7 +116,7 @@ final class TaskTypeSettingsSnapshotTests: XCTestCase {
             "Every task type fixture needs an explicit count"
         )
 
-        let schema = Schema(versionedSchema: OPSSchemaV19.self)
+        let schema = Schema(versionedSchema: OPSSchemaV20.self)
         let configuration = ModelConfiguration(
             schema: schema,
             isStoredInMemoryOnly: true,

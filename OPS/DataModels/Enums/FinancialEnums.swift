@@ -141,6 +141,7 @@ enum QuoteDeliveryMethod: String, Codable, CaseIterable {
 
 enum SiteVisitStatus: String, Codable {
     case scheduled = "scheduled"
+    case inProgress = "in_progress"
     case completed = "completed"
     case cancelled = "cancelled"
 }

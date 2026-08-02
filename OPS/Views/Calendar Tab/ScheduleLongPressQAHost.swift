@@ -42,7 +42,7 @@ struct ScheduleLongPressQAHost: View {
     @State private var dragSession = ScheduleDragSession()
 
     private static let modelContainer: ModelContainer = {
-        let schema = Schema(versionedSchema: OPSSchemaV19.self)
+        let schema = Schema(versionedSchema: OPSSchemaV20.self)
         let configuration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true, allowsSave: true)
         do {
             return try ModelContainer(for: schema, configurations: [configuration])

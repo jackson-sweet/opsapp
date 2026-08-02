@@ -834,6 +834,102 @@ enum OPSSchemaLegacySiteVisitV11 {
     }
 }
 
+/// Frozen `SiteVisit` shape as it shipped through V15–V19. V15 added the
+/// nullable `loggedActivityId` to the V11 shape; V20 widens the live model for
+/// complete Supabase round-tripping. Keeping this exact graph prevents the
+/// cloud fields from rewriting any released schema checksum.
+enum OPSSchemaLegacySiteVisitV19 {
+    @Model
+    final class SiteVisit: Identifiable {
+        @Attribute(.unique) var id: String
+        var opportunityId: String?
+        var companyId: String
+        var status: SiteVisitStatus
+        var scheduledAt: Date?
+        var completedAt: Date?
+        var notes: String?
+        var address: String?
+        var assignedTo: String?
+        var createdAt: Date
+        var loggedActivityId: String?
+
+        init(
+            id: String = UUID().uuidString,
+            opportunityId: String? = nil,
+            companyId: String,
+            status: SiteVisitStatus = .scheduled,
+            createdAt: Date = Date()
+        ) {
+            self.id = id
+            self.opportunityId = opportunityId
+            self.companyId = companyId
+            self.status = status
+            self.createdAt = createdAt
+        }
+    }
+}
+
+/// Frozen `SiteVisitIdentityDraft` shape as it shipped through V12–V19. V20
+/// adds cloud deletion/sync bookkeeping and author provenance to the live
+/// model, while this type keeps installed-store fingerprints recognizable.
+enum OPSSchemaLegacySiteVisitIdentityDraftV19 {
+    @Model
+    final class SiteVisitIdentityDraft: Identifiable {
+        @Attribute(.unique) var id: String
+        var siteVisitId: String
+        var companyId: String
+        var opportunityId: String?
+        var clientId: String?
+        var subClientId: String?
+        var searchText: String
+        var clientName: String
+        var contactName: String
+        var preferredEmail: String
+        var additionalEmailsJSON: String
+        var phoneNumber: String
+        var address: String
+        var notes: String
+        var createdAt: Date
+        var updatedAt: Date
+        var lastCommittedAt: Date?
+
+        init(
+            id: String = UUID().uuidString,
+            siteVisitId: String,
+            companyId: String,
+            opportunityId: String? = nil,
+            clientId: String? = nil,
+            subClientId: String? = nil,
+            searchText: String = "",
+            clientName: String = "",
+            contactName: String = "",
+            preferredEmail: String = "",
+            additionalEmailsJSON: String = "[]",
+            phoneNumber: String = "",
+            address: String = "",
+            notes: String = "",
+            createdAt: Date = Date()
+        ) {
+            self.id = id
+            self.siteVisitId = siteVisitId
+            self.companyId = companyId
+            self.opportunityId = opportunityId
+            self.clientId = clientId
+            self.subClientId = subClientId
+            self.searchText = searchText
+            self.clientName = clientName
+            self.contactName = contactName
+            self.preferredEmail = preferredEmail
+            self.additionalEmailsJSON = additionalEmailsJSON
+            self.phoneNumber = phoneNumber
+            self.address = address
+            self.notes = notes
+            self.createdAt = createdAt
+            self.updatedAt = createdAt
+        }
+    }
+}
+
 /// Frozen `Activity` shape as it shipped through V1–V13 — a REQUIRED
 /// `opportunityId: String`, and NO `clientId` / `projectId`. The live top-level
 /// `Activity` widens `opportunityId` to optional and adds `clientId`/`projectId`
@@ -1238,12 +1334,16 @@ enum OPSSchemaCommon {
         OPSSchemaLegacySiteVisitV11.SiteVisit.self
     ]
 
-    /// SiteVisit from V15 onward — the live model, which adds `loggedActivityId`
-    /// (a local-only idempotency key stamped when a completed visit posts its
-    /// "Site visit" activity to the timeline). Mirror of `v13ActivityModel`.
+    /// SiteVisit as it shipped from V15 through V19 — adds
+    /// `loggedActivityId` to the V11 shape, but predates cloud sync fields.
     /// (The `v14` suffix is the pre-consolidation introduction version; after the
     /// three-way schema reconciliation this live shape first appears at V15.)
     static let v14SiteVisitModel: [any PersistentModel.Type] = [
+        OPSSchemaLegacySiteVisitV19.SiteVisit.self
+    ]
+
+    /// SiteVisit from V20 onward — the live cloud-backed model.
+    static let v20SiteVisitModel: [any PersistentModel.Type] = [
         SiteVisit.self
     ]
 
@@ -1320,10 +1420,13 @@ enum OPSSchemaCommon {
         SiteVisitChecklistAnswer.self
     ]
 
-    /// V12 site-visit identity draft. Additive over V11 — stores local-first
-    /// client/lead contact details while the operator captures the visit before
-    /// selecting or creating the final lead.
+    /// Site-visit identity draft as it shipped from V12 through V19.
     static let v12SiteVisitIdentityModels: [any PersistentModel.Type] = [
+        OPSSchemaLegacySiteVisitIdentityDraftV19.SiteVisitIdentityDraft.self
+    ]
+
+    /// Site-visit identity draft from V20 onward — cloud deletion/sync state.
+    static let v20SiteVisitIdentityModels: [any PersistentModel.Type] = [
         SiteVisitIdentityDraft.self
     ]
 

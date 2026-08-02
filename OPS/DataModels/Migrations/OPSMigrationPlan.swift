@@ -119,6 +119,11 @@
 //  The exact released V18 Opportunity graph is frozen under
 //  `OPSSchemaLegacyOpportunityV18`; the widened live model starts at V19.
 //
+//  V19 → V20 stage: cloud-backed site-visit packets. SiteVisit gains the full
+//  Supabase parent projection and sync bookkeeping; SiteVisitIdentityDraft
+//  gains author/deletion/sync fields. Both V19 shapes are frozen so released
+//  fingerprints remain immutable. Every addition is optional or defaulted.
+//
 
 import Foundation
 import SwiftData
@@ -144,7 +149,8 @@ enum OPSMigrationPlan: SchemaMigrationPlan {
             OPSSchemaV16.self,
             OPSSchemaV17.self,
             OPSSchemaV18.self,
-            OPSSchemaV19.self
+            OPSSchemaV19.self,
+            OPSSchemaV20.self
         ]
     }
 
@@ -167,9 +173,16 @@ enum OPSMigrationPlan: SchemaMigrationPlan {
             addOpportunityMediaAndDeckLeadV15toV16,
             addVinylOrderColorPOV16toV17,
             addOpportunityAssignmentAndChaseV17toV18,
-            addOpportunityActionRequiredV18toV19
+            addOpportunityActionRequiredV18toV19,
+            addSiteVisitCloudFieldsV19toV20
         ]
     }
+
+    /// V19 → V20: additive cloud projection and synchronization bookkeeping.
+    static let addSiteVisitCloudFieldsV19toV20 = MigrationStage.lightweight(
+        fromVersion: OPSSchemaV19.self,
+        toVersion: OPSSchemaV20.self
+    )
 
     /// V18 → V19: additive lead-ownership correction signal. Existing leads
     /// receive nil; the frozen V18 Opportunity shape preserves the released

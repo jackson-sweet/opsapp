@@ -1045,7 +1045,7 @@ final class TaskTypeManagementTests: XCTestCase {
     }
 
     private func makeInMemoryContainer() throws -> ModelContainer {
-        let schema = Schema(versionedSchema: OPSSchemaV19.self)
+        let schema = Schema(versionedSchema: OPSSchemaV20.self)
         let configuration = ModelConfiguration(
             schema: schema,
             isStoredInMemoryOnly: true,

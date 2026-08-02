@@ -25,6 +25,14 @@ enum SyncStatusTone {
 }
 
 enum SyncStatusCopy {
+    enum SiteVisitLogout {
+        static let warningTitle = "Site visit not saved yet"
+        static let warningBody = "This phone still has site visit work that has not reached OPS. Stay signed in to retry, or discard it and log out."
+        static let stayAction = "Stay Signed In"
+        static let discardAction = "Discard & Log Out"
+        static let savingLabel = "SAVING VISIT..."
+    }
+
 
     // MARK: - Collapsed header
 
@@ -196,6 +204,8 @@ enum SyncStatusCopy {
         static let offlineRow = "Waiting for signal"
         static let orphanRow = "Not linked to a job or lead"
         static let draftRow = "Not sent yet — open to finish"
+        static let quarantineTitle = "Site visit recovery"
+        static let quarantineRow = "Protected on this phone"
 
         /// Backoff countdown line. `n` is always a whole second, floored to 1 so
         /// the operator never sees "next in 0s". Rendered in mono at the call site.

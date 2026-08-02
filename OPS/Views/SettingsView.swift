@@ -15,6 +15,8 @@ struct SettingsView: View {
     @EnvironmentObject private var permissionStore: PermissionStore
     @Environment(\.wizardStateManager) private var wizardStateManager
     @State private var showLogoutConfirmation = false
+    @State private var showUnsentSiteVisitLogoutWarning = false
+    @State private var isPreparingLogout = false
     // Bug G5 — the former sheet-based settings search has been replaced by an
     // in-header expandable input; its state lives on AppState now.
     @State private var isRestartingTutorial = false
@@ -447,11 +449,22 @@ struct SettingsView: View {
         .alert("Log Out", isPresented: $showLogoutConfirmation) {
             Button("Cancel", role: .cancel) { }
             Button("Log Out", role: .destructive) {
-                dataController.logout()
-                ToastCenter.shared.present(Feedback.Settings.loggedOut)
+                Task { await prepareLogout() }
             }
         } message: {
             Text("Are you sure you want to log out of your account?")
+        }
+        .alert(SyncStatusCopy.SiteVisitLogout.warningTitle, isPresented: $showUnsentSiteVisitLogoutWarning) {
+            Button(SyncStatusCopy.SiteVisitLogout.stayAction, role: .cancel) { }
+            Button(SyncStatusCopy.SiteVisitLogout.discardAction, role: .destructive) {
+                if dataController.logout(mode: .explicitDiscard) {
+                    ToastCenter.shared.present(Feedback.Settings.loggedOut)
+                } else {
+                    showUnsentSiteVisitLogoutWarning = true
+                }
+            }
+        } message: {
+            Text(SyncStatusCopy.SiteVisitLogout.warningBody)
         }
         // MARK: - Navigation Cover (consolidated enum-based)
         // Bug e33aa336 — when a search result targets a sub-section inside a
@@ -1104,11 +1117,16 @@ struct SettingsView: View {
     private var logOutButton: some View {
         Button(action: { showLogoutConfirmation = true }) {
             HStack {
-                Image(systemName: "rectangle.portrait.and.arrow.right")
-                    .font(OPSStyle.Typography.body)
-                    .foregroundColor(OPSStyle.Colors.errorStatus)
+                if isPreparingLogout {
+                    ProgressView()
+                        .tint(OPSStyle.Colors.errorStatus)
+                } else {
+                    Image(systemName: "rectangle.portrait.and.arrow.right")
+                        .font(OPSStyle.Typography.body)
+                        .foregroundColor(OPSStyle.Colors.errorStatus)
+                }
 
-                Text("LOG OUT")
+                Text(isPreparingLogout ? SyncStatusCopy.SiteVisitLogout.savingLabel : "LOG OUT")
                     .font(OPSStyle.Typography.bodyBold)
                     .foregroundColor(OPSStyle.Colors.errorStatus)
             }
@@ -1120,6 +1138,25 @@ struct SettingsView: View {
                     .stroke(OPSStyle.Colors.errorStatus, lineWidth: OPSStyle.Layout.Border.standard)
             )
             .cornerRadius(OPSStyle.Layout.cornerRadius)
+        }
+        .disabled(isPreparingLogout)
+    }
+
+    @MainActor
+    private func prepareLogout() async {
+        guard !isPreparingLogout else { return }
+        isPreparingLogout = true
+        let disposition = await dataController.prepareVoluntarySiteVisitLogout()
+        isPreparingLogout = false
+        switch disposition {
+        case .ready:
+            if dataController.logout(mode: .verifiedSafe) {
+                ToastCenter.shared.present(Feedback.Settings.loggedOut)
+            } else {
+                showUnsentSiteVisitLogoutWarning = true
+            }
+        case .unsentVisitWork:
+            showUnsentSiteVisitLogoutWarning = true
         }
     }
 

@@ -169,6 +169,14 @@ struct PendingWorkView: View {
                 onTap: { detailItem = item },
                 onRetry: { actions.retryItem(item) }
             )
+        case .quarantinedVisit:
+            PendingWorkEntryRow(
+                item: item,
+                now: now,
+                onTap: { detailItem = item },
+                onRetry: {},
+                showsRetry: false
+            )
         case .draft(let draft):
             PendingWorkDraftRow(draft: draft, now: now, onOpen: { actions.openDraft(draft) })
         case .orphanDesign(let design):
@@ -366,7 +374,7 @@ struct PendingWorkScreen: View {
                     retryPhotos(ids: member.photoIds)
                 }
             }
-        case .draft, .orphanDesign:
+        case .draft, .orphanDesign, .quarantinedVisit:
             break
         }
     }
@@ -462,6 +470,18 @@ struct PendingWorkScreen: View {
             deletePhotos(ids: grouped.map(\.id))
         case .bundle(let bundle):
             discardBundle(bundle)
+        case .quarantinedVisit(let visit):
+            do {
+                try SiteVisitRecoveryVault.shared.discardQuarantinedWork(
+                    id: visit.id,
+                    userId: visit.userId,
+                    companyId: visit.companyId,
+                    siteVisitId: visit.siteVisitId,
+                    from: modelContext
+                )
+            } catch {
+                print("[PENDING_WORK] Quarantined site-visit discard failed: \(error)")
+            }
         case .draft, .orphanDesign:
             break
         }

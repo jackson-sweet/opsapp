@@ -1925,13 +1925,25 @@ final class SyncEngine {
         let companyId = UserDefaults.standard.string(
             forKey: "currentUserCompanyId"
         )?.lowercased() ?? ""
-        guard !companyId.isEmpty else { return }
+        let userId = UserDefaults.standard.string(
+            forKey: "currentUserId"
+        )?.lowercased() ?? ""
+        guard !companyId.isEmpty, !userId.isEmpty else { return }
 
         do {
-            let result = try SiteVisitPersistenceCoordinator(
-                modelContext: modelContext,
-                companyId: companyId
-            ).recoverOrphanedWrites()
+            let result = try SiteVisitOrphanRecovery.recover(
+                in: modelContext,
+                activeUserId: userId,
+                activeCompanyId: companyId,
+                quarantine: { record in
+                    try SiteVisitRecoveryVault.shared.recordQuarantine(
+                        record,
+                        from: modelContext
+                    )
+                }
+            )
+            let marker = "site_visit_orphan_recovery_v1:\(userId):\(companyId)"
+            UserDefaults.standard.set(Date().timeIntervalSince1970, forKey: marker)
             if !result.operationIds.isEmpty {
                 print(
                     "[SYNC_ENGINE] Recovered \(result.operationIds.count) orphaned site-visit operation(s)"
@@ -2636,7 +2648,7 @@ final class SyncEngine {
     // MARK: - Private Helpers
 
     /// Refreshes the pendingOperationCount from SwiftData.
-    private func refreshPendingCount() {
+    func refreshPendingCount() {
         let pending = getPendingOperations()
         let dimensionedCount: Int
         if let modelContext {

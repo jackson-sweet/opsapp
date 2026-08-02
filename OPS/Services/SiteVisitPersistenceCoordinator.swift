@@ -135,7 +135,11 @@ final class SiteVisitPersistenceCoordinator {
         var queuedIds: [UUID] = []
         do {
             try modelContext.transaction {
-                queuedIds = try queueDirtyGraphs(onlyOrphans: true).operationIds
+                let result = try queueDirtyGraphs(onlyOrphans: true)
+                queuedIds = result.operationIds
+                try repairCompletionDependencies(
+                    chainTips: result.chainTips
+                )
                 try validateCommit()
             }
         } catch {
@@ -146,6 +150,46 @@ final class SiteVisitPersistenceCoordinator {
             operationIds: queuedIds,
             completionOperationId: nil
         )
+    }
+
+    /// A legacy completion command may predate the reconstructed parent and
+    /// therefore carry no dependency. Re-anchor it to the last parent/child/media
+    /// operation for the same visit so priority sorting can never complete the
+    /// visit before its packet exists on the server.
+    private func repairCompletionDependencies(
+        chainTips: [String: String]
+    ) throws {
+        let operations = try modelContext.fetch(FetchDescriptor<SyncOperation>())
+        for completion in operations where
+            completion.operationType == SiteVisitSyncOperation.completionOperationType
+                && Self.unresolvedStatuses.contains(completion.status)
+        {
+            guard let payload = try? JSONDecoder().decode(
+                SiteVisitSyncOperation.Payload.self,
+                from: completion.payload
+            ), belongsToCompany(payload.companyId) else { continue }
+            let visitId = payload.siteVisitId.lowercased()
+            if let chainTip = chainTips[visitId] {
+                completion.dependsOnId = chainTip
+                continue
+            }
+            completion.dependsOnId = operations
+                .filter { operation in
+                    guard operation.id != completion.id,
+                          operation.operationType
+                            != SiteVisitSyncOperation.completionOperationType,
+                          Self.unresolvedStatuses.contains(operation.status),
+                          let otherPayload = try? JSONDecoder().decode(
+                            SiteVisitSyncOperation.Payload.self,
+                            from: operation.payload
+                          ) else { return false }
+                    return otherPayload.siteVisitId.lowercased() == visitId
+                        && belongsToCompany(otherPayload.companyId)
+                }
+                .sorted(by: operationOrder)
+                .last?
+                .id.uuidString.lowercased()
+        }
     }
 
     private struct QueueResult {
@@ -163,6 +207,7 @@ final class SiteVisitPersistenceCoordinator {
         let visits = try modelContext.fetch(FetchDescriptor<SiteVisit>())
             .filter { belongsToCompany($0.companyId) }
             .sorted { $0.createdAt < $1.createdAt }
+        let visitIds = Set(visits.map { $0.id.lowercased() })
 
         for visit in visits where visit.needsSync {
             let specification = SiteVisitSyncOperation.parent(visit)
@@ -184,6 +229,7 @@ final class SiteVisitPersistenceCoordinator {
             .sorted { $0.createdAt < $1.createdAt }
         for artifact in artifacts where artifact.needsSync {
             let visitId = artifact.siteVisitId.lowercased()
+            guard visitIds.contains(visitId) else { continue }
             let specification = SiteVisitSyncOperation.artifact(artifact)
             if onlyOrphans,
                hasUnresolvedOperation(specification, operations: operations) {
@@ -207,6 +253,7 @@ final class SiteVisitPersistenceCoordinator {
             .sorted { $0.createdAt < $1.createdAt }
         for answer in answers {
             let visitId = answer.siteVisitId.lowercased()
+            guard visitIds.contains(visitId) else { continue }
             let specification = SiteVisitSyncOperation.checklistAnswer(answer)
             if onlyOrphans,
                hasUnresolvedOperation(specification, operations: operations) {
@@ -230,6 +277,7 @@ final class SiteVisitPersistenceCoordinator {
             .sorted { $0.createdAt < $1.createdAt }
         for draft in drafts {
             let visitId = draft.siteVisitId.lowercased()
+            guard visitIds.contains(visitId) else { continue }
             let specification = SiteVisitSyncOperation.identityDraft(draft)
             if onlyOrphans,
                hasUnresolvedOperation(specification, operations: operations) {
@@ -255,6 +303,7 @@ final class SiteVisitPersistenceCoordinator {
             artifact.deletedAt == nil && needsMediaUpload(artifact)
         {
             let visitId = artifact.siteVisitId.lowercased()
+            guard visitIds.contains(visitId) else { continue }
             let specification = SiteVisitSyncOperation.media(artifact)
             if onlyOrphans,
                hasUnresolvedOperation(specification, operations: operations) {
@@ -297,6 +346,7 @@ final class SiteVisitPersistenceCoordinator {
                     return false
                 }
                 return payload.siteVisitId.lowercased() == siteVisitId
+                    && belongsToCompany(payload.companyId)
             }
             .sorted(by: operationOrder)
             .last?

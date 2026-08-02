@@ -21,6 +21,45 @@ import XCTest
 
 @MainActor
 final class RecoveryInventoryTests: XCTestCase {
+    func test_quarantinedSiteVisitRendersOnlyAsProtectedUnlinkedWork() {
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        let quarantine = QuarantinedSiteVisitSnapshot(
+            id: "quarantine-1",
+            userId: "user-1",
+            companyId: "company-1",
+            siteVisitId: "visit-1",
+            reason: .ambiguousBinding,
+            createdAt: now,
+            capturedItemCount: 2
+        )
+
+        let inventory = RecoveryInventory.build(
+            ops: [],
+            autocreates: [],
+            photos: [],
+            drafts: [
+                DraftSnapshot(
+                    id: "draft-1",
+                    siteVisitId: "VISIT-1",
+                    clientId: nil,
+                    opportunityId: nil,
+                    displayName: "Duplicate draft row",
+                    createdAt: now,
+                    lastCommittedAt: nil
+                ),
+            ],
+            artifacts: [],
+            orphans: [],
+            quarantines: [quarantine],
+            now: now
+        )
+
+        XCTAssertTrue(inventory.attention.isEmpty)
+        XCTAssertTrue(inventory.sending.isEmpty)
+        XCTAssertTrue(inventory.drafts.isEmpty)
+        XCTAssertEqual(inventory.unlinked, [.quarantinedVisit(quarantine)])
+    }
+
 
     // MARK: - Fixtures
 

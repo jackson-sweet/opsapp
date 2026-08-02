@@ -378,6 +378,18 @@ struct SiteVisitBundle: Identifiable, Equatable {
     let siteVisitOperationIds: [UUID]
 }
 
+/// An encrypted packet that recovery refused to attach automatically because
+/// its tenant/identity evidence was unsafe or ambiguous.
+struct QuarantinedSiteVisitSnapshot: Identifiable, Equatable {
+    let id: String
+    let userId: String
+    let companyId: String
+    let siteVisitId: String
+    let reason: SiteVisitOrphanQuarantineReason
+    let createdAt: Date
+    let capturedItemCount: Int
+}
+
 /// A single renderable entry in a section. Stable `id`s let SwiftUI diff rows
 /// across rebuilds without reordering flicker.
 enum RecoveryItem: Identifiable, Equatable {
@@ -387,6 +399,7 @@ enum RecoveryItem: Identifiable, Equatable {
     case photos(grouped: [PhotoSnapshot], tone: RecoveryTone)
     case draft(DraftSnapshot)
     case orphanDesign(OrphanDesignSnapshot)
+    case quarantinedVisit(QuarantinedSiteVisitSnapshot)
 
     var id: String {
         switch self {
@@ -402,6 +415,8 @@ enum RecoveryItem: Identifiable, Equatable {
             return draft.id
         case .orphanDesign(let design):
             return design.id
+        case .quarantinedVisit(let visit):
+            return visit.id
         }
     }
 
@@ -414,6 +429,7 @@ enum RecoveryItem: Identifiable, Equatable {
         case .photos(_, let tone):           return tone
         case .draft:                         return .waiting
         case .orphanDesign:                  return .waiting
+        case .quarantinedVisit:              return .parked
         }
     }
 
@@ -427,6 +443,7 @@ enum RecoveryItem: Identifiable, Equatable {
         case .photos(let grouped, _):        return grouped.first?.createdAt ?? .distantPast
         case .draft(let draft):              return draft.createdAt
         case .orphanDesign(let design):      return design.createdAt
+        case .quarantinedVisit(let visit):   return visit.createdAt
         }
     }
 }
@@ -468,6 +485,7 @@ extension RecoveryInventory {
         artifacts: [ArtifactSnapshot],
         answers: [ChecklistAnswerSnapshot] = [],
         orphans: [OrphanDesignSnapshot],
+        quarantines: [QuarantinedSiteVisitSnapshot] = [],
         now: Date
     ) -> RecoveryInventory {
         // 1 · Only these statuses are live work. `completed` (and anything else) is
@@ -483,13 +501,21 @@ extension RecoveryInventory {
         var attention: [RecoveryItem] = []
         var sending: [RecoveryItem] = []
         var draftItems: [RecoveryItem] = []
+        let quarantinedVisitIds = Set(quarantines.map {
+            $0.siteVisitId.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        })
+        let visibleDrafts = drafts.filter {
+            !quarantinedVisitIds.contains(
+                $0.siteVisitId.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            )
+        }
 
         let siteVisitOpsById = Dictionary(grouping: consideredOps.compactMap { op in
             op.siteVisitId.map { ($0, op) }
         }, by: { $0.0 }).mapValues { $0.map(\.1) }
 
         // 2–4 · Bundle join, one draft at a time.
-        for draft in drafts {
+        for draft in visibleDrafts {
             var members: [RecoveryMember] = []
             let normalizedSiteVisitId = draft.siteVisitId.lowercased()
             let packetOps = (siteVisitOpsById[normalizedSiteVisitId] ?? [])
@@ -669,12 +695,13 @@ extension RecoveryInventory {
         sending.sort(by: Self.oldestFirst)
         draftItems.sort(by: Self.oldestFirst)
 
-        let unlinked = orphans
-            .sorted { lhs, rhs in
-                if lhs.createdAt != rhs.createdAt { return lhs.createdAt > rhs.createdAt }
-                return lhs.id > rhs.id
-            }
-            .map { RecoveryItem.orphanDesign($0) }
+        let unlinked = (
+            orphans.map { RecoveryItem.orphanDesign($0) }
+                + quarantines.map { RecoveryItem.quarantinedVisit($0) }
+        ).sorted { lhs, rhs in
+            if lhs.sortDate != rhs.sortDate { return lhs.sortDate > rhs.sortDate }
+            return lhs.id > rhs.id
+        }
 
         return RecoveryInventory(
             attention: attention,
@@ -916,6 +943,13 @@ extension RecoveryInventory {
         queue: ClientLeadAutocreateQueue,
         now: Date = Date()
     ) -> RecoveryInventory {
+        let activeCompanyId = UserDefaults.standard.string(
+            forKey: "currentUserCompanyId"
+        )?.lowercased() ?? ""
+        let activeUserId = UserDefaults.standard.string(
+            forKey: "currentUserId"
+        )?.lowercased() ?? ""
+
         // Ops: the four live statuses (completed excluded).
         let opDescriptor = FetchDescriptor<SyncOperation>(
             predicate: #Predicate<SyncOperation> {
@@ -925,7 +959,15 @@ extension RecoveryInventory {
                     || $0.status == "parked"
             }
         )
-        let ops = ((try? modelContext.fetch(opDescriptor)) ?? []).map(SyncOpSnapshot.init(from:))
+        let opModels = (try? modelContext.fetch(opDescriptor)) ?? []
+        let ops = opModels.filter { operation in
+            guard SiteVisitOutboundSync.isSiteVisitOperation(operation) else { return true }
+            guard let payload = try? JSONDecoder().decode(
+                SiteVisitSyncOperation.Payload.self,
+                from: operation.payload
+            ) else { return false }
+            return payload.companyId.lowercased() == activeCompanyId
+        }.map(SyncOpSnapshot.init(from:))
 
         // Autocreates: both parked and still-draining requests.
         let autocreates = (queue.parkedRequests + queue.activeRequests).map(AutocreateSnapshot.init(from:))
@@ -938,12 +980,15 @@ extension RecoveryInventory {
             }
         )
         let draftModels = (try? modelContext.fetch(draftDescriptor)) ?? []
-        let drafts = draftModels.map(DraftSnapshot.init(from:))
+        let scopedDraftModels = draftModels.filter {
+            $0.companyId.lowercased() == activeCompanyId
+        }
+        let drafts = scopedDraftModels.map(DraftSnapshot.init(from:))
 
         // Captures: load every active artifact/answer for the visit ids represented
         // by a draft or durable packet operation. They drive the row's captured
         // count; deck artifacts additionally resolve legacy deck-operation joins.
-        let visitIds = Set(draftModels.map { $0.siteVisitId.lowercased() })
+        let visitIds = Set(scopedDraftModels.map { $0.siteVisitId.lowercased() })
             .union(ops.compactMap(\.siteVisitId))
         let artifactDescriptor = FetchDescriptor<SiteVisitCaptureArtifact>(
             predicate: #Predicate<SiteVisitCaptureArtifact> {
@@ -951,15 +996,37 @@ extension RecoveryInventory {
             }
         )
         let artifacts = ((try? modelContext.fetch(artifactDescriptor)) ?? [])
-            .filter { visitIds.contains($0.siteVisitId.lowercased()) }
+            .filter {
+                $0.companyId.lowercased() == activeCompanyId
+                    && visitIds.contains($0.siteVisitId.lowercased())
+            }
             .map(ArtifactSnapshot.init(from:))
 
         let answerDescriptor = FetchDescriptor<SiteVisitChecklistAnswer>(
             predicate: #Predicate<SiteVisitChecklistAnswer> { $0.deletedAt == nil }
         )
         let answers = ((try? modelContext.fetch(answerDescriptor)) ?? [])
-            .filter { visitIds.contains($0.siteVisitId.lowercased()) }
+            .filter {
+                $0.companyId.lowercased() == activeCompanyId
+                    && visitIds.contains($0.siteVisitId.lowercased())
+            }
             .map(ChecklistAnswerSnapshot.init(from:))
+
+        let quarantines = SiteVisitRecoveryVault.shared.summaries(
+            userId: activeUserId,
+            companyId: activeCompanyId
+        ).compactMap { entry -> QuarantinedSiteVisitSnapshot? in
+            guard let reason = entry.reason else { return nil }
+            return QuarantinedSiteVisitSnapshot(
+                id: entry.id,
+                userId: activeUserId,
+                companyId: activeCompanyId,
+                siteVisitId: entry.siteVisitId,
+                reason: reason,
+                createdAt: entry.createdAt,
+                capturedItemCount: entry.capturedItemCount
+            )
+        }
 
         // Photos: queued ("local") or failed uploads.
         let photoDescriptor = FetchDescriptor<LocalPhoto>(
@@ -992,6 +1059,7 @@ extension RecoveryInventory {
             artifacts: artifacts,
             answers: answers,
             orphans: orphans,
+            quarantines: quarantines,
             now: now
         )
     }

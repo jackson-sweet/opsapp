@@ -192,6 +192,13 @@ final class SiteVisitMigrationTests: XCTestCase {
                 capturedAt: Date(timeIntervalSince1970: 2_100),
                 createdBy: "user-1"
             )
+            // The live initializer canonicalizes new IDs. Reapply the exact
+            // released V19 values so this fixture still represents a real
+            // historical store with uppercase identifiers.
+            artifact.id = artifactID
+            artifact.siteVisitId = visitID
+            artifact.companyId = companyID
+            artifact.opportunityId = visit.opportunityId
             context.insert(artifact)
 
             let answer = SiteVisitChecklistAnswer(
@@ -209,6 +216,10 @@ final class SiteVisitMigrationTests: XCTestCase {
                 createdBy: "user-1",
                 createdAt: Date(timeIntervalSince1970: 2_200)
             )
+            answer.id = answerID
+            answer.siteVisitId = visitID
+            answer.companyId = companyID
+            answer.opportunityId = visit.opportunityId
             context.insert(answer)
 
             let draft = OPSSchemaLegacySiteVisitIdentityDraftV19.SiteVisitIdentityDraft(

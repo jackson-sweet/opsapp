@@ -152,6 +152,10 @@ enum SyncStatusCopy {
         case "timeEntry": return "Time Entry"
         case "signatureCapture": return "Signature"
         case "formSubmission": return "Form"
+        case "siteVisit": return "Site Visit"
+        case "siteVisitArtifact": return "Site Visit Capture"
+        case "siteVisitChecklistAnswer": return "Site Visit Checklist"
+        case "siteVisitIdentityDraft": return "Site Visit Identity"
         default: return entityType.capitalized
         }
     }

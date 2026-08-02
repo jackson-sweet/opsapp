@@ -483,8 +483,9 @@ struct PendingWorkScreen: View {
                 deletePhotos(ids: member.photoIds)
             }
         }
-        // The capture itself is local-only (never synced) — hard-delete draft + visit.
-        deleteDraftAndVisit(draftId: bundle.draft.id, siteVisitId: bundle.draft.siteVisitId)
+        // Remove a never-sent packet locally, or queue tenant-scoped tombstones
+        // when any part of the packet has already reached the server.
+        deleteVisitPacket(siteVisitId: bundle.draft.siteVisitId)
     }
 
     private func cancelOperation(id: UUID) {
@@ -519,9 +520,66 @@ struct PendingWorkScreen: View {
         }
     }
 
-    private func deleteDraftAndVisit(draftId: String, siteVisitId: String) {
-        deleteFirst(FetchDescriptor<SiteVisitIdentityDraft>(predicate: #Predicate<SiteVisitIdentityDraft> { $0.id == draftId }))
-        deleteFirst(FetchDescriptor<SiteVisit>(predicate: #Predicate<SiteVisit> { $0.id == siteVisitId }))
+    private func deleteVisitPacket(siteVisitId: String) {
+        let visitDescriptor = FetchDescriptor<SiteVisit>(
+            predicate: #Predicate<SiteVisit> { $0.id == siteVisitId }
+        )
+        guard let visit = (try? modelContext.fetch(visitDescriptor))?.first else { return }
+        let artifactDescriptor = FetchDescriptor<SiteVisitCaptureArtifact>(
+            predicate: #Predicate<SiteVisitCaptureArtifact> { $0.siteVisitId == siteVisitId }
+        )
+        let answerDescriptor = FetchDescriptor<SiteVisitChecklistAnswer>(
+            predicate: #Predicate<SiteVisitChecklistAnswer> { $0.siteVisitId == siteVisitId }
+        )
+        let draftDescriptor = FetchDescriptor<SiteVisitIdentityDraft>(
+            predicate: #Predicate<SiteVisitIdentityDraft> { $0.siteVisitId == siteVisitId }
+        )
+        let artifacts = (try? modelContext.fetch(artifactDescriptor)) ?? []
+        let answers = (try? modelContext.fetch(answerDescriptor)) ?? []
+        let drafts = (try? modelContext.fetch(draftDescriptor)) ?? []
+        let coordinator = SiteVisitPersistenceCoordinator(
+            modelContext: modelContext,
+            companyId: visit.companyId
+        )
+        let wasNeverSynced = visit.lastSyncedAt == nil
+            && artifacts.allSatisfy { $0.lastSyncedAt == nil }
+            && answers.allSatisfy { $0.lastSyncedAt == nil }
+            && drafts.allSatisfy { $0.lastSyncedAt == nil }
+
+        do {
+            if wasNeverSynced {
+                try coordinator.hardDeleteNeverSyncedVisit(
+                    visit,
+                    artifacts: artifacts,
+                    answers: answers,
+                    drafts: drafts
+                )
+            } else {
+                try coordinator.commit {
+                    let deletedAt = Date()
+                    visit.status = .cancelled
+                    visit.deletedAt = deletedAt
+                    visit.updatedAt = deletedAt
+                    visit.needsSync = true
+                    for artifact in artifacts {
+                        artifact.deletedAt = deletedAt
+                        artifact.updatedAt = deletedAt
+                        artifact.needsSync = true
+                    }
+                    for answer in answers {
+                        answer.deletedAt = deletedAt
+                        answer.updatedAt = deletedAt
+                        answer.needsSync = true
+                    }
+                    for draft in drafts {
+                        draft.deletedAt = deletedAt
+                        draft.touch()
+                    }
+                }
+            }
+        } catch {
+            print("[PENDING_WORK] Site-visit discard save failed: \(error)")
+        }
     }
 
     private func deletePhotos(ids: [String]) {

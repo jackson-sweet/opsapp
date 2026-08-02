@@ -116,6 +116,7 @@ final class SiteVisitIdentityDraft: Identifiable {
 
     func touch() {
         updatedAt = Date()
+        needsSync = true
     }
 
     private static func encodeAdditionalEmails(_ emails: [String]) -> String {

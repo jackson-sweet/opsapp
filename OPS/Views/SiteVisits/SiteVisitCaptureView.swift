@@ -266,9 +266,13 @@ private struct SiteVisitCaptureConsole: View {
             )
         }
         .sheet(item: $markupArtifact) { artifact in
-            SiteVisitPhotoMarkupView(artifact: artifact) {
-                viewModel.reloadArtifacts()
-            }
+            SiteVisitPhotoMarkupView(
+                artifact: artifact,
+                persistMarkup: { url in
+                    viewModel.saveMarkup(artifact, renderedAssetURL: url)
+                },
+                onSaved: { viewModel.reloadArtifacts() }
+            )
         }
         .sheet(item: $previewArtifact) { artifact in
             SiteVisitPhotoPreviewSheet(artifact: artifact) {
@@ -2441,10 +2445,10 @@ private struct SiteVisitPhotoPreviewSheet: View {
 
 private struct SiteVisitPhotoMarkupView: View {
     @Bindable var artifact: SiteVisitCaptureArtifact
+    let persistMarkup: (String) -> Bool
     let onSaved: () -> Void
 
     @Environment(\.dismiss) private var dismiss
-    @Environment(\.modelContext) private var modelContext
     @State private var image: UIImage?
     @State private var drawing = PKDrawing()
     @State private var canvasSize = CGSize(width: 1, height: 1)
@@ -2507,11 +2511,10 @@ private struct SiteVisitPhotoMarkupView: View {
             return
         }
 
-        artifact.kind = .annotatedPhoto
-        artifact.renderedAssetURL = url
-        artifact.updatedAt = Date()
-        artifact.needsSync = true
-        try? modelContext.save()
+        guard persistMarkup(url) else {
+            errorMessage = "MARKUP SAVE FAILED"
+            return
+        }
         onSaved()
         dismiss()
     }

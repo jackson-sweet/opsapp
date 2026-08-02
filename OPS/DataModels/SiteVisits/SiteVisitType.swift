@@ -290,10 +290,10 @@ final class SiteVisitChecklistAnswer: Identifiable {
         createdBy: String? = nil,
         createdAt: Date = Date()
     ) {
-        self.id = id
-        self.siteVisitId = siteVisitId
-        self.companyId = companyId
-        self.opportunityId = opportunityId
+        self.id = id.lowercased()
+        self.siteVisitId = siteVisitId.lowercased()
+        self.companyId = companyId.lowercased()
+        self.opportunityId = opportunityId?.lowercased()
         self.siteVisitTypeId = siteVisitTypeId
         self.fieldId = fieldId
         self.label = label
@@ -301,7 +301,7 @@ final class SiteVisitChecklistAnswer: Identifiable {
         self.required = required
         self.helpText = helpText
         self.sortOrder = sortOrder
-        self.createdBy = createdBy
+        self.createdBy = createdBy?.lowercased()
         self.createdAt = createdAt
         self.needsSync = true
         self.answerValue = answerValue

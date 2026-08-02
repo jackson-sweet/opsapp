@@ -507,11 +507,6 @@ final class SiteVisitCapturePacketTests: XCTestCase {
         XCTAssertTrue(viewModel.canComplete)
         XCTAssertTrue(viewModel.hasProjectEvidence)
         XCTAssertTrue(viewModel.completeVisit())
-        // Drain the fire-and-forget activity post while this test's container
-        // is still alive — a task left pending would run after the store is
-        // torn down and touch a dead context mid-way through a later test.
-        await viewModel.siteVisitActivityTask?.value
-
         let payload = try XCTUnwrap(viewModel.projectPayload())
         XCTAssertTrue(payload.photoArtifactIds.isEmpty)
         XCTAssertEqual(payload.checklistAnswerIds.last, gateCode.id)
@@ -604,7 +599,11 @@ final class SiteVisitCapturePacketTests: XCTestCase {
 
     private func makeInMemoryContainer() throws -> ModelContainer {
         let schema = Schema([
+            SiteVisit.self,
             SiteVisitCaptureArtifact.self,
+            SiteVisitChecklistAnswer.self,
+            SiteVisitIdentityDraft.self,
+            SyncOperation.self,
             ProjectPhoto.self,
             ProjectNote.self,
             PhotoAnnotation.self,
@@ -625,7 +624,8 @@ final class SiteVisitCapturePacketTests: XCTestCase {
             SiteVisitCaptureArtifact.self,
             SiteVisitType.self,
             SiteVisitChecklistAnswer.self,
-            SiteVisitIdentityDraft.self
+            SiteVisitIdentityDraft.self,
+            SyncOperation.self
         ])
         let configuration = ModelConfiguration(
             schema: schema,

@@ -118,6 +118,71 @@ final class SiteVisitServerMergeTests: XCTestCase {
         XCTAssertEqual(local.deletedAt, Date(timeIntervalSince1970: 500))
     }
 
+    func testOlderRealtimeEchoCannotOverwriteNewerServerSnapshot() throws {
+        let context = try makeContext()
+        let bundle = try makeBundle()
+        _ = try SiteVisitServerMerge.merge(bundle: bundle, into: context)
+
+        let newer = bundle.visit.replacing(notes: "Newest server note")
+        _ = try SiteVisitServerMerge.merge(
+            visit: newer,
+            companyId: companyId,
+            into: context
+        )
+        let local = try XCTUnwrap(
+            try context.fetch(FetchDescriptor<SiteVisit>()).first
+        )
+        local.updatedAt = Date(timeIntervalSince1970: 2_000_000_000)
+
+        let stale = bundle.visit.replacing(notes: "Delayed old echo")
+        _ = try SiteVisitServerMerge.merge(
+            visit: stale,
+            companyId: companyId,
+            into: context
+        )
+
+        XCTAssertEqual(local.notes, "Newest server note")
+        XCTAssertEqual(local.updatedAt, Date(timeIntervalSince1970: 2_000_000_000))
+    }
+
+    func testMalformedDeltaIsRejectedBeforeParentMutation() throws {
+        let context = try makeContext()
+        let bundle = try makeBundle()
+        let orphan: [SiteVisitArtifactDTO] = try JSONDecoder().decode(
+            [SiteVisitArtifactDTO].self,
+            from: Data("""
+            [{
+              "id":"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa09",
+              "site_visit_id":"ffffffff-ffff-4fff-8fff-ffffffffffff",
+              "company_id":"\(companyId)",
+              "kind":"note",
+              "source":"keyboard",
+              "included_in_project_review":true,
+              "captured_at":"2026-07-31T18:12:46Z",
+              "created_by":"\(userId)",
+              "created_at":"2026-07-31T18:12:46Z",
+              "updated_at":"2026-07-31T18:12:46Z"
+            }]
+            """.utf8)
+        )
+
+        XCTAssertThrowsError(
+            try SiteVisitServerMerge.merge(
+                delta: SiteVisitDeltaBundleDTO(
+                    visits: [bundle.visit],
+                    artifacts: orphan,
+                    checklistAnswers: [],
+                    identityDrafts: []
+                ),
+                companyId: companyId,
+                into: context
+            )
+        )
+        XCTAssertTrue(try context.fetch(FetchDescriptor<SiteVisit>()).isEmpty)
+        XCTAssertTrue(try context.fetch(FetchDescriptor<SiteVisitCaptureArtifact>()).isEmpty)
+        XCTAssertFalse(context.hasChanges)
+    }
+
     private func makeContext() throws -> ModelContext {
         let schema = Schema([
             SiteVisit.self,

@@ -102,6 +102,9 @@ actor DataActor {
         .projectPhoto,
         .photoAnnotation,
         .deckDesign,
+        // SiteVisitRepository fetches and merges the parent plus all packet
+        // children as one parent-first recovery unit.
+        .siteVisit,
         .estimate,
         .invoice,
         .calendarUserEvent,   // Bug 1 — user-created time-off / personal events
@@ -437,6 +440,8 @@ actor DataActor {
             try await syncPhotoAnnotations(since: since, repos: repos)
         case .deckDesign:
             try await syncDeckDesigns(since: since, repos: repos)
+        case .siteVisit:
+            try await syncSiteVisits(since: since, companyId: repos.companyId)
         case .wizardState:
             try await syncWizardStates(since: since, repos: repos)
         case .estimate:
@@ -512,6 +517,36 @@ actor DataActor {
             print("[DataActor] Entity type \(entityType.rawValue) not yet supported for inbound sync")
         }
     }
+
+    // MARK: - Sync: Site Visits
+
+    private func syncSiteVisits(
+        since: Date?,
+        companyId: String
+    ) async throws {
+        let repository = await MainActor.run {
+            SiteVisitRepository(companyId: companyId)
+        }
+        let delta = try await repository.fetchAll(since: since)
+        let report = try SiteVisitServerMerge.merge(
+            delta: delta,
+            companyId: companyId,
+            into: modelContext
+        )
+        if report.inserted > 0 || report.updated > 0 {
+            inboundMergedEntityNames.formUnion(Self.siteVisitEntityNames)
+        }
+        print(
+            "[DataActor] Merged \(report.inserted + report.updated) site-visit packet rows"
+        )
+    }
+
+    private static let siteVisitEntityNames: Set<String> = [
+        "SiteVisit",
+        "SiteVisitCaptureArtifact",
+        "SiteVisitChecklistAnswer",
+        "SiteVisitIdentityDraft",
+    ]
 
     // MARK: - Sync: Company (single-row fetch)
 
@@ -3843,6 +3878,10 @@ actor DataActor {
     /// re-pull the affected row.
     func handleRealtimeUpdate(_ update: RealtimeUpdate) async {
         do {
+            if try await mergeSiteVisitRealtimeIfHandled(update) {
+                InboundChangeSignal.post(entityNames: [update.mergedEntityName])
+                return
+            }
             try modelContext.transaction {
                 switch update {
                 case .project(let dto):                 try mergeProject(dto: dto)
@@ -3866,6 +3905,9 @@ actor DataActor {
                 case .companyDefaultProduct(let dto):   try mergeCompanyDefaultProduct(dto: dto)
                 case .product(let dto):                 try ProductSyncLocalStore.merge(dto: dto, context: modelContext)
                 case .calendarUserEvent(let dto):       try mergeCalendarUserEvent(dto: dto)
+                case .siteVisit, .siteVisitArtifact,
+                     .siteVisitChecklistAnswer, .siteVisitIdentityDraft:
+                    break // handled above by the shared parent-aware merge
                 }
             }
             // Tell snapshot-cache consumers (calendar) the merge landed.
@@ -3875,6 +3917,86 @@ actor DataActor {
         } catch {
             print("[DataActor] Realtime merge failed: \(error)")
         }
+    }
+
+    private func mergeSiteVisitRealtimeIfHandled(
+        _ update: RealtimeUpdate
+    ) async throws -> Bool {
+        switch update {
+        case .siteVisit(let dto):
+            _ = try SiteVisitServerMerge.merge(
+                visit: dto,
+                companyId: activeCompanyId(fallback: dto.companyId),
+                into: modelContext
+            )
+        case .siteVisitArtifact(let dto):
+            let companyId = activeCompanyId(fallback: dto.companyId)
+            do {
+                _ = try SiteVisitServerMerge.merge(
+                    artifact: dto,
+                    companyId: companyId,
+                    into: modelContext
+                )
+            } catch SiteVisitMergeError.orphanedChild {
+                try await recoverSiteVisitBundle(
+                    siteVisitId: dto.siteVisitId,
+                    companyId: companyId
+                )
+            }
+        case .siteVisitChecklistAnswer(let dto):
+            let companyId = activeCompanyId(fallback: dto.companyId)
+            do {
+                _ = try SiteVisitServerMerge.merge(
+                    checklistAnswer: dto,
+                    companyId: companyId,
+                    into: modelContext
+                )
+            } catch SiteVisitMergeError.orphanedChild {
+                try await recoverSiteVisitBundle(
+                    siteVisitId: dto.siteVisitId,
+                    companyId: companyId
+                )
+            }
+        case .siteVisitIdentityDraft(let dto):
+            let companyId = activeCompanyId(fallback: dto.companyId)
+            do {
+                _ = try SiteVisitServerMerge.merge(
+                    identityDraft: dto,
+                    companyId: companyId,
+                    into: modelContext
+                )
+            } catch SiteVisitMergeError.orphanedChild {
+                try await recoverSiteVisitBundle(
+                    siteVisitId: dto.siteVisitId,
+                    companyId: companyId
+                )
+            }
+        default:
+            return false
+        }
+        return true
+    }
+
+    private func recoverSiteVisitBundle(
+        siteVisitId: String,
+        companyId: String
+    ) async throws {
+        let repository = await MainActor.run {
+            SiteVisitRepository(companyId: companyId)
+        }
+        let bundle = try await repository.fetchBundle(siteVisitId: siteVisitId)
+        _ = try SiteVisitServerMerge.merge(
+            bundle: bundle,
+            into: modelContext
+        )
+        inboundMergedEntityNames.formUnion(Self.siteVisitEntityNames)
+    }
+
+    private func activeCompanyId(fallback: String) -> String {
+        let stored = UserDefaults.standard.string(forKey: "currentUserCompanyId")
+            ?? UserDefaults.standard.string(forKey: "company_id")
+        guard let stored, !stored.isEmpty else { return fallback.lowercased() }
+        return stored.lowercased()
     }
 
     // MARK: - Realtime Soft Delete Entry Point
@@ -3932,6 +4054,22 @@ actor DataActor {
                     }
                 case "deck_designs":
                     if let m = try modelContext.fetch(FetchDescriptor<DeckDesign>(predicate: #Predicate { $0.id == id })).first {
+                        m.deletedAt = Date()
+                    }
+                case "site_visits":
+                    if let m = try modelContext.fetch(FetchDescriptor<SiteVisit>(predicate: #Predicate { $0.id == id })).first {
+                        m.deletedAt = Date()
+                    }
+                case "site_visit_artifacts":
+                    if let m = try modelContext.fetch(FetchDescriptor<SiteVisitCaptureArtifact>(predicate: #Predicate { $0.id == id })).first {
+                        m.deletedAt = Date()
+                    }
+                case "site_visit_checklist_answers":
+                    if let m = try modelContext.fetch(FetchDescriptor<SiteVisitChecklistAnswer>(predicate: #Predicate { $0.id == id })).first {
+                        m.deletedAt = Date()
+                    }
+                case "site_visit_identity_drafts":
+                    if let m = try modelContext.fetch(FetchDescriptor<SiteVisitIdentityDraft>(predicate: #Predicate { $0.id == id })).first {
                         m.deletedAt = Date()
                     }
                 case "calendar_user_events":
@@ -5305,6 +5443,10 @@ enum RealtimeUpdate: Sendable {
     case projectPhoto(ProjectPhotoDTO)
     case photoAnnotation(PhotoAnnotationDTO)
     case deckDesign(SupabaseDeckDesignDTO)
+    case siteVisit(SiteVisitDTO)
+    case siteVisitArtifact(SiteVisitArtifactDTO)
+    case siteVisitChecklistAnswer(SiteVisitChecklistAnswerDTO)
+    case siteVisitIdentityDraft(SiteVisitIdentityDraftDTO)
     // Catalog parents (Option A — children refetch via next pullDelta).
     case catalogCategory(CatalogCategoryDTO)
     case catalogUnit(CatalogUnitDTO)

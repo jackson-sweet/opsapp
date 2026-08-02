@@ -42,17 +42,18 @@ enum SiteVisitServerMerge {
     ) throws -> SiteVisitMergeReport {
         try validate(bundle: bundle)
         var report = SiteVisitMergeReport()
-        try merge(visit: bundle.visit, into: context, now: now, report: &report)
-        for draft in bundle.identityDrafts {
-            try merge(identityDraft: draft, into: context, now: now, report: &report)
+        try context.transaction {
+            try merge(visit: bundle.visit, into: context, now: now, report: &report)
+            for draft in bundle.identityDrafts {
+                try merge(identityDraft: draft, into: context, now: now, report: &report)
+            }
+            for answer in bundle.checklistAnswers {
+                try merge(checklistAnswer: answer, into: context, now: now, report: &report)
+            }
+            for artifact in bundle.artifacts {
+                try merge(artifact: artifact, into: context, now: now, report: &report)
+            }
         }
-        for answer in bundle.checklistAnswers {
-            try merge(checklistAnswer: answer, into: context, now: now, report: &report)
-        }
-        for artifact in bundle.artifacts {
-            try merge(artifact: artifact, into: context, now: now, report: &report)
-        }
-        try context.save()
         return report
     }
 
@@ -63,39 +64,124 @@ enum SiteVisitServerMerge {
         now: Date = Date()
     ) throws -> SiteVisitMergeReport {
         let canonicalCompany = companyId.lowercased()
-        for visit in delta.visits where visit.companyId != canonicalCompany {
-            throw SiteVisitMergeError.companyMismatch(
-                expected: canonicalCompany,
-                received: visit.companyId
-            )
-        }
-        for child in delta.identityDrafts where child.companyId != canonicalCompany {
-            throw SiteVisitMergeError.companyMismatch(expected: canonicalCompany, received: child.companyId)
-        }
-        for child in delta.checklistAnswers where child.companyId != canonicalCompany {
-            throw SiteVisitMergeError.companyMismatch(expected: canonicalCompany, received: child.companyId)
-        }
-        for child in delta.artifacts where child.companyId != canonicalCompany {
-            throw SiteVisitMergeError.companyMismatch(expected: canonicalCompany, received: child.companyId)
-        }
+
+        // SwiftData's transaction closure does not discard inserted in-memory
+        // models when the closure throws. Validate the complete dependency
+        // graph before touching the context so one malformed late child cannot
+        // leave an earlier parent staged for an unrelated future save.
+        try validate(
+            delta: delta,
+            companyId: canonicalCompany,
+            context: context
+        )
 
         var report = SiteVisitMergeReport()
-        for visit in delta.visits {
+        try context.transaction {
+            for visit in delta.visits {
+                try merge(visit: visit, into: context, now: now, report: &report)
+            }
+            for draft in delta.identityDrafts {
+                try requireParent(draft.siteVisitId, table: "site_visit_identity_drafts", childId: draft.id, context: context)
+                try merge(identityDraft: draft, into: context, now: now, report: &report)
+            }
+            for answer in delta.checklistAnswers {
+                try requireParent(answer.siteVisitId, table: "site_visit_checklist_answers", childId: answer.id, context: context)
+                try merge(checklistAnswer: answer, into: context, now: now, report: &report)
+            }
+            for artifact in delta.artifacts {
+                try requireParent(artifact.siteVisitId, table: "site_visit_artifacts", childId: artifact.id, context: context)
+                try merge(artifact: artifact, into: context, now: now, report: &report)
+            }
+        }
+        return report
+    }
+
+    /// Applies one realtime parent row through the exact same field-protection
+    /// rules used by full and delta pulls.
+    static func merge(
+        visit: SiteVisitDTO,
+        companyId: String,
+        into context: ModelContext,
+        now: Date = Date()
+    ) throws -> SiteVisitMergeReport {
+        try requireCompany(visit.companyId, expected: companyId)
+        var report = SiteVisitMergeReport()
+        try context.transaction {
             try merge(visit: visit, into: context, now: now, report: &report)
         }
-        for draft in delta.identityDrafts {
-            try requireParent(draft.siteVisitId, table: "site_visit_identity_drafts", childId: draft.id, context: context)
-            try merge(identityDraft: draft, into: context, now: now, report: &report)
-        }
-        for answer in delta.checklistAnswers {
-            try requireParent(answer.siteVisitId, table: "site_visit_checklist_answers", childId: answer.id, context: context)
-            try merge(checklistAnswer: answer, into: context, now: now, report: &report)
-        }
-        for artifact in delta.artifacts {
-            try requireParent(artifact.siteVisitId, table: "site_visit_artifacts", childId: artifact.id, context: context)
+        return report
+    }
+
+    /// Applies one realtime artifact only after its local parent exists. A
+    /// child that beats its parent to the device is rejected and recovered by
+    /// the next ordered delta pull instead of creating an orphan packet row.
+    static func merge(
+        artifact: SiteVisitArtifactDTO,
+        companyId: String,
+        into context: ModelContext,
+        now: Date = Date()
+    ) throws -> SiteVisitMergeReport {
+        try requireCompany(artifact.companyId, expected: companyId)
+        var report = SiteVisitMergeReport()
+        try context.transaction {
+            try requireParent(
+                artifact.siteVisitId,
+                table: "site_visit_artifacts",
+                childId: artifact.id,
+                context: context
+            )
             try merge(artifact: artifact, into: context, now: now, report: &report)
         }
-        try context.save()
+        return report
+    }
+
+    static func merge(
+        checklistAnswer: SiteVisitChecklistAnswerDTO,
+        companyId: String,
+        into context: ModelContext,
+        now: Date = Date()
+    ) throws -> SiteVisitMergeReport {
+        try requireCompany(checklistAnswer.companyId, expected: companyId)
+        var report = SiteVisitMergeReport()
+        try context.transaction {
+            try requireParent(
+                checklistAnswer.siteVisitId,
+                table: "site_visit_checklist_answers",
+                childId: checklistAnswer.id,
+                context: context
+            )
+            try merge(
+                checklistAnswer: checklistAnswer,
+                into: context,
+                now: now,
+                report: &report
+            )
+        }
+        return report
+    }
+
+    static func merge(
+        identityDraft: SiteVisitIdentityDraftDTO,
+        companyId: String,
+        into context: ModelContext,
+        now: Date = Date()
+    ) throws -> SiteVisitMergeReport {
+        try requireCompany(identityDraft.companyId, expected: companyId)
+        var report = SiteVisitMergeReport()
+        try context.transaction {
+            try requireParent(
+                identityDraft.siteVisitId,
+                table: "site_visit_identity_drafts",
+                childId: identityDraft.id,
+                context: context
+            )
+            try merge(
+                identityDraft: identityDraft,
+                into: context,
+                now: now,
+                report: &report
+            )
+        }
         return report
     }
 
@@ -108,6 +194,8 @@ enum SiteVisitServerMerge {
         report: inout SiteVisitMergeReport
     ) throws {
         if let existing = try fetch(SiteVisit.self, id: dto.id, in: context) {
+            let isStale = existing.lastSyncedAt != nil
+                && isOlder(dto.updatedAt, than: existing.updatedAt)
             let protection = protectedFields(
                 entityType: EntityType.visit,
                 entityId: dto.id,
@@ -116,7 +204,7 @@ enum SiteVisitServerMerge {
                 context: context,
                 now: now
             )
-            let accept = protection.accepts
+            let accept = { field in !isStale && protection.accepts(field) }
             if accept("opportunity_id") { existing.opportunityId = dto.opportunityId }
             if accept("project_id") { existing.projectId = dto.projectId }
             if accept("project_ref") { existing.projectRef = dto.projectRef }
@@ -138,10 +226,12 @@ enum SiteVisitServerMerge {
 
             // These are server-owned reconciliation slots, never authored by a
             // normal local edit after the row exists.
-            existing.loggedActivityId = dto.activityId
-            existing.createdBy = dto.createdBy
-            if let createdAt = dto.createdAt { existing.createdAt = createdAt }
-            existing.updatedAt = dto.updatedAt
+            if !isStale {
+                existing.loggedActivityId = dto.activityId
+                existing.createdBy = dto.createdBy
+                if let createdAt = dto.createdAt { existing.createdAt = createdAt }
+                existing.updatedAt = dto.updatedAt
+            }
             existing.lastSyncedAt = now
             existing.needsSync = protection.hasLocalWork
             report.updated += 1
@@ -191,6 +281,8 @@ enum SiteVisitServerMerge {
             "included_in_project_review", "captured_at", "deleted_at",
         ]
         if let existing = try fetch(SiteVisitCaptureArtifact.self, id: dto.id, in: context) {
+            let isStale = existing.lastSyncedAt != nil
+                && isOlder(dto.updatedAt, than: existing.updatedAt)
             let protection = protectedFields(
                 entityType: EntityType.artifact,
                 entityId: dto.id,
@@ -199,7 +291,7 @@ enum SiteVisitServerMerge {
                 context: context,
                 now: now
             )
-            let accept = protection.accepts
+            let accept = { field in !isStale && protection.accepts(field) }
             if accept("opportunity_id") { existing.opportunityId = dto.opportunityId }
             if accept("kind") { existing.kind = dto.kind }
             if accept("source") { existing.source = dto.source }
@@ -215,9 +307,11 @@ enum SiteVisitServerMerge {
             }
             if accept("captured_at") { existing.capturedAt = dto.capturedAt }
             if dto.deletedAt != nil || accept("deleted_at") { existing.deletedAt = dto.deletedAt }
-            existing.createdBy = dto.createdBy
-            existing.createdAt = dto.createdAt
-            existing.updatedAt = dto.updatedAt
+            if !isStale {
+                existing.createdBy = dto.createdBy
+                existing.createdAt = dto.createdAt
+                existing.updatedAt = dto.updatedAt
+            }
             existing.lastSyncedAt = now
             existing.needsSync = protection.hasLocalWork
             report.updated += 1
@@ -263,6 +357,8 @@ enum SiteVisitServerMerge {
             "required", "help_text", "sort_order", "answer_value", "deleted_at",
         ]
         if let existing = try fetch(SiteVisitChecklistAnswer.self, id: dto.id, in: context) {
+            let isStale = existing.lastSyncedAt != nil
+                && isOlder(dto.updatedAt, than: existing.updatedAt)
             let protection = protectedFields(
                 entityType: EntityType.checklistAnswer,
                 entityId: dto.id,
@@ -271,7 +367,7 @@ enum SiteVisitServerMerge {
                 context: context,
                 now: now
             )
-            let accept = protection.accepts
+            let accept = { field in !isStale && protection.accepts(field) }
             if accept("opportunity_id") { existing.opportunityId = dto.opportunityId }
             if accept("site_visit_type_id") { existing.siteVisitTypeId = dto.siteVisitTypeId }
             if accept("field_id") { existing.fieldId = dto.fieldId }
@@ -282,9 +378,11 @@ enum SiteVisitServerMerge {
             if accept("sort_order") { existing.sortOrder = dto.sortOrder }
             if accept("answer_value") { existing.answerValue = dto.answerValue }
             if dto.deletedAt != nil || accept("deleted_at") { existing.deletedAt = dto.deletedAt }
-            existing.createdBy = dto.createdBy
-            existing.createdAt = dto.createdAt
-            existing.updatedAt = dto.updatedAt
+            if !isStale {
+                existing.createdBy = dto.createdBy
+                existing.createdAt = dto.createdAt
+                existing.updatedAt = dto.updatedAt
+            }
             existing.lastSyncedAt = now
             existing.needsSync = protection.hasLocalWork
             report.updated += 1
@@ -328,6 +426,8 @@ enum SiteVisitServerMerge {
             "address", "notes", "last_committed_at", "deleted_at",
         ]
         if let existing = try fetch(SiteVisitIdentityDraft.self, id: dto.id, in: context) {
+            let isStale = existing.lastSyncedAt != nil
+                && isOlder(dto.updatedAt, than: existing.updatedAt)
             let protection = protectedFields(
                 entityType: EntityType.identityDraft,
                 entityId: dto.id,
@@ -336,7 +436,7 @@ enum SiteVisitServerMerge {
                 context: context,
                 now: now
             )
-            let accept = protection.accepts
+            let accept = { field in !isStale && protection.accepts(field) }
             if accept("opportunity_id") { existing.opportunityId = dto.opportunityId }
             if accept("client_id") { existing.clientId = dto.clientId }
             if accept("sub_client_id") { existing.subClientId = dto.subClientId }
@@ -349,9 +449,11 @@ enum SiteVisitServerMerge {
             if accept("notes") { existing.notes = dto.notes }
             if accept("last_committed_at") { existing.lastCommittedAt = dto.lastCommittedAt }
             if dto.deletedAt != nil || accept("deleted_at") { existing.deletedAt = dto.deletedAt }
-            existing.createdBy = dto.createdBy
-            existing.createdAt = dto.createdAt
-            existing.updatedAt = dto.updatedAt
+            if !isStale {
+                existing.createdBy = dto.createdBy
+                existing.createdAt = dto.createdAt
+                existing.updatedAt = dto.updatedAt
+            }
             existing.lastSyncedAt = now
             existing.needsSync = protection.hasLocalWork
             report.updated += 1
@@ -420,6 +522,55 @@ enum SiteVisitServerMerge {
         }
     }
 
+    private static func validate(
+        delta: SiteVisitDeltaBundleDTO,
+        companyId: String,
+        context: ModelContext
+    ) throws {
+        for visit in delta.visits {
+            try requireCompany(visit.companyId, expected: companyId)
+        }
+        for child in delta.identityDrafts {
+            try requireCompany(child.companyId, expected: companyId)
+        }
+        for child in delta.checklistAnswers {
+            try requireCompany(child.companyId, expected: companyId)
+        }
+        for child in delta.artifacts {
+            try requireCompany(child.companyId, expected: companyId)
+        }
+
+        let incomingParentIds = Set(delta.visits.map(\.id))
+        let localParentIds = Set(
+            try context.fetch(FetchDescriptor<SiteVisit>())
+                .filter { $0.companyId.lowercased() == companyId }
+                .map { $0.id.lowercased() }
+        )
+        let validParentIds = incomingParentIds.union(localParentIds)
+
+        for child in delta.identityDrafts where !validParentIds.contains(child.siteVisitId) {
+            throw SiteVisitMergeError.orphanedChild(
+                table: "site_visit_identity_drafts",
+                childId: child.id,
+                siteVisitId: child.siteVisitId
+            )
+        }
+        for child in delta.checklistAnswers where !validParentIds.contains(child.siteVisitId) {
+            throw SiteVisitMergeError.orphanedChild(
+                table: "site_visit_checklist_answers",
+                childId: child.id,
+                siteVisitId: child.siteVisitId
+            )
+        }
+        for child in delta.artifacts where !validParentIds.contains(child.siteVisitId) {
+            throw SiteVisitMergeError.orphanedChild(
+                table: "site_visit_artifacts",
+                childId: child.id,
+                siteVisitId: child.siteVisitId
+            )
+        }
+    }
+
     private static func validateChild(
         childCompanyId: String,
         childVisitId: String,
@@ -439,6 +590,19 @@ enum SiteVisitServerMerge {
                 table: table,
                 childId: childId,
                 siteVisitId: childVisitId
+            )
+        }
+    }
+
+    private static func requireCompany(
+        _ received: String,
+        expected: String
+    ) throws {
+        let canonicalExpected = expected.lowercased()
+        guard received.lowercased() == canonicalExpected else {
+            throw SiteVisitMergeError.companyMismatch(
+                expected: canonicalExpected,
+                received: received.lowercased()
             )
         }
     }
@@ -517,5 +681,10 @@ enum SiteVisitServerMerge {
         guard let dimensions else { return nil }
         let data = try DimensionsData.jsonEncoder.encode(dimensions)
         return String(data: data, encoding: .utf8)
+    }
+
+    private static func isOlder(_ incoming: Date?, than current: Date?) -> Bool {
+        guard let incoming, let current else { return false }
+        return incoming < current
     }
 }

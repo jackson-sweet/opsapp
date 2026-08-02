@@ -107,7 +107,7 @@ enum SiteVisitRepositoryError: Error, Equatable {
     }
 }
 
-final class SiteVisitRepository: SiteVisitRemoteWriting {
+final class SiteVisitRepository: SiteVisitRemoteWriting, @unchecked Sendable {
     private let companyId: String
     private let transport: SiteVisitRemoteTransport
     private let encoder = JSONEncoder()

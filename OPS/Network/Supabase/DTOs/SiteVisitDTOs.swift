@@ -732,6 +732,17 @@ struct SiteVisitBundleDTO: Decodable, Equatable {
     }
 }
 
+// Immutable value payloads cross from the MainActor realtime decoder into the
+// background SwiftData actor. Their stored members are value types; unchecked
+// conformance avoids requiring every legacy enum nested inside DimensionsData
+// to be retrofitted solely for this boundary.
+extension SiteVisitDTO: @unchecked Sendable {}
+extension SiteVisitArtifactDTO: @unchecked Sendable {}
+extension SiteVisitChecklistAnswerDTO: @unchecked Sendable {}
+extension SiteVisitIdentityDraftDTO: @unchecked Sendable {}
+extension SiteVisitDeltaBundleDTO: @unchecked Sendable {}
+extension SiteVisitBundleDTO: @unchecked Sendable {}
+
 // MARK: - Strict wire helpers
 
 private enum SiteVisitWire {

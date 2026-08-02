@@ -201,7 +201,7 @@ final class RealtimeProcessor: ObservableObject {
     /// adding a table here, confirm it is in the publication:
     ///   SELECT 1 FROM pg_publication_tables
     ///   WHERE pubname='supabase_realtime' AND schemaname='public' AND tablename='<t>';
-    private let companyFilteredTables = [
+    static let companyFilteredTables = [
         "projects",
         "project_tasks",
         "users",
@@ -216,6 +216,12 @@ final class RealtimeProcessor: ObservableObject {
         // deck edits live. The realtime merge reuses mergeDeckDesign →
         // applyServerSnapshot, so a stale echo can't revert a fresh local edit.
         "deck_designs",
+        // Published with REPLICA IDENTITY FULL by the site-visit cloud-sync
+        // migration. All four are company-scoped and share the same channel.
+        "site_visits",
+        "site_visit_artifacts",
+        "site_visit_checklist_answers",
+        "site_visit_identity_drafts",
         // LEADS live updates (2026-07-03, bug 0b7e9b17). Publication +
         // REPLICA IDENTITY FULL + company_id verified for all three.
         // Notification-only tables (no SwiftData merge); LeadsTabView
@@ -335,7 +341,7 @@ final class RealtimeProcessor: ObservableObject {
         print("[RealtimeProcessor] Joining authenticated channel \(channelName) — \(diagnosticBindings.count) bindings: \(diagnosticBindings.map(\.description).joined(separator: ", "))")
 
         // Core entity tables filtered by company_id
-        for table in companyFilteredTables {
+        for table in Self.companyFilteredTables {
             subscribeToTable(channel: channel, table: table, filter: "company_id=eq.\(companyId)")
         }
 
@@ -625,7 +631,7 @@ final class RealtimeProcessor: ObservableObject {
     }
 
     private func makeRealtimeBindings(companyId: String, userId: String?) -> [RealtimeBinding] {
-        var bindings = companyFilteredTables.map {
+        var bindings = Self.companyFilteredTables.map {
             RealtimeBinding(table: $0, filter: "company_id=eq.\(companyId)")
         }
         bindings.append(RealtimeBinding(table: "companies", filter: "id=eq.\(companyId)"))
@@ -1036,6 +1042,70 @@ final class RealtimeProcessor: ObservableObject {
                 let pendingFields = protectedFieldsForEntity(entityType: .deckDesign, entityId: dto.id, context: context)
                 try upsertDeckDesign(context: context, id: dto.id, dto: dto, pendingFields: pendingFields)
 
+            case "site_visits":
+                let dto = try record.decodeRecord(as: SiteVisitDTO.self, decoder: decoder)
+                guard let companyId = activeSiteVisitCompanyId(matching: dto.companyId) else { return }
+                _ = try SiteVisitServerMerge.merge(
+                    visit: dto,
+                    companyId: companyId,
+                    into: context
+                )
+                InboundChangeSignal.post(entityNames: ["SiteVisit"])
+
+            case "site_visit_artifacts":
+                let dto = try record.decodeRecord(as: SiteVisitArtifactDTO.self, decoder: decoder)
+                guard let companyId = activeSiteVisitCompanyId(matching: dto.companyId) else { return }
+                do {
+                    _ = try SiteVisitServerMerge.merge(
+                        artifact: dto,
+                        companyId: companyId,
+                        into: context
+                    )
+                    InboundChangeSignal.post(entityNames: ["SiteVisitCaptureArtifact"])
+                } catch SiteVisitMergeError.orphanedChild {
+                    recoverSiteVisitBundle(
+                        siteVisitId: dto.siteVisitId,
+                        companyId: companyId,
+                        context: context
+                    )
+                }
+
+            case "site_visit_checklist_answers":
+                let dto = try record.decodeRecord(as: SiteVisitChecklistAnswerDTO.self, decoder: decoder)
+                guard let companyId = activeSiteVisitCompanyId(matching: dto.companyId) else { return }
+                do {
+                    _ = try SiteVisitServerMerge.merge(
+                        checklistAnswer: dto,
+                        companyId: companyId,
+                        into: context
+                    )
+                    InboundChangeSignal.post(entityNames: ["SiteVisitChecklistAnswer"])
+                } catch SiteVisitMergeError.orphanedChild {
+                    recoverSiteVisitBundle(
+                        siteVisitId: dto.siteVisitId,
+                        companyId: companyId,
+                        context: context
+                    )
+                }
+
+            case "site_visit_identity_drafts":
+                let dto = try record.decodeRecord(as: SiteVisitIdentityDraftDTO.self, decoder: decoder)
+                guard let companyId = activeSiteVisitCompanyId(matching: dto.companyId) else { return }
+                do {
+                    _ = try SiteVisitServerMerge.merge(
+                        identityDraft: dto,
+                        companyId: companyId,
+                        into: context
+                    )
+                    InboundChangeSignal.post(entityNames: ["SiteVisitIdentityDraft"])
+                } catch SiteVisitMergeError.orphanedChild {
+                    recoverSiteVisitBundle(
+                        siteVisitId: dto.siteVisitId,
+                        companyId: companyId,
+                        context: context
+                    )
+                }
+
             // LEADS live updates (bug 0b7e9b17). Notification-only, exactly
             // like expenses: no DTO decode, no actor dispatch. LeadsTabView
             // re-fetches via REST (PipelineViewModel.scheduleRefresh) on the
@@ -1173,6 +1243,38 @@ final class RealtimeProcessor: ObservableObject {
                     try context.save()
                 }
 
+            case "site_visits":
+                let descriptor = FetchDescriptor<SiteVisit>(predicate: #Predicate { $0.id == id })
+                if let existing = try context.fetch(descriptor).first {
+                    existing.deletedAt = Date()
+                    try context.save()
+                }
+                InboundChangeSignal.post(entityNames: ["SiteVisit"])
+
+            case "site_visit_artifacts":
+                let descriptor = FetchDescriptor<SiteVisitCaptureArtifact>(predicate: #Predicate { $0.id == id })
+                if let existing = try context.fetch(descriptor).first {
+                    existing.deletedAt = Date()
+                    try context.save()
+                }
+                InboundChangeSignal.post(entityNames: ["SiteVisitCaptureArtifact"])
+
+            case "site_visit_checklist_answers":
+                let descriptor = FetchDescriptor<SiteVisitChecklistAnswer>(predicate: #Predicate { $0.id == id })
+                if let existing = try context.fetch(descriptor).first {
+                    existing.deletedAt = Date()
+                    try context.save()
+                }
+                InboundChangeSignal.post(entityNames: ["SiteVisitChecklistAnswer"])
+
+            case "site_visit_identity_drafts":
+                let descriptor = FetchDescriptor<SiteVisitIdentityDraft>(predicate: #Predicate { $0.id == id })
+                if let existing = try context.fetch(descriptor).first {
+                    existing.deletedAt = Date()
+                    try context.save()
+                }
+                InboundChangeSignal.post(entityNames: ["SiteVisitIdentityDraft"])
+
             // LEADS live updates (bug 0b7e9b17). Notification-only, exactly
             // like expenses: no DTO decode, no actor dispatch. LeadsTabView
             // re-fetches via REST (PipelineViewModel.scheduleRefresh) on the
@@ -1205,7 +1307,44 @@ final class RealtimeProcessor: ObservableObject {
         }
     }
 
+    private func recoverSiteVisitBundle(
+        siteVisitId: String,
+        companyId: String,
+        context: ModelContext
+    ) {
+        Task { @MainActor in
+            do {
+                let repository = SiteVisitRepository(companyId: companyId)
+                let bundle = try await repository.fetchBundle(siteVisitId: siteVisitId)
+                _ = try SiteVisitServerMerge.merge(bundle: bundle, into: context)
+                InboundChangeSignal.post(entityNames: [
+                    "SiteVisit",
+                    "SiteVisitCaptureArtifact",
+                    "SiteVisitChecklistAnswer",
+                    "SiteVisitIdentityDraft",
+                ])
+            } catch {
+                // Realtime is only the accelerator. A hidden, malformed, or
+                // still-in-flight parent is recovered by the next ordered
+                // delta pull without ever inserting the child as an orphan.
+                print("[RealtimeProcessor] Site-visit bundle recovery failed: \(error)")
+            }
+        }
+    }
+
     // MARK: - DataActor Dispatch (flag-gated)
+
+    private func activeSiteVisitCompanyId(matching received: String) -> String? {
+        guard let active = companyId?.lowercased(), !active.isEmpty else {
+            print("[RealtimeProcessor] Dropping site-visit event — active company is unavailable")
+            return nil
+        }
+        guard received.lowercased() == active else {
+            print("[RealtimeProcessor] Dropping cross-company site-visit event")
+            return nil
+        }
+        return active
+    }
 
     /// Decodes the realtime payload on MainActor, applies scope guards (PermissionStore
     /// reads are main-safe here), then hands a Sendable RealtimeUpdate case to the
@@ -1282,6 +1421,26 @@ final class RealtimeProcessor: ObservableObject {
             case "deck_designs":
                 let dto = try record.decodeRecord(as: SupabaseDeckDesignDTO.self, decoder: decoder)
                 Task { await actor.handleRealtimeUpdate(.deckDesign(dto)) }
+
+            case "site_visits":
+                let dto = try record.decodeRecord(as: SiteVisitDTO.self, decoder: decoder)
+                guard activeSiteVisitCompanyId(matching: dto.companyId) != nil else { return }
+                Task { await actor.handleRealtimeUpdate(.siteVisit(dto)) }
+
+            case "site_visit_artifacts":
+                let dto = try record.decodeRecord(as: SiteVisitArtifactDTO.self, decoder: decoder)
+                guard activeSiteVisitCompanyId(matching: dto.companyId) != nil else { return }
+                Task { await actor.handleRealtimeUpdate(.siteVisitArtifact(dto)) }
+
+            case "site_visit_checklist_answers":
+                let dto = try record.decodeRecord(as: SiteVisitChecklistAnswerDTO.self, decoder: decoder)
+                guard activeSiteVisitCompanyId(matching: dto.companyId) != nil else { return }
+                Task { await actor.handleRealtimeUpdate(.siteVisitChecklistAnswer(dto)) }
+
+            case "site_visit_identity_drafts":
+                let dto = try record.decodeRecord(as: SiteVisitIdentityDraftDTO.self, decoder: decoder)
+                guard activeSiteVisitCompanyId(matching: dto.companyId) != nil else { return }
+                Task { await actor.handleRealtimeUpdate(.siteVisitIdentityDraft(dto)) }
 
             // Catalog parents — Option A: only parent tables fire realtime;
             // their children (option values, joins, snapshot items, order
@@ -1368,6 +1527,8 @@ final class RealtimeProcessor: ObservableObject {
                  "task_types", "sub_clients", "project_notes", "project_photos",
                  "project_photo_annotations",
                  "deck_designs",
+                 "site_visits", "site_visit_artifacts",
+                 "site_visit_checklist_answers", "site_visit_identity_drafts",
                  // Catalog parents with surrogate-id identity. catalog_snapshots
                  // is append-only (no DELETE expected) and company_default_products
                  // uses a composite key (no surrogate id), so neither is dispatched.

@@ -172,6 +172,90 @@ final class SiteVisitPersistenceCoordinatorTests: XCTestCase {
         XCTAssertEqual(result.completionOperationId, completion.id)
     }
 
+    func test_mediaUploadFollowsArtifactAndCompletionFollowsMedia() throws {
+        let context = try makeContainer().mainContext
+        let coordinator = SiteVisitPersistenceCoordinator(
+            modelContext: context,
+            companyId: companyId
+        )
+        let visit = makeVisit()
+        let artifact = SiteVisitCaptureArtifact(
+            id: artifactId,
+            siteVisitId: visitId,
+            companyId: companyId,
+            kind: .photo,
+            source: .camera,
+            localAssetURL: "local://project_images/photo.jpg",
+            createdBy: userId
+        )
+
+        try coordinator.commit(completing: visit) {
+            context.insert(visit)
+            context.insert(artifact)
+            visit.status = .completed
+            visit.completedAt = Date()
+        }
+
+        let operations = try context.fetch(FetchDescriptor<SyncOperation>())
+        XCTAssertEqual(operations.count, 4)
+        let parent = try XCTUnwrap(operations.first {
+            $0.entityType == SyncEntityType.siteVisit.rawValue
+                && $0.operationType == "create"
+        })
+        let artifactWrite = try XCTUnwrap(operations.first {
+            $0.entityType == SyncEntityType.siteVisitArtifact.rawValue
+                && $0.operationType == "create"
+        })
+        let media = try XCTUnwrap(operations.first {
+            $0.operationType == SiteVisitSyncOperation.mediaOperationType
+        })
+        let completion = try XCTUnwrap(operations.first {
+            $0.operationType == SiteVisitSyncOperation.completionOperationType
+        })
+
+        XCTAssertEqual(artifactWrite.dependsOnId, parent.id.uuidString.lowercased())
+        XCTAssertEqual(media.dependsOnId, artifactWrite.id.uuidString.lowercased())
+        XCTAssertEqual(completion.dependsOnId, media.id.uuidString.lowercased())
+    }
+
+    func test_orphanRecoveryIsCompanyScopedAndNeverRevivesParkedWork() throws {
+        let context = try makeContainer().mainContext
+        let parkedVisit = makeVisit()
+        let foreignVisit = SiteVisit(
+            id: "55555555-5555-5555-5555-555555555555",
+            companyId: "66666666-6666-6666-6666-666666666666",
+            status: .inProgress,
+            scheduledAt: Date(timeIntervalSince1970: 1_700_000_100),
+            assigneeIds: [userId],
+            createdBy: userId
+        )
+        let specification = SiteVisitSyncOperation.parent(parkedVisit)
+        let parked = SyncOperation(
+            entityType: specification.entityType.rawValue,
+            entityId: specification.entityId,
+            operationType: specification.operationType,
+            payload: try JSONEncoder().encode(specification.payload),
+            changedFields: specification.changedFields
+        )
+        parked.status = "parked"
+        context.insert(parkedVisit)
+        context.insert(foreignVisit)
+        context.insert(parked)
+        try context.save()
+
+        let coordinator = SiteVisitPersistenceCoordinator(
+            modelContext: context,
+            companyId: companyId
+        )
+        let result = try coordinator.recoverOrphanedWrites()
+
+        XCTAssertTrue(result.operationIds.isEmpty)
+        let operations = try context.fetch(FetchDescriptor<SyncOperation>())
+        XCTAssertEqual(operations.count, 1)
+        XCTAssertEqual(operations[0].id, parked.id)
+        XCTAssertEqual(operations[0].status, "parked")
+    }
+
     func test_bindingCompletedVisitQueuesUpdateThenNewCompletion() throws {
         let context = try makeContainer().mainContext
         let coordinator = SiteVisitPersistenceCoordinator(

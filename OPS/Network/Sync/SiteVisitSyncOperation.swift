@@ -11,6 +11,7 @@ import Foundation
 
 enum SiteVisitSyncOperation {
     static let completionOperationType = "siteVisitComplete"
+    static let mediaOperationType = "siteVisitMediaUpload"
 
     struct Payload: Codable, Equatable {
         let companyId: String
@@ -134,6 +135,23 @@ enum SiteVisitSyncOperation {
                 "opportunity_id", "client_id", "sub_client_id", "client_name",
                 "contact_name", "preferred_email", "additional_emails", "phone_number",
                 "address", "notes", "last_committed_at", "deleted_at",
+            ],
+            priority: 1
+        )
+    }
+
+    static func media(_ artifact: SiteVisitCaptureArtifact) -> Specification {
+        Specification(
+            entityType: .siteVisitArtifact,
+            entityId: artifact.id.lowercased(),
+            operationType: mediaOperationType,
+            payload: Payload(
+                companyId: artifact.companyId,
+                siteVisitId: artifact.siteVisitId,
+                entityId: artifact.id
+            ),
+            changedFields: [
+                "asset_url", "rendered_asset_url", "thumbnail_url",
             ],
             priority: 1
         )

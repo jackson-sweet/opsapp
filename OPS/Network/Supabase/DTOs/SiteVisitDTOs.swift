@@ -525,9 +525,12 @@ struct UpsertSiteVisitArtifactDTO: Codable, Equatable {
         source = model.source
         title = model.title
         body = model.body
-        assetURL = model.localAssetURL
-        renderedAssetURL = model.renderedAssetURL
-        thumbnailURL = model.thumbnailURL
+        // Device-local/file URLs are never valid server metadata. The durable
+        // media operation uploads them first, then queues a second artifact
+        // upsert containing only its deterministic public URLs.
+        assetURL = SiteVisitWire.remoteAssetURL(model.localAssetURL)
+        renderedAssetURL = SiteVisitWire.remoteAssetURL(model.renderedAssetURL)
+        thumbnailURL = SiteVisitWire.remoteAssetURL(model.thumbnailURL)
         dimensions = try model.dimensionsJSON.flatMap(SiteVisitWire.anyJSONDimensions)
         deckDesignId = try SiteVisitWire.payloadOptionalUUID(model.deckDesignId, field: "deck_design_id")
         includedInProjectReview = model.includedInProjectReview
@@ -732,6 +735,15 @@ struct SiteVisitBundleDTO: Decodable, Equatable {
 // MARK: - Strict wire helpers
 
 private enum SiteVisitWire {
+    static func remoteAssetURL(_ raw: String?) -> String? {
+        guard let raw,
+              let scheme = URLComponents(string: raw)?.scheme?.lowercased(),
+              scheme == "https" || scheme == "http" else {
+            return nil
+        }
+        return raw
+    }
+
     static func requiredText<K: CodingKey>(_ raw: String, key: K) throws -> String {
         let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else {

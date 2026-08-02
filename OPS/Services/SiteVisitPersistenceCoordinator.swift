@@ -127,12 +127,35 @@ final class SiteVisitPersistenceCoordinator {
         }
     }
 
+    /// Repairs legacy/bypassed dirty rows without disturbing work already in
+    /// flight, exhausted, or parked. This is intentionally company-scoped and
+    /// never auto-revives a permanent rejection.
+    @discardableResult
+    func recoverOrphanedWrites() throws -> CommitResult {
+        var queuedIds: [UUID] = []
+        do {
+            try modelContext.transaction {
+                queuedIds = try queueDirtyGraphs(onlyOrphans: true).operationIds
+                try validateCommit()
+            }
+        } catch {
+            modelContext.rollback()
+            throw Error.transactionFailed(error)
+        }
+        return CommitResult(
+            operationIds: queuedIds,
+            completionOperationId: nil
+        )
+    }
+
     private struct QueueResult {
         let operationIds: [UUID]
         let chainTips: [String: String]
     }
 
-    private func queueDirtyGraphs() throws -> QueueResult {
+    private func queueDirtyGraphs(
+        onlyOrphans: Bool = false
+    ) throws -> QueueResult {
         var operations = try modelContext.fetch(FetchDescriptor<SyncOperation>())
         var queuedIds: [UUID] = []
         var chainTips: [String: String] = [:]
@@ -142,8 +165,13 @@ final class SiteVisitPersistenceCoordinator {
             .sorted { $0.createdAt < $1.createdAt }
 
         for visit in visits where visit.needsSync {
+            let specification = SiteVisitSyncOperation.parent(visit)
+            if onlyOrphans,
+               hasUnresolvedOperation(specification, operations: operations) {
+                continue
+            }
             let operation = try enqueue(
-                SiteVisitSyncOperation.parent(visit),
+                specification,
                 dependsOnId: nil,
                 operations: &operations
             )
@@ -152,12 +180,17 @@ final class SiteVisitPersistenceCoordinator {
         }
 
         let artifacts = try modelContext.fetch(FetchDescriptor<SiteVisitCaptureArtifact>())
-            .filter { belongsToCompany($0.companyId) && $0.needsSync }
+            .filter { belongsToCompany($0.companyId) }
             .sorted { $0.createdAt < $1.createdAt }
-        for artifact in artifacts {
+        for artifact in artifacts where artifact.needsSync {
             let visitId = artifact.siteVisitId.lowercased()
+            let specification = SiteVisitSyncOperation.artifact(artifact)
+            if onlyOrphans,
+               hasUnresolvedOperation(specification, operations: operations) {
+                continue
+            }
             let operation = try enqueue(
-                SiteVisitSyncOperation.artifact(artifact),
+                specification,
                 dependsOnId: dependencyRoot(
                     for: visitId,
                     chainTips: chainTips,
@@ -174,8 +207,13 @@ final class SiteVisitPersistenceCoordinator {
             .sorted { $0.createdAt < $1.createdAt }
         for answer in answers {
             let visitId = answer.siteVisitId.lowercased()
+            let specification = SiteVisitSyncOperation.checklistAnswer(answer)
+            if onlyOrphans,
+               hasUnresolvedOperation(specification, operations: operations) {
+                continue
+            }
             let operation = try enqueue(
-                SiteVisitSyncOperation.checklistAnswer(answer),
+                specification,
                 dependsOnId: dependencyRoot(
                     for: visitId,
                     chainTips: chainTips,
@@ -192,8 +230,38 @@ final class SiteVisitPersistenceCoordinator {
             .sorted { $0.createdAt < $1.createdAt }
         for draft in drafts {
             let visitId = draft.siteVisitId.lowercased()
+            let specification = SiteVisitSyncOperation.identityDraft(draft)
+            if onlyOrphans,
+               hasUnresolvedOperation(specification, operations: operations) {
+                continue
+            }
             let operation = try enqueue(
-                SiteVisitSyncOperation.identityDraft(draft),
+                specification,
+                dependsOnId: dependencyRoot(
+                    for: visitId,
+                    chainTips: chainTips,
+                    operations: operations
+                ),
+                operations: &operations
+            )
+            queuedIds.append(operation.id)
+            chainTips[visitId] = operation.id.uuidString.lowercased()
+        }
+
+        // Media follows every model row. Each operation uploads all still-local
+        // variants for one artifact; it persists progress per variant and queues
+        // the remote-URL artifact upsert behind itself.
+        for artifact in artifacts where
+            artifact.deletedAt == nil && needsMediaUpload(artifact)
+        {
+            let visitId = artifact.siteVisitId.lowercased()
+            let specification = SiteVisitSyncOperation.media(artifact)
+            if onlyOrphans,
+               hasUnresolvedOperation(specification, operations: operations) {
+                continue
+            }
+            let operation = try enqueue(
+                specification,
                 dependsOnId: dependencyRoot(
                     for: visitId,
                     chainTips: chainTips,
@@ -217,11 +285,18 @@ final class SiteVisitPersistenceCoordinator {
     ) -> String? {
         if let chainTip = chainTips[siteVisitId] { return chainTip }
         return operations
-            .filter {
-                $0.entityType == SyncEntityType.siteVisit.rawValue
-                    && $0.entityId.lowercased() == siteVisitId
-                    && $0.operationType != SiteVisitSyncOperation.completionOperationType
-                    && Self.unresolvedStatuses.contains($0.status)
+            .filter { operation in
+                guard operation.operationType
+                        != SiteVisitSyncOperation.completionOperationType,
+                      Self.unresolvedStatuses.contains(operation.status),
+                      SiteVisitOutboundSync.isSiteVisitOperation(operation),
+                      let payload = try? JSONDecoder().decode(
+                          SiteVisitSyncOperation.Payload.self,
+                          from: operation.payload
+                      ) else {
+                    return false
+                }
+                return payload.siteVisitId.lowercased() == siteVisitId
             }
             .sorted(by: operationOrder)
             .last?
@@ -234,11 +309,15 @@ final class SiteVisitPersistenceCoordinator {
         operations: inout [SyncOperation]
     ) throws -> SyncOperation {
         let canonicalEntityId = specification.entityId.lowercased()
+        let isMedia = specification.operationType
+            == SiteVisitSyncOperation.mediaOperationType
         let candidates = operations
             .filter {
                 $0.entityType == specification.entityType.rawValue
                     && $0.entityId.lowercased() == canonicalEntityId
                     && $0.operationType != SiteVisitSyncOperation.completionOperationType
+                    && (($0.operationType
+                            == SiteVisitSyncOperation.mediaOperationType) == isMedia)
                     && Self.unresolvedStatuses.contains($0.status)
             }
             .sorted(by: operationOrder)
@@ -296,6 +375,34 @@ final class SiteVisitPersistenceCoordinator {
 
     private func belongsToCompany(_ candidate: String) -> Bool {
         candidate.lowercased() == companyId
+    }
+
+    private func hasUnresolvedOperation(
+        _ specification: SiteVisitSyncOperation.Specification,
+        operations: [SyncOperation]
+    ) -> Bool {
+        let isMedia = specification.operationType
+            == SiteVisitSyncOperation.mediaOperationType
+        return operations.contains {
+            $0.entityType == specification.entityType.rawValue
+                && $0.entityId.lowercased() == specification.entityId.lowercased()
+                && $0.operationType != SiteVisitSyncOperation.completionOperationType
+                && (($0.operationType
+                        == SiteVisitSyncOperation.mediaOperationType) == isMedia)
+                && Self.unresolvedStatuses.contains($0.status)
+        }
+    }
+
+    private func needsMediaUpload(
+        _ artifact: SiteVisitCaptureArtifact
+    ) -> Bool {
+        [
+            artifact.localAssetURL,
+            artifact.renderedAssetURL,
+            artifact.thumbnailURL,
+        ].compactMap { $0 }.contains {
+            !SiteVisitMediaSyncManager.isRemoteURL($0)
+        }
     }
 
     private func operationOrder(_ lhs: SyncOperation, _ rhs: SyncOperation) -> Bool {

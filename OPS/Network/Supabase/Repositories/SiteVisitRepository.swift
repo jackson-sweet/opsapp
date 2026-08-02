@@ -34,6 +34,31 @@ protocol SiteVisitRemoteTransport: AnyObject {
     func send(_ request: SiteVisitRemoteRequest) async throws -> Data
 }
 
+/// The outbound queue depends on this narrow contract instead of the concrete
+/// Supabase adapter, so ordering/retry behavior can be proved without a live
+/// network while production still has one tenant-scoped repository boundary.
+protocol SiteVisitRemoteWriting: AnyObject {
+    func upsertVisit(_ payload: CreateSiteVisitDTO) async throws -> SiteVisitDTO
+    func upsertArtifact(
+        _ payload: UpsertSiteVisitArtifactDTO
+    ) async throws -> SiteVisitArtifactDTO
+    func upsertChecklistAnswer(
+        _ payload: UpsertSiteVisitChecklistAnswerDTO
+    ) async throws -> SiteVisitChecklistAnswerDTO
+    func upsertIdentityDraft(
+        _ payload: UpsertSiteVisitIdentityDraftDTO
+    ) async throws -> SiteVisitIdentityDraftDTO
+    func softDelete(
+        _ table: SiteVisitRemoteTable,
+        id: String,
+        at deletedAt: Date
+    ) async throws
+    func completeSiteVisit(
+        _ id: String,
+        completion: SiteVisitCompletionPayload
+    ) async throws -> SiteVisitCompletionResponseDTO
+}
+
 enum SiteVisitRepositoryError: Error, Equatable {
     case authorization(String)
     case dependency(String)
@@ -82,7 +107,7 @@ enum SiteVisitRepositoryError: Error, Equatable {
     }
 }
 
-final class SiteVisitRepository {
+final class SiteVisitRepository: SiteVisitRemoteWriting {
     private let companyId: String
     private let transport: SiteVisitRemoteTransport
     private let encoder = JSONEncoder()

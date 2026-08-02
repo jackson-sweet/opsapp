@@ -4006,6 +4006,8 @@ actor DataActor {
                 readyPendingProjectNoteMentionOperationIds()
             let readyTaskTypePipelineBeforePass =
                 readyPendingTaskTypePipelineOperationIds()
+            let readySiteVisitsBeforePass =
+                readyPendingSiteVisitOperationIds()
             completedProjectTaskIds.formUnion(
                 await processPendingOperationsPass()
             )
@@ -4013,6 +4015,8 @@ actor DataActor {
                 readyPendingProjectNoteMentionOperationIds()
             let readyTaskTypePipelineAfterPass =
                 readyPendingTaskTypePipelineOperationIds()
+            let readySiteVisitsAfterPass =
+                readyPendingSiteVisitOperationIds()
             let shouldContinueMentionDrain = ProjectNoteMentionEditSync
                 .shouldContinueDrain(
                     readyBeforePass: readyMentionsBeforePass,
@@ -4025,14 +4029,23 @@ actor DataActor {
                     readyAfterPass:
                         readyTaskTypePipelineAfterPass
                 )
+            let shouldContinueSiteVisitDrain = SiteVisitOutboundSync
+                .shouldContinueDrain(
+                    readyBeforePass: readySiteVisitsBeforePass,
+                    readyAfterPass: readySiteVisitsAfterPass
+                )
             shouldContinueDrain =
                 shouldContinueMentionDrain
                     || shouldContinueTaskTypePipeline
+                    || shouldContinueSiteVisitDrain
             if shouldContinueMentionDrain {
                 print("[DataActor] Mention dependency released — continuing actor-context drain")
             }
             if shouldContinueTaskTypePipeline {
                 print("[DataActor] Task-type pipeline released — continuing actor-context drain")
+            }
+            if shouldContinueSiteVisitDrain {
+                print("[DataActor] Site-visit dependency released — continuing actor-context drain")
             }
             if !shouldContinueDrain,
                (
@@ -4111,6 +4124,15 @@ actor DataActor {
                 return false
             }
 
+            if SiteVisitOutboundSync.isSiteVisitOperation(op),
+               !SiteVisitOutboundSync.isReady(op, in: allOperations, now: now) {
+                print(
+                    "[DataActor] Holding site-visit work behind its live graph barrier: "
+                        + "\(op.operationType) \(op.entityId)"
+                )
+                return false
+            }
+
             return true
         }
 
@@ -4184,6 +4206,19 @@ actor DataActor {
         )
     }
 
+    func readyPendingSiteVisitOperationIds(
+        now: Date = Date()
+    ) -> Set<UUID> {
+        modelContext.rollback()
+        let operations = (
+            try? modelContext.fetch(FetchDescriptor<SyncOperation>())
+        ) ?? []
+        return SiteVisitOutboundSync.readyPendingOperationIds(
+            in: operations,
+            now: now
+        )
+    }
+
     // MARK: - Dependency Check
 
     /// Checks whether a dependency operation (by UUID string) has status "completed"
@@ -4226,16 +4261,26 @@ actor DataActor {
         }
 
         do {
-            guard let payloadDict = decodePayload(operation.payload) else {
-                throw SyncError.decodingFailed(detail: "Could not decode payload for \(operation.entityType) \(operation.entityId)")
+            let activeCompanyId = UserDefaults.standard.string(
+                forKey: "currentUserCompanyId"
+            ) ?? ""
+            let handledSiteVisit = try await SiteVisitOutboundSync()
+                .executeIfHandled(
+                    operation: operation,
+                    context: modelContext,
+                    activeCompanyId: activeCompanyId
+                )
+            if !handledSiteVisit {
+                guard let payloadDict = decodePayload(operation.payload) else {
+                    throw SyncError.decodingFailed(detail: "Could not decode payload for \(operation.entityType) \(operation.entityId)")
+                }
+                try await routeToRepository(
+                    entityType: operation.entityType,
+                    entityId: operation.entityId,
+                    operationType: operation.operationType,
+                    payload: payloadDict
+                )
             }
-
-            try await routeToRepository(
-                entityType: operation.entityType,
-                entityId: operation.entityId,
-                operationType: operation.operationType,
-                payload: payloadDict
-            )
 
             let completedAt = Date()
             try modelContext.transaction {
@@ -4430,6 +4475,17 @@ actor DataActor {
     private func claimForExecution(
         _ operation: SyncOperation
     ) throws -> Bool {
+        if SiteVisitOutboundSync.isSiteVisitOperation(operation) {
+            let operations = try modelContext.fetch(
+                FetchDescriptor<SyncOperation>()
+            )
+            guard SiteVisitOutboundSync.isReady(
+                operation,
+                in: operations
+            ) else {
+                return false
+            }
+        }
         if try TaskTypeMutationSync.isBlockedByUnresolvedMutation(
             operation,
             in: modelContext
@@ -4832,7 +4888,8 @@ actor DataActor {
         var groups: [String: [SyncOperation]] = [:]
         for op in operations
         where !ProjectNoteMentionEditSync.bypassesGenericCoalescing(op)
-            && !TaskTypeMutationSync.bypassesGenericCoalescing(op) {
+            && !TaskTypeMutationSync.bypassesGenericCoalescing(op)
+            && !SiteVisitOutboundSync.bypassesGenericCoalescing(op) {
             let key = "\(op.entityType)::\(op.entityId)"
             groups[key, default: []].append(op)
         }
@@ -4844,6 +4901,12 @@ actor DataActor {
             ProjectNoteMentionEditSync.bypassesGenericCoalescing($0)
                 || TaskTypeMutationSync.bypassesGenericCoalescing($0)
         }
+        result.removeAll(where: SiteVisitOutboundSync.isSiteVisitOperation)
+        result.append(
+            contentsOf: SiteVisitOutboundSync.coalesceOperations(
+                operations.filter(SiteVisitOutboundSync.isSiteVisitOperation)
+            )
+        )
 
         for (_, groupOps) in groups {
             guard !groupOps.isEmpty else { continue }

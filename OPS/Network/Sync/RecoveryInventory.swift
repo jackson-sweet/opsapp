@@ -56,6 +56,9 @@ struct SyncOpSnapshot: Identifiable, Equatable {
     let lastAttemptedAt: Date?
     let lastError: String?
     let createdAt: Date
+    /// Durable packet routing decoded from the operation envelope. Nil for all
+    /// legacy/non-site-visit work.
+    let siteVisitId: String?
 
     init(
         id: UUID,
@@ -66,7 +69,8 @@ struct SyncOpSnapshot: Identifiable, Equatable {
         retryCount: Int,
         lastAttemptedAt: Date?,
         lastError: String?,
-        createdAt: Date
+        createdAt: Date,
+        siteVisitId: String? = nil
     ) {
         self.id = id
         self.entityType = entityType
@@ -77,6 +81,7 @@ struct SyncOpSnapshot: Identifiable, Equatable {
         self.lastAttemptedAt = lastAttemptedAt
         self.lastError = lastError
         self.createdAt = createdAt
+        self.siteVisitId = siteVisitId?.lowercased()
     }
 
     init(from operation: SyncOperation) {
@@ -89,8 +94,24 @@ struct SyncOpSnapshot: Identifiable, Equatable {
             retryCount: operation.retryCount,
             lastAttemptedAt: operation.lastAttemptedAt,
             lastError: operation.lastError,
-            createdAt: operation.createdAt
+            createdAt: operation.createdAt,
+            siteVisitId: Self.siteVisitId(from: operation)
         )
+    }
+
+    private static func siteVisitId(from operation: SyncOperation) -> String? {
+        let siteVisitEntityTypes = Set([
+            SyncEntityType.siteVisit.rawValue,
+            SyncEntityType.siteVisitArtifact.rawValue,
+            SyncEntityType.siteVisitChecklistAnswer.rawValue,
+            SyncEntityType.siteVisitIdentityDraft.rawValue,
+        ])
+        guard siteVisitEntityTypes.contains(operation.entityType),
+              let payload = try? JSONDecoder().decode(
+                SiteVisitSyncOperation.Payload.self,
+                from: operation.payload
+              ) else { return nil }
+        return payload.siteVisitId.lowercased()
     }
 }
 
@@ -234,6 +255,22 @@ struct ArtifactSnapshot: Identifiable, Equatable {
     }
 }
 
+/// A locally captured checklist answer. Recovery only needs its packet key and
+/// identity so the row can report an honest captured-item count.
+struct ChecklistAnswerSnapshot: Identifiable, Equatable {
+    let id: String
+    let siteVisitId: String
+
+    init(id: String, siteVisitId: String) {
+        self.id = id
+        self.siteVisitId = siteVisitId
+    }
+
+    init(from answer: SiteVisitChecklistAnswer) {
+        self.init(id: answer.id, siteVisitId: answer.siteVisitId)
+    }
+}
+
 /// A deck design that is orphaned locally — attached to neither a project nor a
 /// lead, and not deleted. These are the chronic server-side orphans the screen's
 /// NOT LINKED section lets the operator re-home.
@@ -310,6 +347,18 @@ struct RecoveryMember: Identifiable, Equatable {
     let status: RecoveryStatusPayload
 }
 
+/// The dependency stage currently governing a site-visit packet. Ordered by
+/// the actual outbound chain so ties resolve to the first stage that must clear.
+enum SiteVisitBlockedStage: Int, Comparable, Equatable {
+    case visit = 0
+    case media = 1
+    case completion = 2
+
+    static func < (lhs: SiteVisitBlockedStage, rhs: SiteVisitBlockedStage) -> Bool {
+        lhs.rawValue < rhs.rawValue
+    }
+}
+
 /// A work-unit bundle: a site-visit draft plus every unsynced item that belongs
 /// to it. `tone` is the worst member's tone.
 struct SiteVisitBundle: Identifiable, Equatable {
@@ -319,6 +368,14 @@ struct SiteVisitBundle: Identifiable, Equatable {
     let members: [RecoveryMember]
     let tone: RecoveryTone
     let draft: DraftSnapshot
+    let siteVisitId: String
+    let capturedItemCount: Int
+    let blockedStage: SiteVisitBlockedStage
+    /// Every queue record in the work unit. Retry and discard operate on this
+    /// complete set so grouped packet stages never strand hidden siblings.
+    let syncOperationIds: [UUID]
+    /// Distinguishes the durable cloud packet from older draft-only bundles.
+    let siteVisitOperationIds: [UUID]
 }
 
 /// A single renderable entry in a section. Stable `id`s let SwiftUI diff rows
@@ -409,6 +466,7 @@ extension RecoveryInventory {
         photos: [PhotoSnapshot],
         drafts: [DraftSnapshot],
         artifacts: [ArtifactSnapshot],
+        answers: [ChecklistAnswerSnapshot] = [],
         orphans: [OrphanDesignSnapshot],
         now: Date
     ) -> RecoveryInventory {
@@ -426,9 +484,16 @@ extension RecoveryInventory {
         var sending: [RecoveryItem] = []
         var draftItems: [RecoveryItem] = []
 
+        let siteVisitOpsById = Dictionary(grouping: consideredOps.compactMap { op in
+            op.siteVisitId.map { ($0, op) }
+        }, by: { $0.0 }).mapValues { $0.map(\.1) }
+
         // 2–4 · Bundle join, one draft at a time.
         for draft in drafts {
             var members: [RecoveryMember] = []
+            let normalizedSiteVisitId = draft.siteVisitId.lowercased()
+            let packetOps = (siteVisitOpsById[normalizedSiteVisitId] ?? [])
+                .filter { !consumedOpIds.contains($0.id) }
 
             let normalizedClientId = draft.clientId?.lowercased()
 
@@ -482,6 +547,13 @@ extension RecoveryInventory {
                 }
             }
 
+            members.append(contentsOf: makeSiteVisitMembers(
+                packetOps,
+                siteVisitId: normalizedSiteVisitId,
+                now: now
+            ))
+            for op in packetOps { consumedOpIds.insert(op.id) }
+
             if !members.isEmpty {
                 // 3 · At least one live member → a bundle. Tone is the worst member.
                 let tone = members.map(\.tone).max() ?? .waiting
@@ -491,7 +563,19 @@ extension RecoveryInventory {
                     createdAt: draft.createdAt,
                     members: members,
                     tone: tone,
-                    draft: draft
+                    draft: draft,
+                    siteVisitId: normalizedSiteVisitId,
+                    capturedItemCount: capturedItemCount(
+                        siteVisitId: normalizedSiteVisitId,
+                        packetOps: packetOps,
+                        artifacts: artifacts,
+                        answers: answers
+                    ),
+                    blockedStage: blockedStage(for: packetOps),
+                    syncOperationIds: sortedUniqueOperationIds(
+                        members.compactMap(\.syncOpId) + packetOps.map(\.id)
+                    ),
+                    siteVisitOperationIds: sortedUniqueOperationIds(packetOps.map(\.id))
                 )
                 let item = RecoveryItem.bundle(bundle)
                 if tone >= .attention { attention.append(item) } else { sending.append(item) }
@@ -502,6 +586,50 @@ extension RecoveryInventory {
             }
             // else: a bound / committed draft with nothing outstanding is healthy —
             // omit it entirely.
+        }
+
+        // A committed packet can outlive its identity draft while media or the
+        // completion receipt is still queued. Those operations still render as
+        // one visit row, backed by a synthetic display-only draft so existing
+        // export/recovery surfaces retain a stable contract.
+        for siteVisitId in siteVisitOpsById.keys.sorted() {
+            let packetOps = (siteVisitOpsById[siteVisitId] ?? [])
+                .filter { !consumedOpIds.contains($0.id) }
+            guard !packetOps.isEmpty else { continue }
+
+            let createdAt = packetOps.map(\.createdAt).min() ?? now
+            let syntheticDraft = DraftSnapshot(
+                id: "visit:\(siteVisitId)",
+                siteVisitId: siteVisitId,
+                clientId: nil,
+                opportunityId: nil,
+                displayName: "",
+                createdAt: createdAt,
+                lastCommittedAt: createdAt
+            )
+            let members = makeSiteVisitMembers(packetOps, siteVisitId: siteVisitId, now: now)
+            let tone = members.map(\.tone).max() ?? .waiting
+            let bundle = SiteVisitBundle(
+                id: "visit:\(siteVisitId)",
+                title: "",
+                createdAt: createdAt,
+                members: members,
+                tone: tone,
+                draft: syntheticDraft,
+                siteVisitId: siteVisitId,
+                capturedItemCount: capturedItemCount(
+                    siteVisitId: siteVisitId,
+                    packetOps: packetOps,
+                    artifacts: artifacts,
+                    answers: answers
+                ),
+                blockedStage: blockedStage(for: packetOps),
+                syncOperationIds: sortedUniqueOperationIds(packetOps.map(\.id)),
+                siteVisitOperationIds: sortedUniqueOperationIds(packetOps.map(\.id))
+            )
+            packetOps.forEach { consumedOpIds.insert($0.id) }
+            let item = RecoveryItem.bundle(bundle)
+            if tone >= .attention { attention.append(item) } else { sending.append(item) }
         }
 
         // 5 · Loose items — everything a bundle did not consume.
@@ -681,6 +809,98 @@ extension RecoveryInventory {
             )
         )
     }
+
+    private static func makeSiteVisitMembers(
+        _ operations: [SyncOpSnapshot],
+        siteVisitId: String,
+        now: Date
+    ) -> [RecoveryMember] {
+        let grouped = Dictionary(grouping: operations, by: operationStage)
+        return [SiteVisitBlockedStage.visit, .media, .completion].compactMap { stage in
+            guard let stageOps = grouped[stage], !stageOps.isEmpty else { return nil }
+            let representative = stageOps.sorted(by: preferredRepresentative).first!
+            return RecoveryMember(
+                id: "site-visit:\(siteVisitId):\(stage.rawValue)",
+                role: .other(stageLabel(stage)),
+                syncOpId: representative.id,
+                autocreateClientId: nil,
+                photoIds: [],
+                tone: stageOps.map { opTone($0.status) }.max() ?? .waiting,
+                status: RecoveryStatusPayload(
+                    statusRaw: representative.status,
+                    retryCount: representative.retryCount,
+                    lastError: representative.lastError,
+                    nextEligibleAt: opNextEligibleAt(representative, now: now)
+                )
+            )
+        }
+    }
+
+    private static func blockedStage(for operations: [SyncOpSnapshot]) -> SiteVisitBlockedStage {
+        guard let worstTone = operations.map({ opTone($0.status) }).max() else { return .visit }
+        return operations
+            .filter { opTone($0.status) == worstTone }
+            .map(operationStage)
+            .min() ?? .visit
+    }
+
+    private static func operationStage(_ operation: SyncOpSnapshot) -> SiteVisitBlockedStage {
+        if operation.operationType == SiteVisitSyncOperation.completionOperationType { return .completion }
+        if operation.operationType == SiteVisitSyncOperation.mediaOperationType { return .media }
+        return .visit
+    }
+
+    private static func stageLabel(_ stage: SiteVisitBlockedStage) -> String {
+        switch stage {
+        case .visit: return "visit"
+        case .media: return "media"
+        case .completion: return "completion"
+        }
+    }
+
+    private static func preferredRepresentative(_ lhs: SyncOpSnapshot, _ rhs: SyncOpSnapshot) -> Bool {
+        let lhsTone = opTone(lhs.status)
+        let rhsTone = opTone(rhs.status)
+        if lhsTone != rhsTone { return lhsTone > rhsTone }
+        let statusRank = ["pending": 0, "inProgress": 1, "failed": 2, "parked": 3]
+        let lhsRank = statusRank[lhs.status, default: 0]
+        let rhsRank = statusRank[rhs.status, default: 0]
+        if lhsRank != rhsRank { return lhsRank > rhsRank }
+        if lhs.createdAt != rhs.createdAt { return lhs.createdAt < rhs.createdAt }
+        return lhs.id.uuidString < rhs.id.uuidString
+    }
+
+    private static func sortedUniqueOperationIds(_ ids: [UUID]) -> [UUID] {
+        Array(Set(ids)).sorted { $0.uuidString < $1.uuidString }
+    }
+
+    private static func capturedItemCount(
+        siteVisitId: String,
+        packetOps: [SyncOpSnapshot],
+        artifacts: [ArtifactSnapshot],
+        answers: [ChecklistAnswerSnapshot]
+    ) -> Int {
+        var ids = Set<String>()
+        for artifact in artifacts where artifact.siteVisitId.lowercased() == siteVisitId {
+            ids.insert("artifact:\(artifact.id.lowercased())")
+        }
+        for answer in answers where answer.siteVisitId.lowercased() == siteVisitId {
+            ids.insert("answer:\(answer.id.lowercased())")
+        }
+        // Queue-derived fallback keeps the count useful if a local child was
+        // removed after a tombstone was queued or an older store cannot load it.
+        for op in packetOps {
+            switch op.entityType {
+            case SyncEntityType.siteVisitArtifact.rawValue:
+                ids.insert("artifact:\(op.entityId.lowercased())")
+            case SyncEntityType.siteVisitChecklistAnswer.rawValue:
+                ids.insert("answer:\(op.entityId.lowercased())")
+            default:
+                break
+            }
+        }
+        return ids.count
+    }
 }
 
 // MARK: - Live load
@@ -720,19 +940,26 @@ extension RecoveryInventory {
         let draftModels = (try? modelContext.fetch(draftDescriptor)) ?? []
         let drafts = draftModels.map(DraftSnapshot.init(from:))
 
-        // Artifacts: only live deck-design artifacts matter (they resolve a
-        // draft's deck ops). Narrow the fetch to deck artifacts, then filter to the
-        // drafts' visit ids in memory — the visit-id set is a runtime value the
-        // #Predicate can't index cleanly, and deck artifacts are a tiny set.
-        let visitIds = Set(draftModels.map(\.siteVisitId))
+        // Captures: load every active artifact/answer for the visit ids represented
+        // by a draft or durable packet operation. They drive the row's captured
+        // count; deck artifacts additionally resolve legacy deck-operation joins.
+        let visitIds = Set(draftModels.map { $0.siteVisitId.lowercased() })
+            .union(ops.compactMap(\.siteVisitId))
         let artifactDescriptor = FetchDescriptor<SiteVisitCaptureArtifact>(
             predicate: #Predicate<SiteVisitCaptureArtifact> {
-                $0.deckDesignId != nil && $0.deletedAt == nil
+                $0.deletedAt == nil
             }
         )
         let artifacts = ((try? modelContext.fetch(artifactDescriptor)) ?? [])
-            .filter { visitIds.contains($0.siteVisitId) }
+            .filter { visitIds.contains($0.siteVisitId.lowercased()) }
             .map(ArtifactSnapshot.init(from:))
+
+        let answerDescriptor = FetchDescriptor<SiteVisitChecklistAnswer>(
+            predicate: #Predicate<SiteVisitChecklistAnswer> { $0.deletedAt == nil }
+        )
+        let answers = ((try? modelContext.fetch(answerDescriptor)) ?? [])
+            .filter { visitIds.contains($0.siteVisitId.lowercased()) }
+            .map(ChecklistAnswerSnapshot.init(from:))
 
         // Photos: queued ("local") or failed uploads.
         let photoDescriptor = FetchDescriptor<LocalPhoto>(
@@ -763,6 +990,7 @@ extension RecoveryInventory {
             photos: photos,
             drafts: drafts,
             artifacts: artifacts,
+            answers: answers,
             orphans: orphans,
             now: now
         )

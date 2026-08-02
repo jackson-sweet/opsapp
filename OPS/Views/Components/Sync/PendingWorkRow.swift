@@ -284,7 +284,17 @@ struct PendingWorkBundleCard: View {
                         .foregroundColor(OPSStyle.Colors.text3)
                 }
 
-                memberStrip
+                if bundle.siteVisitOperationIds.isEmpty {
+                    memberStrip
+                } else {
+                    Text(SyncStatusCopy.PendingWork.siteVisitPacketSummary(
+                        capturedItemCount: bundle.capturedItemCount,
+                        blockedStage: bundle.blockedStage
+                    ))
+                    .font(OPSStyle.Typography.nanoLabel)
+                    .tracking(0.8)
+                    .foregroundColor(PendingWorkVisuals.toneColor(bundle.tone))
+                }
 
                 Text(statusLine.text)
                     .font(OPSStyle.Typography.metadata)

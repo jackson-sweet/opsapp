@@ -38,7 +38,8 @@ final class RecoveryInventoryTests: XCTestCase {
         retryCount: Int = 0,
         lastAttemptedAt: Date? = nil,
         lastError: String? = nil,
-        createdAt: Date? = nil
+        createdAt: Date? = nil,
+        siteVisitId: String? = nil
     ) -> SyncOpSnapshot {
         SyncOpSnapshot(
             id: id,
@@ -49,7 +50,8 @@ final class RecoveryInventoryTests: XCTestCase {
             retryCount: retryCount,
             lastAttemptedAt: lastAttemptedAt,
             lastError: lastError,
-            createdAt: createdAt ?? base
+            createdAt: createdAt ?? base,
+            siteVisitId: siteVisitId
         )
     }
 
@@ -245,6 +247,100 @@ final class RecoveryInventoryTests: XCTestCase {
         XCTAssertTrue(inventory.attention.isEmpty)
         XCTAssertEqual(bundles(inventory.sending).count, 1)
         XCTAssertEqual(bundles(inventory.sending).first?.tone, .waiting)
+    }
+
+    func testCloudPacketGroupsVisitRowsMediaAndCompletionIntoOneRecoveryItem() {
+        let parent = opSnap(
+            entityType: SyncEntityType.siteVisit.rawValue,
+            entityId: "v1",
+            operationType: "create",
+            status: "pending",
+            siteVisitId: "v1"
+        )
+        let artifact = opSnap(
+            entityType: SyncEntityType.siteVisitArtifact.rawValue,
+            entityId: "artifact-1",
+            operationType: "create",
+            status: "failed",
+            siteVisitId: "v1"
+        )
+        let media = opSnap(
+            entityType: SyncEntityType.siteVisitArtifact.rawValue,
+            entityId: "artifact-1",
+            operationType: SiteVisitSyncOperation.mediaOperationType,
+            status: "parked",
+            siteVisitId: "v1"
+        )
+        let answer = opSnap(
+            entityType: SyncEntityType.siteVisitChecklistAnswer.rawValue,
+            entityId: "answer-1",
+            operationType: "create",
+            status: "pending",
+            siteVisitId: "v1"
+        )
+        let completion = opSnap(
+            entityType: SyncEntityType.siteVisit.rawValue,
+            entityId: "v1",
+            operationType: SiteVisitSyncOperation.completionOperationType,
+            status: "pending",
+            siteVisitId: "v1"
+        )
+
+        let inventory = build(ops: [parent, artifact, media, answer, completion])
+
+        let packetRows = bundles(inventory.attention)
+        XCTAssertEqual(packetRows.count, 1)
+        XCTAssertTrue(inventory.sending.isEmpty)
+        XCTAssertTrue(looseOps(inventory.attention).isEmpty)
+
+        let bundle = try! XCTUnwrap(packetRows.first)
+        XCTAssertEqual(bundle.id, "visit:v1")
+        XCTAssertEqual(bundle.siteVisitId, "v1")
+        XCTAssertEqual(bundle.capturedItemCount, 2, "media retries must not double-count their artifact")
+        XCTAssertEqual(bundle.blockedStage, .media)
+        XCTAssertEqual(bundle.members.map(\.role), [
+            .other("visit"), .other("media"), .other("completion")
+        ])
+        XCTAssertEqual(Set(bundle.syncOperationIds), Set([parent.id, artifact.id, media.id, answer.id, completion.id]))
+    }
+
+    func testCloudPacketJoinsExistingDraftAndLegacyMembersWithoutDuplicateRows() {
+        let draft = draftSnap(siteVisitId: "v1", clientId: "c1", displayName: "Lyall St")
+        let client = opSnap(entityType: "client", entityId: "c1", status: "pending")
+        let completion = opSnap(
+            entityType: SyncEntityType.siteVisit.rawValue,
+            entityId: "v1",
+            operationType: SiteVisitSyncOperation.completionOperationType,
+            status: "parked",
+            siteVisitId: "v1"
+        )
+
+        let inventory = build(ops: [client, completion], drafts: [draft])
+
+        let bundle = try! XCTUnwrap(bundles(inventory.attention).first)
+        XCTAssertEqual(inventory.attention.count, 1)
+        XCTAssertTrue(inventory.sending.isEmpty)
+        XCTAssertEqual(bundle.id, "bundle:\(draft.id)")
+        XCTAssertEqual(bundle.title, "Lyall St")
+        XCTAssertEqual(bundle.blockedStage, .completion)
+        XCTAssertEqual(Set(bundle.syncOperationIds), Set([client.id, completion.id]))
+    }
+
+    func testSyncOpSnapshotDecodesSiteVisitRoutingFromDurablePayload() throws {
+        let payload = SiteVisitSyncOperation.Payload(
+            companyId: "COMPANY",
+            siteVisitId: "VISIT-1",
+            entityId: "ARTIFACT-1"
+        )
+        let operation = SyncOperation(
+            entityType: SyncEntityType.siteVisitArtifact.rawValue,
+            entityId: "artifact-1",
+            operationType: "create",
+            payload: try JSONEncoder().encode(payload),
+            changedFields: []
+        )
+
+        XCTAssertEqual(SyncOpSnapshot(from: operation).siteVisitId, "visit-1")
     }
 
     func testBundleToneAttentionBeatsWaiting() {

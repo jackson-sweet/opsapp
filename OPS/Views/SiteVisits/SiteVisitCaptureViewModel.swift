@@ -11,8 +11,38 @@ import SwiftUI
 import UIKit
 import CoreLocation
 
+enum SiteVisitCompletionFailure: Equatable {
+    case missingEvidence
+    case persistence
+}
+
+enum SiteVisitCompletionResult: Equatable {
+    case committed(SiteVisitPersistenceCoordinator.CommitResult)
+    case notCommitted(SiteVisitCompletionFailure)
+
+    var isCommitted: Bool {
+        if case .committed = self { return true }
+        return false
+    }
+}
+
+enum SiteVisitSaveResult: Equatable {
+    case committed
+    case committedStageUpdateFailed
+    case notCommitted(SiteVisitCompletionFailure)
+
+    var visitWasCommitted: Bool {
+        switch self {
+        case .committed, .committedStageUpdateFailed: return true
+        case .notCommitted: return false
+        }
+    }
+}
+
 @MainActor
 final class SiteVisitCaptureViewModel: ObservableObject {
+    typealias StageMover = (_ opportunityId: String, _ stage: PipelineStage) async throws -> Void
+
     @Published private(set) var siteVisit: SiteVisit?
     @Published private(set) var artifacts: [SiteVisitCaptureArtifact] = []
     @Published private(set) var siteVisitTypes: [SiteVisitType] = []
@@ -34,22 +64,34 @@ final class SiteVisitCaptureViewModel: ObservableObject {
     private let userId: String?
     private let modelContext: ModelContext
     private let persistenceCoordinator: SiteVisitPersistenceCoordinator
+    private let moveLeadToStage: StageMover
     private var autosavedNoteArtifactId: String?
 
     init(
         opportunity: Opportunity?,
         companyId: String,
         userId: String?,
-        modelContext: ModelContext
+        modelContext: ModelContext,
+        persistenceCoordinator: SiteVisitPersistenceCoordinator? = nil,
+        moveLeadToStage: StageMover? = nil
     ) {
         self.currentOpportunity = opportunity
         self.companyId = companyId
         self.userId = userId
         self.modelContext = modelContext
-        self.persistenceCoordinator = SiteVisitPersistenceCoordinator(
-            modelContext: modelContext,
-            companyId: companyId
-        )
+        self.persistenceCoordinator = persistenceCoordinator
+            ?? SiteVisitPersistenceCoordinator(
+                modelContext: modelContext,
+                companyId: companyId
+            )
+        self.moveLeadToStage = moveLeadToStage ?? { opportunityId, stage in
+            let repository = OpportunityRepository(companyId: companyId)
+            _ = try await repository.moveToStage(
+                opportunityId: opportunityId,
+                to: stage,
+                userId: userId
+            )
+        }
     }
 
     var summary: SiteVisitCaptureReviewSummary {
@@ -578,22 +620,28 @@ final class SiteVisitCaptureViewModel: ObservableObject {
         }
     }
 
-    func completeVisit() -> Bool {
+    func completeVisit() async -> SiteVisitCompletionResult {
         guard canComplete, let visit = requireVisit() else {
             errorMessage = "CAPTURE SOMETHING FIRST"
-            return false
+            return .notCommitted(.missingEvidence)
         }
 
         isCompleting = true
-        let saved = persistSiteVisitChanges(completing: visit) {
-            visit.status = .completed
-            visit.completedAt = Date()
-            visit.notes = combinedNotes()
-            visit.updatedAt = Date()
-            visit.needsSync = true
+        defer { isCompleting = false }
+        do {
+            let result = try persistenceCoordinator.commit(completing: visit) {
+                visit.status = .completed
+                visit.completedAt = Date()
+                visit.notes = combinedNotes()
+                visit.updatedAt = Date()
+                visit.needsSync = true
+            }
+            errorMessage = nil
+            return .committed(result)
+        } catch {
+            errorMessage = "VISIT NOT SAVED"
+            return .notCommitted(.persistence)
         }
-        isCompleting = false
-        return saved
     }
 
     /// Bug (site-visit report) — completing a visit must NOT convert the lead
@@ -601,26 +649,27 @@ final class SiteVisitCaptureViewModel: ObservableObject {
     /// activity) and,
     /// when a lead is bound, move it to the operator-chosen stage (defaulting
     /// to QUALIFYING via `SiteVisitStageDefault`). Conversion stays a separate,
-    /// explicit CREATE PROJECT action. Returns whether the visit itself saved;
-    /// a failed stage move is surfaced but does not fail the save.
-    func saveVisit(movingLeadTo stage: PipelineStage) async -> Bool {
-        guard completeVisit() else { return false }
+    /// explicit CREATE PROJECT action. The typed result keeps a committed visit
+    /// distinct from a later stage-move failure.
+    func saveVisit(movingLeadTo stage: PipelineStage) async -> SiteVisitSaveResult {
+        let completion = await completeVisit()
+        guard case .committed = completion else {
+            if case .notCommitted(let failure) = completion {
+                return .notCommitted(failure)
+            }
+            return .notCommitted(.persistence)
+        }
 
         // Only touch the lead when one is bound, the stage actually changed,
         // and the target is non-terminal — a visit save never closes a lead.
         guard let opportunity = currentOpportunity,
               stage != opportunity.stage,
               !stage.isTerminal else {
-            return true
+            return .committed
         }
 
-        let repo = OpportunityRepository(companyId: companyIdentifier)
         do {
-            _ = try await repo.moveToStage(
-                opportunityId: opportunity.id,
-                to: stage,
-                userId: userId
-            )
+            try await moveLeadToStage(opportunity.id, stage)
             // Reflect the authoritative server move on the in-memory lead so
             // the UI (and any re-open) shows the new stage immediately.
             opportunity.stage = stage
@@ -628,8 +677,9 @@ final class SiteVisitCaptureViewModel: ObservableObject {
             opportunity.stageManuallySet = true
         } catch {
             errorMessage = "VISIT SAVED · STAGE NOT UPDATED"
+            return .committedStageUpdateFailed
         }
-        return true
+        return .committed
     }
 
     func projectPayload() -> SiteVisitProjectPayload? {

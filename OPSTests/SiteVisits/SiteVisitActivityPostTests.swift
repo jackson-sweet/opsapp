@@ -19,7 +19,7 @@ final class SiteVisitActivityPostTests: XCTestCase {
         super.tearDown()
     }
 
-    func test_completionQueuesDatabaseCommandBehindCapturedRows() throws {
+    func test_completionQueuesDatabaseCommandBehindCapturedRows() async throws {
         let context = try makeContext()
         let opportunity = Opportunity(
             id: "opp-1",
@@ -34,7 +34,8 @@ final class SiteVisitActivityPostTests: XCTestCase {
         viewModel.noteDraft = "Confirm stair landing."
         viewModel.addNote()
 
-        XCTAssertTrue(viewModel.completeVisit())
+        let result = await viewModel.completeVisit()
+        XCTAssertTrue(result.isCommitted)
 
         let operations = try context.fetch(FetchDescriptor<SyncOperation>())
         let completion = try XCTUnwrap(operations.first {
@@ -57,15 +58,17 @@ final class SiteVisitActivityPostTests: XCTestCase {
         XCTAssertTrue(dependencyTypes.contains(SyncEntityType.siteVisitArtifact.rawValue))
     }
 
-    func test_repeatedCompletionNeverFoldsIntoParentCrud() throws {
+    func test_repeatedCompletionNeverFoldsIntoParentCrud() async throws {
         let context = try makeContext()
         let viewModel = makeViewModel(opportunity: nil, context: context)
         viewModel.loadOrCreateVisit()
         viewModel.noteDraft = "Gate code 4812."
         viewModel.addNote()
 
-        XCTAssertTrue(viewModel.completeVisit())
-        XCTAssertTrue(viewModel.completeVisit())
+        let firstResult = await viewModel.completeVisit()
+        let secondResult = await viewModel.completeVisit()
+        XCTAssertTrue(firstResult.isCommitted)
+        XCTAssertTrue(secondResult.isCommitted)
 
         let operations = try context.fetch(FetchDescriptor<SyncOperation>())
         XCTAssertEqual(
@@ -83,14 +86,15 @@ final class SiteVisitActivityPostTests: XCTestCase {
         )
     }
 
-    func test_completionPayloadCarriesCurrentVisitSummaryForServerActivity() throws {
+    func test_completionPayloadCarriesCurrentVisitSummaryForServerActivity() async throws {
         let context = try makeContext()
         let viewModel = makeViewModel(opportunity: nil, context: context)
         viewModel.loadOrCreateVisit()
         viewModel.noteDraft = "Client wants black rail."
         viewModel.addNote()
 
-        XCTAssertTrue(viewModel.completeVisit())
+        let result = await viewModel.completeVisit()
+        XCTAssertTrue(result.isCommitted)
 
         let operation = try XCTUnwrap(
             try context.fetch(FetchDescriptor<SyncOperation>()).first {

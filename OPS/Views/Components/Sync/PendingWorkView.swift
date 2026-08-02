@@ -356,10 +356,11 @@ struct PendingWorkScreen: View {
         case .photos(let grouped, _):
             retryPhotos(ids: grouped.map(\.id))
         case .bundle(let bundle):
+            for opId in Set(bundle.syncOperationIds) {
+                retryOperation(id: opId)
+            }
             for member in bundle.members {
-                if let opId = member.syncOpId {
-                    retryOperation(id: opId)
-                } else if let clientId = member.autocreateClientId {
+                if let clientId = member.autocreateClientId {
                     queue.retryParked(clientId: clientId)
                 } else if !member.photoIds.isEmpty {
                     retryPhotos(ids: member.photoIds)
@@ -469,15 +470,16 @@ struct PendingWorkScreen: View {
     }
 
     private func discardBundle(_ bundle: SiteVisitBundle) {
-        for member in bundle.members {
-            if let opId = member.syncOpId {
-                if let op = fetchOperation(id: opId) {
-                    if op.operationType == "create" {
-                        deleteLocalEntity(entityType: op.entityType, entityId: op.entityId)
-                    }
-                    dataController.syncEngine.cancelOperation(op)
+        for opId in Set(bundle.syncOperationIds) {
+            if let op = fetchOperation(id: opId) {
+                if op.operationType == "create" {
+                    deleteLocalEntity(entityType: op.entityType, entityId: op.entityId)
                 }
-            } else if let clientId = member.autocreateClientId {
+                dataController.syncEngine.cancelOperation(op)
+            }
+        }
+        for member in bundle.members {
+            if let clientId = member.autocreateClientId {
                 queue.removeRequest(clientId: clientId)
             } else if !member.photoIds.isEmpty {
                 deletePhotos(ids: member.photoIds)
@@ -485,7 +487,7 @@ struct PendingWorkScreen: View {
         }
         // Remove a never-sent packet locally, or queue tenant-scoped tombstones
         // when any part of the packet has already reached the server.
-        deleteVisitPacket(siteVisitId: bundle.draft.siteVisitId)
+        deleteVisitPacket(siteVisitId: bundle.siteVisitId)
     }
 
     private func cancelOperation(id: UUID) {

@@ -506,11 +506,84 @@ final class SiteVisitCapturePacketTests: XCTestCase {
 
         XCTAssertTrue(viewModel.canComplete)
         XCTAssertTrue(viewModel.hasProjectEvidence)
-        XCTAssertTrue(viewModel.completeVisit())
+        let result = await viewModel.completeVisit()
+        XCTAssertTrue(result.isCommitted)
         let payload = try XCTUnwrap(viewModel.projectPayload())
         XCTAssertTrue(payload.photoArtifactIds.isEmpty)
         XCTAssertEqual(payload.checklistAnswerIds.last, gateCode.id)
         XCTAssertTrue(payload.checklistLines.contains("CHECKLIST :: Gate code: 4812"))
+    }
+
+    @MainActor
+    func test_completionFailureKeepsVisitOpenAndReturnsNotCommitted() async throws {
+        let container = try makeSiteVisitCaptureContainer()
+        let context = container.mainContext
+        let gate = SiteVisitCommitFailureGate()
+        let coordinator = SiteVisitPersistenceCoordinator(
+            modelContext: context,
+            companyId: "company-1",
+            validateCommit: {
+                if gate.shouldFail { throw SiteVisitOutcomeTestError.forcedFailure }
+            }
+        )
+        let viewModel = SiteVisitCaptureViewModel(
+            opportunity: nil,
+            companyId: "company-1",
+            userId: "user-1",
+            modelContext: context,
+            persistenceCoordinator: coordinator
+        )
+        viewModel.loadOrCreateVisit()
+        viewModel.noteDraft = "Existing stair nosing is damaged."
+        viewModel.addNote()
+
+        gate.shouldFail = true
+        let result = await viewModel.completeVisit()
+
+        XCTAssertEqual(result, .notCommitted(.persistence))
+        XCTAssertEqual(viewModel.errorMessage, "VISIT NOT SAVED")
+        let visit = try XCTUnwrap(try context.fetch(FetchDescriptor<SiteVisit>()).first)
+        XCTAssertNotEqual(visit.status, .completed)
+        XCTAssertNil(visit.completedAt)
+        XCTAssertTrue(
+            try context.fetch(FetchDescriptor<SyncOperation>()).allSatisfy {
+                $0.operationType != SiteVisitSyncOperation.completionOperationType
+            }
+        )
+    }
+
+    @MainActor
+    func test_stageFailureRemainsDistinctFromCommittedVisit() async throws {
+        let container = try makeSiteVisitCaptureContainer()
+        let context = container.mainContext
+        let opportunity = Opportunity(
+            id: "lead-stage-failure",
+            companyId: "company-1",
+            contactName: "Helen Calloway",
+            stage: .newLead
+        )
+        context.insert(opportunity)
+        try context.save()
+        let viewModel = SiteVisitCaptureViewModel(
+            opportunity: opportunity,
+            companyId: "company-1",
+            userId: "user-1",
+            modelContext: context,
+            moveLeadToStage: { _, _ in
+                throw SiteVisitOutcomeTestError.forcedFailure
+            }
+        )
+        viewModel.loadOrCreateVisit()
+        viewModel.noteDraft = "Client confirmed the south elevation."
+        viewModel.addNote()
+
+        let result = await viewModel.saveVisit(movingLeadTo: PipelineStage.qualifying)
+
+        XCTAssertEqual(result, SiteVisitSaveResult.committedStageUpdateFailed)
+        XCTAssertTrue(result.visitWasCommitted)
+        XCTAssertEqual(opportunity.stage, PipelineStage.newLead)
+        XCTAssertEqual(viewModel.siteVisit?.status, .completed)
+        XCTAssertEqual(viewModel.errorMessage, "VISIT SAVED · STAGE NOT UPDATED")
     }
 
     @MainActor
@@ -696,6 +769,14 @@ final class SiteVisitCapturePacketTests: XCTestCase {
             captureFinishedAt: Date(timeIntervalSince1970: 1_747_166_400)
         )
     }
+}
+
+private final class SiteVisitCommitFailureGate {
+    var shouldFail = false
+}
+
+private enum SiteVisitOutcomeTestError: Error {
+    case forcedFailure
 }
 
 private extension SiteVisitCaptureArtifact {

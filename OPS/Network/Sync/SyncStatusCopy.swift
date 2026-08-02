@@ -245,6 +245,22 @@ enum SyncStatusCopy {
             return trimmed.isEmpty ? "Site visit" : trimmed
         }
 
+        /// Durable site-visit packet summary: one captured count plus the stage
+        /// currently governing the chain. The status line below carries whether
+        /// that stage is saving, waiting, or needs attention.
+        static func siteVisitPacketSummary(
+            capturedItemCount: Int,
+            blockedStage: SiteVisitBlockedStage
+        ) -> String {
+            let stage: String
+            switch blockedStage {
+            case .visit: stage = "VISIT"
+            case .media: stage = "MEDIA"
+            case .completion: stage = "COMPLETION"
+            }
+            return "\(capturedItemCount) CAPTURED · \(stage)"
+        }
+
         /// Orphan deck-design title — the design's title, or "Deck design".
         static func orphanTitle(title: String) -> String {
             let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)

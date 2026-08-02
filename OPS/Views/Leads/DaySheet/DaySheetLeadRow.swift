@@ -10,6 +10,8 @@
 //
 //  Press grammar:
 //    • anywhere on the row     → expand (accordion, owned by the screen)
+//    • the address, tapped     → open directions
+//    • the address, held       → copy the exact address
 //    • the stage chip, tapped  → expand too (it is part of the row)
 //    • the stage chip, held    → LeadStatusMenu, for honest corrections
 //    • CALL / ROUTE            → their own 44pt targets, never the row
@@ -28,6 +30,23 @@
 
 import SwiftUI
 import UIKit
+
+/// One resolved address gesture produces one effect. Keeping the dispatch pure
+/// makes the tap/hold exclusivity contract regression-testable without opening
+/// Maps or mutating the device pasteboard in a unit test.
+enum DaySheetLeadAddressAction {
+    case route
+    case copy
+
+    func perform(openRoute: () -> Void, copyAddress: () -> Void) {
+        switch self {
+        case .route:
+            openRoute()
+        case .copy:
+            copyAddress()
+        }
+    }
+}
 
 struct DaySheetLeadRow: View {
 
@@ -101,18 +120,57 @@ struct DaySheetLeadRow: View {
             // No address, no line — a placeholder dash on a scan surface is
             // noise the operator has to read past.
             if let address = trimmedAddress {
-                Text(address)
-                    .font(OPSStyle.Typography.miniLabel)
-                    .tracking(0.8)
-                    .textCase(.uppercase)
-                    .foregroundColor(OPSStyle.Colors.text3)
-                    .lineLimit(1)
-                    .truncationMode(.tail)
+                addressLine(address)
             }
 
             chips
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    /// Tap and hold are deliberately one exclusive gesture. A successful hold
+    /// consumes the release, so copying can never also launch Maps.
+    private func addressLine(_ address: String) -> some View {
+        Text(address)
+            .font(OPSStyle.Typography.miniLabel)
+            .tracking(0.8)
+            .textCase(.uppercase)
+            .foregroundColor(OPSStyle.Colors.text3)
+            .lineLimit(1)
+            .truncationMode(.tail)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            // The overlay supplies the mobile 44pt interaction minimum without
+            // contributing height to this deliberately compact scan row.
+            .overlay {
+                Color.clear
+                    .frame(maxWidth: .infinity)
+                    .frame(height: OPSStyle.Layout.touchTargetMin)
+                    .contentShape(Rectangle())
+                    .gesture(addressGesture(address))
+            }
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("Address, \(address)")
+            .accessibilityHint("Opens directions. Touch and hold to copy.")
+            .accessibilityAddTraits(.isButton)
+            .accessibilityAction {
+                performAddressAction(.route, address: address)
+            }
+            .accessibilityAction(named: Text("Copy address")) {
+                performAddressAction(.copy, address: address)
+            }
+    }
+
+    private func addressGesture(_ address: String) -> some Gesture {
+        LongPressGesture(minimumDuration: OPSStyle.Animation.longPressHold)
+            .exclusively(before: TapGesture())
+            .onEnded { result in
+                switch result {
+                case .first(_):
+                    performAddressAction(.copy, address: address)
+                case .second(_):
+                    performAddressAction(.route, address: address)
+                }
+            }
     }
 
     // MARK: - Chips (stage · urgency)
@@ -288,6 +346,18 @@ struct DaySheetLeadRow: View {
         guard let url = routeURL else { return }
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
         UIApplication.shared.open(url)
+    }
+
+    private func performAddressAction(_ action: DaySheetLeadAddressAction, address: String) {
+        action.perform(
+            openRoute: openRoute,
+            copyAddress: { copyAddress(address) }
+        )
+    }
+
+    private func copyAddress(_ address: String) {
+        UIPasteboard.general.string = address
+        ToastCenter.shared.present(Feedback.Lead.addressCopied)
     }
 
     private var routeURL: URL? {

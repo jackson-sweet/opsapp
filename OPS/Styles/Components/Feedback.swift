@@ -334,6 +334,7 @@ enum Feedback {
     // MARK: - Leads (parity with the legacy LeadsToastSubscriber)
 
     enum Lead {
+        static let addressCopied = Toast(label: "// ADDRESS COPIED", tone: .success)
         static let archived      = Toast(label: "// LEAD ARCHIVED", tone: .warning)
         static let discarded     = Toast(label: "// LEAD DISCARDED", tone: .warning)
         static let stageAdvanced = Toast(label: "// STAGE ADVANCED", tone: .success)
@@ -480,7 +481,7 @@ enum Feedback {
         Deck.railingUpdated, Deck.wallMaterialSet, Deck.itemRemoved, Deck.surfacesLabeled, Deck.footprintLabeled,
         Deck.edgeLabeled, Deck.surfacesMoved, Deck.edgesMoved, Deck.levelCreatedSurfaces, Deck.levelCreatedEdges, Deck.arWalkSaved,
         Measure.pdfReady, Measure.dimensionsSaved(view: {}),
-        Lead.archived, Lead.stageAdvanced,
+        Lead.addressCopied, Lead.archived, Lead.stageAdvanced,
         Sync.restored, Sync.failed(retry: {}),
     ]
 }

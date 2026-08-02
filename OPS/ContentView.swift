@@ -684,6 +684,11 @@ struct PINGatedView: View {
                     .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
                         // Reset wizard session tracking on return from background so wizards re-evaluate each session
                         wizardTriggerService.resetSessionTracking()
+                        Task {
+                            await BugReportSubmissionService.shared.drainOfflineQueue(
+                                dataController: dataController
+                            )
+                        }
                     }
                     .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("LogoutInitiated"))) { _ in
                         // Tear down wizard overlay window on logout to avoid dangling references
@@ -942,6 +947,9 @@ struct PINGatedView: View {
                 hasCheckedForAppMessage = true
                 await updateGate.refresh(userRole: dataController.currentUser?.role, force: true)
             }
+            await BugReportSubmissionService.shared.drainOfflineQueue(
+                dataController: dataController
+            )
         }
         // Deep-link resume trigger: when the user unlocks their PIN, any
         // link that arrived while the PIN overlay was up is re-drained so

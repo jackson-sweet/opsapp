@@ -47,6 +47,9 @@ struct ProjectDetailsView: View {
     @State private var selectedTeamMemberIds: Set<String> = []
     @State private var allTeamMembers: [TeamMember] = []
     @State private var showingClientPicker = false
+    /// Bug a3c4e216 — the project side of lead matching.
+    @State private var showingLeadMatchPicker = false
+    @Query private var companyLeads: [Opportunity]
     @State private var dismissDragOffset: CGFloat = 0
     @State private var isKeyboardVisible = false
     @State private var shareSource: ProjectShareItemSource?
@@ -83,6 +86,16 @@ struct ProjectDetailsView: View {
         let pid: String? = project.id
         self._allDeckDesigns = Query(
             filter: #Predicate<DeckDesign> { $0.projectId == pid }
+        )
+
+        // Live leads for this company. Stage, link state and address matching
+        // are decided in ProjectLeadRow — #Predicate can express none of them
+        // (stored enum comparison and address normalization both).
+        let cid = project.companyId
+        self._companyLeads = Query(
+            filter: #Predicate<Opportunity> {
+                $0.companyId == cid && $0.deletedAt == nil
+            }
         )
     }
 
@@ -178,6 +191,13 @@ struct ProjectDetailsView: View {
                                 let generator = UIImpactFeedbackGenerator(style: .medium)
                                 generator.impactOccurred()
                             }
+                        )
+                        .environmentObject(dataController)
+                    }
+                    .sheet(isPresented: $showingLeadMatchPicker) {
+                        ProjectLeadMatchSheet(
+                            project: project,
+                            candidates: leadMatchCandidates
                         )
                         .environmentObject(dataController)
                     }
@@ -297,6 +317,12 @@ struct ProjectDetailsView: View {
                             isProjectCompleted: project.status == .completed,
                             onCommitTeam: { committedIds in
                                 commitTaskTeamChanges(memberIds: committedIds)
+                            },
+                            onCommitTaskType: { picked in
+                                commitTaskTypeChange(task: task, taskType: picked)
+                            },
+                            onCommitDescription: { notes in
+                                commitTaskDescriptionChange(task: task, notes: notes)
                             }
                         )
                     }
@@ -891,7 +917,10 @@ struct ProjectDetailsView: View {
                     viewModel.showingTaskDeleteConfirmation = true
                 },
                 onClientLongPress: { showingClientPicker = true },
-                onChangeStatus: { showingStatusPicker = true }
+                onChangeStatus: { showingStatusPicker = true },
+                leadRowPresentation: leadRowPresentation,
+                onOpenLead: openLinkedLead,
+                onMatchLead: { showingLeadMatchPicker = true }
             )
 
         case .expenses:
@@ -1309,6 +1338,114 @@ struct ProjectDetailsView: View {
                     print("[PROJECT_DETAILS] ✅ Task team update complete")
                 } catch {
                     print("[PROJECT_DETAILS] ⚠️ Team update failed: \(error)")
+                }
+            }
+        }
+    }
+
+    // MARK: - LEAD provenance (bug a3c4e216)
+
+    /// Won, unconverted leads at this project's address. The commit refuses
+    /// anything else, so the picker must not offer anything else.
+    private var leadMatchCandidates: [Opportunity] {
+        let matchable = ProjectLeadRow.matchableLeads(
+            project: ProjectLeadRow.ProjectContext(
+                companyId: project.companyId,
+                clientId: project.clientId,
+                address: project.address
+            ),
+            leads: companyLeads.map {
+                ProjectLeadRow.LeadCandidate(
+                    id: $0.id,
+                    companyId: $0.companyId,
+                    clientId: $0.clientId,
+                    address: $0.address,
+                    stage: $0.stage,
+                    projectId: $0.projectId,
+                    label: $0.title ?? $0.contactName
+                )
+            }
+        )
+        // Preserve matchableLeads' ordering (same-client first) — filtering
+        // companyLeads by an id SET would silently restore store order.
+        let byId = Dictionary(uniqueKeysWithValues: companyLeads.map { ($0.id, $0) })
+        return matchable.compactMap { byId[$0.id] }
+    }
+
+    private var linkedLead: Opportunity? {
+        guard let oid = project.opportunityId,
+              !oid.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
+        return companyLeads.first { $0.id == oid }
+    }
+
+    private var leadRowPresentation: ProjectLeadRow.Presentation {
+        ProjectLeadRow.presentation(
+            opportunityId: project.opportunityId,
+            leadLabel: linkedLead.map { $0.title ?? $0.contactName },
+            candidateCount: leadMatchCandidates.count,
+            // Matching runs the guarded conversion, which is a pipeline write.
+            canMatch: permissionStore.can("pipeline.manage", requiredScope: "assigned")
+        )
+    }
+
+    /// LEAD row tap — the app-wide lead route, the same channel notifications
+    /// and Spotlight use.
+    private func openLinkedLead() {
+        guard let oid = project.opportunityId,
+              !oid.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        NotificationCenter.default.post(
+            name: Notification.Name("OpenLeadDetails"),
+            object: nil,
+            userInfo: ["leadId": oid]
+        )
+    }
+
+    /// Bug 10b66fce - a confirmed task-type change from the task detail
+    /// sheet's type eyebrow. Deferred off the sheet's critical path for the
+    /// same reason as `commitTaskTeamChanges`: `updateTaskFields` saves the
+    /// model context, and that notification cascade landing mid sheet
+    /// animation is what tore down ProjectDetails in bugs 0aa825fe / 62481022.
+    /// Routed through DataController so the edit is queued for sync - a bare
+    /// modelContext.save() would strand it on this device.
+    private func commitTaskTypeChange(task: ProjectTask, taskType: TaskType) {
+        guard task.taskTypeId != taskType.id else { return }
+        let taskId = task.id
+        let newTypeId = taskType.id
+
+        DispatchQueue.main.async {
+            Task {
+                do {
+                    try await dataController.updateTaskFields(
+                        taskId: taskId,
+                        fields: ["task_type_id": .string(newTypeId)]
+                    )
+                    // The type drives the job's colour and title on every
+                    // calendar surface, so the calendars must repaint.
+                    dataController.notifyReviewSourcesChanged()
+                } catch {
+                    print("[PROJECT_DETAILS] Task type update failed: \(error)")
+                }
+            }
+        }
+    }
+
+    /// Bug 10b66fce - a confirmed description edit. Same deferred-write
+    /// contract as the type and crew commits above.
+    private func commitTaskDescriptionChange(task: ProjectTask, notes: String) {
+        let trimmed = notes.trimmingCharacters(in: .whitespacesAndNewlines)
+        let current = (task.taskNotes ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed != current else { return }
+        let taskId = task.id
+
+        DispatchQueue.main.async {
+            Task {
+                do {
+                    try await dataController.updateTaskFields(
+                        taskId: taskId,
+                        fields: ["task_notes": trimmed.isEmpty ? .null : .string(trimmed)]
+                    )
+                } catch {
+                    print("[PROJECT_DETAILS] Task notes update failed: \(error)")
                 }
             }
         }

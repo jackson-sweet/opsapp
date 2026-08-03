@@ -201,7 +201,7 @@ final class RealtimeProcessor: ObservableObject {
     /// adding a table here, confirm it is in the publication:
     ///   SELECT 1 FROM pg_publication_tables
     ///   WHERE pubname='supabase_realtime' AND schemaname='public' AND tablename='<t>';
-    private let companyFilteredTables = [
+    static let companyFilteredTables = [
         "projects",
         "project_tasks",
         "users",
@@ -216,6 +216,12 @@ final class RealtimeProcessor: ObservableObject {
         // deck edits live. The realtime merge reuses mergeDeckDesign →
         // applyServerSnapshot, so a stale echo can't revert a fresh local edit.
         "deck_designs",
+        // Published with REPLICA IDENTITY FULL by the site-visit cloud-sync
+        // migration. All four are company-scoped and share the same channel.
+        "site_visits",
+        "site_visit_artifacts",
+        "site_visit_checklist_answers",
+        "site_visit_identity_drafts",
         // LEADS live updates (2026-07-03, bug 0b7e9b17). Publication +
         // REPLICA IDENTITY FULL + company_id verified for all three.
         // Notification-only tables (no SwiftData merge); LeadsTabView
@@ -335,7 +341,7 @@ final class RealtimeProcessor: ObservableObject {
         print("[RealtimeProcessor] Joining authenticated channel \(channelName) — \(diagnosticBindings.count) bindings: \(diagnosticBindings.map(\.description).joined(separator: ", "))")
 
         // Core entity tables filtered by company_id
-        for table in companyFilteredTables {
+        for table in Self.companyFilteredTables {
             subscribeToTable(channel: channel, table: table, filter: "company_id=eq.\(companyId)")
         }
 
@@ -625,7 +631,7 @@ final class RealtimeProcessor: ObservableObject {
     }
 
     private func makeRealtimeBindings(companyId: String, userId: String?) -> [RealtimeBinding] {
-        var bindings = companyFilteredTables.map {
+        var bindings = Self.companyFilteredTables.map {
             RealtimeBinding(table: $0, filter: "company_id=eq.\(companyId)")
         }
         bindings.append(RealtimeBinding(table: "companies", filter: "id=eq.\(companyId)"))
@@ -935,9 +941,8 @@ final class RealtimeProcessor: ObservableObject {
                 // both team-based and mention-based grant. Any row delivered here
                 // has already passed RLS and is valid to persist.
 
-                let model = dto.toModel()
                 let pendingFields = protectedFieldsForEntity(entityType: .project, entityId: dto.id, context: context)
-                try upsertProject(context: context, id: dto.id, dto: dto, model: model, pendingFields: pendingFields)
+                try upsertProject(context: context, id: dto.id, dto: dto, pendingFields: pendingFields)
                 // Legacy path saves on mainContext, which never fires the
                 // actor's didSave rebroadcast — post the inbound signal
                 // directly so snapshot caches (calendar) invalidate.
@@ -1035,6 +1040,70 @@ final class RealtimeProcessor: ObservableObject {
                 let dto = try record.decodeRecord(as: SupabaseDeckDesignDTO.self, decoder: decoder)
                 let pendingFields = protectedFieldsForEntity(entityType: .deckDesign, entityId: dto.id, context: context)
                 try upsertDeckDesign(context: context, id: dto.id, dto: dto, pendingFields: pendingFields)
+
+            case "site_visits":
+                let dto = try record.decodeRecord(as: SiteVisitDTO.self, decoder: decoder)
+                guard let companyId = activeSiteVisitCompanyId(matching: dto.companyId) else { return }
+                _ = try SiteVisitServerMerge.merge(
+                    visit: dto,
+                    companyId: companyId,
+                    into: context
+                )
+                InboundChangeSignal.post(entityNames: ["SiteVisit"])
+
+            case "site_visit_artifacts":
+                let dto = try record.decodeRecord(as: SiteVisitArtifactDTO.self, decoder: decoder)
+                guard let companyId = activeSiteVisitCompanyId(matching: dto.companyId) else { return }
+                do {
+                    _ = try SiteVisitServerMerge.merge(
+                        artifact: dto,
+                        companyId: companyId,
+                        into: context
+                    )
+                    InboundChangeSignal.post(entityNames: ["SiteVisitCaptureArtifact"])
+                } catch SiteVisitMergeError.orphanedChild {
+                    recoverSiteVisitBundle(
+                        siteVisitId: dto.siteVisitId,
+                        companyId: companyId,
+                        context: context
+                    )
+                }
+
+            case "site_visit_checklist_answers":
+                let dto = try record.decodeRecord(as: SiteVisitChecklistAnswerDTO.self, decoder: decoder)
+                guard let companyId = activeSiteVisitCompanyId(matching: dto.companyId) else { return }
+                do {
+                    _ = try SiteVisitServerMerge.merge(
+                        checklistAnswer: dto,
+                        companyId: companyId,
+                        into: context
+                    )
+                    InboundChangeSignal.post(entityNames: ["SiteVisitChecklistAnswer"])
+                } catch SiteVisitMergeError.orphanedChild {
+                    recoverSiteVisitBundle(
+                        siteVisitId: dto.siteVisitId,
+                        companyId: companyId,
+                        context: context
+                    )
+                }
+
+            case "site_visit_identity_drafts":
+                let dto = try record.decodeRecord(as: SiteVisitIdentityDraftDTO.self, decoder: decoder)
+                guard let companyId = activeSiteVisitCompanyId(matching: dto.companyId) else { return }
+                do {
+                    _ = try SiteVisitServerMerge.merge(
+                        identityDraft: dto,
+                        companyId: companyId,
+                        into: context
+                    )
+                    InboundChangeSignal.post(entityNames: ["SiteVisitIdentityDraft"])
+                } catch SiteVisitMergeError.orphanedChild {
+                    recoverSiteVisitBundle(
+                        siteVisitId: dto.siteVisitId,
+                        companyId: companyId,
+                        context: context
+                    )
+                }
 
             // LEADS live updates (bug 0b7e9b17). Notification-only, exactly
             // like expenses: no DTO decode, no actor dispatch. LeadsTabView
@@ -1173,6 +1242,38 @@ final class RealtimeProcessor: ObservableObject {
                     try context.save()
                 }
 
+            case "site_visits":
+                let descriptor = FetchDescriptor<SiteVisit>(predicate: #Predicate { $0.id == id })
+                if let existing = try context.fetch(descriptor).first {
+                    existing.deletedAt = Date()
+                    try context.save()
+                }
+                InboundChangeSignal.post(entityNames: ["SiteVisit"])
+
+            case "site_visit_artifacts":
+                let descriptor = FetchDescriptor<SiteVisitCaptureArtifact>(predicate: #Predicate { $0.id == id })
+                if let existing = try context.fetch(descriptor).first {
+                    existing.deletedAt = Date()
+                    try context.save()
+                }
+                InboundChangeSignal.post(entityNames: ["SiteVisitCaptureArtifact"])
+
+            case "site_visit_checklist_answers":
+                let descriptor = FetchDescriptor<SiteVisitChecklistAnswer>(predicate: #Predicate { $0.id == id })
+                if let existing = try context.fetch(descriptor).first {
+                    existing.deletedAt = Date()
+                    try context.save()
+                }
+                InboundChangeSignal.post(entityNames: ["SiteVisitChecklistAnswer"])
+
+            case "site_visit_identity_drafts":
+                let descriptor = FetchDescriptor<SiteVisitIdentityDraft>(predicate: #Predicate { $0.id == id })
+                if let existing = try context.fetch(descriptor).first {
+                    existing.deletedAt = Date()
+                    try context.save()
+                }
+                InboundChangeSignal.post(entityNames: ["SiteVisitIdentityDraft"])
+
             // LEADS live updates (bug 0b7e9b17). Notification-only, exactly
             // like expenses: no DTO decode, no actor dispatch. LeadsTabView
             // re-fetches via REST (PipelineViewModel.scheduleRefresh) on the
@@ -1205,7 +1306,44 @@ final class RealtimeProcessor: ObservableObject {
         }
     }
 
+    private func recoverSiteVisitBundle(
+        siteVisitId: String,
+        companyId: String,
+        context: ModelContext
+    ) {
+        Task { @MainActor in
+            do {
+                let repository = SiteVisitRepository(companyId: companyId)
+                let bundle = try await repository.fetchBundle(siteVisitId: siteVisitId)
+                _ = try SiteVisitServerMerge.merge(bundle: bundle, into: context)
+                InboundChangeSignal.post(entityNames: [
+                    "SiteVisit",
+                    "SiteVisitCaptureArtifact",
+                    "SiteVisitChecklistAnswer",
+                    "SiteVisitIdentityDraft",
+                ])
+            } catch {
+                // Realtime is only the accelerator. A hidden, malformed, or
+                // still-in-flight parent is recovered by the next ordered
+                // delta pull without ever inserting the child as an orphan.
+                print("[RealtimeProcessor] Site-visit bundle recovery failed: \(error)")
+            }
+        }
+    }
+
     // MARK: - DataActor Dispatch (flag-gated)
+
+    private func activeSiteVisitCompanyId(matching received: String) -> String? {
+        guard let active = companyId?.lowercased(), !active.isEmpty else {
+            print("[RealtimeProcessor] Dropping site-visit event — active company is unavailable")
+            return nil
+        }
+        guard received.lowercased() == active else {
+            print("[RealtimeProcessor] Dropping cross-company site-visit event")
+            return nil
+        }
+        return active
+    }
 
     /// Decodes the realtime payload on MainActor, applies scope guards (PermissionStore
     /// reads are main-safe here), then hands a Sendable RealtimeUpdate case to the
@@ -1282,6 +1420,26 @@ final class RealtimeProcessor: ObservableObject {
             case "deck_designs":
                 let dto = try record.decodeRecord(as: SupabaseDeckDesignDTO.self, decoder: decoder)
                 Task { await actor.handleRealtimeUpdate(.deckDesign(dto)) }
+
+            case "site_visits":
+                let dto = try record.decodeRecord(as: SiteVisitDTO.self, decoder: decoder)
+                guard activeSiteVisitCompanyId(matching: dto.companyId) != nil else { return }
+                Task { await actor.handleRealtimeUpdate(.siteVisit(dto)) }
+
+            case "site_visit_artifacts":
+                let dto = try record.decodeRecord(as: SiteVisitArtifactDTO.self, decoder: decoder)
+                guard activeSiteVisitCompanyId(matching: dto.companyId) != nil else { return }
+                Task { await actor.handleRealtimeUpdate(.siteVisitArtifact(dto)) }
+
+            case "site_visit_checklist_answers":
+                let dto = try record.decodeRecord(as: SiteVisitChecklistAnswerDTO.self, decoder: decoder)
+                guard activeSiteVisitCompanyId(matching: dto.companyId) != nil else { return }
+                Task { await actor.handleRealtimeUpdate(.siteVisitChecklistAnswer(dto)) }
+
+            case "site_visit_identity_drafts":
+                let dto = try record.decodeRecord(as: SiteVisitIdentityDraftDTO.self, decoder: decoder)
+                guard activeSiteVisitCompanyId(matching: dto.companyId) != nil else { return }
+                Task { await actor.handleRealtimeUpdate(.siteVisitIdentityDraft(dto)) }
 
             // Catalog parents — Option A: only parent tables fire realtime;
             // their children (option values, joins, snapshot items, order
@@ -1368,6 +1526,8 @@ final class RealtimeProcessor: ObservableObject {
                  "task_types", "sub_clients", "project_notes", "project_photos",
                  "project_photo_annotations",
                  "deck_designs",
+                 "site_visits", "site_visit_artifacts",
+                 "site_visit_checklist_answers", "site_visit_identity_drafts",
                  // Catalog parents with surrogate-id identity. catalog_snapshots
                  // is append-only (no DELETE expected) and company_default_products
                  // uses a composite key (no surrogate id), so neither is dispatched.
@@ -1446,11 +1606,10 @@ final class RealtimeProcessor: ObservableObject {
         Task { @MainActor in
             do {
                 let dto = try await ProjectRepository(companyId: companyId).fetchOne(projectId)
-                let model = dto.toModel()
                 let pendingFields = self.protectedFieldsForEntity(
                     entityType: .project, entityId: dto.id, context: context
                 )
-                try self.upsertProject(context: context, id: dto.id, dto: dto, model: model, pendingFields: pendingFields)
+                try self.upsertProject(context: context, id: dto.id, dto: dto, pendingFields: pendingFields)
                 try context.save()
                 print("[RealtimeProcessor] G9 — fetched mention-granted project \(projectId)")
             } catch {
@@ -1576,101 +1735,45 @@ final class RealtimeProcessor: ObservableObject {
         context: ModelContext,
         id: String,
         dto: SupabaseProjectDTO,
-        model: Project,
         pendingFields: Set<String>
     ) throws {
         let descriptor = FetchDescriptor<Project>(predicate: #Predicate { $0.id == id })
         let existingCount = (try? context.fetchCount(descriptor)) ?? 0
         print("[DUPE_TRACE] RT.upsertProject id=\(id) existing_count=\(existingCount) ctx=\(ObjectIdentifier(context))")
 
-        if let existing = try context.fetch(descriptor).first {
-            // Bug 209281ba — pendingFields is built from SyncOperation.changedFields
-            // which uses server-side wire names ("project_images",
-            // "team_member_ids", "company_id", etc.). Compare against those, not
-            // Swift property names, otherwise the protection silently fails and
-            // realtime overwrites local optimistic writes (e.g., comment-photo
-            // URLs appended to projectImagesString disappear).
-            if !pendingFields.contains("title")             { existing.title = model.title }
-            if !pendingFields.contains("status")            { existing.status = model.status }
-            if !pendingFields.contains("company_id")        { existing.companyId = model.companyId }
-            if !pendingFields.contains("client_id")         { existing.clientId = model.clientId }
-            if !pendingFields.contains("opportunity_id")    { existing.opportunityId = model.opportunityId }
-            if !pendingFields.contains("address")           { existing.address = model.address }
-            if !pendingFields.contains("latitude")          { existing.latitude = model.latitude }
-            if !pendingFields.contains("longitude")         { existing.longitude = model.longitude }
-            if !pendingFields.contains("start_date")        { existing.startDate = model.startDate }
-            if !pendingFields.contains("end_date")          { existing.endDate = model.endDate }
-            if !pendingFields.contains("duration")          { existing.duration = model.duration }
-            if !pendingFields.contains("notes")             { existing.notes = model.notes }
-            if !pendingFields.contains("description")       { existing.projectDescription = model.projectDescription }
-            if !pendingFields.contains("all_day")           { existing.allDay = model.allDay }
-            if !pendingFields.contains("team_member_ids")   { existing.teamMemberIdsString = model.teamMemberIdsString }
-            if !pendingFields.contains("project_images")    { existing.projectImagesString = model.projectImagesString }
-            if !pendingFields.contains("deleted_at")        { existing.deletedAt = model.deletedAt }
-            try upsertProjectVinylOrderMarker(context: context, dto: dto, pendingFields: pendingFields)
-            existing.lastSyncedAt = Date()
-            let pendingFieldsForSync = pendingFieldsForEntity(entityType: .project, entityId: existing.id, context: context)
-            if pendingFieldsForSync.isEmpty {
-                existing.needsSync = false
-            }
-        } else {
+        // Bug 209281ba — pendingFields is built from SyncOperation.changedFields
+        // which uses server-side wire names ("project_images",
+        // "team_member_ids", "company_id", etc.). ProjectCacheMerge compares
+        // against those, not Swift property names, otherwise the protection
+        // silently fails and realtime overwrites local optimistic writes
+        // (e.g., comment-photo URLs appended to projectImagesString disappear).
+        if try context.fetch(descriptor).first == nil {
             // Origin suppression: if we wrote this entityId locally within the
             // last 60s — regardless of SyncOperation status (pending, inProgress,
             // completed) — the realtime payload is our own write echoing back.
             // Inserting here would produce a duplicate because Project.id
             // lacks @Attribute(.unique). Mirrors the ProjectTask suppression
-            // below (bug f86cf554 / 858fa5e).
+            // below (bug f86cf554 / 858fa5e). This stays a REALTIME concern:
+            // the conversion path shares the merge but must never suppress,
+            // because materializing a brand-new project is its whole job.
             if hasRecentLocalWrite(entityType: .project, entityId: id, withinSeconds: 60, context: context) {
                 print("[DUPE_TRACE] RT.upsertProject SUPPRESSED id=\(id) — recent local write within 60s")
                 try context.save()
                 return
             }
-
             print("[DUPE_TRACE] RT.upsertProject INSERT id=\(id) — no recent local write, treating as remote create")
-            model.lastSyncedAt = Date()
-            model.needsSync = false
-            context.insert(model)
-            let marker = dto.toVinylOrderMarkerModel()
-            marker.lastSyncedAt = Date()
-            context.insert(marker)
         }
-        try context.save()
-    }
 
-    private func upsertProjectVinylOrderMarker(
-        context: ModelContext,
-        dto: SupabaseProjectDTO,
-        pendingFields: Set<String>
-    ) throws {
-        let projectId = dto.id
-        let descriptor = FetchDescriptor<ProjectVinylOrderMarker>(
-            predicate: #Predicate { $0.id == projectId }
+        _ = try ProjectCacheMerge.apply(
+            dto: dto,
+            context: context,
+            protectedFields: pendingFields,
+            hasPendingWrite: !pendingFieldsForEntity(
+                entityType: .project,
+                entityId: id,
+                context: context
+            ).isEmpty
         )
-        let marker: ProjectVinylOrderMarker
-        if let existing = try context.fetch(descriptor).first {
-            marker = existing
-        } else {
-            marker = ProjectVinylOrderMarker(projectId: projectId)
-            context.insert(marker)
-        }
-
-        if !pendingFields.contains(ProjectVinylOrderFields.status) {
-            marker.status = dto.resolvedVinylOrderStatus
-        }
-        if !pendingFields.contains(ProjectVinylOrderFields.orderedAt) {
-            marker.orderedAt = dto.vinylOrderedAt.flatMap { SupabaseDate.parse($0) }
-        }
-        if !pendingFields.contains(ProjectVinylOrderFields.orderedBy) {
-            marker.orderedBy = dto.vinylOrderedBy
-        }
-        if !pendingFields.contains(ProjectVinylOrderFields.color) {
-            marker.vinylColor = dto.vinylColor
-        }
-        if !pendingFields.contains(ProjectVinylOrderFields.po) {
-            marker.vinylPO = dto.vinylPO
-        }
-        marker.sourceProjectUpdatedAt = dto.updatedAt.flatMap { SupabaseDate.parse($0) }
-        marker.lastSyncedAt = Date()
     }
 
     private func upsertProjectTask(context: ModelContext, id: String, model: ProjectTask, pendingFields: Set<String>) throws {

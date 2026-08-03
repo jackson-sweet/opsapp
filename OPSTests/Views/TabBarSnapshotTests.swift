@@ -126,14 +126,33 @@ final class TabBarSnapshotTests: XCTestCase {
         try AppHostWindow.acquire()
     }
 
+    /// What a settled lane is being waited on: the Settings peek fully
+    /// revealed, or the lane back at its resting position.
+    private enum LaneSettle {
+        /// contentOffset.x == contentWidth - laneWidth (Settings fully in view).
+        case revealed
+        /// contentOffset.x == 0 (the primary tabs at their designed edge
+        /// padding, divider and Settings genuinely off-screen).
+        case rested
+    }
+
     /// Hosts the real `CustomTabBar` in the app host's key window (the only
     /// environment where programmatic SwiftUI scrolls execute — see header),
     /// optionally flips the selection after the initial state settles, then
-    /// polls until the lane reaches its fully-revealed offset or a generous
+    /// polls until the lane reaches the expected settled offset or a generous
     /// deadline proves it never will. No fixed-duration sleeps: the reveal
     /// animates on the 200ms panel curve, so we wait on the condition itself.
     /// Restores the app host's UI before returning.
-    private func settledLaneState(initialTab: Int, thenSelect flipTo: Int? = nil) throws -> (offset: CGFloat, contentWidth: CGFloat, laneWidth: CGFloat) {
+    ///
+    /// `restingOffset` is the lane's settled offset BEFORE any flip — i.e. the
+    /// resting position `initialTab` lands on. Bug df49d9ef lived exactly
+    /// there: a lane that rested at `gap/2` instead of 0, leaving the trailing
+    /// divider peeking on screen.
+    private func settledLaneState(
+        initialTab: Int,
+        thenSelect flipTo: Int? = nil,
+        settle: LaneSettle = .revealed
+    ) throws -> (offset: CGFloat, contentWidth: CGFloat, laneWidth: CGFloat, restingOffset: CGFloat?) {
         let window = try appHostWindow()
         let original = window.rootViewController
         defer {
@@ -151,28 +170,30 @@ final class TabBarSnapshotTests: XCTestCase {
         window.layoutIfNeeded()
 
         let scrollView = try XCTUnwrap(findScrollView(host.view))
-        var preFlipOffset: CGFloat?
+
+        // Settle the initial state on the condition itself — lane laid out
+        // wider than the viewport and geometry quiescent across two
+        // consecutive polls — before flipping, like a user tap. A fixed sleep
+        // can flip before first layout completes and the reveal scroll then
+        // resolves against unsettled geometry. Runs whether or not a flip
+        // follows, because the settled pre-flip offset IS the resting-position
+        // measurement bug df49d9ef is about.
+        var lastWidth: CGFloat = -1
+        var lastOffset: CGFloat = .infinity
+        let settleDeadline = Date(timeIntervalSinceNow: 2)
+        while Date() < settleDeadline {
+            let width = scrollView.contentSize.width
+            let offset = scrollView.contentOffset.x
+            if width > window.bounds.width, width == lastWidth, offset == lastOffset {
+                break
+            }
+            lastWidth = width
+            lastOffset = offset
+            RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.05))
+        }
+        let preFlipOffset = scrollView.contentOffset.x
 
         if let flipTo {
-            // Settle the initial (unrevealed) state on the condition itself —
-            // lane laid out wider than the viewport and geometry quiescent
-            // across two consecutive polls — before flipping, like a user tap.
-            // A fixed sleep can flip before first layout completes and the
-            // reveal scroll then resolves against unsettled geometry.
-            var lastWidth: CGFloat = -1
-            var lastOffset: CGFloat = .infinity
-            let settleDeadline = Date(timeIntervalSinceNow: 2)
-            while Date() < settleDeadline {
-                let width = scrollView.contentSize.width
-                let offset = scrollView.contentOffset.x
-                if width > window.bounds.width, width == lastWidth, offset == lastOffset {
-                    break
-                }
-                lastWidth = width
-                lastOffset = offset
-                RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.05))
-            }
-            preFlipOffset = scrollView.contentOffset.x
             model.selected = flipTo
         }
 
@@ -189,25 +210,33 @@ final class TabBarSnapshotTests: XCTestCase {
         // the retry and stays caught.
         let deadline = Date(timeIntervalSinceNow: 5)
         let retryAt = Date(timeIntervalSinceNow: 1.5)
-        var retriedDroppedReveal = false
+        var retriedDroppedScroll = false
         while Date() < deadline {
             let contentWidth = scrollView.contentSize.width
-            let target = max(contentWidth - window.bounds.width, 0)
+            let target: CGFloat = switch settle {
+            case .revealed: max(contentWidth - window.bounds.width, 0)
+            case .rested: 0
+            }
             if contentWidth > window.bounds.width,
                abs(scrollView.contentOffset.x - target) <= 0.5 {
                 break
             }
-            if let flipTo, let preFlipOffset, !retriedDroppedReveal, Date() > retryAt,
+            if let flipTo, !retriedDroppedScroll, Date() > retryAt,
                abs(scrollView.contentOffset.x - preFlipOffset) < 0.5 {
-                retriedDroppedReveal = true
-                print("TabBarSnapshotTests: reveal transaction dropped — re-driving selection through the product path once")
+                retriedDroppedScroll = true
+                print("TabBarSnapshotTests: scroll transaction dropped — re-driving selection through the product path once")
                 model.selected = initialTab
                 RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.05))
                 model.selected = flipTo
             }
             RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.05))
         }
-        return (scrollView.contentOffset.x, scrollView.contentSize.width, window.bounds.width)
+        return (
+            scrollView.contentOffset.x,
+            scrollView.contentSize.width,
+            window.bounds.width,
+            flipTo == nil ? nil : preFlipOffset
+        )
     }
 
     /// Hosts a real SwiftUI view in a window, lays it out (so a live `ScrollView`
@@ -314,6 +343,48 @@ final class TabBarSnapshotTests: XCTestCase {
             designedReveal(laneWidth: lane.laneWidth),
             accuracy: 1,
             "The revealed amount must equal the designed peek group (cell + divider + gap)"
+        )
+    }
+
+    // MARK: - Resting position (bug df49d9ef)
+
+    /// At rest the lane sits at content-x 0: the primary tabs hold their
+    /// designed edge padding and the trailing divider + Settings are genuinely
+    /// off-screen. The reveal-on-select scroll used to target the first tab
+    /// CELL, whose leading edge sits *inside* the group's `gap/2` padding — so
+    /// the lane settled at `gap/2` and the divider peeked in at rest.
+    func testLaneRestsFullyLeftOnInitialRender() throws {
+        let lane = try settledLaneState(initialTab: 0, thenSelect: adminTabs.count - 1)
+        let resting = try XCTUnwrap(lane.restingOffset)
+
+        XCTAssertEqual(
+            resting,
+            0,
+            accuracy: 0.5,
+            "A lane resting at gap/2 scrolls the leading edge padding away and exposes the trailing divider"
+        )
+    }
+
+    /// Coming back from Settings must return the lane all the way to 0, not to
+    /// `gap/2` — `revealOrHide` re-applies the resting scroll on every tab
+    /// change, so a wrong resting target reappears on each hop back.
+    func testLaneRestsFullyLeftAfterReturningFromSettings() throws {
+        let lane = try settledLaneState(
+            initialTab: adminTabs.count - 1,
+            thenSelect: 0,
+            settle: .rested
+        )
+
+        XCTAssertGreaterThan(
+            lane.contentWidth,
+            lane.laneWidth,
+            "sanity: the lane must overflow, otherwise there is nothing to rest"
+        )
+        XCTAssertEqual(
+            lane.offset,
+            0,
+            accuracy: 0.5,
+            "Leaving Settings must park the lane fully left, divider off-screen"
         )
     }
 

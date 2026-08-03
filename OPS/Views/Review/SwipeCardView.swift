@@ -69,10 +69,7 @@ struct SwipeCardView: View {
 
                 if let financialSummary {
                     if financialSummary.hasOutstandingInvoices {
-                        Text(financialSummary.outstandingBalance.formatted(
-                            .currency(code: financialSummary.currencyCode)
-                                .precision(.fractionLength(2))
-                        ))
+                        Text(BooksFormat.exact(financialSummary.outstandingBalance, code: financialSummary.currencyCode))
                             .font(OPSStyle.Typography.monoValue)
                             .foregroundColor(.white)
 
@@ -80,10 +77,7 @@ struct SwipeCardView: View {
                             .font(OPSStyle.Typography.smallCaption)
                             .foregroundColor(.white.opacity(0.7))
                     } else if financialSummary.hasUnresolvedInvoices {
-                        Text(financialSummary.unresolvedBalance.formatted(
-                            .currency(code: financialSummary.currencyCode)
-                                .precision(.fractionLength(2))
-                        ))
+                        Text(BooksFormat.exact(financialSummary.unresolvedBalance, code: financialSummary.currencyCode))
                             .font(OPSStyle.Typography.monoValue)
                             .foregroundColor(.white)
 

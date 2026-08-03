@@ -169,6 +169,14 @@ struct PendingWorkView: View {
                 onTap: { detailItem = item },
                 onRetry: { actions.retryItem(item) }
             )
+        case .quarantinedVisit:
+            PendingWorkEntryRow(
+                item: item,
+                now: now,
+                onTap: { detailItem = item },
+                onRetry: {},
+                showsRetry: false
+            )
         case .draft(let draft):
             PendingWorkDraftRow(draft: draft, now: now, onOpen: { actions.openDraft(draft) })
         case .orphanDesign(let design):
@@ -356,16 +364,17 @@ struct PendingWorkScreen: View {
         case .photos(let grouped, _):
             retryPhotos(ids: grouped.map(\.id))
         case .bundle(let bundle):
+            for opId in Set(bundle.syncOperationIds) {
+                retryOperation(id: opId)
+            }
             for member in bundle.members {
-                if let opId = member.syncOpId {
-                    retryOperation(id: opId)
-                } else if let clientId = member.autocreateClientId {
+                if let clientId = member.autocreateClientId {
                     queue.retryParked(clientId: clientId)
                 } else if !member.photoIds.isEmpty {
                     retryPhotos(ids: member.photoIds)
                 }
             }
-        case .draft, .orphanDesign:
+        case .draft, .orphanDesign, .quarantinedVisit:
             break
         }
     }
@@ -461,6 +470,18 @@ struct PendingWorkScreen: View {
             deletePhotos(ids: grouped.map(\.id))
         case .bundle(let bundle):
             discardBundle(bundle)
+        case .quarantinedVisit(let visit):
+            do {
+                try SiteVisitRecoveryVault.shared.discardQuarantinedWork(
+                    id: visit.id,
+                    userId: visit.userId,
+                    companyId: visit.companyId,
+                    siteVisitId: visit.siteVisitId,
+                    from: modelContext
+                )
+            } catch {
+                print("[PENDING_WORK] Quarantined site-visit discard failed: \(error)")
+            }
         case .draft, .orphanDesign:
             break
         }
@@ -469,22 +490,24 @@ struct PendingWorkScreen: View {
     }
 
     private func discardBundle(_ bundle: SiteVisitBundle) {
-        for member in bundle.members {
-            if let opId = member.syncOpId {
-                if let op = fetchOperation(id: opId) {
-                    if op.operationType == "create" {
-                        deleteLocalEntity(entityType: op.entityType, entityId: op.entityId)
-                    }
-                    dataController.syncEngine.cancelOperation(op)
+        for opId in Set(bundle.syncOperationIds) {
+            if let op = fetchOperation(id: opId) {
+                if op.operationType == "create" {
+                    deleteLocalEntity(entityType: op.entityType, entityId: op.entityId)
                 }
-            } else if let clientId = member.autocreateClientId {
+                dataController.syncEngine.cancelOperation(op)
+            }
+        }
+        for member in bundle.members {
+            if let clientId = member.autocreateClientId {
                 queue.removeRequest(clientId: clientId)
             } else if !member.photoIds.isEmpty {
                 deletePhotos(ids: member.photoIds)
             }
         }
-        // The capture itself is local-only (never synced) — hard-delete draft + visit.
-        deleteDraftAndVisit(draftId: bundle.draft.id, siteVisitId: bundle.draft.siteVisitId)
+        // Remove a never-sent packet locally, or queue tenant-scoped tombstones
+        // when any part of the packet has already reached the server.
+        deleteVisitPacket(siteVisitId: bundle.siteVisitId)
     }
 
     private func cancelOperation(id: UUID) {
@@ -519,9 +542,66 @@ struct PendingWorkScreen: View {
         }
     }
 
-    private func deleteDraftAndVisit(draftId: String, siteVisitId: String) {
-        deleteFirst(FetchDescriptor<SiteVisitIdentityDraft>(predicate: #Predicate<SiteVisitIdentityDraft> { $0.id == draftId }))
-        deleteFirst(FetchDescriptor<SiteVisit>(predicate: #Predicate<SiteVisit> { $0.id == siteVisitId }))
+    private func deleteVisitPacket(siteVisitId: String) {
+        let visitDescriptor = FetchDescriptor<SiteVisit>(
+            predicate: #Predicate<SiteVisit> { $0.id == siteVisitId }
+        )
+        guard let visit = (try? modelContext.fetch(visitDescriptor))?.first else { return }
+        let artifactDescriptor = FetchDescriptor<SiteVisitCaptureArtifact>(
+            predicate: #Predicate<SiteVisitCaptureArtifact> { $0.siteVisitId == siteVisitId }
+        )
+        let answerDescriptor = FetchDescriptor<SiteVisitChecklistAnswer>(
+            predicate: #Predicate<SiteVisitChecklistAnswer> { $0.siteVisitId == siteVisitId }
+        )
+        let draftDescriptor = FetchDescriptor<SiteVisitIdentityDraft>(
+            predicate: #Predicate<SiteVisitIdentityDraft> { $0.siteVisitId == siteVisitId }
+        )
+        let artifacts = (try? modelContext.fetch(artifactDescriptor)) ?? []
+        let answers = (try? modelContext.fetch(answerDescriptor)) ?? []
+        let drafts = (try? modelContext.fetch(draftDescriptor)) ?? []
+        let coordinator = SiteVisitPersistenceCoordinator(
+            modelContext: modelContext,
+            companyId: visit.companyId
+        )
+        let wasNeverSynced = visit.lastSyncedAt == nil
+            && artifacts.allSatisfy { $0.lastSyncedAt == nil }
+            && answers.allSatisfy { $0.lastSyncedAt == nil }
+            && drafts.allSatisfy { $0.lastSyncedAt == nil }
+
+        do {
+            if wasNeverSynced {
+                try coordinator.hardDeleteNeverSyncedVisit(
+                    visit,
+                    artifacts: artifacts,
+                    answers: answers,
+                    drafts: drafts
+                )
+            } else {
+                try coordinator.commit {
+                    let deletedAt = Date()
+                    visit.status = .cancelled
+                    visit.deletedAt = deletedAt
+                    visit.updatedAt = deletedAt
+                    visit.needsSync = true
+                    for artifact in artifacts {
+                        artifact.deletedAt = deletedAt
+                        artifact.updatedAt = deletedAt
+                        artifact.needsSync = true
+                    }
+                    for answer in answers {
+                        answer.deletedAt = deletedAt
+                        answer.updatedAt = deletedAt
+                        answer.needsSync = true
+                    }
+                    for draft in drafts {
+                        draft.deletedAt = deletedAt
+                        draft.touch()
+                    }
+                }
+            }
+        } catch {
+            print("[PENDING_WORK] Site-visit discard save failed: \(error)")
+        }
     }
 
     private func deletePhotos(ids: [String]) {

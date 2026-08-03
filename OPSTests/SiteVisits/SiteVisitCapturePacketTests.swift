@@ -458,18 +458,37 @@ final class SiteVisitCapturePacketTests: XCTestCase {
         XCTAssertEqual(viewModel.selectedSiteVisitType?.id, deckType.id)
         XCTAssertEqual(viewModel.checklistAnswers.count, deckType.fields.count)
         XCTAssertTrue(viewModel.checklistAnswers.allSatisfy { $0.siteVisitId == viewModel.siteVisit?.id })
+        // The deck template's one required row is the design. "Field
+        // measurements" was retired from the built-in — measuring is what the
+        // visit's LiDAR / scaled / dimensioned capture tools are for, and a
+        // checklist row demanding it again was a second gate that blocked
+        // completion after the work was already done.
         XCTAssertEqual(
             viewModel.missingRequiredChecklistAnswers.map(\.label),
-            ["Field measurements", "Deck design"]
+            ["Deck design"]
+        )
+        XCTAssertFalse(
+            viewModel.checklistAnswers.contains { $0.label == "Field measurements" },
+            "The retired measurement row must not be seeded onto a new visit."
         )
 
-        let measurement = try XCTUnwrap(
-            viewModel.checklistAnswers.first { $0.label == "Field measurements" }
+        // Answering an OPTIONAL row persists but must not clear the required one.
+        let goals = try XCTUnwrap(
+            viewModel.checklistAnswers.first { $0.label == "What the client wants" }
         )
-        viewModel.updateChecklistAnswer(measurement, value: .text("12 ft by 16 ft"))
+        viewModel.updateChecklistAnswer(goals, value: .text("Composite, not cedar"))
 
-        XCTAssertEqual(measurement.answerValue, .text("12 ft by 16 ft"))
+        XCTAssertEqual(goals.answerValue, .text("Composite, not cedar"))
         XCTAssertEqual(viewModel.missingRequiredChecklistAnswers.map(\.label), ["Deck design"])
+
+        // Answering the required row clears it.
+        let design = try XCTUnwrap(
+            viewModel.checklistAnswers.first { $0.label == "Deck design" }
+        )
+        viewModel.updateChecklistAnswer(design, value: .deckDesign("design-1"))
+
+        XCTAssertEqual(design.answerValue, .deckDesign("design-1"))
+        XCTAssertTrue(viewModel.missingRequiredChecklistAnswers.isEmpty)
 
         viewModel.addAdHocChecklistQuestion(label: "Gate code", kind: .shortText)
 
@@ -506,16 +525,84 @@ final class SiteVisitCapturePacketTests: XCTestCase {
 
         XCTAssertTrue(viewModel.canComplete)
         XCTAssertTrue(viewModel.hasProjectEvidence)
-        XCTAssertTrue(viewModel.completeVisit())
-        // Drain the fire-and-forget activity post while this test's container
-        // is still alive — a task left pending would run after the store is
-        // torn down and touch a dead context mid-way through a later test.
-        await viewModel.siteVisitActivityTask?.value
-
+        let result = await viewModel.completeVisit()
+        XCTAssertTrue(result.isCommitted)
         let payload = try XCTUnwrap(viewModel.projectPayload())
         XCTAssertTrue(payload.photoArtifactIds.isEmpty)
         XCTAssertEqual(payload.checklistAnswerIds.last, gateCode.id)
         XCTAssertTrue(payload.checklistLines.contains("CHECKLIST :: Gate code: 4812"))
+    }
+
+    @MainActor
+    func test_completionFailureKeepsVisitOpenAndReturnsNotCommitted() async throws {
+        let container = try makeSiteVisitCaptureContainer()
+        let context = container.mainContext
+        let gate = SiteVisitCommitFailureGate()
+        let coordinator = SiteVisitPersistenceCoordinator(
+            modelContext: context,
+            companyId: "company-1",
+            validateCommit: {
+                if gate.shouldFail { throw SiteVisitOutcomeTestError.forcedFailure }
+            }
+        )
+        let viewModel = SiteVisitCaptureViewModel(
+            opportunity: nil,
+            companyId: "company-1",
+            userId: "user-1",
+            modelContext: context,
+            persistenceCoordinator: coordinator
+        )
+        viewModel.loadOrCreateVisit()
+        viewModel.noteDraft = "Existing stair nosing is damaged."
+        viewModel.addNote()
+
+        gate.shouldFail = true
+        let result = await viewModel.completeVisit()
+
+        XCTAssertEqual(result, .notCommitted(.persistence))
+        XCTAssertEqual(viewModel.errorMessage, "VISIT NOT SAVED")
+        let visit = try XCTUnwrap(try context.fetch(FetchDescriptor<SiteVisit>()).first)
+        XCTAssertNotEqual(visit.status, .completed)
+        XCTAssertNil(visit.completedAt)
+        XCTAssertTrue(
+            try context.fetch(FetchDescriptor<SyncOperation>()).allSatisfy {
+                $0.operationType != SiteVisitSyncOperation.completionOperationType
+            }
+        )
+    }
+
+    @MainActor
+    func test_stageFailureRemainsDistinctFromCommittedVisit() async throws {
+        let container = try makeSiteVisitCaptureContainer()
+        let context = container.mainContext
+        let opportunity = Opportunity(
+            id: "lead-stage-failure",
+            companyId: "company-1",
+            contactName: "Helen Calloway",
+            stage: .newLead
+        )
+        context.insert(opportunity)
+        try context.save()
+        let viewModel = SiteVisitCaptureViewModel(
+            opportunity: opportunity,
+            companyId: "company-1",
+            userId: "user-1",
+            modelContext: context,
+            moveLeadToStage: { _, _ in
+                throw SiteVisitOutcomeTestError.forcedFailure
+            }
+        )
+        viewModel.loadOrCreateVisit()
+        viewModel.noteDraft = "Client confirmed the south elevation."
+        viewModel.addNote()
+
+        let result = await viewModel.saveVisit(movingLeadTo: PipelineStage.qualifying)
+
+        XCTAssertEqual(result, SiteVisitSaveResult.committedStageUpdateFailed)
+        XCTAssertTrue(result.visitWasCommitted)
+        XCTAssertEqual(opportunity.stage, PipelineStage.newLead)
+        XCTAssertEqual(viewModel.siteVisit?.status, .completed)
+        XCTAssertEqual(viewModel.errorMessage, "VISIT SAVED · STAGE NOT UPDATED")
     }
 
     @MainActor
@@ -604,7 +691,11 @@ final class SiteVisitCapturePacketTests: XCTestCase {
 
     private func makeInMemoryContainer() throws -> ModelContainer {
         let schema = Schema([
+            SiteVisit.self,
             SiteVisitCaptureArtifact.self,
+            SiteVisitChecklistAnswer.self,
+            SiteVisitIdentityDraft.self,
+            SyncOperation.self,
             ProjectPhoto.self,
             ProjectNote.self,
             PhotoAnnotation.self,
@@ -625,7 +716,8 @@ final class SiteVisitCapturePacketTests: XCTestCase {
             SiteVisitCaptureArtifact.self,
             SiteVisitType.self,
             SiteVisitChecklistAnswer.self,
-            SiteVisitIdentityDraft.self
+            SiteVisitIdentityDraft.self,
+            SyncOperation.self
         ])
         let configuration = ModelConfiguration(
             schema: schema,
@@ -696,6 +788,14 @@ final class SiteVisitCapturePacketTests: XCTestCase {
             captureFinishedAt: Date(timeIntervalSince1970: 1_747_166_400)
         )
     }
+}
+
+private final class SiteVisitCommitFailureGate {
+    var shouldFail = false
+}
+
+private enum SiteVisitOutcomeTestError: Error {
+    case forcedFailure
 }
 
 private extension SiteVisitCaptureArtifact {

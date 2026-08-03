@@ -141,6 +141,7 @@ enum QuoteDeliveryMethod: String, Codable, CaseIterable {
 
 enum SiteVisitStatus: String, Codable {
     case scheduled = "scheduled"
+    case inProgress = "in_progress"
     case completed = "completed"
     case cancelled = "cancelled"
 }
@@ -282,12 +283,19 @@ enum OpportunitySource: String, Codable, CaseIterable, Identifiable {
 // MARK: - Loss Reason
 
 /// Why a pipeline opportunity was marked Lost. Used by LostReasonSheet.
+///
+/// Case order IS chip order — `LostReasonSheet.options` maps straight off
+/// `allCases`. The two self-attributed reasons sit beside NO RESPONSE (the same
+/// "nobody talked" family, seen from the other side) and ahead of the OTHER
+/// catch-all, which always closes the row.
 enum LossReason: String, Codable, CaseIterable, Identifiable {
     case price       = "price"
     case timing      = "timing"
     case competition = "competition"
     case scope       = "scope"
     case noResponse  = "no_response"
+    case droppedBall = "dropped_ball"
+    case forgot      = "forgot"
     case other       = "other"
 
     var id: String { rawValue }
@@ -299,7 +307,60 @@ enum LossReason: String, Codable, CaseIterable, Identifiable {
         case .competition: return "COMPETITION"
         case .scope:       return "SCOPE"
         case .noResponse:  return "NO RESPONSE"
+        case .droppedBall: return "DROPPED THE BALL"
+        case .forgot:      return "NEVER FOLLOWED UP"
         case .other:       return "OTHER"
         }
+    }
+
+    /// Resolve a value that came off the server rather than off a chip.
+    ///
+    /// `opportunities.lost_reason` is unconstrained text and holds values this
+    /// enum has never defined — `operator_no_response` and `not_a_lead` were
+    /// written by server-side flows, and at least one row carries a capitalised
+    /// `Other`. Plain `init(rawValue:)` answers nil for all of them, which left
+    /// the sheet with no chip lit and no way to tell "never set" from "set to
+    /// something I don't recognise". Case- and whitespace-insensitive matching
+    /// recovers the ones that ARE ours; the rest stay unresolved on purpose and
+    /// are preserved verbatim by `LostReasonSelection`.
+    init?(storedValue: String?) {
+        guard let normalized = storedValue?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased(),
+              !normalized.isEmpty,
+              let match = LossReason.allCases.first(where: { $0.rawValue == normalized })
+        else { return nil }
+        self = match
+    }
+}
+
+/// Chip selection state for `LostReasonSheet`, kept out of the view so the
+/// preserve-unknown-values rule is testable.
+///
+/// The rule: a stored reason this app does not recognise is NEVER silently
+/// dropped. It stays unselected in the UI (no chip lit), and if the operator
+/// saves without choosing one, the original value is written back unchanged.
+struct LostReasonSelection {
+    /// The value already on the lead, exactly as the server sent it.
+    let storedReason: String?
+    /// The chip the operator picked this session, if any.
+    var reason: LossReason?
+
+    init(storedReason: String?, reason: LossReason? = nil) {
+        self.storedReason = storedReason
+        self.reason = reason ?? LossReason(storedValue: storedReason)
+    }
+
+    /// A save is only meaningful once SOME reason is on the record — either one
+    /// the operator just picked or one already stored.
+    var canSave: Bool { resolvedReasonForSave != nil }
+
+    /// What to persist: the operator's pick when they made one, otherwise the
+    /// untouched stored value.
+    var resolvedReasonForSave: String? {
+        if let reason { return reason.rawValue }
+        guard let stored = storedReason?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !stored.isEmpty else { return nil }
+        return stored
     }
 }

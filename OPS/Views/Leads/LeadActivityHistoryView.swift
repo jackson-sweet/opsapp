@@ -12,6 +12,9 @@ import UIKit
 struct LeadActivityHistoryView: View {
     let activities: [Activity]
     let transitions: [StageTransition]
+    /// Passed through so a site visit renders as its record here too — the
+    /// dossier and the full history must not disagree about what a row is.
+    var opportunity: Opportunity? = nil
 
     @Environment(\.dismiss) private var dismiss
     @State private var expanded: Set<String> = []
@@ -34,10 +37,13 @@ struct LeadActivityHistoryView: View {
                             .padding(.top, OPSStyle.Layout.spacing2_5)
                             .padding(.bottom, 10)
 
-                        VStack(spacing: 0) {
+                        // Uncapped history — lazy so a lead with hundreds of
+                        // messages does not build every row up front.
+                        LazyVStack(spacing: 0) {
                             ForEach(entries) { entry in
-                                LeadStreamRow(
+                                LeadStreamEntryView(
                                     entry: entry,
+                                    opportunity: opportunity,
                                     isExpanded: expanded.contains(entry.id),
                                     onToggle: { toggle(entry.id) }
                                 )
@@ -45,7 +51,7 @@ struct LeadActivityHistoryView: View {
                                     Rectangle()
                                         .fill(OPSStyle.Colors.surfaceInput)
                                         .frame(height: 1)
-                                        .padding(.horizontal, 14)
+                                        .padding(.horizontal, LeadStreamMetrics.rowInset)
                                 }
                             }
                         }

@@ -468,6 +468,15 @@ struct DeckBuilderView: View {
         } message: {
             Text("OPS can save your changes to this drawing every 2 minutes so you don't lose work.")
         }
+        // The autosave alert is bound here, at the builder's root — raising it
+        // while a sheet is up presents it BEHIND that sheet. The view model
+        // holds the ask back in that case; this releases it the moment the
+        // last modal closes.
+        .onChange(of: viewModel.isPresentingModal) { _, isPresenting in
+            if !isPresenting {
+                viewModel.presentDeferredAutosavePromptIfReady()
+            }
+        }
         .statusBarHidden(true)
         .onAppear {
             // Defense-in-depth: prevent deep-link or programmatic access bypassing UI gate

@@ -21,7 +21,8 @@ struct OPSApp: App {
         #if DEBUG
         if ClientSearchActionsQARuntime.isEnabled() ||
             CatalogSetupQARuntime.isEnabled() ||
-            ScheduleLongPressQARuntime.isEnabled() {
+            ScheduleLongPressQARuntime.isEnabled() ||
+            SiteVisitCaptureQARuntime.isEnabled() {
             return
         }
         #endif
@@ -45,7 +46,7 @@ struct OPSApp: App {
     @State private var realtimeStopTask: Task<Void, Never>?
 
     // Create the model container for SwiftData.
-    // Schema is driven by the LATEST VersionedSchema (currently `OPSSchemaV19`)
+    // Schema is driven by the LATEST VersionedSchema (currently `OPSSchemaV22`)
     // and the container runs `OPSMigrationPlan` on launch so stores written by
     // earlier builds (e.g. pre-`WizardState.id`, pre-catalog, pre-reminders)
     // are migrated in place. **When you add a new VersionedSchema (V7, V8, …),
@@ -64,13 +65,14 @@ struct OPSApp: App {
     // unsynced data, so startup must preserve it and fail visibly rather than
     // attempting destructive recovery.
     var sharedModelContainer: ModelContainer = {
-        let schema = Schema(versionedSchema: OPSSchemaV19.self)
+        let schema = Schema(versionedSchema: OPSSchemaV22.self)
 
         let isHostedXCTest = ProcessInfo.processInfo.environment["XCTestBundlePath"] != nil
         #if DEBUG
         let isHermeticQALaunch = ClientSearchActionsQARuntime.isEnabled() ||
             CatalogSetupQARuntime.isEnabled() ||
-            ScheduleLongPressQARuntime.isEnabled()
+            ScheduleLongPressQARuntime.isEnabled() ||
+            SiteVisitCaptureQARuntime.isEnabled()
         #else
         let isHermeticQALaunch = false
         #endif
@@ -111,6 +113,11 @@ struct OPSApp: App {
                 .preferredColorScheme(.dark)
         } else if ScheduleLongPressQARuntime.isEnabled() {
             ScheduleLongPressQAHost()
+                .environmentObject(dataController)
+                .environmentObject(permissionStore)
+                .preferredColorScheme(.dark)
+        } else if SiteVisitCaptureQARuntime.isEnabled() {
+            SiteVisitCaptureQAHost()
                 .environmentObject(dataController)
                 .environmentObject(permissionStore)
                 .preferredColorScheme(.dark)

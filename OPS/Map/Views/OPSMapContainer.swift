@@ -647,14 +647,21 @@ struct OPSMapContainer: View {
                 }
             }
         }
+        // The coordinator is a private @StateObject, so Home cannot observe
+        // it directly — these mirror its card visibility onto AppState.
+        // isShowingMapOverlay counts ANY overlay (it hides the FAB);
+        // isMapProjectSurfacePresented counts only PROJECT surfaces, because a
+        // crew tooltip must not clear Home's supporting cards.
         .onChange(of: coordinator.showingProjectCard) { _, newValue in
             appState.isShowingMapOverlay = newValue || coordinator.showingCrewTooltip || coordinator.showingStackedGroup
+            appState.isMapProjectSurfacePresented = newValue || coordinator.showingStackedGroup
         }
         .onChange(of: coordinator.showingCrewTooltip) { _, newValue in
             appState.isShowingMapOverlay = coordinator.showingProjectCard || newValue || coordinator.showingStackedGroup
         }
         .onChange(of: coordinator.showingStackedGroup) { _, newValue in
             appState.isShowingMapOverlay = coordinator.showingProjectCard || coordinator.showingCrewTooltip || newValue
+            appState.isMapProjectSurfacePresented = coordinator.showingProjectCard || newValue
         }
 
         // ── Notifications ──

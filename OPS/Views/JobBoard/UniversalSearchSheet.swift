@@ -912,7 +912,7 @@ struct UniversalSearchSheet: View {
             parts.append(address)
         }
         if let value = lead.estimatedValue, value > 0 {
-            parts.append(formatCurrency(value))
+            parts.append(BooksFormat.exact(value))
         }
         return parts.isEmpty ? nil : parts.joined(separator: " · ")
     }
@@ -1327,17 +1327,9 @@ struct UniversalSearchSheet: View {
     // the amount — so a hit explains itself instead of showing a bare number.
     private func moneyRowSubtitle(clientId: String?, total: Double) -> String {
         if let cid = clientId, let name = clientNameById[cid], !name.isEmpty {
-            return "\(name) · \(formatCurrency(total))"
+            return "\(name) · \(BooksFormat.exact(total))"
         }
-        return formatCurrency(total)
-    }
-
-    private func formatCurrency(_ amount: Double) -> String {
-        let formatter = NumberFormatter()
-        formatter.numberStyle = .currency
-        formatter.currencyCode = "USD"
-        formatter.maximumFractionDigits = 2
-        return formatter.string(from: NSNumber(value: amount)) ?? "$\(amount)"
+        return BooksFormat.exact(total)
     }
 
     private func openTel(_ phone: String) {

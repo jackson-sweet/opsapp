@@ -237,7 +237,7 @@ struct EstimateFormSheet: View {
                         .lineLimit(1)
                 }
                 Spacer()
-                Text(LineItemDisplay.money(item.lineTotal))
+                Text(BooksFormat.exact(item.lineTotal))
                     .font(OPSStyle.Typography.body)
                     .foregroundColor(OPSStyle.Colors.primaryText)
             }
@@ -260,12 +260,12 @@ struct EstimateFormSheet: View {
         OPSFloatingButtonBar(horizontalPadding: OPSStyle.Layout.spacing3, verticalPadding: OPSStyle.Layout.spacing2) {
             VStack(spacing: OPSStyle.Layout.spacing1) {
                 HStack {
-                    Text("Subtotal \(LineItemDisplay.money(subtotal))")
+                    Text("Subtotal \(BooksFormat.exact(subtotal))")
                         .font(OPSStyle.Typography.smallCaption)
                         .foregroundColor(OPSStyle.Colors.secondaryText)
                     Spacer()
                     if (estimate?.taxRate ?? 0) > 0 {
-                        Text("Tax \(LineItemDisplay.money(taxAmount))")
+                        Text("Tax \(BooksFormat.exact(taxAmount))")
                             .font(OPSStyle.Typography.smallCaption)
                             .foregroundColor(OPSStyle.Colors.secondaryText)
                     }
@@ -276,7 +276,7 @@ struct EstimateFormSheet: View {
                         .font(OPSStyle.Typography.body)
                         .fontWeight(.semibold)
                         .foregroundColor(OPSStyle.Colors.primaryText)
-                    Text(LineItemDisplay.money(total))
+                    Text(BooksFormat.exact(total))
                         .font(OPSStyle.Typography.subtitle)
                         .foregroundColor(OPSStyle.Colors.primaryText)
                     Spacer()

@@ -34,6 +34,11 @@ struct DetailsTabView: View {
     /// ProjectDetailsView via `showingStatusPicker`). Bug f3a300f7 — the
     /// Details surface previously had no affordance to reach that sheet.
     var onChangeStatus: (() -> Void)? = nil
+    /// PROJECT-side lead provenance (bug a3c4e216). Opens the linked lead, or
+    /// the picker when this project has matchable won leads at its address.
+    var leadRowPresentation: ProjectLeadRow.Presentation = .hidden
+    var onOpenLead: (() -> Void)? = nil
+    var onMatchLead: (() -> Void)? = nil
 
     /// All Users in the store. Used to resolve team member avatars from the
     /// authoritative `teamMemberIdsString` CSV on both Project and ProjectTask.
@@ -78,11 +83,11 @@ struct DetailsTabView: View {
                 onChangeStatus: onChangeStatus
             )
 
-            // PROJECT INFO — client, address, timeline, description, team in
-            // ONE card of hairline-separated rows. Five separately-labelled
-            // cards made the reader parse five objects to answer one question:
-            // what is this job, and where. Each row names its own field, so the
-            // card carries no header of its own.
+            // PROJECT INFO — client, lead, address, timeline, description,
+            // team in ONE document card of hairline-separated rows. Five
+            // separately-labelled cards made the reader parse five objects to
+            // answer one question: what is this job, and where. One header,
+            // one mono label column, one row per field.
             projectInfoCard
 
             // VINYL ORDER MARKER — order tracking is a purchasing/office concern,
@@ -163,12 +168,13 @@ struct DetailsTabView: View {
 
     // MARK: - Project Info Card
 
-    /// The project's identity block — who it's for, where it is, when it runs,
-    /// what it is, who's on it — as ONE document card, in the same anatomy the
-    /// lead dossier uses (LeadDetailsDocument.swift): a `DETAILS` header above
-    /// a solid raised card, a mono label column down the left, the field's own
-    /// content to its right, hairlines between rows. Two surfaces that answer
-    /// "who is this for, and what is it" should not be two different objects.
+    /// The project's identity block — who it's for, where it came from, where
+    /// it is, when it runs, what it is, who's on it — as ONE document card, in
+    /// the same anatomy the lead dossier uses (LeadDetailsDocument.swift): a
+    /// `DETAILS` header above a solid raised card, a mono label column down the
+    /// left, the field's own content to its right, hairlines between rows. Two
+    /// surfaces that answer "who is this for, and what is it" should not be two
+    /// different objects.
     ///
     /// The row ORDER NEVER CHANGES and blanks render in place. ADDRESS,
     /// TIMELINE and DESCRIPTION always render: a field that vanishes when it is
@@ -179,8 +185,16 @@ struct DetailsTabView: View {
     ///
     /// Every empty row answers the same way and in the same place: an action
     /// chip at the START of the content region when the viewer can fill the
-    /// field, `—` at that same x when they cannot. One column, one answer, five
-    /// fields — so the way in is always where the reader last found it.
+    /// field, `—` at that same x when they cannot. One column, one answer — so
+    /// the way in is always where the reader last found it.
+    ///
+    /// LEAD is the one field that leaves on emptiness, and deliberately (bug
+    /// a3c4e216). The other five describe every project that exists; provenance
+    /// describes a minority of them, and the server only accepts a link whose
+    /// target shares the lead's address, so most projects have no lead and no
+    /// candidate to offer. Holding a permanent `LEAD —` line on the app's
+    /// most-visited card to advertise a once-ever action nobody can take is a
+    /// worse lie than absence. See `ProjectLeadRow.Presentation`.
     private var projectInfoCard: some View {
         VStack(alignment: .leading, spacing: 0) {
             PanelSectionHeader(label: "DETAILS")
@@ -197,6 +211,15 @@ struct DetailsTabView: View {
                         onCall: { if let p = project.effectiveClientPhone { viewModel.callPhone(p) } },
                         onEmail: { if let e = project.effectiveClientEmail { viewModel.sendEmail(e) } },
                         onAssignClient: onClientLongPress
+                    )
+                }
+
+                if shows(.lead) {
+                    hairline(above: .lead)
+                    ProjectLeadSection(
+                        presentation: leadRowPresentation,
+                        onOpenLead: { onOpenLead?() },
+                        onMatchLead: { onMatchLead?() }
                     )
                 }
 
@@ -243,22 +266,28 @@ struct DetailsTabView: View {
     }
 
     /// The info card's rows, in render order. The order is the reading order:
-    /// who it's for, where it is, when it runs, what it is, who's on it — and it
-    /// is the same order on every project, for every viewer, always.
+    /// who it's for, where it came from, where it is, when it runs, what it is,
+    /// who's on it — and it is the same order on every project, for every
+    /// viewer, always.
     private enum InfoRow: Int, CaseIterable {
-        case client, address, timeline, description, team
+        case client, lead, address, timeline, description, team
     }
 
     /// Whether a row renders, for this viewer. Single source of truth for the
     /// row and for the hairline above it.
     ///
-    /// Only entitlement removes a row. Emptiness never does — an empty field
-    /// renders its own blank (or its invitation) in place, so the card's shape
-    /// is a property of the viewer, not of how much has been filled in yet.
+    /// Entitlement removes a row. Emptiness does not — an empty field renders
+    /// its own blank (or its invitation) in place, so the card's shape is a
+    /// property of the viewer, not of how much has been filled in yet. LEAD is
+    /// the documented exception; see `projectInfoCard`.
     private func shows(_ row: InfoRow) -> Bool {
         switch row {
         case .client:
             return access.showsClient
+        case .lead:
+            // No lead and nothing matchable: the row is absent entirely rather
+            // than an em dash or a dead affordance (bug a3c4e216).
+            return leadRowPresentation != .hidden
         case .address, .timeline, .description:
             // Where the job is, when it runs, and what it is are never scoped
             // away — anyone who can open the project needs all three.
@@ -1408,8 +1437,9 @@ enum ProjectInfoDoc {
     static let labelColumnWidth: CGFloat = 58
 
     /// Every project-info label, for the width assertion. The card renders
-    /// exactly these, in exactly this order.
-    static let labels = ["CLIENT", "ADDRESS", "TIMELINE", "NOTES", "TEAM"]
+    /// exactly these, in exactly this order. LEAD only renders when the project
+    /// has provenance to state, but it shares the column and must fit it.
+    static let labels = ["CLIENT", "LEAD", "ADDRESS", "TIMELINE", "NOTES", "TEAM"]
 
     /// The document's value line — every row's primary text.
     static let valueFont = Font.custom("Mohave-Medium", size: 14)

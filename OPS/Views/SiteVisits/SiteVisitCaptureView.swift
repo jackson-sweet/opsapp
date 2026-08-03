@@ -120,6 +120,11 @@ private struct SiteVisitCaptureConsole: View {
     @State private var customChecklistQuestion = ""
     @State private var customChecklistKind: SiteVisitFieldKind = .shortText
     @State private var keyboardVisible = false
+    /// Owned by the console, NOT the identity panel. The panel lives inside the
+    /// capture ScrollView; presenting a modal from there put the picker's
+    /// dismissal in reach of the visit's own fullScreenCover (bug 5d5df5b0).
+    /// The console root is the stable presentation slot.
+    @State private var showingContactPicker = false
 
     var body: some View {
         ScrollViewReader { scrollProxy in
@@ -143,8 +148,12 @@ private struct SiteVisitCaptureConsole: View {
                             // readout above; the captured packet is the flat list
                             // at the bottom.
                             statusStrip
-                            SiteVisitIdentityPanel(viewModel: viewModel, isExpanded: $identityExpanded)
-                                .id(SiteVisitCaptureScrollTarget.identity)
+                            SiteVisitIdentityPanel(
+                                viewModel: viewModel,
+                                isExpanded: $identityExpanded,
+                                isPresentingContactPicker: $showingContactPicker
+                            )
+                            .id(SiteVisitCaptureScrollTarget.identity)
                             checklistPanel
                             quickNotePanel
                                 .id(SiteVisitCaptureScrollTarget.notes)
@@ -266,9 +275,13 @@ private struct SiteVisitCaptureConsole: View {
             )
         }
         .sheet(item: $markupArtifact) { artifact in
-            SiteVisitPhotoMarkupView(artifact: artifact) {
-                viewModel.reloadArtifacts()
-            }
+            SiteVisitPhotoMarkupView(
+                artifact: artifact,
+                persistMarkup: { url in
+                    viewModel.saveMarkup(artifact, renderedAssetURL: url)
+                },
+                onSaved: { viewModel.reloadArtifacts() }
+            )
         }
         .sheet(item: $previewArtifact) { artifact in
             SiteVisitPhotoPreviewSheet(artifact: artifact) {
@@ -278,6 +291,11 @@ private struct SiteVisitCaptureConsole: View {
                 }
             }
         }
+        .background(
+            ContactPicker(isPresented: $showingContactPicker) { contact in
+                viewModel.applyImportedContact(contact)
+            }
+        )
         .sheet(isPresented: $showingReview) {
             SiteVisitReviewSheet(
                 viewModel: viewModel,
@@ -891,6 +909,9 @@ private struct SiteVisitIdentityPanel: View {
     // identity is end-of-flow. The console can expand it to route the operator
     // here from the Review sheet when a project needs a linked lead.
     @Binding var isExpanded: Bool
+    /// The picker is presented by the console, not here — see the console's
+    /// `showingContactPicker`. This panel only asks for it.
+    @Binding var isPresentingContactPicker: Bool
     @State private var searchText = ""
     @State private var clientName = ""
     @State private var contactName = ""
@@ -902,7 +923,10 @@ private struct SiteVisitIdentityPanel: View {
     @State private var activeLeads: [Opportunity] = []
     @State private var clients: [Client] = []
     @State private var autosaveTask: Task<Void, Never>?
-    @State private var showingContactPicker = false
+    /// Until the fields above have been filled from the saved draft they hold
+    /// empty strings, not edits. Committing them would erase the draft — the
+    /// form-wipe half of bug 5d5df5b0.
+    @State private var hasHydrated = false
 
     private var completionCount: Int {
         [
@@ -915,23 +939,24 @@ private struct SiteVisitIdentityPanel: View {
     }
 
     private var isComplete: Bool {
-        hasName && hasContactMethod && hasAddress
+        requirements.isComplete
     }
 
     // Bug (site-visit report) — the required-field groups, surfaced per field
     // so the operator can see exactly what a lead needs. A lead needs an
     // identity (a person's name OR a company), a way to reach them (email OR
-    // phone), and a site address.
-    private var hasName: Bool {
-        clientName.trimmedNilIfEmpty != nil || contactName.trimmedNilIfEmpty != nil
-    }
-    private var hasContactMethod: Bool {
-        preferredEmail.trimmedNilIfEmpty != nil
-            || additionalEmailsText.trimmedNilIfEmpty != nil
-            || phoneNumber.trimmedNilIfEmpty != nil
-    }
-    private var hasAddress: Bool {
-        address.trimmedNilIfEmpty != nil
+    // phone), and a site address. COMPANY is optional — see
+    // `SiteVisitIdentityRequirements`, which owns the rule for form and tests
+    // alike.
+    private var requirements: SiteVisitIdentityRequirements {
+        .resolve(
+            name: contactName,
+            company: clientName,
+            email: preferredEmail,
+            additionalEmails: additionalEmailsText,
+            phone: phoneNumber,
+            address: address
+        )
     }
 
     private var badgeText: String {
@@ -998,22 +1023,25 @@ private struct SiteVisitIdentityPanel: View {
                     importContactsButton
                 }
 
+                let requirements = self.requirements
                 VStack(spacing: OPSStyle.Layout.spacing2) {
-                    // Name OR company satisfies the identity requirement — both
-                    // fields light up once either is filled.
+                    // NAME carries the identity requirement — a person's name,
+                    // or a business when the business IS the client. COMPANY
+                    // never advertises one: most visits are residential and
+                    // there is no business to name.
                     identityField(
                         "NAME",
                         text: $contactName,
                         placeholder: "WHO YOU MET",
                         capitalization: .words,
-                        requirement: .required(satisfied: hasName)
+                        requirement: requirements.name
                     )
                     identityField(
                         "COMPANY",
                         text: $clientName,
                         placeholder: "BUSINESS",
                         capitalization: .words,
-                        requirement: .required(satisfied: hasName)
+                        requirement: requirements.company
                     )
                     // Email OR phone satisfies the contact-method requirement.
                     identityField(
@@ -1022,7 +1050,7 @@ private struct SiteVisitIdentityPanel: View {
                         placeholder: "PRIMARY EMAIL",
                         keyboard: .emailAddress,
                         capitalization: .never,
-                        requirement: .required(satisfied: hasContactMethod)
+                        requirement: requirements.email
                     )
                     identityField(
                         "OTHER EMAILS",
@@ -1039,7 +1067,7 @@ private struct SiteVisitIdentityPanel: View {
                         placeholder: "PHONE",
                         keyboard: .phonePad,
                         capitalization: .never,
-                        requirement: .required(satisfied: hasContactMethod)
+                        requirement: requirements.phone
                     )
                     // Address is an autocomplete, not a free-text field
                     // (bugs e6a700ff / 0adf456b): suggestions-as-you-type plus
@@ -1054,7 +1082,7 @@ private struct SiteVisitIdentityPanel: View {
                                 .font(OPSStyle.Typography.miniLabel)
                                 .foregroundColor(OPSStyle.Colors.text3)
                             Spacer(minLength: 0)
-                            requirementMarker(.required(satisfied: hasAddress))
+                            requirementMarker(requirements.address)
                         }
 
                         AddressAutocompleteField(
@@ -1086,15 +1114,19 @@ private struct SiteVisitIdentityPanel: View {
                 .strokeBorder(OPSStyle.Colors.line, lineWidth: 1)
         )
         .task {
-            await loadSearchSources()
+            // Hydrate FIRST. This used to await the network fetch below before
+            // filling the fields, so for the length of that request the panel
+            // held an empty mirror that autosave or `.onDisappear` could commit
+            // straight over a saved draft (bug 5d5df5b0).
             syncFromDraft()
+            hasHydrated = true
+            await loadSearchSources()
         }
-        .sheet(isPresented: $showingContactPicker) {
-            ContactPicker(
-                onContactSelected: { contact in applyContact(contact) },
-                onDismiss: { showingContactPicker = false }
-            )
-            .ignoresSafeArea()
+        .onChange(of: viewModel.contactImportGeneration) { _, _ in
+            // A contact import writes the draft from the console. Re-mirror it —
+            // the ONLY re-hydration after the first, so ordinary autosaves never
+            // yank fields out from under the operator.
+            syncFromDraft()
         }
         .onDisappear {
             autosaveTask?.cancel()
@@ -1297,11 +1329,18 @@ private struct SiteVisitIdentityPanel: View {
                 Button {
                     Task {
                         commitDraft()
-                        if await viewModel.createLeadFromIdentityDraft(dataController: dataController) != nil {
+                        switch await viewModel.createLeadFromIdentityDraft(dataController: dataController) {
+                        case .created:
                             syncFromDraft()
                             await loadSearchSources()
                             UINotificationFeedbackGenerator().notificationOccurred(.success)
-                        } else {
+                        case .queued(let offline):
+                            // Saved and handed to the durable queue — not a
+                            // failure. The toast carries its own haptic.
+                            ToastCenter.shared.present(
+                                offline ? Feedback.Lead.savedOffline : Feedback.Lead.savedSyncing
+                            )
+                        case .failed:
                             UINotificationFeedbackGenerator().notificationOccurred(.error)
                         }
                     }
@@ -1333,19 +1372,12 @@ private struct SiteVisitIdentityPanel: View {
         }
     }
 
-    /// Per-field required/optional state for the lead form. `.required`
-    /// carries its own satisfied flag so either-or groups (name-or-company,
-    /// email-or-phone) can light up both members once one is filled.
-    private enum IdentityFieldRequirement {
-        case optional
-        case required(satisfied: Bool)
-    }
-
     /// Trailing REQUIRED → DONE marker. Speaks the same language as the
     /// checklist row's status label (tan when outstanding, olive when met)
-    /// so the two halves of the form read as one checklist.
+    /// so the two halves of the form read as one checklist. `.optional`
+    /// fields render no marker at all — an optional field says nothing.
     @ViewBuilder
-    private func requirementMarker(_ requirement: IdentityFieldRequirement) -> some View {
+    private func requirementMarker(_ requirement: SiteVisitIdentityFieldRequirement) -> some View {
         switch requirement {
         case .optional:
             EmptyView()
@@ -1369,7 +1401,7 @@ private struct SiteVisitIdentityPanel: View {
         capitalization: TextInputAutocapitalization = .words,
         axis: Axis = .horizontal,
         caption: String? = nil,
-        requirement: IdentityFieldRequirement = .optional
+        requirement: SiteVisitIdentityFieldRequirement = .optional
     ) -> some View {
         VStack(alignment: .leading, spacing: 5) {
             HStack(spacing: OPSStyle.Layout.spacing1) {
@@ -1481,7 +1513,8 @@ private struct SiteVisitIdentityPanel: View {
             additionalEmailsText: additionalEmailsText,
             phoneNumber: phoneNumber,
             address: address,
-            notes: notes
+            notes: notes,
+            isHydrated: hasHydrated
         )
     }
 
@@ -1490,7 +1523,7 @@ private struct SiteVisitIdentityPanel: View {
     /// visit is unlinked; a pick fills the identity draft.
     private var importContactsButton: some View {
         Button {
-            showingContactPicker = true
+            isPresentingContactPicker = true
         } label: {
             HStack(spacing: OPSStyle.Layout.spacing2) {
                 Image(systemName: "person.crop.circle.badge.plus")
@@ -1518,55 +1551,6 @@ private struct SiteVisitIdentityPanel: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Import from phone contacts")
-    }
-
-    /// Fill the identity draft from a picked device contact. Each field is
-    /// only overwritten when the contact actually carries that value, so a
-    /// partially typed form isn't wiped by an import.
-    private func applyContact(_ contact: CNContact) {
-        showingContactPicker = false
-
-        let given = contact.givenName.trimmingCharacters(in: .whitespaces)
-        let family = contact.familyName.trimmingCharacters(in: .whitespaces)
-        let fullName = [given, family].filter { !$0.isEmpty }.joined(separator: " ")
-        if !fullName.isEmpty { contactName = fullName }
-
-        let org = contact.organizationName.trimmingCharacters(in: .whitespaces)
-        if !org.isEmpty { clientName = org }
-
-        if let email = contact.emailAddresses.first
-            .map({ ($0.value as String).trimmingCharacters(in: .whitespaces) }),
-            !email.isEmpty {
-            preferredEmail = email
-        }
-
-        if let phone = contact.phoneNumbers.first?.value.stringValue
-            .trimmingCharacters(in: .whitespaces), !phone.isEmpty {
-            phoneNumber = phone
-        }
-
-        if let composed = composeContactAddress(from: contact) {
-            address = composed
-            // A picked postal address is a commit (like an autocomplete
-            // selection); persist it — without a geocode, coordinates stay nil.
-            viewModel.applySelectedSiteAddress(composed, coordinate: nil)
-        }
-
-        commitDraft()
-        UINotificationFeedbackGenerator().notificationOccurred(.success)
-    }
-
-    /// Single comma-separated line from the contact's first postal address,
-    /// matching `AddressAutocompleteField`'s output shape.
-    private func composeContactAddress(from contact: CNContact) -> String? {
-        guard let postal = contact.postalAddresses.first?.value else { return nil }
-        var components: [String] = []
-        if !postal.street.isEmpty { components.append(postal.street) }
-        if !postal.city.isEmpty { components.append(postal.city) }
-        if !postal.state.isEmpty { components.append(postal.state) }
-        if !postal.postalCode.isEmpty { components.append(postal.postalCode) }
-        let joined = components.joined(separator: ", ")
-        return joined.isEmpty ? nil : joined
     }
 
     private func loadSearchSources() async {
@@ -2175,9 +2159,14 @@ private struct SiteVisitReviewSheet: View {
     private func createLeadInline() async {
         isCreatingLead = true
         defer { isCreatingLead = false }
-        if await viewModel.createLeadFromIdentityDraft(dataController: dataController) != nil {
+        switch await viewModel.createLeadFromIdentityDraft(dataController: dataController) {
+        case .created:
             UINotificationFeedbackGenerator().notificationOccurred(.success)
-        } else {
+        case .queued(let offline):
+            ToastCenter.shared.present(
+                offline ? Feedback.Lead.savedOffline : Feedback.Lead.savedSyncing
+            )
+        case .failed:
             UINotificationFeedbackGenerator().notificationOccurred(.error)
         }
     }
@@ -2369,18 +2358,31 @@ private struct SiteVisitReviewSheet: View {
         isSaving = true
         let stage = selectedStage
         Task {
-            let saved: Bool
+            let result: SiteVisitSaveResult
             if let stage {
-                saved = await viewModel.saveVisit(movingLeadTo: stage)
+                result = await viewModel.saveVisit(movingLeadTo: stage)
             } else {
                 // Unbound visit — nothing to re-stage; just complete it.
-                saved = viewModel.completeVisit()
+                let completion = await viewModel.completeVisit()
+                switch completion {
+                case .committed:
+                    result = .committed
+                case .notCommitted(let failure):
+                    result = .notCommitted(failure)
+                }
             }
             await MainActor.run {
                 isSaving = false
-                guard saved else { return }
+                guard result.visitWasCommitted else {
+                    ToastCenter.shared.present(Feedback.SiteVisit.notSaved)
+                    return
+                }
                 UINotificationFeedbackGenerator().notificationOccurred(.success)
-                ToastCenter.shared.present(Toast(label: "// VISIT SAVED", tone: .success))
+                if result == .committedStageUpdateFailed {
+                    ToastCenter.shared.present(Feedback.SiteVisit.savedStageNotUpdated)
+                } else {
+                    ToastCenter.shared.present(Feedback.SiteVisit.saved)
+                }
                 dismiss()
                 onSaved()
             }
@@ -2390,11 +2392,25 @@ private struct SiteVisitReviewSheet: View {
     private func createProject() {
         guard canCreateProject,
               let opportunity = viewModel.currentOpportunity,
-              viewModel.completeVisit(),
-              let payload = viewModel.projectPayload() else { return }
-        SiteVisitProjectHandoffStore.shared.stage(payload, for: opportunity.id)
-        dismiss()
-        onCreateProject(opportunity)
+              !isSaving else { return }
+        isSaving = true
+        Task {
+            let completion = await viewModel.completeVisit()
+            await MainActor.run {
+                isSaving = false
+                guard completion.isCommitted else {
+                    ToastCenter.shared.present(Feedback.SiteVisit.notSaved)
+                    return
+                }
+                guard let payload = viewModel.projectPayload() else {
+                    ToastCenter.shared.present(Feedback.SiteVisit.projectNotStarted)
+                    return
+                }
+                SiteVisitProjectHandoffStore.shared.stage(payload, for: opportunity.id)
+                dismiss()
+                onCreateProject(opportunity)
+            }
+        }
     }
 }
 
@@ -2441,10 +2457,10 @@ private struct SiteVisitPhotoPreviewSheet: View {
 
 private struct SiteVisitPhotoMarkupView: View {
     @Bindable var artifact: SiteVisitCaptureArtifact
+    let persistMarkup: (String) -> Bool
     let onSaved: () -> Void
 
     @Environment(\.dismiss) private var dismiss
-    @Environment(\.modelContext) private var modelContext
     @State private var image: UIImage?
     @State private var drawing = PKDrawing()
     @State private var canvasSize = CGSize(width: 1, height: 1)
@@ -2507,11 +2523,10 @@ private struct SiteVisitPhotoMarkupView: View {
             return
         }
 
-        artifact.kind = .annotatedPhoto
-        artifact.renderedAssetURL = url
-        artifact.updatedAt = Date()
-        artifact.needsSync = true
-        try? modelContext.save()
+        guard persistMarkup(url) else {
+            errorMessage = "MARKUP SAVE FAILED"
+            return
+        }
         onSaved()
         dismiss()
     }

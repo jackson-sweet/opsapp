@@ -4,8 +4,9 @@
 //
 //  Visual proof for the stair sheet overhaul + level-scoped HEIGHT tool.
 //  Renders the stair sheet in its three rise modes (treads / height / level),
-//  the Connect entry point's edge picker, and the height sheet scoped to a
-//  named level. NOT pass/fail — writes images for inspection.
+//  the no-edge recovery path's edge picker, Level mode disabled on a
+//  single-level drawing, and the height sheet scoped to a named level.
+//  NOT pass/fail — writes images for inspection.
 //
 //  Rendered via FixedSizeSnapshot: hosted in the APP'S OWN window at a fixed
 //  logical size, so asset-catalog colors resolve, onAppear runs, and the
@@ -132,15 +133,56 @@ final class DeckStairHeightSnapshotTests: XCTestCase {
             size: CGSize(width: 393, height: 1400)
         )
 
-        // 4. Connect entry (level bar) — no edge selected yet, so the sheet
-        //    leads with its edge picker.
-        let connectVM = multiLevelViewModel()
-        connectVM.editingEdgeId = nil
+        // 4. No edge chosen — the recovery path. The CONNECT button that used
+        //    to reach this deliberately no longer exists (bug 2f717747); the
+        //    picker survives for a sheet opened without an edge, and its rows
+        //    now name the side of the deck each edge faces plus its length
+        //    instead of vertex indices.
+        let pickerVM = multiLevelViewModel()
+        pickerVM.editingEdgeId = nil
         snapshot(
-            "04-stair-connect-entry-edge-picker",
-            view: StairConfigView(viewModel: connectVM, initialMode: .level),
+            "04-stair-no-edge-edge-picker",
+            view: StairConfigView(viewModel: pickerVM, initialMode: .level),
             size: CGSize(width: 393, height: 1400)
         )
+
+        // 5. Single-level drawing — Level mode is LISTED and disabled with
+        //    the reason, instead of vanishing as though the feature were
+        //    missing (bug 46c2d6eb, A2).
+        let singleVM = singleLevelViewModel()
+        singleVM.editingEdgeId = "e1"
+        snapshot(
+            "05-stair-level-mode-disabled-single-level",
+            view: StairConfigView(viewModel: singleVM, initialMode: .elevation),
+            size: CGSize(width: 393, height: 1400)
+        )
+    }
+
+    /// One closed 12'x12' deck, no second level — the drawing on which Level
+    /// mode cannot apply.
+    private func singleLevelViewModel() -> DeckBuilderViewModel {
+        var data = DeckDrawingData()
+        data.scaleFactor = 1.0
+        data.overallElevation = 2.5
+        data.vertices = [
+            DeckVertex(id: "v1", position: CGPoint(x: 0, y: 0)),
+            DeckVertex(id: "v2", position: CGPoint(x: 144, y: 0)),
+            DeckVertex(id: "v3", position: CGPoint(x: 144, y: 144)),
+            DeckVertex(id: "v4", position: CGPoint(x: 0, y: 144)),
+        ]
+        data.edges = [
+            DeckEdge(id: "e1", startVertexId: "v1", endVertexId: "v2", dimension: 144),
+            DeckEdge(id: "e2", startVertexId: "v2", endVertexId: "v3", dimension: 144),
+            DeckEdge(id: "e3", startVertexId: "v3", endVertexId: "v4", dimension: 144),
+            DeckEdge(id: "e4", startVertexId: "v4", endVertexId: "v1", dimension: 144),
+        ]
+        let viewModel = DeckBuilderViewModel(deckDesign: DeckDesign(
+            companyId: "company-1",
+            title: "Single level proof deck",
+            drawingDataJSON: DeckDrawingData().toJSON()
+        ))
+        viewModel.drawingData = data
+        return viewModel
     }
 
     /// Width defaults to the full edge, so POSITION stays hidden — there is

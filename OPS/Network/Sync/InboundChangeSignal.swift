@@ -86,6 +86,12 @@ enum InboundChangeSignal {
         case "project_photos":            return "ProjectPhoto"
         case "project_photo_annotations": return "PhotoAnnotation"
         case "deck_designs":              return "DeckDesign"
+        case "site_visits":               return "SiteVisit"
+        case "site_visit_artifacts":      return "SiteVisitCaptureArtifact"
+        case "site_visit_checklist_answers":
+            return "SiteVisitChecklistAnswer"
+        case "site_visit_identity_drafts":
+            return "SiteVisitIdentityDraft"
         case "calendar_user_events":      return "CalendarUserEvent"
         case "catalog_categories":        return "CatalogCategory"
         case "catalog_units":             return "CatalogUnit"
@@ -245,6 +251,12 @@ extension RealtimeUpdate {
         case .projectPhoto:          return "ProjectPhoto"
         case .photoAnnotation:       return "PhotoAnnotation"
         case .deckDesign:            return "DeckDesign"
+        case .siteVisit:             return "SiteVisit"
+        case .siteVisitArtifact:     return "SiteVisitCaptureArtifact"
+        case .siteVisitChecklistAnswer:
+            return "SiteVisitChecklistAnswer"
+        case .siteVisitIdentityDraft:
+            return "SiteVisitIdentityDraft"
         case .catalogCategory:       return "CatalogCategory"
         case .catalogUnit:           return "CatalogUnit"
         case .catalogTag:            return "CatalogTag"

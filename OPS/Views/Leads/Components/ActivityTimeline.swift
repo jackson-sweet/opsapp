@@ -19,9 +19,25 @@
 //  Empty state: a single muted `// NO ACTIVITY LOGGED` line inside the
 //  card. Card itself always renders so the section heading stays anchored.
 //
+//  One row breaks the rail's grammar on purpose: a completed SITE VISIT. A
+//  message is one touch in a conversation; a visit is somebody standing on the
+//  property with a tape measure, and it carries everything the estimate will be
+//  built from. It renders as the SITE VISIT RECORD card — the same card the
+//  project activity tab shows — and opens the same full record. Prominence
+//  proportional to weight; it is the thing you scan this rail to find.
+//
 
 import SwiftUI
+import SwiftData
 import UIKit
+
+/// Geometry the lead rail shares across its pieces.
+enum LeadStreamMetrics {
+    /// The rail's horizontal inset. Every row, every hairline, and the
+    /// site-visit record card sit on it, so the column reads as one edge —
+    /// the value lives here once precisely so they cannot drift apart.
+    static let rowInset: CGFloat = 14
+}
 
 /// One stream entry — an activity or a stage change folded into the rail.
 enum LeadStreamEntry: Identifiable {
@@ -52,6 +68,9 @@ enum LeadStreamEntry: Identifiable {
 struct ActivityTimeline: View {
     let activities: [Activity]
     let transitions: [StageTransition]
+    /// The lead this rail belongs to. Supplies the site-visit record its
+    /// identity and its value; nil keeps every row plain.
+    var opportunity: Opportunity? = nil
     var maxItems: Int = 6
     var onViewAll: () -> Void = {}
 
@@ -83,8 +102,9 @@ struct ActivityTimeline: View {
             let shown = Array(entries.prefix(maxItems))
             VStack(spacing: 0) {
                 ForEach(shown) { entry in
-                    LeadStreamRow(
+                    LeadStreamEntryView(
                         entry: entry,
+                        opportunity: opportunity,
                         isExpanded: expanded.contains(entry.id),
                         onToggle: { toggle(entry.id) }
                     )
@@ -92,7 +112,7 @@ struct ActivityTimeline: View {
                         Rectangle()
                             .fill(OPSStyle.Colors.surfaceInput)
                             .frame(height: 1)
-                            .padding(.horizontal, 14)
+                            .padding(.horizontal, LeadStreamMetrics.rowInset)
                     }
                 }
 
@@ -116,7 +136,7 @@ struct ActivityTimeline: View {
                         .tracking(1.2)
                         .textCase(.uppercase)
                         .foregroundColor(OPSStyle.Colors.text3)
-                        .padding(.horizontal, 14)
+                        .padding(.horizontal, LeadStreamMetrics.rowInset)
                         .frame(maxWidth: .infinity, minHeight: OPSStyle.Layout.touchTargetMin)
                         .contentShape(Rectangle())
                     }
@@ -131,6 +151,132 @@ struct ActivityTimeline: View {
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
         withAnimation(OPSStyle.Animation.curve(OPSStyle.Animation.durationHover)) {
             if expanded.contains(id) { expanded.remove(id) } else { expanded.insert(id) }
+        }
+    }
+}
+
+// MARK: - Entry (row, or the site-visit record behind it)
+
+/// One rail entry. Everything renders as `LeadStreamRow` except a completed
+/// site visit whose visit is on this device — that becomes the SITE VISIT
+/// RECORD card.
+///
+/// The device check is the whole gate, and it is not a technicality: site
+/// visits and their capture artifacts never leave the phone that took them, so
+/// on anyone else's phone there is no record to build. Rather than invent one
+/// from an empty shell, the row stays exactly the plain row it has always been.
+struct LeadStreamEntryView: View {
+    let entry: LeadStreamEntry
+    var opportunity: Opportunity? = nil
+    let isExpanded: Bool
+    var onToggle: () -> Void = {}
+
+    var body: some View {
+        if case .activity(let activity) = entry,
+           activity.type == .siteVisit,
+           let visitId = activity.siteVisitId,
+           !visitId.isEmpty {
+            LeadSiteVisitEntryView(
+                entry: entry,
+                activity: activity,
+                visitId: visitId,
+                opportunity: opportunity,
+                isExpanded: isExpanded,
+                onToggle: onToggle
+            )
+        } else {
+            LeadStreamRow(entry: entry, isExpanded: isExpanded, onToggle: onToggle)
+        }
+    }
+}
+
+/// Resolves a site-visit activity against this device's local capture and
+/// renders the record card when it is all there.
+private struct LeadSiteVisitEntryView: View {
+    let entry: LeadStreamEntry
+    let activity: Activity
+    let visitId: String
+    let opportunity: Opportunity?
+    let isExpanded: Bool
+    var onToggle: () -> Void = {}
+
+    @EnvironmentObject private var permissionStore: PermissionStore
+    @Query private var visits: [SiteVisit]
+    @Query private var artifacts: [SiteVisitCaptureArtifact]
+    @Query private var checklistAnswers: [SiteVisitChecklistAnswer]
+    @Query private var identityDrafts: [SiteVisitIdentityDraft]
+    @Query private var authors: [TeamMember]
+
+    @State private var showRecord = false
+
+    init(
+        entry: LeadStreamEntry,
+        activity: Activity,
+        visitId: String,
+        opportunity: Opportunity?,
+        isExpanded: Bool,
+        onToggle: @escaping () -> Void
+    ) {
+        self.entry = entry
+        self.activity = activity
+        self.visitId = visitId
+        self.opportunity = opportunity
+        self.isExpanded = isExpanded
+        self.onToggle = onToggle
+
+        _visits = Query(filter: #Predicate<SiteVisit> { $0.id == visitId })
+        _artifacts = Query(
+            filter: #Predicate<SiteVisitCaptureArtifact> { $0.siteVisitId == visitId },
+            sort: [SortDescriptor(\SiteVisitCaptureArtifact.capturedAt, order: .forward)]
+        )
+        _checklistAnswers = Query(
+            filter: #Predicate<SiteVisitChecklistAnswer> { $0.siteVisitId == visitId }
+        )
+        _identityDrafts = Query(
+            filter: #Predicate<SiteVisitIdentityDraft> { $0.siteVisitId == visitId }
+        )
+        let authorId = activity.createdBy ?? ""
+        _authors = Query(filter: #Predicate<TeamMember> { $0.id == authorId })
+    }
+
+    private var teamMember: TeamMember? { authors.first }
+
+    /// Matches the project feed's author fallback so one visit reads the same
+    /// on both surfaces.
+    private var operatorName: String { teamMember?.fullName ?? "Team Member" }
+
+    private var record: SiteVisitRecord? {
+        guard let visit = visits.first else { return nil }
+        return SiteVisitRecord.assembleFromLocalCapture(
+            visit: visit,
+            artifacts: artifacts,
+            checklistAnswers: checklistAnswers,
+            identity: identityDrafts.first,
+            opportunity: opportunity,
+            capturedAt: activity.createdAt,
+            operatorName: operatorName,
+            canViewFinancials: permissionStore.can("finances.view")
+        )
+    }
+
+    var body: some View {
+        if let record {
+            SiteVisitRecordCard(
+                record: record,
+                teamMember: teamMember,
+                onOpen: { showRecord = true }
+            )
+            // Sits on the rail's own inset so the card's edges line up with
+            // the hairlines above and below it.
+            .padding(.horizontal, LeadStreamMetrics.rowInset)
+            .padding(.vertical, OPSStyle.Layout.spacing2)
+            .sheet(isPresented: $showRecord) {
+                // No photo tap-through: a lead has no project gallery to open
+                // into, and a dead-end tap is worse than no tap.
+                SiteVisitRecordView(record: record)
+            }
+        } else {
+            LeadStreamRow(entry: entry, isExpanded: isExpanded, onToggle: onToggle)
         }
     }
 }
@@ -161,6 +307,13 @@ struct LeadStreamRow: View {
                 if body != nil { onToggle() }
             } label: {
                 HStack(alignment: .center, spacing: OPSStyle.Layout.spacing2_5) {
+                    // Direction reads at row level, not as a 13pt arrow you
+                    // have to hunt for: a leading rule in the direction's tone
+                    // runs the height of the row, so a feed of inbound and
+                    // outbound messages separates at a glance on a bright
+                    // job-site screen.
+                    directionRule(activity)
+
                     glyph(activity)
                         .frame(width: 20)
 
@@ -176,6 +329,7 @@ struct LeadStreamRow: View {
                                 .font(OPSStyle.Typography.metadata)
                                 .foregroundColor(metadataColor(activity))
                                 .lineLimit(1)
+                                .truncationMode(.tail)
                         }
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -194,7 +348,7 @@ struct LeadStreamRow: View {
                             .rotationEffect(.degrees(isExpanded ? 180 : 0))
                     }
                 }
-                .padding(.horizontal, 14)
+                .padding(.horizontal, LeadStreamMetrics.rowInset)
                 .padding(.vertical, OPSStyle.Layout.spacing2_5)
                 .frame(minHeight: OPSStyle.Layout.touchTargetMin)
                 .contentShape(Rectangle())
@@ -209,7 +363,7 @@ struct LeadStreamRow: View {
                     .foregroundColor(OPSStyle.Colors.text2)
                     .fixedSize(horizontal: false, vertical: true)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, 14)
+                    .padding(.horizontal, LeadStreamMetrics.rowInset)
                     .padding(.leading, 20 + OPSStyle.Layout.spacing2_5)
                     .padding(.bottom, OPSStyle.Layout.spacing2_5)
                     .transition(.opacity)
@@ -217,15 +371,17 @@ struct LeadStreamRow: View {
         }
     }
 
-    /// Direction glyph — ↓ steel inbound (their move tone), ↑ olive outbound,
-    /// the type icon otherwise.
+    /// Direction glyph — ↓ tan inbound (their move), ↑ olive outbound (yours),
+    /// the type icon otherwise. Shares `directionTone` with the row rule so the
+    /// two cues can never disagree, and keeps the steel accent reserved for the
+    /// screen's primary CTA.
     @ViewBuilder
     private func glyph(_ activity: Activity) -> some View {
         switch activity.direction {
         case "inbound":
             Text("↓")
                 .font(.system(size: 13, weight: .semibold))
-                .foregroundColor(OPSStyle.Colors.opsAccent)
+                .foregroundColor(OPSStyle.Colors.tanTextM)
         case "outbound":
             Text("↑")
                 .font(.system(size: 13, weight: .semibold))
@@ -237,32 +393,114 @@ struct LeadStreamRow: View {
         }
     }
 
+    /// Leading rule carrying the message's direction — tan (attention: they
+    /// moved, it may be your turn) versus olive (handled: you moved). Invisible
+    /// for anything with no direction (notes, stage changes) so the feed never
+    /// grows decorative furniture.
+    ///
+    /// Earth tones, never the steel accent: the accent is the primary CTA and
+    /// focus ring only, and a feed of six inbound messages would put six accent
+    /// marks on one screen.
+    @ViewBuilder
+    private func directionRule(_ activity: Activity) -> some View {
+        Rectangle()
+            .fill(directionTone(activity) ?? Color.clear)
+            .frame(width: 2)
+            .frame(maxHeight: .infinity)
+            .accessibilityHidden(true)
+    }
+
+    private func directionTone(_ activity: Activity) -> Color? {
+        switch activity.direction {
+        case "inbound":  return OPSStyle.Colors.tanTextM
+        case "outbound": return OPSStyle.Colors.oliveTextM
+        default:         return nil
+        }
+    }
+
+    /// Who the message was between, from the operator's side. Bug 183f7ec9: the
+    /// title used to be the SUBJECT, and every message in a thread shares one
+    /// subject — so a five-message exchange rendered as five identical rows and
+    /// the feed read as a thread dump. Naming the two ends makes each row a
+    /// distinct fact; the subject drops to the metadata line where it belongs.
     private func titleText(_ activity: Activity) -> String {
+        if let participants = participantsText(activity) { return participants }
         if let subject = activity.subject, !subject.isEmpty { return subject }
-        if let body = activity.displayBody, !body.isEmpty { return body }
+        if let body = activity.displayBody, !body.isEmpty {
+            return EmailBodyCleaner.preview(body, limit: 80)
+        }
         return activity.type.rawValue
             .replacingOccurrences(of: "_", with: " ")
             .uppercased()
     }
 
-    /// The inline-expandable body — only when it adds something beyond the
-    /// title line.
-    private func expandableBody(_ activity: Activity) -> String? {
-        guard let subject = activity.subject, !subject.isEmpty else { return nil }
-        guard let body = activity.displayBody, !body.isEmpty, body != subject else { return nil }
-        return body
+    /// `Helen Calloway → You` / `You → Helen Calloway`. Nil when the row has no
+    /// email identity, which is every note, call, and pre-sync row.
+    private func participantsText(_ activity: Activity) -> String? {
+        guard let counterparty = Self.displayName(for: activity.counterpartyEmail) else {
+            return nil
+        }
+        switch activity.direction {
+        case "inbound":  return "\(counterparty) → You"
+        case "outbound": return "You → \(counterparty)"
+        default:         return counterparty
+        }
     }
 
-    /// Duration and/or outcome, joined with a middot.
-    private func metadataText(_ activity: Activity) -> String? {
-        let duration = activity.durationMinutes.flatMap(formatDuration)
-        let outcome = activity.outcome.flatMap(formatOutcome)
-        switch (duration, outcome) {
-        case let (.some(d), .some(o)): return "\(d) · \(o)"
-        case let (.some(d), .none):    return d
-        case let (.none, .some(o)):    return o
-        case (.none, .none):           return nil
+    /// The local part of an address, title-cased — `helen.calloway@x.com`
+    /// reads as `Helen Calloway`. Falls back to the raw address when that
+    /// would produce nothing useful.
+    static func displayName(for email: String?) -> String? {
+        guard let email = email?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !email.isEmpty else { return nil }
+        guard let local = email.split(separator: "@").first, !local.isEmpty else {
+            return email
         }
+        let words = local
+            .replacingOccurrences(of: "_", with: ".")
+            .replacingOccurrences(of: "-", with: ".")
+            .split(separator: ".")
+            .filter { !$0.isEmpty }
+        // A local part that is all digits or a single opaque token (`info`,
+        // `x7fa92`) is not a name — show the address, which at least identifies.
+        guard words.count > 1 else { return email }
+        return words
+            .map { $0.prefix(1).uppercased() + $0.dropFirst().lowercased() }
+            .joined(separator: " ")
+    }
+
+    /// The inline-expandable body — only when it adds something beyond the
+    /// title line. Quoted reply chains and signatures are stripped so an
+    /// expanded email shows what its sender actually wrote, not the thread.
+    private func expandableBody(_ activity: Activity) -> String? {
+        guard let raw = activity.displayBody, !raw.isEmpty else { return nil }
+        let cleaned = EmailBodyCleaner.clean(raw)
+        guard !cleaned.isEmpty, cleaned != activity.subject else { return nil }
+        // With participants as the title, the subject is no longer the title —
+        // so a body that merely repeats it still adds nothing.
+        if participantsText(activity) == nil,
+           activity.subject == nil || activity.subject?.isEmpty == true {
+            return nil
+        }
+        return cleaned
+    }
+
+    /// Subject, duration, and/or outcome, joined with a middot. The subject
+    /// lives here now that the title names the two ends of the message.
+    private func metadataText(_ activity: Activity) -> String? {
+        var parts: [String] = []
+        if participantsText(activity) != nil,
+           let subject = activity.subject?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !subject.isEmpty {
+            parts.append(subject)
+        }
+        if let duration = activity.durationMinutes.flatMap(formatDuration) {
+            parts.append(duration)
+        }
+        if let outcome = activity.outcome.flatMap(formatOutcome) {
+            parts.append(outcome)
+        }
+        return parts.isEmpty ? nil : parts.joined(separator: " · ")
     }
 
     private func metadataColor(_ activity: Activity) -> Color {
@@ -311,7 +549,17 @@ struct LeadStreamRow: View {
         case "outbound": parts.append("Outbound")
         default:         break
         }
-        parts.append(titleText(activity))
+        // Spoken, an arrow is noise — say the relationship instead.
+        if let counterparty = Self.displayName(for: activity.counterpartyEmail) {
+            switch activity.direction {
+            case "inbound":  parts.append("from \(counterparty)")
+            case "outbound": parts.append("to \(counterparty)")
+            default:         parts.append(counterparty)
+            }
+        } else {
+            parts.append(titleText(activity))
+        }
+        if let metadata = metadataText(activity) { parts.append(metadata) }
         parts.append(Self.ageString(entry.date).lowercased())
         if hasBody { parts.append(isExpanded ? "expanded" : "collapsed") }
         return parts.joined(separator: ", ")
@@ -326,10 +574,15 @@ struct LeadStreamRow: View {
                 .foregroundColor(OPSStyle.Colors.text3)
                 .frame(width: 20)
 
+            // Bug e13be3bb: a stage transition is a one-line fact. Uncapped,
+            // two long stage names side by side pushed the feed wider than the
+            // screen and the whole dossier panned.
             HStack(spacing: 5) {
                 Text("Stage:")
                     .font(.custom("Mohave-Regular", size: 13))
                     .foregroundColor(OPSStyle.Colors.text3)
+                    .lineLimit(1)
+                    .layoutPriority(-1)
                 if let from = transition.fromStage {
                     Text(from.shortLabel)
                         .font(OPSStyle.Typography.nanoLabel)
@@ -337,6 +590,8 @@ struct LeadStreamRow: View {
                         .kerning(1.0)
                         .foregroundColor(OPSStyle.Colors.text3)
                         .textCase(.uppercase)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
                     Image(systemName: "arrow.right")
                         .font(.system(size: 9, weight: .regular))
                         .foregroundColor(OPSStyle.Colors.textMute)
@@ -347,6 +602,8 @@ struct LeadStreamRow: View {
                     .kerning(1.0)
                     .foregroundColor(OPSStyle.Colors.text2)
                     .textCase(.uppercase)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
 
@@ -356,8 +613,10 @@ struct LeadStreamRow: View {
                 .kerning(1.0)
                 .textCase(.uppercase)
                 .monospacedDigit()
+                .lineLimit(1)
+                .layoutPriority(1)
         }
-        .padding(.horizontal, 14)
+        .padding(.horizontal, LeadStreamMetrics.rowInset)
         .padding(.vertical, OPSStyle.Layout.spacing2_5)
         .accessibilityElement(children: .combine)
         .accessibilityLabel(stageAccessibilityLabel(transition))
@@ -398,7 +657,7 @@ private struct EmptyLine: View {
             .foregroundColor(OPSStyle.Colors.textMute)
             .textCase(.uppercase)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, 14)
-            .padding(.vertical, 14)
+            .padding(.horizontal, LeadStreamMetrics.rowInset)
+            .padding(.vertical, LeadStreamMetrics.rowInset)
     }
 }

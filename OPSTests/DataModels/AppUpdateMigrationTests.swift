@@ -52,6 +52,35 @@ final class AppUpdateMigrationTests: XCTestCase {
         )
     }
 
+    func testReleasedV19DoesNotReferenceWidenedLiveSiteVisitModels() {
+        XCTAssertFalse(
+            contains(SiteVisit.self, in: OPSSchemaV19.self),
+            "V19 must keep the SiteVisit shape released before cloud sync fields were added"
+        )
+        XCTAssertTrue(
+            contains(OPSSchemaLegacySiteVisitV19.SiteVisit.self, in: OPSSchemaV19.self),
+            "V19 must register its frozen released SiteVisit shape"
+        )
+        XCTAssertFalse(
+            contains(SiteVisitIdentityDraft.self, in: OPSSchemaV19.self),
+            "V19 must keep the identity-draft shape released before cloud sync fields were added"
+        )
+        XCTAssertTrue(
+            contains(OPSSchemaLegacySiteVisitIdentityDraftV19.SiteVisitIdentityDraft.self, in: OPSSchemaV19.self),
+            "V19 must register its frozen released identity-draft shape"
+        )
+        XCTAssertTrue(contains(SiteVisit.self, in: OPSSchemaV20.self))
+        XCTAssertTrue(contains(SiteVisitIdentityDraft.self, in: OPSSchemaV20.self))
+        XCTAssertTrue(
+            contains(SiteVisit.self, in: OPSSchemaV22.self),
+            "The activity-feed widenings above V20 must carry the cloud SiteVisit forward"
+        )
+        XCTAssertTrue(
+            contains(SiteVisitIdentityDraft.self, in: OPSSchemaV22.self),
+            "The activity-feed widenings above V20 must carry the cloud identity draft forward"
+        )
+    }
+
     func testAppUpdateChangesHaveMigrationBoundaryAfterV15() {
         XCTAssertGreaterThan(
             OPSMigrationPlan.schemas.count,
@@ -189,7 +218,7 @@ final class AppUpdateMigrationTests: XCTestCase {
     }
 
     func testHostedTestStoreStaysInMemoryWithoutAppGroupStorage() {
-        let schema = Schema(versionedSchema: OPSSchemaV19.self)
+        let schema = Schema(versionedSchema: OPSSchemaV22.self)
         let configuration = OPSModelStore.configuration(
             schema: schema,
             isStoredInMemoryOnly: true
@@ -238,7 +267,7 @@ final class AppUpdateMigrationTests: XCTestCase {
             )
         }
 
-        let currentSchema = Schema(versionedSchema: OPSSchemaV19.self)
+        let currentSchema = Schema(versionedSchema: OPSSchemaV22.self)
         let currentConfiguration = ModelConfiguration(schema: currentSchema, url: storeURL)
         let migrated = try ModelContainer(
             for: currentSchema,
@@ -337,7 +366,7 @@ final class AppUpdateMigrationTests: XCTestCase {
             try context.save()
         }
 
-        let currentSchema = Schema(versionedSchema: OPSSchemaV19.self)
+        let currentSchema = Schema(versionedSchema: OPSSchemaV22.self)
         let currentConfiguration = ModelConfiguration(schema: currentSchema, url: storeURL)
         let migratedContainer = try ModelContainer(
             for: currentSchema,

@@ -144,6 +144,13 @@ final class TaskDetailSheetSnapshotTests: XCTestCase {
             store.permissions = savedPermissions
             store.disabledFlags = savedDisabled
             store.blockedByFlags = savedBlocked
+            // The assigned-scope renders set a preview operator identity on the
+            // shared store. It is process-global like the grants are, and a
+            // leaked identity silently changes what a LATER test's scoped grant
+            // resolves to. `currentUserId` is private, so it is cleared rather
+            // than restored — production sets it from the keychain cache, which
+            // no test host runs.
+            store.setPreviewOperatorId(nil)
         }
         body()
     }
@@ -306,6 +313,10 @@ final class TaskDetailSheetSnapshotTests: XCTestCase {
         }
     }
 
+    /// The sheet's type picker reads `DataController` from the environment.
+    /// SwiftUI TRAPS on a missing `@EnvironmentObject` rather than degrading,
+    /// so every host has to inject it — the same failure mode that crashed
+    /// `ActivityFeedSnapshotTests` when a view gained a `PermissionStore`.
     @ViewBuilder
     private func hosted(_ fixture: Fixture, isProjectCompleted: Bool = false) -> some View {
         SheetHost(
@@ -315,6 +326,7 @@ final class TaskDetailSheetSnapshotTests: XCTestCase {
         )
         .frame(width: sheetWidth)
         .modelContainer(fixture.container)
+        .environmentObject(DataController())
     }
 
     private let populatedNotes = """
@@ -517,6 +529,101 @@ final class TaskDetailSheetSnapshotTests: XCTestCase {
                 .modelContainer(fixture.container),
             height: pickerPanelHeight
         )
+    }
+
+    // MARK: - Permission gates (bug 10b66fce)
+    //
+    // The visual half of the gate rules. Every mutating control on this sheet
+    // reads the grant that governs it, scope-aware on the task's crew, and a
+    // control the operator cannot use must be ABSENT — not present and
+    // refusing. These captures are what "absent" actually looks like.
+
+    /// Full access: TYPE is tappable, NOTES invites an edit, the crew row
+    /// opens, the status ladder is complete.
+    func testRenderGatesWithFullAccess() throws {
+        let fixture = try makeFixture(status: .active, notes: populatedNotes, scheduled: true, assignedCount: 3)
+        withPermissions(fullGrants) {
+            snapshot("gates-full-access", view: hosted(fixture), height: sheetHeight)
+        }
+    }
+
+    /// Crew who may move their own job's status but may not retype it, reassign
+    /// it, or reschedule it. No TYPE chevron, no NOTES affordance, no crew
+    /// picker — the status ladder survives alone.
+    func testRenderGatesAsCrewWithStatusRightsOnly() throws {
+        let fixture = try makeFixture(status: .active, notes: populatedNotes, scheduled: true, assignedCount: 3)
+        fixture.task.setTeamMemberIds([Self.crewSeed[0].id])
+        withPermissions(["tasks.change_status": "assigned"]) {
+            PermissionStore.shared.setPreviewOperatorId(Self.crewSeed[0].id)
+            snapshot("gates-crew-status-only", view: hosted(fixture), height: sheetHeight)
+        }
+    }
+
+    /// No grants at all — a pure readout. Every mutating affordance is gone and
+    /// only SELECT THIS TASK, which changes nothing about the task, remains.
+    func testRenderGatesWithNoGrantsIsAPureReadout() throws {
+        let fixture = try makeFixture(status: .active, notes: populatedNotes, scheduled: true, assignedCount: 3)
+        withPermissions([:]) {
+            snapshot("gates-read-only", view: hosted(fixture), height: sheetHeight)
+        }
+    }
+
+    /// Assigned-scope edit rights on somebody ELSE's task read as no rights.
+    func testRenderGatesWithAssignedScopeOnAnotherOperatorsTask() throws {
+        let fixture = try makeFixture(status: .active, notes: populatedNotes, scheduled: true, assignedCount: 1)
+        withPermissions(["tasks.edit": "assigned"]) {
+            PermissionStore.shared.setPreviewOperatorId(Self.crewSeed[1].id)
+            snapshot("gates-assigned-scope-other-task", view: hosted(fixture), height: sheetHeight)
+        }
+    }
+
+    /// An empty NOTES field invites an edit only when the viewer may write it;
+    /// otherwise it prints the document's blank (bug b6adebf43).
+    func testRenderEmptyNotesInvitesEditingOnlyWhenPermitted() throws {
+        let editable = try makeFixture(status: .active, notes: nil, scheduled: true, assignedCount: 2)
+        withPermissions(fullGrants) {
+            snapshot("gates-empty-notes-editable", view: hosted(editable), height: sheetHeight)
+        }
+
+        let readOnly = try makeFixture(status: .active, notes: nil, scheduled: true, assignedCount: 2)
+        withPermissions([:]) {
+            snapshot("gates-empty-notes-read-only", view: hosted(readOnly), height: sheetHeight)
+        }
+    }
+
+    // MARK: - Gate wiring (pass/fail)
+
+    /// The sheet's gates must read the task's permission properties, not a
+    /// hardcoded truth. Proven against the shared store the sheet consults.
+    func testGatePropertiesTrackTheSharedPermissionStore() throws {
+        let fixture = try makeFixture(status: .active, notes: populatedNotes, scheduled: true, assignedCount: 1)
+        let task = fixture.task
+
+        withPermissions([:]) {
+            XCTAssertFalse(task.canEditFields)
+            XCTAssertFalse(task.canAssignCrew)
+            XCTAssertFalse(task.canChangeStatus)
+            XCTAssertFalse(task.canEditSchedule)
+        }
+
+        withPermissions(fullGrants) {
+            XCTAssertTrue(task.canEditFields)
+            XCTAssertTrue(task.canAssignCrew)
+            XCTAssertTrue(task.canChangeStatus)
+            XCTAssertTrue(task.canEditSchedule)
+        }
+    }
+
+    /// Every grant this sheet consults, at company scope.
+    private var fullGrants: [String: String] {
+        [
+            "projects.view": "all",
+            "tasks.view": "all",
+            "tasks.edit": "all",
+            "tasks.assign": "all",
+            "tasks.change_status": "all",
+            "calendar.edit": "all"
+        ]
     }
 
     /// Hosts the production panel with the sheet's own draft semantics: the

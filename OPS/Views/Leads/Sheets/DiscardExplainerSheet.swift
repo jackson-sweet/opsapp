@@ -18,8 +18,8 @@ import SwiftUI
 
 struct DiscardExplainerSheet: View {
     let opportunity: Opportunity
-    /// Async discard performed by the host (VM path or direct-repo path).
-    let onConfirm: () async -> Void
+    /// Returns true only after the guarded server transaction succeeds.
+    let onConfirm: () async -> Bool
 
     @Environment(\.dismiss) private var dismiss
     @AppStorage("leads_discard_explainer_seen") private var explainerSeen = false
@@ -33,7 +33,7 @@ struct DiscardExplainerSheet: View {
                 SheetTitleLabel(title: "DISCARD vs LOST", size: .half)
                     .padding(.horizontal, OPSStyle.Layout.spacing3_5)
                     .padding(.top, OPSStyle.Layout.spacing3_5)
-                    .padding(.bottom, 14)
+                    .padding(.bottom, OPSStyle.Layout.spacing2_5)
 
                 ScrollView {
                     VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2_5) {
@@ -46,7 +46,7 @@ struct DiscardExplainerSheet: View {
                         definitionRow(
                             term: "DISCARD",
                             termColor: OPSStyle.Colors.roseTextM,
-                            body: "Never a real lead — spam, wrong number, duplicate. Off your board, never a lost deal.",
+                            body: "Never a real lead — spam, scam, or noise. Off your board, never a lost deal.",
                             bodyColor: OPSStyle.Colors.text
                         )
                     }
@@ -83,7 +83,7 @@ struct DiscardExplainerSheet: View {
                 .fixedSize(horizontal: false, vertical: true)
         }
         .padding(.vertical, OPSStyle.Layout.spacing2_5)
-        .padding(.horizontal, 14)
+        .padding(.horizontal, OPSStyle.Layout.spacing2_5)
         .frame(maxWidth: .infinity, alignment: .leading)
         .nestedCard()
     }
@@ -91,7 +91,7 @@ struct DiscardExplainerSheet: View {
     // MARK: - Footer
 
     private var footer: some View {
-        VStack(spacing: 10) {
+        VStack(spacing: OPSStyle.Layout.spacing2_5) {
             Spacer()
             SheetFooterButtonRow {
                 SheetCTAButton(
@@ -110,14 +110,18 @@ struct DiscardExplainerSheet: View {
                     guard !isWorking else { return }
                     isWorking = true
                     Task {
-                        explainerSeen = true       // first run consumed
-                        await onConfirm()
-                        dismiss()
+                        let succeeded = await onConfirm()
+                        if succeeded {
+                            explainerSeen = true
+                            dismiss()
+                        } else {
+                            isWorking = false
+                        }
                     }
                 }
             }
             .padding(.horizontal, OPSStyle.Layout.spacing3_5)
-            .padding(.bottom, 28)
+            .padding(.bottom, OPSStyle.Layout.spacing4)
         }
         .background(
             LinearGradient(

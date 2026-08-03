@@ -23,13 +23,23 @@ struct LostReasonSheet: View {
     @EnvironmentObject private var dataController: DataController
     @Environment(\.dismiss) private var dismiss
 
-    @State private var reason: LossReason?
+    @State private var selection: LostReasonSelection
     @State private var notes: String = ""
     @State private var isSaving = false
     @State private var errorMessage: String?
     @State private var discardTarget: Opportunity?
 
-    private var canSave: Bool { reason != nil && !isSaving }
+    init(opportunity: Opportunity) {
+        self.opportunity = opportunity
+        // A lead can already carry a reason written by a server-side flow. Seed
+        // from it so a value this app does not recognise survives the round
+        // trip instead of being blanked by the next save.
+        _selection = State(
+            initialValue: LostReasonSelection(storedReason: opportunity.lostReason)
+        )
+    }
+
+    private var canSave: Bool { selection.canSave && !isSaving }
 
     var body: some View {
         ZStack(alignment: .top) {
@@ -57,14 +67,7 @@ struct LostReasonSheet: View {
         .interactiveDismissDisabled(isSaving)
         .leadDiscardFlow(
             target: $discardTarget,
-            perform: { lead in
-                _ = try await OpportunityRepository(companyId: lead.companyId)
-                    .moveToStage(opportunityId: lead.id, to: .discarded,
-                                 userId: dataController.currentUser?.id)
-                lead.stage = .discarded
-                lead.stageEnteredAt = Date()
-            },
-            onDiscarded: { _ in dismiss() }
+            onCompleted: { _, _ in dismiss() }
         )
     }
 
@@ -130,8 +133,8 @@ struct LostReasonSheet: View {
 
     private var reasonBinding: Binding<String> {
         Binding(
-            get: { reason?.rawValue ?? "" },
-            set: { reason = LossReason(rawValue: $0) }
+            get: { selection.reason?.rawValue ?? "" },
+            set: { selection.reason = LossReason(storedValue: $0) }
         )
     }
 
@@ -144,7 +147,7 @@ struct LostReasonSheet: View {
     private var notesSection: some View {
         LeadField(label: "NOTES", hint: "[OPTIONAL]") {
             LeadTextArea(
-                placeholder: "What did you learn? Useful for next quarter's win-rate review.",
+                placeholder: "What happened — worth knowing next time.",
                 text: $notes,
                 rows: 4
             )
@@ -227,7 +230,10 @@ struct LostReasonSheet: View {
     // MARK: - Save
 
     private func confirm() {
-        guard let reason = reason else { return }
+        // `resolvedReasonForSave` is the operator's pick when they made one and
+        // the untouched stored value otherwise — an unrecognised server-authored
+        // reason is carried through verbatim, never overwritten or nil-ed.
+        guard let reasonValue = selection.resolvedReasonForSave else { return }
         errorMessage = nil
         isSaving = true
 
@@ -236,12 +242,12 @@ struct LostReasonSheet: View {
                 let companyId = opportunity.companyId
                 _ = try await OpportunityRepository(companyId: companyId).markLost(
                     opportunityId: opportunity.id,
-                    reason: reason,
+                    reason: reasonValue,
                     notes: notes.isEmpty ? nil : notes,
                     userId: dataController.currentUser?.id
                 )
                 opportunity.stage = .lost
-                opportunity.lostReason = reason.rawValue
+                opportunity.lostReason = reasonValue
                 opportunity.lostNotes = notes.isEmpty ? nil : notes
                 opportunity.actualCloseDate = Date()
                 opportunity.stageEnteredAt = Date()

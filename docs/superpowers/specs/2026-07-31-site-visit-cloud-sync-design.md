@@ -29,7 +29,8 @@ The workflow guarantees:
 - The live database already has `site_visits`, `activities.site_visit_id`, and `project_photos.site_visit_id`. `project_photos.project_id` is required, so it cannot be the pre-project capture store.
 - The live `project_photos` uniqueness contract already deduplicates active site-visit photos by company, project, visit, and URL.
 - The connected-phone audit found visit children whose parent records had been deleted locally, including data belonging to more than one company. Recovery must precede any destructive cleanup.
-- The account-deletion work classifies `site_visits` as company-scoped on text `company_id`, soft-deleted, and customer-exported; `project_photos` follows the same text/soft/export contract, while `activities.company_id` is UUID and hard-deleted.
+- Wave 1 account deletion/export is merged into local `ops-web/main` at `c709ad2b` (W1-6 merge parent `d8fef5f0`; not pushed or deployed). Its manifest audits 220 company-data tables, exports 96, and executes one 199-step `public.purge_company_data` transaction. The production rehearsal successfully purged a `site_visits` fixture with zero cross-tenant decreases.
+- That landed contract classifies `site_visits` as company-scoped on text `company_id`, soft-deleted, and customer-exported; `project_photos` follows the same text/soft/export contract, while `activities.company_id` is UUID and hard-deleted.
 
 ## 3 · Approaches considered
 
@@ -214,7 +215,9 @@ The server account-closure contract includes the three new tables in the same ma
 - Dependency: each child is ordered before `site_visits` through its real single-column foreign key.
 - Privileges and any definer-purge requirements are explicit and rehearsed; no broad DELETE grant is added to immutable machinery.
 
-The implementation must be based on the finalized transactional `public.purge_company_data(company_id, manifest_plan)` work after its route/manifest rehearsal has landed. It must regenerate the live scope and privilege snapshots and add visit fixtures to the deletion rehearsal.
+The implementation starts from local `ops-web/main` at `c709ad2b` or a verified descendant. It must regenerate the live scope and privilege snapshots and add visit fixtures to the deletion rehearsal. Any newly discovered server queue, receipt, event, outbox, delivery, or storage-linkage table follows the same manifest/export/purge/privilege/Bible contract in the same change.
+
+Site-visit media uses the deterministic company prefix `site-visits/{company_id}/`. Account closure deletes that prefix after the database transaction commits. Because S3 and PostgreSQL cannot share one transaction, an authenticated cron repeats the idempotent prefix deletion for soft-deleted companies until the prefix is empty. This needs no server outbox table and cannot damage an active tenant because only already-deleted companies are eligible for the sweep.
 
 ## 9 · Security and integrity
 
@@ -229,7 +232,7 @@ The implementation must be based on the finalized transactional `public.purge_co
 
 ## 10 · Rollout order
 
-1. Land and rehearse the transactional company-data purge work.
+1. Use the landed Wave 1 transactional company-data purge at local `ops-web/main` commit `c709ad2b` as the base; do not use or rewrite the old W1-6 worktree.
 2. Apply the additive visit-child schema, constraints, indexes, RLS, grants, completion contract, manifest entries, export coverage, purge coverage, and Software Bible update as one server contract.
 3. Update web completion to use the shared transaction while retaining its existing read model.
 4. Ship iOS local schema additions, DTOs, repositories, outbound dependencies, inbound merge, media authorization, completion command, and RecoveryInventory bundling.
@@ -248,6 +251,7 @@ The server contract must be backward-compatible before the new phone build reach
 - Terminal-state downgrade rejected.
 - Account export includes the parent and every child.
 - Transactional account purge removes/soft-deletes the complete visit fixture and related activity/project projections without disabling triggers or foreign keys.
+- Account closure and the retry sweep both remove the deterministic `site-visits/{company_id}/` S3 prefix; rerunning either path is a no-op once empty.
 - Supabase security and performance advisors reviewed after the migration.
 
 ### iOS
@@ -306,6 +310,6 @@ The work is complete only when all of the following are true:
 - `OPS/Network/Sync/InboundProcessor.swift`
 - `OPS/Network/Sync/RecoveryInventory.swift`
 - `../ops-web/src/lib/api/services/site-visit-service.ts`
-- `../ops-web-data-cascade/src/lib/data/company-data-manifest.ts`
+- `../ops-web/src/lib/data/company-data-manifest.ts` (Wave 1 base `c709ad2b`)
 - `../ops-software-bible/03_DATA_ARCHITECTURE.md`
 - `../ops-software-bible/10_JOB_LIFECYCLE_AND_DATA_RELATIONSHIPS.md`

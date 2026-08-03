@@ -99,7 +99,7 @@ struct EstimateCard: View {
                         .foregroundColor(OPSStyle.Colors.primaryText)
                         .lineLimit(1)
                     Spacer()
-                    Text(estimate.total, format: .currency(code: "USD").precision(.fractionLength(0)))
+                    Text(BooksFormat.currency(estimate.total))
                         .font(OPSStyle.Typography.body)
                         .foregroundColor(OPSStyle.Colors.primaryText)
                 }

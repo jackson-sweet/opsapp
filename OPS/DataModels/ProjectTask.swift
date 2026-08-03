@@ -261,9 +261,22 @@ final class ProjectTask {
         return taskColor
     }
     
-    /// Check if user can edit this task
-    func canEdit(user: User) -> Bool {
-        return PermissionStore.shared.can("tasks.edit")
+    /// Whether the current user may edit THIS task's *fields* — task type,
+    /// description, title. Gated on `tasks.edit`, scope-aware on the task's
+    /// assignees, mirroring `canEditSchedule`.
+    ///
+    /// Bug 10b66fce — the old `canEdit(user:)` called a bare `can("tasks.edit")`,
+    /// which is satisfied by a grant at ANY scope, so an `assigned` operator
+    /// read as able to edit every task in the company. It had no call sites;
+    /// this replaces it rather than preserving the wrong answer.
+    var canEditFields: Bool {
+        PermissionStore.shared.canEditTaskFields(assigneeIds: getTeamMemberIds())
+    }
+
+    /// Whether the current user may change which crew this task is assigned to.
+    /// `tasks.assign` is defined all-only, so this is not per-task.
+    var canAssignCrew: Bool {
+        PermissionStore.shared.canAssignTaskCrew
     }
 
     /// Whether the current user may edit THIS task's *schedule* (start/end dates,
@@ -275,10 +288,16 @@ final class ProjectTask {
         PermissionStore.shared.canEditSchedule(assigneeIds: getTeamMemberIds())
     }
     
-    /// Check if user can update status
-    func canUpdateStatus(user: User) -> Bool {
-        // All users can update task status
-        return true
+    /// Whether the current user may complete, reopen, or cancel THIS task.
+    /// Gated on `tasks.change_status`, scope-aware on the task's assignees.
+    ///
+    /// Bug 10b66fce — the old `canUpdateStatus(user:)` returned `true`
+    /// unconditionally ("all users can update task status") while
+    /// `tasks.change_status` existed and was already honoured by
+    /// `TaskReviewQuery`. It had no call sites; the sheet's status buttons now
+    /// read this instead of being ungated.
+    var canChangeStatus: Bool {
+        PermissionStore.shared.canChangeTaskStatus(assigneeIds: getTeamMemberIds())
     }
     
     // MARK: - Dependency Helpers

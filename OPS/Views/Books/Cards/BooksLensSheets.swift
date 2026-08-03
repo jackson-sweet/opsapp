@@ -786,7 +786,7 @@ struct BooksJobsSheet: View {
     }
 
     private func netString(_ net: Double) -> String {
-        let formatted = abs(net).formatted(.currency(code: "USD").precision(.fractionLength(0)))
+        let formatted = BooksFormat.currency(abs(net))
         return (net >= 0 ? "+" : "\u{2212}") + formatted
     }
 }

@@ -75,10 +75,10 @@ final class SiteVisitCaptureArtifact: Identifiable {
         createdBy: String? = nil,
         createdAt: Date = Date()
     ) {
-        self.id = id
-        self.siteVisitId = siteVisitId
-        self.companyId = companyId
-        self.opportunityId = opportunityId
+        self.id = id.lowercased()
+        self.siteVisitId = siteVisitId.lowercased()
+        self.companyId = companyId.lowercased()
+        self.opportunityId = opportunityId?.lowercased()
         self.kind = kind
         self.source = source
         self.title = title
@@ -87,7 +87,7 @@ final class SiteVisitCaptureArtifact: Identifiable {
         self.renderedAssetURL = renderedAssetURL
         self.thumbnailURL = thumbnailURL
         self.dimensionsJSON = dimensionsJSON
-        self.deckDesignId = deckDesignId
+        self.deckDesignId = deckDesignId?.lowercased()
         self.includedInProjectReview = includedInProjectReview
         self.capturedAt = capturedAt
         self.createdBy = createdBy
@@ -176,6 +176,16 @@ struct SiteVisitProjectPayload: Equatable {
     let deckDesignIds: [String]
     let checklistAnswerIds: [String]
     let checklistLines: [String]
+    // Record fields — additive, defaulted, and declared LAST so every existing
+    // caller's memberwise init is unaffected. They travel into the site-visit
+    // packet so the SITE VISIT RECORD can name who was met on a teammate's
+    // device that holds none of the local artifacts.
+    //
+    // The lead's VALUE deliberately does not travel with them: the packet syncs
+    // into a column OPS-Web renders ungated, so money is resolved at render
+    // time from the local opportunity instead, behind `finances.view`.
+    var contactName: String? = nil
+    var companyName: String? = nil
 }
 
 enum SiteVisitProjectPayloadBuilder {
@@ -184,7 +194,9 @@ enum SiteVisitProjectPayloadBuilder {
         opportunityId: String,
         address: String?,
         artifacts: [SiteVisitCaptureArtifact],
-        checklistAnswers: [SiteVisitChecklistAnswer] = []
+        checklistAnswers: [SiteVisitChecklistAnswer] = [],
+        contactName: String? = nil,
+        companyName: String? = nil
     ) -> SiteVisitProjectPayload {
         let included = artifacts
             .filter { $0.isActive && $0.includedInProjectReview }
@@ -209,7 +221,9 @@ enum SiteVisitProjectPayloadBuilder {
                 artifact.pipesToProjectDeckDesign ? artifact.deckDesignId : nil
             },
             checklistAnswerIds: includedAnswers.map(\.id),
-            checklistLines: includedAnswers.compactMap(Self.checklistLine)
+            checklistLines: includedAnswers.compactMap(Self.checklistLine),
+            contactName: contactName,
+            companyName: companyName
         )
     }
 

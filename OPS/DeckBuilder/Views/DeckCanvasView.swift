@@ -937,6 +937,16 @@ struct DeckCanvasView: View {
         var path = Path(); path.move(to: start.position); path.addLine(to: end.position)
         let isSelected = viewModel.selection.selectedEdgeIds.contains(edge.id)
 
+        // Candidate edge under the stair sheet's picker. The picker row names
+        // a side of the deck; this is what makes the name point at something.
+        if viewModel.highlightedEdgeId == edge.id {
+            context.stroke(
+                path,
+                with: .color(OPSStyle.Colors.text.opacity(0.9)),
+                style: StrokeStyle(lineWidth: scaledSize(8, min: 4, max: 14), lineCap: .round)
+            )
+        }
+
         // Railing indicator (subtle thicker line behind) — scales with zoom
         if edge.railingConfig != nil {
             let railingWidth = scaledSize(isSelected ? 6 : 4, min: 2.5, max: 10)

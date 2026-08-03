@@ -5,15 +5,59 @@
 //  Local-first capture packet orchestration for field site visits.
 //
 
+import Contacts
 import Foundation
 import SwiftData
 import SwiftUI
 import UIKit
 import CoreLocation
 
+/// What a CREATE LEAD tap actually did. A failed server call is NOT
+/// automatically a failure for the operator: when the client landed and the
+/// durable queue took the lead, the work is safe and this visit binds itself on
+/// delivery. That is `.queued` — and it must never render as an error
+/// (bug 13c66762: the lead arrived seconds later, under a red toast).
+enum SiteVisitLeadCreateOutcome {
+    case created(Opportunity)
+    case queued(offline: Bool)
+    case failed
+}
+
+enum SiteVisitCompletionFailure: Equatable {
+    case missingEvidence
+    case persistence
+}
+
+enum SiteVisitCompletionResult: Equatable {
+    case committed(SiteVisitPersistenceCoordinator.CommitResult)
+    case notCommitted(SiteVisitCompletionFailure)
+
+    var isCommitted: Bool {
+        if case .committed = self { return true }
+        return false
+    }
+}
+
+enum SiteVisitSaveResult: Equatable {
+    case committed
+    case committedStageUpdateFailed
+    case notCommitted(SiteVisitCompletionFailure)
+
+    var visitWasCommitted: Bool {
+        switch self {
+        case .committed, .committedStageUpdateFailed: return true
+        case .notCommitted: return false
+        }
+    }
+}
+
 @MainActor
 final class SiteVisitCaptureViewModel: ObservableObject {
-    @Published private(set) var siteVisit: SiteVisit?
+    typealias StageMover = (_ opportunityId: String, _ stage: PipelineStage) async throws -> Void
+
+    @Published private(set) var siteVisit: SiteVisit? {
+        didSet { activeSiteVisitId = siteVisit?.id }
+    }
     @Published private(set) var artifacts: [SiteVisitCaptureArtifact] = []
     @Published private(set) var siteVisitTypes: [SiteVisitType] = []
     @Published private(set) var selectedSiteVisitType: SiteVisitType?
@@ -29,22 +73,99 @@ final class SiteVisitCaptureViewModel: ObservableObject {
     /// Surfaced so the operator can deliberately resume it instead of having it
     /// silently reopened underneath a brand-new visit (the old collision bug).
     @Published private(set) var resumableVisit: SiteVisit?
+    /// Bumped when a device contact is imported into the identity draft. The
+    /// identity panel mirrors the draft in local view state, and this is the
+    /// ONLY signal that re-hydrates that mirror — so routine autosaves never
+    /// fight the operator's keystrokes (bug 5d5df5b0).
+    @Published private(set) var contactImportGeneration = 0
 
     private let companyId: String
     private let userId: String?
     private let modelContext: ModelContext
+    private let persistenceCoordinator: SiteVisitPersistenceCoordinator
+    private let moveLeadToStage: StageMover
     private var autosavedNoteArtifactId: String?
+    private var leadBoundObserver: NSObjectProtocol?
+
+    /// The active visit's id, mirrored as a plain String.
+    ///
+    /// `SiteVisitLeadBound` is broadcast to every live view model, and a view
+    /// model can outlive its store — a logout or company switch resets the
+    /// context, and every console that was open still receives the post. Reading
+    /// `siteVisit?.id` there traps ("model instance was destroyed by calling
+    /// ModelContext.reset"), so the identity check that runs on EVERY delivery
+    /// never touches a SwiftData instance. Only a match proceeds to the store,
+    /// and a match means the delivery is for this view model's own live visit.
+    private var activeSiteVisitId: String?
+
+    // MARK: - Injectable seams
+    //
+    // Production wires the live repositories, the shared durable queue, and the
+    // wall clock. Tests substitute doubles so the whole lead-create path —
+    // visibility wait, guarded create, queue handoff — runs with no network and
+    // without sleeping.
+
+    /// Asks the server whether it can see a client yet. See
+    /// `ClientServerVisibility` for why this exists at all.
+    var probeClientVisibility: (String, String) async throws -> Void = ClientServerVisibility.liveProbe
+    var clientVisibilityBackoff: (Int) async -> Void = ClientServerVisibility.liveBackoff
+    var clientVisibilityAttempts = ClientServerVisibility.defaultAttempts
+    var createOpportunityRemotely: (CreateOpportunityDTO, String) async throws -> OpportunityDTO = { dto, companyId in
+        try await OpportunityRepository(companyId: companyId).create(dto)
+    }
+    var leadAutocreateQueue: ClientLeadAutocreateQueueing = ClientLeadAutocreateQueue.shared
+    var currentDate: () -> Date = { Date() }
+
+    /// How recently an abandoned unlinked visit must have been touched for
+    /// re-entry to continue it instead of starting a clean one. See
+    /// `loadOrCreateVisit`.
+    static let autoResumeWindow: TimeInterval = 15 * 60
 
     init(
         opportunity: Opportunity?,
         companyId: String,
         userId: String?,
-        modelContext: ModelContext
+        modelContext: ModelContext,
+        persistenceCoordinator: SiteVisitPersistenceCoordinator? = nil,
+        moveLeadToStage: StageMover? = nil
     ) {
         self.currentOpportunity = opportunity
         self.companyId = companyId
         self.userId = userId
         self.modelContext = modelContext
+        self.persistenceCoordinator = persistenceCoordinator
+            ?? SiteVisitPersistenceCoordinator(
+                modelContext: modelContext,
+                companyId: companyId
+            )
+        self.moveLeadToStage = moveLeadToStage ?? { opportunityId, stage in
+            let repository = OpportunityRepository(companyId: companyId)
+            _ = try await repository.moveToStage(
+                opportunityId: opportunityId,
+                to: stage,
+                userId: userId
+            )
+        }
+
+        // The durable queue writes the delivered lead's binding straight into
+        // the store; this is how an OPEN console learns about it and flips to
+        // LINKED without waiting for an unrelated redraw.
+        leadBoundObserver = NotificationCenter.default.addObserver(
+            forName: Notification.Name("SiteVisitLeadBound"),
+            object: nil,
+            queue: .main
+        ) { [weak self] notification in
+            let visitId = notification.userInfo?["siteVisitId"] as? String
+            MainActor.assumeIsolated {
+                self?.adoptQueueDeliveredLead(forVisitId: visitId)
+            }
+        }
+    }
+
+    deinit {
+        if let leadBoundObserver {
+            NotificationCenter.default.removeObserver(leadBoundObserver)
+        }
     }
 
     var summary: SiteVisitCaptureReviewSummary {
@@ -159,16 +280,38 @@ final class SiteVisitCaptureViewModel: ObservableObject {
             siteVisit = openVisits().first { $0.opportunityId == opportunity.id }
                 ?? createVisit()
         } else {
-            // Unlinked start (FAB): NEVER silently reopen a prior visit. Sweep
-            // away empty abandoned unlinked visits, surface any that still hold
-            // evidence so the operator can deliberately resume, and begin on a
-            // clean visit. This kills the cross-site data-mixing bug.
+            // Unlinked start (FAB). Sweep away empty abandoned unlinked visits,
+            // then decide what to do with one that still holds evidence.
+            //
+            // The old rule NEVER reopened a prior visit, to kill a cross-site
+            // data-mixing bug: a visit abandoned at one address must not be
+            // silently reopened at the next. That intent is preserved — but it
+            // punished the far more common case, where the console was torn
+            // down seconds ago (a modal stealing the presentation, an
+            // accidental close) and the operator is still standing at the SAME
+            // site. Rebuilding a blank visit there loses the capture they just
+            // made (bug 5d5df5b0).
+            //
+            // So: only an unlinked visit, only one that holds content, and only
+            // one touched inside `autoResumeWindow`, is continued. Anything
+            // older is a different site — it stays behind the resume banner,
+            // exactly as before.
             let priorUnlinked = openVisits().filter { $0.opportunityId == nil }
             let withContent = priorUnlinked.filter { visitHasContent($0) }
             let empties = priorUnlinked.filter { !visitHasContent($0) }
-            resumableVisit = withContent.sorted { $0.createdAt > $1.createdAt }.first
             for empty in empties { hardDeleteVisit(empty) }
-            siteVisit = createVisit()
+
+            let mostRecent = withContent
+                .sorted { lastActivity(of: $0) > lastActivity(of: $1) }
+                .first
+            if let mostRecent,
+               currentDate().timeIntervalSince(lastActivity(of: mostRecent)) < Self.autoResumeWindow {
+                siteVisit = mostRecent
+                resumableVisit = nil
+            } else {
+                resumableVisit = mostRecent
+                siteVisit = createVisit()
+            }
         }
 
         loadOrCreateIdentityDraft()
@@ -237,19 +380,13 @@ final class SiteVisitCaptureViewModel: ObservableObject {
 
     func selectSiteVisitType(_ type: SiteVisitType) {
         guard let visit = requireVisit() else { return }
-        selectedSiteVisitType = type
 
         let existing = fetchChecklistAnswers(siteVisitId: visit.id)
         let activeExisting = existing.filter(\.isActive)
         if activeExisting.contains(where: { $0.siteVisitTypeId == type.id }) {
+            selectedSiteVisitType = type
             checklistAnswers = activeExisting.sortedByChecklistOrder()
             return
-        }
-
-        for answer in activeExisting {
-            answer.deletedAt = Date()
-            answer.updatedAt = Date()
-            answer.needsSync = true
         }
 
         let answers = SiteVisitChecklistAnswer.makeAnswers(
@@ -259,11 +396,21 @@ final class SiteVisitCaptureViewModel: ObservableObject {
             opportunityId: activeOpportunityId,
             createdBy: userId
         )
-        for answer in answers {
-            modelContext.insert(answer)
+        guard persistSiteVisitChanges({
+            let now = Date()
+            for answer in activeExisting {
+                answer.deletedAt = now
+                answer.updatedAt = now
+                answer.needsSync = true
+            }
+            for answer in answers {
+                modelContext.insert(answer)
+            }
+        }) else {
+            return
         }
 
-        saveContext()
+        selectedSiteVisitType = type
         reloadChecklistAnswers()
         hydrateChecklistAnswersFromCapturedEvidence()
     }
@@ -272,10 +419,11 @@ final class SiteVisitCaptureViewModel: ObservableObject {
         _ answer: SiteVisitChecklistAnswer,
         value: SiteVisitChecklistValue
     ) {
-        answer.answerValue = value
-        answer.updatedAt = Date()
-        answer.needsSync = true
-        saveContext()
+        guard persistSiteVisitChanges({
+            answer.answerValue = value
+            answer.updatedAt = Date()
+            answer.needsSync = true
+        }) else { return }
         reloadChecklistAnswers()
     }
 
@@ -308,14 +456,15 @@ final class SiteVisitCaptureViewModel: ObservableObject {
             sortOrder: nextSortOrder,
             createdBy: userId
         )
-        modelContext.insert(answer)
-        saveContext()
+        guard persistSiteVisitChanges({
+            modelContext.insert(answer)
+        }) else { return }
         reloadChecklistAnswers()
     }
 
     func addPhotos(_ images: [UIImage]) {
         guard let visit = requireVisit() else { return }
-        var savedCount = 0
+        var pendingArtifacts: [SiteVisitCaptureArtifact] = []
 
         for image in images {
             guard let imageData = image.jpegData(compressionQuality: 0.78) else { continue }
@@ -334,14 +483,16 @@ final class SiteVisitCaptureViewModel: ObservableObject {
                 capturedAt: Date(),
                 createdBy: userId
             )
-            modelContext.insert(artifact)
-            savedCount += 1
+            pendingArtifacts.append(artifact)
         }
 
-        if savedCount == 0 {
+        if pendingArtifacts.isEmpty {
             errorMessage = "NO PHOTOS SAVED"
-        } else {
-            saveContext()
+        } else if persistSiteVisitChanges({
+            for artifact in pendingArtifacts {
+                modelContext.insert(artifact)
+            }
+        }) {
             reloadArtifacts()
             hydrateChecklistAnswersFromCapturedEvidence()
         }
@@ -362,9 +513,10 @@ final class SiteVisitCaptureViewModel: ObservableObject {
             capturedAt: Date(),
             createdBy: userId
         )
-        modelContext.insert(artifact)
+        guard persistSiteVisitChanges({
+            modelContext.insert(artifact)
+        }) else { return }
         noteDraft = ""
-        saveContext()
         reloadArtifacts()
         hydrateChecklistAnswersFromCapturedEvidence()
     }
@@ -375,21 +527,23 @@ final class SiteVisitCaptureViewModel: ObservableObject {
 
         if trimmed.isEmpty {
             if let artifact = autosavedNoteArtifact() {
-                artifact.deletedAt = Date()
-                artifact.updatedAt = Date()
-                artifact.needsSync = true
+                guard persistSiteVisitChanges({
+                    artifact.deletedAt = Date()
+                    artifact.updatedAt = Date()
+                    artifact.needsSync = true
+                }) else { return }
                 autosavedNoteArtifactId = nil
-                saveContext()
                 reloadArtifacts()
             }
             return
         }
 
         if let artifact = autosavedNoteArtifact(), artifact.isActive {
-            artifact.body = trimmed
-            artifact.updatedAt = Date()
-            artifact.needsSync = true
-            saveContext()
+            guard persistSiteVisitChanges({
+                artifact.body = trimmed
+                artifact.updatedAt = Date()
+                artifact.needsSync = true
+            }) else { return }
             reloadArtifacts()
             return
         }
@@ -405,9 +559,10 @@ final class SiteVisitCaptureViewModel: ObservableObject {
             capturedAt: Date(),
             createdBy: userId
         )
-        modelContext.insert(artifact)
+        guard persistSiteVisitChanges({
+            modelContext.insert(artifact)
+        }) else { return }
         autosavedNoteArtifactId = artifact.id
-        saveContext()
         reloadArtifacts()
     }
 
@@ -429,28 +584,30 @@ final class SiteVisitCaptureViewModel: ObservableObject {
         let trimmed = noteDraft.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, let visit = requireVisit() else { return }
 
-        if let artifact = autosavedNoteArtifact(), artifact.isActive {
-            artifact.body = trimmed
-            artifact.updatedAt = Date()
-            artifact.needsSync = true
-        } else {
-            let artifact = SiteVisitCaptureArtifact(
-                siteVisitId: visit.id,
-                companyId: companyId,
-                opportunityId: activeOpportunityId,
-                kind: .note,
-                source: .keyboard,
-                title: "Site note",
-                body: trimmed,
-                capturedAt: Date(),
-                createdBy: userId
-            )
-            modelContext.insert(artifact)
-        }
+        let existing = autosavedNoteArtifact()
+        guard persistSiteVisitChanges({
+            if let artifact = existing, artifact.isActive {
+                artifact.body = trimmed
+                artifact.updatedAt = Date()
+                artifact.needsSync = true
+            } else {
+                let artifact = SiteVisitCaptureArtifact(
+                    siteVisitId: visit.id,
+                    companyId: companyId,
+                    opportunityId: activeOpportunityId,
+                    kind: .note,
+                    source: .keyboard,
+                    title: "Site note",
+                    body: trimmed,
+                    capturedAt: Date(),
+                    createdBy: userId
+                )
+                modelContext.insert(artifact)
+            }
+        }) else { return }
 
         autosavedNoteArtifactId = nil
         noteDraft = ""
-        saveContext()
         reloadArtifacts()
         hydrateChecklistAnswersFromCapturedEvidence()
     }
@@ -470,9 +627,10 @@ final class SiteVisitCaptureViewModel: ObservableObject {
             capturedAt: Date(),
             createdBy: userId
         )
-        modelContext.insert(artifact)
+        guard persistSiteVisitChanges({
+            modelContext.insert(artifact)
+        }) else { return }
         measurementDraft = ""
-        saveContext()
         reloadArtifacts()
         hydrateChecklistAnswersFromCapturedEvidence()
     }
@@ -508,91 +666,106 @@ final class SiteVisitCaptureViewModel: ObservableObject {
         let alreadyAttached = activeArtifacts.contains {
             $0.kind == .deckDesign && $0.deckDesignId == deckDesign.id
         }
-        if !alreadyAttached {
-            let artifact = SiteVisitCaptureArtifact(
-                siteVisitId: visit.id,
-                companyId: companyId,
-                opportunityId: activeOpportunityId,
-                kind: .deckDesign,
-                source: .deckBuilder,
-                title: deckDesign.title,
-                deckDesignId: deckDesign.id,
-                capturedAt: Date(),
-                createdBy: userId
-            )
-            modelContext.insert(artifact)
-        }
-        if let deckAnswer = checklistAnswers.first(where: {
-            $0.isActive && $0.kind == .deckDesign
-        }) {
-            deckAnswer.answerValue = .deckDesign(deckDesign.id)
-            deckAnswer.updatedAt = Date()
-            deckAnswer.needsSync = true
-        }
-        saveContext()
+        guard persistSiteVisitChanges({
+            if !alreadyAttached {
+                let artifact = SiteVisitCaptureArtifact(
+                    siteVisitId: visit.id,
+                    companyId: companyId,
+                    opportunityId: activeOpportunityId,
+                    kind: .deckDesign,
+                    source: .deckBuilder,
+                    title: deckDesign.title,
+                    deckDesignId: deckDesign.id,
+                    capturedAt: Date(),
+                    createdBy: userId
+                )
+                modelContext.insert(artifact)
+            }
+            if let deckAnswer = checklistAnswers.first(where: {
+                $0.isActive && $0.kind == .deckDesign
+            }) {
+                deckAnswer.answerValue = .deckDesign(deckDesign.id)
+                deckAnswer.updatedAt = Date()
+                deckAnswer.needsSync = true
+            }
+        }) else { return }
         reloadArtifacts()
         reloadChecklistAnswers()
         hydrateChecklistAnswersFromCapturedEvidence()
     }
 
     func setIncluded(_ artifact: SiteVisitCaptureArtifact, included: Bool) {
-        artifact.includedInProjectReview = included
-        artifact.updatedAt = Date()
-        artifact.needsSync = true
-        saveContext()
+        guard persistSiteVisitChanges({
+            artifact.includedInProjectReview = included
+            artifact.updatedAt = Date()
+            artifact.needsSync = true
+        }) else { return }
         reloadArtifacts()
     }
 
-    func completeVisit() -> Bool {
+    @discardableResult
+    func saveMarkup(
+        _ artifact: SiteVisitCaptureArtifact,
+        renderedAssetURL: String
+    ) -> Bool {
+        persistSiteVisitChanges {
+            artifact.kind = .annotatedPhoto
+            artifact.renderedAssetURL = renderedAssetURL
+            artifact.updatedAt = Date()
+            artifact.needsSync = true
+        }
+    }
+
+    func completeVisit() async -> SiteVisitCompletionResult {
         guard canComplete, let visit = requireVisit() else {
             errorMessage = "CAPTURE SOMETHING FIRST"
-            return false
+            return .notCommitted(.missingEvidence)
         }
 
         isCompleting = true
-        visit.status = .completed
-        visit.completedAt = Date()
-        visit.notes = combinedNotes()
-        saveContext()
-        isCompleting = false
-
-        // Best-effort: post a "Site visit" activity to the timeline. Site visits
-        // are LOCAL-ONLY (they never reach Supabase), so no DB trigger can fire —
-        // this app-side insert is the ONLY path onto the timeline. Fire-and-forget
-        // so completion never blocks or fails on the network; idempotent so a
-        // re-completion can't double-post. Pass the id, not the instance — the
-        // visit can be gone by the time this task runs (deleted meanwhile, or a
-        // torn-down store), and SwiftData traps on touching a dead instance.
-        let visitId = visit.id
-        siteVisitActivityTask = Task { await postSiteVisitActivityIfNeeded(forVisitId: visitId) }
-
-        return true
+        defer { isCompleting = false }
+        do {
+            let result = try persistenceCoordinator.commit(completing: visit) {
+                visit.status = .completed
+                visit.completedAt = Date()
+                visit.notes = combinedNotes()
+                visit.updatedAt = Date()
+                visit.needsSync = true
+            }
+            errorMessage = nil
+            return .committed(result)
+        } catch {
+            errorMessage = "VISIT NOT SAVED"
+            return .notCommitted(.persistence)
+        }
     }
 
     /// Bug (site-visit report) — completing a visit must NOT convert the lead
-    /// to WON. Save the visit (which also posts the timeline activity) and,
+    /// to WON. Save the visit (the server completion command owns its timeline
+    /// activity) and,
     /// when a lead is bound, move it to the operator-chosen stage (defaulting
     /// to QUALIFYING via `SiteVisitStageDefault`). Conversion stays a separate,
-    /// explicit CREATE PROJECT action. Returns whether the visit itself saved;
-    /// a failed stage move is surfaced but does not fail the save.
-    func saveVisit(movingLeadTo stage: PipelineStage) async -> Bool {
-        guard completeVisit() else { return false }
+    /// explicit CREATE PROJECT action. The typed result keeps a committed visit
+    /// distinct from a later stage-move failure.
+    func saveVisit(movingLeadTo stage: PipelineStage) async -> SiteVisitSaveResult {
+        let completion = await completeVisit()
+        guard case .committed = completion else {
+            if case .notCommitted(let failure) = completion {
+                return .notCommitted(failure)
+            }
+            return .notCommitted(.persistence)
+        }
 
         // Only touch the lead when one is bound, the stage actually changed,
         // and the target is non-terminal — a visit save never closes a lead.
         guard let opportunity = currentOpportunity,
               stage != opportunity.stage,
               !stage.isTerminal else {
-            return true
+            return .committed
         }
 
-        let repo = OpportunityRepository(companyId: companyIdentifier)
         do {
-            _ = try await repo.moveToStage(
-                opportunityId: opportunity.id,
-                to: stage,
-                userId: userId
-            )
+            try await moveLeadToStage(opportunity.id, stage)
             // Reflect the authoritative server move on the in-memory lead so
             // the UI (and any re-open) shows the new stage immediately.
             opportunity.stage = stage
@@ -600,99 +773,9 @@ final class SiteVisitCaptureViewModel: ObservableObject {
             opportunity.stageManuallySet = true
         } catch {
             errorMessage = "VISIT SAVED · STAGE NOT UPDATED"
+            return .committedStageUpdateFailed
         }
-        return true
-    }
-
-    // MARK: - Timeline auto-post (app-side, local-only visit)
-
-    /// The parent a completed visit's activity attaches to. Prefers the bound
-    /// opportunity so the "Site visit" row lands on the LEAD timeline — the only
-    /// activity timeline that renders today (client/job timelines are a deferred
-    /// follow-on). Falls back to the client when no lead is bound. `nil` when the
-    /// visit is fully unbound (no lead AND no client) — nothing to attach to, so
-    /// no activity is posted.
-    ///
-    /// The site-visit flow's `currentOpportunity` is a synced server row — it
-    /// comes from the pipeline, or from an inline lead create that round-trips
-    /// through `OpportunityRepository.create` before `reassignVisit` binds it —
-    /// so the `opportunity_id` FK is safe in practice. The post is best-effort
-    /// and idempotent regardless, so a rare unsynced-lead FK rejection is
-    /// absorbed and retried on the next completion rather than lost.
-    var siteVisitActivityTarget: ActivityTarget? {
-        if let opportunity = currentOpportunity {
-            return .opportunity(opportunity)
-        }
-        if let clientId = activeClientId?.trimmedNilIfEmpty,
-           let client = fetchClient(id: clientId) {
-            return .client(client)
-        }
-        return nil
-    }
-
-    /// A terse human summary of what the visit captured — the operator's notes,
-    /// then a one-line roll-up of how many checklist items were answered — used
-    /// as the activity body. `nil` when nothing was captured (the DB trigger
-    /// still backfills the "Site visit" subject, so the row is never blank).
-    var siteVisitActivitySummary: String? {
-        var lines: [String] = []
-        if let notes = combinedNotes()?.trimmedNilIfEmpty {
-            lines.append(notes)
-        }
-        let answered = checklistAnswers.filter { $0.isActive && $0.isAnswered }.count
-        if answered > 0 {
-            lines.append("\(answered) checklist item\(answered == 1 ? "" : "s") completed")
-        }
-        let joined = lines.joined(separator: "\n\n").trimmingCharacters(in: .whitespacesAndNewlines)
-        return joined.isEmpty ? nil : joined
-    }
-
-    /// Guards against a double-tap racing two posts before the first stamps
-    /// `loggedActivityId` — set synchronously on the MainActor before the first
-    /// `await`, so a second scheduled post sees it and bails.
-    private var isPostingSiteVisitActivity = false
-    /// The in-flight best-effort activity post, if any. Tests that call
-    /// `completeVisit()` MUST `await siteVisitActivityTask?.value` before
-    /// their model container goes away — a task left pending outlives the
-    /// store and traps on the dead context. (In the app the container lives
-    /// for the process, so the task may safely outlive any one screen.)
-    private(set) var siteVisitActivityTask: Task<Void, Never>?
-
-    /// Best-effort post of a completed visit's "Site visit" activity. Idempotent:
-    /// no-ops when the visit already logged one (offline-retry safe), when a post
-    /// is already in flight, or when the visit is unbound. Never throws — a failed
-    /// post leaves `loggedActivityId` nil so a later re-completion retries without
-    /// duplicating.
-    func postSiteVisitActivityIfNeeded(forVisitId visitId: String) async {
-        // Re-fetch by id: this task can outlive the completing visit (deleted
-        // meanwhile, or the whole store torn down). A missed fetch skips the
-        // post; the next completion retries.
-        let descriptor = FetchDescriptor<SiteVisit>(
-            predicate: #Predicate<SiteVisit> { $0.id == visitId }
-        )
-        guard let visit = (try? modelContext.fetch(descriptor))?.first else { return }
-        guard visit.loggedActivityId == nil else { return }
-        guard !isPostingSiteVisitActivity else { return }
-        guard let target = siteVisitActivityTarget else { return }
-
-        isPostingSiteVisitActivity = true
-        defer { isPostingSiteVisitActivity = false }
-
-        do {
-            let activity = try await ActivityRepository(companyId: companyId).logActivity(
-                target: target,
-                type: .siteVisit,
-                subject: nil,                       // trigger backfills "Site visit"
-                body: siteVisitActivitySummary,
-                siteVisitId: visit.id,
-                createdBy: userId
-            )
-            visit.loggedActivityId = activity.id
-            saveContext()
-        } catch {
-            // Swallow — best-effort. loggedActivityId stays nil so a re-completion
-            // (e.g. once connectivity returns) retries without double-posting.
-        }
+        return .committed
     }
 
     func projectPayload() -> SiteVisitProjectPayload? {
@@ -702,73 +785,92 @@ final class SiteVisitCaptureViewModel: ObservableObject {
             opportunityId: opportunityId,
             address: identityDraft?.address.trimmedNilIfEmpty ?? visit.address ?? currentOpportunity?.address,
             artifacts: artifacts,
-            checklistAnswers: checklistAnswers
+            checklistAnswers: checklistAnswers,
+            // Carried into the packet so the SITE VISIT RECORD can name who was
+            // met on a teammate's device. The lead's VALUE is deliberately not
+            // carried — the packet syncs to a column OPS-Web renders ungated,
+            // so money is resolved at render time from the local opportunity.
+            contactName: currentOpportunity?.displayContactName ?? identityDraft?.contactName.trimmedNilIfEmpty,
+            companyName: identityDraft?.clientName.trimmedNilIfEmpty
         )
     }
 
-    func reassignVisit(to opportunity: Opportunity) {
+    func reassignVisit(to opportunity: Opportunity, identityCommittedAt: Date? = nil) {
         guard opportunity.id != currentOpportunity?.id else { return }
+        guard let visit = requireVisit() else { return }
         let priorAddress = currentOpportunity?.address?.trimmingCharacters(in: .whitespacesAndNewlines)
-        let visitAddress = siteVisit?.address?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let visitAddress = visit.address?.trimmingCharacters(in: .whitespacesAndNewlines)
         let priorDraftAddress = identityDraft?.address.trimmingCharacters(in: .whitespacesAndNewlines)
+        let previousOpportunity = currentOpportunity
 
-        currentOpportunity = opportunity
-        bindIdentityDraft(to: opportunity)
-        if let visit = requireVisit() {
+        let completingVisit = visit.status == .completed ? visit : nil
+        guard persistSiteVisitChanges(completing: completingVisit, {
+            currentOpportunity = opportunity
+            bindIdentityDraft(to: opportunity)
+            if let identityCommittedAt {
+                identityDraft?.lastCommittedAt = identityCommittedAt
+            }
             visit.opportunityId = opportunity.id
             if visitAddress == nil || visitAddress?.isEmpty == true || visitAddress == priorAddress {
                 visit.address = opportunity.address
             }
+            visit.updatedAt = Date()
+            visit.needsSync = true
+
+            // The identity draft's address is the highest-priority source for
+            // `captureAddress`, so it must follow the reassignment too — but only
+            // when it was empty or still matched the previous lead.
+            if let draft = identityDraft,
+               priorDraftAddress == nil || priorDraftAddress?.isEmpty == true || priorDraftAddress == priorAddress {
+                draft.address = opportunity.address ?? ""
+                draft.touch()
+            }
+
+            for artifact in childArtifacts(of: visit.id) {
+                artifact.opportunityId = opportunity.id
+                artifact.updatedAt = Date()
+                artifact.needsSync = true
+            }
+
+            for answer in fetchChecklistAnswers(siteVisitId: visit.id) {
+                answer.opportunityId = opportunity.id
+                answer.updatedAt = Date()
+                answer.needsSync = true
+            }
+        }) else {
+            currentOpportunity = previousOpportunity
+            return
         }
 
-        // The identity draft's address is the highest-priority source for
-        // `captureAddress`, so it must follow the reassignment too — but only
-        // when it was empty or still matched the previous lead (never clobber an
-        // address the operator typed by hand).
-        if let draft = identityDraft,
-           priorDraftAddress == nil || priorDraftAddress?.isEmpty == true || priorDraftAddress == priorAddress {
-            draft.address = opportunity.address ?? ""
-            draft.touch()
-        }
-
-        for artifact in artifacts {
-            artifact.opportunityId = opportunity.id
-            artifact.updatedAt = Date()
-            artifact.needsSync = true
-        }
-
-        let answerRecords = siteVisit.map { fetchChecklistAnswers(siteVisitId: $0.id) } ?? checklistAnswers
-        for answer in answerRecords {
-            answer.opportunityId = opportunity.id
-            answer.updatedAt = Date()
-            answer.needsSync = true
-        }
-
-        saveContext()
         reloadArtifacts()
         reloadChecklistAnswers()
     }
 
     func bindClient(_ client: Client) {
         guard let draft = requireIdentityDraft() else { return }
-        draft.clientId = client.id
-        // A selected client's name is the person/company you're capturing for →
-        // NAME. COMPANY stays whatever the operator typed (usually empty).
-        if draft.contactName.trimmedNilIfEmpty == nil {
-            draft.contactName = client.name
-        }
-        if draft.preferredEmail.trimmedNilIfEmpty == nil {
-            draft.preferredEmail = client.email ?? ""
-        }
-        if draft.phoneNumber.trimmedNilIfEmpty == nil {
-            draft.phoneNumber = client.phoneNumber ?? ""
-        }
-        if draft.address.trimmedNilIfEmpty == nil {
-            draft.address = client.address ?? ""
-        }
-        draft.touch()
-        siteVisit?.address = draft.address.trimmedNilIfEmpty ?? siteVisit?.address
-        saveContext()
+        guard persistSiteVisitChanges({
+            draft.clientId = client.id
+            // A selected client's name is the person/company you're capturing for →
+            // NAME. COMPANY stays whatever the operator typed (usually empty).
+            if draft.contactName.trimmedNilIfEmpty == nil {
+                draft.contactName = client.name
+            }
+            if draft.preferredEmail.trimmedNilIfEmpty == nil {
+                draft.preferredEmail = client.email ?? ""
+            }
+            if draft.phoneNumber.trimmedNilIfEmpty == nil {
+                draft.phoneNumber = client.phoneNumber ?? ""
+            }
+            if draft.address.trimmedNilIfEmpty == nil {
+                draft.address = client.address ?? ""
+            }
+            draft.touch()
+            if let visit = siteVisit {
+                visit.address = draft.address.trimmedNilIfEmpty ?? visit.address
+                visit.updatedAt = Date()
+                visit.needsSync = true
+            }
+        }) else { return }
         objectWillChange.send()
     }
 
@@ -777,46 +879,58 @@ final class SiteVisitCaptureViewModel: ObservableObject {
     /// the binding are reset.
     func clearIdentitySelection() {
         guard let draft = requireIdentityDraft() else { return }
-        draft.opportunityId = nil
-        draft.clientId = nil
-        draft.subClientId = nil
-        draft.searchText = ""
-        draft.clientName = ""
-        draft.contactName = ""
-        draft.preferredEmail = ""
-        draft.additionalEmails = []
-        draft.phoneNumber = ""
-        draft.address = ""
-        draft.notes = ""
-        draft.touch()
+        let previousOpportunity = currentOpportunity
+        guard persistSiteVisitChanges({
+            draft.opportunityId = nil
+            draft.clientId = nil
+            draft.subClientId = nil
+            draft.searchText = ""
+            draft.clientName = ""
+            draft.contactName = ""
+            draft.preferredEmail = ""
+            draft.additionalEmails = []
+            draft.phoneNumber = ""
+            draft.address = ""
+            draft.notes = ""
+            draft.touch()
 
-        currentOpportunity = nil
-        if let visit = siteVisit {
-            visit.opportunityId = nil
-            visit.address = nil
+            currentOpportunity = nil
+            if let visit = siteVisit {
+                visit.opportunityId = nil
+                visit.address = nil
+                visit.updatedAt = Date()
+                visit.needsSync = true
+                for answer in fetchChecklistAnswers(siteVisitId: visit.id) {
+                    answer.opportunityId = nil
+                    answer.updatedAt = Date()
+                    answer.needsSync = true
+                }
+            }
+            for artifact in artifacts {
+                artifact.opportunityId = nil
+                artifact.updatedAt = Date()
+                artifact.needsSync = true
+            }
+        }) else {
+            currentOpportunity = previousOpportunity
+            return
         }
-        for artifact in artifacts {
-            artifact.opportunityId = nil
-            artifact.updatedAt = Date()
-            artifact.needsSync = true
-        }
-        saveContext()
         objectWillChange.send()
     }
 
-    func createLeadFromIdentityDraft(dataController: DataController) async -> Opportunity? {
+    func createLeadFromIdentityDraft(dataController: DataController) async -> SiteVisitLeadCreateOutcome {
         if let currentOpportunity {
-            return currentOpportunity
+            return .created(currentOpportunity)
         }
 
-        guard let draft = requireIdentityDraft() else { return nil }
+        guard let draft = requireIdentityDraft() else { return .failed }
         guard let clientName = draft.clientName.trimmedNilIfEmpty ?? draft.contactName.trimmedNilIfEmpty else {
             errorMessage = "CLIENT NAME REQUIRED"
-            return nil
+            return .failed
         }
         guard draft.preferredEmail.trimmedNilIfEmpty != nil || draft.phoneNumber.trimmedNilIfEmpty != nil else {
             errorMessage = "CONTACT REQUIRED"
-            return nil
+            return .failed
         }
 
         isCommittingIdentity = true
@@ -824,17 +938,34 @@ final class SiteVisitCaptureViewModel: ObservableObject {
 
         var upsertedClient: Client?
         do {
-            let client = try await upsertClientFromIdentityDraft(
+            let upserted = try await upsertClientFromIdentityDraft(
                 draft,
                 clientName: clientName,
                 dataController: dataController
             )
+            let client = upserted.client
             upsertedClient = client
             try await createMissingSubContacts(
                 from: draft,
                 client: client,
                 dataController: dataController
             )
+
+            // A client this draft just created exists LOCALLY first, and the
+            // guarded RPC refuses a lead whose client the server cannot see
+            // (`client_not_found_in_company`, 22023) — rolling the whole
+            // transaction back. Wait for the parent before writing the child.
+            // Clients we merely updated are already server-side.
+            if upserted.isNew {
+                switch await awaitClientServerVisibility(clientId: client.id) {
+                case .visible:
+                    break
+                case .offline:
+                    return handOffLeadDelivery(client, draft: draft, offline: true)
+                case .notVisible:
+                    return handOffLeadDelivery(client, draft: draft, offline: false)
+                }
+            }
 
             let contactName = draft.contactName.trimmedNilIfEmpty ?? clientName
             let dto = CreateOpportunityDTO(
@@ -849,60 +980,125 @@ final class SiteVisitCaptureViewModel: ObservableObject {
                 priority: ClientLeadAutocreate.schemaAllowedPriority,
                 clientId: client.id
             )
-            let created = try await OpportunityRepository(companyId: companyId).create(dto)
+            let created = try await createOpportunityRemotely(dto, companyId)
             let opportunity = upsertLocalOpportunity(created.toModel())
 
-            draft.opportunityId = opportunity.id
-            draft.clientId = client.id
-            draft.lastCommittedAt = Date()
-            draft.touch()
-            reassignVisit(to: opportunity)
-            saveContext()
-            return opportunity
+            // `reassignVisit` binds the draft to the new lead (opportunityId,
+            // clientId), stamps `lastCommittedAt`, repoints the visit and every
+            // child artifact/answer, and commits the whole thing through the
+            // persistence coordinator in one transaction. The clock comes from
+            // the injectable seam so the tests can pin it.
+            reassignVisit(to: opportunity, identityCommittedAt: currentDate())
+            errorMessage = nil
+            return .created(opportunity)
         } catch {
-            // The capture packet and identity draft are already persisted
-            // locally — only the server-side lead create failed. Reassure
-            // instead of alarm: nothing re-entered, nothing lost. The lead
-            // delivery is handed to ClientLeadAutocreateQueue, which retries it
-            // durably (classify → backoff → park) across app launches and, on
-            // success, binds this draft + visit to the delivered lead. The direct
-            // DTO above and the queued retry share a source_thread_key, so they
-            // reconcile to one lead and can never duplicate.
-            draft.touch()
-            saveContext()
-
-            // Only enqueue when the client upsert actually landed — a failure
-            // before that point has no client to attach a lead to.
-            if let client = upsertedClient {
-                ClientLeadAutocreateQueue.shared.enqueueAndDrainInBackground(
-                    client,
-                    companyId: companyId
-                )
+            _ = persistSiteVisitChanges {
+                draft.touch()
             }
 
+            // Only the server-side lead create failed — the capture packet, the
+            // identity draft, and the client are all persisted locally. That is
+            // a handoff, not a failure: `ClientLeadAutocreateQueue` retries the
+            // delivery durably (classify → backoff → park) across app launches
+            // and, on success, binds this draft + visit to the delivered lead.
+            // The direct DTO above and the queued retry share a
+            // `source_thread_key`, and the RPC is idempotent on
+            // (company_id, source_thread_key), so they reconcile to ONE lead and
+            // can never duplicate.
+            if let client = upsertedClient {
+                return handOffLeadDelivery(client, draft: draft, offline: isLikelyOfflineError(error))
+            }
+
+            // Nothing landed — there is no client to hang a lead on, so this is
+            // a real failure the operator has to retry.
             errorMessage = isLikelyOfflineError(error)
                 ? "NO SIGNAL · DRAFT SAVED · RETRY WHEN ONLINE"
                 : "LEAD CREATE FAILED · DRAFT SAVED · RETRY"
-            return nil
+            return .failed
         }
+    }
+
+    /// Bounded wait for a just-created client to become readable by this
+    /// session. Mirrors the guard the durable queue has always had.
+    private func awaitClientServerVisibility(clientId: String) async -> ClientServerVisibility.Outcome {
+        await ClientServerVisibility.wait(
+            clientId: clientId,
+            companyId: companyId,
+            attempts: clientVisibilityAttempts,
+            probe: probeClientVisibility,
+            backoff: clientVisibilityBackoff,
+            isOffline: isLikelyOfflineError
+        )
+    }
+
+    /// The client is saved and the lead's server insert has not happened yet.
+    /// Hand delivery to the durable queue and report `.queued` — this is not an
+    /// error and must never be rendered as one (bug 13c66762).
+    private func handOffLeadDelivery(
+        _ client: Client,
+        draft: SiteVisitIdentityDraft,
+        offline: Bool
+    ) -> SiteVisitLeadCreateOutcome {
+        _ = persistSiteVisitChanges {
+            draft.clientId = client.id
+            draft.touch()
+        }
+        errorMessage = nil
+        leadAutocreateQueue.enqueueAndDrainInBackground(client, companyId: companyId)
+        return .queued(offline: offline)
+    }
+
+    /// The durable queue delivered a lead and wrote its binding into the store.
+    /// Re-read it so an OPEN console flips to LINKED immediately instead of
+    /// waiting for some unrelated redraw.
+    func adoptQueueDeliveredLead(forVisitId visitId: String?) {
+        guard let visitId, visitId == activeSiteVisitId else { return }
+        guard currentOpportunity == nil else { return }
+
+        // Re-read the draft the queue just wrote rather than trusting the cached
+        // instance — the binding happened outside this view model.
+        let draftDescriptor = FetchDescriptor<SiteVisitIdentityDraft>(
+            predicate: #Predicate<SiteVisitIdentityDraft> { $0.siteVisitId == visitId },
+            sortBy: [SortDescriptor(\.updatedAt, order: .reverse)]
+        )
+        guard let draft = try? modelContext.fetch(draftDescriptor).first,
+              let opportunityId = draft.opportunityId?.trimmedNilIfEmpty else { return }
+
+        let opportunityDescriptor = FetchDescriptor<Opportunity>(
+            predicate: #Predicate<Opportunity> { $0.id == opportunityId }
+        )
+        guard let delivered = try? modelContext.fetch(opportunityDescriptor).first else { return }
+
+        identityDraft = draft
+        currentOpportunity = delivered
+
+        let visitDescriptor = FetchDescriptor<SiteVisit>(
+            predicate: #Predicate<SiteVisit> { $0.id == visitId }
+        )
+        _ = persistSiteVisitChanges {
+            if let visit = try? modelContext.fetch(visitDescriptor).first {
+                siteVisit = visit
+                if visit.opportunityId == nil {
+                    visit.opportunityId = delivered.id
+                    visit.updatedAt = Date()
+                    visit.needsSync = true
+                }
+            }
+        }
+        objectWillChange.send()
     }
 
     private func isLikelyOfflineError(_ error: Error) -> Bool {
-        if let urlError = error as? URLError {
-            switch urlError.code {
-            case .notConnectedToInternet, .networkConnectionLost, .timedOut, .cannotConnectToHost, .dataNotAllowed:
-                return true
-            default:
-                break
-            }
-        }
-        let text = String(describing: error).lowercased()
-        return text.contains("offline")
-            || text.contains("network")
-            || text.contains("connection")
-            || text.contains("timed out")
+        ClientServerVisibility.isLikelyOfflineError(error)
     }
 
+    /// - Parameter isHydrated: whether the caller's field mirror has been filled
+    ///   from this draft yet. A panel that has not hydrated holds empty strings,
+    ///   not edits — committing them would erase a saved draft. That is the
+    ///   form-wipe half of bug 5d5df5b0: the identity panel's `.task` awaited a
+    ///   network fetch BEFORE hydrating, leaving a window in which autosave or
+    ///   `onDisappear` could write the empty mirror back. Deliberate clears go
+    ///   through `clearIdentityBinding()` and are unaffected.
     func updateIdentityDraft(
         searchText: String,
         clientName: String,
@@ -911,35 +1107,113 @@ final class SiteVisitCaptureViewModel: ObservableObject {
         additionalEmailsText: String,
         phoneNumber: String,
         address: String,
-        notes: String
+        notes: String,
+        isHydrated: Bool = true
     ) {
+        guard isHydrated else { return }
         guard let draft = requireIdentityDraft() else { return }
-        draft.searchText = searchText
-        draft.clientName = clientName
-        draft.contactName = contactName
-        draft.preferredEmail = preferredEmail
-        draft.additionalEmails = additionalEmailsText
-            .split(whereSeparator: { $0 == "," || $0 == "\n" || $0 == ";" })
-            .map { String($0).trimmingCharacters(in: .whitespacesAndNewlines) }
-            .filter { !$0.isEmpty }
-        draft.phoneNumber = phoneNumber
         // Canonicalize comma-less hand-typed addresses at the persistence
         // boundary ("972 Lyall St Esquimalt" → "972 Lyall St, Esquimalt") so
         // the server's comma-splitting derive_project_name produces the same
         // street-line project name iOS previews.
         let canonicalAddress = ProjectAutoNamer.canonicalizedAddress(address)
-        draft.address = canonicalAddress
-        draft.notes = notes
-        draft.touch()
+        guard persistSiteVisitChanges({
+            draft.searchText = searchText
+            draft.clientName = clientName
+            draft.contactName = contactName
+            draft.preferredEmail = preferredEmail
+            draft.additionalEmails = additionalEmailsText
+                .split(whereSeparator: { $0 == "," || $0 == "\n" || $0 == ";" })
+                .map { String($0).trimmingCharacters(in: .whitespacesAndNewlines) }
+                .filter { !$0.isEmpty }
+            draft.phoneNumber = phoneNumber
+            draft.address = canonicalAddress
+            draft.notes = notes
+            draft.touch()
 
-        if let normalizedAddress = canonicalAddress.trimmedNilIfEmpty {
-            siteVisit?.address = normalizedAddress
-            if currentOpportunity?.address?.trimmedNilIfEmpty == nil {
-                currentOpportunity?.address = normalizedAddress
+            if let normalizedAddress = canonicalAddress.trimmedNilIfEmpty {
+                if let visit = siteVisit {
+                    visit.address = normalizedAddress
+                    visit.updatedAt = Date()
+                    visit.needsSync = true
+                }
+                if currentOpportunity?.address?.trimmedNilIfEmpty == nil {
+                    currentOpportunity?.address = normalizedAddress
+                }
             }
-        }
-        saveContext()
+        }) else { return }
         objectWillChange.send()
+    }
+
+    /// Fill the identity draft from a device contact the operator picked.
+    ///
+    /// This lives on the model, not in the panel, for two reasons: the picker is
+    /// presented from the console root (so it survives the identity panel being
+    /// scrolled out of existence), and an import must be durable the moment it
+    /// happens — the panel's field mirror re-hydrates from the draft afterwards
+    /// via `contactImportGeneration`.
+    ///
+    /// Each field is only overwritten when the contact actually carries a value,
+    /// so a partly typed form is never wiped by an import.
+    func applyImportedContact(_ contact: CNContact) {
+        guard let draft = requireIdentityDraft() else { return }
+
+        let given = contact.givenName.trimmingCharacters(in: .whitespaces)
+        let family = contact.familyName.trimmingCharacters(in: .whitespaces)
+        let fullName = [given, family].filter { !$0.isEmpty }.joined(separator: " ")
+        let organization = contact.organizationName.trimmingCharacters(in: .whitespaces)
+        let email = contact.emailAddresses.first
+            .map { ($0.value as String).trimmingCharacters(in: .whitespaces) }
+        let phone = contact.phoneNumbers.first?.value.stringValue
+            .trimmingCharacters(in: .whitespaces)
+        // A picked postal address is a commit (like an autocomplete selection),
+        // so it lands on the visit as well as the draft. No geocode here, so
+        // coordinates stay nil.
+        let composedAddress = Self.composeAddress(from: contact)
+
+        // Every write goes through the coordinator so the visit's server row is
+        // queued with the local change in one transaction — a bare context save
+        // would leave the imported address stranded on this device.
+        _ = persistSiteVisitChanges {
+            if !fullName.isEmpty { draft.contactName = fullName }
+            if !organization.isEmpty { draft.clientName = organization }
+            if let email, !email.isEmpty { draft.preferredEmail = email }
+            if let phone, !phone.isEmpty { draft.phoneNumber = phone }
+
+            if let composedAddress {
+                let canonical = ProjectAutoNamer.canonicalizedAddress(composedAddress)
+                draft.address = canonical
+                if let visit = siteVisit {
+                    visit.address = canonical.trimmedNilIfEmpty
+                    visit.updatedAt = Date()
+                    visit.needsSync = true
+                }
+            }
+
+            draft.touch()
+        }
+        contactImportGeneration += 1
+        objectWillChange.send()
+
+        // Import is only offered on an unlinked visit, but if a lead IS bound,
+        // push the address to its server row the same way an autocomplete
+        // selection does.
+        if composedAddress != nil, currentOpportunity != nil {
+            applySelectedSiteAddress(draft.address, coordinate: nil)
+        }
+    }
+
+    /// Single comma-separated line from the contact's first postal address,
+    /// matching `AddressAutocompleteField`'s output shape.
+    static func composeAddress(from contact: CNContact) -> String? {
+        guard let postal = contact.postalAddresses.first?.value else { return nil }
+        var components: [String] = []
+        if !postal.street.isEmpty { components.append(postal.street) }
+        if !postal.city.isEmpty { components.append(postal.city) }
+        if !postal.state.isEmpty { components.append(postal.state) }
+        if !postal.postalCode.isEmpty { components.append(postal.postalCode) }
+        let joined = components.joined(separator: ", ")
+        return joined.isEmpty ? nil : joined
     }
 
     /// An autocomplete selection is a deliberate commit (unlike keystrokes):
@@ -959,15 +1233,18 @@ final class SiteVisitCaptureViewModel: ObservableObject {
         let normalized = trimmed.isEmpty ? nil : trimmed
 
         guard let visit = requireVisit() else { return }
+        guard persistSiteVisitChanges({
+            visit.address = normalized
+            visit.updatedAt = Date()
+            visit.needsSync = true
+            identityDraft?.address = normalized ?? ""
+            identityDraft?.touch()
+            currentOpportunity?.updatedAt = Date()
+            if persistToLead, currentOpportunity != nil {
+                currentOpportunity?.address = normalized
+            }
+        }) else { return }
         objectWillChange.send()
-        visit.address = normalized
-        identityDraft?.address = normalized ?? ""
-        identityDraft?.touch()
-        currentOpportunity?.updatedAt = Date()
-        if persistToLead, currentOpportunity != nil {
-            currentOpportunity?.address = normalized
-        }
-        saveContext()
 
         guard persistToLead, let opportunity = currentOpportunity else { return }
         do {
@@ -982,7 +1259,7 @@ final class SiteVisitCaptureViewModel: ObservableObject {
             currentOpportunity?.address = updated.address
             currentOpportunity?.updatedAt = updated.updatedAt
             objectWillChange.send()
-            saveContext()
+            saveLocalContext()
         } catch {
             errorMessage = "ADDRESS SAVE FAILED"
         }
@@ -997,16 +1274,19 @@ final class SiteVisitCaptureViewModel: ObservableObject {
             .filter { $0.companyId == companyId && $0.completedAt == nil && $0.status != .cancelled }
     }
 
-    private func createVisit() -> SiteVisit {
+    private func createVisit() -> SiteVisit? {
         let visit = SiteVisit(
             opportunityId: currentOpportunity?.id,
             companyId: companyId,
-            status: .scheduled
+            status: .scheduled,
+            assigneeIds: userId.map { [$0] } ?? [],
+            createdBy: userId
         )
         visit.address = currentOpportunity?.address
         visit.assignedTo = userId
-        modelContext.insert(visit)
-        saveContext()
+        guard persistSiteVisitChanges({
+            modelContext.insert(visit)
+        }) else { return nil }
         return visit
     }
 
@@ -1030,15 +1310,37 @@ final class SiteVisitCaptureViewModel: ObservableObject {
         return false
     }
 
+    /// The last moment the operator actually touched a visit. `SiteVisit` itself
+    /// is local-only and carries no `updatedAt`, so recency is read off the work
+    /// hanging from it — the identity draft and the capture artifacts — falling
+    /// back to when the visit was opened.
+    private func lastActivity(of visit: SiteVisit) -> Date {
+        var latest = visit.createdAt
+        for draft in childDrafts(of: visit.id) where draft.updatedAt > latest {
+            latest = draft.updatedAt
+        }
+        for artifact in childArtifacts(of: visit.id) {
+            let touched = max(artifact.capturedAt, artifact.updatedAt ?? artifact.capturedAt)
+            if touched > latest { latest = touched }
+        }
+        return latest
+    }
+
     /// Hard-removes an empty/abandoned visit and any stray children. Used only
     /// for visits with no captured evidence (the sweep in `loadOrCreateVisit`).
     private func hardDeleteVisit(_ visit: SiteVisit) {
         let visitId = visit.id
-        for child in childArtifacts(of: visitId) { modelContext.delete(child) }
-        for answer in childAnswers(of: visitId) { modelContext.delete(answer) }
-        for draft in childDrafts(of: visitId) { modelContext.delete(draft) }
-        modelContext.delete(visit)
-        saveContext()
+        do {
+            try persistenceCoordinator.hardDeleteNeverSyncedVisit(
+                visit,
+                artifacts: childArtifacts(of: visitId),
+                answers: childAnswers(of: visitId),
+                drafts: childDrafts(of: visitId)
+            )
+            errorMessage = nil
+        } catch {
+            errorMessage = "SAVE FAILED"
+        }
     }
 
     /// Operator-initiated discard of the ACTIVE visit. Soft-deletes captured
@@ -1046,20 +1348,26 @@ final class SiteVisitCaptureViewModel: ObservableObject {
     /// cancelled (excluded from future open-visit lookups), and clears state.
     func discardVisit() {
         guard let visit = siteVisit else { return }
-        let now = Date()
-        for artifact in childArtifacts(of: visit.id) where artifact.deletedAt == nil {
-            artifact.deletedAt = now
-            artifact.updatedAt = now
-            artifact.needsSync = true
-        }
-        for answer in childAnswers(of: visit.id) where answer.deletedAt == nil {
-            answer.deletedAt = now
-            answer.updatedAt = now
-            answer.needsSync = true
-        }
-        for draft in childDrafts(of: visit.id) { modelContext.delete(draft) }
-        visit.status = .cancelled
-        saveContext()
+        guard persistSiteVisitChanges({
+            let now = Date()
+            for artifact in childArtifacts(of: visit.id) where artifact.deletedAt == nil {
+                artifact.deletedAt = now
+                artifact.updatedAt = now
+                artifact.needsSync = true
+            }
+            for answer in childAnswers(of: visit.id) where answer.deletedAt == nil {
+                answer.deletedAt = now
+                answer.updatedAt = now
+                answer.needsSync = true
+            }
+            for draft in childDrafts(of: visit.id) where draft.deletedAt == nil {
+                draft.deletedAt = now
+                draft.touch()
+            }
+            visit.status = .cancelled
+            visit.updatedAt = now
+            visit.needsSync = true
+        }) else { return }
 
         artifacts = []
         checklistAnswers = []
@@ -1155,11 +1463,13 @@ final class SiteVisitCaptureViewModel: ObservableObject {
             contactName: currentOpportunity?.displayContactName ?? "",
             preferredEmail: currentOpportunity?.contactEmail ?? "",
             phoneNumber: currentOpportunity?.contactPhone ?? "",
-            address: currentOpportunity?.address ?? visit.address ?? ""
+            address: currentOpportunity?.address ?? visit.address ?? "",
+            createdBy: userId
         )
-        modelContext.insert(draft)
+        guard persistSiteVisitChanges({
+            modelContext.insert(draft)
+        }) else { return }
         identityDraft = draft
-        saveContext()
     }
 
     private func requireIdentityDraft() -> SiteVisitIdentityDraft? {
@@ -1192,11 +1502,19 @@ final class SiteVisitCaptureViewModel: ObservableObject {
         draft.touch()
     }
 
+    /// A client the lead-create path resolved, and whether this call is what
+    /// brought it into existence. Only a brand-new client needs the
+    /// server-visibility wait — an updated one is already server-side.
+    private struct UpsertedIdentityClient {
+        let client: Client
+        let isNew: Bool
+    }
+
     private func upsertClientFromIdentityDraft(
         _ draft: SiteVisitIdentityDraft,
         clientName: String,
         dataController: DataController
-    ) async throws -> Client {
+    ) async throws -> UpsertedIdentityClient {
         if let clientId = draft.clientId?.trimmedNilIfEmpty,
            let existing = fetchClient(id: clientId) {
             try await dataController.updateClientContact(
@@ -1209,7 +1527,7 @@ final class SiteVisitCaptureViewModel: ObservableObject {
             if let notes = draft.notes.trimmedNilIfEmpty {
                 try await dataController.updateClientNotes(clientId: existing.id, notes: notes)
             }
-            return fetchClient(id: existing.id) ?? existing
+            return UpsertedIdentityClient(client: fetchClient(id: existing.id) ?? existing, isNew: false)
         }
 
         let clientId = UUID().uuidString.lowercased()
@@ -1228,12 +1546,15 @@ final class SiteVisitCaptureViewModel: ObservableObject {
             deletedAt: nil
         )
         _ = try await dataController.createClient(dto: dto)
-        draft.clientId = clientId
-        draft.touch()
-        saveContext()
+        guard persistSiteVisitChanges({
+            draft.clientId = clientId
+            draft.touch()
+        }) else {
+            throw SiteVisitCaptureViewModelError.localSaveFailed
+        }
 
         if let created = fetchClient(id: clientId) {
-            return created
+            return UpsertedIdentityClient(client: created, isNew: true)
         }
 
         let fallback = Client(
@@ -1246,10 +1567,13 @@ final class SiteVisitCaptureViewModel: ObservableObject {
             notes: draft.notes.trimmedNilIfEmpty
         )
         fallback.needsSync = true
-        modelContext.insert(fallback)
-        saveContext()
+        guard persistSiteVisitChanges({
+            modelContext.insert(fallback)
+        }) else {
+            throw SiteVisitCaptureViewModelError.localSaveFailed
+        }
         dataController.triggerBackgroundSync()
-        return fallback
+        return UpsertedIdentityClient(client: fallback, isNew: true)
     }
 
     private func createMissingSubContacts(
@@ -1410,7 +1734,7 @@ final class SiteVisitCaptureViewModel: ObservableObject {
         }
 
         if didChange {
-            saveContext()
+            saveLocalContext()
         }
     }
 
@@ -1457,20 +1781,23 @@ final class SiteVisitCaptureViewModel: ObservableObject {
 
     private func hydrateChecklistAnswersFromCapturedEvidence() {
         guard !checklistAnswers.isEmpty else { return }
-        var didChange = false
+        var changes: [(SiteVisitChecklistAnswer, SiteVisitChecklistValue)] = []
 
         for answer in checklistAnswers where answer.isActive {
             guard shouldHydrateCapturedEvidence(for: answer) else { continue }
             guard let value = capturedEvidenceValue(for: answer) else { continue }
             guard value != answer.answerValue else { continue }
-            answer.answerValue = value
-            answer.updatedAt = Date()
-            answer.needsSync = true
-            didChange = true
+            changes.append((answer, value))
         }
 
-        if didChange {
-            saveContext()
+        if !changes.isEmpty,
+           persistSiteVisitChanges({
+               for (answer, value) in changes {
+                   answer.answerValue = value
+                   answer.updatedAt = Date()
+                   answer.needsSync = true
+               }
+           }) {
             reloadChecklistAnswers()
         }
     }
@@ -1535,10 +1862,27 @@ final class SiteVisitCaptureViewModel: ObservableObject {
         return noteBodies.joined(separator: "\n\n")
     }
 
-    private func saveContext() {
+    @discardableResult
+    private func persistSiteVisitChanges(
+        completing visit: SiteVisit? = nil,
+        _ mutation: () throws -> Void
+    ) -> Bool {
+        do {
+            _ = try persistenceCoordinator.commit(
+                completing: visit,
+                mutation: mutation
+            )
+            errorMessage = nil
+            return true
+        } catch {
+            errorMessage = "SAVE FAILED"
+            return false
+        }
+    }
+
+    private func saveLocalContext() {
         do {
             try modelContext.save()
-            errorMessage = nil
         } catch {
             errorMessage = "SAVE FAILED"
         }
@@ -1565,6 +1909,7 @@ private extension String {
 
 private enum SiteVisitCaptureViewModelError: Error {
     case missingSiteVisit
+    case localSaveFailed
 }
 
 private struct OpportunityAddressPatch: Encodable {

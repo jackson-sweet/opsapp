@@ -116,7 +116,7 @@ final class TaskTypeSettingsSnapshotTests: XCTestCase {
             "Every task type fixture needs an explicit count"
         )
 
-        let schema = Schema(versionedSchema: OPSSchemaV19.self)
+        let schema = Schema(versionedSchema: OPSSchemaV22.self)
         let configuration = ModelConfiguration(
             schema: schema,
             isStoredInMemoryOnly: true,
@@ -299,6 +299,10 @@ final class TaskTypeSettingsSnapshotTests: XCTestCase {
             .frame(width: deviceSize.width, height: deviceSize.height)
             .background(OPSStyle.Colors.background)
             .environment(\.colorScheme, .dark)
+            // A UIWindow inherits the device safe-area insets whatever its frame —
+            // without this the content renders displaced and bottom-clipped
+            // (same correction as DaySheetRowSnapshotTests).
+            .ignoresSafeArea()
 
         let host = UIHostingController(rootView: root)
         host.overrideUserInterfaceStyle = .dark

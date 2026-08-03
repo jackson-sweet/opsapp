@@ -33,6 +33,22 @@ private enum ProjectTeamAssignmentSyncError: LocalizedError {
 
 /// Main controller for managing data, authentication, and app state
 class DataController: ObservableObject {
+    enum LogoutMode {
+        /// The caller already proved no unsent visit work remains.
+        case verifiedSafe
+        /// Non-interactive/auth-driven exit: encrypt unsent work before wiping.
+        case protectUnsentWork
+        /// The operator explicitly accepted loss of unsent work.
+        case explicitDiscard
+        /// The server/device account is being deleted, including its vault entry.
+        case accountDeletion
+    }
+
+    enum VoluntaryLogoutDisposition: Equatable {
+        case ready
+        case unsentVisitWork(count: Int)
+    }
+
     // MARK: - Preview Detection
     private var isRunningInPreview: Bool {
         return ProcessInfo.processInfo.environment["XCODE_RUNNING_FOR_PREVIEWS"] == "1"
@@ -647,6 +663,10 @@ class DataController: ObservableObject {
 
                     initializeSyncManager()
                     syncEngine.reconfigureForCompany()
+                    try recoverProtectedSiteVisitWork(
+                        userId: user.id,
+                        companyId: user.companyId ?? ""
+                    )
                     return
                 }
             }
@@ -669,7 +689,7 @@ class DataController: ObservableObject {
     @MainActor
     func login(username: String, password: String) async -> (Bool, String?) {
         // Cancel any pending data wipe from a prior logout
-        cancelPendingDataWipe()
+        cancelPendingDataWipe(performImmediately: true)
 
         do {
             // Sign in via Firebase Auth (handles session, stores userId + companyId)
@@ -764,7 +784,7 @@ class DataController: ObservableObject {
         crashlytics.log("[AUTH] loginWithApple: start")
 
         // Cancel any pending data wipe from a prior logout
-        cancelPendingDataWipe()
+        cancelPendingDataWipe(performImmediately: true)
 
         // Track whether we've begun writing persisted auth state so an
         // exception mid-flight can be rolled back cleanly. Without this,
@@ -889,7 +909,7 @@ class DataController: ObservableObject {
 
         // Cancel any pending data wipe from a prior logout — prevents race condition
         // where the wipe fires mid-login and destroys freshly-loaded user data
-        cancelPendingDataWipe()
+        cancelPendingDataWipe(performImmediately: true)
 
         do {
             // Authenticate with Firebase using Google credentials
@@ -1100,6 +1120,10 @@ class DataController: ObservableObject {
         // with companyId="" and would fetch 0 rows.
         crashlytics.log("[AUTH] fetchUserFromAPI: syncEngine.reconfigureForCompany")
         syncEngine.reconfigureForCompany()
+        try recoverProtectedSiteVisitWork(
+            userId: user.id,
+            companyId: user.companyId ?? ""
+        )
 
         // Capture the authentication decision up-front but DO NOT flip
         // isAuthenticated yet. Flipping it here — mid-chain, while the
@@ -1250,9 +1274,129 @@ class DataController: ObservableObject {
         await importDecksetHandoffIfPossible()
     }
 
+    /// Lets an operator-driven logout wait briefly for a real server ACK. If
+    /// work still remains, Settings presents the explicit stay/discard choice.
     @MainActor
-    func logout() {
+    func prepareVoluntarySiteVisitLogout(
+        timeoutSeconds: TimeInterval = 8
+    ) async -> VoluntaryLogoutDisposition {
+        guard let context = modelContext,
+              let companyId = currentUser?.companyId, !companyId.isEmpty else {
+            return .ready
+        }
+        let before = (try? SiteVisitRecoveryVault.unsentVisitIds(
+            in: context,
+            companyId: companyId
+        )) ?? []
+        guard !before.isEmpty else { return .ready }
+
+        if isConnected {
+            let startedAt = Date()
+            Task { @MainActor [weak self] in
+                await self?.syncEngine.triggerSync()
+            }
+            await Task.yield()
+            let deadline = Date().addingTimeInterval(max(0, timeoutSeconds))
+            while Date() < deadline {
+                if !syncEngine.isSyncing,
+                   Date().timeIntervalSince(startedAt) >= 0.4 {
+                    break
+                }
+                try? await Task.sleep(nanoseconds: 200_000_000)
+            }
+        }
+
+        let remaining = (try? SiteVisitRecoveryVault.unsentVisitIds(
+            in: context,
+            companyId: companyId
+        )) ?? before
+        return remaining.isEmpty ? .ready : .unsentVisitWork(count: remaining.count)
+    }
+
+    @MainActor
+    private func recoverProtectedSiteVisitWork(
+        userId: String,
+        companyId: String
+    ) throws {
+        guard let context = modelContext,
+              !userId.isEmpty, !companyId.isEmpty else { return }
+        let restored = try SiteVisitRecoveryVault.shared.restore(
+            into: context,
+            userId: userId,
+            companyId: companyId
+        )
+        let result = try SiteVisitOrphanRecovery.recover(
+            in: context,
+            activeUserId: userId,
+            activeCompanyId: companyId,
+            quarantine: { record in
+                try SiteVisitRecoveryVault.shared.recordQuarantine(record, from: context)
+            }
+        )
+        let marker = "site_visit_orphan_recovery_v1:\(userId.lowercased()):\(companyId.lowercased())"
+        UserDefaults.standard.set(Date().timeIntervalSince1970, forKey: marker)
+        if restored > 0 || !result.operationIds.isEmpty {
+            syncEngine.refreshPendingCount()
+        }
+    }
+
+    @discardableResult
+    @MainActor
+    func logout(mode: LogoutMode = .protectUnsentWork) -> Bool {
         print("[LOGOUT] Starting logout process...")
+
+        let userId = currentUser?.id
+            ?? UserDefaults.standard.string(forKey: "currentUserId")
+            ?? ""
+        let companyId = currentUser?.companyId
+            ?? UserDefaults.standard.string(forKey: "currentUserCompanyId")
+            ?? ""
+        if let context = modelContext, !userId.isEmpty, !companyId.isEmpty {
+            do {
+                switch mode {
+                case .verifiedSafe:
+                    let remaining = try SiteVisitRecoveryVault.unsentVisitIds(
+                        in: context,
+                        companyId: companyId
+                    )
+                    guard remaining.isEmpty else { return false }
+                    try SiteVisitRecoveryVault.shared.removeLiveMedia(
+                        in: context,
+                        companyId: companyId
+                    )
+                case .protectUnsentWork:
+                    _ = try SiteVisitRecoveryVault.shared.captureUnsentWork(
+                        from: context,
+                        userId: userId,
+                        companyId: companyId,
+                        removeOriginalMedia: false
+                    )
+                    try SiteVisitRecoveryVault.shared.removeLiveMedia(
+                        in: context,
+                        companyId: companyId
+                    )
+                case .explicitDiscard, .accountDeletion:
+                    try SiteVisitRecoveryVault.shared.removeLiveMedia(
+                        in: context,
+                        companyId: companyId
+                    )
+                    try SiteVisitRecoveryVault.shared.discardStoredWork(
+                        userId: userId,
+                        companyId: companyId
+                    )
+                }
+            } catch {
+                // Never wipe the only remaining copy. Auth-driven callers can
+                // retry the protected exit after storage becomes available.
+                print("[LOGOUT] Protected site visit disposition failed: \(error)")
+                if case .accountDeletion = mode {
+                    // The remote account no longer exists; local auth and data
+                    // must still be torn down even if device storage is failing.
+                } else {
+                    return false
+                }
+            }
+        }
 
         // Halt the sync engine's timer and observers FIRST — before flipping
         // isAuthenticated, before wiping data, and before SwiftUI starts
@@ -1358,16 +1502,23 @@ class DataController: ObservableObject {
         }
         pendingDataWipeWork = wipeWork
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.0, execute: wipeWork)
+        return true
     }
 
     /// Cancel any pending data wipe from a prior logout.
     /// Called at the start of login flows to prevent race conditions.
     @MainActor
-    private func cancelPendingDataWipe() {
+    private func cancelPendingDataWipe(performImmediately: Bool = false) {
         if let work = pendingDataWipeWork {
             work.cancel()
             pendingDataWipeWork = nil
             print("[AUTH] Cancelled pending data wipe from prior logout")
+            if performImmediately {
+                // The prior account's rows must be gone before any new auth
+                // result can populate this shared store. Same-account work is
+                // restored from the protected vault after identity resolves.
+                performCompleteDataWipe()
+            }
         }
     }
     
@@ -1408,6 +1559,12 @@ class DataController: ObservableObject {
             deleteAll(FetchDescriptor<Activity>(), label: "Activity", in: context)
             deleteAll(FetchDescriptor<FollowUp>(), label: "FollowUp", in: context)
             deleteAll(FetchDescriptor<StageTransition>(), label: "StageTransition", in: context)
+            // Site-visit packet children must be removed before their parent.
+            // These rows were previously omitted entirely, which allowed one
+            // account's unsent field work to survive into the next login.
+            deleteAll(FetchDescriptor<SiteVisitCaptureArtifact>(), label: "SiteVisitCaptureArtifact", in: context)
+            deleteAll(FetchDescriptor<SiteVisitChecklistAnswer>(), label: "SiteVisitChecklistAnswer", in: context)
+            deleteAll(FetchDescriptor<SiteVisitIdentityDraft>(), label: "SiteVisitIdentityDraft", in: context)
             deleteAll(FetchDescriptor<SiteVisit>(), label: "SiteVisit", in: context)
             deleteAll(FetchDescriptor<CalendarUserEvent>(), label: "CalendarUserEvent", in: context)
             deleteAll(FetchDescriptor<CalendarMirrorMap>(), label: "CalendarMirrorMap", in: context)
@@ -1526,6 +1683,24 @@ class DataController: ObservableObject {
             context.delete(row)
         }
         print("[LOGOUT] Deleted \(rows.count) \(label)")
+    }
+
+    /// Testable child-first portion of the logout wipe contract. The live wipe
+    /// uses the same order above alongside its per-model logging.
+    @MainActor
+    static func deleteSiteVisitDataForLogout(in context: ModelContext) throws {
+        for row in try context.fetch(FetchDescriptor<SiteVisitCaptureArtifact>()) {
+            context.delete(row)
+        }
+        for row in try context.fetch(FetchDescriptor<SiteVisitChecklistAnswer>()) {
+            context.delete(row)
+        }
+        for row in try context.fetch(FetchDescriptor<SiteVisitIdentityDraft>()) {
+            context.delete(row)
+        }
+        for row in try context.fetch(FetchDescriptor<SiteVisit>()) {
+            context.delete(row)
+        }
     }
     
     /// Clears all cached data
@@ -2562,6 +2737,16 @@ class DataController: ObservableObject {
                 return localProject
             }
 
+            // Bug 4cbf2efe — a delta pull is scope-filtered. At `assigned`
+            // scope a project with no team members yet (exactly what a fresh
+            // conversion produces) NEVER comes back, so "sync then re-read"
+            // can loop forever on an empty cache. Ask for the one row by id
+            // and merge it through the canonical seam; RLS still decides.
+            if let project = try await fetchAndCacheProject(id: projectId, context: context) {
+                await syncProjectTeamMembers(project)
+                return project
+            }
+
             throw NSError(domain: "DataController", code: 4,
                          userInfo: [NSLocalizedDescriptionKey: "Project not found after sync"])
         } catch {
@@ -2571,6 +2756,22 @@ class DataController: ObservableObject {
                 return localProject
             }
             throw error
+        }
+    }
+
+    /// Authoritative single-row project fetch + local cache write. Returns nil
+    /// when the row is not readable (RLS, deleted, or genuinely absent).
+    @MainActor
+    private func fetchAndCacheProject(id: String, context: ModelContext) async throws -> Project? {
+        guard let companyId = currentUser?.companyId, !companyId.isEmpty else { return nil }
+        do {
+            let dto = try await ProjectRepository(companyId: companyId).fetchOne(id)
+            let project = try ProjectCacheMerge.apply(dto: dto, context: context)
+            InboundChangeSignal.post(entityNames: ["Project"])
+            return project
+        } catch {
+            print("[DataController] Direct project fetch failed for \(id): \(error)")
+            return nil
         }
     }
     
@@ -3116,7 +3317,7 @@ class DataController: ObservableObject {
             }
 
             // 5. Clean up local data and log out
-            logout()
+            logout(mode: .accountDeletion)
 
             return (true, nil)
         } catch {

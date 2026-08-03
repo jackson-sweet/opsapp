@@ -137,8 +137,11 @@ struct DeckResolvedSurfacePayload: Equatable {
     let persistedId: String?
     let assignedItems: [AssignedItem]
     let label: String?
-    let color: String
-    let boardMaterial: String
+    /// Nil when the operator has not chosen. Consumers that must render or
+    /// price something substitute `DeckSurfaceDefaults` at their own
+    /// boundary — this type reports what is actually stored (bug ee41a0a0).
+    let color: String?
+    let boardMaterial: String?
 }
 
 struct DeckSurfaceSelectionSummary: Equatable {
@@ -204,8 +207,8 @@ enum DeckSurfaceInspector {
                 persistedId: nil,
                 assignedItems: legacyFootprint.assignedItems,
                 label: legacyFootprint.label,
-                color: "Brown",
-                boardMaterial: "composite"
+                color: nil,
+                boardMaterial: nil
             )
         }
 
@@ -213,8 +216,8 @@ enum DeckSurfaceInspector {
             persistedId: nil,
             assignedItems: [],
             label: nil,
-            color: "Brown",
-            boardMaterial: "composite"
+            color: nil,
+            boardMaterial: nil
         )
     }
 

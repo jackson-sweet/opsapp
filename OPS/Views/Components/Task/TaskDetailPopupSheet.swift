@@ -38,6 +38,20 @@
 //     document card (bug b6adebf43 — the `—` an empty field prints is part of
 //     that reveal and is preserved verbatim).
 //
+//  Every mutating control on the sheet is permission-gated, scope-aware on this
+//  task's crew (bug 10b66fce). Before that work only DATES was gated: the crew
+//  picker and every status button were wide open, and the task type and the
+//  notes could not be reached at all. TYPE and NOTES read `tasks.edit`, TEAM
+//  reads `tasks.assign`, the status actions read `tasks.change_status`. A
+//  control the operator cannot use is ABSENT — never present and refusing — so
+//  a field-crew member reads the job rather than a row of buttons that bounce.
+//
+//  TYPE is a field of the document, not of the header. The type is what the job
+//  IS, so it reads as the document's first line, and it is the one place on the
+//  sheet that can change it — an affordance that lived in the header would move
+//  or vanish with the badge-suppression rule above, and a control the operator
+//  has to hunt for is a control they do not use.
+//
 //  The old COMPLETED info row is gone with the second card, and deliberately:
 //  `ProjectTask.completionDate` IS `endDate` (computed, not stored), so that
 //  row could only ever restate the end date already on the DATES line, under a
@@ -82,20 +96,55 @@ struct TaskDetailPopupSheet: View {
     /// cascade triggered mid-animation by updateTaskTeamMembers' multiple
     /// modelContext.save() calls).
     var onCommitTeam: ((Set<String>) -> Void)? = nil
+    /// Bug 10b66fce — a confirmed task-type change. Same contract as
+    /// `onCommitTeam`: fired only on an explicit pick, never on dismiss, and
+    /// the parent performs the write off the sheet's critical path.
+    var onCommitTaskType: ((TaskType) -> Void)? = nil
+    /// Bug 10b66fce — a confirmed notes edit. Fired only when the operator taps
+    /// SAVE; abandoning the editor or dragging the sheet away discards the
+    /// draft and writes nothing.
+    var onCommitDescription: ((String) -> Void)? = nil
+
+    @EnvironmentObject private var dataController: DataController
 
     @State private var showReopenAlert = false
     @State private var showCancelAlert = false
     @State private var showTeamPicker = false
+    @State private var showTypePicker = false
     /// Draft team selection that lives only inside this sheet — the operator
     /// can tap rows freely without each tap immediately mutating the parent
     /// state. Only committed back to `selectedTeamMemberIds` when DONE is
     /// tapped. Resets from the committed value every time the picker
     /// expands so a discarded picker leaves no trace.
     @State private var draftTeamMemberIds: Set<String> = []
+    /// Draft notes, live only while the editor is open. Seeded from the task
+    /// every time the editor opens, on the same discard-by-default contract as
+    /// the crew picker: only SAVE writes.
+    @State private var isEditingNotes = false
+    @State private var draftNotes = ""
 
     private var isInactive: Bool {
         task.status == .completed || task.status == .cancelled
     }
+
+    private var notesDraftIsDirty: Bool {
+        draftNotes.trimmingCharacters(in: .whitespacesAndNewlines)
+            != (task.taskNotes ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    // MARK: - Permission gates (bug 10b66fce)
+    //
+    // Each control reads the grant that actually governs it, scope-aware on
+    // this task's crew. A control the operator cannot use is absent.
+
+    /// `tasks.edit` — the task type and the notes.
+    private var canEditFields: Bool { task.canEditFields }
+
+    /// `tasks.assign` — which crew is on the job.
+    private var canAssignCrew: Bool { task.canAssignCrew }
+
+    /// `tasks.change_status` — complete, reopen, cancel.
+    private var canChangeStatus: Bool { task.canChangeStatus }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -151,6 +200,21 @@ struct TaskDetailPopupSheet: View {
             Button("Leave Open", role: .cancel) {}
         } message: {
             Text("This task will be marked as cancelled.")
+        }
+        // Bug 10b66fce — the task type is editable behind `tasks.edit`. Picking
+        // a type fires the parent's commit closure; dismissing the picker
+        // without a pick writes nothing.
+        .sheet(isPresented: $showTypePicker) {
+            TaskTypePickerSheet(
+                selectedTaskTypeId: task.taskTypeId.isEmpty ? nil : task.taskTypeId,
+                onSelect: { picked in
+                    guard picked.id != task.taskTypeId else { return }
+                    UINotificationFeedbackGenerator().notificationOccurred(.success)
+                    onCommitTaskType?(picked)
+                    ToastCenter.shared.present(Feedback.Task.typeUpdated)
+                }
+            )
+            .environmentObject(dataController)
         }
     }
 
@@ -223,10 +287,10 @@ struct TaskDetailPopupSheet: View {
     // MARK: - Document card
 
     /// The document's rows, in render order. The order is the reading order —
-    /// when it runs, who is on it, what it says — and it is the same order on
-    /// every task, for every viewer, always.
+    /// what it is, when it runs, who is on it, what it says — and it is the
+    /// same order on every task, for every viewer, always.
     private enum DocField: Int, CaseIterable {
-        case dates, team, notes
+        case type, dates, team, notes
     }
 
     /// Whether a row renders. One answer feeds both the row and the hairline
@@ -234,12 +298,14 @@ struct TaskDetailPopupSheet: View {
     /// two where a row used to be.
     ///
     /// Every field here is unconditional: a reader who can open this sheet is
-    /// entitled to all three. Emptiness never removes a row — an empty field
-    /// prints its own blank (or its invitation) in place, so the card's shape
-    /// never shifts under the reader between one task and the next.
+    /// entitled to all four. Emptiness never removes a row, and neither does
+    /// entitlement — a viewer without `tasks.edit` still READS the type and the
+    /// notes, they simply get no way in. An empty field prints its own blank
+    /// (or its invitation) in place, so the card's shape never shifts under the
+    /// reader between one task and the next.
     private func shows(_ field: DocField) -> Bool {
         switch field {
-        case .dates, .team, .notes:
+        case .type, .dates, .team, .notes:
             return true
         }
     }
@@ -256,6 +322,10 @@ struct TaskDetailPopupSheet: View {
 
     private var documentCard: some View {
         VStack(spacing: 0) {
+            if shows(.type) {
+                hairline(above: .type)
+                typeRow
+            }
             if shows(.dates) {
                 hairline(above: .dates)
                 datesRow
@@ -270,6 +340,81 @@ struct TaskDetailPopupSheet: View {
             }
         }
         .commandCard()
+    }
+
+    // MARK: - TYPE
+
+    /// The type's own name, or nil when the task carries no type at all.
+    private var typeDisplay: String? {
+        guard let display = task.taskType?.display, !display.isEmpty else { return nil }
+        return display
+    }
+
+    /// What the job IS, and the sheet's only way to change it (bug 10b66fce —
+    /// before this the type could not be retyped from the sheet at all).
+    ///
+    /// Tappable, with a chevron and a full 44pt target, only when the operator
+    /// holds `tasks.edit` for THIS task; otherwise plain text with no
+    /// affordance, so the sheet shows the operator's actual reality rather than
+    /// a control that will refuse them.
+    private var typeRow: some View {
+        DocRow(label: "TYPE") {
+            if let typeDisplay {
+                if canEditFields {
+                    Button(action: openTypePicker) {
+                        HStack(spacing: OPSStyle.Layout.spacing2) {
+                            Text(typeDisplay)
+                                .font(TaskDoc.valueFont)
+                                .foregroundColor(OPSStyle.Colors.text)
+                                .lineLimit(1)
+                                .truncationMode(.tail)
+                            Spacer(minLength: 0)
+                            Image(systemName: OPSStyle.Icons.chevronRight)
+                                .font(.system(size: 11, weight: .regular))
+                                .foregroundColor(OPSStyle.Colors.text3)
+                        }
+                        .frame(
+                            maxWidth: .infinity,
+                            minHeight: OPSStyle.Layout.touchTargetMin,
+                            alignment: .leading
+                        )
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(PlainButtonStyle())
+                    .accessibilityLabel("Task type")
+                    .accessibilityValue(typeDisplay)
+                    .accessibilityHint("Change the task type")
+                    .accessibilityIdentifier("taskDetailTypeButton")
+                } else {
+                    Text(typeDisplay)
+                        .font(TaskDoc.valueFont)
+                        .foregroundColor(OPSStyle.Colors.text)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                        .accessibilityElement(children: .combine)
+                        .accessibilityLabel("Task type")
+                        .accessibilityValue(typeDisplay)
+                        .accessibilityIdentifier("taskDetailTypeLabel")
+                }
+            } else if canEditFields {
+                TaskDocChip(title: "SET TYPE", action: openTypePicker)
+                    .accessibilityLabel("Set the task type")
+                    .accessibilityIdentifier("taskDetailTypeButton")
+            } else {
+                TaskDoc.blank
+                    .accessibilityLabel("Task type")
+                    .accessibilityValue("—")
+                    .accessibilityIdentifier("taskDetailTypeLabel")
+            }
+        }
+    }
+
+    private func openTypePicker() {
+        // Defense in depth — the row only offers this when `canEditFields`, but
+        // the gate lives with the action too so a stale render cannot fire it.
+        guard task.canEditFields else { return }
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        showTypePicker = true
     }
 
     // MARK: - DATES
@@ -353,10 +498,13 @@ struct TaskDetailPopupSheet: View {
         allTeamMembers.filter { selectedTeamMemberIds.contains($0.id) }
     }
 
-    /// There is nobody to assign from an empty roster, so an empty roster gets
-    /// the blank rather than an invitation that opens onto nothing.
+    /// Whether the crew can actually be changed from here. Reassignment is
+    /// gated on `tasks.assign`, scope-aware on this task's crew (bug 10b66fce),
+    /// and there is nobody to assign from an empty roster — so either way the
+    /// row reads the crew without offering a picker that would refuse or open
+    /// onto nothing.
     private var canAssignTeam: Bool {
-        !allTeamMembers.isEmpty
+        canAssignCrew && !allTeamMembers.isEmpty
     }
 
     private var teamRow: some View {
@@ -368,21 +516,10 @@ struct TaskDetailPopupSheet: View {
                 } else {
                     TaskDoc.blank
                 }
-            } else {
+            } else if canAssignTeam {
                 Button(action: toggleTeamPicker) {
                     HStack(spacing: OPSStyle.Layout.spacing2) {
-                        if assignedMembers.isEmpty {
-                            // Ids are on the task but the User rows have not
-                            // hydrated yet. State the count rather than drawing
-                            // an empty rail that reads as "nobody".
-                            Text("\(selectedTeamMemberIds.count) ASSIGNED")
-                                .font(TaskDoc.metaFont)
-                                .tracking(0.9)
-                                .monospacedDigit()
-                                .foregroundColor(OPSStyle.Colors.text2)
-                        } else {
-                            avatarRail
-                        }
+                        assignedSummary
 
                         Spacer(minLength: 0)
 
@@ -402,7 +539,28 @@ struct TaskDetailPopupSheet: View {
                 .buttonStyle(PlainButtonStyle())
                 .accessibilityLabel("Team, \(selectedTeamMemberIds.count) assigned")
                 .accessibilityHint(showTeamPicker ? "Closes the crew picker" : "Opens the crew picker")
+            } else {
+                // Read-only crew: the same rail, no chevron, no target.
+                assignedSummary
+                    .accessibilityElement(children: .combine)
+                    .accessibilityLabel("Team, \(selectedTeamMemberIds.count) assigned")
             }
+        }
+    }
+
+    @ViewBuilder
+    private var assignedSummary: some View {
+        if assignedMembers.isEmpty {
+            // Ids are on the task but the User rows have not hydrated yet.
+            // State the count rather than drawing an empty rail that reads as
+            // "nobody".
+            Text("\(selectedTeamMemberIds.count) ASSIGNED")
+                .font(TaskDoc.metaFont)
+                .tracking(0.9)
+                .monospacedDigit()
+                .foregroundColor(OPSStyle.Colors.text2)
+        } else {
+            avatarRail
         }
     }
 
@@ -435,6 +593,9 @@ struct TaskDetailPopupSheet: View {
     }
 
     private func toggleTeamPicker() {
+        // Defense in depth — the row only offers this when `canAssignTeam`, but
+        // the gate lives with the action too so a stale render cannot fire it.
+        guard canAssignCrew else { return }
         withAnimation(OPSStyle.Animation.panel) {
             if showTeamPicker {
                 // Collapsing without DONE = discard. Draft is reset on
@@ -473,27 +634,116 @@ struct TaskDetailPopupSheet: View {
 
     // MARK: - NOTES
 
-    /// Read-only here. The task's notes are authored in the task form; this
-    /// sheet reports them (bug b6adebf43 — an empty field prints the document's
-    /// `—` so the reader learns the field exists and is blank).
+    /// What the task says, and — behind `tasks.edit` — where it is written
+    /// (bug 10b66fce; before that the notes could only be authored in the task
+    /// form). Bug b6adebf43: an empty field a viewer cannot write still prints
+    /// the document's `—`, so the reader learns the field exists and is blank.
+    ///
+    /// The editor is on the crew picker's discard-by-default contract: the
+    /// draft is seeded from the task every time it opens, and only SAVE writes.
+    /// CANCEL and a drag-dismiss of the sheet both leave the task untouched.
+    @ViewBuilder
     private var notesRow: some View {
+        if isEditingNotes {
+            DocRow(label: "NOTES") { notesEditor }
+        } else {
+            notesReadout
+        }
+    }
+
+    private var notesReadout: some View {
         let presentation = TaskDetailDescriptionPresentation(notes: task.taskNotes)
 
         return DocRow(label: "NOTES") {
-            Text(presentation.text)
-                .font(TaskDoc.valueFont)
-                .foregroundColor(
-                    presentation.isEmpty
-                        ? OPSStyle.Colors.textMute
-                        : OPSStyle.Colors.text
-                )
-                .fixedSize(horizontal: false, vertical: true)
-                .frame(maxWidth: .infinity, alignment: .leading)
+            if presentation.isEmpty && canEditFields {
+                TaskDocChip(title: "ADD NOTES", action: beginNotesEdit)
+                    .accessibilityLabel("Add notes to this task")
+                    .accessibilityIdentifier("taskDetailDescriptionArea")
+            } else if canEditFields {
+                Button(action: beginNotesEdit) {
+                    notesText(presentation)
+                        .frame(
+                            maxWidth: .infinity,
+                            minHeight: OPSStyle.Layout.touchTargetMin,
+                            alignment: .leading
+                        )
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(PlainButtonStyle())
+                .accessibilityLabel("Task description")
+                .accessibilityValue(presentation.text)
+                .accessibilityHint("Edit the notes")
+                .accessibilityIdentifier("taskDetailDescriptionArea")
+            } else {
+                notesText(presentation)
+                    .accessibilityElement(children: .combine)
+                    .accessibilityLabel("Task description")
+                    .accessibilityValue(presentation.text)
+                    .accessibilityIdentifier("taskDetailDescriptionArea")
+            }
         }
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("Task description")
-        .accessibilityValue(presentation.text)
-        .accessibilityIdentifier("taskDetailDescriptionArea")
+    }
+
+    private func notesText(_ presentation: TaskDetailDescriptionPresentation) -> some View {
+        Text(presentation.text)
+            .font(TaskDoc.valueFont)
+            .foregroundColor(
+                presentation.isEmpty
+                    ? OPSStyle.Colors.textMute
+                    : OPSStyle.Colors.text
+            )
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var notesEditor: some View {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
+            TextEditor(text: $draftNotes)
+                .font(TaskDoc.valueFont)
+                .foregroundColor(OPSStyle.Colors.text)
+                .scrollContentBackground(.hidden)
+                // Two input rows tall — enough to see a couple of lines without
+                // the editor swallowing the sheet.
+                .frame(minHeight: OPSStyle.Layout.inputHeight * 2)
+                .padding(OPSStyle.Layout.spacing2)
+                .background(OPSStyle.Colors.surfaceInput)
+                .cornerRadius(OPSStyle.Layout.buttonRadius)
+                .overlay(
+                    RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius, style: .continuous)
+                        .strokeBorder(OPSStyle.Colors.line, lineWidth: OPSStyle.Layout.Border.standard)
+                )
+                .accessibilityIdentifier("taskDetailDescriptionEditor")
+
+            TaskDocCommitRow(
+                isDirty: notesDraftIsDirty,
+                cancelIdentifier: "taskDetailDescriptionCancelButton",
+                saveIdentifier: "taskDetailDescriptionSaveButton",
+                onCancel: endNotesEdit,
+                onSave: commitNotes
+            )
+        }
+        .transition(.opacity)
+    }
+
+    private func beginNotesEdit() {
+        // Defense in depth — the row only offers this when `canEditFields`.
+        guard task.canEditFields else { return }
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        // Seed from the task on every open so an abandoned edit can never
+        // resurface later.
+        draftNotes = task.taskNotes ?? ""
+        withAnimation(OPSStyle.Animation.panel) { isEditingNotes = true }
+    }
+
+    private func endNotesEdit() {
+        withAnimation(OPSStyle.Animation.panel) { isEditingNotes = false }
+    }
+
+    /// The ONLY path that writes the notes back.
+    private func commitNotes() {
+        onCommitDescription?(draftNotes.trimmingCharacters(in: .whitespacesAndNewlines))
+        ToastCenter.shared.present(Feedback.Task.notesUpdated)
+        endNotesEdit()
     }
 
     // MARK: - Actions
@@ -503,29 +753,38 @@ struct TaskDetailPopupSheet: View {
     /// view-mode toggle, then the destructive action as the quietest thing on
     /// the sheet. The steel-blue accent appears nowhere — this sheet's primary
     /// action carries meaning (complete / reopen) and its tone says so.
+    ///
+    /// Every status action is gated on `tasks.change_status`, scope-aware on
+    /// this task's crew (bug 10b66fce). Without the grant the ladder collapses
+    /// to SELECT THIS TASK: crew see the job, not buttons that will refuse
+    /// them. SELECT stays — it changes nothing about the task, only what the
+    /// project view is focused on.
     private var actionZone: some View {
         VStack(spacing: OPSStyle.Layout.spacing2) {
-            if task.status == .active {
-                primaryAction(
-                    title: "MARK COMPLETE",
-                    icon: "checkmark.circle.fill",
-                    tint: OPSStyle.Colors.oliveTextM,
-                    fill: OPSStyle.Colors.oliveFillM,
-                    border: OPSStyle.Colors.oliveLineM,
-                    action: { onComplete(task) }
-                )
-            } else {
-                // Completed AND cancelled both come back the same way, through
-                // the same confirmation. A separate REOPEN TO SELECT at the
-                // bottom of the sheet was the same action wearing a second name.
-                primaryAction(
-                    title: "REOPEN TASK",
-                    icon: "arrow.uturn.backward.circle.fill",
-                    tint: OPSStyle.Colors.tanTextM,
-                    fill: OPSStyle.Colors.tanFillM,
-                    border: OPSStyle.Colors.tanLineM,
-                    action: { showReopenAlert = true }
-                )
+            if canChangeStatus {
+                if task.status == .active {
+                    primaryAction(
+                        title: "MARK COMPLETE",
+                        icon: "checkmark.circle.fill",
+                        tint: OPSStyle.Colors.oliveTextM,
+                        fill: OPSStyle.Colors.oliveFillM,
+                        border: OPSStyle.Colors.oliveLineM,
+                        action: { onComplete(task) }
+                    )
+                } else {
+                    // Completed AND cancelled both come back the same way,
+                    // through the same confirmation. A separate REOPEN TO
+                    // SELECT at the bottom of the sheet was the same action
+                    // wearing a second name.
+                    primaryAction(
+                        title: "REOPEN TASK",
+                        icon: "arrow.uturn.backward.circle.fill",
+                        tint: OPSStyle.Colors.tanTextM,
+                        fill: OPSStyle.Colors.tanFillM,
+                        border: OPSStyle.Colors.tanLineM,
+                        action: { showReopenAlert = true }
+                    )
+                }
             }
 
             // Selecting is how the operator focuses the project view on this
@@ -549,7 +808,7 @@ struct TaskDetailPopupSheet: View {
                 .buttonStyle(PlainButtonStyle())
             }
 
-            if task.status == .active && !isProjectCompleted {
+            if canChangeStatus && task.status == .active && !isProjectCompleted {
                 Button(action: { showCancelAlert = true }) {
                     Text("CANCEL TASK")
                         .font(OPSStyle.Typography.buttonLabel)
@@ -759,11 +1018,69 @@ private enum TaskDoc {
     }
 }
 
+/// CANCEL / SAVE, in the crew picker's exact idiom, for a field edited in place
+/// inside the document. SAVE is the only thing that writes, and it stays inert
+/// until the draft actually differs from what is on the task.
+private struct TaskDocCommitRow: View {
+    let isDirty: Bool
+    let cancelIdentifier: String
+    let saveIdentifier: String
+    let onCancel: () -> Void
+    let onSave: () -> Void
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Button(action: {
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                onCancel()
+            }) {
+                Text("CANCEL")
+                    .font(OPSStyle.Typography.buttonLabel)
+                    .foregroundColor(OPSStyle.Colors.text2)
+                    .frame(maxWidth: .infinity, minHeight: OPSStyle.Layout.touchTargetMin)
+                    .background(
+                        RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius, style: .continuous)
+                            .fill(OPSStyle.Colors.surfaceInput)
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius, style: .continuous)
+                            .strokeBorder(OPSStyle.Colors.line, lineWidth: OPSStyle.Layout.Border.standard)
+                    )
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(PlainButtonStyle())
+            .accessibilityIdentifier(cancelIdentifier)
+
+            Button(action: {
+                UINotificationFeedbackGenerator().notificationOccurred(.success)
+                onSave()
+            }) {
+                Text("SAVE")
+                    .font(OPSStyle.Typography.buttonLabel)
+                    .foregroundColor(isDirty
+                        ? OPSStyle.Colors.invertedText
+                        : OPSStyle.Colors.text3)
+                    .frame(maxWidth: .infinity, minHeight: OPSStyle.Layout.touchTargetMin)
+                    .background(
+                        RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius, style: .continuous)
+                            .fill(isDirty
+                                  ? OPSStyle.Colors.primaryAccent
+                                  : OPSStyle.Colors.surfaceInput)
+                    )
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(PlainButtonStyle())
+            .disabled(!isDirty)
+            .accessibilityIdentifier(saveIdentifier)
+        }
+    }
+}
+
 /// The document's chip — the one shape this card uses for an action that sits
-/// inside an empty field (SET DATES, ASSIGN TEAM). Styled exactly as the lead
-/// dossier's ADD TO CLIENT / MATCH PROJECT chips and the project-info card's
-/// ASSIGN CLIENT / ADD ADDRESS chips, so an operator who has learned one
-/// document's way in has learned all three.
+/// inside an empty field (SET TYPE, SET DATES, ASSIGN TEAM, ADD NOTES). Styled
+/// exactly as the lead dossier's ADD TO CLIENT / MATCH PROJECT chips and the
+/// project-info card's ASSIGN CLIENT / ADD ADDRESS chips, so an operator who
+/// has learned one document's way in has learned all three.
 private struct TaskDocChip: View {
     let title: String
     let action: () -> Void

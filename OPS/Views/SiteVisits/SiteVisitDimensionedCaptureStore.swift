@@ -8,6 +8,7 @@
 import Foundation
 import SwiftData
 
+@MainActor
 enum SiteVisitDimensionedCaptureStore {
     enum Error: Swift.Error, Equatable {
         case primaryPhotoMissing
@@ -79,8 +80,13 @@ enum SiteVisitDimensionedCaptureStore {
             capturedAt: captured.captureFinishedAt,
             createdBy: createdBy
         )
-        modelContext.insert(artifact)
-        try modelContext.save()
+        let coordinator = SiteVisitPersistenceCoordinator(
+            modelContext: modelContext,
+            companyId: companyId
+        )
+        try coordinator.commit {
+            modelContext.insert(artifact)
+        }
         return artifact
     }
 

@@ -259,7 +259,7 @@ struct EstimateDetailView: View {
             }
 
             HStack(spacing: OPSStyle.Layout.spacing2) {
-                Text(LineItemDisplay.money(estimate.total))
+                Text(BooksFormat.exact(estimate.total))
                     .font(OPSStyle.Typography.body)
                     .foregroundColor(OPSStyle.Colors.primaryText)
 
@@ -356,7 +356,7 @@ struct EstimateDetailView: View {
                     .foregroundColor(OPSStyle.Colors.primaryText)
                     .lineLimit(1)
                 Spacer()
-                Text(LineItemDisplay.money(item.lineTotal))
+                Text(BooksFormat.exact(item.lineTotal))
                     .font(OPSStyle.Typography.body)
                     .foregroundColor(OPSStyle.Colors.primaryText)
             }
@@ -409,7 +409,7 @@ struct EstimateDetailView: View {
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
             }
             Spacer()
-            Text(LineItemDisplay.money(item.lineTotal))
+            Text(BooksFormat.exact(item.lineTotal))
                 .font(OPSStyle.Typography.caption)
                 .foregroundColor(OPSStyle.Colors.secondaryText)
         }
@@ -448,7 +448,7 @@ struct EstimateDetailView: View {
                         .font(OPSStyle.Typography.smallCaption)
                         .foregroundColor(OPSStyle.Colors.secondaryText)
                     Spacer()
-                    Text(LineItemDisplay.money(estimate.subtotal))
+                    Text(BooksFormat.exact(estimate.subtotal))
                         .font(OPSStyle.Typography.body)
                         .foregroundColor(OPSStyle.Colors.secondaryText)
                 }
@@ -468,7 +468,7 @@ struct EstimateDetailView: View {
                             .font(OPSStyle.Typography.smallCaption)
                             .foregroundColor(OPSStyle.Colors.secondaryText)
                         Spacer()
-                        Text("−\(LineItemDisplay.money(discount))")
+                        Text("−\(BooksFormat.exact(discount))")
                             .font(OPSStyle.Typography.body)
                             .foregroundColor(OPSStyle.Colors.secondaryText)
                     }
@@ -480,7 +480,7 @@ struct EstimateDetailView: View {
                             .font(OPSStyle.Typography.smallCaption)
                             .foregroundColor(OPSStyle.Colors.secondaryText)
                         Spacer()
-                        Text(LineItemDisplay.money(estimate.taxAmount))
+                        Text(BooksFormat.exact(estimate.taxAmount))
                             .font(OPSStyle.Typography.body)
                             .foregroundColor(OPSStyle.Colors.secondaryText)
                     }
@@ -492,7 +492,7 @@ struct EstimateDetailView: View {
                         .fontWeight(.semibold)
                         .foregroundColor(OPSStyle.Colors.primaryText)
                     Spacer()
-                    Text(LineItemDisplay.money(estimate.total))
+                    Text(BooksFormat.exact(estimate.total))
                         .font(OPSStyle.Typography.body)
                         .fontWeight(.semibold)
                         .foregroundColor(OPSStyle.Colors.primaryText)

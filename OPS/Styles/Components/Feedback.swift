@@ -88,6 +88,21 @@ enum Feedback {
         static let revisionsSent   = Toast(label: "// REVISIONS SENT", tone: .success)
     }
 
+    // MARK: - Site visits
+
+    enum SiteVisit {
+        static let saved = Toast(label: "// VISIT SAVED", tone: .success)
+        static let notSaved = Toast(label: "// VISIT NOT SAVED · TRY AGAIN", tone: .error)
+        static let savedStageNotUpdated = Toast(
+            label: "// VISIT SAVED · STAGE NOT UPDATED",
+            tone: .warning
+        )
+        static let projectNotStarted = Toast(
+            label: "// VISIT SAVED · PROJECT NOT STARTED",
+            tone: .warning
+        )
+    }
+
     // MARK: - Expense Batches (review console)
 
     enum Batch {
@@ -155,6 +170,8 @@ enum Feedback {
         static let datesCleared  = Toast(label: "// DATES CLEARED", tone: .success)
         static let statusUpdated = Toast(label: "// STATUS UPDATED", tone: .success)
         static let teamUpdated   = Toast(label: "// CREW UPDATED", tone: .success)
+        static let typeUpdated   = Toast(label: "// TYPE UPDATED", tone: .success)
+        static let notesUpdated  = Toast(label: "// NOTES UPDATED", tone: .success)
         static let subCreated    = Toast(label: "// SUB-TASK ADDED", tone: .success)
         static let subUpdated    = Toast(label: "// SUB-TASK UPDATED", tone: .success)
         static let subDeleted    = Toast(label: "// SUB-TASK DELETED", tone: .success)
@@ -335,6 +352,22 @@ enum Feedback {
 
     enum Lead {
         static let addressCopied = Toast(label: "// ADDRESS COPIED", tone: .success)
+        /// CREATE LEAD landed the client but the lead's server insert has been
+        /// handed to the durable queue (the client row has not reached the
+        /// server yet). Nothing is lost and nothing must be re-entered, so this
+        /// is a success, not the red error it used to be (bug 13c66762).
+        static let savedSyncing = Toast(
+            label: "// LEAD SAVED · SYNCING",
+            tone: .success,
+            autoDismissAfter: 6
+        )
+        /// Same handoff, no signal. The fact is worth a beat of the operator's
+        /// attention — nothing is required of them.
+        static let savedOffline = Toast(
+            label: "// NO SIGNAL · LEAD SAVED · SENDS LATER",
+            tone: .warning,
+            autoDismissAfter: 6
+        )
         static let archived      = Toast(label: "// LEAD ARCHIVED", tone: .warning)
         static let discarded     = Toast(label: "// LEAD DISCARDED", tone: .warning)
         static let stageAdvanced = Toast(label: "// STAGE ADVANCED", tone: .success)
@@ -481,7 +514,7 @@ enum Feedback {
         Deck.railingUpdated, Deck.wallMaterialSet, Deck.itemRemoved, Deck.surfacesLabeled, Deck.footprintLabeled,
         Deck.edgeLabeled, Deck.surfacesMoved, Deck.edgesMoved, Deck.levelCreatedSurfaces, Deck.levelCreatedEdges, Deck.arWalkSaved,
         Measure.pdfReady, Measure.dimensionsSaved(view: {}),
-        Lead.addressCopied, Lead.archived, Lead.stageAdvanced,
+        Lead.addressCopied, Lead.archived, Lead.stageAdvanced, Lead.savedSyncing, Lead.savedOffline,
         Sync.restored, Sync.failed(retry: {}),
     ]
 }

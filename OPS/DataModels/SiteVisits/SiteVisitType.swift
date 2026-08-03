@@ -242,7 +242,10 @@ final class SiteVisitType: Identifiable {
                     fields: [
                         .init(id: "client-goals", label: "What the client wants", kind: .longText, sortOrder: 10),
                         .init(id: "existing-structure", label: "Existing structure", kind: .photoMarkup, sortOrder: 20),
-                        .init(id: "field-measurements", label: "Field measurements", kind: .measurement, required: true, sortOrder: 30),
+                        // No measurement row: measuring is what the visit's
+                        // capture tools are for (LiDAR / scaled / dimensioned).
+                        // A checklist item demanding the same thing was a second
+                        // gate that blocked completion after the work was done.
                         .init(id: "deck-design", label: "Deck design", kind: .deckDesign, required: true, sortOrder: 40),
                     ]
                 )
@@ -290,10 +293,10 @@ final class SiteVisitChecklistAnswer: Identifiable {
         createdBy: String? = nil,
         createdAt: Date = Date()
     ) {
-        self.id = id
-        self.siteVisitId = siteVisitId
-        self.companyId = companyId
-        self.opportunityId = opportunityId
+        self.id = id.lowercased()
+        self.siteVisitId = siteVisitId.lowercased()
+        self.companyId = companyId.lowercased()
+        self.opportunityId = opportunityId?.lowercased()
         self.siteVisitTypeId = siteVisitTypeId
         self.fieldId = fieldId
         self.label = label
@@ -301,7 +304,7 @@ final class SiteVisitChecklistAnswer: Identifiable {
         self.required = required
         self.helpText = helpText
         self.sortOrder = sortOrder
-        self.createdBy = createdBy
+        self.createdBy = createdBy?.lowercased()
         self.createdAt = createdAt
         self.needsSync = true
         self.answerValue = answerValue

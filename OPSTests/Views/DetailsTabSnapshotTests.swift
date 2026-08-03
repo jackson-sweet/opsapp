@@ -13,6 +13,11 @@
 //  and once while browsing a populated list, where that row has to stay quiet.
 //  Those renders are NOT pass/fail: they write PNGs for inspection.
 //
+//  The two LEAD states render too — the row sits between CLIENT and ADDRESS
+//  inside the same document card, in the same label-column grammar (bug
+//  a3c4e216). LEAD is the one row that leaves the card on emptiness; the
+//  permission renders below are all in that default `.hidden` shape.
+//
 //  `leads_details_document_reference` renders the lead dossier
 //  (`LeadDetailsDocument`) through the SAME capture path, at the same width, so
 //  the two documents can be laid side by side. That comparison is the
@@ -273,8 +278,15 @@ final class DetailsTabSnapshotTests: XCTestCase {
     /// it (it opens the client picker). Without it the CLIENT row would have no
     /// action to offer and would honestly print `—` instead of its chip, and
     /// the empty-state alignment render would be proving the wrong thing.
+    ///
+    /// `lead` defaults to `.hidden` — the shape most projects are in, and the
+    /// one the permission renders below are about. The lead renders pass it
+    /// explicitly.
     @ViewBuilder
-    private func hosted(_ fixture: Fixture) -> some View {
+    private func hosted(
+        _ fixture: Fixture,
+        lead: ProjectLeadRow.Presentation = .hidden
+    ) -> some View {
         ZStack(alignment: .top) {
             OPSStyle.Colors.background.ignoresSafeArea()
 
@@ -286,7 +298,10 @@ final class DetailsTabSnapshotTests: XCTestCase {
                 onTaskTap: { _ in },
                 onAddTask: {},
                 onClientLongPress: {},
-                onChangeStatus: {}
+                onChangeStatus: {},
+                leadRowPresentation: lead,
+                onOpenLead: {},
+                onMatchLead: {}
             )
         }
         .frame(width: tabWidth)
@@ -365,6 +380,33 @@ final class DetailsTabSnapshotTests: XCTestCase {
         let fixture = try makeFixture()
         withPermissions(crewGrants) {
             snapshot("details_tab_crew", view: hosted(fixture), height: 1200)
+        }
+    }
+
+    /// The project that came from a won lead (bug a3c4e216). LEAD sits between
+    /// CLIENT and ADDRESS — provenance reads straight after who the job is for,
+    /// with one hairline above it and one below, never two meeting.
+    func testRenderDetailsTabLeadLinked() throws {
+        let fixture = try makeFixture()
+        withPermissions(officeGrants) {
+            snapshot(
+                "details_tab_lead_linked",
+                view: hosted(fixture, lead: .linked(label: "Beckwith deck rebuild")),
+                height: 1500
+            )
+        }
+    }
+
+    /// Unlinked, with won leads at this address waiting to be matched — the
+    /// once-ever action, sized as a row in the card rather than a card of its own.
+    func testRenderDetailsTabLeadMatch() throws {
+        let fixture = try makeFixture()
+        withPermissions(officeGrants) {
+            snapshot(
+                "details_tab_lead_match",
+                view: hosted(fixture, lead: .match(candidateCount: 2)),
+                height: 1500
+            )
         }
     }
 

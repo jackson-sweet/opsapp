@@ -65,7 +65,9 @@ struct SiteVisitPacketNote {
         lines.append(contentsOf: checklist)
         let content = "SITE VISIT PACKET\n\n" + lines.joined(separator: "\n\n")
 
-        // Structured metadata for the rich card + sheet.
+        // Structured metadata for the SITE VISIT RECORD. Every key is additive
+        // and optional — older packets decode fine, and a key that is absent
+        // simply renders no section.
         var metadata: [String: Any] = [
             "site_visit_id": payload.siteVisitId,
             "photo_count": photoCount,
@@ -75,6 +77,26 @@ struct SiteVisitPacketNote {
         }
         if !notes.isEmpty { metadata["notes"] = notes }
         if !checklist.isEmpty { metadata["checklist"] = checklist }
+        if let address = payload.address?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !address.isEmpty {
+            metadata["address"] = address
+        }
+        if let contactName = payload.contactName?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !contactName.isEmpty {
+            metadata["contact_name"] = contactName
+        }
+        if let companyName = payload.companyName?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !companyName.isEmpty {
+            metadata["company_name"] = companyName
+        }
+        if let deckDesignId = payload.deckDesignIds.first, !deckDesignId.isEmpty {
+            metadata["deck_design_id"] = deckDesignId
+        }
+        // NO MONEY. This dictionary becomes `project_notes.content_metadata`,
+        // which syncs to OPS-Web and renders there with no financial gate —
+        // so a currency figure written here is published straight past
+        // `finances.view`. The record resolves the lead's value at render time
+        // from the local opportunity instead.
 
         let metadataJSON = (try? JSONSerialization.data(withJSONObject: metadata, options: [.sortedKeys]))
             .flatMap { String(data: $0, encoding: .utf8) } ?? "{}"

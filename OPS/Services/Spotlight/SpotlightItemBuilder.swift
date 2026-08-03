@@ -182,7 +182,7 @@ enum SpotlightItemBuilder {
         var descParts: [String] = []
         if let t = invoice.title, !t.isEmpty { descParts.append(t) }
         if let client = clientName, !client.isEmpty { descParts.append(client) }
-        descParts.append(String(format: "$%.2f", invoice.total))
+        descParts.append(BooksFormat.exact(invoice.total))
         attrs.contentDescription = descParts.joined(separator: " • ")
 
         var keywords: [String] = [title]
@@ -211,7 +211,7 @@ enum SpotlightItemBuilder {
         var descParts: [String] = []
         if let t = estimate.title, !t.isEmpty { descParts.append(t) }
         if let client = clientName, !client.isEmpty { descParts.append(client) }
-        descParts.append(String(format: "$%.2f", estimate.total))
+        descParts.append(BooksFormat.exact(estimate.total))
         attrs.contentDescription = descParts.joined(separator: " • ")
 
         var keywords: [String] = [title]

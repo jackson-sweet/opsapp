@@ -17,6 +17,15 @@ import SwiftUI
 /// `LevelConnection` whose rise keeps tracking the two levels' heights. An
 /// edge carries one stair, never both kinds.
 ///
+/// ELEVATION and TREADS are two readings of ONE drop, so they are held in one
+/// `DeckStairRiseEntry` rather than as independent state: entering either moves
+/// the other, deriving on entry and never on the switch, so flipping modes is
+/// lossless and can never show a stale number (bug 46c2d6eb).
+///
+/// All three modes are always LISTED. LEVEL is muted and inert on a drawing
+/// with nothing to descend to, with the one thing that unlocks it stated
+/// underneath — a choice that vanishes reads as a missing feature.
+///
 /// Every geometry lookup goes through the view model's level-aware accessors
 /// (`findEdge` / `activeLevel`) — the top-level vertex/edge arrays are empty
 /// on multi-level drawings.
@@ -53,15 +62,20 @@ struct StairConfigView: View {
     }
 
     @State private var mode: RiseMode = .elevation
-    @State private var treadCount: Int = 4
-    @State private var riseFeet: Int = 2
-    @State private var riseInches: Int = 6
+    /// The drop, held in BOTH vocabularies at once. ELEVATION and TREADS are
+    /// two readings of one dimension, so entering either moves the other and
+    /// switching modes can never show a stale number (bug 46c2d6eb). Deriving
+    /// happens on entry, never on the switch, so flipping back and forth is
+    /// lossless — see `DeckStairRiseEntry`.
+    @State private var riseEntry = DeckStairRiseEntry(
+        totalRiseInches: 30,
+        risePerStep: Code.standardRise
+    )
     @State private var targetLevelId: String?
     /// Edge chosen inside the sheet when it was opened without a selection
     /// (the CONNECT entry point on the level bar).
     @State private var pickedEdgeId: String?
     @State private var widthInches: Double = 48
-    @State private var risePerStep: Double = Code.standardRise
     @State private var runPerTread: Double = Code.standardRun
     @State private var addRailing: Bool = false
     @State private var alignment: StairAlignment = .center
@@ -74,6 +88,31 @@ struct StairConfigView: View {
 
     private var editingEdgeId: String? {
         viewModel.editingEdgeId ?? pickedEdgeId
+    }
+
+    /// Rise-per-step lives on the entry, so changing the code envelope
+    /// re-derives whichever vocabulary the operator is NOT typing in.
+    private var risePerStep: Double { riseEntry.risePerStep }
+
+    /// Which vocabulary a rise/run change must leave alone. TREADS is the only
+    /// mode that authors a step count; ELEVATION and LEVEL both author the drop
+    /// directly, so the tread count is what follows.
+    private var riseAuthority: DeckStairRiseEntry.Authority {
+        mode == .treads ? .treads : .height
+    }
+
+    private var riseFeetBinding: Binding<Int> {
+        Binding(
+            get: { riseEntry.feet },
+            set: { riseEntry.setHeight(feet: $0, inches: riseEntry.inches) }
+        )
+    }
+
+    private var riseInchesBinding: Binding<Int> {
+        Binding(
+            get: { riseEntry.inches },
+            set: { riseEntry.setHeight(feet: riseEntry.feet, inches: $0) }
+        )
     }
 
     private var targetEdge: DeckEdge? {
@@ -104,8 +143,16 @@ struct StairConfigView: View {
             .map { (index: $0.offset, level: $0.element) }
     }
 
-    private var availableModes: [RiseMode] {
-        connectableLevels.isEmpty ? [.elevation, .treads] : RiseMode.allCases
+    /// Whether a LEVEL flight is possible at all — there has to be another
+    /// level below this one to land on.
+    private var canConnectToLevel: Bool { !connectableLevels.isEmpty }
+
+    /// Every vocabulary is always LISTED. LEVEL used to vanish on a
+    /// single-level drawing, which reads as a missing feature rather than an
+    /// unmet precondition — so it stays, muted and inert, with the one thing
+    /// that unlocks it spelled out underneath (bug 46c2d6eb).
+    private func isModeEnabled(_ candidate: RiseMode) -> Bool {
+        candidate == .level ? canConnectToLevel : true
     }
 
     /// The drawing with THIS edge's fixed-rise stair removed — the world the
@@ -160,9 +207,9 @@ struct StairConfigView: View {
     private var totalRise: Double {
         switch mode {
         case .elevation:
-            return Double(riseFeet * 12 + riseInches)
+            return riseEntry.heightRiseInches
         case .treads:
-            return Double(treadCount) * risePerStep
+            return riseEntry.treadRiseInches
         case .level:
             guard let index = selectedTargetIndex else { return 0 }
             return max(0, drop(toLevelAt: index) * 12.0)
@@ -176,7 +223,7 @@ struct StairConfigView: View {
             width: widthInches,
             risePerStep: risePerStep,
             runPerTread: runPerTread,
-            treadCountOverride: mode == .treads ? treadCount : nil
+            treadCountOverride: mode == .treads ? riseEntry.treadCount : nil
         )
     }
 
@@ -350,8 +397,17 @@ struct StairConfigView: View {
             VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing3) {
                 SegmentedControl(
                     selection: $mode,
-                    options: availableModes.map { ($0, $0.label) }
+                    options: RiseMode.allCases.map {
+                        .text($0, $0.label, isEnabled: isModeEnabled($0))
+                    }
                 )
+
+                if !canConnectToLevel {
+                    Text("ADD A LEVEL TO CONNECT")
+                        .font(OPSStyle.Typography.microLabel)
+                        .kerning(1.4)
+                        .foregroundColor(OPSStyle.Colors.textMute)
+                }
 
                 switch mode {
                 case .elevation: elevationInput
@@ -366,16 +422,15 @@ struct StairConfigView: View {
 
     private var elevationInput: some View {
         VStack(spacing: OPSStyle.Layout.spacing2) {
-            DeckFeetInchesWheels(feet: $riseFeet, inches: $riseInches)
+            DeckFeetInchesWheels(feet: riseFeetBinding, inches: riseInchesBinding)
 
             HStack(spacing: OPSStyle.Layout.spacing2) {
                 ForEach(risePresets, id: \.label) { preset in
                     StairChip(
                         label: preset.label,
-                        isSelected: riseFeet == preset.feet && riseInches == preset.inches
+                        isSelected: riseEntry.feet == preset.feet && riseEntry.inches == preset.inches
                     ) {
-                        riseFeet = preset.feet
-                        riseInches = preset.inches
+                        riseEntry.setHeight(feet: preset.feet, inches: preset.inches)
                     }
                 }
                 Spacer(minLength: 0)
@@ -393,11 +448,11 @@ struct StairConfigView: View {
     private var treadsInput: some View {
         StairCounterRow(
             label: "Treads",
-            value: "\(treadCount)",
-            canDecrement: treadCount > 1,
-            canIncrement: treadCount < 30,
-            onDecrement: { treadCount = max(1, treadCount - 1) },
-            onIncrement: { treadCount = min(30, treadCount + 1) }
+            value: "\(riseEntry.treadCount)",
+            canDecrement: riseEntry.treadCount > DeckStairRiseEntry.treadRange.lowerBound,
+            canIncrement: riseEntry.treadCount < DeckStairRiseEntry.treadRange.upperBound,
+            onDecrement: { riseEntry.setTreadCount(riseEntry.treadCount - 1) },
+            onIncrement: { riseEntry.setTreadCount(riseEntry.treadCount + 1) }
         )
     }
 
@@ -480,13 +535,26 @@ struct StairConfigView: View {
     private var stepCard: some View {
         SectionCard(title: "Step") {
             VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
+                // Changing the step re-derives the vocabulary the operator is
+                // NOT typing in: in TREADS the count holds and the height
+                // follows; in ELEVATION the height holds and the count follows.
                 StairCounterRow(
                     label: "Rise / Step",
                     value: String(format: "%.2f\"", risePerStep),
                     canDecrement: risePerStep > Code.riseRange.lowerBound,
                     canIncrement: risePerStep < Code.riseRange.upperBound,
-                    onDecrement: { risePerStep = max(Code.riseRange.lowerBound, risePerStep - 0.25) },
-                    onIncrement: { risePerStep = min(Code.riseRange.upperBound, risePerStep + 0.25) }
+                    onDecrement: {
+                        riseEntry.setRisePerStep(
+                            max(Code.riseRange.lowerBound, risePerStep - 0.25),
+                            authority: riseAuthority
+                        )
+                    },
+                    onIncrement: {
+                        riseEntry.setRisePerStep(
+                            min(Code.riseRange.upperBound, risePerStep + 0.25),
+                            authority: riseAuthority
+                        )
+                    }
                 )
 
                 StairCounterRow(
@@ -712,7 +780,7 @@ struct StairConfigView: View {
         if let edge = targetEdge {
             prefill(forEdge: edge)
         }
-        if let initialMode, availableModes.contains(initialMode) {
+        if let initialMode, isModeEnabled(initialMode) {
             mode = initialMode
         }
     }
@@ -728,10 +796,13 @@ struct StairConfigView: View {
         if let existing = edge.stairConfig {
             mode = .elevation
             applyConfigDefaults(existing, edge: edge)
-            if let treads = existing.treadCount, treads > 0 {
-                treadCount = treads
-            }
+            // The stored drop is authoritative and both vocabularies follow it.
             setRise(fromInches: existing.totalRiseInches ?? activeLevelResolvedFeet * 12.0)
+            // A stair that shipped an explicit tread count keeps it — the
+            // height then re-derives from the count so the two stay one number.
+            if let treads = existing.treadCount, treads > 0 {
+                riseEntry.setTreadCount(treads)
+            }
             return
         }
 
@@ -741,12 +812,14 @@ struct StairConfigView: View {
         widthInches = edgeLengthInches ?? 48
         alignment = .center
         offsetInches = 0
+        runPerTread = Code.standardRun
+        riseEntry.setRisePerStep(Code.standardRise, authority: .height)
         setRise(fromInches: activeLevelResolvedFeet * 12.0)
     }
 
     private func applyConfigDefaults(_ config: StairConfig, edge: DeckEdge) {
         widthInches = config.width > 0 ? config.width : (edgeLengthInches ?? 48)
-        risePerStep = config.risePerStep
+        riseEntry.setRisePerStep(config.risePerStep, authority: .height)
         runPerTread = config.runPerTread
         alignment = config.alignment
         offsetInches = config.offset
@@ -755,11 +828,7 @@ struct StairConfigView: View {
     }
 
     private func setRise(fromInches inches: Double) {
-        let clamped = max(0, inches)
-        let components = DeckFeetInchesWheels.components(fromFeet: clamped / 12.0)
-        riseFeet = components.feet
-        riseInches = components.inches
-        treadCount = max(1, StairConfig.calculateTreadCount(totalRise: clamped, risePerStep: risePerStep))
+        riseEntry.setTotalRiseInches(inches)
     }
 
     private func applyStairs() {

@@ -298,7 +298,7 @@ struct ExpenseSettingsView: View {
                 )
 
             VStack(alignment: .leading, spacing: 2) {
-                Text("Under \(formatRuleCurrency(rule.thresholdAmount))")
+                Text("Under \(BooksFormat.exact(rule.thresholdAmount))")
                     .font(OPSStyle.Typography.captionBold)
                     .foregroundColor(OPSStyle.Colors.primaryText)
                 Text(memberLabel)
@@ -352,13 +352,6 @@ struct ExpenseSettingsView: View {
     }
 
     // MARK: - Helpers
-
-    private func formatRuleCurrency(_ amount: Double) -> String {
-        let formatter = NumberFormatter()
-        formatter.numberStyle = .currency
-        formatter.currencyCode = "USD"
-        return formatter.string(from: NSNumber(value: amount)) ?? "$\(amount)"
-    }
 
     // MARK: - Data
 

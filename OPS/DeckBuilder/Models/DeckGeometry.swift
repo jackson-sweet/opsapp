@@ -668,10 +668,16 @@ struct DeckSurface: Identifiable, Codable, Equatable {
     var label: String?
 
     // Catalog metadata vocabulary (deck-catalog integration spec § 3.4).
-    // Defaults pick the most common new-construction values so partially-
-    // configured surfaces still emit meaningful `deck_board` components.
-    var color: String = "Brown"
-    var boardMaterial: String = "composite"  // composite | pvc | cedar | treated | other
+    //
+    // Nil means the operator has NOT answered yet, and the Properties sheet
+    // says so with an em dash. These used to default to "Brown"/"composite",
+    // which the decoder then materialised on every drawing saved before the
+    // fields existed — so a surface nobody had ever touched presented itself
+    // as a chosen composite deck (bug ee41a0a0). Renderers and the estimate
+    // projection substitute a concrete value at their own boundary; see
+    // `DeckSurfaceDefaults`.
+    var color: String?
+    var boardMaterial: String?  // composite | pvc | cedar | treated | other
 
     enum CodingKeys: String, CodingKey {
         case id, vertexIds, assignedItems, label, color, boardMaterial
@@ -682,8 +688,8 @@ struct DeckSurface: Identifiable, Codable, Equatable {
         vertexIds: Set<String> = [],
         assignedItems: [AssignedItem] = [],
         label: String? = nil,
-        color: String = "Brown",
-        boardMaterial: String = "composite"
+        color: String? = nil,
+        boardMaterial: String? = nil
     ) {
         self.id = id
         self.vertexIds = vertexIds
@@ -699,9 +705,21 @@ struct DeckSurface: Identifiable, Codable, Equatable {
         self.vertexIds = try c.decode(Set<String>.self, forKey: .vertexIds)
         self.assignedItems = try c.decodeIfPresent([AssignedItem].self, forKey: .assignedItems) ?? []
         self.label = try c.decodeIfPresent(String.self, forKey: .label)
-        self.color = try c.decodeIfPresent(String.self, forKey: .color) ?? "Brown"
-        self.boardMaterial = try c.decodeIfPresent(String.self, forKey: .boardMaterial) ?? "composite"
+        // No `?? default` — a drawing that recorded a choice keeps it, and one
+        // that never had these keys stays honestly unset.
+        self.color = try c.decodeIfPresent(String.self, forKey: .color)
+        self.boardMaterial = try c.decodeIfPresent(String.self, forKey: .boardMaterial)
     }
+}
+
+/// What the renderers and the estimate projection assume when a surface's
+/// vocabulary is unset. These live at the PROJECTION boundary only — the
+/// canvas, the 3D scene, and the components feed must never render "unset"
+/// as broken, and the estimate adapter must keep receiving a concrete
+/// vocabulary. The Properties sheet never substitutes them; it shows `—`.
+enum DeckSurfaceDefaults {
+    static let color = "Brown"
+    static let boardMaterial = "composite"
 }
 
 // MARK: - Complete Drawing Data

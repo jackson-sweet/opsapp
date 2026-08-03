@@ -47,6 +47,10 @@ final class ConvertOthersBannerSnapshotTests: XCTestCase {
                 .frame(width: width)
                 .background(OPSStyle.Colors.background)
                 .environment(\.colorScheme, .dark)
+                // A UIWindow inherits the device safe-area insets whatever its
+                // frame — without this the content renders displaced and
+                // bottom-clipped (same correction as DaySheetRowSnapshotTests).
+                .ignoresSafeArea()
         )
         host.view.backgroundColor = .black
 
@@ -92,7 +96,8 @@ final class ConvertOthersBannerSnapshotTests: XCTestCase {
     /// likely-duplicate candidates first, then the rest of the client's book.
     private func refs(
         _ count: Int,
-        unavailableMatchId: String? = nil
+        unavailableMatchId: String? = nil,
+        linkedElsewhere: Bool = false
     ) -> [ConvertToProjectSheet.RelatedProjectRef] {
         let titles = [
             "1240 Maple Ave", "Calloway rear deck", "1240 Maple Ave garage",
@@ -102,13 +107,22 @@ final class ConvertOthersBannerSnapshotTests: XCTestCase {
         ]
         let statuses: [Status?] = [.inProgress, .accepted, .completed, .estimated, nil]
         return (0..<count).map { i in
-            ConvertToProjectSheet.RelatedProjectRef(
+            let linkState: ConvertToProjectSheet.RelatedProjectLinkState
+            if i >= 2 {
+                linkState = .reviewOnly
+            } else if "ref-\(i)" == unavailableMatchId {
+                linkState = .unavailable
+            } else if linkedElsewhere {
+                linkState = .linkedElsewhere
+            } else {
+                linkState = .matchable
+            }
+            return ConvertToProjectSheet.RelatedProjectRef(
                 id: "ref-\(i)",
                 title: titles[i % titles.count],
                 address: nil,
                 status: statuses[i % statuses.count],
-                isLikelyDuplicate: i < 2,
-                isMatchAvailable: i < 2 ? "ref-\(i)" != unavailableMatchId : false
+                linkState: linkState
             )
         }
     }
@@ -119,15 +133,22 @@ final class ConvertOthersBannerSnapshotTests: XCTestCase {
     private func banner(
         _ count: Int,
         selectedProjectId: String? = nil,
-        unavailableMatchId: String? = nil
+        unavailableMatchId: String? = nil,
+        linkedElsewhere: Bool = false,
+        notice: String? = nil
     ) -> some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
                 ConvertToProjectSheet.ClientOthersBanner(
-                    projects: refs(count, unavailableMatchId: unavailableMatchId),
+                    projects: refs(
+                        count,
+                        unavailableMatchId: unavailableMatchId,
+                        linkedElsewhere: linkedElsewhere
+                    ),
                     selectedProjectId: selectedProjectId,
-                    onOpen: { _ in },
-                    onMatch: { _ in }
+                    onPeek: { _ in },
+                    onMatch: { _ in },
+                    notice: notice
                 )
             }
             .padding(.horizontal, OPSStyle.Layout.spacing3_5)
@@ -144,7 +165,9 @@ final class ConvertOthersBannerSnapshotTests: XCTestCase {
 
     /// Smallest supported iPhone width — the strictest single-line proof.
     func testRenderBannerTwelveOthersNarrow() {
-        snapshot("convert_banner_12_narrow375", width: 375, height: 340) { banner(12) }
+        // 440pt canvas: at 375pt width the chip grid wraps taller than the
+        // 393pt-wide variant — 340pt cut the last chip row off the canvas.
+        snapshot("convert_banner_12_narrow375", width: 375, height: 440) { banner(12) }
     }
 
     /// Singular copy path.
@@ -168,9 +191,35 @@ final class ConvertOthersBannerSnapshotTests: XCTestCase {
         }
     }
 
+    /// Bug 5468b3c6 \u{2014} every same-address match already belongs to another
+    /// lead. The sheet used to synthesize an admin-review blocker here and
+    /// disable everything; the chips now read LINKED, stay peek-able, and the
+    /// notice says plainly what is in the way.
+    func testRenderBannerEveryMatchLinkedElsewhere() {
+        snapshot("convert_banner_all_linked", width: 393, height: 280) {
+            banner(
+                3,
+                linkedElsewhere: true,
+                notice: "EVERY MATCH IS LINKED TO ANOTHER LEAD"
+            )
+        }
+    }
+
+    /// The candidate link re-read failed on its own. The preflight's answer
+    /// still stands; the chips just cannot claim to be matchable.
+    func testRenderBannerLinkCheckUnverified() {
+        snapshot("convert_banner_unverified", width: 393, height: 280) {
+            banner(
+                3,
+                notice: "COULD NOT CHECK PROJECT LINKS \u{2014} RETRY"
+            )
+        }
+    }
+
     /// Defensive ceiling — a 3-digit count must still hold one line.
     func testRenderBannerHundredsOthers() {
-        snapshot("convert_banner_120", width: 375, height: 340) { banner(120) }
+        // 440pt canvas: same narrow-width wrap as convert_banner_12_narrow375.
+        snapshot("convert_banner_120", width: 375, height: 440) { banner(120) }
     }
 }
 #endif

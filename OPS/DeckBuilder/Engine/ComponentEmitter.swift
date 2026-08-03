@@ -239,8 +239,11 @@ enum ComponentEmitter {
 
                 var meta: [String: AnyCodable] = [
                     "sqft": AnyCodable(round(areaSqFt * 100) / 100),
-                    "color": AnyCodable(surface.color),
-                    "material": AnyCodable(surface.boardMaterial),
+                    // The adapter's pricing modifiers key off these strings,
+                    // so an unanswered field still ships the default rather
+                    // than a hole — the sheet is where "unset" is visible.
+                    "color": AnyCodable(surface.color ?? DeckSurfaceDefaults.color),
+                    "material": AnyCodable(surface.boardMaterial ?? DeckSurfaceDefaults.boardMaterial),
                     "surface_id": AnyCodable(surface.id),
                 ]
                 if let levelId = levelId { meta["level_id"] = AnyCodable(levelId) }
@@ -267,8 +270,8 @@ enum ComponentEmitter {
         // surface defaults so the adapter sees a consistent vocabulary.
         var meta: [String: AnyCodable] = [
             "sqft": AnyCodable(round(areaSqFt * 100) / 100),
-            "color": AnyCodable("Brown"),
-            "material": AnyCodable("composite"),
+            "color": AnyCodable(DeckSurfaceDefaults.color),
+            "material": AnyCodable(DeckSurfaceDefaults.boardMaterial),
             "surface_id": AnyCodable("footprint"),
         ]
         if let levelId = levelId { meta["level_id"] = AnyCodable(levelId) }

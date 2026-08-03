@@ -497,8 +497,8 @@ struct DeckSceneBuilder {
                 positionsInMeters: vertices2D,
                 vertexIds: [],
                 assignedItems: [],
-                color: "Brown",
-                boardMaterial: "composite"
+                color: DeckSurfaceDefaults.color,
+                boardMaterial: DeckSurfaceDefaults.boardMaterial
             )
         ]
         let visibleRimJoistEdgeIds = surfacesIn3D.map {
@@ -1584,7 +1584,11 @@ struct DeckSceneBuilder {
     ) -> (assignedItems: [AssignedItem], color: String, boardMaterial: String) {
         let dSet = Set(detected.vertexIds)
         if let exact = persisted.first(where: { $0.vertexIds == dSet }) {
-            return (exact.assignedItems, exact.color, exact.boardMaterial)
+            return (
+                exact.assignedItems,
+                exact.color ?? DeckSurfaceDefaults.color,
+                exact.boardMaterial ?? DeckSurfaceDefaults.boardMaterial
+            )
         }
         var best: (surface: DeckSurface, jaccard: Double)? = nil
         for p in persisted {
@@ -1597,9 +1601,13 @@ struct DeckSceneBuilder {
             }
         }
         if let match = best, match.jaccard >= SurfaceReconciler.rebindThreshold {
-            return (match.surface.assignedItems, match.surface.color, match.surface.boardMaterial)
+            return (
+                match.surface.assignedItems,
+                match.surface.color ?? DeckSurfaceDefaults.color,
+                match.surface.boardMaterial ?? DeckSurfaceDefaults.boardMaterial
+            )
         }
-        return ([], "Brown", "composite")
+        return ([], DeckSurfaceDefaults.color, DeckSurfaceDefaults.boardMaterial)
     }
 
     /// Per-surface material. Board-like materials keep the deck board texture;

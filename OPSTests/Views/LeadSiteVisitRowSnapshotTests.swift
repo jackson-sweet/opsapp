@@ -131,7 +131,7 @@ final class LeadSiteVisitRowSnapshotTests: XCTestCase {
 
     private func snapshotTimeline(_ name: String, seedVisit: Bool) throws {
         let container = try ModelContainer(
-            for: Schema(versionedSchema: OPSSchemaV21.self),
+            for: Schema(versionedSchema: OPSSchemaV22.self),
             configurations: ModelConfiguration(isStoredInMemoryOnly: true)
         )
         if seedVisit { seedLocalVisit(into: container.mainContext) }

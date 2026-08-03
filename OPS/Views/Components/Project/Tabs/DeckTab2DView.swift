@@ -470,20 +470,10 @@ struct DeckTab2DView: View {
         start: CGPoint,
         end: CGPoint
     ) {
-        // Polygon for outward-perpendicular lookup (use the level matching
-        // the edge's vertex ids, falling back to the single-level polygon).
-        let polygon: [CGPoint]
-        if drawingData.isMultiLevel {
-            // Find which level holds this edge
-            var found: [CGPoint] = []
-            for level in drawingData.levels where level.edge(byId: edge.id) != nil {
-                found = level.orderedPositions
-                break
-            }
-            polygon = found
-        } else {
-            polygon = drawingData.orderedPositions
-        }
+        // The face that owns this edge — stairs face away from the deck
+        // surface itself, resolved per-edge (a level-wide ring degenerates on
+        // multi-shape drawings and flips the stair to the wrong side).
+        let polygon = drawingData.stairFacePolygon(forEdgeId: edge.id)
 
         guard let plan = DeckStairRenderPlanner.plan(
             edgeStart: start,
@@ -674,7 +664,7 @@ struct DeckTab2DView: View {
               let plan = DeckStairRenderPlanner.plan(
                 edgeStart: uStart.position,
                 edgeEnd: uEnd.position,
-                polygonVertices: upperLevel.orderedPositions,
+                polygonVertices: drawingData.stairFacePolygon(forEdgeId: upperEdge.id),
                 config: connection.stairConfig,
                 treadCount: treadCount,
                 scaleFactor: drawingData.effectiveScaleFactor,

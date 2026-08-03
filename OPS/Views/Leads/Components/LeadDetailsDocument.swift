@@ -416,6 +416,14 @@ struct LeadDetailsDocument: View {
 
 struct DocRow<Content: View>: View {
     let label: String
+
+    /// Width of the mono label column. 58 is this document's own column — wide
+    /// enough for its longest label — and every caller here uses it. The
+    /// project-info document (DetailsTabView) carries a longer label
+    /// (DESCRIPTION) and passes its own measured width, so one row anatomy can
+    /// serve both surfaces without either one wrapping a label.
+    var labelWidth: CGFloat = 58
+
     @ViewBuilder var content: () -> Content
 
     var body: some View {
@@ -425,7 +433,12 @@ struct DocRow<Content: View>: View {
                 .tracking(0.9)
                 .textCase(.uppercase)
                 .foregroundColor(OPSStyle.Colors.text3)
-                .frame(width: 58, alignment: .leading)
+                // A field label is a single mono word by construction. Pinning
+                // it to one line means a label that outgrows its column fails
+                // visibly at the tail instead of silently breaking mid-word —
+                // the way DESCRIPTION once wrapped to DESCRIPTIO / N.
+                .lineLimit(1)
+                .frame(width: labelWidth, alignment: .leading)
                 .padding(.top, 3)
 
             content()

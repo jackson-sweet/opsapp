@@ -275,9 +275,13 @@ private struct SiteVisitCaptureConsole: View {
             )
         }
         .sheet(item: $markupArtifact) { artifact in
-            SiteVisitPhotoMarkupView(artifact: artifact) {
-                viewModel.reloadArtifacts()
-            }
+            SiteVisitPhotoMarkupView(
+                artifact: artifact,
+                persistMarkup: { url in
+                    viewModel.saveMarkup(artifact, renderedAssetURL: url)
+                },
+                onSaved: { viewModel.reloadArtifacts() }
+            )
         }
         .sheet(item: $previewArtifact) { artifact in
             SiteVisitPhotoPreviewSheet(artifact: artifact) {
@@ -2354,18 +2358,31 @@ private struct SiteVisitReviewSheet: View {
         isSaving = true
         let stage = selectedStage
         Task {
-            let saved: Bool
+            let result: SiteVisitSaveResult
             if let stage {
-                saved = await viewModel.saveVisit(movingLeadTo: stage)
+                result = await viewModel.saveVisit(movingLeadTo: stage)
             } else {
                 // Unbound visit — nothing to re-stage; just complete it.
-                saved = viewModel.completeVisit()
+                let completion = await viewModel.completeVisit()
+                switch completion {
+                case .committed:
+                    result = .committed
+                case .notCommitted(let failure):
+                    result = .notCommitted(failure)
+                }
             }
             await MainActor.run {
                 isSaving = false
-                guard saved else { return }
+                guard result.visitWasCommitted else {
+                    ToastCenter.shared.present(Feedback.SiteVisit.notSaved)
+                    return
+                }
                 UINotificationFeedbackGenerator().notificationOccurred(.success)
-                ToastCenter.shared.present(Toast(label: "// VISIT SAVED", tone: .success))
+                if result == .committedStageUpdateFailed {
+                    ToastCenter.shared.present(Feedback.SiteVisit.savedStageNotUpdated)
+                } else {
+                    ToastCenter.shared.present(Feedback.SiteVisit.saved)
+                }
                 dismiss()
                 onSaved()
             }
@@ -2375,11 +2392,25 @@ private struct SiteVisitReviewSheet: View {
     private func createProject() {
         guard canCreateProject,
               let opportunity = viewModel.currentOpportunity,
-              viewModel.completeVisit(),
-              let payload = viewModel.projectPayload() else { return }
-        SiteVisitProjectHandoffStore.shared.stage(payload, for: opportunity.id)
-        dismiss()
-        onCreateProject(opportunity)
+              !isSaving else { return }
+        isSaving = true
+        Task {
+            let completion = await viewModel.completeVisit()
+            await MainActor.run {
+                isSaving = false
+                guard completion.isCommitted else {
+                    ToastCenter.shared.present(Feedback.SiteVisit.notSaved)
+                    return
+                }
+                guard let payload = viewModel.projectPayload() else {
+                    ToastCenter.shared.present(Feedback.SiteVisit.projectNotStarted)
+                    return
+                }
+                SiteVisitProjectHandoffStore.shared.stage(payload, for: opportunity.id)
+                dismiss()
+                onCreateProject(opportunity)
+            }
+        }
     }
 }
 
@@ -2426,10 +2457,10 @@ private struct SiteVisitPhotoPreviewSheet: View {
 
 private struct SiteVisitPhotoMarkupView: View {
     @Bindable var artifact: SiteVisitCaptureArtifact
+    let persistMarkup: (String) -> Bool
     let onSaved: () -> Void
 
     @Environment(\.dismiss) private var dismiss
-    @Environment(\.modelContext) private var modelContext
     @State private var image: UIImage?
     @State private var drawing = PKDrawing()
     @State private var canvasSize = CGSize(width: 1, height: 1)
@@ -2492,11 +2523,10 @@ private struct SiteVisitPhotoMarkupView: View {
             return
         }
 
-        artifact.kind = .annotatedPhoto
-        artifact.renderedAssetURL = url
-        artifact.updatedAt = Date()
-        artifact.needsSync = true
-        try? modelContext.save()
+        guard persistMarkup(url) else {
+            errorMessage = "MARKUP SAVE FAILED"
+            return
+        }
         onSaved()
         dismiss()
     }

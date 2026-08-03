@@ -111,6 +111,21 @@ final class SyncStatusCopyPendingWorkTests: XCTestCase {
         XCTAssertEqual(Copy.draftTitle(displayName: ""), "Site visit")
     }
 
+    func testSiteVisitPacketSummary() {
+        XCTAssertEqual(
+            Copy.siteVisitPacketSummary(capturedItemCount: 3, blockedStage: .visit),
+            "3 CAPTURED · VISIT"
+        )
+        XCTAssertEqual(
+            Copy.siteVisitPacketSummary(capturedItemCount: 1, blockedStage: .media),
+            "1 CAPTURED · MEDIA"
+        )
+        XCTAssertEqual(
+            Copy.siteVisitPacketSummary(capturedItemCount: 0, blockedStage: .completion),
+            "0 CAPTURED · COMPLETION"
+        )
+    }
+
     func testOrphanTitleFallback() {
         XCTAssertEqual(Copy.orphanTitle(title: "Site visit deck"), "Site visit deck")
         XCTAssertEqual(Copy.orphanTitle(title: ""), "Deck design")

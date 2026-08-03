@@ -138,10 +138,13 @@ struct SchedulerMonthScroll: View {
             LazyVGrid(columns: columns, spacing: OPSStyle.Layout.Border.thick) {
                 ForEach(Array(dates.enumerated()), id: \.offset) { _, date in
                     if let date {
+                        let role = selection.role(for: date, calendar: calendar)
                         SchedulerDayCell(
                             date: date,
                             signals: context.signals(for: date),
-                            role: selection.role(for: date, calendar: calendar),
+                            role: role,
+                            spanPosition: selection.spanPosition(for: date, calendar: calendar),
+                            spanEdge: spanEdge(for: role),
                             isToday: calendar.isDateInToday(date),
                             onTap: { onTapDay(date) },
                             onLongPress: { onLongPressDay(date) }
@@ -155,6 +158,33 @@ struct SchedulerMonthScroll: View {
             }
         }
         .padding(.horizontal, OPSStyle.Layout.spacing2)
+    }
+
+    /// What the selection's outline does at a day's two horizontal ends.
+    ///
+    /// Layout belongs to the grid, so the grid decides this and the cell never
+    /// infers weekday math. The rule the layout produces is a short one: an end
+    /// closes only where the SELECTION ends. Everything else — the next day
+    /// along, or the wrap into the following week row — is a continuation, so
+    /// it stays open and the two hairlines simply run flush to the margin. That
+    /// is why a row boundary needs no flag of its own: a wrap edge is by
+    /// definition not a cap, and only caps ever close.
+    private func spanEdge(for role: SchedulerSelection.DayRole) -> SpanEdgeStroke.Closure? {
+        switch role {
+        case .none:
+            return nil
+        case .single:
+            // A one-day pick is already a solid white block. Outlining
+            // something that is its own boundary is a line drawn for the sake
+            // of drawing a line.
+            return nil
+        case .start:
+            return .leading
+        case .end:
+            return .trailing
+        case .interior:
+            return .open
+        }
     }
 
     /// Publishes the month's distance from the scroll view's top and names the

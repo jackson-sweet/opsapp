@@ -75,10 +75,10 @@ final class SiteVisitCaptureArtifact: Identifiable {
         createdBy: String? = nil,
         createdAt: Date = Date()
     ) {
-        self.id = id
-        self.siteVisitId = siteVisitId
-        self.companyId = companyId
-        self.opportunityId = opportunityId
+        self.id = id.lowercased()
+        self.siteVisitId = siteVisitId.lowercased()
+        self.companyId = companyId.lowercased()
+        self.opportunityId = opportunityId?.lowercased()
         self.kind = kind
         self.source = source
         self.title = title
@@ -87,7 +87,7 @@ final class SiteVisitCaptureArtifact: Identifiable {
         self.renderedAssetURL = renderedAssetURL
         self.thumbnailURL = thumbnailURL
         self.dimensionsJSON = dimensionsJSON
-        self.deckDesignId = deckDesignId
+        self.deckDesignId = deckDesignId?.lowercased()
         self.includedInProjectReview = includedInProjectReview
         self.capturedAt = capturedAt
         self.createdBy = createdBy

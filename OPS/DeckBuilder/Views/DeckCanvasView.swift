@@ -882,7 +882,17 @@ struct DeckCanvasView: View {
         let dy = end.position.y - start.position.y
         let len = sqrt(dx * dx + dy * dy)
         guard len > 0 else { return }
-        let perpX = -dy / len, perpY = dx / len
+        // Connection stairs face away from the upper deck's surface too —
+        // this used to be a raw CCW perpendicular that ignored the deck
+        // entirely, so half of them pointed back across the deck they
+        // descend from. Honors the config's flip like every other stair.
+        let outward = PolygonMath.outwardPerpendicular(
+            edgeStart: start.position,
+            edgeEnd: end.position,
+            polygonVertices: viewModel.drawingData.stairFacePolygon(forEdgeId: edge.id)
+        )
+        let perpX = connection.stairConfig.flipDirection ? -CGFloat(outward.x) : CGFloat(outward.x)
+        let perpY = connection.stairConfig.flipDirection ? -CGFloat(outward.y) : CGFloat(outward.y)
         let depth: CGFloat = 30
         let p1 = start.position, p2 = end.position
         let p3 = CGPoint(x: p2.x + perpX * depth, y: p2.y + perpY * depth)
@@ -1035,12 +1045,11 @@ struct DeckCanvasView: View {
               let treadCount = config.treadCount,
               treadCount > 0 else { return }
 
-        let activePolygon: [CGPoint]
-        if viewModel.isMultiLevel, let level = viewModel.activeLevel {
-            activePolygon = level.orderedPositions
-        } else {
-            activePolygon = viewModel.drawingData.orderedPositions
-        }
+        // Face away from the SURFACE that owns this edge, resolved per-edge.
+        // The level-wide ring this used to pass degenerates to an unordered
+        // vertex dump on any drawing with two shapes or a detail line, which
+        // is what sent stairs to the wrong side of the deck.
+        let activePolygon = viewModel.drawingData.stairFacePolygon(forEdgeId: edge.id)
 
         // The editor and workspace envelope deliberately share this planner.
         // Alignment offsets are resolved once, so rendered stairs can never

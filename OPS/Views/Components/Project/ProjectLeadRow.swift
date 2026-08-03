@@ -12,12 +12,15 @@
 //
 //  Design decisions, and why:
 //
-//  · A LEAD row sits with CLIENT, not in a section of its own. Both answer
-//    "where did this job come from?", and provenance is one glance, not a
-//    content area.
-//  · It borrows StatusSection's compact labelled-value grammar, not
-//    ClientSection's glass card. Linking a lead happens once per project,
-//    ever; a card would give a once-ever action permanent prime real estate.
+//  · A LEAD row sits directly under CLIENT inside the project-info card, not
+//    in a section of its own. Both answer "where did this job come from?", and
+//    provenance is one glance, not a content area.
+//  · It renders in the project-info DOCUMENT grammar — `DocRow`, the shared
+//    58pt mono label column, `ProjectInfoDoc` type, `InfoActionChip` for the
+//    way in — so LEAD reads as one more field of the same document rather than
+//    a guest with its own manners. Linking a lead happens once per project,
+//    ever; a card of its own would give a once-ever action permanent prime real
+//    estate. The card owns the hairline above it — see DetailsTabView.shows(_:).
 //  · When there is nothing to match — no candidate leads, or no permission —
 //    the row is ABSENT, not an em dash and not a disabled button. An
 //    affordance advertising an impossible action is worse than no affordance,
@@ -126,7 +129,11 @@ enum ProjectLeadRow {
 
 // MARK: - Row view
 
-/// Compact labelled-value row, mirroring `StatusSection`'s grammar.
+/// LEAD, as one field of the project-info document (DetailsTabView) — the same
+/// `DocRow` anatomy, label column, type and chip shape every other field uses.
+/// Separators belong to the card, not here: it draws the hairline above every
+/// row it holds from one `shows(_:)` answer, so a row that drew its own rule
+/// would double the line under CLIENT.
 struct ProjectLeadSection: View {
     let presentation: ProjectLeadRow.Presentation
     let onOpenLead: () -> Void
@@ -136,82 +143,60 @@ struct ProjectLeadSection: View {
         switch presentation {
         case .hidden:
             EmptyView()
+
         case .linked(let label):
-            row(
-                accessory: {
-                    AnyView(
+            // A filled field: the lead's name as the document's value line,
+            // tappable to the lead itself, chevron-signalled — identical to the
+            // CLIENT row's filled state.
+            DocRow(label: "LEAD", labelWidth: ProjectInfoDoc.labelColumnWidth) {
+                Button {
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    onOpenLead()
+                } label: {
+                    HStack(spacing: OPSStyle.Layout.spacing2) {
                         Text(label)
-                            .font(OPSStyle.Typography.body)
-                            .foregroundColor(OPSStyle.Colors.primaryText)
+                            .font(ProjectInfoDoc.valueFont)
+                            .foregroundColor(OPSStyle.Colors.text)
                             .lineLimit(1)
                             .truncationMode(.tail)
-                    )
-                },
-                accessibilityLabel: "Open lead \(label)",
-                action: onOpenLead
-            )
-        case .match(let candidateCount):
-            row(
-                accessory: {
-                    AnyView(
-                        HStack(spacing: OPSStyle.Layout.spacing1) {
-                            Text("MATCH LEAD")
-                                .font(OPSStyle.Typography.captionBold)
-                                .tracking(0.9)
-                                .textCase(.uppercase)
-                                .foregroundColor(OPSStyle.Colors.primaryText)
-                            Text(String(format: "%02d", min(candidateCount, 99)))
-                                .font(OPSStyle.Typography.smallCaption)
-                                .monospacedDigit()
-                                .foregroundColor(OPSStyle.Colors.tertiaryText)
-                        }
-                    )
-                },
-                accessibilityLabel: candidateCount == 1
-                    ? "Match this project to its lead. 1 candidate."
-                    : "Match this project to its lead. \(candidateCount) candidates.",
-                action: onMatchLead
-            )
-        }
-    }
-
-    private func row(
-        accessory: @escaping () -> AnyView,
-        accessibilityLabel: String,
-        action: @escaping () -> Void
-    ) -> some View {
-        VStack(spacing: 0) {
-            Button {
-                UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                action()
-            } label: {
-                HStack(spacing: OPSStyle.Layout.spacing2_5) {
-                    Text("[ LEAD ]")
-                        .font(OPSStyle.Typography.smallCaption)
-                        .textCase(.uppercase)
-                        .tracking(1)
-                        .foregroundColor(OPSStyle.Colors.tertiaryText)
-
-                    Spacer(minLength: 12)
-
-                    accessory()
-
-                    Image(systemName: OPSStyle.Icons.chevronRight)
-                        .font(.system(size: OPSStyle.Layout.IconSize.xs))
-                        .foregroundColor(OPSStyle.Colors.tertiaryText)
+                        Spacer(minLength: 0)
+                        Image(systemName: OPSStyle.Icons.chevronRight)
+                            .font(.system(size: 11, weight: .regular))
+                            .foregroundColor(OPSStyle.Colors.text3)
+                    }
+                    .contentShape(Rectangle())
                 }
-                .frame(minHeight: OPSStyle.Layout.touchTargetMin)
-                .padding(.horizontal, OPSStyle.Layout.spacing3)
-                .contentShape(Rectangle())
+                .buttonStyle(PlainButtonStyle())
+                .accessibilityLabel("Open lead \(label)")
             }
-            .buttonStyle(PlainButtonStyle())
-            .accessibilityLabel(accessibilityLabel)
 
-            Rectangle()
-                .fill(OPSStyle.Colors.separator)
-                .frame(height: 1)
-                .padding(.horizontal, OPSStyle.Layout.spacing3)
-                .padding(.top, OPSStyle.Layout.spacing2)
+        case .match(let candidateCount):
+            // An empty field this viewer can fill: the document's invitation
+            // chip at the start of the content region, exactly like ASSIGN
+            // CLIENT. The count rides beneath as the document's meta line so
+            // the operator knows whether the tap ends in one confirmation or a
+            // list — it never becomes a second affordance.
+            DocRow(label: "LEAD", labelWidth: ProjectInfoDoc.labelColumnWidth) {
+                VStack(alignment: .leading, spacing: 6) {
+                    InfoActionChip(icon: OPSStyle.Icons.plus, title: "MATCH LEAD") {
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        onMatchLead()
+                    }
+                    .accessibilityLabel(
+                        candidateCount == 1
+                            ? "Match this project to its lead. 1 candidate."
+                            : "Match this project to its lead. \(candidateCount) candidates."
+                    )
+
+                    Text(candidateCount == 1 ? "1 CANDIDATE" : "\(candidateCount) CANDIDATES")
+                        .font(ProjectInfoDoc.metaFont)
+                        .tracking(0.9)
+                        .textCase(.uppercase)
+                        .monospacedDigit()
+                        .foregroundColor(OPSStyle.Colors.text3)
+                        .accessibilityHidden(true)
+                }
+            }
         }
     }
 }

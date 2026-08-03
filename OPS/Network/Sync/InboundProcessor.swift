@@ -36,6 +36,7 @@ final class InboundProcessor {
     private var projectPhotoRepo: ProjectPhotoRepository
     private var photoAnnotationRepo: PhotoAnnotationRepository
     private var deckDesignRepo: DeckDesignRepository
+    private var siteVisitRepo: SiteVisitRepository
     private var wizardStateRepo: WizardStateRepository
     private var invoiceRepo: InvoiceRepository
     private var estimateRepo: EstimateRepository
@@ -75,6 +76,7 @@ final class InboundProcessor {
         self.projectPhotoRepo = ProjectPhotoRepository(companyId: companyId)
         self.photoAnnotationRepo = PhotoAnnotationRepository(companyId: companyId)
         self.deckDesignRepo = DeckDesignRepository(companyId: companyId)
+        self.siteVisitRepo = SiteVisitRepository(companyId: companyId)
         self.wizardStateRepo = WizardStateRepository(userId: userId)
         self.invoiceRepo = InvoiceRepository(companyId: companyId)
         self.estimateRepo = EstimateRepository(companyId: companyId)
@@ -120,6 +122,7 @@ final class InboundProcessor {
         self.projectPhotoRepo = ProjectPhotoRepository(companyId: newCompanyId)
         self.photoAnnotationRepo = PhotoAnnotationRepository(companyId: newCompanyId)
         self.deckDesignRepo = DeckDesignRepository(companyId: newCompanyId)
+        self.siteVisitRepo = SiteVisitRepository(companyId: newCompanyId)
         self.wizardStateRepo = WizardStateRepository(userId: newUserId)
         self.invoiceRepo = InvoiceRepository(companyId: newCompanyId)
         self.estimateRepo = EstimateRepository(companyId: newCompanyId)
@@ -155,6 +158,9 @@ final class InboundProcessor {
         .projectPhoto,
         .photoAnnotation,
         .deckDesign,
+        // One ordered pull reconstructs the parent and all three packet-child
+        // tables. Child rows are merged parent-first inside SiteVisitServerMerge.
+        .siteVisit,
         .estimate,
         .invoice,
         .calendarUserEvent,   // Bug 1 — user-created time-off / personal events
@@ -420,6 +426,8 @@ final class InboundProcessor {
             try await syncPhotoAnnotations(since: since, context: context)
         case .deckDesign:
             try await syncDeckDesigns(since: since, context: context)
+        case .siteVisit:
+            try await syncSiteVisits(since: since, context: context)
         case .wizardState:
             try await syncWizardStates(since: since, context: context)
         case .estimate:
@@ -485,6 +493,33 @@ final class InboundProcessor {
             print("[InboundProcessor] Entity type \(entityType.rawValue) not yet supported for inbound sync")
         }
     }
+
+    // MARK: - Site Visit Sync
+
+    private func syncSiteVisits(
+        since: Date?,
+        context: ModelContext
+    ) async throws {
+        let delta = try await siteVisitRepo.fetchAll(since: since)
+        let report = try SiteVisitServerMerge.merge(
+            delta: delta,
+            companyId: companyId,
+            into: context
+        )
+        if report.inserted > 0 || report.updated > 0 {
+            InboundChangeSignal.post(entityNames: Self.siteVisitEntityNames)
+        }
+        print(
+            "[InboundProcessor] Merged \(report.inserted + report.updated) site-visit packet rows"
+        )
+    }
+
+    private static let siteVisitEntityNames: Set<String> = [
+        "SiteVisit",
+        "SiteVisitCaptureArtifact",
+        "SiteVisitChecklistAnswer",
+        "SiteVisitIdentityDraft",
+    ]
 
     // MARK: - Field-Level Merge Check
 

@@ -205,7 +205,7 @@ final class LeadDetailsClusterProofTests: XCTestCase {
         scrollFraction: CGFloat
     ) throws {
         let container = try ModelContainer(
-            for: Schema(versionedSchema: OPSSchemaV20.self),
+            for: Schema(versionedSchema: OPSSchemaV22.self),
             configurations: ModelConfiguration(isStoredInMemoryOnly: true)
         )
         let permissions = PermissionStore()

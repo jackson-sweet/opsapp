@@ -119,22 +119,27 @@
 //  The exact released V18 Opportunity graph is frozen under
 //  `OPSSchemaLegacyOpportunityV18`; the widened live model starts at V19.
 //
-//  V19 → V20 stage: per-message email identity on the activity feed. Activity
+//  V19 → V20 stage: cloud-backed site-visit packets. SiteVisit gains the full
+//  Supabase parent projection and sync bookkeeping; SiteVisitIdentityDraft
+//  gains author/deletion/sync fields. Both V19 shapes are frozen so released
+//  fingerprints remain immutable. Every addition is optional or defaulted.
+//
+//  V20 → V21 stage: per-message email identity on the activity feed. Activity
 //  gains five additive attributes (`emailMessageId`, `emailThreadId`,
 //  `fromEmail`, plus the `toEmails` / `ccEmails` string arrays) so the lead
 //  feed can say who a message was actually between instead of rendering every
 //  message in a thread identically (bug 183f7ec9). New optionals and defaulted
 //  arrays are an inferable lightweight transform. Activity is version-scoped at
-//  this boundary — the frozen `OPSSchemaLegacyActivityV19` backs V14–V19, the
-//  widened live model backs V20+ — so six released fingerprints stay exact.
+//  this boundary — the frozen `OPSSchemaLegacyActivityV19` backs V14–V20, the
+//  widened graph backs V21+ — so seven released fingerprints stay exact.
 //
-//  V20 → V21 stage: the site-visit link on the activity feed. Activity gains
+//  V21 → V22 stage: the site-visit link on the activity feed. Activity gains
 //  one additive nullable attribute, `siteVisitId` — the column iOS has always
 //  written on a completed visit but never decoded, which left a site visit
 //  indistinguishable from any other row on the lead's timeline. A new optional
 //  is an inferable lightweight transform. Activity is version-scoped again at
-//  this boundary — frozen `OPSSchemaLegacyActivityV20` backs V20, the widened
-//  live model backs V21+ — so the released V20 fingerprint stays exact.
+//  this boundary — frozen `OPSSchemaLegacyActivityV21` backs V21, the widened
+//  live model backs V22+ — so the V21 fingerprint stays exact.
 //
 
 import Foundation
@@ -163,7 +168,8 @@ enum OPSMigrationPlan: SchemaMigrationPlan {
             OPSSchemaV18.self,
             OPSSchemaV19.self,
             OPSSchemaV20.self,
-            OPSSchemaV21.self
+            OPSSchemaV21.self,
+            OPSSchemaV22.self
         ]
     }
 
@@ -187,24 +193,31 @@ enum OPSMigrationPlan: SchemaMigrationPlan {
             addVinylOrderColorPOV16toV17,
             addOpportunityAssignmentAndChaseV17toV18,
             addOpportunityActionRequiredV18toV19,
-            addActivityEmailIdentityV19toV20,
-            addActivitySiteVisitIdV20toV21
+            addSiteVisitCloudFieldsV19toV20,
+            addActivityEmailIdentityV20toV21,
+            addActivitySiteVisitIdV21toV22
         ]
     }
 
-    /// V20 → V21: additive site-visit link on `Activity`. Existing rows receive
-    /// nil for `siteVisitId`; the frozen V20 Activity shape preserves the
-    /// released checksum while V21 registers the widened live model.
-    static let addActivitySiteVisitIdV20toV21 = MigrationStage.lightweight(
+    /// V21 → V22: additive site-visit link on `Activity`. Existing rows receive
+    /// nil for `siteVisitId`; the frozen V21 Activity shape preserves that
+    /// version's checksum while V22 registers the widened live model.
+    static let addActivitySiteVisitIdV21toV22 = MigrationStage.lightweight(
+        fromVersion: OPSSchemaV21.self,
+        toVersion: OPSSchemaV22.self
+    )
+
+    /// V20 → V21: additive per-message email identity on `Activity`. Existing
+    /// rows receive nil for the three optionals and empty arrays for
+    /// `toEmails` / `ccEmails`; the frozen V14–V20 Activity shape preserves the
+    /// released checksums while V21 registers the widened graph.
+    static let addActivityEmailIdentityV20toV21 = MigrationStage.lightweight(
         fromVersion: OPSSchemaV20.self,
         toVersion: OPSSchemaV21.self
     )
 
-    /// V19 → V20: additive per-message email identity on `Activity`. Existing
-    /// rows receive nil for the three optionals and empty arrays for
-    /// `toEmails` / `ccEmails`; the frozen V19 Activity shape preserves the
-    /// released checksums while V20 registers the widened live model.
-    static let addActivityEmailIdentityV19toV20 = MigrationStage.lightweight(
+    /// V19 → V20: additive cloud projection and synchronization bookkeeping.
+    static let addSiteVisitCloudFieldsV19toV20 = MigrationStage.lightweight(
         fromVersion: OPSSchemaV19.self,
         toVersion: OPSSchemaV20.self
     )

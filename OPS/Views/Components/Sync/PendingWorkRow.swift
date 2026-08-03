@@ -102,6 +102,8 @@ enum PendingWorkVisuals {
             )
         case .draft, .orphanDesign:
             return RecoveryStatusPayload(statusRaw: "pending", retryCount: 0, lastError: nil, nextEligibleAt: nil)
+        case .quarantinedVisit:
+            return RecoveryStatusPayload(statusRaw: "quarantined", retryCount: 0, lastError: nil, nextEligibleAt: nil)
         }
     }
 
@@ -135,11 +137,16 @@ enum PendingWorkVisuals {
             return SyncStatusCopy.PendingWork.draftTitle(displayName: draft.displayName)
         case .orphanDesign(let design):
             return SyncStatusCopy.PendingWork.orphanTitle(title: design.title)
+        case .quarantinedVisit:
+            return SyncStatusCopy.PendingWork.quarantineTitle
         }
     }
 
     /// The plain status line + tone for any loose item / bundle, resolved once.
     static func statusLine(for item: RecoveryItem, now: Date) -> (text: String, tone: SyncStatusTone) {
+        if case .quarantinedVisit = item {
+            return (SyncStatusCopy.PendingWork.quarantineRow, .stuck)
+        }
         let payload = displayStatus(for: item)
         return SyncStatusCopy.PendingWork.statusLine(
             statusRaw: payload.statusRaw,
@@ -204,6 +211,7 @@ struct PendingWorkEntryRow: View {
     let now: Date
     let onTap: () -> Void
     let onRetry: () -> Void
+    var showsRetry = true
 
     private var tone: RecoveryTone { item.tone }
     private var payload: RecoveryStatusPayload { PendingWorkVisuals.displayStatus(for: item) }
@@ -234,7 +242,7 @@ struct PendingWorkEntryRow: View {
                 .font(OPSStyle.Typography.metadata)
                 .foregroundColor(OPSStyle.Colors.text3)
 
-            if tone >= .attention {
+            if showsRetry && tone >= .attention {
                 PendingWorkRetryGlyph(action: onRetry)
             }
         }
@@ -284,7 +292,17 @@ struct PendingWorkBundleCard: View {
                         .foregroundColor(OPSStyle.Colors.text3)
                 }
 
-                memberStrip
+                if bundle.siteVisitOperationIds.isEmpty {
+                    memberStrip
+                } else {
+                    Text(SyncStatusCopy.PendingWork.siteVisitPacketSummary(
+                        capturedItemCount: bundle.capturedItemCount,
+                        blockedStage: bundle.blockedStage
+                    ))
+                    .font(OPSStyle.Typography.nanoLabel)
+                    .tracking(0.8)
+                    .foregroundColor(PendingWorkVisuals.toneColor(bundle.tone))
+                }
 
                 Text(statusLine.text)
                     .font(OPSStyle.Typography.metadata)

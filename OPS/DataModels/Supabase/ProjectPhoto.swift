@@ -10,8 +10,9 @@
 //  (whole-array overwrite, gated by project-edit RLS, not maintained by Web),
 //  so it only ever showed the uploader their own optimistic append. The
 //  carousel now unions synced `ProjectPhoto` rows with that legacy CSV,
-//  deduped by URL. Writes still flow through `ImageSyncManager`; the sync
-//  engine treats this entity as read-only.
+//  deduped by URL. `ImageSyncManager` owns file uploads; an explicit durable
+//  create operation owns already-uploaded site-visit handoffs. Inbound sync
+//  otherwise treats this entity as server-owned.
 //
 
 import SwiftData

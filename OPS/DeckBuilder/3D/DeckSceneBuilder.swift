@@ -166,7 +166,8 @@ struct DeckSceneBuilder {
                     framingCenter: sharedCenter,
                     framingVertices: level.vertices,
                     houseWallCapM: houseWallCapM,
-                    surfacesIn3D: surfacesIn3D
+                    surfacesIn3D: surfacesIn3D,
+                    stairFaceVertexIds: { drawingData.stairFaceVertexIds(forEdgeId: $0) }
                 )
             }
             // Level connections (stairs between levels)
@@ -246,7 +247,8 @@ struct DeckSceneBuilder {
                 framingLevelId: "",
                 framingCenter: sharedCenter,
                 framingVertices: drawingData.vertices,
-                surfacesIn3D: surfacesIn3D
+                surfacesIn3D: surfacesIn3D,
+                stairFaceVertexIds: { drawingData.stairFaceVertexIds(forEdgeId: $0) }
             )
         }
 
@@ -363,7 +365,8 @@ struct DeckSceneBuilder {
                     framingCenter: sharedCenter,
                     framingVertices: level.vertices,
                     skipHouseWall: true,
-                    surfacesIn3D: surfacesIn3D
+                    surfacesIn3D: surfacesIn3D,
+                    stairFaceVertexIds: { drawingData.stairFaceVertexIds(forEdgeId: $0) }
                 )
             }
             for connection in drawingData.levelConnections {
@@ -424,7 +427,8 @@ struct DeckSceneBuilder {
                 framingCenter: sharedCenter,
                 framingVertices: drawingData.vertices,
                 skipHouseWall: true,
-                surfacesIn3D: surfacesIn3D
+                surfacesIn3D: surfacesIn3D,
+                stairFaceVertexIds: { drawingData.stairFaceVertexIds(forEdgeId: $0) }
             )
         }
 
@@ -475,7 +479,11 @@ struct DeckSceneBuilder {
         framingVertices: [DeckVertex],
         skipHouseWall: Bool = false,
         houseWallCapM: Float? = nil,  // bug fb007839 — wall cap on multi-level designs
-        surfacesIn3D: [SurfaceMesh3D]? = nil  // DECK-NEW-1 — per-surface meshes + materials
+        surfacesIn3D: [SurfaceMesh3D]? = nil,  // DECK-NEW-1 — per-surface meshes + materials
+        // Vertex ids of the closed face that owns a given edge, so stairs can
+        // face away from the SURFACE rather than a level-wide ring that
+        // degenerates on multi-shape drawings. Nil result → historic fallback.
+        stairFaceVertexIds: ((String) -> [String]?)? = nil
     ) {
         let deckGroup = SCNNode()
         deckGroup.name = level.map { "deck_\($0.id)" } ?? "deck_main"
@@ -574,8 +582,16 @@ struct DeckSceneBuilder {
                 )
             }
 
-            // Stairs
+            // Stairs — prefer the owning face (mapped into metres through the
+            // same id→position table the geometry uses) so 3D lands stairs on
+            // the same side as PLAN; the level-wide fallback is only for
+            // drawings where no closed face owns the edge.
             if let stairConfig = edge.stairConfig {
+                let facePolygonM: [CGPoint] = {
+                    guard let ids = stairFaceVertexIds?(edge.id), ids.count >= 3 else { return vertices2D }
+                    let mapped = ids.compactMap { vertexPositionsInMetersById[$0] }
+                    return mapped.count == ids.count ? mapped : vertices2D
+                }()
                 buildStairs(
                     parent: deckGroup,
                     start: startPos3D,
@@ -583,7 +599,7 @@ struct DeckSceneBuilder {
                     stairConfig: stairConfig,
                     deckElevationM: elevationM,
                     scaleFactor: scaleFactor,
-                    polygon2DMeters: vertices2D
+                    polygon2DMeters: facePolygonM
                 )
             }
 

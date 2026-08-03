@@ -69,6 +69,12 @@ final class TaskDetailPopupSheetTests: XCTestCase {
             rootView: TaskDetailSheetSnapshotHarness(task: task)
                 .frame(width: size.width, height: size.height)
                 .environment(\.colorScheme, .dark)
+                // The sheet's type picker reads `DataController` from the
+                // environment. SwiftUI TRAPS on a missing `@EnvironmentObject`
+                // rather than degrading, and the read is only deferred because
+                // the picker is presented lazily — injecting it here removes
+                // the latent trap instead of relying on that timing.
+                .environmentObject(DataController())
         )
         host.overrideUserInterfaceStyle = .dark
         host.view.backgroundColor = .black

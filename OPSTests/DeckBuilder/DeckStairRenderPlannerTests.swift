@@ -66,6 +66,72 @@ final class DeckStairRenderPlannerTests: XCTestCase {
         }
     }
 
+    // MARK: - Outward direction (stairs face away from the deck surface)
+
+    /// Every side of a closed square must send stairs OUT of the square,
+    /// under both winding directions and with the edge given in either
+    /// direction. The old probe-based implementation was only incidentally
+    /// right here; the winding math makes it exact.
+    func testOutwardPerpendicularPointsAwayFromInterior_allSidesBothWindings() {
+        let ccw = [
+            CGPoint(x: 0, y: 0), CGPoint(x: 100, y: 0),
+            CGPoint(x: 100, y: 100), CGPoint(x: 0, y: 100)
+        ]
+        let cw = Array(ccw.reversed())
+        let center = CGPoint(x: 50, y: 50)
+
+        for polygon in [ccw, cw] {
+            for index in 0..<polygon.count {
+                let a = polygon[index]
+                let b = polygon[(index + 1) % polygon.count]
+                // Both traversal directions of the same physical side.
+                for (start, end) in [(a, b), (b, a)] {
+                    let normal = PolygonMath.outwardPerpendicular(
+                        edgeStart: start, edgeEnd: end, polygonVertices: polygon
+                    )
+                    let mid = CGPoint(x: (start.x + end.x) / 2, y: (start.y + end.y) / 2)
+                    // A step along the normal must increase distance from the
+                    // centre — i.e. leave the deck.
+                    let stepped = CGPoint(x: mid.x + CGFloat(normal.x) * 5,
+                                          y: mid.y + CGFloat(normal.y) * 5)
+                    XCTAssertGreaterThan(
+                        hypot(stepped.x - center.x, stepped.y - center.y),
+                        hypot(mid.x - center.x, mid.y - center.y),
+                        "normal must point out of the square"
+                    )
+                    XCTAssertFalse(
+                        PolygonMath.pointInPolygon(stepped, vertices: polygon),
+                        "stepping along the outward normal must leave the polygon"
+                    )
+                }
+            }
+        }
+    }
+
+    /// Concave (L-shaped) decks are where a centroid shortcut fails: the
+    /// notch edges point away from the interior but TOWARD the centroid.
+    func testOutwardPerpendicularHandlesConcaveDeck() {
+        // L-shape, clockwise in screen coords.
+        let lShape = [
+            CGPoint(x: 0, y: 0), CGPoint(x: 120, y: 0), CGPoint(x: 120, y: 60),
+            CGPoint(x: 60, y: 60), CGPoint(x: 60, y: 120), CGPoint(x: 0, y: 120)
+        ]
+        for index in 0..<lShape.count {
+            let start = lShape[index]
+            let end = lShape[(index + 1) % lShape.count]
+            let normal = PolygonMath.outwardPerpendicular(
+                edgeStart: start, edgeEnd: end, polygonVertices: lShape
+            )
+            let mid = CGPoint(x: (start.x + end.x) / 2, y: (start.y + end.y) / 2)
+            let stepped = CGPoint(x: mid.x + CGFloat(normal.x) * 4,
+                                  y: mid.y + CGFloat(normal.y) * 4)
+            XCTAssertFalse(
+                PolygonMath.pointInPolygon(stepped, vertices: lShape),
+                "outward normal of the concave notch must still leave the deck"
+            )
+        }
+    }
+
     func testPlanHonorsAlignmentOffsetAndFlipDirection() {
         let plan = DeckStairRenderPlanner.plan(
             edgeStart: CGPoint(x: 0, y: 0),

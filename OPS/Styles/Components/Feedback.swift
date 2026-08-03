@@ -88,6 +88,21 @@ enum Feedback {
         static let revisionsSent   = Toast(label: "// REVISIONS SENT", tone: .success)
     }
 
+    // MARK: - Site visits
+
+    enum SiteVisit {
+        static let saved = Toast(label: "// VISIT SAVED", tone: .success)
+        static let notSaved = Toast(label: "// VISIT NOT SAVED · TRY AGAIN", tone: .error)
+        static let savedStageNotUpdated = Toast(
+            label: "// VISIT SAVED · STAGE NOT UPDATED",
+            tone: .warning
+        )
+        static let projectNotStarted = Toast(
+            label: "// VISIT SAVED · PROJECT NOT STARTED",
+            tone: .warning
+        )
+    }
+
     // MARK: - Expense Batches (review console)
 
     enum Batch {

@@ -20,6 +20,24 @@ struct ProjectActionBar: View {
     // Tutorial environment
     @Environment(\.tutorialMode) private var tutorialMode
 
+    /// Drives the completion moment's reduced-motion branch. Read from the
+    /// environment (not `UIAccessibility` directly) so it stays reactive.
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    // MARK: Completion moment
+    // Completing a project is the app's biggest achievement beat. A single
+    // radial draw-on ring sweeps outward once from this button and resolves
+    // into the status stamping to COMPLETED. See ProjectCompletionMoment.swift
+    // for the choreography and the brand contract it satisfies.
+    //
+    // All four values live here as plain view state — no timers, no display
+    // links, no detached tasks — so the sequence cannot outlive the view and
+    // `resetCompletionMoment()` is a complete cleanup.
+    @State private var completionRingVisible = false
+    @State private var completionRingProgress: Double = 0
+    @State private var completionRingOpacity: Double = 0
+    @State private var isStamped = false
+
     // State variables for various sheets and actions
     @State private var showCompleteConfirmation = false
     @State private var showExpenseForm = false
@@ -33,6 +51,24 @@ struct ProjectActionBar: View {
     @State private var processingImage = false
 
     @StateObject private var expenseViewModel = ExpenseViewModel()
+
+    /// Seeds the completion moment at a chosen frame so a snapshot test can
+    /// host the bar exactly as it ships mid-sequence — real layout, real ring,
+    /// real stamped button — without driving a live write. `nil` everywhere in
+    /// production, which reproduces the untouched behaviour exactly.
+    struct CompletionMomentSeed: Equatable {
+        var ringProgress: Double
+        var ringOpacity: Double
+        var stamped: Bool
+    }
+
+    init(project: Project, completionSeed: CompletionMomentSeed? = nil) {
+        self.project = project
+        _completionRingVisible = State(initialValue: completionSeed != nil)
+        _completionRingProgress = State(initialValue: completionSeed?.ringProgress ?? 0)
+        _completionRingOpacity = State(initialValue: completionSeed?.ringOpacity ?? 0)
+        _isStamped = State(initialValue: completionSeed?.stamped ?? false)
+    }
 
     /// Bug aa3ec6d7 — when a task is active for this project, surface
     /// the Complete action first and re-label it "Complete [TaskType]"
@@ -146,6 +182,9 @@ struct ProjectActionBar: View {
         // so we can branch on `activeTask` cleanly.
         .alert(isPresented: $showCompleteConfirmation) { completeAlert }
         .errorToast($actionBarError, label: Feedback.Err.operationFailed)
+        // The completion moment lives entirely in this view's state; tearing
+        // it down here guarantees nothing survives the view.
+        .onDisappear { resetCompletionMoment() }
         // Expense Form Sheet
         .sheet(isPresented: $showExpenseForm) {
             ExpenseFormSheet(viewModel: expenseViewModel, prefilledProjectId: project.id)
@@ -195,11 +234,32 @@ struct ProjectActionBar: View {
     private func actionButton(for entry: ProjectActionBarEntry) -> some View {
         switch entry {
         case .project(let action, let icon, let label):
+            // Once the project is stamped, the Complete entry stops being a
+            // verb and becomes the project's status. Same button, new state —
+            // that state change is the celebration.
+            let stamped = isStamped && action == .complete
             OPSActionBarButton(
-                icon: icon,
-                label: label
+                icon: stamped ? ProjectCompletionMoment.stampedIcon : icon,
+                label: stamped ? ProjectCompletionMoment.stampedLabel : label,
+                iconColor: stamped
+                    ? ProjectCompletionMoment.completedColor
+                    : OPSStyle.Colors.primaryText,
+                labelColor: stamped
+                    ? ProjectCompletionMoment.completedColor
+                    : OPSStyle.Colors.secondaryText
             ) {
                 handleAction(action)
+            }
+            // The ring is an overlay, so it adds no layout and cannot shift
+            // the bar. It is sized to clear the bar's vertical padding, so the
+            // enclosing horizontal ScrollView never clips it.
+            .overlay {
+                if action == .complete, completionRingVisible {
+                    ProjectCompletionRing(
+                        progress: completionRingProgress,
+                        opacity: completionRingOpacity
+                    )
+                }
             }
             .modifier(ActionButtonHighlightModifier(action: action))
         case .measure:
@@ -248,6 +308,10 @@ struct ProjectActionBar: View {
                 }
             }
         case .complete:
+            // Already stamped — the button is showing the project's status,
+            // not offering an action. Re-confirming would replay the moment
+            // over a project that is already complete.
+            guard !isStamped else { return }
             // Bug aa3ec6d7 — when an active task is selected for this
             // project, the same shared confirmation dialog now branches on
             // `activeTask` to confirm the task instead of the project.
@@ -330,6 +394,17 @@ struct ProjectActionBar: View {
     }
     
     private func updateProjectStatus(_ status: Status) {
+        // Impact on confirm acceptance, success notification once the write
+        // lands — the exact two-beat precedent `completeActiveTask` sets for
+        // the analogous task completion, and the only haptic budget the brand
+        // config allows ("a privilege, not a habit").
+        let impactFeedback = UIImpactFeedbackGenerator(style: .medium)
+        impactFeedback.impactOccurred()
+
+        // Captured before the hop so the dwell matches the branch the moment
+        // actually plays.
+        let timeline = ProjectCompletionMoment.timeline(reduceMotion: reduceMotion)
+
         Task {
             do {
                 // Update project status and exit project mode when completed
@@ -341,19 +416,97 @@ struct ProjectActionBar: View {
 
                 await MainActor.run {
                     if status == .completed {
+                        let success = UINotificationFeedbackGenerator()
+                        success.notificationOccurred(.success)
+                        // Played on the CONFIRMED transition, never on the tap
+                        // and never ahead of the write.
+                        playCompletionMoment()
                         ToastCenter.shared.present(Feedback.JobBoard.projectCompleted)
                     }
                 }
 
-                // If marking as complete, exit project mode after a short delay
+                // If marking as complete, hold project mode open until the
+                // completion moment has resolved and the stamped status has
+                // been legible for a beat. Exiting on the old flat 0.5s cut
+                // the moment off mid-sequence.
                 if status == .completed {
-                    try? await Task.sleep(nanoseconds: 500_000_000) // 0.5 seconds
+                    try? await Task.sleep(nanoseconds: UInt64(timeline.exitDwell * 1_000_000_000))
                     appState.exitProjectMode()
                 }
             } catch {
                 print("[PROJECT_ACTION_BAR] ❌ Failed to update project status: \(error)")
+                // The moment has not started — it only ever plays after a
+                // successful write — so there is nothing to rewind. The button
+                // is still COMPLETE and the operator gets the error toast.
                 await MainActor.run { actionBarError = error.localizedDescription }
             }
+        }
+    }
+
+    /// Plays the completion moment: one radial draw-on ring sweeping outward
+    /// from this button, resolving into the status stamping to COMPLETED.
+    ///
+    /// Every animation here is expressed as a target value on view state with
+    /// an explicit end — the ring's fade uses a completion criterion to remove
+    /// itself rather than lingering at zero opacity forever.
+    @MainActor
+    private func playCompletionMoment() {
+        // A project completes once. Never stack a second sequence on top.
+        guard !isStamped else { return }
+
+        let timeline = ProjectCompletionMoment.timeline(reduceMotion: reduceMotion)
+
+        // Seed the start frame outside any animation so the sweep (or, under
+        // Reduce Motion, the fade) always begins from a known state.
+        var seed = Transaction()
+        seed.disablesAnimations = true
+        withTransaction(seed) {
+            // Reduce Motion seeds the ring closed at final size: no geometry
+            // moves at any point, only opacity.
+            completionRingProgress = timeline.sweeps ? 0 : 1
+            completionRingOpacity = timeline.sweeps ? 1 : 0
+            completionRingVisible = true
+        }
+
+        if timeline.sweeps {
+            // Trim + scale, one value, one pass. No repeat, no pulse.
+            withAnimation(ProjectCompletionMoment.animation(for: timeline.ringReveal)) {
+                completionRingProgress = 1
+            }
+        } else {
+            withAnimation(ProjectCompletionMoment.animation(for: timeline.ringReveal)) {
+                completionRingOpacity = 1
+            }
+        }
+
+        // The status stamps while the ring is still resolving, so the ring
+        // hands the eye to the state change instead of ending beside it.
+        withAnimation(ProjectCompletionMoment.animation(for: timeline.stamp)) {
+            isStamped = true
+        }
+
+        // The ring retires once its job is done, and removes itself.
+        withAnimation(
+            ProjectCompletionMoment.animation(for: timeline.ringFade),
+            completionCriteria: .logicallyComplete
+        ) {
+            completionRingOpacity = 0
+        } completion: {
+            completionRingVisible = false
+        }
+    }
+
+    /// Full teardown of the completion moment. Called when the bar goes away
+    /// so a re-appearing bar never inherits a half-played sequence.
+    @MainActor
+    private func resetCompletionMoment() {
+        var teardown = Transaction()
+        teardown.disablesAnimations = true
+        withTransaction(teardown) {
+            completionRingVisible = false
+            completionRingProgress = 0
+            completionRingOpacity = 0
+            isStamped = false
         }
     }
     

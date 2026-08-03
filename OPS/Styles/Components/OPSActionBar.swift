@@ -110,6 +110,12 @@ struct OPSActionBarButton: View {
                 Image(systemName: icon)
                     .font(.system(size: OPSStyle.Layout.IconSize.md, weight: .medium))
                     .foregroundColor(isDisabled ? OPSStyle.Colors.tertiaryText : iconColor)
+                    // Glyph + label cross-fade when they change inside an
+                    // animated transaction (e.g. the Complete entry stamping
+                    // to COMPLETED), so the swap reads as one motion with the
+                    // colour change rather than snapping mid-fade. Inert
+                    // outside `withAnimation` — untouched call sites still snap.
+                    .contentTransition(.opacity)
 
                 if let label = label {
                     Text(label.uppercased())
@@ -119,6 +125,7 @@ struct OPSActionBarButton: View {
                         .minimumScaleFactor(0.85)
                         .allowsTightening(true)
                         .foregroundColor(isDisabled ? OPSStyle.Colors.tertiaryText : labelColor)
+                        .contentTransition(.opacity)
                 }
             }
             .frame(

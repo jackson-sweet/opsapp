@@ -5,7 +5,7 @@
 //  Visual proof for the site-visit form overhaul (site-visit report):
 //  the numbered, sequential layout (1 · LEAD → 2 · CHECKLIST → 3 · NOTES)
 //  and the per-field REQUIRED → DONE markers. Renders the real
-//  SiteVisitCaptureView against an in-memory OPSSchemaV16 container with a
+//  SiteVisitCaptureView against the current in-memory schema with a
 //  bound name-only lead, so the name group reads DONE while the contact and
 //  address groups still read REQUIRED — both states in one shot.
 //
@@ -34,7 +34,7 @@ final class SiteVisitFormSnapshotTests: XCTestCase {
     }
 
     private func inMemoryContainer() throws -> ModelContainer {
-        let schema = Schema(versionedSchema: OPSSchemaV16.self)
+        let schema = Schema(versionedSchema: OPSSchemaV22.self)
         let config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true, allowsSave: true)
         return try ModelContainer(for: schema, configurations: [config])
     }

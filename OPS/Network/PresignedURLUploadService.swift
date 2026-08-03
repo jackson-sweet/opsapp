@@ -9,6 +9,12 @@ import Foundation
 import SwiftUI
 // FirebaseAuthService used for token retrieval (Firebase Auth migration)
 
+enum SiteVisitArtifactVariant: String, Codable, CaseIterable {
+    case original
+    case rendered
+    case thumbnail
+}
+
 /// Service for handling image uploads using presigned URLs from ops-web
 @MainActor
 class PresignedURLUploadService {
@@ -446,6 +452,90 @@ class PresignedURLUploadService {
     }
 
     // MARK: - Generic Upload (used by PhotoProcessor)
+
+    /// Uploads one persisted pre-project capture variant. The server derives a
+    /// deterministic object key from the authenticated tenant + visit + artifact
+    /// + variant. No caller-provided folder or filename is accepted.
+    func uploadSiteVisitArtifact(
+        _ data: Data,
+        siteVisitId: String,
+        artifactId: String,
+        variant: SiteVisitArtifactVariant,
+        contentType: String
+    ) async throws -> String {
+        let idToken: String
+        do {
+            idToken = try await FirebaseAuthService.shared.getIDToken()
+        } catch {
+            throw UploadError.invalidResponse
+        }
+
+        let url = AppConfiguration.apiBaseURL
+            .appendingPathComponent("/api/uploads/presign")
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue(
+            "application/x-www-form-urlencoded",
+            forHTTPHeaderField: "Content-Type"
+        )
+        request.setValue("Bearer \(idToken)", forHTTPHeaderField: "Authorization")
+
+        var components = URLComponents()
+        components.queryItems = try Self.siteVisitPresignQueryItems(
+            siteVisitId: siteVisitId,
+            artifactId: artifactId,
+            variant: variant,
+            contentType: contentType,
+            fileSize: data.count
+        )
+        request.httpBody = components.percentEncodedQuery?.data(using: .utf8)
+
+        let (responseData, response) = try await Self.uploadSession.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw UploadError.invalidResponse
+        }
+        guard (200...299).contains(httpResponse.statusCode) else {
+            throw UploadError.presignError(statusCode: httpResponse.statusCode)
+        }
+        let presigned = try JSONDecoder().decode(
+            PresignedURLResponse.self,
+            from: responseData
+        )
+        try await uploadToPresignedURL(
+            presignedResponse: presigned,
+            imageData: data,
+            contentType: contentType
+        )
+        return presigned.publicUrl
+    }
+
+    static func siteVisitPresignQueryItems(
+        siteVisitId: String,
+        artifactId: String,
+        variant: SiteVisitArtifactVariant,
+        contentType: String,
+        fileSize: Int
+    ) throws -> [URLQueryItem] {
+        guard let visitUUID = UUID(uuidString: siteVisitId),
+              let artifactUUID = UUID(uuidString: artifactId),
+              fileSize > 0 else {
+            throw UploadError.invalidResponse
+        }
+        return [
+            URLQueryItem(name: "contentType", value: contentType),
+            URLQueryItem(name: "targetType", value: "site_visit"),
+            URLQueryItem(
+                name: "siteVisitId",
+                value: visitUUID.uuidString.lowercased()
+            ),
+            URLQueryItem(
+                name: "artifactId",
+                value: artifactUUID.uuidString.lowercased()
+            ),
+            URLQueryItem(name: "variant", value: variant.rawValue),
+            URLQueryItem(name: "fileSize", value: String(fileSize)),
+        ]
+    }
 
     /// Upload raw image data to S3 via presigned URL, returning the public URL.
     func uploadImageData(_ data: Data, filename: String, folder: String) async throws -> String {

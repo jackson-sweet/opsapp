@@ -8,9 +8,9 @@
 import Foundation
 import SwiftData
 
-// Applies on the main actor — it mutates the shared SwiftData context and routes
-// the packet note through the main-actor-isolated DataController sync queue. Only
-// ever called from SwiftUI View code (lead conversion), which is already MainActor.
+// Applies on the main actor because it mutates the shared SwiftData context and
+// its durable outbound queue in one save. Only called from SwiftUI View code
+// (lead conversion), which is already MainActor.
 @MainActor
 enum SiteVisitProjectHandoff {
     /// `syncEngine` / `imageSync` default to the DataController's instances;
@@ -34,7 +34,7 @@ enum SiteVisitProjectHandoff {
             .filter { $0.isActive && $0.includedInProjectReview }
             .sorted { $0.capturedAt < $1.capturedAt }
 
-        insertProjectPhotos(
+        var queuedDurableOperation = insertProjectPhotos(
             from: included,
             payload: payload,
             projectId: projectId,
@@ -43,30 +43,42 @@ enum SiteVisitProjectHandoff {
             modelContext: modelContext,
             imageSync: resolvedImageSync
         )
-        insertDimensionedPhotoAnnotations(
+        queuedDurableOperation = insertDimensionedPhotoAnnotations(
             from: included,
             projectId: projectId,
             companyId: companyId,
             userId: userId,
             modelContext: modelContext
-        )
-        insertProjectNotes(
+        ) || queuedDurableOperation
+        queuedDurableOperation = insertProjectNotes(
             from: artifacts,
             payload: payload,
             projectId: projectId,
             companyId: companyId,
             userId: userId,
-            modelContext: modelContext,
-            dataController: dataController
-        )
-        attachDeckDesigns(
+            modelContext: modelContext
+        ) || queuedDurableOperation
+        queuedDurableOperation = attachDeckDesigns(
             payload.deckDesignIds,
             projectId: projectId,
-            modelContext: modelContext,
-            syncEngine: resolvedSyncEngine
-        )
+            modelContext: modelContext
+        ) || queuedDurableOperation
 
-        try? modelContext.save()
+        do {
+            // Gallery rows, notes, deck links, annotations, and their outbound
+            // commands commit together. A crash can no longer strand one side
+            // of the handoff without the operation that delivers it.
+            try modelContext.save()
+            if queuedDurableOperation {
+                resolvedSyncEngine?.notifyDurableOperationQueued(pullAfterPush: true)
+            }
+        } catch {
+            DebugLogger.shared.log(
+                "Site-visit project handoff could not commit: \(error)",
+                level: .error,
+                category: "SiteVisitProjectHandoff"
+            )
+        }
     }
 
     private static func insertProjectPhotos(
@@ -77,36 +89,61 @@ enum SiteVisitProjectHandoff {
         userId: String?,
         modelContext: ModelContext,
         imageSync: ImageSyncManager?
-    ) {
+    ) -> Bool {
+        let existingRows = (try? modelContext.fetch(FetchDescriptor<ProjectPhoto>())) ?? []
+        let canonicalVisitId = canonicalLocalVisitID(payload.siteVisitId)
+        var knownRows = existingRows.filter {
+            $0.companyId == companyId
+                && $0.projectId == projectId
+                && $0.deletedAt == nil
+        }
+        var queuedOperation = false
+
         for artifact in artifacts where artifact.pipesToProjectPhotos {
             guard let url = projectPhotoSourceURL(for: artifact) else { continue }
-            let photo = ProjectPhoto(
-                // Lowercased at creation: the drain sends this id in the server
-                // insert, and Postgres echoes uuids lowercase — an UPPERCASE
-                // local id would miss the echo and duplicate the row.
-                id: UUID().uuidString.lowercased(),
-                projectId: projectId,
-                companyId: companyId,
-                url: url,
-                renderedURL: artifact.renderedAssetURL,
-                source: "site_visit",
-                siteVisitId: payload.siteVisitId,
-                uploadedBy: userId ?? "",
-                caption: artifact.title,
-                takenAt: artifact.capturedAt,
-                createdAt: artifact.capturedAt
-            )
-            photo.needsSync = true
-            modelContext.insert(photo)
+            let photo: ProjectPhoto
+            if let existing = knownRows.first(where: {
+                canonicalLocalVisitID($0.siteVisitId ?? "") == canonicalVisitId
+                    && $0.url == url
+            }) {
+                photo = existing
+            } else {
+                photo = ProjectPhoto(
+                    // Lowercased at creation: Postgres echoes UUIDs lowercase,
+                    // so the insert echo must merge into this exact local row.
+                    id: UUID().uuidString.lowercased(),
+                    projectId: projectId,
+                    companyId: companyId,
+                    url: url,
+                    thumbnailURL: artifact.thumbnailURL,
+                    renderedURL: artifact.renderedAssetURL,
+                    source: "site_visit",
+                    siteVisitId: canonicalVisitId,
+                    uploadedBy: userId ?? "",
+                    caption: artifact.title,
+                    takenAt: artifact.capturedAt,
+                    createdAt: artifact.capturedAt
+                )
+                photo.needsSync = true
+                modelContext.insert(photo)
+                knownRows.append(photo)
+            }
 
-            // The row alone is phone-local: the sync engine treats ProjectPhoto
-            // as read-only, so the bytes must ride the durable image-upload
-            // queue (bug: every pre-fix conversion stranded its photos on the
-            // capturing phone). Dimensioned captures are excluded — their
-            // PhotoAnnotation pending sweep uploads the HEIC + rendered
-            // deliverable, inserts the project_photos row, and heals this row
-            // itself; queueing them here too would double-upload/double-tile.
-            if artifact.kind != .dimensionedPhoto, url.hasPrefix("local://") {
+            if isRemoteURL(url) {
+                // The visit-media upload already owns the S3 object. Reuse it
+                // verbatim and queue only the project_photos row; copying bytes
+                // creates duplicate objects and duplicate gallery tiles.
+                queuedOperation = ensureOperation(
+                    entityType: .projectPhoto,
+                    entityId: photo.id,
+                    operationType: "create",
+                    payload: projectPhotoCreatePayload(photo),
+                    modelContext: modelContext
+                ) || queuedOperation
+            } else if artifact.kind != .dimensionedPhoto, url.hasPrefix("local://") {
+                // A genuinely local capture still rides the existing durable
+                // upload queue. That drain creates the server row with this
+                // row's stable id and site-visit provenance.
                 imageSync?.enqueueExistingLocalImage(
                     localURL: url,
                     projectId: projectId,
@@ -114,6 +151,7 @@ enum SiteVisitProjectHandoff {
                 )
             }
         }
+        return queuedOperation
     }
 
     private static func projectPhotoSourceURL(for artifact: SiteVisitCaptureArtifact) -> String? {
@@ -129,7 +167,15 @@ enum SiteVisitProjectHandoff {
         companyId: String,
         userId: String?,
         modelContext: ModelContext
-    ) {
+    ) -> Bool {
+        let existing = (try? modelContext.fetch(FetchDescriptor<PhotoAnnotation>())) ?? []
+        var knownAnnotations = existing.filter {
+            $0.companyId == companyId
+                && $0.projectId == projectId
+                && $0.deletedAt == nil
+        }
+        var queuedOperation = false
+
         for artifact in artifacts where artifact.kind == .dimensionedPhoto {
             guard let photoURL = artifact.localAssetURL ?? artifact.renderedAssetURL,
                   let dimensionsJSON = artifact.dimensionsJSON,
@@ -139,22 +185,40 @@ enum SiteVisitProjectHandoff {
                     from: dimensionsData
                   ) else { continue }
 
-            let annotation = PhotoAnnotation(
-                projectId: projectId,
-                companyId: companyId,
-                photoURL: photoURL,
-                authorId: userId ?? "",
-                createdAt: artifact.capturedAt
-            )
-            annotation.renderedPhotoURL = artifact.renderedAssetURL
-            annotation.note = artifact.body ?? ""
-            annotation.dimensions = dimensions
-            annotation.localDepthMapPath = localFilePath(from: dimensions.depthAssetUrl)
-            annotation.localSidecarPath = localFilePath(from: dimensions.sidecarMetadataUrl)
-            annotation.localCaptureFinishedAt = artifact.capturedAt
-            annotation.needsSync = true
-            modelContext.insert(annotation)
+            let annotation: PhotoAnnotation
+            if let existing = knownAnnotations.first(where: { $0.photoURL == photoURL }) {
+                annotation = existing
+            } else {
+                annotation = PhotoAnnotation(
+                    id: UUID().uuidString.lowercased(),
+                    projectId: projectId,
+                    companyId: companyId,
+                    photoURL: photoURL,
+                    authorId: userId ?? "",
+                    createdAt: artifact.capturedAt
+                )
+                annotation.renderedPhotoURL = artifact.renderedAssetURL
+                annotation.note = artifact.body ?? ""
+                annotation.dimensions = dimensions
+                annotation.localDepthMapPath = localFilePath(from: dimensions.depthAssetUrl)
+                annotation.localSidecarPath = localFilePath(from: dimensions.sidecarMetadataUrl)
+                annotation.localCaptureFinishedAt = artifact.capturedAt
+                annotation.needsSync = true
+                modelContext.insert(annotation)
+                knownAnnotations.append(annotation)
+            }
+
+            if isRemoteURL(photoURL) {
+                queuedOperation = ensureOperation(
+                    entityType: .photoAnnotation,
+                    entityId: annotation.id,
+                    operationType: "create",
+                    payload: photoAnnotationCreatePayload(annotation, dimensions: dimensions),
+                    modelContext: modelContext
+                ) || queuedOperation
+            }
         }
+        return queuedOperation
     }
 
     private static func localFilePath(from urlString: String?) -> String? {
@@ -170,13 +234,30 @@ enum SiteVisitProjectHandoff {
         projectId: String,
         companyId: String,
         userId: String?,
-        modelContext: ModelContext,
-        dataController: DataController?
-    ) {
+        modelContext: ModelContext
+    ) -> Bool {
         // Bug 7649fd48 — the packet is now a structured system note. `content`
         // keeps the legacy plain-text packet (web / older builds); the rich iOS
         // feed card + sheet render from `content_metadata`.
-        guard let packet = SiteVisitPacketNote.build(artifacts: artifacts, payload: payload) else { return }
+        guard let packet = SiteVisitPacketNote.build(artifacts: artifacts, payload: payload) else { return false }
+
+        let existingNotes = (try? modelContext.fetch(FetchDescriptor<ProjectNote>())) ?? []
+        let canonicalVisitId = canonicalLocalVisitID(payload.siteVisitId)
+        if let existing = existingNotes.first(where: {
+            $0.companyId == companyId
+                && $0.projectId == projectId
+                && $0.deletedAt == nil
+                && $0.eventKind == "site_visit"
+                && packetVisitID(from: $0.contentMetadataJSON) == canonicalVisitId
+        }) {
+            return ensureOperation(
+                entityType: .projectNote,
+                entityId: existing.id,
+                operationType: "create",
+                payload: projectNoteCreatePayload(existing),
+                modelContext: modelContext
+            )
+        }
 
         let note = ProjectNote(
             projectId: projectId,
@@ -187,26 +268,24 @@ enum SiteVisitProjectHandoff {
         )
         note.eventKind = "site_visit"
         note.contentMetadataJSON = packet.metadataJSON
-
-        // Route through the durable sync queue so the packet ACTUALLY reaches
-        // the server. The previous direct insert set needsSync but recorded no
-        // outbound op, and project notes have no needsSync sweep — so every
-        // packet was stranded on the capturing device (zero ever synced).
-        if let dataController = dataController {
-            dataController.createProjectNote(note: note)
-        } else {
-            note.needsSync = true
-            modelContext.insert(note)
-        }
+        note.needsSync = true
+        modelContext.insert(note)
+        return ensureOperation(
+            entityType: .projectNote,
+            entityId: note.id,
+            operationType: "create",
+            payload: projectNoteCreatePayload(note),
+            modelContext: modelContext
+        )
     }
 
     private static func attachDeckDesigns(
         _ deckDesignIds: [String],
         projectId: String,
-        modelContext: ModelContext,
-        syncEngine: SyncEngine?
-    ) {
+        modelContext: ModelContext
+    ) -> Bool {
         let canonicalProjectId = DeckDesign.canonicalUUIDString(projectId)
+        var queuedOperation = false
         for deckDesignId in deckDesignIds {
             let descriptor = FetchDescriptor<DeckDesign>(
                 predicate: #Predicate<DeckDesign> { design in
@@ -214,24 +293,157 @@ enum SiteVisitProjectHandoff {
                 }
             )
             guard let design = try? modelContext.fetch(descriptor).first else { continue }
-            design.projectId = canonicalProjectId
-            design.markForSync()
+            let requiresDelivery = !design.isAttached(toProjectId: canonicalProjectId) || design.needsSync
+            if !design.isAttached(toProjectId: canonicalProjectId) {
+                design.projectId = canonicalProjectId
+                design.markForSync()
+            }
+            guard requiresDelivery else { continue }
 
-            // markForSync alone is a flag no sweep ever drained for decks —
-            // the pre-fix handoff stopped here and the link never left the
-            // phone (deck stayed project_id NULL on the server for everyone
-            // else). Record the durable outbound op that actually ships it.
-            syncEngine?.recordOperation(
+            // Queue directly in the same transaction. If this is an old
+            // partially applied handoff (link set, operation absent), this also
+            // repairs it. A fully synced design needs no redundant update.
+            queuedOperation = ensureOperation(
                 entityType: .deckDesign,
                 entityId: design.id,
                 operationType: "update",
-                changedFields: [
+                payload: [
                     "project_id": canonicalProjectId,
                     "updated_at": ISO8601DateFormatter().string(from: Date())
                 ],
+                modelContext: modelContext
+            ) || queuedOperation
+        }
+        return queuedOperation
+    }
+
+    private static func canonicalLocalVisitID(_ raw: String) -> String {
+        raw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    }
+
+    private static func canonicalServerVisitID(_ raw: String?) -> String? {
+        guard let raw else { return nil }
+        return UUID(uuidString: raw.trimmingCharacters(in: .whitespacesAndNewlines))?
+            .uuidString
+            .lowercased()
+    }
+
+    private static func isRemoteURL(_ raw: String) -> Bool {
+        SiteVisitMediaSyncManager.isRemoteURL(raw)
+    }
+
+    private static func projectPhotoCreatePayload(_ photo: ProjectPhoto) -> [String: Any] {
+        var payload: [String: Any] = [
+            "project_id": photo.projectId,
+            "company_id": photo.companyId,
+            "url": photo.url,
+            "source": photo.source,
+            "is_client_visible": photo.isClientVisible,
+            "taken_at": ISO8601DateFormatter().string(from: photo.takenAt ?? photo.createdAt),
+            "created_at": ISO8601DateFormatter().string(from: photo.createdAt)
+        ]
+        if let visitId = canonicalServerVisitID(photo.siteVisitId) {
+            payload["site_visit_id"] = visitId
+        }
+        if let uploader = ProjectPhotoUploaderIdentity.canonicalUserID(photo.uploadedBy) {
+            payload["uploaded_by"] = uploader
+        }
+        if let caption = photo.caption { payload["caption"] = caption }
+        if let rendered = photo.renderedURL, isRemoteURL(rendered) {
+            payload["rendered_url"] = rendered
+        }
+        if let thumbnail = photo.thumbnailURL, isRemoteURL(thumbnail) {
+            payload["thumbnail_url"] = thumbnail
+        }
+        return payload
+    }
+
+    private static func photoAnnotationCreatePayload(
+        _ annotation: PhotoAnnotation,
+        dimensions: DimensionsData
+    ) -> [String: Any] {
+        var serverDimensions = dimensions
+        if let depth = serverDimensions.depthAssetUrl, !isRemoteURL(depth) {
+            serverDimensions.depthAssetUrl = nil
+        }
+        if let sidecar = serverDimensions.sidecarMetadataUrl, !isRemoteURL(sidecar) {
+            serverDimensions.sidecarMetadataUrl = nil
+        }
+
+        var payload: [String: Any] = [
+            "project_id": annotation.projectId,
+            "company_id": annotation.companyId,
+            "photo_url": annotation.photoURL,
+            "note": annotation.note,
+            "author_id": annotation.authorId,
+            "created_at": ISO8601DateFormatter().string(from: annotation.createdAt)
+        ]
+        if let rendered = annotation.renderedPhotoURL, isRemoteURL(rendered) {
+            payload["rendered_photo_url"] = rendered
+        }
+        if let data = try? DimensionsData.jsonEncoder.encode(serverDimensions),
+           let object = try? JSONSerialization.jsonObject(with: data) {
+            payload["dimensions"] = object
+        }
+        return payload
+    }
+
+    private static func projectNoteCreatePayload(_ note: ProjectNote) -> [String: Any] {
+        var payload: [String: Any] = [
+            "id": note.id,
+            "project_id": note.projectId,
+            "company_id": note.companyId,
+            "author_id": note.authorId,
+            "content": note.content
+        ]
+        if let eventKind = note.eventKind { payload["event_kind"] = eventKind }
+        if let metadataJSON = note.contentMetadataJSON,
+           let data = metadataJSON.data(using: .utf8),
+           let object = try? JSONSerialization.jsonObject(with: data) {
+            payload["content_metadata"] = object
+        }
+        return payload
+    }
+
+    private static func packetVisitID(from metadataJSON: String?) -> String? {
+        guard let metadataJSON,
+              let data = metadataJSON.data(using: .utf8),
+              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let visitId = object["site_visit_id"] as? String else { return nil }
+        return canonicalLocalVisitID(visitId)
+    }
+
+    @discardableResult
+    private static func ensureOperation(
+        entityType: SyncEntityType,
+        entityId: String,
+        operationType: String,
+        payload: [String: Any],
+        modelContext: ModelContext
+    ) -> Bool {
+        let canonicalEntityId = entityId.lowercased()
+        let operations = (try? modelContext.fetch(FetchDescriptor<SyncOperation>())) ?? []
+        if operations.contains(where: {
+            $0.entityType == entityType.rawValue
+                && $0.entityId.lowercased() == canonicalEntityId
+                && $0.operationType == operationType
+        }) {
+            return false
+        }
+        guard let encoded = try? JSONSerialization.data(withJSONObject: payload) else {
+            return false
+        }
+        modelContext.insert(
+            SyncOperation(
+                entityType: entityType.rawValue,
+                entityId: canonicalEntityId,
+                operationType: operationType,
+                payload: encoded,
+                changedFields: Array(payload.keys),
                 priority: 1
             )
-        }
+        )
+        return true
     }
 
     // MARK: - Convert-time payload derivation (staging-store loss recovery)

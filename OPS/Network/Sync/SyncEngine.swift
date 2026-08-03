@@ -1308,6 +1308,12 @@ final class SyncEngine {
             // pending queue, so a future bypass can't silently drop a write.
             self.enqueueOrphanedTaskWrites()
 
+            // Repair historical site-visit rows whose local dirty flag exists
+            // without a durable queue record. The coordinator is company-scoped
+            // and skips all open/failed/parked work, so this never revives a
+            // permanent rejection or crosses tenants.
+            self.enqueueOrphanedSiteVisitWrites()
+
             // Same class of safety net for deck→project links: a stranded link
             // (needsSync set, no op recorded) re-records its update here and
             // drains in this very pass.
@@ -1911,6 +1917,41 @@ final class SyncEngine {
                 "[SYNC_ENGINE] Failed to reconcile parked project-note mention chain: \(error)"
             )
             return false
+        }
+    }
+
+    func enqueueOrphanedSiteVisitWrites() {
+        guard let modelContext else { return }
+        let companyId = UserDefaults.standard.string(
+            forKey: "currentUserCompanyId"
+        )?.lowercased() ?? ""
+        let userId = UserDefaults.standard.string(
+            forKey: "currentUserId"
+        )?.lowercased() ?? ""
+        guard !companyId.isEmpty, !userId.isEmpty else { return }
+
+        do {
+            let result = try SiteVisitOrphanRecovery.recover(
+                in: modelContext,
+                activeUserId: userId,
+                activeCompanyId: companyId,
+                quarantine: { record in
+                    try SiteVisitRecoveryVault.shared.recordQuarantine(
+                        record,
+                        from: modelContext
+                    )
+                }
+            )
+            let marker = "site_visit_orphan_recovery_v1:\(userId):\(companyId)"
+            UserDefaults.standard.set(Date().timeIntervalSince1970, forKey: marker)
+            if !result.operationIds.isEmpty {
+                print(
+                    "[SYNC_ENGINE] Recovered \(result.operationIds.count) orphaned site-visit operation(s)"
+                )
+                refreshPendingCount()
+            }
+        } catch {
+            print("[SYNC_ENGINE] Site-visit orphan sweep failed: \(error)")
         }
     }
 
@@ -2607,7 +2648,7 @@ final class SyncEngine {
     // MARK: - Private Helpers
 
     /// Refreshes the pendingOperationCount from SwiftData.
-    private func refreshPendingCount() {
+    func refreshPendingCount() {
         let pending = getPendingOperations()
         let dimensionedCount: Int
         if let modelContext {

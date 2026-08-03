@@ -53,6 +53,24 @@ enum SyncErrorClassifier {
     /// for errors that only surface via `localizedDescription` (wrapped /
     /// re-thrown), then `.transient` — never park on a guess.
     static func disposition(for error: Error) -> SyncFailureDisposition {
+        // Site-visit writes deliberately preserve repository failure semantics
+        // across both outbound engines. RLS/auth asks the app to re-authenticate;
+        // FK/schema/data failures park for actionable recovery; transport retries.
+        if let siteVisitError = error as? SiteVisitRepositoryError {
+            switch siteVisitError {
+            case .authorization:
+                return .auth
+            case .dependency, .schemaCapability, .malformedServerData,
+                 .companyMismatch, .visitNotFound:
+                return .permanent
+            case .transport:
+                return .transient
+            }
+        }
+        if error is SiteVisitMediaSyncError {
+            return .permanent
+        }
+
         // 1. URLError — Foundation network layer.
         if let urlError = error as? URLError {
             return disposition(forURLError: urlError)

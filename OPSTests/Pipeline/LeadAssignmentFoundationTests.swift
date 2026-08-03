@@ -1099,13 +1099,17 @@ final class LeadAssignmentFoundationTests: XCTestCase {
     func testMigrationPlanDeclaresARealAssignmentBoundary() throws {
         // The assignment + chase boundary lives at V18 after the main-line
         // reconciliation (V16 = opportunity media, V17 = vinyl color/PO).
-        // Later additive boundaries (V19 ownership, V20 activity email
-        // identity, …) must never move it.
+        // Later additive boundaries (V19 ownership, V20 site-visit cloud sync,
+        // V21 activity email identity, V22 activity site-visit link, …) must
+        // never move it.
         //
         // This asserts the boundary's POSITION and the plan's shape, not the
         // plan's length: pinning the tip would fail on every future schema
         // regardless of whether the assignment boundary actually moved, which
-        // is the one thing this test exists to catch.
+        // is the one thing this test exists to catch. The exact version list
+        // and stage count ARE pinned — in
+        // `CatalogDataFoundationTests.testMigrationPlanStagesHaveModelSetDeltasAcrossAllVersions`,
+        // which is the schema chain's own guard.
         let versions = OPSMigrationPlan.schemas.map {
             String(describing: $0.versionIdentifier)
         }

@@ -425,35 +425,45 @@ final class ClientLeadAutocreateQueue: ClientLeadAutocreateQueueing {
         guard !matches.isEmpty else { return }
 
         let boundAt = now()
+        var boundVisitIds: [String] = []
         for draft in matches {
-            draft.opportunityId = delivery.opportunityId
-            draft.lastCommittedAt = boundAt
-            draft.touch()
-
             let visitId = draft.siteVisitId
             let visitDescriptor = FetchDescriptor<SiteVisit>(
                 predicate: #Predicate<SiteVisit> { $0.id == visitId }
             )
-            if let visit = (try? modelContext.fetch(visitDescriptor))?.first,
-               visit.opportunityId == nil {
-                visit.opportunityId = delivery.opportunityId
+            let visit = (try? modelContext.fetch(visitDescriptor))?.first
+            let completionVisit = visit?.status == .completed ? visit : nil
+            let coordinator = SiteVisitPersistenceCoordinator(
+                modelContext: modelContext,
+                companyId: draft.companyId
+            )
+            do {
+                try coordinator.commit(completing: completionVisit) {
+                    draft.opportunityId = delivery.opportunityId
+                    draft.lastCommittedAt = boundAt
+                    draft.touch()
+
+                    if let visit, visit.opportunityId == nil {
+                        visit.opportunityId = delivery.opportunityId
+                        visit.updatedAt = boundAt
+                        visit.needsSync = true
+                    }
+                }
+                boundVisitIds.append(draft.siteVisitId)
+            } catch {
+                // The lead already exists server-side. The durable site-visit
+                // graph remains untouched and will bind on a later delivery or
+                // inbound reconciliation; never acknowledge a torn local bind.
+                print("[LEAD_AUTOCREATE_QUEUE] Site-visit binding save deferred: \(error)")
             }
         }
 
-        do {
-            try modelContext.save()
-        } catch {
-            // The lead already exists server-side; a deferred local bind reconciles
-            // on the next inbound refresh. Never fail the delivery over the cache.
-            print("[LEAD_AUTOCREATE_QUEUE] Site-visit binding save deferred: \(error)")
-        }
-
         // Nudge any open capture UI to refresh its binding — one signal per visit.
-        for draft in matches {
+        for siteVisitId in boundVisitIds {
             NotificationCenter.default.post(
                 name: Notification.Name("SiteVisitLeadBound"),
                 object: nil,
-                userInfo: ["siteVisitId": draft.siteVisitId]
+                userInfo: ["siteVisitId": siteVisitId]
             )
         }
     }

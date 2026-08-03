@@ -244,12 +244,27 @@ struct PolygonMath {
 
     /// Outward perpendicular unit vector for an edge inside a closed polygon.
     /// "Outward" means away from the polygon interior — i.e. away from the
-    /// filled deck surface. Used by the stair renderer (bug a7429390) so
-    /// stairs render on the empty side of the deck edge by default.
+    /// filled deck surface. Used by the stair renderers (bug a7429390) so
+    /// stairs land on the empty side of the deck edge by default.
     ///
-    /// Returns the unit perpendicular as `(x, y)`. If the polygon is open or
-    /// degenerate, falls back to the CCW-90° perpendicular (the historical
-    /// behaviour) so existing single-edge sketches still render reasonably.
+    /// Resolved from the polygon's WINDING, not by probing points near the
+    /// boundary. For any simple polygon — convex or concave — the interior
+    /// lies to the left of every edge traversed in positive-area order and to
+    /// the right in negative-area order, so the outward side follows exactly
+    /// once we know which way this edge runs relative to that traversal.
+    ///
+    /// The previous implementation offset 1 canvas unit off the edge midpoint
+    /// and asked `pointInPolygon` which side was inside. That is unstable near
+    /// short edges and at boundary epsilons, and it silently returned garbage
+    /// whenever the caller supplied a non-simple polygon (see
+    /// `DeckDrawingData.stairFacePolygon(forEdgeId:)` — the callers' old
+    /// `orderedPositions` degenerates to an unordered vertex dump the moment a
+    /// drawing holds two shapes or any detail line, which is what made stairs
+    /// face the wrong way on most real decks).
+    ///
+    /// Falls back to the CCW-90° perpendicular (historical behaviour) for a
+    /// degenerate polygon, and to a centroid test when the edge is not one of
+    /// the polygon's own sides.
     static func outwardPerpendicular(
         edgeStart: CGPoint,
         edgeEnd: CGPoint,
@@ -260,30 +275,66 @@ struct PolygonMath {
         let length = sqrt(dx * dx + dy * dy)
         guard length > 0 else { return (0, 0) }
 
-        // Two perpendicular candidates — 90° CCW and 90° CW.
-        let perpA = (x: -dy / length, y: dx / length)   // 90° CCW
-        let perpB = (x: dy / length, y: -dx / length)   // 90° CW
+        // Perpendicular candidates: "left" of the edge direction and "right".
+        let left = (x: -dy / length, y: dx / length)
+        let right = (x: dy / length, y: -dx / length)
 
-        // Pick a probe point a small distance along each perpendicular from
-        // the edge midpoint. Whichever probe lies OUTSIDE the polygon is the
-        // outward normal. If both pass (open polygon) or neither (point on
-        // boundary), fall back to the CCW perpendicular.
-        guard polygonVertices.count >= 3 else { return perpA }
+        guard polygonVertices.count >= 3 else { return left }
+        let area = signedArea(vertices: polygonVertices)
+        guard area != 0 else { return left }
 
+        // Interior is left of a positively-wound traversal → outward is right.
+        let outwardAlongTraversal = area > 0 ? right : left
+
+        if let runsForward = edgeRunsWithTraversal(
+            edgeStart: edgeStart,
+            edgeEnd: edgeEnd,
+            polygonVertices: polygonVertices
+        ) {
+            return runsForward
+                ? outwardAlongTraversal
+                : (x: -outwardAlongTraversal.x, y: -outwardAlongTraversal.y)
+        }
+
+        // Edge isn't a side of this polygon (transformed/clipped input):
+        // point away from the polygon's centroid.
+        let centroidX = polygonVertices.reduce(0.0) { $0 + Double($1.x) } / Double(polygonVertices.count)
+        let centroidY = polygonVertices.reduce(0.0) { $0 + Double($1.y) } / Double(polygonVertices.count)
         let midX = Double(edgeStart.x + edgeEnd.x) / 2
         let midY = Double(edgeStart.y + edgeEnd.y) / 2
-        // Probe distance: small in canvas units but large enough to get
-        // clear of any boundary epsilon issues.
-        let probeDist: Double = 1.0
-        let probeA = CGPoint(x: midX + perpA.x * probeDist, y: midY + perpA.y * probeDist)
-        let probeB = CGPoint(x: midX + perpB.x * probeDist, y: midY + perpB.y * probeDist)
+        let awayX = midX - centroidX
+        let awayY = midY - centroidY
+        return (left.x * awayX + left.y * awayY) >= 0 ? left : right
+    }
 
-        let aInside = pointInPolygon(probeA, vertices: polygonVertices)
-        let bInside = pointInPolygon(probeB, vertices: polygonVertices)
+    /// Whether the given edge runs WITH the polygon's own vertex traversal.
+    /// Returns nil when the edge is not one of the polygon's sides. Endpoint
+    /// matching uses an epsilon scaled to the polygon's extent so the same
+    /// logic serves canvas points and metres alike.
+    private static func edgeRunsWithTraversal(
+        edgeStart: CGPoint,
+        edgeEnd: CGPoint,
+        polygonVertices: [CGPoint]
+    ) -> Bool? {
+        let xs = polygonVertices.map { Double($0.x) }
+        let ys = polygonVertices.map { Double($0.y) }
+        guard let minX = xs.min(), let maxX = xs.max(),
+              let minY = ys.min(), let maxY = ys.max() else { return nil }
+        let extent = max(maxX - minX, maxY - minY)
+        // Tolerance rides the polygon's own size, with a floor for tiny shapes.
+        let epsilon = max(extent * 1e-4, 1e-6)
 
-        if aInside && !bInside { return perpB }
-        if bInside && !aInside { return perpA }
-        // Ambiguous — keep historical behaviour
-        return perpA
+        func matches(_ a: CGPoint, _ b: CGPoint) -> Bool {
+            abs(Double(a.x - b.x)) <= epsilon && abs(Double(a.y - b.y)) <= epsilon
+        }
+
+        let count = polygonVertices.count
+        for index in 0..<count {
+            let sideStart = polygonVertices[index]
+            let sideEnd = polygonVertices[(index + 1) % count]
+            if matches(sideStart, edgeStart) && matches(sideEnd, edgeEnd) { return true }
+            if matches(sideStart, edgeEnd) && matches(sideEnd, edgeStart) { return false }
+        }
+        return nil
     }
 }

@@ -146,7 +146,7 @@ final class StrandedPhotoRecoveryTests: XCTestCase {
     // MARK: - Drain: server insert payload contract
 
     @MainActor
-    func test_handoffPhotoInsertPayload_carriesRowMetadataAndNeverSiteVisitId() throws {
+    func test_handoffPhotoInsertPayload_carriesRowMetadataAndSafeVisitProvenance() throws {
         let row = ProjectPhoto(
             id: "9A1B2C3D-4E5F-4A6B-8C7D-0E1F2A3B4C5D",
             projectId: "5f90388c-69af-4bb9-ba26-f8d74487d344",
@@ -170,13 +170,12 @@ final class StrandedPhotoRecoveryTests: XCTestCase {
         XCTAssertNotNil(insert.takenAt)
         XCTAssertNil(insert.uploadedBy, "an empty uploader must be omitted — project_photos.uploaded_by is a uuid column and an empty string 22P02s the whole insert")
 
-        // THE trap: iOS SiteVisit ids are local-only (UPPERCASE, no server
-        // site_visits row). Sending site_visit_id would FK-reject the insert.
+        // Malformed historical phone-only ids still cannot poison the insert.
         let encoded = try JSONSerialization.jsonObject(
             with: JSONEncoder().encode(insert)
         ) as? [String: Any]
         let keys = Set(try XCTUnwrap(encoded).keys)
-        XCTAssertFalse(keys.contains("site_visit_id"), "site_visit_id must be structurally impossible in the handoff insert")
+        XCTAssertFalse(keys.contains("site_visit_id"), "a non-UUID legacy id must be omitted so it cannot FK-reject the photo")
         XCTAssertTrue(keys.contains("project_id"))
         XCTAssertTrue(keys.contains("company_id"))
         XCTAssertFalse(keys.contains("uploaded_by"), "nil uploader encodes as an omitted key, not null")
@@ -192,6 +191,20 @@ final class StrandedPhotoRecoveryTests: XCTestCase {
         XCTAssertEqual(
             ImageSyncManager.handoffPhotoInsert(for: attributed, remoteURL: remoteURL).uploadedBy,
             "9f4ca7fb-f4fc-4942-96f0-02723d1ff99f"
+        )
+
+        let cloudBacked = ProjectPhoto(
+            projectId: "5f90388c-69af-4bb9-ba26-f8d74487d344",
+            companyId: "a612edc0-5c18-4c4d-af97-55b9410dd077",
+            url: "local://project_images/cloud-backed.jpg",
+            source: "site_visit",
+            siteVisitId: "D6EC5372-607F-4DC1-8733-C52F14E2D4E2",
+            uploadedBy: "9f4ca7fb-f4fc-4942-96f0-02723d1ff99f"
+        )
+        XCTAssertEqual(
+            ImageSyncManager.handoffPhotoInsert(for: cloudBacked, remoteURL: remoteURL).siteVisitId,
+            "d6ec5372-607f-4dc1-8733-c52f14e2d4e2",
+            "a cloud-backed visit keeps its canonical parent provenance"
         )
     }
 

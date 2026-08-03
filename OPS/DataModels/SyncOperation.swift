@@ -28,6 +28,9 @@ final class SyncOperation {
     /// - `parked`     — a permanent server rejection (4xx / data / integrity / syntax).
     ///                  NEVER auto-retried. Only an explicit user Retry (→ `pending`,
     ///                  retryCount 0) or Discard moves it. See `SyncErrorClassifier`.
+    /// - `quarantined`— site-visit identity/tenant evidence is unsafe. Never sent
+    ///                  or exposed through generic Retry; its encrypted recovery
+    ///                  entry is the only operator disposition surface.
     var status: String = "pending"
     var lastError: String?
 

@@ -48,7 +48,87 @@ struct DeckStairRailInfo: Equatable {
     let railRunInches: Double
 }
 
+extension DetectedSurface {
+    /// Whether this face walks straight from one vertex to the other — i.e.
+    /// the pair is one of the face's own sides. Cyclic, direction-agnostic.
+    func hasSide(_ a: String, _ b: String) -> Bool {
+        let count = vertexIds.count
+        guard count >= 3 else { return false }
+        for index in 0..<count {
+            let start = vertexIds[index]
+            let end = vertexIds[(index + 1) % count]
+            if (start == a && end == b) || (start == b && end == a) { return true }
+        }
+        return false
+    }
+}
+
 extension DeckDrawingData {
+    /// The closed face a stair on `edgeId` must face AWAY from, in canvas
+    /// coordinates — the deck surface itself, which is exactly how a stair's
+    /// direction is decided in the field.
+    ///
+    /// Resolving this per-edge is what makes stair direction correct on real
+    /// drawings. Callers used to pass the level's `orderedPositions`, which
+    /// silently degenerates to an unordered vertex dump whenever ANY vertex
+    /// lacks exactly two connections — two separate shapes, an interior
+    /// detail line, a T-junction, an unfinished outline. Feeding that
+    /// scribble to the inside/outside test produced an essentially random
+    /// side, so stairs faced the wrong way on most non-trivial decks.
+    ///
+    /// Returns an empty array when no single face owns the edge (an open
+    /// outline, or an interior edge shared by two surfaces, where "outward"
+    /// is undefined); the geometry helpers then fall back to their historic
+    /// perpendicular instead of trusting a bad polygon.
+    func stairFacePolygon(forEdgeId edgeId: String) -> [CGPoint] {
+        if isMultiLevel {
+            for level in levels {
+                guard let edge = level.edge(byId: edgeId) else { continue }
+                if let face = Self.facePositions(owning: edge, among: level.detectedSurfaces) {
+                    return face
+                }
+                return level.isClosed ? level.orderedPositions : []
+            }
+            return []
+        }
+        guard let edge = edge(byId: edgeId) else { return [] }
+        if let face = Self.facePositions(owning: edge, among: detectedSurfaces) {
+            return face
+        }
+        return isClosed ? orderedPositions : []
+    }
+
+    /// Vertex ids of that same face, for renderers that hold their own
+    /// coordinate mapping (3D metres, transformed export canvases) and must
+    /// rebuild the polygon in their own space.
+    func stairFaceVertexIds(forEdgeId edgeId: String) -> [String]? {
+        if isMultiLevel {
+            for level in levels {
+                guard let edge = level.edge(byId: edgeId) else { continue }
+                return Self.faceIds(owning: edge, among: level.detectedSurfaces)
+            }
+            return nil
+        }
+        guard let edge = edge(byId: edgeId) else { return nil }
+        return Self.faceIds(owning: edge, among: detectedSurfaces)
+    }
+
+    private static func owningFace(_ edge: DeckEdge, among faces: [DetectedSurface]) -> DetectedSurface? {
+        let owning = faces.filter { $0.hasSide(edge.startVertexId, edge.endVertexId) }
+        // Exactly one face → a true perimeter edge with a well-defined
+        // outside. Two → an interior divider between surfaces (no outward
+        // side). Zero → the edge isn't part of any closed loop yet.
+        return owning.count == 1 ? owning[0] : nil
+    }
+
+    private static func facePositions(owning edge: DeckEdge, among faces: [DetectedSurface]) -> [CGPoint]? {
+        owningFace(edge, among: faces)?.positions
+    }
+
+    private static func faceIds(owning edge: DeckEdge, among faces: [DetectedSurface]) -> [String]? {
+        owningFace(edge, among: faces)?.vertexIds
+    }
+
     /// Total rise (inches) a fixed-rise stair on `edge` spans: the stored
     /// rise when the user set one, else the owning context's resolved render
     /// height — the same fallback the 3D scene uses, so labels and geometry

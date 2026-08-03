@@ -20,9 +20,25 @@ struct SegmentedControl<SelectionValue>: View where SelectionValue: Hashable {
         let label: String?
         let systemImage: String?
         let accessibilityLabel: String?
+        /// A segment the control still SHOWS but will not let the reader pick.
+        /// A choice that vanishes when its precondition is unmet reads as a
+        /// missing feature; a muted, inert segment reads as "not yet" — say
+        /// what unlocks it beneath the control. Defaults true, so every
+        /// existing caller is unaffected.
+        var isEnabled: Bool = true
 
         static func text(_ value: SelectionValue, _ label: String) -> Option {
             Option(value: value, label: label, systemImage: nil, accessibilityLabel: nil)
+        }
+
+        static func text(_ value: SelectionValue, _ label: String, isEnabled: Bool) -> Option {
+            Option(
+                value: value,
+                label: label,
+                systemImage: nil,
+                accessibilityLabel: nil,
+                isEnabled: isEnabled
+            )
         }
 
         static func icon(_ value: SelectionValue, systemImage: String, accessibilityLabel: String) -> Option {
@@ -53,6 +69,7 @@ struct SegmentedControl<SelectionValue>: View where SelectionValue: Hashable {
                     systemImage: option.systemImage,
                     accessibilityLabel: option.accessibilityLabel,
                     isSelected: selection == option.value,
+                    isEnabled: option.isEnabled,
                     namespace: underlineNamespace,
                     action: {
                         withAnimation(OPSStyle.Animation.panel) {
@@ -70,14 +87,20 @@ private struct SegmentButton: View {
     var systemImage: String?
     var accessibilityLabel: String?
     let isSelected: Bool
+    var isEnabled: Bool = true
     let namespace: Namespace.ID
     let action: () -> Void
+
+    private var faceColor: Color {
+        guard isEnabled else { return OPSStyle.Colors.textMute }
+        return isSelected ? OPSStyle.Colors.text : OPSStyle.Colors.text3
+    }
 
     var body: some View {
         Button(action: action) {
             VStack(spacing: 6) {
                 segmentFace
-                    .foregroundColor(isSelected ? OPSStyle.Colors.text : OPSStyle.Colors.text3)
+                    .foregroundColor(faceColor)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 10)
 
@@ -97,6 +120,7 @@ private struct SegmentButton: View {
             }
         }
         .buttonStyle(.plain)
+        .disabled(!isEnabled)
         .accessibilityLabel(accessibilityLabel ?? title ?? "")
     }
 

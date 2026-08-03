@@ -459,6 +459,43 @@ struct SchedulingEngine {
         return false
     }
 
+    // MARK: - Span
+
+    /// The last day of a job that starts on `start` and covers `days` days of
+    /// actual work. With weekends skipped, a two-day job starting Friday ends
+    /// Monday — the count is days the crew is on site, not squares on a
+    /// calendar, which is the only reading that matches what a crew was told.
+    ///
+    /// The start is taken as given and never normalized: moving somebody's
+    /// chosen start day off a weekend is a different decision from measuring
+    /// how far their job runs, and only the caller knows which one it wants.
+    /// (`skipToWeekday` below owns the other one.)
+    static func spanEnd(
+        start: Date,
+        days: Int,
+        skipWeekends: Bool,
+        calendar: Calendar = .current
+    ) -> Date {
+        guard days > 1 else { return start }
+        guard skipWeekends else {
+            return calendar.date(byAdding: .day, value: days - 1, to: start) ?? start
+        }
+
+        var day = start
+        var remaining = days - 1
+        // Bounded: a span that outruns two years of calendar days is data
+        // corruption, not a job — stop rather than spin.
+        var guardCount = 0
+        while remaining > 0 && guardCount < 800 {
+            guard let next = calendar.date(byAdding: .day, value: 1, to: day) else { break }
+            day = next
+            guardCount += 1
+            guard !calendar.isDateInWeekend(day) else { continue }
+            remaining -= 1
+        }
+        return day
+    }
+
     // MARK: - Helpers
 
     /// Advance date to next weekday if it falls on a weekend.

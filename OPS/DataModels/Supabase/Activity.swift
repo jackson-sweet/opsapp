@@ -45,8 +45,15 @@ class Activity: Identifiable {
     var emailMessageId: String?       // DB: email_message_id
     var emailThreadId: String?        // DB: email_thread_id
     var fromEmail: String?            // DB: from_email
-    var toEmails: [String]            // DB: to_emails
-    var ccEmails: [String]            // DB: cc_emails
+    // The `= []` is LOAD-BEARING, not style. A non-optional array is a
+    // MANDATORY Core Data attribute, and lightweight migration refuses to
+    // add one to an existing store unless the model carries a default value
+    // ("Validation error missing attribute values on mandatory destination
+    // attribute" — every installed store would fail to open on upgrade).
+    // Assigning in `init` is not enough: the default has to reach the
+    // attribute description, which only a property initializer does.
+    var toEmails: [String] = []       // DB: to_emails
+    var ccEmails: [String] = []       // DB: cc_emails
 
     /// The site visit this activity reports (DB: `site_visit_id`). iOS has
     /// always WRITTEN it — `ActivityRepository.logActivity(siteVisitId:)`

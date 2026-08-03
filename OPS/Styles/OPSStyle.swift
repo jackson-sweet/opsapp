@@ -521,6 +521,45 @@ enum OPSStyle {
         static let schedulerCalendarMinHeight: CGFloat = 112.0
         /// Dependency-floor days stay fully tappable — they only recede.
         static let schedulerPreFloorOpacity: Double = 0.35
+        /// How far a selection's cap carries its own white into the interior,
+        /// measured in day cells. The interior leaves each cap at exactly the
+        /// cap's fill and eases to quiet across this distance, so the two fuse
+        /// into one object instead of meeting at a step. One cell is the whole
+        /// budget: reach deeper and the bright band reads as a second
+        /// selection sitting inside the first; reach shallower and the falloff
+        /// compresses back into the seam it exists to erase. Clamped to the
+        /// interior's own width, so on a three-day span — the one span whose
+        /// single interior day is within reach of both caps — the two sides
+        /// deliberately DO overlap across the whole of it. Their sum is what
+        /// keeps that day from pinching to a waist at the quiet base, which
+        /// would read as a break in the selection rather than the middle of one.
+        static let schedulerSpanBlendCells: Double = 1.0
+        /// Where the day number's glyphs sit across a cell, as a fraction of
+        /// cell width: `spacing1` of leading padding, then a two-digit
+        /// `dataValue` run (4pt then ~15pt of a ~53pt cell on a 390pt phone,
+        /// measured to the ink rather than the advance). An interior day reads
+        /// the span curve across exactly this slice to decide which ink its
+        /// number can survive on.
+        static let schedulerSpanNumberBandStart: Double = 0.08
+        static let schedulerSpanNumberBandEnd: Double = 0.35
+        /// Mean brightness under the day number above which that number flips
+        /// to `invertedText` — the same black the caps wear.
+        ///
+        /// The curve only ever puts four values under a number: 0 deep inside
+        /// a span, ~0.06 at the quiet end of a cap-adjacent cell, ~0.63 at the
+        /// bright end of a cap-adjacent cell, and ~0.69 on the lone interior of
+        /// a three-day span, which is the one cell both caps reach at once.
+        /// 0.175 sits in the empty middle of that set, so the two bright cases
+        /// flip, the two quiet ones do not, and the decision survives a retune
+        /// of the blend width. It is not a fine judgement: at 0.63 the ground
+        /// runs near-white to mid-grey, where black holds 13:1 down to 4.2:1
+        /// and white would collapse to 1.4:1. At 0.69 the ground is brighter
+        /// still and never leaves the caps' half of the range — 205/255 down to
+        /// 138/255 across the glyph run, black holding 13:1 to 6.1:1 where
+        /// white would sit at 1.4:1 to 2.9:1 — so that lone interior takes the
+        /// caps' black clear of the 4.5:1 floor end to end, on the same
+        /// evidence as its cap-adjacent neighbour rather than on a tiebreak.
+        static let schedulerSpanNumberFlipBrightness: Double = 0.175
         /// CLEAR takes 30% of the footer; SAVE keeps the thumb-weighted share.
         static let schedulerFooterSecondaryWidthRatio: CGFloat = 0.3
 

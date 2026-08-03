@@ -62,6 +62,10 @@ final class ConversionMatchingProofTests: XCTestCase {
 
     // MARK: - a3c4e216 — project-side LEAD row
 
+    // The row in isolation. In production it is a row of the project-info card,
+    // which draws the hairline above it — see DetailsTabSnapshotTests for the
+    // in-card renders. These three capture the row's own states.
+
     /// The project knows its lead: name + chevron, opens the lead.
     func testRenderProjectLeadRowLinked() {
         snapshot(
@@ -90,7 +94,8 @@ final class ConversionMatchingProofTests: XCTestCase {
     }
 
     /// Nothing to match — the row is absent, not an em dash and not a disabled
-    /// button. Captured to prove the surface stays clean.
+    /// button. Captured to prove the surface stays clean; in the card,
+    /// `shows(.lead)` drops the hairline with it.
     func testRenderProjectLeadRowHidden() {
         snapshot(
             "project_lead_row_hidden",

@@ -310,7 +310,7 @@ struct BugReportSheet: View {
                 .font(.system(size: OPSStyle.Layout.IconSize.xxl))
                 .foregroundColor(OPSStyle.Colors.successStatus)
 
-            Text("Report submitted")
+            Text("Report saved")
                 .font(OPSStyle.Typography.heading)
                 .foregroundColor(OPSStyle.Colors.primaryText)
         }

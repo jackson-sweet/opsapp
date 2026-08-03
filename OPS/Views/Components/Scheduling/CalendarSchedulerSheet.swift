@@ -154,7 +154,10 @@ struct CalendarSchedulerSheet: View {
                         .padding(.horizontal, OPSStyle.Layout.spacing3_5)
                         .padding(.bottom, OPSStyle.Layout.spacing2)
 
-                    if case .task = itemType, currentStartDate != nil {
+                    // Quick push moves a job that is actually on the calendar; a
+                    // draft has nothing to push. The gate reads the SAVED task,
+                    // never the form's in-flight dates.
+                    if case .task(let task) = itemType, task.startDate != nil {
                         quickPushRow
                             .padding(.bottom, OPSStyle.Layout.spacing2)
                     }
@@ -354,13 +357,18 @@ struct CalendarSchedulerSheet: View {
 
     // MARK: - Suggestion
 
-    private func suggestionChip(_ suggested: Date) -> some View {
+    private func suggestionChip(_ suggested: SchedulerDayContext.Suggestion) -> some View {
         Button {
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            let next = suggestedSelection(suggested)
             withAnimation(reduceMotion ? nil : OPSStyle.Animation.fast) {
-                selection = .start(calendar.startOfDay(for: suggested))
+                selection = next
             }
-            scrollRequest = calendar.dateInterval(of: .month, for: suggested)?.start
+            scrollRequest = calendar.dateInterval(of: .month, for: suggested.date)?.start
+            // A suggested range earns exactly the same conflict warning a
+            // hand-picked one does. The chip proposing it is not a promise
+            // that it is clear.
+            warnIfRangeConflicts(next)
         } label: {
             HStack(spacing: OPSStyle.Layout.spacing2) {
                 Text("SUGGESTED")
@@ -389,10 +397,44 @@ struct CalendarSchedulerSheet: View {
         .transition(.opacity)
     }
 
-    private func suggestionDetail(_ suggested: Date) -> String {
-        let date = Self.weekdayDate(suggested).uppercased()
-        guard let prerequisite = dayContext.floorPrerequisiteTitle else { return date }
-        return "AFTER \(prerequisite.uppercased()) · \(date)"
+    /// What one tap of the chip picks. With a length behind it the tap selects
+    /// the whole span, so SAVE is live on the next tap instead of asking for an
+    /// end date the history already knows. Without one it does what it always
+    /// did — sets the start and leaves the end to the operator.
+    private func suggestedSelection(
+        _ suggested: SchedulerDayContext.Suggestion
+    ) -> SchedulerSelection {
+        let start = calendar.startOfDay(for: suggested.date)
+        guard let length = suggested.lengthDays else { return .start(start) }
+        return .range(
+            start,
+            SchedulingEngine.spanEnd(
+                start: start,
+                days: length,
+                skipWeekends: dataController.currentCompanySkipsWeekends,
+                calendar: calendar
+            )
+        )
+    }
+
+    /// The chip states its reason, because a date on its own is a guess. One
+    /// reason only — a prerequisite and a crew opening in the same line is two
+    /// arguments where the operator needs one.
+    ///
+    /// The length, when there is one, is a separate clause and wears a tilde:
+    /// it is the middle of what this crew has actually done on decks this size,
+    /// not a commitment, and the copy should not pretend otherwise.
+    private func suggestionDetail(_ suggested: SchedulerDayContext.Suggestion) -> String {
+        let date = Self.weekdayDate(suggested.date).uppercased()
+        let reason: String
+        switch suggested.reason {
+        case .afterPrerequisite(let prerequisite):
+            reason = "AFTER \(prerequisite.uppercased()) · \(date)"
+        case .crewClear:
+            reason = "CREW CLEAR · \(date)"
+        }
+        guard let length = suggested.lengthDays else { return reason }
+        return "\(reason) · ~\(length) \(length == 1 ? "DAY" : "DAYS")"
     }
 
     // MARK: - Pinned calendar header
@@ -936,19 +978,66 @@ struct CalendarSchedulerSheet: View {
             events: events,
             prerequisites: prerequisites,
             skipsWeekends: dataController.currentCompanySkipsWeekends,
+            suggestedLengthDays: resolvedSuggestedLengthDays(),
             calendar: calendar
         )
         dayContext = context
 
-        // An unscheduled job with a prerequisite opens on the first week it
-        // could actually start, rather than on a today that is not an option.
+        // An unscheduled job opens on the first week it could actually start,
+        // rather than on a today that is not an option.
         if currentStartDate == nil,
            selection == .none,
-           let suggested = context.suggestion,
+           let suggested = context.suggestion?.date,
            let suggestedMonth = calendar.dateInterval(of: .month, for: suggested)?.start,
            !calendar.isDate(suggestedMonth, equalTo: visibleMonth, toGranularity: .month) {
             scrollRequest = suggestedMonth
         }
+    }
+
+    /// How many days this job should take, read off the company's own finished
+    /// jobs of the same type on decks about this size. Resolved here, from the
+    /// store, so `SchedulerDayContext` stays pure — the same division that
+    /// already puts crew names and prerequisites on this side of the line.
+    ///
+    /// Nil is common and correct: no deck drawn on this project, a drawing with
+    /// nothing measurable in it, or too little finished work of this type at
+    /// this size. The chip then proposes only a start, which is the part it can
+    /// actually stand behind.
+    private func resolvedSuggestedLengthDays() -> Int? {
+        // Only an unscheduled job is ever offered a suggestion, so resolving
+        // comps for anything else is work nobody will see.
+        guard currentStartDate == nil, let projectId = itemType.projectId else { return nil }
+
+        let taskTypeId: String
+        let itemCompanyId: String?
+        switch itemType {
+        case .project:
+            // A project is not a job of a type. Nothing in the history is its
+            // kind of work, so there is nothing to compare it against.
+            return nil
+        case .task(let task):
+            taskTypeId = task.taskTypeId
+            // The job's own row names its company. Reading it off the work
+            // rather than off the signed-in session keeps the comparison
+            // anchored to what is actually being scheduled.
+            itemCompanyId = task.companyId
+        case .draftTask(let draftTaskTypeId, _, _):
+            taskTypeId = draftTaskTypeId
+            itemCompanyId = dataController.getProject(id: projectId)?.companyId
+        }
+
+        let candidateCompanyId = itemCompanyId?.isEmpty == false
+            ? itemCompanyId
+            : dataController.currentUser?.companyId
+        guard let companyId = candidateCompanyId, !companyId.isEmpty else { return nil }
+
+        return ComparableJobLength.resolveSuggestedDays(
+            taskTypeId: taskTypeId,
+            projectId: projectId,
+            companyId: companyId,
+            in: modelContext,
+            calendar: calendar
+        )
     }
 
     /// Dependencies declared by the thing being scheduled. Projects have none;

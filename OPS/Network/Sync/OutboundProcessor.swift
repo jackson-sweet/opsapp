@@ -37,8 +37,10 @@ final class OutboundProcessor {
             )
             let taskTypeReadyBeforePass =
                 readyPendingTaskTypePipelineOperationIds(
-                context: context
-            )
+                    context: context
+                )
+            let siteVisitReadyBeforePass =
+                readyPendingSiteVisitOperationIds(context: context)
             await processPendingOperationsPass(
                 context: context,
                 connectivity: connectivity
@@ -50,6 +52,8 @@ final class OutboundProcessor {
                 readyPendingTaskTypePipelineOperationIds(
                     context: context
                 )
+            let siteVisitReadyAfterPass =
+                readyPendingSiteVisitOperationIds(context: context)
             let shouldContinueMentionDrain = ProjectNoteMentionEditSync
                 .shouldContinueDrain(
                     readyBeforePass: mentionReadyBeforePass,
@@ -59,14 +63,22 @@ final class OutboundProcessor {
                 !taskTypeReadyAfterPass.isEmpty
                     && taskTypeReadyAfterPass
                         != taskTypeReadyBeforePass
+            let shouldContinueSiteVisitDrain = SiteVisitOutboundSync
+                .shouldContinueDrain(
+                    readyBeforePass: siteVisitReadyBeforePass,
+                    readyAfterPass: siteVisitReadyAfterPass
+                )
             shouldContinueDrain =
                 shouldContinueMentionDrain
                     || shouldContinueTaskTypeDrain
+                    || shouldContinueSiteVisitDrain
             if shouldContinueTaskTypeDrain {
                 print(
                     "[OutboundProcessor] Task-type ordering released "
                         + "more local work — continuing drain"
                 )
+            } else if shouldContinueSiteVisitDrain {
+                print("[OutboundProcessor] Site-visit dependency released — continuing drain")
             } else if shouldContinueMentionDrain {
                 print("[OutboundProcessor] Mention dependency released — continuing local-context drain")
             } else if !mentionReadyAfterPass.isEmpty,
@@ -148,6 +160,15 @@ final class OutboundProcessor {
                 return false
             }
 
+            if SiteVisitOutboundSync.isSiteVisitOperation(op),
+               !SiteVisitOutboundSync.isReady(op, in: allOperations, now: now) {
+                print(
+                    "[OutboundProcessor] Holding site-visit work behind its live graph barrier: "
+                        + "\(op.operationType) \(op.entityId)"
+                )
+                return false
+            }
+
             return true
         }
 
@@ -201,6 +222,19 @@ final class OutboundProcessor {
         )
     }
 
+    private func readyPendingSiteVisitOperationIds(
+        context: ModelContext,
+        now: Date = Date()
+    ) -> Set<UUID> {
+        let operations = (
+            try? context.fetch(FetchDescriptor<SyncOperation>())
+        ) ?? []
+        return SiteVisitOutboundSync.readyPendingOperationIds(
+            in: operations,
+            now: now
+        )
+    }
+
     // MARK: - Dependency Check
 
     /// Checks whether a dependency operation (by UUID string) has status "completed" in the store.
@@ -236,7 +270,8 @@ final class OutboundProcessor {
         var groups: [String: [SyncOperation]] = [:]
         for op in operations
         where !ProjectNoteMentionEditSync.bypassesGenericCoalescing(op)
-            && !TaskTypeMutationSync.bypassesGenericCoalescing(op) {
+            && !TaskTypeMutationSync.bypassesGenericCoalescing(op)
+            && !SiteVisitOutboundSync.bypassesGenericCoalescing(op) {
             let key = "\(op.entityType)::\(op.entityId)"
             groups[key, default: []].append(op)
         }
@@ -248,6 +283,12 @@ final class OutboundProcessor {
             ProjectNoteMentionEditSync.bypassesGenericCoalescing($0)
                 || TaskTypeMutationSync.bypassesGenericCoalescing($0)
         }
+        result.removeAll(where: SiteVisitOutboundSync.isSiteVisitOperation)
+        result.append(
+            contentsOf: SiteVisitOutboundSync.coalesceOperations(
+                operations.filter(SiteVisitOutboundSync.isSiteVisitOperation)
+            )
+        )
 
         for (_, groupOps) in groups {
             guard !groupOps.isEmpty else { continue }
@@ -361,18 +402,26 @@ final class OutboundProcessor {
         print("[OutboundProcessor] Pushing \(operation.entityType) \(operation.entityId)...")
 
         do {
-            // Decode payload
-            guard let payloadDict = decodePayload(operation.payload) else {
-                throw SyncError.decodingFailed(detail: "Could not decode payload for \(operation.entityType) \(operation.entityId)")
+            let activeCompanyId = UserDefaults.standard.string(
+                forKey: "currentUserCompanyId"
+            ) ?? ""
+            let handledSiteVisit = try await SiteVisitOutboundSync()
+                .executeIfHandled(
+                    operation: operation,
+                    context: context,
+                    activeCompanyId: activeCompanyId
+                )
+            if !handledSiteVisit {
+                guard let payloadDict = decodePayload(operation.payload) else {
+                    throw SyncError.decodingFailed(detail: "Could not decode payload for \(operation.entityType) \(operation.entityId)")
+                }
+                try await routeToRepository(
+                    entityType: operation.entityType,
+                    entityId: operation.entityId,
+                    operationType: operation.operationType,
+                    payload: payloadDict
+                )
             }
-
-            // Route to the correct repository
-            try await routeToRepository(
-                entityType: operation.entityType,
-                entityId: operation.entityId,
-                operationType: operation.operationType,
-                payload: payloadDict
-            )
 
             // Success. Complete the dependent field guards in the same local
             // transaction so the authoritative pull can reconcile immediately.
@@ -554,6 +603,15 @@ final class OutboundProcessor {
         _ operation: SyncOperation,
         context: ModelContext
     ) throws -> Bool {
+        if SiteVisitOutboundSync.isSiteVisitOperation(operation) {
+            let operations = try context.fetch(FetchDescriptor<SyncOperation>())
+            guard SiteVisitOutboundSync.isReady(
+                operation,
+                in: operations
+            ) else {
+                return false
+            }
+        }
         if try TaskTypeMutationSync.isBlockedByUnresolvedMutation(
             operation,
             in: context

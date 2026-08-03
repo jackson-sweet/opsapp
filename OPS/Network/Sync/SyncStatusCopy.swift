@@ -25,6 +25,14 @@ enum SyncStatusTone {
 }
 
 enum SyncStatusCopy {
+    enum SiteVisitLogout {
+        static let warningTitle = "Site visit not saved yet"
+        static let warningBody = "This phone still has site visit work that has not reached OPS. Stay signed in to retry, or discard it and log out."
+        static let stayAction = "Stay Signed In"
+        static let discardAction = "Discard & Log Out"
+        static let savingLabel = "SAVING VISIT..."
+    }
+
 
     // MARK: - Collapsed header
 
@@ -152,6 +160,10 @@ enum SyncStatusCopy {
         case "timeEntry": return "Time Entry"
         case "signatureCapture": return "Signature"
         case "formSubmission": return "Form"
+        case "siteVisit": return "Site Visit"
+        case "siteVisitArtifact": return "Site Visit Capture"
+        case "siteVisitChecklistAnswer": return "Site Visit Checklist"
+        case "siteVisitIdentityDraft": return "Site Visit Identity"
         default: return entityType.capitalized
         }
     }
@@ -192,6 +204,8 @@ enum SyncStatusCopy {
         static let offlineRow = "Waiting for signal"
         static let orphanRow = "Not linked to a job or lead"
         static let draftRow = "Not sent yet — open to finish"
+        static let quarantineTitle = "Site visit recovery"
+        static let quarantineRow = "Protected on this phone"
 
         /// Backoff countdown line. `n` is always a whole second, floored to 1 so
         /// the operator never sees "next in 0s". Rendered in mono at the call site.
@@ -239,6 +253,22 @@ enum SyncStatusCopy {
         static func draftTitle(displayName: String) -> String {
             let trimmed = displayName.trimmingCharacters(in: .whitespacesAndNewlines)
             return trimmed.isEmpty ? "Site visit" : trimmed
+        }
+
+        /// Durable site-visit packet summary: one captured count plus the stage
+        /// currently governing the chain. The status line below carries whether
+        /// that stage is saving, waiting, or needs attention.
+        static func siteVisitPacketSummary(
+            capturedItemCount: Int,
+            blockedStage: SiteVisitBlockedStage
+        ) -> String {
+            let stage: String
+            switch blockedStage {
+            case .visit: stage = "VISIT"
+            case .media: stage = "MEDIA"
+            case .completion: stage = "COMPLETION"
+            }
+            return "\(capturedItemCount) CAPTURED · \(stage)"
         }
 
         /// Orphan deck-design title — the design's title, or "Deck design".

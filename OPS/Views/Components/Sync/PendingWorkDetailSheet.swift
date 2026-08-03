@@ -22,8 +22,12 @@ struct PendingWorkDetailSheet: View {
     @State private var showDiscardConfirm = false
     @State private var showRawDetails = false
 
-    private var isParked: Bool { item.tone == .parked }
-    private var isRetryable: Bool { item.tone >= .attention }
+    private var isQuarantined: Bool {
+        if case .quarantinedVisit = item { return true }
+        return false
+    }
+    private var isParked: Bool { item.tone == .parked && !isQuarantined }
+    private var isRetryable: Bool { item.tone >= .attention && !isQuarantined }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {

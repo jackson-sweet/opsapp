@@ -25,6 +25,10 @@ struct MainTabView: View {
     @State private var needsWizardRetry = false
     @State private var previousTab = 0
     @State private var keyboardIsShowing = false
+    /// Height of the current tab's `AppHeader`, reported by the header itself.
+    /// The status band below is offset by this so it starts where the header
+    /// ends — see the band's comment in `body`.
+    @State private var headerBandHeight: CGFloat = AppHeaderHeightKey.defaultValue
     @State private var sheetIsPresented = false
 
     /// Transient loading banner shown while a deep-linked project is being
@@ -427,8 +431,24 @@ struct MainTabView: View {
             .environment(\.tabBarVisibility, tabBarVisibility)
             .transition(slideTransition)
             .animation(OPSStyle.Animation.standard, value: selectedTab)
+            // The header inside this container reports how tall it is, so the
+            // status band below can start where the header ends.
+            .onPreferenceChange(AppHeaderHeightKey.self) { headerBandHeight = $0 }
 
-            // Image sync progress bar and sync status at top
+            // Image sync progress bar and sync status, banded directly BELOW the
+            // tab's header.
+            //
+            // This band used to start at the top safe area — the same rectangle
+            // the header's trailing action cluster occupies — so the attention
+            // pill and the 44pt search button (or Home's avatar) were laid out
+            // on top of each other: the pill's trailing edge sits 16pt from the
+            // screen edge, the button's 20pt, and a "<n> NEED A LOOK" pill is far
+            // wider than the 4pt between them. Whichever won the paint order, one
+            // element covered the other and swallowed its taps. Offsetting the
+            // whole band by the header's measured height makes the collision
+            // impossible rather than merely re-ordered — both keep their own
+            // hit areas, and the band follows the header down when Dynamic Type
+            // grows the title block.
             VStack(spacing: OPSStyle.Layout.spacing2) {
                 ImageSyncProgressView(syncManager: imageSyncProgressManager)
 
@@ -444,6 +464,8 @@ struct MainTabView: View {
 
                 Spacer()
             }
+            .padding(.top, headerBandHeight)
+            .animation(OPSStyle.Animation.standard, value: headerBandHeight)
             .ignoresSafeArea(.all, edges: .bottom)
             .zIndex(1) // Ensure it appears above content
             

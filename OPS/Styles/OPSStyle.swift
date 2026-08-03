@@ -624,6 +624,25 @@ enum OPSStyle {
             static let floating = (color: Color.black.opacity(0.3), radius: 12.0, x: 0.0, y: 6.0)
         }
 
+        /// The ONE sanctioned shadow on dark. MOBILE.md §3 states "No box-shadows.
+        /// Depth = glass + hairlines"; MOBILE.md §8 (Floating CTAs) carves out the
+        /// single documented exception — `0 8px 24px rgba(0,0,0,0.4)`, "EXCEPTION:
+        /// floating CTAs on dark ARE allowed shadows because they float over
+        /// scrolling content."
+        ///
+        /// Applies ONLY to elements that genuinely float above scrolling content.
+        /// Do not reach for this to add depth to cards, sheets, rows or tags —
+        /// those use glass + hairlines. There is no second shadow value.
+        ///
+        /// CSS `0 8px 24px` → SwiftUI `y: 8`, `radius: 12` (SwiftUI's shadow
+        /// radius is half the CSS blur radius).
+        static let floatingElevation = (
+            color: Color.black.opacity(0.4),
+            radius: 12.0,
+            x: 0.0,
+            y: 8.0
+        )
+
         // Gradient presets
         enum Gradients {
             // Header fade: opaque to transparent (used by HomeContentView header)

@@ -19,6 +19,32 @@ import SwiftUI
 // from the other buttons and left it misaligned on tabs with a taller title
 // block. The overlay is gone; the search button is a normal sibling again.)
 
+/// Measured height of the tab's `AppHeader`, published so app-level overlays can
+/// park BENEATH the header band instead of colliding with it.
+///
+/// `MainTabView` floats the sync attention pill in the top-trailing corner — the
+/// exact rectangle this header's trailing action cluster (search + tab-specific
+/// buttons, or Home's avatar) already occupies. Both are laid out from the top
+/// safe area, so they land on top of each other. Publishing the real measured
+/// height lets the overlay start where the header ends, which also keeps the two
+/// apart when Dynamic Type grows the title block and the header gets taller.
+///
+/// Reduced with `max`: mid-transition both the outgoing and incoming tab headers
+/// are alive and publishing, so the overlay parks below the taller of the two and
+/// can never be overlapped while the slide is in flight. It settles onto the
+/// surviving header's height once the transition completes.
+struct AppHeaderHeightKey: PreferenceKey {
+    /// Floor used before any header reports, and by tabs that render no
+    /// `AppHeader` at all: one 44pt action button plus the header's vertical
+    /// padding on both sides.
+    static let defaultValue: CGFloat =
+        OPSStyle.Layout.touchTargetMin + OPSStyle.Layout.spacing2_5 * 2
+
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = max(value, nextValue())
+    }
+}
+
 struct AppHeader: View {
     enum HeaderType {
         case home
@@ -94,9 +120,24 @@ struct AppHeader: View {
     }
     
     var body: some View {
-        
+        headerContent
+            // Every branch reports through one place, so an app-level overlay
+            // always knows where this header ends (see AppHeaderHeightKey).
+            .background(
+                GeometryReader { proxy in
+                    Color.clear.preference(
+                        key: AppHeaderHeightKey.self,
+                        value: proxy.size.height
+                    )
+                }
+            )
+    }
+
+    @ViewBuilder
+    private var headerContent: some View {
+
         if headerType == .home {
-            
+
             HStack {
                 VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2_5) {
                     Text(title)

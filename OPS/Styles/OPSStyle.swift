@@ -767,8 +767,13 @@ enum OPSStyle {
         // the setting with zero call-site changes — fix lives in one place.
         /// True when the user has enabled Reduce Motion in iOS Accessibility settings.
         static var reduceMotion: Bool { UIAccessibility.isReduceMotionEnabled }
+        /// Reduce-motion fallback duration — 150ms, per spec v2 §8/§14. Exposed
+        /// as a value so sequences that must branch on their own timing (not
+        /// just their own curve) can quote the mandated number instead of
+        /// re-typing it.
+        static let durationReducedFallback: Double = 0.150
         /// Reduce-motion fallback — gentle 150ms crossfade (no slide/scale character).
-        static let reducedFallback = SwiftUI.Animation.easeInOut(duration: 0.150)
+        static let reducedFallback = SwiftUI.Animation.easeInOut(duration: durationReducedFallback)
         /// The single OPS curve at `duration`, or the reduce-motion fallback.
         static func curve(_ duration: Double) -> SwiftUI.Animation {
             reduceMotion ? reducedFallback : .timingCurve(0.22, 1, 0.36, 1, duration: duration)

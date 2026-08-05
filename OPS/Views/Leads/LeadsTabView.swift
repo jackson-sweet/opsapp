@@ -3,18 +3,25 @@
 //  OPS
 //
 //  Root of the LEADS tab — the chase-queue surface.
-//  Money & Leads redesign (2026-06-30) — design direction "2a · TRIAGE LEADS".
+//  Console redesign (2026-08-05) — open → act → browse → manipulate.
 //
 //  Top-to-bottom layout:
 //      [AppHeader]                LEADS                         [+] [search]
 //      [command band]             need-action hero / quiet line + metrics +
 //                                 stage bar → BY STAGE ▸
 //      [won nudge]                conditional — unconverted wins → convert
-//      [sticky chips]             ALL · OVERDUE · DUE TODAY · WAITING ON YOU · …
-//      [queue]                    LeadTriageCard rows, grouped by urgency
+//      [sticky band]              search field + SORT + CREW, then the bucket
+//                                 chips and a hairline
+//      [queue]                    LeadTriageCard rows — grouped by urgency, or
+//                                 flat under NEWEST / VALUE / a live search
+//
+//  The queue's shape is never decided here: `LeadsQueryEngine.apply` owns
+//  population, filtering, ordering and grouping, and this view renders whatever
+//  it hands back. One tested truth, no predicates loose in the body.
 //
 
 import SwiftUI
+import SwiftData
 
 // MARK: - Active-sheet enum
 
@@ -67,7 +74,16 @@ struct LeadsTabView: View {
     @EnvironmentObject private var appState: AppState
     @ObservedObject private var conversionVisibilityStore = LeadConversionVisibilityStore.shared
 
+    /// Every company user on device — the raw material for the crew roster.
+    /// Same `@Query` the dossier uses; the engine does the filtering.
+    @Query private var allUsers: [User]
+
     @State private var selectedBucket: PipelineViewModel.TriageBucket?
+    /// Search / sort / crew. Plain `@State`, so a tab remount resets them:
+    /// opening LEADS always answers "what needs me" first, never whatever
+    /// slice the operator left behind yesterday (spec §5.2). MainTabView
+    /// remounts the tab content on selection change (`.id(selectedTab)`).
+    @State private var controls: LeadsListControls
     @State private var detailLead: Opportunity?
     @State private var activeSheet: LeadsSheet?
     @State private var footerStage: PipelineStage?
@@ -103,8 +119,16 @@ struct LeadsTabView: View {
         var id: String { design.id }
     }
 
-    init(viewModel: PipelineViewModel? = nil) {
+    /// `initialControls` exists for the snapshot harness, which has to prove
+    /// the search and sort states of the real screen (the same reason
+    /// `LeadTriageCard` takes `summaryInitiallyExpanded`). Production never
+    /// passes it — the console always opens on URGENCY / ALL CREW / no query.
+    init(
+        viewModel: PipelineViewModel? = nil,
+        initialControls: LeadsListControls = LeadsListControls()
+    ) {
         _viewModel = StateObject(wrappedValue: viewModel ?? PipelineViewModel())
+        _controls = State(initialValue: initialControls)
     }
 
     /// Which LEADS surface this operator gets (spec §2) — the permission scope
@@ -133,17 +157,11 @@ struct LeadsTabView: View {
 
     /// The default view is ALL, grouped by urgency. A specific chip flattens to
     /// that bucket; if it empties (last item cleared) we drop back to ALL rather
-    /// than strand the operator on an empty, non-tappable chip.
+    /// than strand the operator on an empty, non-tappable chip. The engine owns
+    /// that rule so the chip binding and the applied query can never disagree.
     private var effectiveBucket: PipelineViewModel.TriageBucket {
-        if let selected = selectedBucket, selected != .all, !buckets.leads(for: selected).isEmpty {
-            return selected
-        }
-        return .all
+        LeadsQueryEngine.effectiveBucket(selectedBucket ?? .all, in: buckets)
     }
-
-    private static let groupOrder: [PipelineViewModel.TriageBucket] = [
-        .overdue, .dueToday, .waitingOnYou, .waitingOnThem, .fresh
-    ]
 
     /// Where BY STAGE lands — the engine owns the rule (max open count, ties by
     /// funnel order); the view only supplies the counts the bar is drawing.
@@ -151,6 +169,36 @@ struct LeadsTabView: View {
         LeadsQueryEngine.entryStage(
             counts: PipelineStage.openStages.map { ($0, viewModel.count(in: $0)) }
         )
+    }
+
+    // MARK: - Crew (spec §5.3, §6.4)
+
+    /// The nameable crew this console can filter by and print on cards.
+    private var roster: [CrewMember] {
+        LeadsQueryEngine.roster(
+            users: allUsers,
+            leads: viewModel.allOpportunities,
+            companyId: dataController.currentUser?.companyId
+        )
+    }
+
+    /// One nameable operator means assignment carries no information — the crew
+    /// chip and every card label stay off the screen entirely.
+    private var showsAssignment: Bool {
+        LeadsQueryEngine.showsAssignment(roster: roster)
+    }
+
+    /// Card labels resolved ONCE per render, keyed by lead id: the roster walk
+    /// happens here rather than inside each card, so a hundred rows cost one
+    /// pass instead of a hundred.
+    private var assigneeIndex: [String: String] {
+        guard showsAssignment else { return [:] }
+        let crew = roster
+        var index: [String: String] = [:]
+        for lead in viewModel.allOpportunities {
+            index[lead.id] = LeadsQueryEngine.assigneeLabel(for: lead.assignedTo, roster: crew)
+        }
+        return index
     }
 
     var body: some View {
@@ -195,7 +243,10 @@ struct LeadsTabView: View {
                     stage: stage,
                     viewModel: viewModel,
                     onLeadTap: { detailLead = $0 },
-                    onRequestSheet: { activeSheet = $0 }
+                    onRequestSheet: { activeSheet = $0 },
+                    // One source for assignee labels: the console resolves
+                    // them, the browser reads them.
+                    assigneeIndex: assigneeIndex
                 )
                 .environmentObject(dataController)
                 .environmentObject(permissionStore)
@@ -316,52 +367,60 @@ struct LeadsTabView: View {
     // MARK: - Console
 
     private var consoleScroll: some View {
-                    ScrollView {
-                        LazyVStack(alignment: .leading, spacing: 0, pinnedViews: [.sectionHeaders]) {
-                            LeadsSummary(viewModel: viewModel, onByStage: { footerStage = entryStage })
-                                .padding(.top, OPSStyle.Layout.spacing1)
+        // Resolved once here, then handed down — see `assigneeIndex`.
+        let assignees = assigneeIndex
+        return ScrollView {
+            LazyVStack(alignment: .leading, spacing: 0, pinnedViews: [.sectionHeaders]) {
+                LeadsSummary(viewModel: viewModel, onByStage: { footerStage = entryStage })
+                    .padding(.top, OPSStyle.Layout.spacing1)
 
-                            if !convertibleUnconvertedWins.isEmpty {
-                                LeadsWonNudge(
-                                    count: convertibleUnconvertedWins.count,
-                                    totalValue: unconvertedWonValue,
-                                    onTap: { presentWonConvert() }
-                                )
-                                .padding(.top, OPSStyle.Layout.spacing3)
-                            }
+                if !convertibleUnconvertedWins.isEmpty {
+                    LeadsWonNudge(
+                        count: convertibleUnconvertedWins.count,
+                        totalValue: unconvertedWonValue,
+                        onTap: { presentWonConvert() }
+                    )
+                    .padding(.top, OPSStyle.Layout.spacing3)
+                }
 
-                            Section {
-                                queueBody
-                                    .padding(.top, OPSStyle.Layout.spacing2_5)
-                            } header: {
-                                queueBand
-                            }
-                        }
-                    }
-                    .scrollIndicators(.hidden)
-                    .refreshable {
-                        // Manual pull-to-refresh — same silent merge reload as
-                        // the realtime / foreground triggers, so rows update in
-                        // place with no skeleton flash. System refresh control,
-                        // no custom styling. iOS 17.6 supports .refreshable on
-                        // ScrollView.
-                        await viewModel.loadData(silent: true)
-                    }
+                Section {
+                    queueBody(assignees: assignees)
+                        .padding(.top, OPSStyle.Layout.spacing2_5)
+                } header: {
+                    queueBand
+                }
+            }
+        }
+        .scrollIndicators(.hidden)
+        // Typing costs the queue two thirds of the screen; a drag down hands
+        // it straight back without a DONE tap.
+        .scrollDismissesKeyboard(.interactively)
+        .refreshable {
+            // Manual pull-to-refresh — same silent merge reload as
+            // the realtime / foreground triggers, so rows update in
+            // place with no skeleton flash. System refresh control,
+            // no custom styling. iOS 17.6 supports .refreshable on
+            // ScrollView.
+            await viewModel.loadData(silent: true)
+        }
     }
 
-    // MARK: - Sticky chip band
+    // MARK: - Sticky control band
 
     private var queueBand: some View {
-        VStack(spacing: 0) {
-            TacticalChipRow(chips: bucketChips, selectedId: filterBinding)
-                .padding(.vertical, OPSStyle.Layout.spacing2_5)
-            Rectangle()
-                .fill(OPSStyle.Colors.line)
-                .frame(height: 1)
-        }
-        .background(OPSStyle.Colors.background)
+        LeadsQueueBand(
+            controls: $controls,
+            chips: bucketChips,
+            selectedChipId: filterBinding,
+            roster: roster,
+            showsCrew: showsAssignment
+        )
     }
 
+    /// Chips carry RAW bucket counts, deliberately: they describe the queue the
+    /// operator owns, not the slice a crew filter is currently showing. A chip
+    /// that read `OVERDUE 0` because of a crew filter would look like there is
+    /// nothing overdue. Group headers below carry the filtered counts.
     private var bucketChips: [TacticalChip] {
         let order: [PipelineViewModel.TriageBucket] = [
             .all, .overdue, .dueToday, .waitingOnYou, .fresh, .waitingOnThem
@@ -407,32 +466,45 @@ struct LeadsTabView: View {
 
     // MARK: - Queue body
 
+    /// Renders whatever the engine resolved — grouped when the queue is in its
+    /// urgency browse mode, flat under any other sort, an active chip, or a
+    /// live search.
     @ViewBuilder
-    private var queueBody: some View {
-        if effectiveBucket == .all {
-            if buckets.all.isEmpty {
-                LeadsCaughtUp(title: "ALL CAUGHT UP", label: "NO FOLLOW-UPS DUE", hint: caughtUpHint)
+    private func queueBody(assignees: [String: String]) -> some View {
+        switch LeadsQueryEngine.apply(
+            controls: controls,
+            buckets: buckets,
+            selectedBucket: selectedBucket ?? .all,
+            currentUserId: viewModel.currentUserId
+        ) {
+        case .grouped(let groups):
+            if groups.isEmpty {
+                emptyQueue
             } else {
                 LazyVStack(spacing: OPSStyle.Layout.spacing2) {
-                    ForEach(groupedItems) { item in
+                    ForEach(groupedItems(groups)) { item in
                         switch item {
                         case .header(let b, let count):
                             queueSectionHeader(b, count: count)
                         case .lead(let lead, let b):
-                            cardFor(lead, bucket: b)
+                            cardFor(lead, bucket: b, assignees: assignees)
                         }
                     }
                 }
                 .padding(.horizontal, OPSStyle.Layout.spacing3_5)
             }
-        } else {
-            let leads = buckets.leads(for: effectiveBucket)
+        case .flat(let leads):
             if leads.isEmpty {
-                LeadsCaughtUp(title: "NONE HERE", label: "NO LEADS IN THIS FILTER", hint: "SWITCH FILTER TO SEE MORE")
+                if controls.isSearching { noMatchesBlock } else { emptyQueue }
             } else {
                 LazyVStack(spacing: OPSStyle.Layout.spacing2) {
+                    if controls.isSearching {
+                        matchesHeader(count: leads.count)
+                    }
                     ForEach(leads) { lead in
-                        cardFor(lead, bucket: effectiveBucket)
+                        // `.all` lets each card derive its OWN urgency tone, so
+                        // a lead reads as overdue in any order it appears in.
+                        cardFor(lead, bucket: .all, assignees: assignees)
                     }
                 }
                 .padding(.horizontal, OPSStyle.Layout.spacing3_5)
@@ -440,15 +512,87 @@ struct LeadsTabView: View {
         }
     }
 
-    private var groupedItems: [LeadQueueItem] {
+    /// One rule for a queue showing nothing: either there is genuinely no work,
+    /// or the operator's own filter has excluded it. Never a search state —
+    /// that has its own block.
+    @ViewBuilder
+    private var emptyQueue: some View {
+        if buckets.all.isEmpty {
+            LeadsCaughtUp(title: "ALL CAUGHT UP", label: "NO FOLLOW-UPS DUE", hint: caughtUpHint)
+        } else {
+            LeadsCaughtUp(title: "NONE HERE", label: "NO LEADS IN THIS FILTER", hint: "SWITCH FILTER TO SEE MORE")
+        }
+    }
+
+    private func groupedItems(
+        _ groups: [(bucket: PipelineViewModel.TriageBucket, leads: [Opportunity])]
+    ) -> [LeadQueueItem] {
         var items: [LeadQueueItem] = []
-        for b in Self.groupOrder {
-            let leads = buckets.leads(for: b)
-            guard !leads.isEmpty else { continue }
-            items.append(.header(b, leads.count))
-            items.append(contentsOf: leads.map { .lead($0, b) })
+        for group in groups {
+            items.append(.header(group.bucket, group.leads.count))
+            items.append(contentsOf: group.leads.map { .lead($0, group.bucket) })
         }
         return items
+    }
+
+    // MARK: - Search states (spec §6.3)
+
+    /// `// MATCHES ─── N` — the section-header grammar in a neutral tone,
+    /// because a match is not an urgency.
+    private func matchesHeader(count: Int) -> some View {
+        HStack(spacing: OPSStyle.Layout.spacing2_5) {
+            HStack(spacing: 0) {
+                Text("// ").foregroundColor(OPSStyle.Colors.textMute)
+                Text("MATCHES").foregroundColor(OPSStyle.Colors.text2)
+            }
+            .font(.custom("JetBrainsMono-Medium", size: 9.5))
+            .tracking(1.4)
+            .textCase(.uppercase)
+
+            Rectangle().fill(OPSStyle.Colors.line).frame(height: 1)
+
+            Text("\(count)")
+                .font(.custom("JetBrainsMono-Medium", size: 9.5))
+                .foregroundColor(OPSStyle.Colors.text2)
+                .monospacedDigit()
+        }
+        .padding(.top, OPSStyle.Layout.spacing1)
+    }
+
+    /// Nothing matched. Deliberately NOT the olive check ring — that grammar
+    /// means "caught up", and a failed search is not an achievement.
+    private var noMatchesBlock: some View {
+        VStack(spacing: 10) {
+            Text("0")
+                .font(.custom("Mohave-Light", size: 32))
+                .foregroundColor(OPSStyle.Colors.text3)
+
+            HStack(spacing: 0) {
+                Text("// ").foregroundColor(OPSStyle.Colors.textMute)
+                Text("NO MATCHES").foregroundColor(OPSStyle.Colors.textMute)
+            }
+            .font(OPSStyle.Typography.miniLabel)
+            .tracking(1.6)
+            .textCase(.uppercase)
+
+            Button {
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                controls.query = ""
+            } label: {
+                Text("[ CLEAR SEARCH ]")
+                    .font(OPSStyle.Typography.miniLabel)
+                    .tracking(1.2)
+                    .textCase(.uppercase)
+                    .foregroundColor(OPSStyle.Colors.text2)
+                    .padding(.horizontal, OPSStyle.Layout.spacing3)
+                    .frame(minHeight: OPSStyle.Layout.touchTargetMin)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Clear search")
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 28)
     }
 
     private func queueSectionHeader(_ b: PipelineViewModel.TriageBucket, count: Int) -> some View {
@@ -479,13 +623,18 @@ struct LeadsTabView: View {
         }
     }
 
-    private func cardFor(_ lead: Opportunity, bucket: PipelineViewModel.TriageBucket) -> some View {
+    private func cardFor(
+        _ lead: Opportunity,
+        bucket: PipelineViewModel.TriageBucket,
+        assignees: [String: String]
+    ) -> some View {
         LeadTriageCard(
             lead: lead,
             viewModel: viewModel,
             bucket: bucket,
             canEdit: canEdit(lead),
             canConvert: canConvert(lead),
+            assigneeLabel: assignees[lead.id],
             onTap:     { detailLead = lead },
             onLog:     { activeSheet = .log(lead) },
             onHandled: { markHandled(lead) },
@@ -859,15 +1008,30 @@ private struct LeadsRefreshListeners: ViewModifier {
 // MARK: - Previews
 
 #if DEBUG
+// The console reads the crew roster through `@Query` — previews need a
+// container for it, even an empty one (a solo roster closes the assignment
+// gate, which is itself the correct default state to preview).
 #Preview("LeadsTabView / loaded") {
     LeadsTabView(viewModel: .previewLoaded())
         .leadsPreviewEnvironment()
         .environmentObject(SubscriptionManager.shared)
+        .modelContainer(for: User.self, inMemory: true)
+}
+
+#Preview("LeadsTabView / searching") {
+    LeadsTabView(
+        viewModel: .previewLoaded(),
+        initialControls: LeadsListControls(query: "roof")
+    )
+    .leadsPreviewEnvironment()
+    .environmentObject(SubscriptionManager.shared)
+    .modelContainer(for: User.self, inMemory: true)
 }
 
 #Preview("LeadsTabView / empty") {
     LeadsTabView(viewModel: .previewLoaded(opportunities: []))
         .leadsPreviewEnvironment()
         .environmentObject(SubscriptionManager.shared)
+        .modelContainer(for: User.self, inMemory: true)
 }
 #endif

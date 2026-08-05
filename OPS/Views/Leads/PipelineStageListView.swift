@@ -52,6 +52,10 @@ struct PipelineStageListView: View {
     /// Backs the LOG glyph and LeadDetailView's mark-lost / edit / convert
     /// closures — all of those present a `LeadsSheet`.
     var onRequestSheet: (LeadsSheet) -> Void = { _ in }
+    /// Assignee tokens by lead id, resolved by the console from its roster —
+    /// one source for the whole surface, so a lead reads the same name here as
+    /// it does in the queue. Empty when the assignment gate is closed.
+    var assigneeIndex: [String: String] = [:]
 
     @EnvironmentObject private var dataController: DataController
     @EnvironmentObject private var permissionStore: PermissionStore
@@ -71,11 +75,13 @@ struct PipelineStageListView: View {
         stage: PipelineStage,
         viewModel: PipelineViewModel,
         onLeadTap: @escaping (Opportunity) -> Void = { _ in },
-        onRequestSheet: @escaping (LeadsSheet) -> Void = { _ in }
+        onRequestSheet: @escaping (LeadsSheet) -> Void = { _ in },
+        assigneeIndex: [String: String] = [:]
     ) {
         _viewModel = ObservedObject(wrappedValue: viewModel)
         self.onLeadTap = onLeadTap
         self.onRequestSheet = onRequestSheet
+        self.assigneeIndex = assigneeIndex
         _selectedStage = State(initialValue: stage)
     }
 
@@ -272,6 +278,7 @@ struct PipelineStageListView: View {
             bucket: .all,
             canEdit: canEdit(lead),
             canConvert: canConvert(lead),
+            assigneeLabel: assigneeIndex[lead.id],
             onTap:     { onLeadTap(lead) },
             onLog:     { onRequestSheet(.log(lead)) },
             onHandled: { markHandled(lead) },

@@ -8,8 +8,9 @@
 //  from the view.
 //
 //  It also owns the span's geometry: the ordinal position each day holds
-//  inside a range, the brightness curve the interior fills itself with, and
-//  the outline that closes only where the selection itself ends.
+//  inside a range, the brightness curve the interior fills itself with, the
+//  fill range that curve renders into, and the outline that closes only where
+//  the selection itself ends.
 //
 
 #if DEBUG
@@ -220,11 +221,12 @@ final class SchedulerSelectionTests: XCTestCase {
         SchedulerSpanCurve.brightness(at: x, interiorCount: interiorCount)
     }
 
-    func testTheCurveLeavesEverySeamAtTheCapsOwnWhite() {
-        // The whole point of the shape: brightness 1 is `primaryText` at full
-        // strength, which is exactly what a cap is filled with. Anything less
-        // at a seam is the step this curve exists to remove — so this is an
-        // exact equality, not an approximate one.
+    func testTheCurveLeavesEverySeamAtTheCapsOwnFill() {
+        // The whole point of the shape: 1 is the top of the fill range, which
+        // is exactly what a cap is filled with (`fillOpacity` is what turns the
+        // two into the same number — see the fill-range section below).
+        // Anything less at a seam is the step this curve exists to remove — so
+        // this is an exact equality, not an approximate one.
         for interiorCount in [1, 2, 3, 10] {
             XCTAssertEqual(brightness(0, interiorCount), 1.0, "start seam, interior \(interiorCount)")
             XCTAssertEqual(
@@ -288,11 +290,11 @@ final class SchedulerSelectionTests: XCTestCase {
         }
     }
 
-    func testAThreeDaySpansLoneInteriorLeavesBothSeamsWhiteAndOnlySoftensBetween() {
+    func testAThreeDaySpansLoneInteriorMeetsBothCapsAndOnlySoftensBetween() {
         // The extreme case, and the one a founder judges first: a single
         // interior day inside both caps' reach at once. Both ramps cover all of
-        // it and add, so it is exactly the caps' white at both seams and eases
-        // to a mid-white waist between them — one continuous pill, no stripe.
+        // it and add, so it is exactly the caps' fill at both seams and eases
+        // to a half-way waist between them — one continuous pill, no stripe.
         XCTAssertEqual(brightness(0, 1), 1.0)
         XCTAssertEqual(brightness(1, 1), 1.0)
         XCTAssertEqual(brightness(0.5, 1), 0.5)
@@ -300,15 +302,15 @@ final class SchedulerSelectionTests: XCTestCase {
         XCTAssertEqual(brightness(0.75, 1), 0.625, accuracy: 1e-9)
     }
 
-    func testAThreeDaySpansLoneInteriorNeverSinksToTheQuietBase() {
+    func testAThreeDaySpansLoneInteriorNeverSinksToTheQuietFloor() {
         // The defect this curve shape was chosen to prevent. With the two sides
         // taking the nearer seam instead of adding, a one-cell interior went to
         // 0 dead centre: a hard dark stripe through the middle of an otherwise
-        // white three-day pill. That reads as "something is different about
+        // bright three-day pill. That reads as "something is different about
         // that day" — which is the abrupt step the blend exists to erase, and
         // 1–3 day jobs are the most common length there is, so it is the
         // version most operators would ever see. The waist must stay in the
-        // caps' half of the range across the whole cell, never at the base.
+        // caps' half of the range across the whole cell, never at the floor.
         var minimum = Double.infinity
         for step in 0...200 {
             let x = Double(step) / 200
@@ -317,7 +319,8 @@ final class SchedulerSelectionTests: XCTestCase {
             minimum = min(minimum, value)
         }
         // And the floor is tight, not merely cleared: the two ramps cross at
-        // exactly half the caps' white, dead centre.
+        // exactly half the caps' value, dead centre — which `fillOpacity` puts
+        // on the exact midpoint of the fill range (see the waist test below).
         XCTAssertEqual(minimum, 0.5)
         XCTAssertEqual(brightness(0.5, 1), minimum)
     }
@@ -325,7 +328,7 @@ final class SchedulerSelectionTests: XCTestCase {
     func testTheCurveNeverOutshinesTheCaps() {
         // Now that the two sides add, this is a real risk rather than a
         // formality: where they overlap their sum would run past the caps' own
-        // white and the span would bulge brighter than the thing it is fusing
+        // fill and the span would bulge brighter than the thing it is fusing
         // with. The clamp is what holds it, and this is the guard on it.
         for interiorCount in 1...12 {
             for step in 0...(interiorCount * 20) {
@@ -374,6 +377,112 @@ final class SchedulerSelectionTests: XCTestCase {
         // two curves having quietly become the same function.
         XCTAssertEqual(nearerSeamBrightness(0.5, 1), 0)
         XCTAssertEqual(brightness(0.5, 1), 0.5)
+    }
+
+    // MARK: - Span fill range (what the shape resolves to on screen)
+
+    private func fillOpacity(_ x: Double, _ interiorCount: Int) -> Double {
+        SchedulerSpanCurve.fillOpacity(at: x, interiorCount: interiorCount)
+    }
+
+    func testTheFillLeavesEverySeamAtExactlyTheCapsOwnOpacity() {
+        // The seam-fusion guard, and the reason it is asserted against the
+        // TOKEN rather than a literal: `capFill` paints
+        // `schedulerSpanCapOpacity` over `surfaceActive`, and the interior's
+        // first gradient stop has to be that same number over that same base,
+        // or the two composite to different colours and the seam reopens. Move
+        // either side and this breaks — which is the point.
+        for interiorCount in [1, 2, 3, 10] {
+            XCTAssertEqual(
+                fillOpacity(0, interiorCount),
+                OPSStyle.Layout.schedulerSpanCapOpacity,
+                "start seam, interior \(interiorCount)"
+            )
+            XCTAssertEqual(
+                fillOpacity(Double(interiorCount), interiorCount),
+                OPSStyle.Layout.schedulerSpanCapOpacity,
+                "end seam, interior \(interiorCount)"
+            )
+        }
+    }
+
+    func testDeepInsideASpanTheFillIsExactlyTheQuietFloor() {
+        // The middle cell of an eight-day interior — as far from either seam as
+        // the curve ever gets — and everything between the two one-cell ramps
+        // with it. Exact, not approximate: the floor is a flat token, so a long
+        // booking's middle is one unvarying colour rather than a very slow
+        // gradient nobody asked for.
+        XCTAssertEqual(fillOpacity(4, 8), OPSStyle.Layout.schedulerSpanQuietOpacity)
+        for x in stride(from: 1.0, through: 7.0, by: 0.25) {
+            XCTAssertEqual(
+                fillOpacity(x, 8),
+                OPSStyle.Layout.schedulerSpanQuietOpacity,
+                "x \(x)"
+            )
+        }
+    }
+
+    func testTheFillIsAStrictlyMonotoneRemapOfTheShapeAndNeverLeavesTheBand() {
+        // The range moved; the shape did not. Wherever the curve is brighter
+        // the fill has to be more opaque, wherever it is flat the fill has to
+        // be flat, and the fill can never leave the band the two tokens define
+        // — that band IS the compression the founder asked for, so an escape
+        // from it is the defect.
+        let quiet = OPSStyle.Layout.schedulerSpanQuietOpacity
+        let cap = OPSStyle.Layout.schedulerSpanCapOpacity
+
+        for interiorCount in 1...12 {
+            var previousBrightness: Double?
+            var previousFill = 0.0
+            for step in 0...(interiorCount * 40) {
+                let x = Double(step) / 40
+                let shape = brightness(x, interiorCount)
+                let fill = fillOpacity(x, interiorCount)
+                let sample = "interior \(interiorCount) at \(x)"
+
+                XCTAssertGreaterThanOrEqual(fill, quiet, sample)
+                XCTAssertLessThanOrEqual(fill, cap, sample)
+
+                if let previousBrightness {
+                    if shape > previousBrightness {
+                        XCTAssertGreaterThan(fill, previousFill, sample)
+                    } else if shape < previousBrightness {
+                        XCTAssertLessThan(fill, previousFill, sample)
+                    } else {
+                        XCTAssertEqual(fill, previousFill, sample)
+                    }
+                }
+                previousBrightness = shape
+                previousFill = fill
+            }
+        }
+    }
+
+    func testAThreeDaySpansWaistSitsHalfWayBetweenTheTwoRangeTokens() {
+        // The 3-day waist, expressed in the range it now renders into: the
+        // shape crosses at 0.5 dead centre, so the fill lands on the exact
+        // midpoint of quiet…cap. Exact — the waist is the one value on the
+        // whole curve a founder can point at and check.
+        let quiet = OPSStyle.Layout.schedulerSpanQuietOpacity
+        let cap = OPSStyle.Layout.schedulerSpanCapOpacity
+
+        XCTAssertEqual(fillOpacity(0.5, 1), quiet + 0.5 * (cap - quiet))
+        // Same value said a second way, so neither expression can drift into
+        // simply restating the implementation.
+        XCTAssertEqual(fillOpacity(0.5, 1), (quiet + cap) / 2)
+    }
+
+    func testTheFillRangeIsOrderedAndACompressionRatherThanTheOldFullSweep() {
+        // Guards the tokens themselves. Inverted, and every ramp runs the wrong
+        // way; either one outside a legal alpha, and SwiftUI silently clamps
+        // and the seam stops fusing. And the range must stay a COMPRESSION —
+        // a cap back at 1 with a floor at 0 is the delta that was rejected.
+        let quiet = OPSStyle.Layout.schedulerSpanQuietOpacity
+        let cap = OPSStyle.Layout.schedulerSpanCapOpacity
+
+        XCTAssertGreaterThan(quiet, 0, "the floor must clear the bare surfaceActive base")
+        XCTAssertLessThan(cap, 1, "the caps must sit below solid primaryText")
+        XCTAssertLessThan(quiet, cap)
     }
 
     // MARK: - Span curve sampling (what each cell hands the gradient)
@@ -434,17 +543,21 @@ final class SchedulerSelectionTests: XCTestCase {
         XCTAssertGreaterThan(bandBrightness(0, 1), bandBrightness(0, 8))
     }
 
-    func testTheNumberFlipsOnlyWhereTheCapsWhiteIsUnderIt() {
+    func testTheNumberFlipsOnlyWhereTheCapsFillIsUnderIt() {
         let threshold = OPSStyle.Layout.schedulerSpanNumberFlipBrightness
 
-        // Cap-adjacent: near-white ground under the digits — they take the
-        // caps' own black.
+        // The threshold reads the SHAPE, not the fill, so compressing the fill
+        // range moved none of these four values — only how much contrast each
+        // decision buys. Those figures live on the token's own doc comment.
+        //
+        // Cap-adjacent: the brightest ground under any digits in a long span —
+        // they take the caps' own black.
         XCTAssertGreaterThan(bandBrightness(0, 8), threshold)
-        // A three-day span's lone interior: same call, and now the clearest of
-        // them — the ground under those digits runs 0.85 to 0.55, never leaving
+        // A three-day span's lone interior: same call, and the clearest of
+        // them — the shape under those digits runs 0.85 to 0.55, never leaving
         // the caps' half of the range, so black is what survives it.
         XCTAssertGreaterThan(bandBrightness(0, 1), threshold)
-        // Deep inside a span the ground is the quiet base — white stays.
+        // Deep inside a span the ground is the quiet floor — white stays.
         XCTAssertLessThan(bandBrightness(3, 8), threshold)
         // And the cell before the end cap keeps white too: its glow is at the
         // trailing edge, where no digit is. The flip is a reading of the
@@ -499,6 +612,119 @@ final class SchedulerSelectionTests: XCTestCase {
         }
     }
 
+    // MARK: - Which end of a selection closes
+
+    func testEveryDayInsideASelectionWearsTheOutlineAndOnlyItsRealEndsClose() {
+        // The whole contract in one table. The outline is what DEFINES a
+        // selection now — the fill only says "inside" — so every role that is
+        // part of a selection has to carry it, and only a genuine end of the
+        // selection may close.
+        XCTAssertNil(SpanEdgeStroke.Closure.closing(.none))
+        XCTAssertEqual(SpanEdgeStroke.Closure.closing(.start), .leading)
+        XCTAssertEqual(SpanEdgeStroke.Closure.closing(.end), .trailing)
+        XCTAssertEqual(SpanEdgeStroke.Closure.closing(.interior), .open)
+    }
+
+    func testAOneDayPickIsOutlinedAndClosesAtBothEnds() {
+        // The role the redesign changed. A single starts and ends on the same
+        // day, so both its ends are real ends and both close.
+        //
+        // It used to be deliberately bare: a solid-white block is its own
+        // boundary, and an outline round it was a line drawn for the sake of
+        // drawing a line. That reasoning died with the solid-white cap — a
+        // single now composites to the same fill as any other cap, well below
+        // the hairline above it, so leaving it bare would make the commonest
+        // pick on the sheet the one selection missing the language every other
+        // selection is drawn in.
+        XCTAssertEqual(SpanEdgeStroke.Closure.closing(.single), .both)
+    }
+
+    func testAOneDayPicksOutlineClosesOnBothSidesRatherThanRunningToEitherMargin() {
+        // The geometry the case above buys, asserted where it is visible: a
+        // closed pill, inset from both margins, not a pair of open hairlines.
+        let single = stroke(.both)
+
+        XCTAssertFalse(single.isEmpty)
+        XCTAssertGreaterThan(single.boundingRect.minX, cellRect.minX)
+        XCTAssertLessThan(single.boundingRect.maxX, cellRect.maxX)
+    }
+
+    // MARK: - Day-number legibility on the span's own ground
+
+    /// One grey channel and its alpha, read off the token itself rather than
+    /// restated as a literal — the whole selection palette is monochrome, so
+    /// the red channel is the value.
+    private func channel(_ color: Color) -> (level: Double, alpha: Double) {
+        var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+        UIColor(color).getRed(&r, green: &g, blue: &b, alpha: &a)
+        return (Double(r), Double(a))
+    }
+
+    /// The grey a day number actually sits on, `x` cells into a span's
+    /// interior — the three layers the cell paints, in order: the black
+    /// canvas, `surfaceActive`, then `primaryText` at the curve's fill.
+    private func spanGround(at x: Double, interiorCount: Int) -> Double {
+        let surface = channel(OPSStyle.Colors.surfaceActive)
+        let ink = channel(OPSStyle.Colors.primaryText)
+        let base = surface.level * surface.alpha          // over a black canvas
+        let alpha = SchedulerSpanCurve.fillOpacity(at: x, interiorCount: interiorCount)
+        return base * (1 - alpha) + ink.level * alpha
+    }
+
+    private func relativeLuminance(_ level: Double) -> Double {
+        level <= 0.03928 ? level / 12.92 : pow((level + 0.055) / 1.055, 2.4)
+    }
+
+    private func contrast(_ a: Double, _ b: Double) -> Double {
+        let la = relativeLuminance(a) + 0.05
+        let lb = relativeLuminance(b) + 0.05
+        return max(la, lb) / min(la, lb)
+    }
+
+    func testWhicheverInkADayNumberPicksClearsAAEverywhereAlongItsGlyphRun() {
+        // The guard on the one genuinely hard call in this design: a two-digit
+        // number set on a moving ramp. The cell picks its ink from the mean
+        // brightness under the glyphs, which is a single decision for a run
+        // that is NOT a single tone — so the mean can be comfortable while an
+        // end of the run is not. This asserts the end, not the mean.
+        //
+        // Every interior configuration the curve can produce, every position
+        // across the glyph run: whatever ink that cell would wear has to clear
+        // the design system's 4.5:1 text floor (DESIGN.md § accessibility)
+        // against the ground actually under it. This is the assertion that
+        // pins `schedulerSpanQuietOpacity` — the floor is not a taste value,
+        // it is what holds the weakest point of the weakest cell above AA.
+        let inverted = channel(OPSStyle.Colors.invertedText).level
+        let primary = channel(OPSStyle.Colors.primaryText).level
+        let bandStart = OPSStyle.Layout.schedulerSpanNumberBandStart
+        let bandEnd = OPSStyle.Layout.schedulerSpanNumberBandEnd
+
+        var worst = Double.infinity
+        var worstSample = ""
+
+        for interiorCount in 1...12 {
+            for index in 0..<interiorCount {
+                let prefersInverted = SchedulerSpanCurve.numberBandBrightness(
+                    interiorIndex: index,
+                    interiorCount: interiorCount
+                ) > OPSStyle.Layout.schedulerSpanNumberFlipBrightness
+                let ink = prefersInverted ? inverted : primary
+
+                for step in 0...20 {
+                    let across = bandStart + (bandEnd - bandStart) * Double(step) / 20
+                    let ratio = contrast(ink, spanGround(at: Double(index) + across, interiorCount: interiorCount))
+                    if ratio < worst {
+                        worst = ratio
+                        worstSample = "interior \(index)/\(interiorCount) at \(across), "
+                            + (prefersInverted ? "black" : "white")
+                    }
+                }
+            }
+        }
+
+        XCTAssertGreaterThanOrEqual(worst, 4.5, "weakest day number: \(worstSample) — \(worst):1")
+    }
+
     // MARK: - Render smoke
 
     /// Renders the day cell in every signal state through a real
@@ -524,20 +750,22 @@ final class SchedulerSelectionTests: XCTestCase {
             ),
             State(name: "pre_floor", signals: .init(crewBusy: true, isPreFloor: true)),
             State(name: "start_cap", role: .start, spanPosition: (index: 0, count: 6), spanEdge: .leading),
-            // Leaves the start seam at the cap's own white — and the day
+            // Leaves the start seam at the cap's own fill — and the day
             // number flips to black to survive it.
             State(name: "interior_near_cap", role: .interior, spanPosition: (index: 1, count: 6), spanEdge: .open),
             // The mirror: the glow is at this cell's trailing edge, away from
             // the number, so the number stays white.
             State(name: "interior_near_end", role: .interior, spanPosition: (index: 4, count: 6), spanEdge: .open),
             // Deep enough inside that the curve has nothing to add — the quiet
-            // base, flat across the whole cell.
+            // floor, flat across the whole cell.
             State(name: "interior_middle", role: .interior, spanPosition: (index: 2, count: 5), spanEdge: .open),
-            // A three-day span's lone interior: white at both edges, easing to
-            // a mid-white waist between them.
+            // A three-day span's lone interior: the cap's fill at both edges,
+            // easing to a half-way waist between them.
             State(name: "interior_lone", role: .interior, spanPosition: (index: 1, count: 3), spanEdge: .open),
             State(name: "end_cap", role: .end, spanPosition: (index: 5, count: 6), spanEdge: .trailing),
-            State(name: "single", role: .single)
+            // A one-day pick closes on both sides — the only selection whose
+            // outline is a complete pill on its own.
+            State(name: "single", role: .single, spanEdge: .both)
         ]
 
         let size = CGSize(width: 52, height: OPSStyle.Layout.schedulerDayCellHeight)

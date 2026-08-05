@@ -15,13 +15,16 @@
 //      colour-blind operator, and in direct sun).
 //    • DENSITY DOT — one dim dot when the day holds work that touches neither
 //      this crew nor this project. Presence, not detail.
-//    • SELECTION   — white caps whose fill runs on into the span. The interior
-//      leaves each cap at exactly the cap's own white and eases to quiet about
-//      a day in, so there is no seam to find: cap and interior are one object.
-//      The whole unit is traced by a hairline outline that stays OPEN where a
-//      week row wraps — so a range reads as a single object however many rows
-//      it crosses. Drawn ABOVE the signals so the operator's own pick is
-//      always the loudest thing on the grid.
+//    • SELECTION   — a hairline outline in `primaryText`, the brightest thing
+//      in the cell, around a fill that travels in a narrow band well beneath
+//      it. The outline defines the shape; the fill only has to say "inside".
+//      Caps sit at the top of that band, and the interior leaves each cap at
+//      exactly the cap's own fill before easing to the band's quiet floor
+//      about a day in — so there is no seam to find: cap and interior are one
+//      object. The outline stays OPEN where a week row wraps, so a range reads
+//      as a single object however many rows it crosses. Drawn ABOVE the
+//      signals so the operator's own pick is always the loudest thing on the
+//      grid.
 //
 //  Days before the dependency floor recede to 35% — a guide, never a gate.
 //  Every day on the grid is tappable, including those.
@@ -105,28 +108,29 @@ struct SchedulerDayCell: View {
         case .none:
             Color.clear
         case .single:
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                .fill(OPSStyle.Colors.primaryText)
+            capFill(RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius))
         case .start:
-            UnevenRoundedRectangle(
-                topLeadingRadius: OPSStyle.Layout.cardCornerRadius,
-                bottomLeadingRadius: OPSStyle.Layout.cardCornerRadius,
-                bottomTrailingRadius: 0,
-                topTrailingRadius: 0
+            capFill(
+                UnevenRoundedRectangle(
+                    topLeadingRadius: OPSStyle.Layout.cardCornerRadius,
+                    bottomLeadingRadius: OPSStyle.Layout.cardCornerRadius,
+                    bottomTrailingRadius: 0,
+                    topTrailingRadius: 0
+                )
             )
-            .fill(OPSStyle.Colors.primaryText)
         case .end:
-            UnevenRoundedRectangle(
-                topLeadingRadius: 0,
-                bottomLeadingRadius: 0,
-                bottomTrailingRadius: OPSStyle.Layout.cardCornerRadius,
-                topTrailingRadius: OPSStyle.Layout.cardCornerRadius
+            capFill(
+                UnevenRoundedRectangle(
+                    topLeadingRadius: 0,
+                    bottomLeadingRadius: 0,
+                    bottomTrailingRadius: OPSStyle.Layout.cardCornerRadius,
+                    topTrailingRadius: OPSStyle.Layout.cardCornerRadius
+                )
             )
-            .fill(OPSStyle.Colors.primaryText)
         case .interior:
             ZStack {
                 // The quiet base carries the whole interior; the curve on top
-                // reaches the caps' own white at each seam and is out of the
+                // reaches the caps' own fill at each seam and is out of the
                 // way within a day of it, so the middle of a long span stays
                 // exactly as calm as it was.
                 Rectangle()
@@ -134,6 +138,28 @@ struct SchedulerDayCell: View {
                 Rectangle()
                     .fill(interiorGradient)
             }
+        }
+    }
+
+    /// A cap's fill — the same two layers the interior composites, in the same
+    /// order: the quiet `surfaceActive` base, then `primaryText` at the cap's
+    /// own opacity.
+    ///
+    /// One solid fill would have looked identical only while that opacity was
+    /// 1. Below it the base shows through, so a cap painted straight onto the
+    /// canvas would land a shade darker than the interior beside it and the
+    /// seam would reopen — the exact step the blend exists to erase. Sharing
+    /// the construction makes a seam pixel one colour by arithmetic rather
+    /// than by luck. Geometry is the caller's: the shape decides which corners
+    /// round.
+    @ViewBuilder
+    private func capFill<S: Shape>(_ shape: S) -> some View {
+        ZStack {
+            shape.fill(OPSStyle.Colors.surfaceActive)
+            shape.fill(
+                OPSStyle.Colors.primaryText
+                    .opacity(OPSStyle.Layout.schedulerSpanCapOpacity)
+            )
         }
     }
 
@@ -160,12 +186,12 @@ struct SchedulerDayCell: View {
             .map { position -> Gradient.Stop in
                 // A cell is exactly one unit wide in span coordinates, so the
                 // position's offset into the cell is already the stop's
-                // location. Brightness 1 resolves to `primaryText` at full
-                // strength — the caps' fill exactly, which is what makes the
-                // seam disappear.
+                // location. At a seam `fillOpacity` returns exactly
+                // `schedulerSpanCapOpacity` — the number `capFill` uses, over
+                // the same base — which is what makes the seam disappear.
                 Gradient.Stop(
                     color: OPSStyle.Colors.primaryText
-                        .opacity(SchedulerSpanCurve.brightness(at: position, interiorCount: interior.count)),
+                        .opacity(SchedulerSpanCurve.fillOpacity(at: position, interiorCount: interior.count)),
                     location: CGFloat(position - Double(interior.index))
                 )
             }
@@ -201,10 +227,10 @@ struct SchedulerDayCell: View {
         case .single, .start, .end:
             return OPSStyle.Colors.invertedText
         case .interior:
-            // The cap's white now carries a full day into the span, so an
-            // interior number can be sitting on near-white ground. Read the
-            // curve where the glyphs actually are, and wear whichever ink
-            // survives it — the caps' own black, or the usual white.
+            // The cap's fill carries a full day into the span, so an interior
+            // number can be sitting on ground bright enough to swallow white.
+            // Read the curve where the glyphs actually are, and wear whichever
+            // ink survives it — the caps' own black, or the usual white.
             return numberPrefersInvertedInk
                 ? OPSStyle.Colors.invertedText
                 : OPSStyle.Colors.primaryText
@@ -213,8 +239,8 @@ struct SchedulerDayCell: View {
         }
     }
 
-    /// Whether the ground under the day number carries more of the cap's white
-    /// than it does the quiet base. Judged across the whole glyph run rather
+    /// Whether the ground under the day number carries more of the cap's fill
+    /// than it does the quiet floor. Judged across the whole glyph run rather
     /// than at one point, because a cap-adjacent cell is a ramp, not a tone.
     private var numberPrefersInvertedInk: Bool {
         guard let interior = interiorPosition else { return false }
@@ -238,11 +264,11 @@ struct SchedulerDayCell: View {
         ].compactMap { $0 }
 
         // The bars keep their own colours across the blend, deliberately. A
-        // full-width bar lying over a white-to-quiet ramp cannot be one
+        // full-width bar lying over a bright-to-quiet ramp cannot be one
         // correct colour, and a bar that changed tone mid-span would read as
         // the day's availability changing rather than its background. These
         // are presence signals, not values — tan and the hatch hold on both
-        // grounds — so only the caps, flat white end to end, invert.
+        // grounds — so only the caps, flat fill end to end, invert.
         if !bars.isEmpty {
             VStack(spacing: OPSStyle.Layout.Border.standard) {
                 ForEach(bars, id: \.self) { bar in
@@ -289,24 +315,30 @@ struct SchedulerDayCell: View {
 /// The brightness a selection wears across its interior, as a function of
 /// position measured in day cells from the start cap's seam.
 ///
-/// Brightness 1 is the cap's own fill — `primaryText` at full strength — and
-/// that is precisely the value at each seam, so a cap and the day beside it
-/// meet at one colour and fuse. From there the white eases out quadratically
-/// over `schedulerSpanBlendCells` and everything deeper stays at the quiet
-/// base. Anchoring the blend to the seams rather than stretching it across the
-/// whole span is the point: a fortnight-long booking then looks exactly like a
-/// three-day one at both ends and says nothing in between, which is honest —
-/// the middle of a long range has nothing to report.
+/// Two layers, deliberately separate. `brightness` is the pure 0…1 SHAPE and
+/// knows nothing about how bright a selection is allowed to get;
+/// `fillOpacity` is the only place that shape learns the RANGE it renders
+/// into. Retuning the look is then a token edit and the shape's whole body of
+/// tests stays valid.
 ///
-/// The two seams' ramps ADD, clamped at the caps' own white. On every span of
+/// Brightness 1 is the cap's own fill, and that is precisely the value at each
+/// seam, so a cap and the day beside it meet at one colour and fuse. From
+/// there it eases out quadratically over `schedulerSpanBlendCells` and
+/// everything deeper stays at the quiet floor. Anchoring the blend to the
+/// seams rather than stretching it across the whole span is the point: a
+/// fortnight-long booking then looks exactly like a three-day one at both ends
+/// and says nothing in between, which is honest — the middle of a long range
+/// has nothing to report.
+///
+/// The two seams' ramps ADD, clamped at the caps' own value. On every span of
 /// four days or more they never reach each other, so the sum is just whichever
 /// ramp is in range and nothing about a long span changes. It matters on
 /// exactly one length: a three-day booking, whose single interior day sits
-/// inside both ramps at once. Adding there leaves that day white at both seams
-/// and merely soft in the middle. Taking the nearer seam instead would drive it
-/// to the quiet base dead centre — a dark stripe through the middle of a
-/// three-day pill, which is the abrupt step this whole curve exists to erase,
-/// reintroduced at the one span short enough to make it obvious.
+/// inside both ramps at once. Adding there leaves that day at the caps' fill on
+/// both seams and merely soft in the middle. Taking the nearer seam instead
+/// would drive it to the quiet floor dead centre — a dark stripe through the
+/// middle of a three-day pill, which is the abrupt step this whole curve exists
+/// to erase, reintroduced at the one span short enough to make it obvious.
 enum SchedulerSpanCurve {
 
     /// How far the glow reaches in from each seam. Clamped to the interior's
@@ -314,7 +346,7 @@ enum SchedulerSpanCurve {
     /// the interior does. On a three-day span — the only span short enough for
     /// the clamp to bite — both ramps therefore cover the lone interior day end
     /// to end and overlap across all of it, which is what holds that day at the
-    /// caps' white on both edges instead of pinching it out in the middle.
+    /// caps' fill on both edges instead of pinching it out in the middle.
     static func blendWidth(interiorCount: Int) -> Double {
         guard interiorCount > 0 else { return 0 }
         return min(OPSStyle.Layout.schedulerSpanBlendCells, Double(interiorCount))
@@ -327,8 +359,11 @@ enum SchedulerSpanCurve {
     /// the caps it is fusing with. Summing rather than taking the nearer seam
     /// changes nothing wherever the two ramps stay out of each other's way,
     /// which is every span of four days or more; on a three-day span it is what
-    /// holds the lone interior at half the caps' white through its middle
-    /// instead of letting it fall to the quiet base and read as a break.
+    /// holds the lone interior half way between the caps' fill and the quiet
+    /// floor through its middle instead of letting it drop to the floor and
+    /// read as a break.
+    ///
+    /// Pure shape, 0…1. What that resolves to on screen is `fillOpacity`.
     static func brightness(at x: Double, interiorCount: Int) -> Double {
         let interior = Double(interiorCount)
         let blend = blendWidth(interiorCount: interiorCount)
@@ -338,6 +373,22 @@ enum SchedulerSpanCurve {
         let fromStart = max(0, 1 - position / blend)
         let fromEnd = max(0, 1 - (interior - position) / blend)
         return min(1, fromStart * fromStart + fromEnd * fromEnd)
+    }
+
+    /// The alpha the interior's `primaryText` layer wears `x` cells in from the
+    /// start cap's seam — the shape mapped onto the selection's actual fill
+    /// range, and the only place the two meet.
+    ///
+    /// At a seam the shape is exactly 1 and this is exactly
+    /// `schedulerSpanCapOpacity` — the same number `capFill` paints, over the
+    /// same `surfaceActive` base — so the two sides of a seam composite to one
+    /// colour rather than to two that merely look alike. Deep inside a span the
+    /// shape is exactly 0 and this is exactly `schedulerSpanQuietOpacity`. Both
+    /// endpoints are bit-exact, not near: the endpoints are the contract.
+    static func fillOpacity(at x: Double, interiorCount: Int) -> Double {
+        let quiet = OPSStyle.Layout.schedulerSpanQuietOpacity
+        let cap = OPSStyle.Layout.schedulerSpanCapOpacity
+        return quiet + brightness(at: x, interiorCount: interiorCount) * (cap - quiet)
     }
 
     /// Where interior cell `interiorIndex` has to be sampled, in span
@@ -410,6 +461,37 @@ struct SpanEdgeStroke: Shape {
         case leading
         case trailing
         case both
+
+        /// What the outline does at a day's two horizontal ends, given that
+        /// day's role in the selection. nil where no outline belongs at all.
+        ///
+        /// The rule is a short one: an end closes only where the SELECTION
+        /// ends. Everything else — the next day along, or the wrap into the
+        /// following week row — is a continuation, so it stays open and the
+        /// two hairlines simply run flush to the margin. That is why a row
+        /// boundary needs no flag of its own: a wrap edge is by definition not
+        /// a cap, and only caps ever close. The cell never infers weekday
+        /// math; the grid asks this question and hands down the answer.
+        ///
+        /// A one-day pick closes at BOTH ends — it is a selection that starts
+        /// and ends on the same day, so both of its ends are genuine ends.
+        /// This is the only role whose answer changed when the fill stopped
+        /// being solid white: back then the cap was the brightest thing on the
+        /// grid and was its own boundary, so an outline round it was a line
+        /// drawn for the sake of drawing a line. Now the hairline is what
+        /// defines a selection and the fill only says "inside", so leaving the
+        /// single bare would make the most common pick of all — a one-day job
+        /// — the one selection wearing none of the language the rest of them
+        /// are drawn in.
+        static func closing(_ role: SchedulerSelection.DayRole) -> Closure? {
+            switch role {
+            case .none:     return nil
+            case .single:   return .both
+            case .start:    return .leading
+            case .end:      return .trailing
+            case .interior: return .open
+            }
+        }
     }
 
     let closure: Closure

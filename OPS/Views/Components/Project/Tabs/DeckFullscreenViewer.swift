@@ -12,11 +12,15 @@
 //  here (with tools) and inline (read-only). Chrome auto-dims while the user
 //  pans/zooms so it never obstructs the geometry being inspected.
 //
+//  Entity-agnostic by design: it takes a title and geometry, never a model, so
+//  the SAME viewer serves a project's deck and a lead's deck. Permission is the
+//  HOST's call for the same reason — see `onEdit`.
+//
 
 import SwiftUI
 
 struct DeckFullscreenViewer: View {
-    /// Deck/project title for the top bar.
+    /// Deck/project/lead title for the top bar.
     let title: String
     /// The geometry to render — the only inputs the viewer needs, so it stays
     /// decoupled from SwiftData models (and headlessly renderable).
@@ -24,6 +28,14 @@ struct DeckFullscreenViewer: View {
     @Binding var viewMode: DeckTabViewMode
     @ObservedObject var toolState: DeckViewerToolState
     let onClose: () -> Void
+    /// Jump from looking to authoring, when this operator is allowed to.
+    ///
+    /// The HOST decides — "assigned" scope is entity-relative, and a project
+    /// and a lead answer it with different rules, so resolving it here would
+    /// drag entity permission semantics into the one view that is deliberately
+    /// ignorant of them. `nil` means no grant and the viewer renders NO button:
+    /// a disabled affordance advertises an action that can only refuse.
+    var onEdit: (() -> Void)?
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -203,7 +215,12 @@ struct DeckFullscreenViewer: View {
                 isViewportInteracting = false
             }
 
-            closeButton
+            // One trailing action cluster — EDIT then close, butted together so
+            // the pair costs the title one 44pt slot rather than two.
+            HStack(spacing: 0) {
+                editButton
+                closeButton
+            }
         }
         .padding(.horizontal, OPSStyle.Layout.spacing3)
         .padding(.vertical, OPSStyle.Layout.spacing2_5)
@@ -219,6 +236,28 @@ struct DeckFullscreenViewer: View {
         }
         .contentShape(Rectangle())
         .gesture(dismissDrag)
+    }
+
+    /// The deck tab's own EDIT verb, carried into fullscreen: same word, same
+    /// accent, same 44pt target, trailing the mode control exactly as it does
+    /// on the inline control bar. Absent entirely without the grant, and it
+    /// rides the chrome fade with everything else in the top bar.
+    @ViewBuilder
+    private var editButton: some View {
+        if let onEdit {
+            Button {
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                onEdit()
+            } label: {
+                Text("EDIT")
+                    .font(OPSStyle.Typography.captionBold)
+                    .foregroundColor(OPSStyle.Colors.primaryAccent)
+                    .frame(minWidth: OPSStyle.Layout.touchTargetMin,
+                           minHeight: OPSStyle.Layout.touchTargetMin)
+                    .contentShape(Rectangle())
+            }
+            .accessibilityLabel("Edit design")
+        }
     }
 
     private var closeButton: some View {

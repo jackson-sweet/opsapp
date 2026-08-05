@@ -47,7 +47,9 @@ struct LeadDetailsDocument: View {
     var onOpenClient: () -> Void = {}
     var onOpenProject: () -> Void = {}
     var onMatchProject: () -> Void = {}
-    var onOpenDeck: (DeckDesign) -> Void = { _ in }
+    /// Push `LeadDeckScreen`. The row identifies the drawing; the screen owns
+    /// it, so nothing needs to travel with the tap.
+    var onOpenDeck: () -> Void = {}
     var onCreateDeck: () -> Void = {}
     var importingPhotoIDs: [String] = []
     var onAddPhotos: () -> Void = {}

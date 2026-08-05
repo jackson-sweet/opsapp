@@ -2,8 +2,8 @@
 //  DeckTabView.swift
 //  OPS
 //
-//  Deck tab for project details. Shows 3D/2D interactive model of the
-//  project's deck design, or an empty state with CTA to create one.
+//  Deck tab for a project OR a lead. Shows the 3D/2D interactive model of the
+//  owner's deck design, or an empty state with a CTA to create one.
 //
 
 import SwiftUI
@@ -18,8 +18,68 @@ enum DeckTabViewMode: String {
     case materials = "MATERIALS"
 }
 
+/// Which entity's deck this tab is showing.
+///
+/// A deck drawn on a lead and a deck drawn on a project are the SAME artifact —
+/// same geometry, same modes, same badges, same empty state — so one view
+/// serves both and cannot drift apart. Only the four things that are genuinely
+/// entity-shaped branch on this: the `@Query` scope, the display-candidate
+/// lookup, the title pill, and the remote self-repair fetch.
+enum DeckOwner: Equatable {
+    case project(Project)
+    case lead(Opportunity)
+
+    var id: String {
+        switch self {
+        case .project(let project): return project.id
+        case .lead(let lead): return lead.id
+        }
+    }
+
+    /// The label on the viewport's floating title pill. A project carries a
+    /// real title of its own; a lead's `title` is optional and is at best an
+    /// inquiry subject line, so leads use the same label the shipped lead
+    /// deck-builder route already titles a lead's deck with — the contact.
+    var title: String {
+        switch self {
+        case .project(let project): return project.title
+        case .lead(let lead): return lead.displayContactName
+        }
+    }
+
+    var companyId: String {
+        switch self {
+        case .project(let project): return project.companyId
+        case .lead(let lead): return lead.companyId
+        }
+    }
+
+    /// The project, when this owner is one.
+    ///
+    /// MATERIALS is a project-EXECUTION surface, not a drawing surface: it
+    /// reads the project's task types and product catalog to detect vinyl, and
+    /// MARK ORDERED writes a real vinyl order against the project. A lead has
+    /// no tasks and no order to write, so the mode is absent for leads rather
+    /// than faked with an empty project.
+    var project: Project? {
+        if case .project(let project) = self { return project }
+        return nil
+    }
+
+    /// Identity, not object identity: two fetches of the same row are the same
+    /// owner, and `.task(id:)` must not re-fire because SwiftData handed back a
+    /// different instance.
+    static func == (lhs: DeckOwner, rhs: DeckOwner) -> Bool {
+        switch (lhs, rhs) {
+        case let (.project(a), .project(b)): return a.id == b.id
+        case let (.lead(a), .lead(b)): return a.id == b.id
+        default: return false
+        }
+    }
+}
+
 struct DeckTabView: View {
-    let project: Project
+    let owner: DeckOwner
     let onCreateDeckDesign: () -> Void
     let onEditDeckDesign: (DeckDesign) -> Void
     /// Shared with the fullscreen viewer so 3D/2D mode persists across expand.
@@ -35,7 +95,7 @@ struct DeckTabView: View {
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    @State private var remoteFetchAttemptedProjectId: String?
+    @State private var remoteFetchAttemptedOwnerId: String?
     /// `true` while the user is actively panning/zooming the visible viewport
     /// (the 3D camera OR the 2D blueprint). Drives the badge fade — badges hide
     /// during viewport movement so they don't obstruct the geometry being
@@ -56,28 +116,54 @@ struct DeckTabView: View {
     @Query private var allDesigns: [DeckDesign]
 
     init(
-        project: Project,
+        owner: DeckOwner,
         onCreateDeckDesign: @escaping () -> Void,
         onEditDeckDesign: @escaping (DeckDesign) -> Void,
         viewMode: Binding<DeckTabViewMode>,
         onRequestFullscreen: @escaping () -> Void = {}
     ) {
-        self.project = project
+        self.owner = owner
         self.onCreateDeckDesign = onCreateDeckDesign
         self.onEditDeckDesign = onEditDeckDesign
         self._viewMode = viewMode
         self.onRequestFullscreen = onRequestFullscreen
-        // Scope to this project — deck_designs is realtime-subscribed, so an
+        // Scope to this owner — deck_designs is realtime-subscribed, so an
         // unfiltered @Query invalidated this tab on ANY company deck save.
-        let pid: String? = project.id
-        self._allDesigns = Query(
-            filter: #Predicate<DeckDesign> { $0.projectId == pid }
-        )
+        switch owner {
+        case .project(let project):
+            let pid: String? = project.id
+            self._allDesigns = Query(
+                filter: #Predicate<DeckDesign> { $0.projectId == pid }
+            )
+        case .lead(let lead):
+            // Three-way id match rather than the project branch's single
+            // equality: `DeckDesign` canonicalises every id it stores
+            // (lowercased UUID) while `Opportunity.id` arrives in whatever
+            // case its source produced, so a raw `==` can silently miss a
+            // lead's own deck. `displayCandidate` re-filters canonically
+            // below, so a wider net costs nothing.
+            let canonical = DeckDesign.canonicalUUIDString(lead.id)
+            let exact: String? = canonical
+            let lowered: String? = canonical.lowercased()
+            let uppered: String? = canonical.uppercased()
+            self._allDesigns = Query(
+                filter: #Predicate<DeckDesign> {
+                    $0.opportunityId == exact
+                        || $0.opportunityId == lowered
+                        || $0.opportunityId == uppered
+                }
+            )
+        }
     }
 
-    /// Most-recently-updated non-deleted design for this project.
+    /// Most-recently-updated non-deleted design for this owner.
     private var deckDesign: DeckDesign? {
-        DeckDesign.displayCandidate(in: allDesigns, forProjectId: project.id)
+        switch owner {
+        case .project(let project):
+            return DeckDesign.displayCandidate(in: allDesigns, forProjectId: project.id)
+        case .lead(let lead):
+            return DeckDesign.displayCandidate(in: allDesigns, forOpportunityId: lead.id)
+        }
     }
 
     var body: some View {
@@ -88,7 +174,7 @@ struct DeckTabView: View {
                 emptyState
             }
         }
-        .task(id: project.id) {
+        .task(id: owner.id) {
             await fetchRemoteDeckDesignIfNeeded()
         }
     }
@@ -106,8 +192,15 @@ struct DeckTabView: View {
                 case .materials:
                     // The auto-calculated materials list as a full sibling tab —
                     // a peer of 3D and 2D, not a section scrolling below them.
-                    DeckMaterialsSection(design: design, project: project)
-                        .padding(.horizontal, OPSStyle.Layout.spacing3)
+                    // Project-only: the segment is absent for a lead owner, so
+                    // the canvas fallback here is purely defensive against a
+                    // stale binding arriving from another surface.
+                    if let project = owner.project {
+                        DeckMaterialsSection(design: design, project: project)
+                            .padding(.horizontal, OPSStyle.Layout.spacing3)
+                    } else {
+                        viewportBlock(design: design)
+                    }
                 }
             }
             .animation(OPSStyle.Animation.fast, value: viewMode)
@@ -186,7 +279,7 @@ struct DeckTabView: View {
     private func floatingDesignInfo(design: DeckDesign) -> some View {
         let chips = levelChips(for: design)
         return VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
-            titlePill(project.title)
+            titlePill(owner.title)
 
             ForEach(chips) { chip in
                 levelChipView(chip)
@@ -280,21 +373,32 @@ struct DeckTabView: View {
 
     // MARK: - Control Bar
 
+    /// The renderings, plus MATERIALS when the owner has one to compute. A lead
+    /// gets a two-segment picker rather than a third segment that would open an
+    /// order form with no project behind it.
+    private var modeOptions: [SegmentedControl<DeckTabViewMode>.Option] {
+        var options: [SegmentedControl<DeckTabViewMode>.Option] = [
+            .text(DeckTabViewMode.threeD, "3D"),
+            .text(DeckTabViewMode.twoD, "2D")
+        ]
+        if owner.project != nil {
+            options.append(
+                .icon(DeckTabViewMode.materials,
+                      systemImage: "list.bullet",
+                      accessibilityLabel: "Materials")
+            )
+        }
+        return options
+    }
+
     private func controlBar(design: DeckDesign) -> some View {
         HStack(spacing: OPSStyle.Layout.spacing2) {
             // Mode picker owns the leading ~3/5 of the screen; the materials
             // segment is a list glyph so all three segments stay short and
             // full-size. EDIT anchors the far right, clear of the picker.
-            SegmentedControl(
-                selection: $viewMode,
-                options: [
-                    .text(DeckTabViewMode.threeD, "3D"),
-                    .text(DeckTabViewMode.twoD, "2D"),
-                    .icon(DeckTabViewMode.materials, systemImage: "list.bullet", accessibilityLabel: "Materials")
-                ]
-            )
-            .containerRelativeFrame(.horizontal) { width, _ in width * 0.6 }
-            .onChange(of: viewMode) { _, _ in
+            SegmentedControl(selection: $viewMode, options: modeOptions)
+                .containerRelativeFrame(.horizontal) { width, _ in width * 0.6 }
+                .onChange(of: viewMode) { _, _ in
                 UIImpactFeedbackGenerator(style: .light).impactOccurred()
                 // Clear the interaction flag on a mode switch so badges can't
                 // get stuck hidden after switching mid-gesture.
@@ -624,29 +728,34 @@ struct DeckTabView: View {
     @MainActor
     private func fetchRemoteDeckDesignIfNeeded() async {
         guard deckDesign?.hasRenderableGeometry != true else { return }
-        guard remoteFetchAttemptedProjectId != project.id else { return }
+        guard remoteFetchAttemptedOwnerId != owner.id else { return }
         guard let companyId = effectiveCompanyId else {
             print("[DeckTabView] Skipping deck design repair fetch — no company id")
             return
         }
 
-        remoteFetchAttemptedProjectId = project.id
+        remoteFetchAttemptedOwnerId = owner.id
 
         do {
-            let dtos = try await DeckDesignRepository(companyId: companyId)
-                .fetchForProject(DeckDesign.canonicalUUIDString(project.id))
+            let repository = DeckDesignRepository(companyId: companyId)
+            let ownerId = DeckDesign.canonicalUUIDString(owner.id)
+            let dtos: [SupabaseDeckDesignDTO]
+            switch owner {
+            case .project: dtos = try await repository.fetchForProject(ownerId)
+            case .lead: dtos = try await repository.fetchForOpportunity(ownerId)
+            }
             guard !dtos.isEmpty else { return }
 
             try mergeRemoteDeckDesigns(dtos)
-            print("[DeckTabView] Repaired \(dtos.count) deck design(s) for project \(project.id)")
+            print("[DeckTabView] Repaired \(dtos.count) deck design(s) for \(owner.id)")
         } catch {
-            print("[DeckTabView] Deck design repair fetch failed for project \(project.id): \(error)")
+            print("[DeckTabView] Deck design repair fetch failed for \(owner.id): \(error)")
         }
     }
 
     private var effectiveCompanyId: String? {
         [
-            project.companyId,
+            owner.companyId,
             dataController.currentUser?.companyId,
             UserDefaults.standard.string(forKey: "currentUserCompanyId"),
             UserDefaults.standard.string(forKey: "company_id")

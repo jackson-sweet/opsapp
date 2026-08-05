@@ -47,6 +47,18 @@ struct LeadsListControls: Equatable {
     }
 }
 
+// MARK: - Crew
+
+/// One nameable operator. `id` is lowercased at construction so a lead's
+/// uppercase `assignedTo` resolves without every call site remembering to fold.
+struct CrewMember: Identifiable, Equatable {
+    let id: String
+    let fullName: String
+    /// "JASON W" — first name plus last initial, uppercased. A single-name user
+    /// keeps the name alone.
+    let shortLabel: String
+}
+
 // MARK: - Result
 
 /// What the queue renders. URGENCY with no bucket chip and no query is the one
@@ -160,6 +172,80 @@ enum LeadsQueryEngine {
             guard let wanted = normalizedId(id) else { return false }
             return assigned == wanted
         }
+    }
+
+    // MARK: Roster + assignment labels (spec §5.3, §6.4)
+
+    /// The crew the operator can filter by and read on cards: every active user
+    /// in the company, plus anyone a loaded lead is still assigned to.
+    ///
+    /// That second arm is what keeps a departed or deactivated teammate's leads
+    /// legible — `deletedAt` / `isActive` drop them from the company arm, but
+    /// their name still resolves. An id with no `User` row resolves to nothing
+    /// and is left out entirely: those leads read UNKNOWN on the card and stay
+    /// reachable under ALL CREW.
+    nonisolated static func roster(
+        users: [User],
+        leads: [Opportunity],
+        companyId: String?
+    ) -> [CrewMember] {
+        var byId: [String: CrewMember] = [:]
+
+        func admit(_ user: User) {
+            guard let member = crewMember(from: user), byId[member.id] == nil else { return }
+            byId[member.id] = member
+        }
+
+        if let company = normalizedId(companyId) {
+            for user in users
+            where normalizedId(user.companyId) == company
+                && user.deletedAt == nil
+                && user.isActive != false {
+                admit(user)
+            }
+        }
+
+        for id in Set(leads.compactMap { normalizedId($0.assignedTo) }) where byId[id] == nil {
+            if let user = users.first(where: { normalizedId($0.id) == id }) { admit(user) }
+        }
+
+        return byId.values.sorted { lhs, rhs in
+            let order = lhs.fullName.localizedCaseInsensitiveCompare(rhs.fullName)
+            if order != .orderedSame { return order == .orderedAscending }
+            return lhs.id < rhs.id
+        }
+    }
+
+    /// nil when the row carries no usable name — an unnamed user cannot be
+    /// offered in a menu or printed on a card, so it is not roster material.
+    private static func crewMember(from user: User) -> CrewMember? {
+        guard let id = normalizedId(user.id) else { return nil }
+        let name = user.fullName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let parts = name.split(whereSeparator: { $0.isWhitespace })
+        guard let first = parts.first else { return nil }
+
+        var short = String(first)
+        if parts.count > 1, let initial = parts[parts.count - 1].first {
+            short += " \(initial)"
+        }
+        return CrewMember(id: id, fullName: name, shortLabel: short.uppercased())
+    }
+
+    /// The gate for ALL assignment chrome — the crew chip and every card label.
+    /// One nameable operator means assignment carries no information, so a solo
+    /// operator never sees it (invisible helpfulness, spec §5.3).
+    nonisolated static func showsAssignment(roster: [CrewMember]) -> Bool {
+        roster.count > 1
+    }
+
+    /// The card's assignee token. ALWAYS resolves — the visibility gate is the
+    /// CALLER's job (`showsAssignment(roster:)` at the `LeadsTabView` call
+    /// site), which keeps this function pure and single-purpose. The optional
+    /// return matches the card's `assigneeLabel: String?` parameter; this
+    /// function itself never withholds a label.
+    nonisolated static func assigneeLabel(for assignedTo: String?, roster: [CrewMember]) -> String? {
+        guard let id = normalizedId(assignedTo) else { return "UNASSIGNED" }
+        return roster.first(where: { $0.id == id })?.shortLabel ?? "UNKNOWN"
     }
 
     // MARK: Sorting

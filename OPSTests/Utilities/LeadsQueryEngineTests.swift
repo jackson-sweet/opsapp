@@ -494,4 +494,158 @@ final class LeadsQueryEngineTests: XCTestCase {
         XCTAssertTrue(LeadsQueryEngine.crewMatches(upper, filter: .member("user-2"), currentUserId: "user-1"))
         XCTAssertFalse(LeadsQueryEngine.crewMatches(upper, filter: .member("user-3"), currentUserId: "user-1"))
     }
+
+    // MARK: - roster
+
+    private func user(
+        id: String,
+        first: String,
+        last: String,
+        companyId: String? = "co-1",
+        isActive: Bool? = true,
+        deletedAt: Date? = nil
+    ) -> User {
+        let user = User(id: id, firstName: first, lastName: last, role: .crew, companyId: companyId ?? "")
+        user.companyId = companyId
+        user.isActive = isActive
+        user.deletedAt = deletedAt
+        return user
+    }
+
+    /// A two-person crew — the smallest roster that opens the assignment gate.
+    private func crewOfTwo() -> [CrewMember] {
+        LeadsQueryEngine.roster(
+            users: [user(id: "u-1", first: "Jason", last: "Wagner"),
+                    user(id: "u-2", first: "Dana", last: "Whitfield")],
+            leads: [],
+            companyId: "co-1"
+        )
+    }
+
+    func testRosterKeepsOnlyActiveUsersOfTheCompany() {
+        let users = [
+            user(id: "u-1", first: "Jason", last: "Wagner"),
+            user(id: "u-2", first: "Dana", last: "Whitfield", isActive: nil),
+            user(id: "u-3", first: "Gone", last: "Deleted", deletedAt: Date()),
+            user(id: "u-4", first: "Off", last: "Duty", isActive: false),
+            user(id: "u-5", first: "Other", last: "Company", companyId: "co-2")
+        ]
+        let roster = LeadsQueryEngine.roster(users: users, leads: [], companyId: "co-1")
+        XCTAssertEqual(roster.map(\.id), ["u-2", "u-1"],
+                       "Active company users only, sorted by full name — Dana before Jason")
+    }
+
+    func testRosterSortsByFullNameCaseInsensitively() {
+        let users = [
+            user(id: "u-1", first: "zoe", last: "Alvarez"),
+            user(id: "u-2", first: "Aaron", last: "Bell"),
+            user(id: "u-3", first: "mika", last: "Chen")
+        ]
+        let roster = LeadsQueryEngine.roster(users: users, leads: [], companyId: "co-1")
+        XCTAssertEqual(roster.map(\.fullName), ["Aaron Bell", "mika Chen", "zoe Alvarez"])
+    }
+
+    func testRosterIncludesADepartedUserStillHoldingALead() {
+        let departed = user(id: "u-9", first: "Ray", last: "Okafor", deletedAt: Date())
+        let active = user(id: "u-1", first: "Jason", last: "Wagner")
+
+        let roster = LeadsQueryEngine.roster(users: [active, departed],
+                                             leads: [lead(assignedTo: "u-9")],
+                                             companyId: "co-1")
+        XCTAssertEqual(roster.map(\.id), ["u-1", "u-9"],
+                       "A departed teammate's leads must stay legible")
+    }
+
+    func testRosterExcludesAReferencedIdWithNoUserRow() {
+        let roster = LeadsQueryEngine.roster(users: [user(id: "u-1", first: "Jason", last: "Wagner")],
+                                             leads: [lead(assignedTo: "ghost-42")],
+                                             companyId: "co-1")
+        XCTAssertEqual(roster.map(\.id), ["u-1"])
+        XCTAssertEqual(LeadsQueryEngine.assigneeLabel(for: "ghost-42", roster: roster), "UNKNOWN")
+    }
+
+    func testRosterDedupesAnUppercaseLeadIdAgainstTheLowercaseUserRow() {
+        let roster = LeadsQueryEngine.roster(users: [user(id: "u-1", first: "Jason", last: "Wagner")],
+                                             leads: [lead(assignedTo: "U-1")],
+                                             companyId: "co-1")
+        XCTAssertEqual(roster.map(\.id), ["u-1"])
+    }
+
+    func testRosterExcludesAUserWithNoUsableName() {
+        let roster = LeadsQueryEngine.roster(users: [user(id: "u-7", first: " ", last: "")],
+                                             leads: [], companyId: "co-1")
+        XCTAssertTrue(roster.isEmpty,
+                      "A nameless row cannot be offered in a menu or printed on a card")
+    }
+
+    func testRosterWithoutACompanyStillNamesLeadHolders() {
+        let roster = LeadsQueryEngine.roster(
+            users: [user(id: "u-1", first: "Jason", last: "Wagner"),
+                    user(id: "u-2", first: "Dana", last: "Whitfield")],
+            leads: [lead(assignedTo: "u-1")],
+            companyId: nil
+        )
+        XCTAssertEqual(roster.map(\.id), ["u-1"])
+    }
+
+    // MARK: - Assignment gate
+
+    func testAssignmentChromeIsHiddenForASoloOperator() {
+        let solo = LeadsQueryEngine.roster(users: [user(id: "u-1", first: "Jason", last: "Wagner")],
+                                           leads: [], companyId: "co-1")
+        XCTAssertEqual(solo.count, 1)
+        XCTAssertFalse(LeadsQueryEngine.showsAssignment(roster: solo))
+        XCTAssertFalse(LeadsQueryEngine.showsAssignment(roster: []))
+    }
+
+    func testAssignmentChromeAppearsOnceThereIsACrew() {
+        XCTAssertTrue(LeadsQueryEngine.showsAssignment(roster: crewOfTwo()))
+    }
+
+    /// The gate lives at the CALL SITE — this mirrors what `LeadsTabView` does,
+    /// so both layers of the rule are pinned.
+    func testCardLabelIsWithheldWhileTheGateIsClosed() {
+        let solo = LeadsQueryEngine.roster(users: [user(id: "u-1", first: "Jason", last: "Wagner")],
+                                           leads: [], companyId: "co-1")
+        let label = LeadsQueryEngine.showsAssignment(roster: solo)
+            ? LeadsQueryEngine.assigneeLabel(for: "u-1", roster: solo)
+            : nil
+        XCTAssertNil(label)
+        XCTAssertEqual(LeadsQueryEngine.assigneeLabel(for: "u-1", roster: solo), "JASON W",
+                       "The engine stays pure — it always resolves; the view withholds")
+    }
+
+    // MARK: - Short labels
+
+    func testShortLabelIsFirstNamePlusLastInitialUppercased() {
+        let roster = LeadsQueryEngine.roster(
+            users: [user(id: "u-1", first: "Jason", last: "Wagner"),
+                    user(id: "u-2", first: "Mary Jo", last: "Sandoval")],
+            leads: [], companyId: "co-1"
+        )
+        XCTAssertEqual(roster.first(where: { $0.id == "u-1" })?.shortLabel, "JASON W")
+        XCTAssertEqual(roster.first(where: { $0.id == "u-2" })?.shortLabel, "MARY S")
+    }
+
+    func testShortLabelKeepsASingleNameAlone() {
+        let roster = LeadsQueryEngine.roster(
+            users: [user(id: "u-1", first: "Cher", last: ""),
+                    user(id: "u-2", first: "Dana", last: "Whitfield")],
+            leads: [], companyId: "co-1"
+        )
+        XCTAssertEqual(roster.first(where: { $0.id == "u-1" })?.shortLabel, "CHER")
+        XCTAssertEqual(roster.first(where: { $0.id == "u-1" })?.fullName, "Cher")
+    }
+
+    // MARK: - assigneeLabel
+
+    func testAssigneeLabelReadsUnassignedForNilAndBlank() {
+        let roster = crewOfTwo()
+        XCTAssertEqual(LeadsQueryEngine.assigneeLabel(for: nil, roster: roster), "UNASSIGNED")
+        XCTAssertEqual(LeadsQueryEngine.assigneeLabel(for: "   ", roster: roster), "UNASSIGNED")
+    }
+
+    func testAssigneeLabelResolvesAnUppercaseIdAgainstTheRoster() {
+        XCTAssertEqual(LeadsQueryEngine.assigneeLabel(for: "U-2", roster: crewOfTwo()), "DANA W")
+    }
 }

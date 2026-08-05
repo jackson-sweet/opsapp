@@ -159,6 +159,27 @@ final class PipelineViewModelFollowUpTests: XCTestCase {
         XCTAssertEqual(viewModel.followUpProgress(for: opportunityId), .idle)
     }
 
+    func testLocalEligibilityRejectsADueCycleFromBeforeTheCurrentStage() {
+        let viewModel = makeViewModel(service: LeadFollowUpServiceStub(result: .networkError))
+        let lead = localLead()
+        lead.stageEnteredAt = Date()
+        lead.nextFollowUpAt = Date().addingTimeInterval(-86_400)
+        lead.lastOutboundAt = Date().addingTimeInterval(-172_800)
+
+        XCTAssertFalse(viewModel.canSendFollowUp(for: lead))
+    }
+
+    func testLocalEligibilityRejectsACycleSatisfiedByANewerOutbound() {
+        let viewModel = makeViewModel(service: LeadFollowUpServiceStub(result: .networkError))
+        let lead = localLead()
+        let due = Date().addingTimeInterval(-86_400)
+        lead.nextFollowUpAt = due
+        lead.stageEnteredAt = due.addingTimeInterval(-86_400)
+        lead.lastOutboundAt = due
+
+        XCTAssertFalse(viewModel.canSendFollowUp(for: lead))
+    }
+
     private func makeViewModel(service: LeadFollowUpServiceProtocol) -> PipelineViewModel {
         let viewModel = PipelineViewModel(followUpService: service)
         viewModel.setup(companyId: "company-id", currentUserId: "user-id")
@@ -173,7 +194,10 @@ final class PipelineViewModelFollowUpTests: XCTestCase {
             stage: .quoted
         )
         lead.contactEmail = "crystal@example.com"
-        lead.nextFollowUpAt = Date().addingTimeInterval(-86_400)
+        let due = Date().addingTimeInterval(-86_400)
+        lead.nextFollowUpAt = due
+        lead.stageEnteredAt = due.addingTimeInterval(-86_400)
+        lead.lastOutboundAt = due.addingTimeInterval(-3_600)
         return lead
     }
 
@@ -216,5 +240,9 @@ private final class LeadFollowUpServiceStub: LeadFollowUpServiceProtocol {
         scope: LeadFollowUpAttemptScope
     ) async -> LeadFollowUpResult {
         result
+    }
+
+    func previewFollowUp(opportunityId: String) async -> LeadFollowUpPreviewResult {
+        .unavailable(reason: "not_stubbed")
     }
 }

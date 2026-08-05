@@ -751,8 +751,8 @@ struct LeadsTabView: View {
         }
     }
 
-    /// SEND FOLLOW-UP — one tap sends the stock reply through the connected
-    /// mailbox. The view model advances the lead only from the server's
+    /// SEND FOLLOW-UP — the chase strip owns the deliberate hold/review gate.
+    /// The view model advances the lead only from the server's
     /// provider-confirmed canonical response.
     private func sendFollowUp(_ lead: Opportunity) {
         guard canEdit(lead), viewModel.canSendFollowUp(for: lead) else { return }

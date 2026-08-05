@@ -461,6 +461,37 @@ struct SpanEdgeStroke: Shape {
         case leading
         case trailing
         case both
+
+        /// What the outline does at a day's two horizontal ends, given that
+        /// day's role in the selection. nil where no outline belongs at all.
+        ///
+        /// The rule is a short one: an end closes only where the SELECTION
+        /// ends. Everything else — the next day along, or the wrap into the
+        /// following week row — is a continuation, so it stays open and the
+        /// two hairlines simply run flush to the margin. That is why a row
+        /// boundary needs no flag of its own: a wrap edge is by definition not
+        /// a cap, and only caps ever close. The cell never infers weekday
+        /// math; the grid asks this question and hands down the answer.
+        ///
+        /// A one-day pick closes at BOTH ends — it is a selection that starts
+        /// and ends on the same day, so both of its ends are genuine ends.
+        /// This is the only role whose answer changed when the fill stopped
+        /// being solid white: back then the cap was the brightest thing on the
+        /// grid and was its own boundary, so an outline round it was a line
+        /// drawn for the sake of drawing a line. Now the hairline is what
+        /// defines a selection and the fill only says "inside", so leaving the
+        /// single bare would make the most common pick of all — a one-day job
+        /// — the one selection wearing none of the language the rest of them
+        /// are drawn in.
+        static func closing(_ role: SchedulerSelection.DayRole) -> Closure? {
+            switch role {
+            case .none:     return nil
+            case .single:   return .both
+            case .start:    return .leading
+            case .end:      return .trailing
+            case .interior: return .open
+            }
+        }
     }
 
     let closure: Closure

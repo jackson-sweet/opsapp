@@ -612,6 +612,119 @@ final class SchedulerSelectionTests: XCTestCase {
         }
     }
 
+    // MARK: - Which end of a selection closes
+
+    func testEveryDayInsideASelectionWearsTheOutlineAndOnlyItsRealEndsClose() {
+        // The whole contract in one table. The outline is what DEFINES a
+        // selection now — the fill only says "inside" — so every role that is
+        // part of a selection has to carry it, and only a genuine end of the
+        // selection may close.
+        XCTAssertNil(SpanEdgeStroke.Closure.closing(.none))
+        XCTAssertEqual(SpanEdgeStroke.Closure.closing(.start), .leading)
+        XCTAssertEqual(SpanEdgeStroke.Closure.closing(.end), .trailing)
+        XCTAssertEqual(SpanEdgeStroke.Closure.closing(.interior), .open)
+    }
+
+    func testAOneDayPickIsOutlinedAndClosesAtBothEnds() {
+        // The role the redesign changed. A single starts and ends on the same
+        // day, so both its ends are real ends and both close.
+        //
+        // It used to be deliberately bare: a solid-white block is its own
+        // boundary, and an outline round it was a line drawn for the sake of
+        // drawing a line. That reasoning died with the solid-white cap — a
+        // single now composites to the same fill as any other cap, well below
+        // the hairline above it, so leaving it bare would make the commonest
+        // pick on the sheet the one selection missing the language every other
+        // selection is drawn in.
+        XCTAssertEqual(SpanEdgeStroke.Closure.closing(.single), .both)
+    }
+
+    func testAOneDayPicksOutlineClosesOnBothSidesRatherThanRunningToEitherMargin() {
+        // The geometry the case above buys, asserted where it is visible: a
+        // closed pill, inset from both margins, not a pair of open hairlines.
+        let single = stroke(.both)
+
+        XCTAssertFalse(single.isEmpty)
+        XCTAssertGreaterThan(single.boundingRect.minX, cellRect.minX)
+        XCTAssertLessThan(single.boundingRect.maxX, cellRect.maxX)
+    }
+
+    // MARK: - Day-number legibility on the span's own ground
+
+    /// One grey channel and its alpha, read off the token itself rather than
+    /// restated as a literal — the whole selection palette is monochrome, so
+    /// the red channel is the value.
+    private func channel(_ color: Color) -> (level: Double, alpha: Double) {
+        var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+        UIColor(color).getRed(&r, green: &g, blue: &b, alpha: &a)
+        return (Double(r), Double(a))
+    }
+
+    /// The grey a day number actually sits on, `x` cells into a span's
+    /// interior — the three layers the cell paints, in order: the black
+    /// canvas, `surfaceActive`, then `primaryText` at the curve's fill.
+    private func spanGround(at x: Double, interiorCount: Int) -> Double {
+        let surface = channel(OPSStyle.Colors.surfaceActive)
+        let ink = channel(OPSStyle.Colors.primaryText)
+        let base = surface.level * surface.alpha          // over a black canvas
+        let alpha = SchedulerSpanCurve.fillOpacity(at: x, interiorCount: interiorCount)
+        return base * (1 - alpha) + ink.level * alpha
+    }
+
+    private func relativeLuminance(_ level: Double) -> Double {
+        level <= 0.03928 ? level / 12.92 : pow((level + 0.055) / 1.055, 2.4)
+    }
+
+    private func contrast(_ a: Double, _ b: Double) -> Double {
+        let la = relativeLuminance(a) + 0.05
+        let lb = relativeLuminance(b) + 0.05
+        return max(la, lb) / min(la, lb)
+    }
+
+    func testWhicheverInkADayNumberPicksClearsAAEverywhereAlongItsGlyphRun() {
+        // The guard on the one genuinely hard call in this design: a two-digit
+        // number set on a moving ramp. The cell picks its ink from the mean
+        // brightness under the glyphs, which is a single decision for a run
+        // that is NOT a single tone — so the mean can be comfortable while an
+        // end of the run is not. This asserts the end, not the mean.
+        //
+        // Every interior configuration the curve can produce, every position
+        // across the glyph run: whatever ink that cell would wear has to clear
+        // the design system's 4.5:1 text floor (DESIGN.md § accessibility)
+        // against the ground actually under it. This is the assertion that
+        // pins `schedulerSpanQuietOpacity` — the floor is not a taste value,
+        // it is what holds the weakest point of the weakest cell above AA.
+        let inverted = channel(OPSStyle.Colors.invertedText).level
+        let primary = channel(OPSStyle.Colors.primaryText).level
+        let bandStart = OPSStyle.Layout.schedulerSpanNumberBandStart
+        let bandEnd = OPSStyle.Layout.schedulerSpanNumberBandEnd
+
+        var worst = Double.infinity
+        var worstSample = ""
+
+        for interiorCount in 1...12 {
+            for index in 0..<interiorCount {
+                let prefersInverted = SchedulerSpanCurve.numberBandBrightness(
+                    interiorIndex: index,
+                    interiorCount: interiorCount
+                ) > OPSStyle.Layout.schedulerSpanNumberFlipBrightness
+                let ink = prefersInverted ? inverted : primary
+
+                for step in 0...20 {
+                    let across = bandStart + (bandEnd - bandStart) * Double(step) / 20
+                    let ratio = contrast(ink, spanGround(at: Double(index) + across, interiorCount: interiorCount))
+                    if ratio < worst {
+                        worst = ratio
+                        worstSample = "interior \(index)/\(interiorCount) at \(across), "
+                            + (prefersInverted ? "black" : "white")
+                    }
+                }
+            }
+        }
+
+        XCTAssertGreaterThanOrEqual(worst, 4.5, "weakest day number: \(worstSample) — \(worst):1")
+    }
+
     // MARK: - Render smoke
 
     /// Renders the day cell in every signal state through a real
@@ -650,7 +763,9 @@ final class SchedulerSelectionTests: XCTestCase {
             // easing to a half-way waist between them.
             State(name: "interior_lone", role: .interior, spanPosition: (index: 1, count: 3), spanEdge: .open),
             State(name: "end_cap", role: .end, spanPosition: (index: 5, count: 6), spanEdge: .trailing),
-            State(name: "single", role: .single)
+            // A one-day pick closes on both sides — the only selection whose
+            // outline is a complete pill on its own.
+            State(name: "single", role: .single, spanEdge: .both)
         ]
 
         let size = CGSize(width: 52, height: OPSStyle.Layout.schedulerDayCellHeight)

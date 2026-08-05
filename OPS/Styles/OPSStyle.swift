@@ -605,7 +605,21 @@ enum OPSStyle {
         /// reading as a hole punched through the selection rather than the
         /// calm part of one. Paired with `schedulerSpanCapOpacity` — see there
         /// for the whole argument.
-        static let schedulerSpanQuietOpacity: Double = 0.16
+        ///
+        /// The exact figure is not a taste call, it is an accessibility one.
+        /// Every interior day number is set on a ramp, and the weakest ink on
+        /// the whole sheet is the trailing digit of a two-digit number on the
+        /// cell beside a cap — the point where the black the cell has already
+        /// committed to is running out of ground. Raising this floor lifts
+        /// that point and nothing else that matters: at 0.16 it lands on
+        /// 4.46:1, four hundredths under the design system's 4.5:1 text floor
+        /// (DESIGN.md § accessibility), and MOBILE.md requires mobile to clear
+        /// a HIGHER bar than web rather than a lower one. 0.17 puts it at
+        /// 4.54:1 while the quiet floor itself still carries white at 9.8:1.
+        /// `testWhicheverInkADayNumberPicksClearsAAEverywhereAlongItsGlyphRun`
+        /// is the guard — it sweeps every cell of every span length and fails
+        /// on the worst point, so this token can never drift back under.
+        static let schedulerSpanQuietOpacity: Double = 0.17
         /// Where the day number's glyphs sit across a cell, as a fraction of
         /// cell width: `spacing1` of leading padding, then a two-digit
         /// `dataValue` run (4pt then ~15pt of a ~53pt cell on a 390pt phone,
@@ -632,25 +646,29 @@ enum OPSStyle {
         /// — recomputed against `schedulerSpanCapOpacity` /
         /// `schedulerSpanQuietOpacity`.
         ///
-        /// At 0.63 the ground runs 176/255 down to 115/255 across the digits:
-        /// black holds 9.7:1 falling to 4.5:1, white 1.9:1 rising only to
+        /// At 0.63 the ground runs 176/255 down to 117/255 across the digits:
+        /// black holds 9.7:1 falling to 4.5:1, white 1.8:1 rising only to
         /// 4.0:1. Black is ahead at every point of the run and far ahead across
         /// most of it, so it remains the right ink — but the trailing end of a
         /// two-digit number on this one cell is the weakest text in the sheet,
-        /// clearing AA rather than the house 7:1. That is a property of setting
-        /// a numeral on a ramp at all, not of the range: no pairing of the two
-        /// range tokens holds 7:1 across this band while any ramp survives, and
-        /// compressing the range IMPROVED this point (4.2:1 before it).
+        /// clearing AA (4.54:1) rather than the house 7:1. That is a property
+        /// of setting a numeral on a ramp at all, not of the range: no pairing
+        /// of the two range tokens holds 7:1 across this band while any ramp
+        /// survives. Compressing the range IMPROVED this point — it was 4.24:1
+        /// under the old full sweep — and `schedulerSpanQuietOpacity` is then
+        /// set precisely so it lands above 4.5 rather than the 4.46 a 0.16
+        /// floor gave; see that token, and the sweep test named on it.
         ///
         /// At 0.69 — a three-day span's lone interior — the ground runs 177/255
-        /// down to 133/255 and never leaves the bright half of the range: black
-        /// 9.8:1 to 5.7:1 against white's 1.8:1 to 3.2:1, so that day takes the
+        /// down to 134/255 and never leaves the bright half of the range: black
+        /// 9.8:1 to 5.8:1 against white's 1.8:1 to 3.1:1, so that day takes the
         /// caps' black clear of the 4.5:1 floor end to end, on the same
         /// evidence as its cap-adjacent neighbour rather than on a tiebreak.
         ///
         /// The two quiet cases keep white and clear the house floor outright:
-        /// 8.9:1 mean on the cell before the end cap (7.7:1 at its worst
-        /// point), 10.2:1 on the quiet floor itself.
+        /// 8.7:1 mean on the cell before the end cap (7.5:1 at its worst
+        /// point), 9.8:1 on the quiet floor itself. A cap is 198/255 and wears
+        /// black at 12.3:1.
         static let schedulerSpanNumberFlipBrightness: Double = 0.175
         /// CLEAR takes 30% of the footer; SAVE keeps the thumb-weighted share.
         static let schedulerFooterSecondaryWidthRatio: CGFloat = 0.3

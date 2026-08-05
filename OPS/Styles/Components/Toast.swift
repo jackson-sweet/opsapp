@@ -44,11 +44,15 @@ enum ToastTone {
     }
 
     /// Hairline overlay colour that tints the toast border to the tone.
+    ///
+    /// Carries `ToastM.border`, not the `*LineM` status-tag family it used to
+    /// borrow — see `OPSStyle.Colors.ToastM` for why a banner and a chip do
+    /// not want the same edge.
     var lineColor: Color {
         switch self {
-        case .success: return OPSStyle.Colors.oliveLineM
-        case .warning: return OPSStyle.Colors.tanLineM
-        case .error:   return OPSStyle.Colors.roseLineM
+        case .success: return OPSStyle.Colors.olive.opacity(OPSStyle.Colors.ToastM.border)
+        case .warning: return OPSStyle.Colors.tan.opacity(OPSStyle.Colors.ToastM.border)
+        case .error:   return OPSStyle.Colors.rose.opacity(OPSStyle.Colors.ToastM.border)
         }
     }
 

@@ -206,6 +206,28 @@ enum OPSStyle {
             static let border: Double = 0.88
         }
 
+        /// The toast's tone hairline — deliberately NOT `StatusTagM.border`.
+        ///
+        /// §1's 0.88 is specified for a status TAG: a small chip whose outline
+        /// is what defines its shape against the canvas, read at arm's length
+        /// in sun. A toast is a different object doing a different job. Its
+        /// shape is already carried by the glass, its label sits on that glass
+        /// rather than on a tone fill, and the tone is already stated twice
+        /// over by the icon and the label ink. At 0.88 the perimeter says the
+        /// same thing a third time, and on a banner that wide it stops framing
+        /// the message and starts competing with it — which is exactly what
+        /// `ToastBanner`'s own "subtle, not loud" note is guarding against.
+        ///
+        /// So the two do not share a number. Nothing about the tag's contrast
+        /// argument transfers here: the toast label is `*TextM` on glass, not
+        /// on a tone fill, so raising or lowering this alpha cannot put any
+        /// text under the field bar. It is a pure taste value, and it reads as
+        /// tinted rather than outlined.
+        enum ToastM {
+            /// Tone hairline alpha over the toast's glass edge.
+            static let border: Double = 0.66
+        }
+
         // The `*TextM` inks are a literal per-channel ×1.25 of the base tone —
         // what §1's "shifted ~25% brighter" actually asks for. This is not
         // cosmetic: it is what keeps the label legal once the fill rises.

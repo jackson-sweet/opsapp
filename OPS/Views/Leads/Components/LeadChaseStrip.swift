@@ -6,20 +6,28 @@
 //  two hosts: the triage card and the lead detail. State left, action chip
 //  right:
 //
-//      → CHASE · 3D LATE        [SEND FOLLOW-UP] rose    (eligible quote)
-//      → DUE TODAY              [SEND FOLLOW-UP] tan     (eligible quote)
+//      → CHASE · 3D LATE        [HOLD TO REVIEW] rose   (eligible quote)
+//      → DUE TODAY              [HOLD TO REVIEW] tan    (eligible quote)
 //      → YOUR MOVE · 2D         [HANDLED ✓]     steel
 //      THEIR MOVE · BACK FRI    [ADJUST]        neutral (waiting)
 //      NEW · 2H                                 neutral (informational)
 //
-//  The whole strip is ONE control. `canAct` (edit rights) hides the chip
-//  and makes the strip informational without hiding the state.
+//  The whole strip is ONE control. Follow-up uses a bounded long press that
+//  recognizes simultaneously with the card's horizontal stage drag; movement
+//  cancels the hold so the nested control never steals the card gesture.
+//  `canAct` (edit rights) hides the chip and makes the strip informational
+//  without hiding the state.
 //
 
 import SwiftUI
 import UIKit
 
 struct LeadChaseStrip: View {
+    static let followUpHoldMinimumDuration =
+        OPSStyle.Animation.durationIntentHold
+    static let followUpHoldMaximumDistance =
+        OPSStyle.Layout.spacing3
+
     let lead: Opportunity
     /// The lead's EFFECTIVE bucket (never .all — callers resolve via
     /// `PipelineViewModel.bucketOf`).
@@ -27,9 +35,17 @@ struct LeadChaseStrip: View {
     var canAct: Bool = true
     var canSendFollowUp: Bool = false
     var followUpProgress: PipelineViewModel.FollowUpProgress = .idle
+    var actorUserId: String?
     var onHandled: () -> Void = {}
+    var onReviewFollowUp: () async -> LeadFollowUpPreviewResult = {
+        .unavailable(reason: "follow_up_not_available")
+    }
     var onSendFollowUp: () -> Void = {}
     var onAdjust: () -> Void = {}
+
+    @State private var reviewPreview: LeadFollowUpPreview?
+    @State private var skipReviewNextTime = false
+    @State private var preferenceRevision = 0
 
     enum Action: Equatable {
         case handled
@@ -40,23 +56,26 @@ struct LeadChaseStrip: View {
     var body: some View {
         let c = chase
         if let action = c.action, canAct {
-            Button {
-                // Medium impact — flipping the ball is a commit moment (spec §10).
-                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                switch action {
-                case .handled:
-                    onHandled()
-                case .sendFollowUp:
-                    onSendFollowUp()
-                case .adjust:
-                    onAdjust()
+            if action == .sendFollowUp {
+                followUpHoldControl(c)
+            } else {
+                Button {
+                    // Medium impact — flipping the ball is a commit moment (spec §10).
+                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                    switch action {
+                    case .handled:
+                        onHandled()
+                    case .sendFollowUp:
+                        break
+                    case .adjust:
+                        onAdjust()
+                    }
+                } label: {
+                    stripBody(c, showsAction: true)
                 }
-            } label: {
-                stripBody(c, showsAction: true)
+                .buttonStyle(.plain)
+                .accessibilityLabel(accessibilityLabel(c, action: action))
             }
-            .buttonStyle(.plain)
-            .disabled(action == .sendFollowUp && followUpProgress != .idle)
-            .accessibilityLabel(accessibilityLabel(c, action: action))
         } else {
             stripBody(c, showsAction: false)
                 .accessibilityElement(children: .combine)
@@ -117,17 +136,19 @@ struct LeadChaseStrip: View {
 
     static func actionLabel(
         for action: Action,
-        progress: PipelineViewModel.FollowUpProgress
+        progress: PipelineViewModel.FollowUpProgress,
+        skipsReview: Bool = false
     ) -> String {
         switch action {
         case .handled:
             return "HANDLED ✓"
         case .sendFollowUp:
             switch progress {
-            case .idle:    return "SEND FOLLOW-UP"
-            case .sending: return "SENDING…"
-            case .syncing: return "SYNCING…"
-            case .unknown: return "CHECK EMAIL"
+            case .idle:      return skipsReview ? "HOLD TO SEND" : "HOLD TO REVIEW"
+            case .reviewing: return "REVIEWING…"
+            case .sending:   return "SENDING…"
+            case .syncing:   return "SYNCING…"
+            case .unknown:   return "CHECK EMAIL"
             }
         case .adjust:
             return "ADJUST"
@@ -138,7 +159,7 @@ struct LeadChaseStrip: View {
         HStack(spacing: OPSStyle.Layout.spacing2_5) {
             Text(c.label)
                 .font(.custom("JetBrainsMono-Medium", size: 11))
-                .tracking(0.9)
+                .tracking(OPSStyle.Typography.trackingStandard)
                 .textCase(.uppercase)
                 .foregroundColor(c.tone)
                 .lineLimit(1)
@@ -147,16 +168,32 @@ struct LeadChaseStrip: View {
             if showsAction, let action = c.action {
                 Text(Self.actionLabel(
                     for: action,
-                    progress: followUpProgress
+                    progress: followUpProgress,
+                    skipsReview: skipsReview
                 ))
                     .font(OPSStyle.Typography.miniLabelBold)
-                    .tracking(0.8)
+                    .tracking(OPSStyle.Typography.trackingCompact)
                     .textCase(.uppercase)
                     .foregroundColor(c.tone)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .background(RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius, style: .continuous).fill(c.tone.opacity(0.12)))
-                    .overlay(RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius, style: .continuous).strokeBorder(c.tone.opacity(0.30), lineWidth: 1))
+                    .padding(.horizontal, OPSStyle.Layout.spacing2)
+                    .padding(.vertical, OPSStyle.Layout.spacing1)
+                    .background(
+                        RoundedRectangle(
+                            cornerRadius: OPSStyle.Layout.chipRadius,
+                            style: .continuous
+                        )
+                        .fill(c.tone.opacity(0.12))
+                    )
+                    .overlay(
+                        RoundedRectangle(
+                            cornerRadius: OPSStyle.Layout.chipRadius,
+                            style: .continuous
+                        )
+                        .strokeBorder(
+                            c.tone.opacity(OPSStyle.Layout.Opacity.light),
+                            lineWidth: OPSStyle.Layout.Border.standard
+                        )
+                    )
                     // Bug e13be3bb: bare .fixedSize() let this chip claim its
                     // full intrinsic width, and at accessibility type sizes
                     // `SEND FOLLOW-UP` alone ran wider than the strip and panned
@@ -173,14 +210,34 @@ struct LeadChaseStrip: View {
         .padding(.horizontal, 11)
         .padding(.vertical, 9)
         .frame(maxWidth: .infinity, minHeight: OPSStyle.Layout.touchTargetMin)
-        .background(RoundedRectangle(cornerRadius: OPSStyle.Layout.sidebarHoverRadius, style: .continuous).fill(c.tone.opacity(0.08)))
-        .overlay(RoundedRectangle(cornerRadius: OPSStyle.Layout.sidebarHoverRadius, style: .continuous).strokeBorder(c.tone.opacity(0.24), lineWidth: 1))
+        .background(
+            RoundedRectangle(
+                cornerRadius: OPSStyle.Layout.sidebarHoverRadius,
+                style: .continuous
+            )
+            .fill(c.tone.opacity(0.08))
+        )
+        .overlay(
+            RoundedRectangle(
+                cornerRadius: OPSStyle.Layout.sidebarHoverRadius,
+                style: .continuous
+            )
+            .strokeBorder(
+                c.tone.opacity(0.24),
+                lineWidth: OPSStyle.Layout.Border.standard
+            )
+        )
         .contentShape(Rectangle())
     }
 
     private func accessibilityLabel(_ c: (label: String, tone: Color, action: Action?), action: Action) -> String {
         if action == .sendFollowUp, followUpProgress != .idle {
-            return "\(c.label). \(Self.actionLabel(for: action, progress: followUpProgress))."
+            let statusLabel = Self.actionLabel(
+                for: action,
+                progress: followUpProgress,
+                skipsReview: skipsReview
+            )
+            return "\(c.label). \(statusLabel)."
         }
 
         let verb: String
@@ -188,11 +245,95 @@ struct LeadChaseStrip: View {
         case .handled:
             verb = "mark handled"
         case .sendFollowUp:
-            verb = "send the standard follow-up email"
+            verb = skipsReview
+                ? "send the standard follow-up email"
+                : "review the standard follow-up email"
         case .adjust:
             verb = "adjust ownership or the next touch date"
         }
         return "\(c.label). Double-tap to \(verb)."
+    }
+
+    // MARK: - Deliberate follow-up
+
+    private var skipsReview: Bool {
+        _ = preferenceRevision
+        guard let actorUserId else { return false }
+        return UserDefaultsLeadFollowUpReviewPreferenceStore.shared.skipsReview(
+            companyId: lead.companyId,
+            actorUserId: actorUserId
+        )
+    }
+
+    @ViewBuilder
+    private func followUpHoldControl(
+        _ chase: (label: String, tone: Color, action: Action?)
+    ) -> some View {
+        Button(action: commitFollowUp) {
+            stripBody(chase, showsAction: true)
+        }
+            .buttonStyle(DeliberateHoldButtonStyle(
+                isEnabled: followUpProgress == .idle
+            ))
+            .disabled(followUpProgress != .idle)
+            .accessibilityLabel(accessibilityLabel(chase, action: .sendFollowUp))
+            .accessibilityHint(
+                skipsReview
+                    ? "Hold to send. Double-tap with VoiceOver."
+                    : "Hold to review. Double-tap with VoiceOver."
+            )
+            .sheet(item: $reviewPreview) { preview in
+                LeadFollowUpReviewSheet(
+                    preview: preview,
+                    skipReviewNextTime: $skipReviewNextTime,
+                    onCancel: {
+                        reviewPreview = nil
+                    },
+                    onSend: {
+                        saveReviewPreferenceIfNeeded()
+                        reviewPreview = nil
+                        UIImpactFeedbackGenerator(style: .medium)
+                            .impactOccurred()
+                        onSendFollowUp()
+                    }
+                )
+            }
+    }
+
+    private func commitFollowUp() {
+        guard followUpProgress == .idle else { return }
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        if skipsReview {
+            onSendFollowUp()
+        } else {
+            requestReview()
+        }
+    }
+
+    private func requestReview() {
+        Task {
+            switch await onReviewFollowUp() {
+            case .ready(let preview):
+                skipReviewNextTime = false
+                reviewPreview = preview
+            case .unavailable:
+                ToastCenter.shared.present(Feedback.Lead.followUpUnavailable)
+            case .permissionDenied:
+                ToastCenter.shared.present(Feedback.Lead.followUpPermissionDenied)
+            case .networkError:
+                ToastCenter.shared.present(Feedback.Lead.followUpNetworkError)
+            }
+        }
+    }
+
+    private func saveReviewPreferenceIfNeeded() {
+        guard skipReviewNextTime, let actorUserId else { return }
+        UserDefaultsLeadFollowUpReviewPreferenceStore.shared.setSkipsReview(
+            true,
+            companyId: lead.companyId,
+            actorUserId: actorUserId
+        )
+        preferenceRevision += 1
     }
 
     // MARK: - Ages & vocabulary
@@ -246,5 +387,29 @@ struct LeadChaseStrip: View {
             return f.string(from: date).uppercased()
         }
         return "IN \(days)D"
+    }
+}
+
+/// Keeps semantic Button behavior for VoiceOver while ordinary sighted taps do
+/// nothing. The bounded hold is simultaneous with the card's directional drag;
+/// its movement allowance ends before that drag's 20pt recognition threshold.
+private struct DeliberateHoldButtonStyle: PrimitiveButtonStyle {
+    let isEnabled: Bool
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .contentShape(Rectangle())
+            .simultaneousGesture(
+                LongPressGesture(
+                    minimumDuration:
+                        LeadChaseStrip.followUpHoldMinimumDuration,
+                    maximumDistance:
+                        LeadChaseStrip.followUpHoldMaximumDistance
+                )
+                .onEnded { _ in
+                    guard isEnabled else { return }
+                    configuration.trigger()
+                }
+            )
     }
 }

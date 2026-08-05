@@ -162,11 +162,14 @@ final class SchedulerSheetSnapshotTests: XCTestCase {
         }
     }
 
-    /// A range that runs across a week boundary. The interior leaves each
-    /// white cap at exactly the cap's own fill and eases to quiet about a day
+    /// A range that runs across a week boundary. The interior leaves each cap
+    /// at exactly the cap's own fill and eases to the quiet floor about a day
     /// in, so there is no seam to find; everything deeper than that stays
-    /// calm. The hairline outline closes only at the two caps, staying open
-    /// where the rows wrap.
+    /// calm. Caps are not solid white — the whole fill runs inside the narrow
+    /// band between `schedulerSpanCapOpacity` and `schedulerSpanQuietOpacity`,
+    /// and the hairline outline above it is the brightest thing in the
+    /// selection. That outline closes only at the two caps, staying open where
+    /// the rows wrap.
     func testMultiWeekRangeGradientAndOutline() throws {
         let world = try World()
         let start = world.preFloorStart
@@ -210,11 +213,12 @@ final class SchedulerSheetSnapshotTests: XCTestCase {
     /// two frames rather than one.
     ///
     /// 17: three days. The lone interior belongs to both caps at once, so it
-    /// leaves each seam at the cap's own white and dips to nothing dead
-    /// centre — the loudest the curve ever gets, and correct.
-    /// 18: five days. Only the cap-adjacent days glow; the day between them is
-    /// flat quiet. Read as a pair with 13, where the same shape holds at both
-    /// ends of an eleven-day range.
+    /// leaves each seam at the cap's own fill and eases only to the midpoint of
+    /// the fill range dead centre — the loudest the curve ever gets, and
+    /// correct.
+    /// 18: five days. Only the cap-adjacent days glow; the day between them
+    /// sits flat on the quiet floor. Read as a pair with 13, where the same
+    /// shape holds at both ends of an eleven-day range.
     func testShortSpanGradients() throws {
         let world = try World()
 

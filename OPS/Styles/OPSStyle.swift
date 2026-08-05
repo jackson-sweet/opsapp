@@ -565,19 +565,47 @@ enum OPSStyle {
         static let schedulerCalendarMinHeight: CGFloat = 112.0
         /// Dependency-floor days stay fully tappable — they only recede.
         static let schedulerPreFloorOpacity: Double = 0.35
-        /// How far a selection's cap carries its own white into the interior,
+        /// How far a selection's cap carries its own fill into the interior,
         /// measured in day cells. The interior leaves each cap at exactly the
-        /// cap's fill and eases to quiet across this distance, so the two fuse
-        /// into one object instead of meeting at a step. One cell is the whole
-        /// budget: reach deeper and the bright band reads as a second
+        /// cap's fill and eases to the quiet floor across this distance, so the
+        /// two fuse into one object instead of meeting at a step. One cell is
+        /// the whole budget: reach deeper and the bright band reads as a second
         /// selection sitting inside the first; reach shallower and the falloff
         /// compresses back into the seam it exists to erase. Clamped to the
         /// interior's own width, so on a three-day span — the one span whose
         /// single interior day is within reach of both caps — the two sides
         /// deliberately DO overlap across the whole of it. Their sum is what
-        /// keeps that day from pinching to a waist at the quiet base, which
+        /// keeps that day from pinching to a waist at the quiet floor, which
         /// would read as a break in the selection rather than the middle of one.
         static let schedulerSpanBlendCells: Double = 1.0
+        /// The fill a selection wears at a cap and at each seam — the bright
+        /// end of the one range every part of the selection's fill lives in.
+        ///
+        /// It is not solid white. The hairline outline — `primaryText` at
+        /// `Border.standard` — is what defines the selection's shape, and it is
+        /// the brightest thing in it; the fills only have to say "inside". A
+        /// full-white cap sitting against a near-black middle was a bigger
+        /// delta than that job justifies: the two ends read as two treatments
+        /// bolted together rather than one object with a soft middle. So the
+        /// caps come down, the middle comes up, and the whole fill travels
+        /// inside the narrower band between this and
+        /// `schedulerSpanQuietOpacity`.
+        ///
+        /// Cap and interior composite identically — `surfaceActive`, then
+        /// `primaryText` at the fill — so a seam pixel resolves to one colour
+        /// from either side. Below full opacity that shared base is load
+        /// bearing: a cap painted straight onto the canvas would sit darker
+        /// than the interior beside it and reopen the seam the blend exists to
+        /// close.
+        static let schedulerSpanCapOpacity: Double = 0.82
+        /// The fill deep inside a span — the quiet floor the curve eases to,
+        /// and the dim end of that same range. No longer the bare
+        /// `surfaceActive` base: lifting it clear of the canvas is half the
+        /// compression, and it is what stops the middle of a long booking
+        /// reading as a hole punched through the selection rather than the
+        /// calm part of one. Paired with `schedulerSpanCapOpacity` — see there
+        /// for the whole argument.
+        static let schedulerSpanQuietOpacity: Double = 0.16
         /// Where the day number's glyphs sit across a cell, as a fraction of
         /// cell width: `spacing1` of leading padding, then a two-digit
         /// `dataValue` run (4pt then ~15pt of a ~53pt cell on a 390pt phone,
@@ -589,20 +617,40 @@ enum OPSStyle {
         /// Mean brightness under the day number above which that number flips
         /// to `invertedText` — the same black the caps wear.
         ///
-        /// The curve only ever puts four values under a number: 0 deep inside
-        /// a span, ~0.06 at the quiet end of a cap-adjacent cell, ~0.63 at the
-        /// bright end of a cap-adjacent cell, and ~0.69 on the lone interior of
-        /// a three-day span, which is the one cell both caps reach at once.
-        /// 0.175 sits in the empty middle of that set, so the two bright cases
-        /// flip, the two quiet ones do not, and the decision survives a retune
-        /// of the blend width. It is not a fine judgement: at 0.63 the ground
-        /// runs near-white to mid-grey, where black holds 13:1 down to 4.2:1
-        /// and white would collapse to 1.4:1. At 0.69 the ground is brighter
-        /// still and never leaves the caps' half of the range — 205/255 down to
-        /// 138/255 across the glyph run, black holding 13:1 to 6.1:1 where
-        /// white would sit at 1.4:1 to 2.9:1 — so that lone interior takes the
+        /// This is a threshold on the curve's own 0…1 shape, not on the fill,
+        /// so compressing the fill range moved none of the four values the
+        /// curve ever puts under a number: 0 deep inside a span, ~0.06 at the
+        /// quiet end of a cap-adjacent cell, ~0.63 at the bright end of one,
+        /// and ~0.69 on the lone interior of a three-day span, the one cell
+        /// both caps reach at once. 0.175 sits in the empty middle of that set,
+        /// so the two bright cases flip, the two quiet ones do not, and the
+        /// decision survives a retune of the blend width or of the range.
+        ///
+        /// What DID move is the ink each decision buys. Figures below are the
+        /// composited ground under the glyph run — `surfaceActive` over the
+        /// black canvas, then `primaryText` at `SchedulerSpanCurve.fillOpacity`
+        /// — recomputed against `schedulerSpanCapOpacity` /
+        /// `schedulerSpanQuietOpacity`.
+        ///
+        /// At 0.63 the ground runs 176/255 down to 115/255 across the digits:
+        /// black holds 9.7:1 falling to 4.5:1, white 1.9:1 rising only to
+        /// 4.0:1. Black is ahead at every point of the run and far ahead across
+        /// most of it, so it remains the right ink — but the trailing end of a
+        /// two-digit number on this one cell is the weakest text in the sheet,
+        /// clearing AA rather than the house 7:1. That is a property of setting
+        /// a numeral on a ramp at all, not of the range: no pairing of the two
+        /// range tokens holds 7:1 across this band while any ramp survives, and
+        /// compressing the range IMPROVED this point (4.2:1 before it).
+        ///
+        /// At 0.69 — a three-day span's lone interior — the ground runs 177/255
+        /// down to 133/255 and never leaves the bright half of the range: black
+        /// 9.8:1 to 5.7:1 against white's 1.8:1 to 3.2:1, so that day takes the
         /// caps' black clear of the 4.5:1 floor end to end, on the same
         /// evidence as its cap-adjacent neighbour rather than on a tiebreak.
+        ///
+        /// The two quiet cases keep white and clear the house floor outright:
+        /// 8.9:1 mean on the cell before the end cap (7.7:1 at its worst
+        /// point), 10.2:1 on the quiet floor itself.
         static let schedulerSpanNumberFlipBrightness: Double = 0.175
         /// CLEAR takes 30% of the footer; SAVE keeps the thumb-weighted share.
         static let schedulerFooterSecondaryWidthRatio: CGFloat = 0.3

@@ -2,16 +2,28 @@
 //  LeadsSummary.swift
 //  OPS
 //
-//  Leads redesign (2026-07-17, spec §7 / mockup leads-top A) — the tab
-//  summary is WORK-FIRST: the hero is the number of leads that need a move
-//  right now, not a forecast. Weighted probability is retired.
+//  The LEADS command band (console redesign 2026-08-05, spec §3 / §4). One
+//  band, three postures, chosen by `LeadsQueryEngine.bandState` — never by
+//  conditionals scattered through the body:
 //
-//      N NEED ACTION                       ← rose when overdue, tan when >0
-//      2 OVERDUE · 1 DUE TODAY · 1 YOUR MOVE
-//      [PIPELINE $86K] [OPEN 12] [WON · JUL $22.4K]
-//      [stage distribution bar]
+//      WORKING   4 NEED ACTION                     ← rose overdue / tan due
+//                2 OVERDUE · 1 DUE TODAY · 1 YOUR MOVE
+//                PIPELINE $86K · OPEN 12 · WON AUG $22.4K
+//                ▓▓▓▓▓▒▒▒▒░░░░░░░        BY STAGE ▸
 //
-//  Zero state: 0 NEED ACTION + // ALL QUIET (consistent with LeadsCaughtUp).
+//      QUIET     // ALL QUIET — NO FOLLOW-UPS DUE
+//                PIPELINE $86K · OPEN 12 · WON AUG $22.4K
+//                ▓▓▓▓▒▒▒░░░░░░░          BY STAGE ▸
+//
+//      EMPTY     PIPELINE — · OPEN 0
+//
+//  What went, and why: the three bordered KPI tiles collapsed into the one
+//  metrics line (same numbers, a fifth of the vertical budget), and the 38pt
+//  "0 NEED ACTION" zero-hero is gone — celebration chrome for "nothing to do"
+//  bought nothing and pushed the queue down a hundred points. The empty band
+//  says nothing about follow-ups at all: the queue's own `LeadsCaughtUp` block
+//  owns that message, and stating it twice would be noise.
+//
 //  All values come straight off `PipelineViewModel`.
 //
 
@@ -19,43 +31,60 @@ import SwiftUI
 
 struct LeadsSummary: View {
     let viewModel: PipelineViewModel
+    /// Opens the stage browser. Deliberately argument-free — the band shows the
+    /// distribution, the console decides which stage to land on.
+    var onByStage: () -> Void = {}
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            needActionHero
-            tileRow.padding(.top, OPSStyle.Layout.spacing3)
-            stageBar.padding(.top, OPSStyle.Layout.spacing3)
+            switch bandState {
+            case .working:
+                needActionHero
+                metricsLine.padding(.top, OPSStyle.Layout.spacing2)
+                barRow.padding(.top, OPSStyle.Layout.spacing2)
+            case .quiet:
+                quietLine
+                metricsLine.padding(.top, OPSStyle.Layout.spacing2)
+                barRow.padding(.top, OPSStyle.Layout.spacing2)
+            case .emptyPipeline:
+                metricsLine
+            }
         }
         .padding(.horizontal, OPSStyle.Layout.spacing3_5)
     }
 
-    // MARK: Need-action hero
-
     private var buckets: PipelineViewModel.TriageBuckets { viewModel.triageBuckets }
 
-    /// Numeral tone: rose while anything is overdue, tan while anything needs
-    /// action, primary text at zero (all quiet).
+    private var bandState: LeadsBandState {
+        LeadsQueryEngine.bandState(
+            needAction: viewModel.needActionCount,
+            openLeads: viewModel.openLeadCount
+        )
+    }
+
+    // MARK: Need-action hero (working state)
+
+    /// Numeral tone: rose while anything is overdue, tan while anything else
+    /// needs action. The hero only renders when work is due, so there is no
+    /// third case.
     private var heroTone: Color {
-        if buckets.overdue.count > 0 { return OPSStyle.Colors.roseTextM }
-        if viewModel.needActionCount > 0 { return OPSStyle.Colors.tanTextM }
-        return OPSStyle.Colors.text
+        buckets.overdue.count > 0 ? OPSStyle.Colors.roseTextM : OPSStyle.Colors.tanTextM
     }
 
     private var needActionHero: some View {
-        let count = viewModel.needActionCount
-        return VStack(alignment: .leading, spacing: 0) {
+        VStack(alignment: .leading, spacing: 0) {
             HStack(alignment: .firstTextBaseline, spacing: 10) {
                 CountUpText(
-                    target: Double(count),
+                    target: Double(viewModel.needActionCount),
                     format: { "\(Int($0))" },
-                    font: .custom("Mohave-Light", size: 38),
+                    font: .custom("Mohave-Light", size: 34),
                     color: heroTone
                 )
                 Text("NEED ACTION")
                     .font(.custom("JetBrainsMono-Medium", size: 11))
                     .tracking(1.4)
                     .textCase(.uppercase)
-                    .foregroundColor(count > 0 ? heroTone : OPSStyle.Colors.text3)
+                    .foregroundColor(heroTone)
             }
 
             breakdownLine
@@ -65,27 +94,16 @@ struct LeadsSummary: View {
         .accessibilityLabel(heroAccessibilityLabel)
     }
 
-    /// `2 OVERDUE · 1 DUE TODAY · 1 YOUR MOVE` — each segment in its bucket
-    /// tone; zero state reads `// ALL QUIET`.
-    @ViewBuilder
+    /// `2 OVERDUE · 1 DUE TODAY · 1 YOUR MOVE` — each segment in its bucket tone.
     private var breakdownLine: some View {
-        if viewModel.needActionCount == 0 {
-            HStack(spacing: 0) {
-                Text("// ").foregroundColor(OPSStyle.Colors.textMute)
-                Text("ALL QUIET").foregroundColor(OPSStyle.Colors.text3)
-            }
-            .font(OPSStyle.Typography.miniLabel)
-            .tracking(1.4)
-            .textCase(.uppercase)
-        } else {
-            HStack(spacing: 6) {
-                breakdownSegment(buckets.overdue.count, "OVERDUE", OPSStyle.Colors.roseTextM)
-                breakdownSegment(buckets.dueToday.count, "DUE TODAY", OPSStyle.Colors.tanTextM, leadingDot: buckets.overdue.count > 0)
-                breakdownSegment(
-                    buckets.waitingOnYou.count, "YOUR MOVE", OPSStyle.Colors.opsAccent,
-                    leadingDot: buckets.overdue.count > 0 || buckets.dueToday.count > 0
-                )
-            }
+        HStack(spacing: 6) {
+            breakdownSegment(buckets.overdue.count, "OVERDUE", OPSStyle.Colors.roseTextM)
+            breakdownSegment(buckets.dueToday.count, "DUE TODAY", OPSStyle.Colors.tanTextM,
+                             leadingDot: buckets.overdue.count > 0)
+            breakdownSegment(
+                buckets.waitingOnYou.count, "YOUR MOVE", OPSStyle.Colors.opsAccent,
+                leadingDot: buckets.overdue.count > 0 || buckets.dueToday.count > 0
+            )
         }
     }
 
@@ -108,24 +126,71 @@ struct LeadsSummary: View {
     }
 
     private var heroAccessibilityLabel: String {
-        let count = viewModel.needActionCount
-        guard count > 0 else { return "0 need action. All quiet." }
-        var parts: [String] = ["\(count) need action"]
+        var parts: [String] = ["\(viewModel.needActionCount) need action"]
         if buckets.overdue.count > 0 { parts.append("\(buckets.overdue.count) overdue") }
         if buckets.dueToday.count > 0 { parts.append("\(buckets.dueToday.count) due today") }
         if buckets.waitingOnYou.count > 0 { parts.append("\(buckets.waitingOnYou.count) your move") }
         return parts.joined(separator: ", ")
     }
 
-    // MARK: Tile row — real dollars, no weighting
+    // MARK: Quiet line (quiet state)
 
-    private var tileRow: some View {
-        HStack(spacing: OPSStyle.Layout.spacing2) {
-            tile(label: "PIPELINE", value: BooksFormat.compact(viewModel.openPipelineValue), tone: nil)
-            tile(label: "OPEN", value: "\(viewModel.openLeadCount)", tone: nil)
-            tile(label: "WON · \(monthLabel)", value: BooksFormat.compact(viewModel.wonThisMonthValue),
-                 tone: viewModel.wonThisMonthValue > 0 ? OPSStyle.Colors.oliveTextM : nil)
+    private var quietLine: some View {
+        HStack(spacing: 0) {
+            Text("// ").foregroundColor(OPSStyle.Colors.textMute)
+            Text("ALL QUIET — NO FOLLOW-UPS DUE").foregroundColor(OPSStyle.Colors.text3)
         }
+        .font(.custom("JetBrainsMono-Medium", size: 11))
+        .tracking(1.4)
+        .textCase(.uppercase)
+        .lineLimit(1)
+        .minimumScaleFactor(0.8)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("All quiet, no follow-ups due")
+    }
+
+    // MARK: Metrics line (replaces the KPI tiles)
+
+    private var metricsLine: some View {
+        HStack(spacing: 6) {
+            metric("PIPELINE", pipelineValueText, tone: nil)
+            metricSeparator
+            metric("OPEN", "\(viewModel.openLeadCount)", tone: nil)
+            // A month with no wins yet says nothing worth a slot; the segment
+            // returns the moment one lands.
+            if viewModel.wonThisMonthValue > 0 {
+                metricSeparator
+                metric("WON \(monthLabel)",
+                       BooksFormat.compact(viewModel.wonThisMonthValue),
+                       tone: OPSStyle.Colors.oliveTextM)
+            }
+        }
+        .font(.custom("JetBrainsMono-Medium", size: 11))
+        .tracking(1.0)
+        .lineLimit(1)
+        .minimumScaleFactor(0.8)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(metricsAccessibilityLabel)
+    }
+
+    private func metric(_ label: String, _ value: String, tone: Color?) -> some View {
+        HStack(spacing: 4) {
+            Text(label)
+                .foregroundColor(OPSStyle.Colors.text3)
+            Text(value)
+                .foregroundColor(tone ?? OPSStyle.Colors.text)
+                .monospacedDigit()
+        }
+    }
+
+    private var metricSeparator: some View {
+        Text("·").foregroundColor(OPSStyle.Colors.textMute)
+    }
+
+    /// Zero dollars is an em dash, never `$0` — the formatting law for an empty
+    /// number on every OPS surface.
+    private var pipelineValueText: String {
+        viewModel.openPipelineValue > 0 ? BooksFormat.compact(viewModel.openPipelineValue) : "—"
     }
 
     private var monthLabel: String {
@@ -134,31 +199,51 @@ struct LeadsSummary: View {
         return f.string(from: Date()).uppercased()
     }
 
-    private func tile(label: String, value: String, tone: Color?) -> some View {
-        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
-            Text(label)
-                .font(.custom("JetBrainsMono-Medium", size: 8.5))
-                .tracking(0.9)
-                .textCase(.uppercase)
-                .foregroundColor(OPSStyle.Colors.text3)
-                .lineLimit(1)
-            Text(value)
-                .font(.custom("JetBrainsMono-Medium", size: 16))
-                .foregroundColor(tone ?? OPSStyle.Colors.text)
-                .monospacedDigit()
-                .lineLimit(1)
+    private var metricsAccessibilityLabel: String {
+        var parts = [
+            "Pipeline \(viewModel.openPipelineValue > 0 ? BooksFormat.compact(viewModel.openPipelineValue) : "none")",
+            "\(viewModel.openLeadCount) open"
+        ]
+        if viewModel.wonThisMonthValue > 0 {
+            let f = DateFormatter()
+            f.dateFormat = "MMMM"
+            parts.append("won \(BooksFormat.compact(viewModel.wonThisMonthValue)) in \(f.string(from: Date()))")
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 10)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .nestedCard()
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(label), \(value)")
+        return parts.joined(separator: ", ")
     }
 
-    // MARK: Stage distribution bar (kept as-is)
+    // MARK: Stage bar + BY STAGE affordance
 
     private static let openStages = PipelineStage.openStages
+
+    /// The distribution bar and its label are ONE control: the bar is what the
+    /// operator points at when they want the stage view, so the whole row is
+    /// the door rather than a 9.5pt word beside a decoration.
+    private var barRow: some View {
+        Button {
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            onByStage()
+        } label: {
+            HStack(spacing: OPSStyle.Layout.spacing3) {
+                stageBar
+                HStack(spacing: 4) {
+                    Text("BY STAGE")
+                        .foregroundColor(OPSStyle.Colors.text3)
+                    Text("▸")
+                        .foregroundColor(OPSStyle.Colors.textMute)
+                }
+                .font(.custom("JetBrainsMono-Medium", size: 9.5))
+                .tracking(1.2)
+                .textCase(.uppercase)
+                .fixedSize()
+            }
+            .frame(maxWidth: .infinity)
+            .frame(minHeight: OPSStyle.Layout.touchTargetMin)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Pipeline by stage, browse")
+    }
 
     private var stageBar: some View {
         let counts = Self.openStages.map { (stage: $0, count: viewModel.count(in: $0)) }
@@ -181,3 +266,28 @@ struct LeadsSummary: View {
         .accessibilityHidden(true)
     }
 }
+
+// MARK: - Previews
+
+#if DEBUG
+#Preview("LeadsSummary / band states") {
+    ScrollView {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing5) {
+            // WORKING — overdue + due today + your move
+            LeadsSummary(viewModel: .previewLoaded())
+            // QUIET — open leads, nothing due
+            LeadsSummary(viewModel: .previewLoaded(opportunities: [
+                .preview(title: "Smith deck addition", contactName: "Mike Smith",
+                         stage: .newLead, estimatedValue: 8_500, daysInStage: 1),
+                .preview(title: "Hilltop pool deck", contactName: "Anna Patel",
+                         stage: .quoting, estimatedValue: 22_400, daysInStage: 2)
+            ]))
+            // EMPTY PIPELINE — metrics only
+            LeadsSummary(viewModel: .previewLoaded(opportunities: []))
+        }
+        .padding(.vertical, OPSStyle.Layout.spacing4)
+    }
+    .background(OPSStyle.Colors.background)
+    .preferredColorScheme(.dark)
+}
+#endif

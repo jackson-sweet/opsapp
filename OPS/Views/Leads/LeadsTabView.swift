@@ -7,8 +7,8 @@
 //
 //  Top-to-bottom layout:
 //      [AppHeader]                LEADS                         [+] [search]
-//      [summary]                  weighted forecast + stage bar + triage tiles
-//      [by-stage row]             // PIPELINE BY STAGE (horizontal)
+//      [command band]             need-action hero / quiet line + metrics +
+//                                 stage bar → BY STAGE ▸
 //      [won nudge]                conditional — unconverted wins → convert
 //      [sticky chips]             ALL · OVERDUE · DUE TODAY · WAITING ON YOU · …
 //      [queue]                    LeadTriageCard rows, grouped by urgency
@@ -144,6 +144,16 @@ struct LeadsTabView: View {
     private static let groupOrder: [PipelineViewModel.TriageBucket] = [
         .overdue, .dueToday, .waitingOnYou, .waitingOnThem, .fresh
     ]
+
+    /// Where BY STAGE lands: the stage the bar is showing most of, ties broken
+    /// by pipeline order. Nothing open opens at the top of the funnel.
+    private var entryStage: PipelineStage {
+        var best: (stage: PipelineStage, count: Int) = (.newLead, 0)
+        for stage in PipelineStage.openStages where viewModel.count(in: stage) > best.count {
+            best = (stage, viewModel.count(in: stage))
+        }
+        return best.stage
+    }
 
     var body: some View {
         NavigationStack {
@@ -310,11 +320,8 @@ struct LeadsTabView: View {
     private var consoleScroll: some View {
                     ScrollView {
                         LazyVStack(alignment: .leading, spacing: 0, pinnedViews: [.sectionHeaders]) {
-                            LeadsSummary(viewModel: viewModel)
+                            LeadsSummary(viewModel: viewModel, onByStage: { footerStage = entryStage })
                                 .padding(.top, OPSStyle.Layout.spacing1)
-
-                            LeadsByStageRow(viewModel: viewModel, onStageTap: { footerStage = $0 })
-                                .padding(.top, 22)
 
                             if !convertibleUnconvertedWins.isEmpty {
                                 LeadsWonNudge(

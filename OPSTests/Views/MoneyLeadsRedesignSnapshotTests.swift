@@ -288,17 +288,27 @@ final class MoneyLeadsRedesignSnapshotTests: XCTestCase {
 
     // MARK: - Leads (redesign 2026-07-17 — chase console states)
 
+    /// The command band's three postures (console redesign 2026-08-05, spec §3):
+    /// need-action hero, quiet line, and the metrics-only empty pipeline. The
+    /// retired by-stage tile strip has no case — stage browsing now lives
+    /// behind the band's own BY STAGE ▸ target.
     func testRenderLeadsSummary() {
         let vm = PipelineViewModel.previewLoaded()
-        snapshot("leads_summary") {
+        snapshot("leads_band_working") {
             LeadsSummary(viewModel: vm).padding(.vertical, OPSStyle.Layout.spacing3)
         }
-        snapshot("leads_summary_zero") {
+        snapshot("leads_band_quiet") {
+            LeadsSummary(viewModel: .previewLoaded(opportunities: [
+                .preview(title: "Smith deck addition", contactName: "Mike Smith",
+                         stage: .newLead, estimatedValue: 8_500, daysInStage: 1),
+                .preview(title: "Hilltop pool deck", contactName: "Anna Patel",
+                         stage: .quoting, estimatedValue: 22_400, daysInStage: 2)
+            ]))
+            .padding(.vertical, OPSStyle.Layout.spacing3)
+        }
+        snapshot("leads_band_empty") {
             LeadsSummary(viewModel: .previewLoaded(opportunities: []))
                 .padding(.vertical, OPSStyle.Layout.spacing3)
-        }
-        snapshot("leads_by_stage") {
-            LeadsByStageRow(viewModel: vm, onStageTap: { _ in }).padding(.vertical, OPSStyle.Layout.spacing3)
         }
         snapshot("leads_won_nudge") {
             LeadsWonNudge(count: 2, totalValue: 27_400, onTap: {}).padding(.vertical, OPSStyle.Layout.spacing3)

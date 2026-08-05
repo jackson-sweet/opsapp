@@ -32,6 +32,11 @@ struct LeadTriageCard: View {
     let bucket: PipelineViewModel.TriageBucket
     var canEdit: Bool = true
     var canConvert: Bool = true
+    /// Who owns this lead — `JASON W` / `UNASSIGNED` / `UNKNOWN`, resolved once
+    /// per render by the console from its roster (spec §6.4). nil hides the
+    /// token entirely: a solo operator, or any surface where assignment carries
+    /// no information, never sees it. Cards never look a name up themselves.
+    var assigneeLabel: String? = nil
     var onTap: () -> Void = {}
     var onLog: () -> Void = {}                 // ✎ full sheet
     var onHandled: () -> Void = {}             // strip button (yourMove/overdue/dueToday)
@@ -56,6 +61,7 @@ struct LeadTriageCard: View {
         bucket: PipelineViewModel.TriageBucket,
         canEdit: Bool = true,
         canConvert: Bool = true,
+        assigneeLabel: String? = nil,
         onTap: @escaping () -> Void = {},
         onLog: @escaping () -> Void = {},
         onHandled: @escaping () -> Void = {},
@@ -74,6 +80,7 @@ struct LeadTriageCard: View {
         self.bucket = bucket
         self.canEdit = canEdit
         self.canConvert = canConvert
+        self.assigneeLabel = assigneeLabel
         self.onTap = onTap
         self.onLog = onLog
         self.onHandled = onHandled
@@ -242,11 +249,19 @@ struct LeadTriageCard: View {
     }
 
     private var accessibilityLabelText: String {
+        var label: String
         if isTerminal {
             let tail = outcome.detail.map { ", \($0)" } ?? ""
-            return "\(lead.displayContactName), \(outcome.label)\(tail)"
+            label = "\(lead.displayContactName), \(outcome.label)\(tail)"
+        } else {
+            label = "\(lead.displayContactName), \(lead.stage.displayName)"
         }
-        return "\(lead.displayContactName), \(lead.stage.displayName)"
+        if let assigneeLabel {
+            label += assigneeLabel == Self.unassignedToken
+                ? ", unassigned"
+                : ", assigned to \(assigneeLabel.capitalized)"
+        }
+        return label
     }
 
     // MARK: Swipe = stage (Job Board grammar, spec §4)
@@ -425,6 +440,15 @@ struct LeadTriageCard: View {
         }
     }
 
+    /// The engine's word for "nobody" (spec §13). An empty slot is an absence,
+    /// not an operator, so it renders one step dimmer than a real name.
+    private static let unassignedToken = "UNASSIGNED"
+
+    private var sourceText: String? {
+        guard let source = lead.source, !source.isEmpty else { return nil }
+        return source.uppercased()
+    }
+
     private var metaRow: some View {
         HStack(spacing: OPSStyle.Layout.spacing2_5) {
             // Stage progress — 6 segments filled to the current stage
@@ -440,12 +464,33 @@ struct LeadTriageCard: View {
 
             Spacer(minLength: 0)
 
-            if let source = lead.source, !source.isEmpty {
-                Text(source.uppercased())
-                    .font(.custom("JetBrainsMono-Regular", size: 8.5))
-                    .tracking(0.7)
-                    .foregroundColor(OPSStyle.Colors.textMute)
+            // Trailing cluster — `JASON W · REFERRAL`. Assignee is operational
+            // (text-3), source is provenance (textMute): one step apart so the
+            // eye lands on the name first. Source keeps its slot; a long name
+            // truncates before provenance is sacrificed.
+            HStack(spacing: 4) {
+                if let assigneeLabel {
+                    Text(assigneeLabel)
+                        .foregroundColor(assigneeLabel == Self.unassignedToken
+                                         ? OPSStyle.Colors.textMute
+                                         : OPSStyle.Colors.text3)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                }
+                if assigneeLabel != nil, sourceText != nil {
+                    Text("·")
+                        .foregroundColor(OPSStyle.Colors.textMute)
+                        .layoutPriority(1)
+                }
+                if let sourceText {
+                    Text(sourceText)
+                        .foregroundColor(OPSStyle.Colors.textMute)
+                        .lineLimit(1)
+                        .layoutPriority(1)
+                }
             }
+            .font(.custom("JetBrainsMono-Regular", size: 8.5))
+            .tracking(0.7)
         }
     }
 
@@ -707,15 +752,18 @@ private struct LeadQuickGlyph: View {
                     o.source = "referral"
                     return o
                 }(),
-                viewModel: .previewLoaded(), bucket: .waitingOnThem
+                viewModel: .previewLoaded(), bucket: .waitingOnThem,
+                // Crew of two or more — the meta row reads `JASON W · REFERRAL`.
+                assigneeLabel: "JASON W"
             )
-            // FRESH
+            // FRESH — nobody owns it yet, and there is no source to pair with.
             LeadTriageCard(
                 lead: Opportunity.preview(
                     title: "Leak repair — kitchen ceiling", contactName: "Jamie Park",
                     stage: .newLead, estimatedValue: 2_200, daysInStage: 0
                 ),
-                viewModel: .previewLoaded(), bucket: .fresh
+                viewModel: .previewLoaded(), bucket: .fresh,
+                assigneeLabel: "UNASSIGNED"
             )
         }
         .padding(OPSStyle.Layout.spacing3_5)

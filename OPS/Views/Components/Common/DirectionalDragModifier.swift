@@ -10,6 +10,8 @@
 import SwiftUI
 
 struct DirectionalDragModifier: ViewModifier {
+    static let minimumDistance = OPSStyle.Layout.spacing3_5
+
     let isEnabled: Bool
     var onChanged: ((CGFloat) -> Void)?
     var onEnded: ((CGFloat) -> Void)?
@@ -28,7 +30,10 @@ struct DirectionalDragModifier: ViewModifier {
     }
 
     private var horizontalGesture: some Gesture {
-        DragGesture(minimumDistance: 20, coordinateSpace: .local)
+        DragGesture(
+            minimumDistance: Self.minimumDistance,
+            coordinateSpace: .local
+        )
             .onChanged { value in
                 let t = value.translation
                 switch resolvedAxis {

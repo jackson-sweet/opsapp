@@ -26,6 +26,7 @@ final class LeadChaseEngineTests: XCTestCase {
         o.handledAt = handled
         o.operatorActionRequiredAt = operatorActionRequired
         o.nextFollowUpAt = followUp
+        o.stageEnteredAt = .distantPast
         return o
     }
     private func vm(_ leads: [Opportunity]) -> PipelineViewModel {
@@ -209,7 +210,7 @@ final class LeadChaseEngineTests: XCTestCase {
         XCTAssertEqual(d.timeIntervalSinceNow, 3 * 86_400, accuracy: 5)
     }
 
-    // MARK: - One-tap follow-up action
+    // MARK: - Deliberate follow-up action
 
     func testDueLeadOffersFollowUpWhenProviderSendIsEligible() {
         XCTAssertEqual(
@@ -263,7 +264,19 @@ final class LeadChaseEngineTests: XCTestCase {
     func testFollowUpActionVoicesSendingState() {
         XCTAssertEqual(
             LeadChaseStrip.actionLabel(for: .sendFollowUp, progress: .idle),
-            "SEND FOLLOW-UP"
+            "HOLD TO REVIEW"
+        )
+        XCTAssertEqual(
+            LeadChaseStrip.actionLabel(
+                for: .sendFollowUp,
+                progress: .idle,
+                skipsReview: true
+            ),
+            "HOLD TO SEND"
+        )
+        XCTAssertEqual(
+            LeadChaseStrip.actionLabel(for: .sendFollowUp, progress: .reviewing),
+            "REVIEWING…"
         )
         XCTAssertEqual(
             LeadChaseStrip.actionLabel(for: .sendFollowUp, progress: .sending),
@@ -276,6 +289,17 @@ final class LeadChaseEngineTests: XCTestCase {
         XCTAssertEqual(
             LeadChaseStrip.actionLabel(for: .sendFollowUp, progress: .unknown),
             "CHECK EMAIL"
+        )
+    }
+
+    func testFollowUpHoldCancelsBeforeCardStageDragRecognizes() {
+        XCTAssertLessThan(
+            LeadChaseStrip.followUpHoldMaximumDistance,
+            DirectionalDragModifier.minimumDistance
+        )
+        XCTAssertEqual(
+            LeadChaseStrip.followUpHoldMinimumDuration,
+            OPSStyle.Animation.durationIntentHold
         )
     }
 

@@ -453,6 +453,8 @@ enum OPSStyle {
         static let tagLabel = Font.tagLabel
         static let previewLabel = Font.previewLabel
         static let sectionLabel = Font.sectionLabel
+        static let trackingCompact: CGFloat = 0.8
+        static let trackingStandard: CGFloat = 0.9
 
         // Legacy headings (Mohave)
         static let heading = Font.heading
@@ -795,6 +797,7 @@ enum OPSStyle {
         static let durationChartBar: Double = 0.400  // 400-600ms — chart bar grow (add index delay)
         static let durationFlip:     Double = 0.350  // 350ms — card flip
         static let durationCountUp:  Double = 0.800  // 800ms — hero number count-up
+        static let durationIntentHold: Double = 0.800 // Deliberate destructive/send commit hold
         static let durationSkeletonPulse: Double = 1.500 // MOBILE.md §10 — 1.5s skeleton pulse
 
         /// MOBILE.md §10 skeleton pulse floor: `fillNeutralDim` (white 0.06)

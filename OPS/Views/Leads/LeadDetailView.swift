@@ -220,7 +220,13 @@ struct LeadDetailView: View {
                                             canAct: canEdit,
                                             canSendFollowUp: chaseVM.canSendFollowUp(for: opportunity),
                                             followUpProgress: chaseVM.followUpProgress(for: opportunity.id),
+                                            actorUserId: chaseVM.currentUserId,
                                             onHandled: { markHandledFromDetail() },
+                                            onReviewFollowUp: {
+                                                await chaseVM.previewFollowUp(
+                                                    opportunityId: opportunity.id
+                                                )
+                                            },
                                             onSendFollowUp: { sendFollowUpFromDetail() },
                                             onAdjust: { comebackTarget = opportunity }
                                         )
@@ -767,8 +773,8 @@ struct LeadDetailView: View {
         }
     }
 
-    /// Provider-backed one-tap follow-up. The detail view shares the queue's
-    /// exact send, reconciliation, comeback, and feedback contract.
+    /// Provider-backed follow-up. The deliberate hold/review surface shares
+    /// the queue's exact send, reconciliation, comeback, and feedback contract.
     private func sendFollowUpFromDetail() {
         guard canEdit, chaseVM.canSendFollowUp(for: opportunity) else { return }
         Task {

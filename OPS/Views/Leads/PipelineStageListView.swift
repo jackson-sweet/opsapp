@@ -2,16 +2,16 @@
 //  PipelineStageListView.swift
 //  OPS
 //
-//  Filtered single-stage lead list — pushed from the LEADS-tab pipeline
-//  footer ("// BY STAGE"). Fulfils the per-stage drill committed in
-//  design-intent §23 #5 and closes audit CRITICAL #6 (the footer's dead
-//  drill-down) for both open AND closed (won/lost) stages.
+//  The stage browser — pushed from the LEADS command band's stage bar
+//  (BY STAGE ▸). The band picks the entry stage; from there the operator
+//  browses every stage IN PLACE, without going back and pushing again.
 //
 //  Composition (top → bottom):
 //
-//      Atmosphere(tone: derivedFromStage)
+//      Atmosphere(tone: derivedFromSelectedStage)
 //      ┌────────────────────────────────────────────────┐
 //      │  ← LEADS                                       │ ← StageListNavBar
+//      │  NEW LEAD · 3  QUALIFYING · 1  QUOTING · 4  …  │ ← stage tab row
 //      ├────────────────────────────────────────────────┤
 //      │  QUOTING                              04 LEADS │ ← titleRow
 //      │                                                │
@@ -19,6 +19,11 @@
 //      │  [LeadTriageCard]                              │
 //      │  …                                             │
 //      └────────────────────────────────────────────────┘
+//
+//  The tab row (console redesign 2026-08-05, spec §7 / MOBILE.md §4.2) carries
+//  the six open stages and then WON and LOST — the archive was previously
+//  unreachable on iOS at all, though the card has always known how to render a
+//  closed lead. Active tab: `text` plus a 2pt white underline, never accent.
 //
 //  The row is the SAME LeadTriageCard the LeadsTabView chase queue renders, so
 //  a lead looks identical wherever it surfaces. A row tap routes up to
@@ -30,16 +35,14 @@
 //  OPEN leads only. The card is handed `bucket: .all` (per-lead urgency) and
 //  handles terminal stages itself — a won/lost lead renders its outcome strip
 //  and hides the mutating quick actions rather than misclassifying as a verb.
-//  In practice the by-stage strip only opens OPEN stages, so this is defensive.
 //
-//  Plan:   docs/superpowers/plans/2026-05-19-leads-tab-rebuild.md §2.1 Q2
-//  Intent: docs/superpowers/specs/2026-05-19-leads-tab-design-intent.md §23 #5
+//  Plan:   docs/plans/2026-08-05-leads-console-redesign.md Task 8
+//  Spec:   docs/superpowers/specs/2026-08-05-leads-console-redesign-design.md §7
 //
 
 import SwiftUI
 
 struct PipelineStageListView: View {
-    let stage: PipelineStage
     @ObservedObject var viewModel: PipelineViewModel
 
     /// Routes a row tap up to LeadsTabView's root `detailLead` destination.
@@ -59,8 +62,41 @@ struct PipelineStageListView: View {
     /// Pending ARCHIVE confirmation (OPSConfirm).
     @State private var archiveTarget: Opportunity?
 
-    /// This stage's leads — already sorted stale-first by the view model.
-    private var leads: [Opportunity] { viewModel.opportunities(in: stage) }
+    /// The stage on screen. Seeded from the pushed stage, then owned here — a
+    /// tab switch swaps the list in place rather than pushing a second screen,
+    /// so browsing eight stages costs one navigation, not eight.
+    @State private var selectedStage: PipelineStage
+
+    init(
+        stage: PipelineStage,
+        viewModel: PipelineViewModel,
+        onLeadTap: @escaping (Opportunity) -> Void = { _ in },
+        onRequestSheet: @escaping (LeadsSheet) -> Void = { _ in }
+    ) {
+        _viewModel = ObservedObject(wrappedValue: viewModel)
+        self.onLeadTap = onLeadTap
+        self.onRequestSheet = onRequestSheet
+        _selectedStage = State(initialValue: stage)
+    }
+
+    /// Every stage the browser can reach: the open funnel, then the archive.
+    private static let browsableStages: [PipelineStage] = PipelineStage.openStages + [.won, .lost]
+
+    /// The selected stage's leads. Open stages keep the view model's
+    /// stale-first order — staleness is the thing to act on. A closed stage is
+    /// an archive, where nothing is stale and the only useful order is the one
+    /// that puts the most recent result first.
+    private var leads: [Opportunity] {
+        let rows = viewModel.opportunities(in: selectedStage)
+        guard selectedStage.isTerminal else { return rows }
+        return rows.sorted { lhs, rhs in
+            let left = lhs.actualCloseDate ?? lhs.createdAt
+            let right = rhs.actualCloseDate ?? rhs.createdAt
+            if left != right { return left > right }
+            return lhs.createdAt > rhs.createdAt
+        }
+    }
+
     private var leadAccessPolicy: LeadAccessPolicy { permissionStore.leadAccessPolicy }
     private func canEdit(_ lead: Opportunity) -> Bool {
         leadAccessPolicy.can(.edit, assignedTo: lead.assignedTo)
@@ -79,6 +115,8 @@ struct PipelineStageListView: View {
                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
                     dismiss()
                 })
+
+                stageTabs
 
                 ScrollView {
                     VStack(alignment: .leading, spacing: 0) {
@@ -105,12 +143,92 @@ struct PipelineStageListView: View {
         }
     }
 
+    // MARK: - Stage tabs (spec §7)
+
+    /// Pinned under the nav bar — the row stays put while the list scrolls, so
+    /// the operator never loses their place in the funnel.
+    private var stageTabs: some View {
+        VStack(spacing: 0) {
+            ScrollViewReader { proxy in
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 0) {
+                        ForEach(Self.browsableStages, id: \.self) { stage in
+                            stageTab(stage).id(stage)
+                        }
+                    }
+                    .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+                }
+                // Fades both ends so a half-shown tab reads as "there is more"
+                // instead of a clipped word.
+                .mask(
+                    LinearGradient(
+                        stops: [
+                            .init(color: .clear, location: 0),
+                            .init(color: .black, location: 0.05),
+                            .init(color: .black, location: 0.95),
+                            .init(color: .clear, location: 1)
+                        ],
+                        startPoint: .leading,
+                        endPoint: .trailing
+                    )
+                )
+                .onAppear { proxy.scrollTo(selectedStage, anchor: .center) }
+                .onChange(of: selectedStage) { _, stage in
+                    withAnimation(OPSStyle.Animation.standard) {
+                        proxy.scrollTo(stage, anchor: .center)
+                    }
+                }
+            }
+
+            Rectangle()
+                .fill(OPSStyle.Colors.line)
+                .frame(height: 1)
+        }
+    }
+
+    private func stageTab(_ stage: PipelineStage) -> some View {
+        let isActive = stage == selectedStage
+        let count = viewModel.count(in: stage)
+        return Button {
+            select(stage)
+        } label: {
+            VStack(spacing: 0) {
+                HStack(spacing: 4) {
+                    Text(stage.displayName)
+                    Text("·").foregroundColor(OPSStyle.Colors.textMute)
+                    Text("\(count)").monospacedDigit()
+                }
+                .font(.custom("JetBrainsMono-Medium", size: 10))
+                .tracking(1.2)
+                .textCase(.uppercase)
+                .foregroundColor(isActive ? OPSStyle.Colors.text : OPSStyle.Colors.text3)
+                .padding(.horizontal, OPSStyle.Layout.spacing3)
+                .frame(minHeight: OPSStyle.Layout.touchTargetMin)
+
+                // White, never accent (MOBILE.md §4.2).
+                Rectangle()
+                    .fill(isActive ? OPSStyle.Colors.text : Color.clear)
+                    .frame(height: OPSStyle.Layout.Border.thick)
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("\(stage.displayName), \(count) leads")
+        .accessibilityAddTraits(isActive ? [.isSelected] : [])
+    }
+
+    private func select(_ stage: PipelineStage) {
+        guard stage != selectedStage else { return }
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        withAnimation(OPSStyle.Animation.standard) { selectedStage = stage }
+    }
+
     // MARK: - Title
 
     private var titleRow: some View {
         HStack(alignment: .lastTextBaseline) {
-            Text(stage.displayName)
-                .font(OPSStyle.Typography.screenTitle(for: stage.displayName))
+            Text(selectedStage.displayName)
+                .font(OPSStyle.Typography.screenTitle(for: selectedStage.displayName))
                 .foregroundColor(OPSStyle.Colors.text)
                 .textCase(.uppercase)
 
@@ -130,7 +248,7 @@ struct PipelineStageListView: View {
     @ViewBuilder
     private var listContent: some View {
         if leads.isEmpty {
-            StageEmpty(stage: stage)
+            StageEmpty(stage: selectedStage)
                 .padding(.vertical, 28)
                 .frame(maxWidth: .infinity)
         } else {
@@ -242,8 +360,10 @@ struct PipelineStageListView: View {
     // MARK: - Helpers
 
     /// Atmosphere hue per stage — mirrors `LeadDetailView.atmosphereTone`.
+    /// Re-derives on every tab switch, so the screen's whole temperature
+    /// follows the stage the operator is standing in.
     private var atmosphereTone: Atmosphere.Tone {
-        switch stage {
+        switch selectedStage {
         case .won:                              return .olive
         case .lost:                             return .rose
         case .quoted, .followUp, .negotiation:  return .tan
@@ -326,14 +446,17 @@ private struct StageEmpty: View {
 // MARK: - Previews
 
 #if DEBUG
-#Preview("PipelineStageListView / quoting") {
+/// Entered at QUOTING — the tab row centres the active stage, steel atmosphere.
+#Preview("PipelineStageListView / quoting tab") {
     NavigationStack {
         PipelineStageListView(stage: .quoting, viewModel: .previewLoaded())
     }
     .leadsPreviewEnvironment()
 }
 
-#Preview("PipelineStageListView / won") {
+/// Entered at WON — the archive, newly reachable: olive atmosphere, outcome
+/// strips on every card, close-date order.
+#Preview("PipelineStageListView / won tab") {
     NavigationStack {
         PipelineStageListView(stage: .won, viewModel: .previewLoaded())
     }

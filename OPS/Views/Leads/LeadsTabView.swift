@@ -145,14 +145,12 @@ struct LeadsTabView: View {
         .overdue, .dueToday, .waitingOnYou, .waitingOnThem, .fresh
     ]
 
-    /// Where BY STAGE lands: the stage the bar is showing most of, ties broken
-    /// by pipeline order. Nothing open opens at the top of the funnel.
+    /// Where BY STAGE lands — the engine owns the rule (max open count, ties by
+    /// funnel order); the view only supplies the counts the bar is drawing.
     private var entryStage: PipelineStage {
-        var best: (stage: PipelineStage, count: Int) = (.newLead, 0)
-        for stage in PipelineStage.openStages where viewModel.count(in: stage) > best.count {
-            best = (stage, viewModel.count(in: stage))
-        }
-        return best.stage
+        LeadsQueryEngine.entryStage(
+            counts: PipelineStage.openStages.map { ($0, viewModel.count(in: $0)) }
+        )
     }
 
     var body: some View {

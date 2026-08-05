@@ -671,4 +671,42 @@ final class LeadsQueryEngineTests: XCTestCase {
     func testBandStateFavoursWorkOverAnImpossibleEmptyPipeline() {
         XCTAssertEqual(LeadsQueryEngine.bandState(needAction: 3, openLeads: 0), .working)
     }
+
+    // MARK: - Stage browser entry
+
+    func testEntryStageIsTheStageHoldingTheMostOpenLeads() {
+        let stage = LeadsQueryEngine.entryStage(counts: [
+            (.newLead, 2), (.qualifying, 1), (.quoting, 7),
+            (.quoted, 3), (.followUp, 0), (.negotiation, 1)
+        ])
+        XCTAssertEqual(stage, .quoting)
+    }
+
+    /// Ties resolve on the funnel's own order — not on how the caller happened
+    /// to order the array — so the door always opens at the earliest contested
+    /// stage no matter who assembles the counts.
+    func testEntryStageBreaksTiesByPipelineOrderNotArrayOrder() {
+        let stage = LeadsQueryEngine.entryStage(counts: [
+            (.quoted, 4), (.negotiation, 4), (.qualifying, 4)
+        ])
+        XCTAssertEqual(stage, .qualifying)
+    }
+
+    func testEntryStageFallsBackToNewLeadWhenEveryStageIsEmpty() {
+        let counts = PipelineStage.openStages.map { ($0, 0) }
+        XCTAssertEqual(LeadsQueryEngine.entryStage(counts: counts), .newLead)
+    }
+
+    func testEntryStageFallsBackToNewLeadWithNoCountsAtAll() {
+        XCTAssertEqual(LeadsQueryEngine.entryStage(counts: []), .newLead)
+    }
+
+    /// Production only ever hands it the open funnel (the bar draws no terminal
+    /// segment), but the ranking must not secretly depend on that.
+    func testEntryStageRanksWhateverItIsHanded() {
+        XCTAssertEqual(
+            LeadsQueryEngine.entryStage(counts: [(.won, 9), (.quoting, 3)]),
+            .won
+        )
+    }
 }

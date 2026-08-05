@@ -199,6 +199,29 @@ enum LeadsQueryEngine {
         return .emptyPipeline
     }
 
+    // MARK: Stage browser entry (spec §7)
+
+    /// Where the BY STAGE door opens: the stage holding the most open leads,
+    /// because that is the pile the operator is reaching for when they leave
+    /// the queue to browse.
+    ///
+    /// Ties resolve on the funnel's own order — the earliest contested stage
+    /// wins, whatever order the caller assembled the counts in — so the door
+    /// can never open somewhere different for the same pipeline. Nothing open
+    /// lands at the top of the funnel rather than nowhere.
+    nonisolated static func entryStage(counts: [(PipelineStage, Int)]) -> PipelineStage {
+        var best: (stage: PipelineStage, count: Int, rank: Int)?
+        for (stage, count) in counts where count > 0 {
+            let rank = PipelineStage.allCases.firstIndex(of: stage) ?? Int.max
+            if let current = best,
+               count < current.count || (count == current.count && rank >= current.rank) {
+                continue
+            }
+            best = (stage, count, rank)
+        }
+        return best?.stage ?? .newLead
+    }
+
     // MARK: Roster + assignment labels (spec §5.3, §6.4)
 
     /// The crew the operator can filter by and read on cards: every active user

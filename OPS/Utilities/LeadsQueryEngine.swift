@@ -59,6 +59,16 @@ struct CrewMember: Identifiable, Equatable {
     let shortLabel: String
 }
 
+// MARK: - Band state
+
+/// Which command band the console renders (spec §3.1–§3.3): the need-action
+/// hero, the quiet line, or metrics alone.
+enum LeadsBandState: Equatable {
+    case working
+    case quiet
+    case emptyPipeline
+}
+
 // MARK: - Result
 
 /// What the queue renders. URGENCY with no bucket chip and no query is the one
@@ -172,6 +182,21 @@ enum LeadsQueryEngine {
             guard let wanted = normalizedId(id) else { return false }
             return assigned == wanted
         }
+    }
+
+    // MARK: Band state (spec §3.1–§3.3)
+
+    /// The band branches on ONE tested truth rather than scattered conditionals.
+    ///
+    /// Work wins: `needAction > 0` resolves `.working` even with zero open
+    /// leads. Upstream that pair is impossible — need-action is a slice of the
+    /// open leads — but if it ever occurred, stating the work is the only safe
+    /// render; claiming an empty pipeline above a queue full of chase-now rows
+    /// would be a lie.
+    nonisolated static func bandState(needAction: Int, openLeads: Int) -> LeadsBandState {
+        if needAction > 0 { return .working }
+        if openLeads > 0 { return .quiet }
+        return .emptyPipeline
     }
 
     // MARK: Roster + assignment labels (spec §5.3, §6.4)

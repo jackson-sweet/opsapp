@@ -648,4 +648,27 @@ final class LeadsQueryEngineTests: XCTestCase {
     func testAssigneeLabelResolvesAnUppercaseIdAgainstTheRoster() {
         XCTAssertEqual(LeadsQueryEngine.assigneeLabel(for: "U-2", roster: crewOfTwo()), "DANA W")
     }
+
+    // MARK: - Band state
+
+    func testBandStateIsWorkingWhileAnythingNeedsAction() {
+        XCTAssertEqual(LeadsQueryEngine.bandState(needAction: 4, openLeads: 12), .working)
+        XCTAssertEqual(LeadsQueryEngine.bandState(needAction: 1, openLeads: 1), .working)
+    }
+
+    func testBandStateIsQuietWhenNothingIsDueButLeadsAreOpen() {
+        XCTAssertEqual(LeadsQueryEngine.bandState(needAction: 0, openLeads: 12), .quiet)
+        XCTAssertEqual(LeadsQueryEngine.bandState(needAction: 0, openLeads: 1), .quiet)
+    }
+
+    func testBandStateIsEmptyPipelineWithNoOpenLeads() {
+        XCTAssertEqual(LeadsQueryEngine.bandState(needAction: 0, openLeads: 0), .emptyPipeline)
+    }
+
+    /// Upstream this pair is impossible — need-action is a slice of the open
+    /// leads — but the band must state the work rather than claim an empty
+    /// pipeline above a queue full of chase-now rows.
+    func testBandStateFavoursWorkOverAnImpossibleEmptyPipeline() {
+        XCTAssertEqual(LeadsQueryEngine.bandState(needAction: 3, openLeads: 0), .working)
+    }
 }

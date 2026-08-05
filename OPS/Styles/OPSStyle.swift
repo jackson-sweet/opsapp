@@ -183,18 +183,62 @@ enum OPSStyle {
         // Earth-tones at higher fill / border / text contrast than their desktop variants.
         // Use these in any mobile UI; the legacy soft / line variants remain for non-mobile
         // surfaces (desktop OPS-Web parity).
-        //   • fillM   — 20% alpha (vs 12% desktop)
-        //   • lineM   — 55% alpha (vs 30% desktop)
-        //   • textM   — tone hex shifted ~25% brighter than the base
-        static let oliveFillM = Color("StatusSuccess").opacity(0.20)
-        static let oliveLineM = Color("StatusSuccess").opacity(0.55)
-        static let oliveTextM = Color(red: 0.710, green: 0.788, blue: 0.627)   // #B5C9A0
-        static let tanFillM   = Color("AccentSecondary").opacity(0.20)
-        static let tanLineM   = Color("AccentSecondary").opacity(0.55)
-        static let tanTextM   = Color(red: 0.839, green: 0.737, blue: 0.510)   // #D6BC82
-        static let roseFillM  = Color("Rose").opacity(0.20)
-        static let roseLineM  = Color("Rose").opacity(0.55)
-        static let roseTextM  = Color(red: 0.788, green: 0.612, blue: 0.639)   // #C99CA3
+        //
+        // `StatusTagM` holds the two alphas. Every `*FillM` / `*LineM` below is
+        // derived from it, so the spec lives in exactly one place and a tag can
+        // never drift from a pill that renders the same tone.
+
+        /// The MOBILE.md §1 status-tag alphas, as scalars.
+        ///
+        /// Two jobs. It is the source every `*FillM` / `*LineM` below derives
+        /// from, and it is reachable directly by tags whose tone is only known
+        /// at runtime — the sync pill is tan or rose depending on whether
+        /// anything is parked, so it cannot name a fixed `tanFillM` /
+        /// `roseFillM` pair.
+        ///
+        /// §1 calls the delta from web "a non-negotiable mobile delta", because
+        /// the operator is reading this in a truck with sun on the screen.
+        /// These are the documented numbers verbatim.
+        enum StatusTagM {
+            /// Background fill alpha over the tag's tone. Web is 0.14.
+            static let fill: Double = 0.32
+            /// Border alpha over the tag's tone. Web is 0.34.
+            static let border: Double = 0.88
+        }
+
+        // The `*TextM` inks are a literal per-channel ×1.25 of the base tone —
+        // what §1's "shifted ~25% brighter" actually asks for. This is not
+        // cosmetic: it is what keeps the label legal once the fill rises.
+        // Raising the fill to 0.32 lifts the ground under the label, and the
+        // field rule wants 7:1 for text this small (9.5pt `nanoLabel`).
+        // Measured against each tone's own fill composited over #000000:
+        //
+        //              label on fill        outline on #000000
+        //     olive    8.90 → 8.34:1        3.30 → 7.31:1
+        //     tan      8.60 → 8.22:1        3.24 → 7.14:1
+        //     rose     7.07 → 7.05:1        2.55 → 5.18:1
+        //
+        // Keeping the old inks at the new fill would have put all three UNDER
+        // the bar — 6.67 / 6.48 / 5.69:1 — so the ink and the fill move
+        // together or not at all. The outline is the whole point of the change:
+        // it more than doubles, and rose's crosses from failing the 3:1 WCAG
+        // non-text floor to clearing it.
+        //
+        // Rose is ×1.30, not ×1.25. It is the darkest tone — #B58289 is only
+        // 6.52:1 on black at full strength — and ×1.25 leaves its label at
+        // 6.48:1, under the bar. ×1.30 is the smallest lift that clears 7:1.
+        // Rose's OUTLINE cannot reach 7:1 at any alpha, which is a property of
+        // the tone, not of these numbers; 5.18:1 clears the 3:1 non-text bar
+        // that actually governs a border.
+        static let oliveFillM = Color("StatusSuccess").opacity(StatusTagM.fill)
+        static let oliveLineM = Color("StatusSuccess").opacity(StatusTagM.border)
+        static let oliveTextM = Color(red: 0.769, green: 0.886, blue: 0.635)   // #C4E2A2
+        static let tanFillM   = Color("AccentSecondary").opacity(StatusTagM.fill)
+        static let tanLineM   = Color("AccentSecondary").opacity(StatusTagM.border)
+        static let tanTextM   = Color(red: 0.961, green: 0.824, blue: 0.510)   // #F5D282
+        static let roseFillM  = Color("Rose").opacity(StatusTagM.fill)
+        static let roseLineM  = Color("Rose").opacity(StatusTagM.border)
+        static let roseTextM  = Color(red: 0.922, green: 0.663, blue: 0.698)   // #EBA9B2
 
         // Agent / AI provenance (DESIGN.md §3) — AI-authored content ONLY.
         // Badges, agent rails, agent-content fills. Never on body text, never

@@ -4,13 +4,27 @@
 //
 //  The day sheet's accordion cell: the collapsed row (scan) plus, behind one
 //  tap, everything the runner needs to work the lead without leaving the sheet
-//  (act). Both live under ONE L1 glass shell — the row renders `embedded`
-//  precisely so the seam between face and body has no hairline across it.
+//  (act). Both live under ONE L1 glass shell — the row renders `embedded` so it
+//  never draws a second panel inside that shell.
+//
+//  COLLAPSED, the face IS the card: no fill of its own, no seam, nothing but
+//  the row. OPEN, the face becomes a HEADER — a `surfaceHover` band and an L1
+//  `line` rule under it (bug 594da411: shipped without either, the open card
+//  read as one undifferentiated column and nothing marked where scanning ended
+//  and working began). The treatment is expansion-scoped on purpose: a rule
+//  drawn on a collapsed row would be chrome on a pure scan surface, separating
+//  a header from a body that is not there.
 //
 //  Section order is the spec's and is not negotiable (§3.4): photos → deck →
-//  summary → contact → quick actions → milestone → est → footer. It is ordered
-//  the way a person walks the job: see it, see the drawing, read what happened
-//  last, get the address and the number, make the call, stamp what you did.
+//  visit → summary → contact → quick actions → milestone → est → footer. It is
+//  ordered the way a person walks the job: see it, see the drawing, see whether
+//  anyone has been out there, read what happened last, get the address and the
+//  number, make the call, stamp what you did.
+//
+//  The visit row is the one addition to the spec's list, and it sits inside the
+//  spec's opening ARTIFACT run rather than after it: photos, drawing and visit
+//  are one thought — evidence of the job — and a runner scans them together.
+//  Nothing else moved.
 //
 //  Everything is state-aware — a lead with no photos shows no strip, a lead
 //  with no email shows no EMAIL button and no EMAIL row. Absent blocks are
@@ -40,16 +54,31 @@ import UIKit
 
 struct DaySheetLeadCard: View {
 
-    /// Where the deck tile's design comes from.
+    /// Where the deck panel's design comes from.
     ///
     /// `resolve` is production: a `@Query` over local designs plus a one-shot
     /// remote self-repair. Both need a ModelContainer in the environment, which
     /// a bare snapshot host and an Xcode preview do not have — so harnesses
     /// hand the card its design (or explicitly none) and the resolver, and its
     /// `@Query`, is never constructed at all.
+    ///
+    /// `preview` is the second half of the same seam: the panel's image comes
+    /// from an S3 URL, which a harness cannot fetch, so a rendered preview can
+    /// be handed in alongside the design. Nil renders the panel's own
+    /// placeholder — which is exactly what an offline device shows too.
     enum DeckSource {
         case resolve
-        case injected(DeckDesign?)
+        case injected(DeckDesign?, preview: UIImage?)
+    }
+
+    /// Where the site-visit row's state comes from. Same seam as `DeckSource`,
+    /// for the same reason: `resolve` reads SwiftData through `@Query`, which
+    /// needs a ModelContainer a bare snapshot host and an Xcode preview do not
+    /// have. Handing the state in means the resolver — and its query — is never
+    /// constructed at all.
+    enum SiteVisitSource {
+        case resolve
+        case injected(LeadSiteVisitPanel.State)
     }
 
     let row: DaySheetViewModel.Row
@@ -66,19 +95,30 @@ struct DaySheetLeadCard: View {
     /// the screen owns the one instance and hands it to every card.
     var committer: LeadMilestoneCommitter?
     var onFullLead: () -> Void = {}
-    /// The screen presents `DeckBuilderView` full-screen (LeadDetailView's
-    /// `deckDesignToOpen` pattern) — it owns the modelContext and syncEngine.
-    var onOpenDeck: (DeckDesign) -> Void = { _ in }
+    /// Expand the drawing. The screen presents `DeckFullscreenViewer` — it owns
+    /// the viewer's tool state, which has to outlive this card (a milestone
+    /// press re-derives the groups and rebuilds the row's view).
+    var onViewDeck: (DeckDesign) -> Void = { _ in }
     var onStage: (PipelineStage) -> Void = { _ in }
     var onWon: () -> Void = {}
     var onLost: () -> Void = {}
     var onArchive: () -> Void = {}
     var onDiscard: () -> Void = {}
+    /// Start or resume the site-visit capture. The SCREEN routes it into the
+    /// tab's ONE `activeSiteVisitLead` cover — the card never presents capture
+    /// itself, because a second presentation path for the same flow is how two
+    /// visits get opened on one lead.
+    ///
+    /// Nil means this operator may not capture on this lead, and a lead with no
+    /// visit then shows nothing at all.
+    var onStartSiteVisit: (() -> Void)?
     /// Production leaves this `.resolve`.
     var deckSource: DeckSource = .resolve
+    /// Production leaves this `.resolve`.
+    var siteVisitSource: SiteVisitSource = .resolve
 
     /// Read the INJECTED store, never `PermissionStore.shared`: the shared
-    /// store fails closed before hydration, which would blank the deck tile and
+    /// store fails closed before hydration, which would blank the deck panel and
     /// the EST line on a cold-launch race and in every preview.
     @EnvironmentObject private var permissionStore: PermissionStore
 
@@ -87,6 +127,7 @@ struct DaySheetLeadCard: View {
     var body: some View {
         VStack(spacing: 0) {
             face
+                .modifier(DaySheetCardHeaderShell(isExpanded: isExpanded))
             if isExpanded {
                 // Opacity only. A move/slide on top of the height change would
                 // give one tap two motions, and the clip below already keeps
@@ -126,7 +167,8 @@ struct DaySheetLeadCard: View {
         VStack(alignment: .leading, spacing: 0) {
             VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2_5) {
                 photoStrip
-                deckTile
+                deckPanel
+                siteVisitPanel
                 summaryBand
                 contactBlock
                 quickActions
@@ -149,20 +191,43 @@ struct DaySheetLeadCard: View {
     // MARK: - 2 · Deck
 
     @ViewBuilder
-    private var deckTile: some View {
+    private var deckPanel: some View {
         if permissionStore.isFeatureEnabled("deck_builder") {
             switch deckSource {
             case .resolve:
-                DaySheetDeckResolver(opportunity: lead, onOpen: onOpenDeck)
-            case .injected(let design):
+                DaySheetDeckResolver(opportunity: lead, onOpen: onViewDeck)
+            case .injected(let design, let preview):
                 if let design = design {
-                    LeadDeckTile(design: design, onOpen: onOpenDeck)
+                    LeadDeckPanel(design: design,
+                                  injectedPreview: preview,
+                                  onOpen: onViewDeck)
                 }
             }
         }
     }
 
-    // MARK: - 3 · Summary
+    // MARK: - 3 · Site visit
+
+    /// Last of the three artifact blocks. State-aware to the point of silence:
+    /// an operator who cannot capture on a lead that has never been visited
+    /// gets no row, not a disabled one.
+    @ViewBuilder
+    private var siteVisitPanel: some View {
+        switch siteVisitSource {
+        case .resolve:
+            LeadSiteVisitResolver(opportunity: lead, onCapture: onStartSiteVisit)
+        case .injected(let state):
+            LeadSiteVisitPanel(
+                state: state,
+                onCapture: onStartSiteVisit,
+                // A harness renders the record row without presenting the
+                // record — the sheet needs the artifacts only the resolver has.
+                onOpenRecord: {}
+            )
+        }
+    }
+
+    // MARK: - 4 · Summary
 
     /// Rendered open, always. The collapsed row is the fold; a second fold
     /// inside the surface the operator just opened is a tap that buys nothing.
@@ -215,7 +280,7 @@ struct DaySheetLeadCard: View {
         .textCase(.uppercase)
     }
 
-    // MARK: - 4 · Contact
+    // MARK: - 5 · Contact
 
     private var contactBlock: some View {
         LeadContactBlock(
@@ -226,7 +291,7 @@ struct DaySheetLeadCard: View {
         )
     }
 
-    // MARK: - 5 · Quick actions
+    // MARK: - 6 · Quick actions
 
     /// Survivors flex wider — a lead with no email gets two half-width buttons,
     /// not two buttons and a dead grey third.
@@ -245,7 +310,7 @@ struct DaySheetLeadCard: View {
         }
     }
 
-    // MARK: - 6 · Milestone
+    // MARK: - 7 · Milestone
 
     @ViewBuilder
     private var milestoneButton: some View {
@@ -268,7 +333,7 @@ struct DaySheetLeadCard: View {
         }
     }
 
-    // MARK: - 7 · Estimated value
+    // MARK: - 8 · Estimated value
 
     /// Quiet, and never on the collapsed row: a runner scanning his day is
     /// choosing who to call next, not ranking his leads by size.
@@ -289,7 +354,7 @@ struct DaySheetLeadCard: View {
         }
     }
 
-    // MARK: - 8 · Footer
+    // MARK: - 9 · Footer
 
     private var footer: some View {
         VStack(spacing: 0) {
@@ -378,14 +443,47 @@ struct DaySheetLeadCard: View {
         return summary
     }
 
-    /// NOW / 3H AGO / 2D AGO — the shipped triage-card summary vocabulary.
+    /// NOW / 3H AGO / 2D AGO — the shipped triage-card summary vocabulary, now
+    /// spoken by the one type that owns it (`DaySheetDateToken`) rather than by
+    /// a second copy of the same four lines living here.
     private var summaryStamp: String? {
         guard let updated = lead.aiSummaryUpdatedAt else { return nil }
-        let interval = Date().timeIntervalSince(updated)
-        if interval < 3600 { return "NOW" }
-        let hours = Int(interval / 3600)
-        if hours < 24 { return "\(hours)H AGO" }
-        return "\(hours / 24)D AGO"
+        return DaySheetDateToken.age(updated)
+    }
+}
+
+// MARK: - Header shell
+
+/// Turns the face into a HEADER for the duration of the expansion, and into
+/// nothing at all the rest of the time.
+///
+/// Two marks, because one does not carry it: `surfaceHover` lifts the whole
+/// 80pt band a step off `surfaceRaised` so the eye reads two zones before it
+/// reads any text, and the rule under it draws the actual seam. The rule is
+/// `line`, not the footer's `lineSoft` — this separates the card's two ZONES,
+/// while the footer's rule fences off one tertiary link, and the weights say
+/// so. Both are inside the card's clip, so the band runs edge to edge and the
+/// rule terminates on the panel's own hairline rather than floating short of
+/// it.
+///
+/// Collapsed returns `content` untouched — byte-identical to the shipped scan
+/// row, which is the point.
+private struct DaySheetCardHeaderShell: ViewModifier {
+    let isExpanded: Bool
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if isExpanded {
+            content
+                .background(OPSStyle.Colors.surfaceHover)
+                .overlay(alignment: .bottom) {
+                    Rectangle()
+                        .fill(OPSStyle.Colors.line)
+                        .frame(height: OPSStyle.Layout.Border.standard)
+                }
+        } else {
+            content
+        }
     }
 }
 
@@ -564,7 +662,7 @@ private struct DaySheetDeckResolver: View {
         // empty resolver would never run its self-repair fetch.
         VStack(spacing: 0) {
             if let design = candidate {
-                LeadDeckTile(design: design, onOpen: onOpen)
+                LeadDeckPanel(design: design, onOpen: onOpen)
             }
         }
         .task(id: opportunity.id) {
@@ -792,12 +890,20 @@ private struct DaySheetMilestoneControl: View {
                 canEdit: true,
                 canConvert: true,
                 isExpanded: true,
-                // Injected: an Xcode preview has no ModelContainer, so the
-                // resolver's @Query must never be constructed here.
+                onStartSiteVisit: {},
+                // Injected: an Xcode preview has no ModelContainer, so NEITHER
+                // resolver's @Query may be constructed here. No preview image
+                // either — a canvas render has no network, so the deck panel
+                // shows its offline placeholder.
                 deckSource: .injected(
                     DeckDesign(companyId: "preview-company",
                                opportunityId: "preview-lead",
-                               title: "Back deck — wraparound")
+                               title: "Back deck — wraparound"),
+                    preview: nil
+                ),
+                siteVisitSource: .injected(
+                    .completed(token: "2D AGO",
+                               summary: "4 PHOTOS · 2 MEASUREMENTS · NOTES")
                 )
             )
 
@@ -817,7 +923,10 @@ private struct DaySheetMilestoneControl: View {
                 canEdit: false,
                 canConvert: false,
                 isExpanded: true,
-                deckSource: .injected(nil)
+                // No convert grant → `onStartSiteVisit` stays nil → the visit
+                // row is absent entirely, which is the point of this render.
+                deckSource: .injected(nil, preview: nil),
+                siteVisitSource: .injected(.absent)
             )
         }
         .padding(OPSStyle.Layout.spacing3_5)

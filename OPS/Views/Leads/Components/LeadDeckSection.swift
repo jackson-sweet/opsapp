@@ -3,9 +3,10 @@
 //  OPS
 //
 //  Deck design on the lead — the quoting artifact for a deck build, drawn
-//  before any project exists. Shows the lead's display-candidate design as a
-//  read-only 2D blueprint card (tap → builder); empty state is one quiet
-//  START row, feature-flagged with the builder and gated on pipeline.manage.
+//  before any project exists. Shows the lead's display-candidate design as one
+//  compact document row (tap → `LeadDeckScreen`, where the drawing gets the
+//  whole display); empty state is one quiet START row, feature-flagged with the
+//  builder and gated on pipeline.manage.
 //
 //  Data flow mirrors DeckTabView: @Query for live local designs (SwiftData
 //  invalidates on builder saves), plus a one-shot remote self-repair fetch so
@@ -19,7 +20,10 @@ struct LeadDeckSection: View {
     let opportunity: Opportunity
     let canManage: Bool
     var onCreate: () -> Void = {}
-    var onOpen: (DeckDesign) -> Void = { _ in }
+    /// Push the deck screen. No design payload — the screen re-resolves the
+    /// lead's display candidate live, so a builder save landing while the screen
+    /// is up updates it in place instead of stranding a captured object.
+    var onOpen: () -> Void = {}
 
     @Environment(\.modelContext) private var modelContext
     @EnvironmentObject private var permissionStore: PermissionStore
@@ -42,8 +46,8 @@ struct LeadDeckSection: View {
     /// Document-row form (Leads redesign spec §5.9): the DECK row's content
     /// region — a compact design line (title + updated stamp + chevron) or
     /// the START affordance; the details document supplies the label column
-    /// and gates the row on the feature flag. Blueprint preview lives in the
-    /// builder, one tap away — the dossier is rows, not acreage.
+    /// and gates the row on the feature flag. The drawing itself lives on
+    /// `LeadDeckScreen`, one tap away — the dossier is rows, not acreage.
     var body: some View {
         Group {
             if !featureEnabled {
@@ -68,7 +72,7 @@ struct LeadDeckSection: View {
     private func designRow(_ design: DeckDesign) -> some View {
         Button {
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
-            onOpen(design)
+            onOpen()
         } label: {
             HStack(spacing: OPSStyle.Layout.spacing2_5) {
                 VStack(alignment: .leading, spacing: 2) {

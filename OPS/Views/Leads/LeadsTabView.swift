@@ -290,6 +290,12 @@ struct LeadsTabView: View {
                 onLost: { activeSheet = .lost($0) },
                 onArchive: { requestArchive($0) },
                 onDiscard: { discardTarget = $0 },
+                // The SAME cover the detail screen, the FAB and the add-lead
+                // sheet already drive. The day sheet adds a door, not a second
+                // capture flow — `SiteVisitCaptureViewModel.loadOrCreateVisit`
+                // resumes this lead's open visit or starts one, so a runner who
+                // opened a card mid-visit lands back where he left off.
+                onStartSiteVisit: { activeSiteVisitLead = $0 },
                 onAddLead: canCreate ? { activeSheet = .add } : nil
             )
         } else {

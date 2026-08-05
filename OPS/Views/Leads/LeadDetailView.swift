@@ -65,7 +65,10 @@ struct LeadDetailView: View {
     @State private var importingPhotoIDs: [String] = []
     @State private var photoViewerState: LeadPhotoViewerState?
 
-    // Deck design on the lead
+    // Deck design on the lead. The DECK row PUSHES the deck screen (the drawing
+    // deserves the display); `deckDesignToOpen` now serves only the creation
+    // path — a brand-new design goes straight into the builder to be drawn.
+    @State private var showingDeckScreen = false
     @State private var showingDeckCreationPicker = false
     @State private var deckDesignToOpen: DeckDesign?
 
@@ -263,7 +266,7 @@ struct LeadDetailView: View {
                                             UIImpactFeedbackGenerator(style: .light).impactOccurred()
                                             onMarkWon()
                                         },
-                                        onOpenDeck: { design in deckDesignToOpen = design },
+                                        onOpenDeck: { showingDeckScreen = true },
                                         onCreateDeck: { showingDeckCreationPicker = true },
                                         importingPhotoIDs: importingPhotoIDs,
                                         onAddPhotos: { showingAddPhotoDialog = true },
@@ -345,6 +348,12 @@ struct LeadDetailView: View {
                 transitions: vm.stageTransitions,
                 opportunity: opportunity
             )
+        }
+        // DECK row → the drawing on the whole display. A push, not a cover: the
+        // dossier stays one scroll and keeps its nav model, and the deck screen
+        // owns the fullscreen expand from there.
+        .navigationDestination(isPresented: $showingDeckScreen) {
+            LeadDeckScreen(opportunity: opportunity)
         }
         .confirmationDialog(
             "CONTACT",

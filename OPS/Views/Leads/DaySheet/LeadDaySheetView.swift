@@ -46,14 +46,20 @@ struct LeadDaySheetView: View {
     var lastSyncLabel: String?
 
     var onFullLead: (Opportunity) -> Void
-    /// The lead rides along so the full-screen builder can be titled with the
-    /// job it belongs to.
+    /// Open the deck BUILDER on this lead's design — the authoring route, now
+    /// reached only from EDIT inside the fullscreen viewer. (Tapping the card's
+    /// deck panel expands the drawing; it does not open a drawing tool.) The
+    /// lead rides along so the builder can be titled with the job it belongs to.
     var onOpenDeck: (Opportunity, DeckDesign) -> Void
     var onStage: (Opportunity, PipelineStage) -> Void
     var onWon: (Opportunity) -> Void
     var onLost: (Opportunity) -> Void
     var onArchive: (Opportunity) -> Void
     var onDiscard: (Opportunity) -> Void
+    /// Start or resume this lead's site visit. Routed straight into the tab's
+    /// existing `activeSiteVisitLead` cover — the day sheet adds a way IN to the
+    /// shipped capture flow, not a second copy of it.
+    var onStartSiteVisit: (Opportunity) -> Void
     /// Nil when this operator cannot create leads — the empty state then has no
     /// CTA rather than a button that refuses.
     var onAddLead: (() -> Void)?
@@ -66,6 +72,25 @@ struct LeadDaySheetView: View {
 
     /// Non-nil for the length of an undo window — see the freeze note above.
     @State private var frozenGroups: DaySheetViewModel.Groups?
+
+    // ── Deck viewer ─────────────────────────────────────────────────────────
+    // The viewer's state lives on the SCREEN, not on the card. Cards are
+    // `ForEach` children and a milestone press re-derives the groups, which
+    // moves a row between sections and rebuilds its view — state owned by the
+    // card would be discarded mid-view and the cover would vanish under the
+    // operator's thumb. The screen also guarantees exactly ONE tool state
+    // exists, which is how `ProjectDetailsView` owns the same pair.
+    @StateObject private var deckToolState = DeckViewerToolState()
+    @State private var deckViewMode: DeckTabViewMode = .threeD
+    @State private var deckViewing: DeckViewRequest?
+
+    /// A drawing to fill the screen with, plus the lead it belongs to (for the
+    /// viewer's title and for EDIT's permission check).
+    private struct DeckViewRequest: Identifiable {
+        let lead: Opportunity
+        let design: DeckDesign
+        var id: String { design.id }
+    }
 
     // MARK: - Groups
 
@@ -121,6 +146,56 @@ struct LeadDaySheetView: View {
                     frozenGroups = nil
                 }
             }
+        }
+        .fullScreenCover(item: $deckViewing) { request in
+            DeckFullscreenViewer(
+                title: request.lead.displayContactName,
+                drawingData: request.design.drawingData,
+                viewMode: $deckViewMode,
+                toolState: deckToolState,
+                onClose: { deckViewing = nil },
+                onEdit: canEditDeck(request.lead)
+                    ? { editDeck(lead: request.lead, design: request.design) }
+                    : nil
+            )
+        }
+    }
+
+    // MARK: - Deck viewer
+
+    /// Expand this lead's drawing. Mirrors `ProjectDetailsView`'s present +
+    /// dismiss pair in one place, since a cover has no animate-out to clean up
+    /// behind: MATERIALS has no fullscreen form so it maps defensively to the
+    /// 2D plan, and every transient pick from the last open is cleared so the
+    /// drawing always arrives in a read state rather than mid-measurement.
+    private func presentDeckViewer(lead: Opportunity, design: DeckDesign) {
+        if deckViewMode == .materials { deckViewMode = .twoD }
+        deckToolState.mode = .none
+        deckToolState.clearSelection()
+        deckToolState.isolatedLevelId = nil
+        deckToolState.showDimensions = true
+        deckViewing = DeckViewRequest(lead: lead, design: design)
+    }
+
+    /// May this operator edit THIS lead's deck? Three shipped gates, no new
+    /// rule: the deck-builder feature flag, the deck-builder edit grant (the
+    /// same call the project deck tab's EDIT verb makes), and the lead's own
+    /// assignment policy — `assigned` scope is entity-relative, so a delegate
+    /// may edit the deck on HIS lead and not on someone else's.
+    private func canEditDeck(_ lead: Opportunity) -> Bool {
+        permissionStore.isFeatureEnabled("deck_builder")
+            && permissionStore.can("deck_builder.edit", requiredScope: "assigned")
+            && policy.can(.edit, assignedTo: lead.assignedTo)
+    }
+
+    /// EDIT from the viewer: close the viewer, THEN hand the design up to the
+    /// tab, which presents the builder. Both are `fullScreenCover`s and iOS
+    /// will not present a second modal while the first is still animating away
+    /// — the tab's own sheet swaps use this same dismiss-then-present handoff.
+    private func editDeck(lead: Opportunity, design: DeckDesign) {
+        deckViewing = nil
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+            onOpenDeck(lead, design)
         }
     }
 
@@ -251,13 +326,31 @@ struct LeadDaySheetView: View {
             },
             committer: committer,
             onFullLead: { onFullLead(lead) },
-            onOpenDeck: { onOpenDeck(lead, $0) },
+            onViewDeck: { presentDeckViewer(lead: lead, design: $0) },
             onStage: { onStage(lead, $0) },
             onWon: { onWon(lead) },
             onLost: { onLost(lead) },
             onArchive: { onArchive(lead) },
-            onDiscard: { onDiscard(lead) }
+            onDiscard: { onDiscard(lead) },
+            onStartSiteVisit: canStartSiteVisit(lead) ? { onStartSiteVisit(lead) } : nil
         )
+    }
+
+    /// `LeadDetailView`'s gate, unchanged: convert scope on THIS lead, and the
+    /// lead still open (`LeadDetailView.swift` — `canConvert` is
+    /// `leadAccessPolicy.can(.convert, assignedTo:)`, and the menu item is
+    /// wrapped in `canConvert && !opportunity.stage.isTerminal`). Entity-
+    /// relative, so a delegate may capture on HIS lead and not on someone
+    /// else's — deliberately NOT the tab's `canConvertAny`, which is the right
+    /// gate for the FAB and the add-lead sheet because those start a visit with
+    /// no lead attached yet, and the wrong one here because this row belongs to
+    /// a specific lead.
+    ///
+    /// The terminal check is redundant today — `DaySheetViewModel.groups`
+    /// already filters `!stage.isTerminal` — and is kept so the two gates read
+    /// identically and cannot drift apart.
+    private func canStartSiteVisit(_ lead: Opportunity) -> Bool {
+        policy.can(.convert, assignedTo: lead.assignedTo) && !lead.stage.isTerminal
     }
 
     /// WON is a conversion, not a stamp: the iOS repository refuses a direct
@@ -502,6 +595,7 @@ private struct LeadDaySheetPreview: View {
                 onLost: { _ in },
                 onArchive: { _ in },
                 onDiscard: { _ in },
+                onStartSiteVisit: { _ in },
                 onAddLead: canCreate ? {} : nil
             )
         }

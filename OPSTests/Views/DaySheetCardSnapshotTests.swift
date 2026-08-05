@@ -20,9 +20,23 @@
 //  The deck design is INJECTED (`deckSource: .injected`) rather than resolved:
 //  the production path reads `@Query` + `modelContext`, both of which need a
 //  ModelContainer in the environment that a bare UIWindow host does not have.
-//  The seam keeps the test honest about the tile — including the sparse case,
-//  where `.injected(nil)` proves the tile is genuinely absent — while leaving
-//  resolution to the app.
+//  The seam keeps the test honest about the panel — including the sparse case,
+//  where `.injected(nil, preview: nil)` proves the panel is genuinely absent —
+//  while leaving resolution to the app.
+//
+//  The SITE-VISIT state is injected through the same kind of seam
+//  (`siteVisitSource: .injected`): `LeadSiteVisitResolver` reads `SiteVisit`
+//  through `@Query`, so production resolution needs the container this host
+//  does not have. Injecting a resolved state also makes the renders
+//  clock-independent — `2D AGO` is a fixture, not something derived from when
+//  the suite happened to run.
+//
+//  The panel's preview image is injected for the same reason: production loads
+//  it from an S3 URL, which this harness will not fetch. The image handed in is
+//  the REAL `DeckRenderer.renderToPNG` output for the fixture — the same call
+//  the builder makes on every save — so the render proves the actual shipped
+//  asset in the actual panel, not a stand-in. `preview: nil` renders the
+//  offline/never-uploaded placeholder, which is a real state of its own.
 //
 //  Run:  xcodebuild test -scheme OPS \
 //          -destination 'platform=iOS Simulator,name=iPhone 17,OS=26.5' \
@@ -197,6 +211,18 @@ final class DaySheetCardSnapshotTests: XCTestCase {
         )
     }
 
+    /// The fixture's REAL rendered thumbnail — `DeckRenderer.renderToPNG` is
+    /// the exact call `DeckBuilderViewModel` makes on every save with geometry,
+    /// so the panel renders the shipped asset (1024×1024, white ground) rather
+    /// than a stand-in that could flatter the layout.
+    private func deckPreviewImage() -> UIImage? {
+        DeckRenderer.renderToPNG(drawingData: deckFixture().drawingData)
+    }
+
+    /// `siteVisit` and `canCapture` are INJECTED for the same reason the deck
+    /// is: `LeadSiteVisitResolver` reads SwiftData through `@Query`, and a bare
+    /// UIWindow host has no ModelContainer. Defaults keep every pre-existing
+    /// render exactly as it was — no visit, no capture grant, so no visit row.
     @ViewBuilder
     private func hosted(
         _ row: DaySheetViewModel.Row,
@@ -204,15 +230,21 @@ final class DaySheetCardSnapshotTests: XCTestCase {
         canConvert: Bool,
         store: PermissionStore,
         deck: DeckDesign? = nil,
-        committer: LeadMilestoneCommitter? = nil
+        deckPreview: UIImage? = nil,
+        committer: LeadMilestoneCommitter? = nil,
+        siteVisit: LeadSiteVisitPanel.State = .absent,
+        canCapture: Bool = false,
+        isExpanded: Bool = true
     ) -> some View {
         DaySheetLeadCard(
             row: row,
             canEdit: canEdit,
             canConvert: canConvert,
-            isExpanded: true,
+            isExpanded: isExpanded,
             committer: committer,
-            deckSource: .injected(deck)
+            onStartSiteVisit: canCapture ? {} : nil,
+            deckSource: .injected(deck, preview: deckPreview),
+            siteVisitSource: .injected(siteVisit)
         )
         .padding(OPSStyle.Layout.spacing2)
         .frame(width: Self.cardWidth)
@@ -226,13 +258,14 @@ final class DaySheetCardSnapshotTests: XCTestCase {
     /// three quick actions, the accent QUOTE SENT stamp, and the footer. No EST
     /// line: this operator has no finances grant.
     func testRenderFullCard() {
-        snapshot("day_sheet_card_full", size: CGSize(width: Self.cardWidth, height: 700)) {
+        snapshot("day_sheet_card_full", size: CGSize(width: Self.cardWidth, height: 1060)) {
             hosted(
                 row(fullLead(), .late(days: 3), .quoteSent),
                 canEdit: true,
                 canConvert: true,
                 store: standardStore(),
-                deck: deckFixture()
+                deck: deckFixture(),
+                deckPreview: deckPreviewImage()
             )
         }
     }
@@ -240,26 +273,28 @@ final class DaySheetCardSnapshotTests: XCTestCase {
     /// Viewer scope — the same lead, no edit rights. Photos still visible (no
     /// ADD tile), quick actions still open the conversation, NO milestone.
     func testRenderViewerOnlyCard() {
-        snapshot("day_sheet_card_viewer_only", size: CGSize(width: Self.cardWidth, height: 640)) {
+        snapshot("day_sheet_card_viewer_only", size: CGSize(width: Self.cardWidth, height: 1000)) {
             hosted(
                 row(fullLead(), .yourMove, nil),
                 canEdit: false,
                 canConvert: false,
                 store: standardStore(),
-                deck: deckFixture()
+                deck: deckFixture(),
+                deckPreview: deckPreviewImage()
             )
         }
     }
 
     /// Finances grant — the quiet `EST $14,200` line under the stamp.
     func testRenderFinancesCard() {
-        snapshot("day_sheet_card_finances", size: CGSize(width: Self.cardWidth, height: 700)) {
+        snapshot("day_sheet_card_finances", size: CGSize(width: Self.cardWidth, height: 1060)) {
             hosted(
                 row(fullLead(), .today, .quoteSent),
                 canEdit: true,
                 canConvert: true,
                 store: financesStore(),
-                deck: deckFixture()
+                deck: deckFixture(),
+                deckPreview: deckPreviewImage()
             )
         }
     }
@@ -273,13 +308,14 @@ final class DaySheetCardSnapshotTests: XCTestCase {
         let committer = heldCommitter(online: true)
         await committer.press(.quoteSent, lead: lead, userId: "u1", canEdit: true)
 
-        snapshot("day_sheet_card_pending_undo", size: CGSize(width: Self.cardWidth, height: 700)) {
+        snapshot("day_sheet_card_pending_undo", size: CGSize(width: Self.cardWidth, height: 1060)) {
             hosted(
                 row(lead, .late(days: 3), .quoteSent),
                 canEdit: true,
                 canConvert: true,
                 store: standardStore(),
                 deck: deckFixture(),
+                deckPreview: deckPreviewImage(),
                 committer: committer
             )
         }
@@ -293,20 +329,39 @@ final class DaySheetCardSnapshotTests: XCTestCase {
         let committer = heldCommitter(online: false)
         await committer.press(.quoteSent, lead: lead, userId: "u1", canEdit: true)
 
-        snapshot("day_sheet_card_pending_queued", size: CGSize(width: Self.cardWidth, height: 700)) {
+        snapshot("day_sheet_card_pending_queued", size: CGSize(width: Self.cardWidth, height: 1060)) {
             hosted(
                 row(lead, .late(days: 3), .quoteSent),
                 canEdit: true,
                 canConvert: true,
                 store: standardStore(),
                 deck: deckFixture(),
+                deckPreview: deckPreviewImage(),
                 committer: committer
             )
         }
     }
 
+    /// The panel's OFFLINE half: a design that has never had a thumbnail
+    /// uploaded (drawn before the render landed, or saved with no signal). The
+    /// panel keeps its full square footprint and shows the deck surface's own
+    /// `square.dashed` glyph — a runner sees "there is a drawing here, it just
+    /// has not come down yet", never a blank plate and never a spinner.
+    func testRenderDeckPanelPlaceholder() {
+        snapshot("day_sheet_card_deck_placeholder", size: CGSize(width: Self.cardWidth, height: 1060)) {
+            hosted(
+                row(fullLead(), .late(days: 3), .quoteSent),
+                canEdit: true,
+                canConvert: true,
+                store: standardStore(),
+                deck: deckFixture(),
+                deckPreview: nil
+            )
+        }
+    }
+
     /// Sparse — no photos and no add rights, no deck, no summary, no email.
-    /// Strip, deck tile, summary band and the EMAIL button are ABSENT, not
+    /// Strip, deck panel, summary band and the EMAIL button are ABSENT, not
     /// blank; CALL and TEXT flex to fill the row.
     func testRenderSparseCard() {
         snapshot("day_sheet_card_sparse", size: CGSize(width: Self.cardWidth, height: 340)) {
@@ -315,6 +370,119 @@ final class DaySheetCardSnapshotTests: XCTestCase {
                 canEdit: false,
                 canConvert: false,
                 store: standardStore()
+            )
+        }
+    }
+
+    // MARK: - Header separation (bug 594da411)
+
+    /// The two states stacked, so the fix is judged on the thing it changed:
+    /// the COLLAPSED card must be the shipped scan row exactly — no band, no
+    /// rule — while the OPEN one carries a `surfaceHover` header band and an
+    /// L1 rule marking where scanning ends and working begins.
+    ///
+    /// Read the top card against `day_sheet_row_*` from DaySheetRowSnapshotTests
+    /// to confirm collapsed is untouched.
+    func testRenderHeaderSeparation() {
+        snapshot("day_sheet_card_header_separation",
+                 size: CGSize(width: Self.cardWidth, height: 1160)) {
+            VStack(spacing: OPSStyle.Layout.spacing3) {
+                hosted(
+                    row(fullLead(), .late(days: 3), .quoteSent),
+                    canEdit: true,
+                    canConvert: true,
+                    store: standardStore(),
+                    isExpanded: false
+                )
+                hosted(
+                    row(fullLead(), .late(days: 3), .quoteSent),
+                    canEdit: true,
+                    canConvert: true,
+                    store: standardStore(),
+                    deck: deckFixture(),
+                    deckPreview: deckPreviewImage()
+                )
+            }
+            .frame(width: Self.cardWidth)
+            .background(Color.black)
+        }
+    }
+
+    // MARK: - Site visit
+
+    /// No visit on file and a convert grant — the artifact zone ends with a
+    /// neutral `START SITE VISIT` row directly under the drawing.
+    func testRenderSiteVisitStart() {
+        snapshot("day_sheet_card_visit_start",
+                 size: CGSize(width: Self.cardWidth, height: 1130)) {
+            hosted(
+                row(fullLead(), .late(days: 3), .quoteSent),
+                canEdit: true,
+                canConvert: true,
+                store: standardStore(),
+                deck: deckFixture(),
+                deckPreview: deckPreviewImage(),
+                siteVisit: .absent,
+                canCapture: true
+            )
+        }
+    }
+
+    /// A visit already open on this lead. The row states when it started and
+    /// offers RESUME — tapping it re-enters the SAME capture the runner left,
+    /// never a second visit.
+    func testRenderSiteVisitOpen() {
+        snapshot("day_sheet_card_visit_open",
+                 size: CGSize(width: Self.cardWidth, height: 1130)) {
+            hosted(
+                row(fullLead(), .late(days: 3), .quoteSent),
+                canEdit: true,
+                canConvert: true,
+                store: standardStore(),
+                deck: deckFixture(),
+                deckPreview: deckPreviewImage(),
+                siteVisit: .open(token: "3H AGO"),
+                canCapture: true
+            )
+        }
+    }
+
+    /// A completed visit — a record row carrying the packet's own vocabulary
+    /// (`SiteVisitPacketMetadata.summaryLine`), tapping through to what was
+    /// captured. Rendered with NO capture grant to prove the record is readable
+    /// regardless: only capturing is gated.
+    func testRenderSiteVisitCompleted() {
+        snapshot("day_sheet_card_visit_completed",
+                 size: CGSize(width: Self.cardWidth, height: 1130)) {
+            hosted(
+                row(fullLead(), .late(days: 3), .quoteSent),
+                canEdit: true,
+                canConvert: true,
+                store: standardStore(),
+                deck: deckFixture(),
+                deckPreview: deckPreviewImage(),
+                siteVisit: .completed(token: "2D AGO",
+                                      summary: "4 PHOTOS · 2 MEASUREMENTS · NOTES"),
+                canCapture: false
+            )
+        }
+    }
+
+    /// No visit AND no convert grant — the row is ABSENT, not disabled. Read
+    /// against `day_sheet_card_visit_start`: same lead, same everything, one
+    /// row fewer.
+    func testRenderSiteVisitAbsentWithoutGrant() {
+        snapshot("day_sheet_card_visit_absent",
+                 size: CGSize(width: Self.cardWidth, height: 1130)) {
+            hosted(
+                row(fullLead(), .late(days: 3), .quoteSent),
+                canEdit: true,
+                canConvert: true,
+                store: standardStore(),
+                deck: deckFixture(),
+                deckPreview: deckPreviewImage(),
+                siteVisit: .absent,
+                canCapture: false
             )
         }
     }

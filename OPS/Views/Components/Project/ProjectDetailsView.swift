@@ -507,7 +507,10 @@ struct ProjectDetailsView: View {
                     drawingData: design.drawingData,
                     viewMode: $deckViewMode,
                     toolState: deckToolState,
-                    onClose: { dismissDeckFullscreen() }
+                    onClose: { dismissDeckFullscreen() },
+                    onEdit: canEditDeckDesign
+                        ? { editDeckDesignFromFullscreen(design) }
+                        : nil
                 )
                 .zIndex(30)
                 .transition(reduceMotion ? .opacity : .scale(scale: 0.92).combined(with: .opacity))
@@ -828,6 +831,27 @@ struct ProjectDetailsView: View {
         deckToolState.showDimensions = true
     }
 
+    /// May this operator edit THIS project's deck? The SAME rule the deck
+    /// tab's own EDIT verb and the quick-action gate already make (see
+    /// `onDeckDesign:` on the quick-actions bar) — behind the feature flag the
+    /// tab itself is gated on. No new project rule is invented here.
+    private var canEditDeckDesign: Bool {
+        permissionStore.isFeatureEnabled("deck_builder")
+            && permissionStore.can("deck_builder.edit", requiredScope: "assigned")
+    }
+
+    /// EDIT from the fullscreen viewer: close the viewer, THEN open the
+    /// builder. The builder is a `.fullScreenCover` and iOS will not present a
+    /// modal while another presentation is still animating (the same trap the
+    /// creation picker hit — see `deckCreationPickerContent`), so the handoff
+    /// waits out the dismiss rather than nesting covers.
+    private func editDeckDesignFromFullscreen(_ design: DeckDesign) {
+        dismissDeckFullscreen()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+            deckDesignToOpen = design
+        }
+    }
+
     /// Pull cue shown over the map during a top-overscroll on the Deck tab.
     @ViewBuilder
     private var deckPullCue: some View {
@@ -933,7 +957,7 @@ struct ProjectDetailsView: View {
 
         case .deck:
             DeckTabView(
-                project: project,
+                owner: .project(project),
                 onCreateDeckDesign: { showingDeckCreationPicker = true },
                 onEditDeckDesign: { design in deckDesignToOpen = design },
                 viewMode: $deckViewMode,

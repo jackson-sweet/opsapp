@@ -310,9 +310,10 @@ struct LeadSiteVisitResolver: View {
 
 /// The completed visit, and the record behind it.
 ///
-/// The summary line and the sheet both come from `SiteVisitPacketNote.build` —
-/// the SHIPPED transform that turns a visit's local artifacts into the packet
-/// the project activity feed renders. Going through it rather than counting
+/// The packet still comes from `SiteVisitPacketNote.build` — the SHIPPED
+/// transform that turns a visit's local artifacts into what the project
+/// activity feed renders — and the summary line comes from `SiteVisitRecord`,
+/// which now owns that vocabulary. Going through both rather than counting
 /// artifacts here means a lead's visit and a project's visit are described in
 /// one vocabulary (`4 PHOTOS · 2 MEASUREMENTS · NOTES`) by one piece of code.
 ///
@@ -357,9 +358,23 @@ private struct LeadSiteVisitRecord: View {
         DaySheetDateToken.age(visit.completedAt ?? visit.createdAt)
     }
 
+    /// `SiteVisitRecord` now owns the vocabulary this row wanted from the
+    /// packet (`4 PHOTOS · 2 MEASUREMENTS · DECK`), so the lead card and the
+    /// project activity feed still describe a visit through one piece of code.
+    ///
+    /// The record is assembled with the financial gate CLOSED and no value:
+    /// `summaryLine` counts evidence and never money, so a money line would be
+    /// discarded anyway — closing the gate here means this row cannot leak one
+    /// even if that ever changes.
     private var summaryLine: String? {
-        guard let line = metadata?.summaryLine, !line.isEmpty else { return nil }
-        return line
+        SiteVisitRecord.assemble(
+            metadata: metadata,
+            photoURLs: [],
+            capturedAt: visit.completedAt ?? visit.createdAt,
+            operatorName: "",
+            estimatedValue: nil,
+            canViewFinancials: false
+        ).summaryLine
     }
 
     /// Re-derived per evaluation rather than cached. The visit's artifacts are

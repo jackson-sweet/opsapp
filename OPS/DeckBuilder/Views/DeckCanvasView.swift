@@ -26,6 +26,12 @@ enum DeckCanvasGesturePolicy {
 
 struct DeckCanvasView: View {
     @ObservedObject var viewModel: DeckBuilderViewModel
+    let bottomChromeInset: CGFloat
+
+    init(viewModel: DeckBuilderViewModel, bottomChromeInset: CGFloat = 0) {
+        self.viewModel = viewModel
+        self.bottomChromeInset = bottomChromeInset
+    }
 
     // MARK: - Transform State (driven by UIKit gestures)
 
@@ -135,6 +141,11 @@ struct DeckCanvasView: View {
     var body: some View {
         GeometryReader { geometry in
             let allowsCanvasContentGestures = DeckCanvasGesturePolicy.allowsCanvasContentGestures(for: viewModel.perimeterEntry)
+            let viewportLayout = DeckCanvasViewportLayout(
+                renderSize: geometry.size,
+                bottomChromeInset: bottomChromeInset
+            )
+            let unobstructedSize = viewportLayout.unobstructedSize
 
             ZStack {
                 OPSStyle.Colors.background.ignoresSafeArea()
@@ -147,12 +158,12 @@ struct DeckCanvasView: View {
                 // the outer .scaleEffect / .offset bitmap-scaled the rendered
                 // output, causing visible blur at high zoom.
                 canvasContent
-                    .frame(width: geometry.size.width, height: geometry.size.height)
+                    .frame(width: viewportLayout.renderSize.width, height: viewportLayout.renderSize.height)
 
                 // Selection overlays (screen space)
-                selectionOverlay
+                selectionOverlay(bottomInset: viewportLayout.bottomChromeInset)
 
-                perimeterDirectionOverlay(viewportSize: geometry.size)
+                perimeterDirectionOverlay(viewportSize: unobstructedSize)
 
                 // Live dimension HUD now renders in DeckBuilderView's
                 // floating header so it shares a gridline with the title
@@ -171,7 +182,7 @@ struct DeckCanvasView: View {
                         workspace.constrainedOffset(
                             proposed,
                             scale: scale,
-                            viewportSize: geometry.size,
+                            viewportSize: unobstructedSize,
                             minimumVisibleLength: CGFloat(OPSStyle.Layout.touchTargetMin),
                             centerWhenWorkspaceFits: !hasActiveWorkspaceManipulation
                         )
@@ -180,25 +191,25 @@ struct DeckCanvasView: View {
                         guard !isInteracting,
                               case .enteringLength = viewModel.perimeterEntry,
                               let anchor = viewModel.perimeterEntry.activeAnchor else { return }
-                        centerViewport(on: anchor.position, viewportSize: geometry.size)
+                        centerViewport(on: anchor.position, viewportSize: unobstructedSize)
                     },
                     onInteractionBegan: { viewportSnap.stop() }
                 )
                 .allowsHitTesting(DeckCanvasGesturePolicy.allowsCanvasGestureOverlayHitTesting(for: viewModel.perimeterEntry))
             }
             // SwiftUI gestures — single-finger drawing, tap, long-press
-            .simultaneousGesture(allowsCanvasContentGestures && viewModel.activeTool == .draw ? drawGesture(size: geometry.size) : nil)
+            .simultaneousGesture(allowsCanvasContentGestures && viewModel.activeTool == .draw ? drawGesture(size: unobstructedSize) : nil)
             .simultaneousGesture(
                 (allowsCanvasContentGestures
                  && (viewModel.activeTool == .select || viewModel.activeTool == .lasso || viewModel.activeTool == .tapSelect))
-                    ? selectionDragGesture(size: geometry.size) : nil
+                    ? selectionDragGesture(size: unobstructedSize) : nil
             )
-            .simultaneousGesture(allowsCanvasContentGestures ? tapGesture(size: geometry.size) : nil)
+            .simultaneousGesture(allowsCanvasContentGestures ? tapGesture(size: unobstructedSize) : nil)
             .simultaneousGesture(
                 DeckCanvasGesturePolicy.allowsPerimeterDraftReorientation(for: viewModel.perimeterEntry)
-                    ? perimeterDraftReorientationGesture(size: geometry.size) : nil
+                    ? perimeterDraftReorientationGesture(size: unobstructedSize) : nil
             )
-            .simultaneousGesture(longPressGesture(size: geometry.size))
+            .simultaneousGesture(longPressGesture(size: unobstructedSize))
             .onAppear {
                 var initialWorkspace = workspace
                 initialWorkspace.expand(toInclude: workspaceContentPoints)
@@ -206,36 +217,41 @@ struct DeckCanvasView: View {
                 if !hasInitializedOffset {
                     hasInitializedOffset = true
                     centerViewportOnGeometry(
-                        viewportSize: geometry.size,
+                        viewportSize: unobstructedSize,
                         workspace: initialWorkspace
                     )
                 }
-                wireEdgePan(viewportSize: geometry.size)
+                wireEdgePan(viewportSize: unobstructedSize)
             }
             .onChange(of: workspaceContentPoints) { _, points in
-                expandWorkspace(toInclude: points, viewportSize: geometry.size)
+                expandWorkspace(toInclude: points, viewportSize: unobstructedSize)
             }
-            .onChange(of: geometry.size) { _, newSize in
-                // GeometryReader can re-fire on rotation / split-view; keep the
-                // controller's notion of viewport in lockstep so edge zones don't
-                // drift after a layout change.
+            .onChange(of: viewportLayout) { previousLayout, newLayout in
+                // GeometryReader can re-fire on rotation / split-view, and the
+                // bottom instrument can change height with selection context.
+                // Preserve the same world-space center inside the work area,
+                // then keep edge zones and pan constraints in lockstep.
                 viewportSnap.stop()
-                canvasOffset = workspace.constrainedOffset(
+                let centeredOffset = newLayout.offsetPreservingUnobstructedCenter(
                     canvasOffset,
+                    from: previousLayout
+                )
+                canvasOffset = workspace.constrainedOffset(
+                    centeredOffset,
                     scale: canvasScale,
-                    viewportSize: newSize,
+                    viewportSize: newLayout.unobstructedSize,
                     minimumVisibleLength: CGFloat(OPSStyle.Layout.touchTargetMin)
                 )
                 workspaceNeedsOffsetReconciliation = false
-                wireEdgePan(viewportSize: newSize)
+                wireEdgePan(viewportSize: newLayout.unobstructedSize)
             }
             .onChange(of: viewModel.drawingMode) { _, mode in
                 guard mode == .idle else { return }
-                reconcileWorkspaceOffsetIfReady(viewportSize: geometry.size)
+                reconcileWorkspaceOffsetIfReady(viewportSize: unobstructedSize)
             }
             .onChange(of: viewModel.pendingPastePreview) { _, preview in
                 guard preview == nil else { return }
-                reconcileWorkspaceOffsetIfReady(viewportSize: geometry.size)
+                reconcileWorkspaceOffsetIfReady(viewportSize: unobstructedSize)
             }
             .onChange(of: viewModel.perimeterEntry) { _, entry in
                 if !DeckCanvasGesturePolicy.allowsPerimeterDraftReorientation(for: entry) {
@@ -249,10 +265,10 @@ struct DeckCanvasView: View {
                        perimeterLongPressWheelCenter != nil {
                         return
                     }
-                    centerViewport(on: anchor.position, viewportSize: geometry.size)
+                    centerViewport(on: anchor.position, viewportSize: unobstructedSize)
                 } else {
                     perimeterWheelHighlightedDirection = nil
-                    reconcileWorkspaceOffsetIfReady(viewportSize: geometry.size)
+                    reconcileWorkspaceOffsetIfReady(viewportSize: unobstructedSize)
                 }
                 if case .choosingDirection = entry {
                     return
@@ -1485,7 +1501,7 @@ struct DeckCanvasView: View {
     // MARK: - Selection Overlay (screen space — summary + height overlay)
 
     @ViewBuilder
-    private var selectionOverlay: some View {
+    private func selectionOverlay(bottomInset: CGFloat) -> some View {
         ZStack(alignment: .bottomLeading) {
             Color.clear // fill ZStack
 
@@ -1497,7 +1513,7 @@ struct DeckCanvasView: View {
                 selectionSummaryContent
             }
             .padding(.leading, OPSStyle.Layout.spacing2_5)
-            .padding(.bottom, OPSStyle.Layout.spacing2_5)
+            .padding(.bottom, bottomInset + OPSStyle.Layout.spacing2_5)
         }
     }
 

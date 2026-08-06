@@ -20,17 +20,43 @@ import SwiftUI
 import UIKit
 
 /// Window that hosts the toast layer above everything. It only intercepts a
-/// touch while a toast is actually on screen — and even then SwiftUI's own
-/// hit-testing captures only the pill (the lone element with a `contentShape`);
-/// transparent areas return nil and fall straight through to the app window.
+/// touch inside the visible toast's measured bounds; transparent areas fall
+/// straight through to the app window.
 final class PassthroughToastWindow: UIWindow {
+    weak var interactionRegionView: UIView?
+
     override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
         // `hitTest` is always invoked on the main thread, so reading the
         // @MainActor center here is safe.
         let showingToast = MainActor.assumeIsolated { ToastCenter.shared.current != nil }
-        guard showingToast else { return nil }
+        guard showingToast,
+              let interactionRegionView,
+              interactionRegionView.window === self,
+              interactionRegionView.bounds.contains(
+                interactionRegionView.convert(point, from: self)
+              ) else { return nil }
         return super.hitTest(point, with: event)
     }
+}
+
+/// A non-interactive UIKit marker sized by SwiftUI to the toast pill. The
+/// window uses its exact bounds to decide which touches belong to the toast.
+private final class ToastInteractionRegionView: UIView {
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        (window as? PassthroughToastWindow)?.interactionRegionView = self
+    }
+}
+
+struct ToastInteractionRegionReader: UIViewRepresentable {
+    func makeUIView(context: Context) -> UIView {
+        let view = ToastInteractionRegionView()
+        view.isUserInteractionEnabled = false
+        view.backgroundColor = .clear
+        return view
+    }
+
+    func updateUIView(_ uiView: UIView, context: Context) {}
 }
 
 @MainActor

@@ -286,6 +286,7 @@ private struct ToastBanner: View {
             )
             .strokeBorder(toast.tone.lineColor, lineWidth: 1)
         )
+        .background(ToastInteractionRegionReader())
         .contentShape(Rectangle())
         .onTapGesture { onTap() }
         .onAppear {

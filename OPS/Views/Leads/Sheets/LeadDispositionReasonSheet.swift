@@ -56,7 +56,7 @@ struct LeadDispositionReasonSheet: View {
     private func reasonRow(_ reason: LeadDispositionReason) -> some View {
         let isSelected = selectionState.selectedReason == reason
 
-        Button {
+        return Button {
             selectionState.select(reason)
         } label: {
             HStack(spacing: OPSStyle.Layout.spacing3) {
@@ -188,7 +188,7 @@ struct LeadDispositionReasonSheet: View {
                 action: submitSelection
             )
             .disabled(!selectionState.canSubmit)
-            .opacity(selectionState.canSubmit ? 1 : OPSStyle.Opacity.medium)
+            .opacity(selectionState.canSubmit ? 1 : OPSStyle.Layout.Opacity.medium)
             .accessibilityIdentifier("lead-disposition-apply-reason")
         }
         .padding(.horizontal, OPSStyle.Layout.spacing3_5)

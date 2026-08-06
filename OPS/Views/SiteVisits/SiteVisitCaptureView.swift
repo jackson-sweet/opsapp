@@ -662,7 +662,7 @@ private struct SiteVisitCaptureConsole: View {
                                 showingChecklistSettings = true
                             } label: {
                                 HStack(spacing: OPSStyle.Layout.spacing1) {
-                                    Image(systemName: OPSStyle.Icons.adjust)
+                                    Image(systemName: OPSStyle.Icons.settings)
                                     Text("EDIT TYPES")
                                 }
                                 .font(OPSStyle.Typography.miniLabel)

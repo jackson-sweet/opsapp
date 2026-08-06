@@ -264,15 +264,14 @@ final class SiteVisitCaptureViewModel: ObservableObject {
             opportunityId: activeOpportunityId,
             createdBy: userId
         )
-        guard persistSiteVisitChanges({
-            let now = Date()
-            for answer in existing {
-                answer.deletedAt = now
-                answer.updatedAt = now
-                answer.needsSync = true
-            }
-            for answer in replacements { modelContext.insert(answer) }
-        }) else { return }
+        let now = Date()
+        for answer in existing {
+            answer.deletedAt = now
+            answer.updatedAt = now
+            answer.needsSync = true
+        }
+        for answer in replacements { modelContext.insert(answer) }
+        saveContext()
         reloadChecklistAnswers()
         hydrateChecklistAnswersFromCapturedEvidence()
     }

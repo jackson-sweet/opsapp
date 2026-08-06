@@ -39,10 +39,7 @@ struct SiteVisitTypeSettingsView: View {
             VStack(spacing: 0) {
                 SettingsHeader(
                     title: "Site Visit Types",
-                    trailingIcon: OPSStyle.Icons.plus,
-                    trailingAccessibilityLabel: "Create site visit type",
-                    onBackTapped: { dismiss() },
-                    onEditTapped: { editorDraft = .blank }
+                    onBackTapped: { dismiss() }
                 )
                 .padding(.bottom, OPSStyle.Layout.spacing2)
 

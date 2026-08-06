@@ -234,3 +234,70 @@ Day sheet surface; universal search; web parity (web already has table controls)
 | Search empty | `0` + `// NO MATCHES` + `[ CLEAR SEARCH ]` |
 | Stage affordance | `BY STAGE ▸` |
 | Card assignee | `JASON W` / `UNASSIGNED` / `UNKNOWN` |
+
+---
+
+# ADDENDUM — Round 2 (2026-08-06)
+
+Jackson's review of the shipped console. Six directives, plus three "what is this?" questions whose answers are the fixes.
+
+## 14 · Card compression (`LeadTriageCard`)
+
+### 14.1 Answers → fixes
+
+| Question | Answer in code | Fix |
+|---|---|---|
+| "What is the dash in the top right?" | `valueText` returns `—` when `estimatedValue` is nil/0 | Omit the value slot entirely when there is no value. `—` is the rule for a *metric that has a slot* (a KPI line); a scan card should not reserve money space for a lead that has none. |
+| "What is the subtitle drawing from, why truncated so fast?" | `jobLine` prefers `descriptionText` (long email-body extract) over `title` (short job name) | **Flip the priority**: `title` first, `descriptionText` only as fallback. Keep one line. The line stays — "Roof tear-off — 28 sq" is what a scanning owner needs; the long extract was the defect, not the line itself. |
+| "What are the dashed filled lines?" | 6-segment stage progress bar (`metaRow`, 62pt, accent-tinted to `stageIndex`) | **Delete it.** The stage chip already states the stage in words (`QUOTING · 5D`). It was the only accent on the card and it carried zero information the chip lacked. |
+
+### 14.2 New card anatomy
+
+```
+┌──────────────────────────────────────────────┐
+│ [QUOTING · 5D ▾]                     $14,200 │  value omitted when none
+│ Marcus Webb                 DANA W · WEBSITE │  name flexes, meta truncates
+│ Roof tear-off — 28 sq                        │  title-first, omitted when absent
+│ [→ CHASE · 5D LATE          [HANDLED ✓]]     │  chase strip — unchanged, 44pt
+│ ──────────────────────────────────────────── │
+│ [CALL] [TEXT] [EMAIL] [VISIT]            [✎] │  actions
+└──────────────────────────────────────────────┘
+```
+
+- **Meta row is deleted as a band.** `assigneeLabel · source` moves to the trailing edge of the name row (same 8.5 JBMono-Regular / 0.7 tracking / `text-3`+`textMute` treatment). Name takes `layoutPriority(1)`; the meta cluster truncates first.
+- **Padding:** card inset `.vertical` 15 → 12. Inter-band `spacing2_5` → `spacing2` for the name/job/chase group; the action row keeps its hairline + `spacing2_5` separation.
+- Net: 7 stacked bands → 5; ≈195pt vs ≈245pt per card. Terminal cards lose the same bar (its olive/neutral variants go with it).
+
+### 14.3 VISIT action
+
+- Fourth text chip in the action row, same `ContactChipButton` grammar: `CALL · TEXT · EMAIL · VISIT` + the log glyph. Four flex chips + one 36pt glyph fits 390pt (≈67pt per chip).
+- **Gate: `canConvert && !isTerminal`** — verbatim the gate `LeadDetailView`'s START SITE VISIT menu item uses (line ~671). Hidden, not disabled, when ungated: an operator without convert scope has no visit path anywhere else either.
+- Card API: `var onStartSiteVisit: (() -> Void)? = nil` (nil → chip hidden, so day-sheet call sites are untouched). `LeadsTabView` wires it to the existing `activeSiteVisitLead` cover — the same `SiteVisitCaptureView` + convert hand-off the FAB, detail screen and add-lead sheet already drive. `PipelineStageListView` takes a new `onStartSiteVisit: (Opportunity) -> Void` param supplied by `LeadsTabView` at its `navigationDestination`.
+
+## 15 · Search band (`LeadsQueueBand`)
+
+### 15.1 Full-width field + one filter control
+
+- The two menu chips (`URGENCY ▾` / `CREW ▾`) are **replaced by a single trailing filter control**; the search field takes all remaining width.
+- Filter control: 40pt height matching the field, `sidebarHoverRadius`, chip fills/borders (rest = `surfaceInput` + `line`; any non-default = `text`@0.10 fill + `text`@0.20 border). Content:
+  - **At rest:** `line.3.horizontal.decrease` SF glyph only (square, ~44pt target). The field is genuinely full-width in the common case.
+  - **Filtered:** glyph + the active selection(s) inline, joined by `·` — `NEWEST`, `DANA W`, or `NEWEST · DANA W` — JBMono `miniLabelBold` 0.8 tracking, `lineLimit(1)`, truncating tail; the field yields width. State is readable without opening the menu.
+- Menu (one `Menu`, two `Section`s with `//`-free plain headers `SORT` and `CREW`): sort rows `URGENCY / NEWEST / VALUE`; crew rows `ALL CREW / MINE / UNASSIGNED / <member shortLabels>`. Checkmark marks the current row in each section (existing `LeadsControlMenuRow`).
+- Crew section renders only when the assignment gate is open (roster > 1) — solo operators get a sort-only menu, and the control still reads `NEWEST` when sorted.
+
+### 15.2 Counts on crew rows
+
+- Every crew row carries a count: `ALL CREW · 12`, `MINE · 4`, `UNASSIGNED · 2`, `DANA W · 5`.
+- Counted over **all open leads** (`TriageBuckets.all`) — not the active bucket — so the numbers are a stable roster read that does not shift as bucket chips change.
+- Engine: `nonisolated static func crewCounts(buckets:currentUserId:roster:) -> LeadsCrewCounts` (`all`, `mine`, `unassigned`, `byMember: [String: Int]`, ids lowercased). TDD, incl. uppercase-id folding and a member with zero leads (renders `· 0`, never hidden — a teammate with nothing assigned is information).
+
+### 15.3 Focus scrolls the band to the top
+
+- `LeadsSearchBar` gains `onFocusChange: (Bool) -> Void`.
+- The console `ScrollView` is wrapped in a `ScrollViewReader`; on focus-gained, `withAnimation(OPSStyle.Animation.standard) { proxy.scrollTo(Self.bandAnchorID, anchor: .top) }` so the command band scrolls away and the field sits directly under the header with maximum list visible. No scroll on focus-lost (the operator keeps their position).
+- `.scrollDismissesKeyboard(.interactively)` stays.
+- Implementation note: this `ScrollView` has no custom `ScrollTargetBehavior`, so the iOS-26 `updateTarget` trap does not apply. Programmatic scroll cannot be asserted from a test-created window (harness limitation) — prove it in the app-host window or with a state-level test of the focus→scroll trigger.
+
+### 15.4 Unchanged
+
+Search-suspends-browse still holds: while searching, the bucket chip row **and** the filter control dim to 40% and stop hit-testing (sort included this round — with sort inside the filter control there is no way to keep it live without a second affordance, and a suspended control that still works is a worse lie than one that visibly waits). Everything else in §5–§7 stands.

@@ -649,6 +649,132 @@ final class LeadsQueryEngineTests: XCTestCase {
         XCTAssertEqual(LeadsQueryEngine.assigneeLabel(for: "U-2", roster: crewOfTwo()), "DANA W")
     }
 
+    // MARK: - Crew counts (addendum §15.2)
+
+    /// The numbers beside the filter menu's crew rows. Counted over every open
+    /// lead so they read as a stable roster fact — not a figure that shifts
+    /// under the operator every time a bucket chip changes.
+    private func spreadBuckets() -> PipelineViewModel.TriageBuckets {
+        buckets(
+            overdue:       [numbered(1, name: "Marcus Webb", assignedTo: "u-1")],
+            dueToday:      [numbered(2, name: "The Hensons", assignedTo: "u-1")],
+            waitingOnYou:  [numbered(3, name: "Aimee Watari", assignedTo: nil)],
+            fresh:         [numbered(4, name: "Jamie Park", assignedTo: "u-2")],
+            waitingOnThem: [numbered(5, name: "Dana Ruiz", assignedTo: "u-1")],
+            // Won-but-unconverted is not open work — the WON · CONVERT nudge
+            // owns it, and counting it here would inflate every crew row.
+            unconvertedWon: [numbered(6, name: "Tom Liu", assignedTo: "u-2")]
+        )
+    }
+
+    func testCrewCountsCoverEveryOpenLeadAcrossEveryBucket() {
+        let counts = LeadsQueryEngine.crewCounts(
+            buckets: spreadBuckets(), currentUserId: "u-1", roster: crewOfTwo()
+        )
+        XCTAssertEqual(counts.all, 5, "Every open lead, no matter which bucket holds it")
+    }
+
+    func testCrewCountsExcludeWonButUnconvertedLeads() {
+        let counts = LeadsQueryEngine.crewCounts(
+            buckets: spreadBuckets(), currentUserId: "u-1", roster: crewOfTwo()
+        )
+        XCTAssertEqual(counts.byMember["u-2"], 1, "The won lead assigned to u-2 is not open work")
+    }
+
+    func testCrewCountsSplitMineUnassignedAndEachMember() {
+        let counts = LeadsQueryEngine.crewCounts(
+            buckets: spreadBuckets(), currentUserId: "u-1", roster: crewOfTwo()
+        )
+        XCTAssertEqual(counts.mine, 3)
+        XCTAssertEqual(counts.unassigned, 1)
+        XCTAssertEqual(counts.byMember["u-1"], 3)
+        XCTAssertEqual(counts.byMember["u-2"], 1)
+    }
+
+    /// `UUID().uuidString` is uppercase and Postgres stores uuids lowercased,
+    /// so a lead written by iOS and a roster read from the server must land on
+    /// the same row. Every id on both sides folds.
+    func testCrewCountsFoldUppercaseAssignmentIds() {
+        let counts = LeadsQueryEngine.crewCounts(
+            buckets: buckets(overdue: [numbered(1, name: "Marcus Webb", assignedTo: "U-2"),
+                                       numbered(2, name: "The Hensons", assignedTo: "U-1")]),
+            currentUserId: "U-1",
+            roster: crewOfTwo()
+        )
+        XCTAssertEqual(counts.byMember["u-2"], 1)
+        XCTAssertEqual(counts.byMember["u-1"], 1)
+        XCTAssertEqual(counts.mine, 1, "An uppercase identity still matches its own leads")
+        XCTAssertEqual(counts.unassigned, 0)
+    }
+
+    func testCrewCountsKeyMembersByLowercasedIdWhateverTheRosterCarries() {
+        let counts = LeadsQueryEngine.crewCounts(
+            buckets: buckets(fresh: [numbered(1, name: "Jamie Park", assignedTo: "u-9")]),
+            currentUserId: nil,
+            roster: [CrewMember(id: "U-9", fullName: "Uppercase Roster", shortLabel: "UPPER R")]
+        )
+        XCTAssertEqual(counts.byMember["u-9"], 1)
+        XCTAssertNil(counts.byMember["U-9"])
+    }
+
+    /// A teammate with nothing on his plate is information — it is why the
+    /// operator reassigns. The row renders `· 0`; it is never hidden.
+    func testCrewCountsKeepAMemberWithNothingAssignedAtZero() {
+        let counts = LeadsQueryEngine.crewCounts(
+            buckets: buckets(overdue: [numbered(1, name: "Marcus Webb", assignedTo: "u-1")]),
+            currentUserId: "u-1",
+            roster: crewOfTwo()
+        )
+        XCTAssertEqual(counts.byMember["u-2"], 0)
+        XCTAssertEqual(counts.byMember.count, 2, "Every roster member gets a row, empty or not")
+    }
+
+    /// Mirrors `crewMatches`: no identity, no MINE. A count that fell back to
+    /// everything would promise a slice the filter cannot deliver.
+    func testCrewCountsReportNoMineWithoutAnIdentity() {
+        let counts = LeadsQueryEngine.crewCounts(
+            buckets: spreadBuckets(), currentUserId: nil, roster: crewOfTwo()
+        )
+        XCTAssertEqual(counts.mine, 0)
+        XCTAssertEqual(counts.all, 5, "The other rows are unaffected")
+    }
+
+    func testCrewCountsTreatABlankAssignmentAsUnassigned() {
+        let counts = LeadsQueryEngine.crewCounts(
+            buckets: buckets(fresh: [numbered(1, name: "Jamie Park", assignedTo: "   "),
+                                     numbered(2, name: "Aimee Watari", assignedTo: nil)]),
+            currentUserId: "u-1",
+            roster: crewOfTwo()
+        )
+        XCTAssertEqual(counts.unassigned, 2)
+    }
+
+    func testCrewCountsAreAllZeroForAnEmptyPipeline() {
+        let counts = LeadsQueryEngine.crewCounts(
+            buckets: buckets(), currentUserId: "u-1", roster: crewOfTwo()
+        )
+        XCTAssertEqual(counts.all, 0)
+        XCTAssertEqual(counts.mine, 0)
+        XCTAssertEqual(counts.unassigned, 0)
+        XCTAssertEqual(counts.byMember, ["u-1": 0, "u-2": 0])
+    }
+
+    /// A lead assigned to somebody outside the roster (departed with no `User`
+    /// row) still counts under ALL and belongs to nobody else — it must not
+    /// silently land in UNASSIGNED, which is a filter that would then fail to
+    /// show it.
+    func testCrewCountsLeaveAnUnknownAssigneeOutOfEveryRowButAll() {
+        let counts = LeadsQueryEngine.crewCounts(
+            buckets: buckets(overdue: [numbered(1, name: "Marcus Webb", assignedTo: "u-ghost")]),
+            currentUserId: "u-1",
+            roster: crewOfTwo()
+        )
+        XCTAssertEqual(counts.all, 1)
+        XCTAssertEqual(counts.unassigned, 0)
+        XCTAssertEqual(counts.mine, 0)
+        XCTAssertEqual(counts.byMember, ["u-1": 0, "u-2": 0])
+    }
+
     // MARK: - Band state
 
     func testBandStateIsWorkingWhileAnythingNeedsAction() {

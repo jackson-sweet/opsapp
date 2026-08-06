@@ -59,6 +59,17 @@ struct CrewMember: Identifiable, Equatable {
     let shortLabel: String
 }
 
+/// What each crew row in the filter menu reads beside its label —
+/// `ALL CREW · 12`, `MINE · 4`, `UNASSIGNED · 2`, `DANA W · 5` (addendum
+/// §15.2). Member ids are lowercased keys, so a caller looks up with a folded
+/// id or with `CrewMember.id`, which the roster already folded.
+struct LeadsCrewCounts: Equatable {
+    let all: Int
+    let mine: Int
+    let unassigned: Int
+    let byMember: [String: Int]
+}
+
 // MARK: - Band state
 
 /// Which command band the console renders (spec §3.1–§3.3): the need-action
@@ -182,6 +193,62 @@ enum LeadsQueryEngine {
             guard let wanted = normalizedId(id) else { return false }
             return assigned == wanted
         }
+    }
+
+    // MARK: Crew counts (addendum §15.2)
+
+    /// The number beside every crew row in the filter menu.
+    ///
+    /// Counted over ALL open leads (`TriageBuckets.all`), deliberately — not
+    /// the active bucket. The rows are a roster read: "who is carrying what",
+    /// a fact about the business that must not move under the operator every
+    /// time a bucket chip changes. Won-but-unconverted leads are excluded for
+    /// the same reason the queue excludes them — they are a conversion job the
+    /// WON · CONVERT nudge owns, not open chase work.
+    ///
+    /// Every roster member gets an entry, including one carrying nothing: a
+    /// teammate with an empty plate is exactly the information that prompts a
+    /// reassignment, so the row renders `· 0` rather than disappearing.
+    ///
+    /// A lead assigned to somebody the roster cannot name — a departed user
+    /// with no `User` row — counts under `all` and under nothing else. Folding
+    /// it into `unassigned` would be a lie the UNASSIGNED filter then fails to
+    /// back up (`crewMatches` keys that filter on an EMPTY assignment, not on
+    /// an unresolvable one).
+    nonisolated static func crewCounts(
+        buckets: PipelineViewModel.TriageBuckets,
+        currentUserId: String?,
+        roster: [CrewMember]
+    ) -> LeadsCrewCounts {
+        let open = buckets.all
+        let me = normalizedId(currentUserId)
+
+        var mine = 0
+        var unassigned = 0
+        // Seeded from the roster so a member with nothing assigned still has a
+        // row; ids fold here because a hand-built `CrewMember` need not have.
+        var byMember: [String: Int] = [:]
+        for member in roster {
+            byMember[normalizedId(member.id) ?? member.id] = 0
+        }
+
+        for lead in open {
+            guard let assigned = normalizedId(lead.assignedTo) else {
+                unassigned += 1
+                continue
+            }
+            // No identity, no MINE — the same rule `crewMatches` applies, so
+            // the count can never promise a slice the filter will not deliver.
+            if let me, assigned == me { mine += 1 }
+            if byMember[assigned] != nil { byMember[assigned]! += 1 }
+        }
+
+        return LeadsCrewCounts(
+            all: open.count,
+            mine: mine,
+            unassigned: unassigned,
+            byMember: byMember
+        )
     }
 
     // MARK: Band state (spec §3.1–§3.3)

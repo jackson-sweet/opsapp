@@ -16,11 +16,13 @@ struct PendingWorkDetailSheet: View {
     let now: Date
     let onRetry: () -> Void
     let onExport: () -> Void
-    let onDiscard: () -> Void
+    let onDiscard: () async -> Bool
 
     @Environment(\.dismiss) private var dismiss
     @State private var showDiscardConfirm = false
     @State private var showRawDetails = false
+    @State private var isDiscarding = false
+    @State private var discardError: String?
 
     private var isQuarantined: Bool {
         if case .quarantinedVisit = item { return true }
@@ -65,6 +67,7 @@ struct PendingWorkDetailSheet: View {
         .presentationDetents([.medium, .large])
         .presentationDragIndicator(.hidden)
         .preferredColorScheme(.dark)
+        .interactiveDismissDisabled(isDiscarding)
     }
 
     // MARK: - Handle (§6.2)
@@ -183,6 +186,23 @@ struct PendingWorkDetailSheet: View {
 
     private var actions: some View {
         VStack(spacing: OPSStyle.Layout.spacing2) {
+            if isDiscarding {
+                HStack(spacing: OPSStyle.Layout.spacing2) {
+                    ProgressView()
+                        .controlSize(.small)
+                        .tint(OPSStyle.Colors.text3)
+                    Text(SyncStatusCopy.PendingWork.deletingStatus)
+                        .font(OPSStyle.Typography.metadata)
+                        .foregroundColor(OPSStyle.Colors.text3)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            } else if let discardError {
+                Text(discardError)
+                    .font(OPSStyle.Typography.metadata)
+                    .foregroundColor(OPSStyle.Colors.rose)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+
             if isRetryable {
                 Button {
                     onRetry()
@@ -191,6 +211,7 @@ struct PendingWorkDetailSheet: View {
                     Text("RETRY NOW")
                 }
                 .opsPrimaryButtonStyle()
+                .disabled(isDiscarding)
             }
 
             Button {
@@ -203,13 +224,17 @@ struct PendingWorkDetailSheet: View {
                 Text(SyncStatusCopy.PendingWork.exportAction)
             }
             .opsSecondaryButtonStyle()
+            .disabled(isDiscarding)
 
-            Button(role: .destructive) {
-                showDiscardConfirm = true
-            } label: {
-                Text("DISCARD")
+            if item.discardPolicy.canDiscard {
+                Button(role: .destructive) {
+                    showDiscardConfirm = true
+                } label: {
+                    Text(SyncStatusCopy.PendingWork.deleteAction)
+                }
+                .opsDestructiveButtonStyle()
+                .disabled(isDiscarding)
             }
-            .opsDestructiveButtonStyle()
         }
         .padding(.horizontal, OPSStyle.Layout.spacing3_5)
         .padding(.top, OPSStyle.Layout.spacing2_5)
@@ -220,14 +245,37 @@ struct PendingWorkDetailSheet: View {
             isPresented: $showDiscardConfirm,
             titleVisibility: .visible
         ) {
-            Button("Discard", role: .destructive) {
-                onDiscard()
-                dismiss()
+            Button(
+                SyncStatusCopy.PendingWork.deleteAction,
+                role: .destructive
+            ) {
+                Task { @MainActor in
+                    guard !isDiscarding else { return }
+                    isDiscarding = true
+                    discardError = nil
+                    let succeeded = await onDiscard()
+                    isDiscarding = false
+                    if succeeded {
+                        dismiss()
+                    } else {
+                        discardError = SyncStatusCopy.PendingWork.discardFailure
+                    }
+                }
             }
-            Button("Cancel", role: .cancel) {}
+            Button(
+                SyncStatusCopy.PendingWork.cancelAction,
+                role: .cancel
+            ) {}
         } message: {
-            Text(SyncStatusCopy.PendingWork.discardConfirmBody)
+            Text(discardConfirmationBody)
         }
+    }
+
+    private var discardConfirmationBody: String {
+        guard let scope = item.discardPolicy.confirmationScope else {
+            return SyncStatusCopy.PendingWork.discardConfirmBody
+        }
+        return SyncStatusCopy.PendingWork.discardConfirmationBody(for: scope)
     }
 
     // MARK: - Lines model

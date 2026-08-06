@@ -235,8 +235,31 @@ enum SyncStatusCopy {
         static let linkAction = "LINK"
         static let linkPickerTitle = "LINK TO"
         static let exportAction = "EXPORT"
+        static let deleteAction = "DELETE"
+        static let cancelAction = "CANCEL"
+        static let acknowledgeAction = "OK"
         static let discardConfirmTitle = "DESTRUCTIVE. NO UNDO."
         static let discardConfirmBody = "Deletes this work from this phone. It was never sent."
+        static let staleReviewTag = "STALE · 30D"
+        static let staleReviewAccessibility = "Needs review. 30 days or older."
+        static let discardFailure = "COULD NOT DELETE · WORK IS STILL HERE"
+        static let discardFailureTitle = "WORK NOT DELETED"
+        static let deletingStatus = "DELETING…"
+
+        static func discardConfirmationBody(
+            for scope: RecoveryDiscardScope
+        ) -> String {
+            switch scope {
+            case .leadDeliveryRequest:
+                return "Cancels this pending lead creation. The client stays on this phone."
+            case .localPhotos(let count):
+                return "Deletes \(count) unsent photo\(count == 1 ? "" : "s") from this phone."
+            case .siteVisitPacket:
+                return "Deletes the local visit packet and cancels its cloud shell if any part already synced."
+            case .quarantinedVisit:
+                return "Deletes the protected recovery packet from this phone."
+            }
+        }
 
         /// Share-sheet summary title. `name` is the work's display name.
         static func exportTitle(name: String) -> String { "OPS EXPORT — \(name)" }

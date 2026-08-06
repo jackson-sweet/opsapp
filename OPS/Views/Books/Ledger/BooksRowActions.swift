@@ -19,7 +19,7 @@ import SwiftUI
 
 // MARK: - Action model
 
-struct BooksRowAction: Identifiable {
+struct OPSRowAction: Identifiable {
     let id: String
     /// Strip label — uppercase, single word (PAYMENT / VOID / SEND / …).
     let label: String
@@ -37,10 +37,10 @@ struct BooksRowAction: Identifiable {
 
 // MARK: - Swipeable row wrapper
 
-struct BooksSwipeRow<Content: View>: View {
+struct OPSSwipeRow<Content: View>: View {
     let rowID: String
-    var leading: [BooksRowAction] = []
-    var trailing: [BooksRowAction] = []
+    var leading: [OPSRowAction] = []
+    var trailing: [OPSRowAction] = []
     /// Full right-swipe (>75% of row width) fires `leading.first`. Only set
     /// for non-destructive primaries (record payment / send / convert).
     var allowsFullSwipe: Bool = false
@@ -77,8 +77,8 @@ struct BooksSwipeRow<Content: View>: View {
 
     init(
         rowID: String,
-        leading: [BooksRowAction] = [],
-        trailing: [BooksRowAction] = [],
+        leading: [OPSRowAction] = [],
+        trailing: [OPSRowAction] = [],
         allowsFullSwipe: Bool = false,
         openRowID: Binding<String?>,
         initialReveal: Reveal? = nil,
@@ -153,7 +153,7 @@ struct BooksSwipeRow<Content: View>: View {
     // MARK: Strip
 
     @ViewBuilder
-    private func strip(actions: [BooksRowAction], edge: HorizontalEdge, revealed: CGFloat) -> some View {
+    private func strip(actions: [OPSRowAction], edge: HorizontalEdge, revealed: CGFloat) -> some View {
         let isLeading = edge == .leading
         HStack(spacing: 0) {
             if !isLeading { Spacer(minLength: 0) }
@@ -170,11 +170,11 @@ struct BooksSwipeRow<Content: View>: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
-    private func stripWidth(for actions: [BooksRowAction]) -> CGFloat {
+    private func stripWidth(for actions: [OPSRowAction]) -> CGFloat {
         CGFloat(actions.count) * actionWidth
     }
 
-    private func stripButton(_ action: BooksRowAction, stretched: Bool) -> some View {
+    private func stripButton(_ action: OPSRowAction, stretched: Bool) -> some View {
         Button {
             UIImpactFeedbackGenerator(style: .medium).impactOccurred()
             setOpen(nil)
@@ -284,7 +284,7 @@ struct BooksSwipeRow<Content: View>: View {
 /// Attaches the row's context menu only when it actually has actions —
 /// action-less rows (paid / won / locked) keep a plain long-press.
 private struct RowContextMenu: ViewModifier {
-    let actions: [BooksRowAction]
+    let actions: [OPSRowAction]
 
     func body(content: Content) -> some View {
         if actions.isEmpty {
@@ -309,7 +309,7 @@ private struct RowContextMenu: ViewModifier {
 /// Swipe strips aren't reachable by VoiceOver — expose every action as a
 /// rotor action on the row itself.
 private struct RowAccessibilityActions: ViewModifier {
-    let actions: [BooksRowAction]
+    let actions: [OPSRowAction]
 
     func body(content: Content) -> some View {
         actions.reduce(AnyView(content)) { view, action in
@@ -322,6 +322,11 @@ private struct RowAccessibilityActions: ViewModifier {
 
 // MARK: - Reveal side (preview support)
 
-extension BooksSwipeRow {
+extension OPSSwipeRow {
     enum Reveal { case leading, trailing }
 }
+
+// Existing ledger call sites keep source compatibility while new product
+// surfaces consume the platform-neutral names above.
+typealias BooksRowAction = OPSRowAction
+typealias BooksSwipeRow<Content: View> = OPSSwipeRow<Content>

@@ -213,6 +213,141 @@ final class RecoveryInventoryTests: XCTestCase {
         items.compactMap { if case let .orphanDesign(design) = $0 { return design } else { return nil } }
     }
 
+    // MARK: - Retention and discard capabilities
+
+    func testUnsentWorkIsRetainedAtTwentyNineThirtyAndThirtyOneDays() {
+        let day: TimeInterval = 24 * 60 * 60
+        let drafts = [29, 30, 31].map { age in
+            draftSnap(
+                id: "draft-\(age)",
+                siteVisitId: "visit-\(age)",
+                clientId: nil,
+                createdAt: now.addingTimeInterval(-Double(age) * day)
+            )
+        }
+
+        let inventory = build(drafts: drafts)
+
+        XCTAssertEqual(inventory.drafts.count, 3)
+        let states = Dictionary(uniqueKeysWithValues: inventory.drafts.map {
+            ($0.id, $0.reviewState(now: now))
+        })
+        XCTAssertEqual(states["draft-29"], .current)
+        XCTAssertEqual(states["draft-30"], .stale30Days)
+        XCTAssertEqual(states["draft-31"], .stale30Days)
+    }
+
+    func testEveryRecoveryItemDeclaresAnHonestDiscardCapability() {
+        let pendingOp = RecoveryItem.op(
+            opSnap(operationType: "create"),
+            tone: .waiting,
+            nextEligibleAt: nil
+        )
+        XCTAssertEqual(
+            pendingOp.discardPolicy,
+            .unavailable(.queuedMutationRequiresReconciliation)
+        )
+
+        let activeLead = RecoveryItem.autocreate(
+            autocreateSnap(isParked: false),
+            tone: .waiting,
+            nextEligibleAt: nil
+        )
+        XCTAssertEqual(
+            activeLead.discardPolicy,
+            .unavailable(.deliveryMayBeInProgress)
+        )
+
+        let parkedLead = RecoveryItem.autocreate(
+            autocreateSnap(isParked: true),
+            tone: .parked,
+            nextEligibleAt: nil
+        )
+        XCTAssertEqual(
+            parkedLead.discardPolicy,
+            .available(.leadDeliveryRequest)
+        )
+
+        let localPhotos = RecoveryItem.photos(
+            grouped: [photoSnap(status: "local")],
+            tone: .waiting
+        )
+        XCTAssertEqual(
+            localPhotos.discardPolicy,
+            .unavailable(.uploadMayBeInProgress)
+        )
+
+        let failedPhotos = RecoveryItem.photos(
+            grouped: [photoSnap(status: "failed"), photoSnap(status: "failed")],
+            tone: .attention
+        )
+        XCTAssertEqual(
+            failedPhotos.discardPolicy,
+            .available(.localPhotos(count: 2))
+        )
+
+        let draft = draftSnap(clientId: nil)
+        XCTAssertEqual(
+            RecoveryItem.draft(draft).discardPolicy,
+            .unavailable(.draftRequiresResume)
+        )
+
+        let orphan = orphanSnap()
+        XCTAssertEqual(
+            RecoveryItem.orphanDesign(orphan).discardPolicy,
+            .unavailable(.designRequiresReview)
+        )
+
+        let quarantine = QuarantinedSiteVisitSnapshot(
+            id: "quarantine",
+            userId: "user",
+            companyId: "company",
+            siteVisitId: "visit",
+            reason: .ambiguousBinding,
+            createdAt: base,
+            capturedItemCount: 1
+        )
+        XCTAssertEqual(
+            RecoveryItem.quarantinedVisit(quarantine).discardPolicy,
+            .available(.quarantinedVisit)
+        )
+    }
+
+    func testSiteVisitDiscardIsAvailableOnlyWhenNoStageIsExecuting() throws {
+        let draft = draftSnap(siteVisitId: "visit", clientId: nil)
+        let pending = opSnap(
+            entityType: SyncEntityType.siteVisit.rawValue,
+            entityId: "visit",
+            operationType: "create",
+            status: "pending",
+            siteVisitId: "visit"
+        )
+        let pendingInventory = build(ops: [pending], drafts: [draft])
+        let pendingBundle = try XCTUnwrap(
+            (pendingInventory.sending + pendingInventory.attention).first
+        )
+        XCTAssertEqual(
+            pendingBundle.discardPolicy,
+            .available(.siteVisitPacket)
+        )
+
+        let executing = opSnap(
+            entityType: SyncEntityType.siteVisit.rawValue,
+            entityId: "visit",
+            operationType: "create",
+            status: "inProgress",
+            siteVisitId: "visit"
+        )
+        let executingInventory = build(ops: [executing], drafts: [draft])
+        let executingBundle = try XCTUnwrap(
+            (executingInventory.sending + executingInventory.attention).first
+        )
+        XCTAssertEqual(
+            executingBundle.discardPolicy,
+            .unavailable(.operationInProgress)
+        )
+    }
+
     // MARK: - Bundle join (all roles) + consumption
 
     func testBundleJoinsAllFourRolesInOrderAndConsumesMembers() {

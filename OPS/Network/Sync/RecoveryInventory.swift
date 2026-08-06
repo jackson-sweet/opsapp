@@ -448,6 +448,89 @@ enum RecoveryItem: Identifiable, Equatable {
     }
 }
 
+/// Age is a review signal only. Pending work is never expired or removed by
+/// this policy, including at the exact 30-day boundary.
+enum RecoveryReviewState: Equatable {
+    case current
+    case stale30Days
+}
+
+/// The exact unit a destructive confirmation covers.
+enum RecoveryDiscardScope: Equatable {
+    case leadDeliveryRequest
+    case localPhotos(count: Int)
+    case siteVisitPacket
+    case quarantinedVisit
+}
+
+/// Why a row deliberately omits DELETE. Unsupported items stay recoverable
+/// through their purpose-built OPEN, LINK, or RETRY path.
+enum RecoveryDiscardUnavailableReason: Equatable {
+    case queuedMutationRequiresReconciliation
+    case deliveryMayBeInProgress
+    case uploadMayBeInProgress
+    case operationInProgress
+    case draftRequiresResume
+    case designRequiresReview
+}
+
+enum RecoveryDiscardPolicy: Equatable {
+    case available(RecoveryDiscardScope)
+    case unavailable(RecoveryDiscardUnavailableReason)
+
+    var canDiscard: Bool {
+        if case .available = self { return true }
+        return false
+    }
+
+    var confirmationScope: RecoveryDiscardScope? {
+        guard case .available(let scope) = self else { return nil }
+        return scope
+    }
+}
+
+extension RecoveryItem {
+    private static let staleReviewInterval: TimeInterval = 30 * 24 * 60 * 60
+
+    func reviewState(now: Date) -> RecoveryReviewState {
+        now.timeIntervalSince(sortDate) >= Self.staleReviewInterval
+            ? .stale30Days
+            : .current
+    }
+
+    var discardPolicy: RecoveryDiscardPolicy {
+        switch self {
+        case .op:
+            // A raw mutation needs entity-specific rollback before its queue
+            // record can be removed. The existing generic path cannot prove it.
+            return .unavailable(.queuedMutationRequiresReconciliation)
+        case .autocreate(let request, _, _):
+            return request.isParked
+                ? .available(.leadDeliveryRequest)
+                : .unavailable(.deliveryMayBeInProgress)
+        case .photos(let grouped, _):
+            guard !grouped.isEmpty,
+                  grouped.allSatisfy({ $0.status == "failed" }) else {
+                return .unavailable(.uploadMayBeInProgress)
+            }
+            return .available(.localPhotos(count: grouped.count))
+        case .bundle(let bundle):
+            let isExecuting = bundle.members.contains {
+                $0.status.statusRaw == "inProgress"
+            }
+            return isExecuting
+                ? .unavailable(.operationInProgress)
+                : .available(.siteVisitPacket)
+        case .draft:
+            return .unavailable(.draftRequiresResume)
+        case .orphanDesign:
+            return .unavailable(.designRequiresReview)
+        case .quarantinedVisit:
+            return .available(.quarantinedVisit)
+        }
+    }
+}
+
 /// The four sections the PENDING WORK screen renders, plus the counts the pill
 /// badge and empty-state read. Sections render only when non-empty; order is
 /// fixed by the caller (attention → sending → drafts → unlinked).

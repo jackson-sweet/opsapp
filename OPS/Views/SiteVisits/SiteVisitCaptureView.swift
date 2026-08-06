@@ -151,21 +151,14 @@ private struct SiteVisitCaptureConsole: View {
                         VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing3) {
                             // Bug (site-visit report) — a sequential checklist the
                             // operator works top-to-bottom: the LEAD form (step 1,
-                            // always required) sits at the top, the type-dependent
-                            // CHECKLIST (step 2, variable fields) directly below it,
-                            // then NOTES (step 3). statusStrip is the at-a-glance
+                            // always required) sits at the top. A linked lead's
+                            // read-only summary follows when one exists, then the
+                            // type-dependent CHECKLIST (step 2, variable fields)
+                            // and NOTES (step 3). statusStrip is the at-a-glance
                             // readout above; the captured packet is the flat list
                             // at the bottom.
                             statusStrip
-                            SiteVisitIdentityPanel(
-                                viewModel: viewModel,
-                                isExpanded: $identityExpanded,
-                                isPresentingContactPicker: $showingContactPicker
-                            )
-                            .id(SiteVisitCaptureScrollTarget.identity)
-                            checklistPanel
-                            quickNotePanel
-                                .id(SiteVisitCaptureScrollTarget.notes)
+                            primaryFormSections
                             packetPanel
                         }
                         .padding(.horizontal, OPSStyle.Layout.spacing3_5)
@@ -488,6 +481,39 @@ private struct SiteVisitCaptureConsole: View {
             .padding(OPSStyle.Layout.spacing2)
             .frame(maxWidth: .infinity, alignment: .leading)
             .nestedCard()
+    }
+
+    /// One tested sequence owns the form's information hierarchy. A bound
+    /// lead's authoritative `aiSummary` sits after identity and before the
+    /// checklist; nil or whitespace-only summaries add no empty chrome.
+    private var primaryFormSections: some View {
+        ForEach(
+            SiteVisitPrimaryFormSemantics.orderedSections(
+                boundLeadSummary: viewModel.currentOpportunity?.aiSummary
+            )
+        ) { section in
+            primaryFormSection(section)
+        }
+    }
+
+    @ViewBuilder
+    private func primaryFormSection(_ section: SiteVisitPrimaryFormSection) -> some View {
+        switch section {
+        case .identity:
+            SiteVisitIdentityPanel(
+                viewModel: viewModel,
+                isExpanded: $identityExpanded,
+                isPresentingContactPicker: $showingContactPicker
+            )
+            .id(SiteVisitCaptureScrollTarget.identity)
+        case .leadSummary(let presentation):
+            SiteVisitLeadSummaryBand(presentation: presentation)
+        case .checklist:
+            checklistPanel
+        case .notes:
+            quickNotePanel
+                .id(SiteVisitCaptureScrollTarget.notes)
+        }
     }
 
     private var quickNotePanel: some View {
@@ -982,6 +1008,49 @@ private struct SiteVisitCaptureMetric: View {
                 .foregroundColor(OPSStyle.Colors.text3)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+/// Read-only lead context at the exact decision point where the operator starts
+/// scope capture. This reuses the lead surfaces' agent-provenance band instead
+/// of introducing another card or a second editable summary field.
+private struct SiteVisitLeadSummaryBand: View {
+    let presentation: SiteVisitLeadSummaryPresentation
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
+            HStack(spacing: 0) {
+                Text("// ")
+                    .foregroundColor(OPSStyle.Colors.textMute)
+                Text("LEAD SUMMARY")
+                    .foregroundColor(OPSStyle.Colors.agent)
+            }
+            .font(OPSStyle.Typography.miniLabelBold)
+            .textCase(.uppercase)
+
+            Text(presentation.text)
+                .font(OPSStyle.Typography.cardBody)
+                .foregroundColor(OPSStyle.Colors.text2)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .padding(OPSStyle.Layout.spacing2_5)
+        .padding(.leading, OPSStyle.Layout.Border.thick)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(OPSStyle.Colors.agentSoft)
+        .overlay(alignment: .leading) {
+            Rectangle()
+                .fill(OPSStyle.Colors.agentLine)
+                .frame(width: OPSStyle.Layout.Border.thick)
+        }
+        .clipShape(
+            RoundedRectangle(
+                cornerRadius: OPSStyle.Layout.cardRadius,
+                style: .continuous
+            )
+        )
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(presentation.accessibilityLabel)
     }
 }
 

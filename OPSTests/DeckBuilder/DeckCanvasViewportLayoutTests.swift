@@ -55,13 +55,13 @@ final class DeckCanvasViewportLayoutTests: XCTestCase {
             bottomChromeInset: 2_000
         )
         let invalid = DeckCanvasViewportLayout(
-            renderSize: CGSize(width: .infinity, height: .nan),
+            renderSize: CGSize(width: CGFloat.infinity, height: CGFloat.nan),
             bottomChromeInset: .nan
         )
 
         XCTAssertEqual(oversized.renderSize, CGSize(width: 390, height: 844))
         XCTAssertEqual(oversized.unobstructedSize, CGSize(width: 390, height: 0))
-        XCTAssertEqual(invalid.renderSize, .zero)
-        XCTAssertEqual(invalid.unobstructedSize, .zero)
+        XCTAssertEqual(invalid.renderSize, CGSize.zero)
+        XCTAssertEqual(invalid.unobstructedSize, CGSize.zero)
     }
 }

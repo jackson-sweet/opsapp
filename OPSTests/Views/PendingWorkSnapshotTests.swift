@@ -99,10 +99,10 @@ final class PendingWorkSnapshotTests: XCTestCase {
     }
 
     /// An abandoned, never-committed capture → DRAFTS.
-    private func draftsInventory() -> RecoveryInventory {
+    private func draftsInventory(age: TimeInterval = 3600) -> RecoveryInventory {
         let draft = DraftSnapshot(
             id: "d2", siteVisitId: "v2", clientId: nil, opportunityId: nil,
-            displayName: "Site visit — Elm St", createdAt: ago(3600), lastCommittedAt: nil
+            displayName: "Site visit — Elm St", createdAt: ago(age), lastCommittedAt: nil
         )
         return RecoveryInventory.build(
             ops: [], autocreates: [], photos: [], drafts: [draft], artifacts: [], orphans: [], now: now
@@ -143,6 +143,23 @@ final class PendingWorkSnapshotTests: XCTestCase {
         XCTAssertFalse(inventory.drafts.isEmpty, "Fixture should populate the drafts section")
         let image = renderAndAttach("pending-work-drafts", inventory: inventory)
         assertContentRendered(image, context: "drafts")
+    }
+
+    func testThirtyDayReviewTagChangesTheRenderedDraftWithoutRemovingIt() {
+        let current = draftsInventory(age: 29 * 24 * 60 * 60)
+        let stale = draftsInventory(age: 30 * 24 * 60 * 60)
+
+        XCTAssertEqual(current.drafts.count, 1)
+        XCTAssertEqual(stale.drafts.count, 1)
+        XCTAssertEqual(current.drafts[0].reviewState(now: now), .current)
+        XCTAssertEqual(stale.drafts[0].reviewState(now: now), .stale30Days)
+
+        let currentImage = render(current)
+        let staleImage = renderAndAttach("pending-work-stale-review", inventory: stale)
+        XCTAssertNotEqual(
+            rgbaBytes(currentImage), rgbaBytes(staleImage),
+            "The 30-day review state should add a visible tag without deleting the row"
+        )
     }
 
     func testUnlinked() {

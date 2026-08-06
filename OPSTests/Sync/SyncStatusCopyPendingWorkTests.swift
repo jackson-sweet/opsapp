@@ -87,6 +87,16 @@ final class SyncStatusCopyPendingWorkTests: XCTestCase {
         XCTAssertEqual(Copy.exportAction, "EXPORT")
         XCTAssertEqual(Copy.discardConfirmTitle, "DESTRUCTIVE. NO UNDO.")
         XCTAssertEqual(Copy.discardConfirmBody, "Deletes this work from this phone. It was never sent.")
+        XCTAssertEqual(Copy.staleReviewTag, "STALE · 30D")
+        XCTAssertEqual(
+            Copy.discardConfirmationBody(for: .siteVisitPacket),
+            "Deletes the local visit packet and cancels its cloud shell if any part already synced."
+        )
+        XCTAssertEqual(
+            Copy.discardConfirmationBody(for: .localPhotos(count: 2)),
+            "Deletes 2 unsent photos from this phone."
+        )
+        XCTAssertEqual(Copy.discardFailure, "COULD NOT DELETE · WORK IS STILL HERE")
     }
 
     func testExportTitleInterpolation() {

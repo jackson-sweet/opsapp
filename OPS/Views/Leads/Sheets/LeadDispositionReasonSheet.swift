@@ -2,8 +2,8 @@
 //  LeadDispositionReasonSheet.swift
 //  OPS
 //
-//  Phase C correction sheet. A standard reason submits on the first tap; the
-//  optional note stays behind disclosure and is never used as model input.
+//  Phase C correction sheet. A reason is selected first and committed with one
+//  explicit footer action; optional context stays behind disclosure.
 //
 
 import SwiftUI
@@ -15,9 +15,7 @@ struct LeadDispositionReasonSheet: View {
     @Environment(\.dismiss) private var dismiss
     @State private var note = ""
     @State private var showsContext = false
-    @State private var selectedReason: LeadDispositionReason?
-
-    private var isWorking: Bool { selectedReason != nil }
+    @State private var selectionState = LeadDispositionReasonSelectionState()
 
     var body: some View {
         ZStack(alignment: .top) {
@@ -47,23 +45,19 @@ struct LeadDispositionReasonSheet: View {
                 .scrollIndicators(.hidden)
             }
         }
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            footer
+        }
         .preferredColorScheme(.dark)
-        .interactiveDismissDisabled(isWorking)
+        .interactiveDismissDisabled(selectionState.isSubmitting)
         .accessibilityIdentifier("lead-disposition-reason-sheet")
     }
 
     private func reasonRow(_ reason: LeadDispositionReason) -> some View {
+        let isSelected = selectionState.selectedReason == reason
+
         Button {
-            guard !isWorking else { return }
-            selectedReason = reason
-            Task {
-                let succeeded = await onSelect(reason, note)
-                if succeeded {
-                    dismiss()
-                } else {
-                    selectedReason = nil
-                }
-            }
+            selectionState.select(reason)
         } label: {
             HStack(spacing: OPSStyle.Layout.spacing3) {
                 VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
@@ -79,14 +73,17 @@ struct LeadDispositionReasonSheet: View {
 
                 Spacer(minLength: OPSStyle.Layout.spacing2)
 
-                if selectedReason == reason {
-                    ProgressView()
-                        .tint(OPSStyle.Colors.text2)
-                } else {
-                    Image(systemName: OPSStyle.Icons.forward)
-                        .font(OPSStyle.Typography.miniLabel)
-                        .foregroundColor(OPSStyle.Colors.textMute)
-                }
+                Image(
+                    systemName: isSelected
+                        ? OPSStyle.Icons.checkmarkCircleFill
+                        : OPSStyle.Icons.circle
+                )
+                .font(OPSStyle.Typography.smallBody)
+                .foregroundColor(
+                    isSelected
+                        ? OPSStyle.Colors.opsAccent
+                        : OPSStyle.Colors.textMute
+                )
             }
             .padding(.horizontal, OPSStyle.Layout.spacing3)
             .padding(.vertical, OPSStyle.Layout.spacing2_5)
@@ -95,10 +92,39 @@ struct LeadDispositionReasonSheet: View {
                 minHeight: OPSStyle.Layout.touchTargetStandard,
                 alignment: .leading
             )
-            .nestedCard()
+            .background(
+                RoundedRectangle(
+                    cornerRadius: OPSStyle.Layout.cardRadius,
+                    style: .continuous
+                )
+                .fill(
+                    isSelected
+                        ? OPSStyle.Colors.surfaceActive
+                        : OPSStyle.Colors.surfaceInput
+                )
+            )
+            .overlay(
+                RoundedRectangle(
+                    cornerRadius: OPSStyle.Layout.cardRadius,
+                    style: .continuous
+                )
+                .strokeBorder(
+                    isSelected
+                        ? OPSStyle.Colors.activeSegmentBorder
+                        : OPSStyle.Colors.nestedBorder,
+                    lineWidth: OPSStyle.Layout.Border.standard
+                )
+            )
+            .clipShape(
+                RoundedRectangle(
+                    cornerRadius: OPSStyle.Layout.cardRadius,
+                    style: .continuous
+                )
+            )
         }
         .buttonStyle(.plain)
-        .disabled(isWorking)
+        .disabled(selectionState.isSubmitting)
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
         .accessibilityIdentifier("lead-disposition-reason-\(reason.rawValue)")
     }
 
@@ -122,7 +148,7 @@ struct LeadDispositionReasonSheet: View {
                 )
             }
             .buttonStyle(.plain)
-            .disabled(isWorking)
+            .disabled(selectionState.isSubmitting)
             .accessibilityIdentifier("lead-disposition-context-toggle")
 
             if showsContext {
@@ -145,5 +171,47 @@ struct LeadDispositionReasonSheet: View {
             }
         }
         .padding(.top, OPSStyle.Layout.spacing2)
+    }
+
+    private var footer: some View {
+        VStack(spacing: OPSStyle.Layout.spacing2_5) {
+            if let inlineError = selectionState.inlineError {
+                SheetStatusLine(mode: .error(inlineError))
+            } else if selectionState.isSubmitting {
+                SheetStatusLine(mode: .syncing)
+            }
+
+            SheetCTAButton(
+                label: "APPLY REASON",
+                icon: OPSStyle.Icons.checkmark,
+                isLoading: selectionState.isSubmitting,
+                action: submitSelection
+            )
+            .disabled(!selectionState.canSubmit)
+            .opacity(selectionState.canSubmit ? 1 : OPSStyle.Opacity.medium)
+            .accessibilityIdentifier("lead-disposition-apply-reason")
+        }
+        .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+        .padding(.top, OPSStyle.Layout.spacing2_5)
+        .padding(.bottom, OPSStyle.Layout.spacing3_5)
+        .background(OPSStyle.Colors.background)
+        .overlay(alignment: .top) {
+            Rectangle()
+                .fill(OPSStyle.Colors.lineSoft)
+                .frame(height: OPSStyle.Layout.Border.standard)
+        }
+    }
+
+    private func submitSelection() {
+        guard let reason = selectionState.beginSubmission() else { return }
+        let normalizedNote = LeadDispositionInteractionPolicy.normalizedNote(note)
+
+        Task {
+            let succeeded = await onSelect(reason, normalizedNote)
+            selectionState.finishSubmission(succeeded: succeeded)
+            if succeeded {
+                dismiss()
+            }
+        }
     }
 }

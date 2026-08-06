@@ -111,7 +111,7 @@ struct PendingWorkView: View {
                 now: now,
                 onRetry: { actions.retryItem(item) },
                 onExport: { actions.exportItem(item) },
-                onDiscard: { actions.discardItem(item) }
+                onDiscard: { await actions.discardItem(item) }
             )
         }
         .sheet(item: $linkingDesign) { design in

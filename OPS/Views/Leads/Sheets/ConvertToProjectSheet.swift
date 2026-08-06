@@ -103,6 +103,8 @@ struct ConvertToProjectSheet: View {
     @State private var requiresMatchReviewRefresh = false
     @State private var verifiedCreateAddressFingerprint: String?
     @State private var pendingCreateAddressFingerprint: String?
+    @State private var initialClientAddressRecheckGate =
+        InitialClientAddressRecheckGate()
     /// A hidden linked project must be verified through the guarded conversion
     /// RPC before the client may present a committed win. While this flag is
     /// set, the sheet exposes no create/retry action.
@@ -232,9 +234,19 @@ struct ConvertToProjectSheet: View {
             .presentationDragIndicator(.visible)
         }
         .task {
-            let recoveredCommittedConversion = await loadPreflight()
+            let recoveredCommittedConversion = await Self.runInitialLoad(
+                resolveLinkedClient: {
+                    await resolveLinkedClient()
+                },
+                applyAddressPrefill: {
+                    applyInitialAddressPrefill()
+                },
+                loadPreflight: {
+                    await loadPreflight()
+                }
+            )
             guard !recoveredCommittedConversion else { return }
-            applyInitialFormValues()
+            applyInitialFinancialValue()
         }
     }
 
@@ -1017,7 +1029,8 @@ struct ConvertToProjectSheet: View {
         errorMessage = nil
         candidateLinkCheckFailed = false
         chipNotice = nil
-        resolveLinkedClient()
+
+        var shouldAutomaticallyRecheckClientAddress = false
 
         // SERVER preflight — single source of truth for render state + suggested
         // name. Replaces the prior local SwiftData duplicate/other-projects
@@ -1076,12 +1089,31 @@ struct ConvertToProjectSheet: View {
             chipNotice = state.refs.isEmpty ? nil : state.statusMessage
             errorMessage = state.refs.isEmpty ? state.statusMessage : nil
             preflightFailed = false
+            shouldAutomaticallyRecheckClientAddress =
+                initialClientAddressRecheckGate.consume(
+                    creationBlocker: creationBlocker,
+                    address: addressText,
+                    isFromClient: addressIsFromClient
+                )
         } catch {
             // Fail closed. RETRY CHECK is the only committing footer action
             // until the authoritative preflight read passes.
             preflightFailed = true
             suggestedName = ""
             errorMessage = "COULD NOT CHECK PROJECTS — RETRY"
+        }
+
+        if shouldAutomaticallyRecheckClientAddress {
+            do {
+                return try await stopForCreateAddressRecheckIfNeeded(
+                    companyId: companyId
+                )
+            } catch {
+                // The authoritative preflight succeeded. Keep its blocker and
+                // the borrowed address visible so the operator can retry the
+                // existing CHECK ADDRESS action without retyping anything.
+                errorMessage = simplifyError(error)
+            }
         }
 
         // Network fetch (estimates + line items) — still drives the tasks preview.
@@ -1139,20 +1171,34 @@ struct ConvertToProjectSheet: View {
     /// Resolves the lead's linked client from the local store, then the
     /// repository. The client record holds the address and contact details a
     /// client-page lead never got its own copy of (bug a7df1f37).
-    private func resolveLinkedClient() {
-        guard linkedClient == nil,
-              let clientId = opportunity.clientId?
-                .trimmingCharacters(in: .whitespacesAndNewlines),
-              !clientId.isEmpty else { return }
+    private func resolveLinkedClient() async {
+        guard linkedClient == nil else { return }
 
-        var descriptor = FetchDescriptor<Client>(
-            predicate: #Predicate<Client> { $0.id == clientId }
+        linkedClient = await Self.resolveLinkedClientValue(
+            clientId: opportunity.clientId,
+            local: { clientId in
+                var descriptor = FetchDescriptor<Client>(
+                    predicate: #Predicate<Client> { $0.id == clientId }
+                )
+                descriptor.fetchLimit = 1
+                guard let local = (try? modelContext.fetch(descriptor))?.first,
+                      local.companyId == opportunity.companyId else {
+                    return nil
+                }
+                return local
+            },
+            remote: { clientId in
+                let repository = ClientRepository(companyId: opportunity.companyId)
+                let dto = try await repository.fetchOne(clientId)
+                guard dto.companyId == opportunity.companyId else {
+                    throw LinkedClientResolutionError.tenantMismatch
+                }
+                return dto.toModel()
+            }
         )
-        descriptor.fetchLimit = 1
-        linkedClient = (try? modelContext.fetch(descriptor))?.first
     }
 
-    private func applyInitialFormValues() {
+    private func applyInitialAddressPrefill() {
         if addressText.isEmpty {
             let prefill = Self.addressPrefill(
                 opportunityAddress: opportunity.address,
@@ -1167,6 +1213,9 @@ struct ConvertToProjectSheet: View {
             prefilledLongitude = prefill.longitude
             addressIsFromClient = prefill.isFromClient
         }
+    }
+
+    private func applyInitialFinancialValue() {
         if actualValueText.isEmpty {
             let prefillValue = estimateBundles.first?.estimate.total
                 ?? opportunity.estimatedValue
@@ -1513,8 +1562,19 @@ struct ConvertToProjectSheet: View {
         hasLoadedPreflight = false
 
         Task {
-            let recovered = await loadPreflight()
+            let recovered = await Self.runInitialLoad(
+                resolveLinkedClient: {
+                    await resolveLinkedClient()
+                },
+                applyAddressPrefill: {
+                    applyInitialAddressPrefill()
+                },
+                loadPreflight: {
+                    await loadPreflight()
+                }
+            )
             if recovered { return }
+            applyInitialFinancialValue()
             if !preflightFailed {
                 requiresMatchReviewRefresh = false
                 if let pendingCreateAddressFingerprint {
@@ -1857,6 +1917,66 @@ extension ConvertToProjectSheet {
     }
 
     // MARK: - Prefill (bug a7df1f37)
+
+    /// Executes the opening sequence in the only safe order: client identity,
+    /// visible address, then the authoritative duplicate preflight.
+    @MainActor
+    static func runInitialLoad(
+        resolveLinkedClient: () async -> Void,
+        applyAddressPrefill: () -> Void,
+        loadPreflight: () async -> Bool
+    ) async -> Bool {
+        await resolveLinkedClient()
+        applyAddressPrefill()
+        return await loadPreflight()
+    }
+
+    /// Predicate-scoped local resolution with a tenant-scoped repository
+    /// fallback. The generic value keeps the ordering contract deterministic
+    /// in tests while production passes the real SwiftData `Client` model.
+    @MainActor
+    static func resolveLinkedClientValue<Value>(
+        clientId: String?,
+        local: (String) -> Value?,
+        remote: (String) async throws -> Value
+    ) async -> Value? {
+        guard let clientId = clientId?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+              !clientId.isEmpty else { return nil }
+
+        if let localValue = local(clientId) {
+            return localValue
+        }
+
+        return try? await remote(clientId)
+    }
+
+    /// One-shot guard for the only automatic write. A client-borrowed address
+    /// is pushed onto the lead only after the server proves it cannot match
+    /// projects without that denormalized value.
+    struct InitialClientAddressRecheckGate: Equatable {
+        private(set) var hasAttempted = false
+
+        mutating func consume(
+            creationBlocker: ConversionPreflightCreationBlocker?,
+            address: String,
+            isFromClient: Bool
+        ) -> Bool {
+            guard !hasAttempted,
+                  creationBlocker == .addressRequired,
+                  isFromClient,
+                  !address.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                return false
+            }
+
+            hasAttempted = true
+            return true
+        }
+    }
+
+    private enum LinkedClientResolutionError: Error {
+        case tenantMismatch
+    }
 
     /// The ADDRESS the convert form opens with, and where it came from.
     struct AddressPrefill: Equatable {

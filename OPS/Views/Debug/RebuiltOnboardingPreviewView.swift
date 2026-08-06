@@ -596,7 +596,11 @@ private enum PreviewSeed {
 }
 
 @MainActor private struct StubCompanyBoundary: CompanyCreationBoundary {
-    func createCompany(name: String, industries: [String]) async -> CompanyCreationOutcome { .created(code: "7F3K-92QX") }
+    func createCompany(
+        name: String,
+        industries: [String],
+        referralSource: String?
+    ) async -> CompanyCreationOutcome { .created(code: "7F3K-92QX") }
 }
 
 @MainActor private struct StubInviteCheckBoundary: InviteCheckBoundary {

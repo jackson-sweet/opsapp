@@ -83,10 +83,15 @@ enum CompanyCreationOutcome: Equatable {
 @MainActor
 protocol CompanyCreationBoundary {
     /// Create the company. `name` is the validated, trimmed company name; `industries`
-    /// is the (possibly empty) optional primary-trade selection. Returns the outcome
+    /// is the (possibly empty) optional primary-trade selection; `referralSource` is
+    /// the optional `ReferralSource` slug ("how'd you find us"). Returns the outcome
     /// the screen branches on — never throws (failures are mapped to `.failed` /
     /// typed cases).
-    func createCompany(name: String, industries: [String]) async -> CompanyCreationOutcome
+    func createCompany(
+        name: String,
+        industries: [String],
+        referralSource: String?
+    ) async -> CompanyCreationOutcome
 }
 
 // MARK: - S4o screen
@@ -160,6 +165,10 @@ struct CompanyNameStepView: View {
     /// array on every change.
     @State private var selectedTrade: String?
 
+    /// Selected `ReferralSource` slug, or nil. Optional and never validated —
+    /// it must never gate the CTA.
+    @State private var selectedReferral: String?
+
     /// True once the user has tried to submit — gates whether the name field error
     /// renders (the form is clean before the first attempt).
     @State private var didAttemptSubmit = false
@@ -214,6 +223,9 @@ struct CompanyNameStepView: View {
                 .padding(.horizontal, OPSStyle.Layout.spacing3_5)
 
             tradeBlock
+                .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+
+            referralBlock
                 .padding(.horizontal, OPSStyle.Layout.spacing3_5)
 
             ctaBlock
@@ -300,13 +312,40 @@ struct CompanyNameStepView: View {
                 .accessibilityLabel("Primary trade, optional")
 
             // Wrap layout — single-select chips. Tapping a selected chip clears it.
-            TradeChipFlow(
-                trades: Self.primaryTrades,
+            OptionChipFlow(
+                options: Self.primaryTrades.map { ($0, $0) },
                 selected: selectedTrade,
                 onSelect: { trade in
                     OnboardingHaptics.selection()
                     selectedTrade = (selectedTrade == trade) ? nil : trade
                     persistTrade(selectedTrade)
+                }
+            )
+        }
+    }
+
+    // MARK: - Optional "how'd you find us" chips (Unified Attribution P2)
+
+    /// The one acquisition signal that survives an App Store install. Rides this
+    /// screen rather than owning one — it is worth nothing to the person
+    /// answering it, so it must cost them nothing. Same contract as the trade
+    /// chips: never gates the CTA, and tapping the selected chip clears it, so
+    /// deselection IS the skip and no skip control is needed.
+    private var referralBlock: some View {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2_5) {
+            Text("// HOW'D YOU FIND US — OPTIONAL")
+                .font(OPSStyle.Typography.metadata) // JetBrains Mono 11pt
+                .foregroundColor(OPSStyle.Colors.text3)
+                .tracking(1.4)
+                .accessibilityLabel("How'd you find us, optional")
+
+            OptionChipFlow(
+                options: ReferralSource.allCases.map { ($0.slug, $0.label) },
+                selected: selectedReferral,
+                onSelect: { slug in
+                    OnboardingHaptics.selection()
+                    selectedReferral = (selectedReferral == slug) ? nil : slug
+                    persistReferral(selectedReferral)
                 }
             )
         }
@@ -379,9 +418,14 @@ struct CompanyNameStepView: View {
         let industries = selectedTrade.map { [$0] } ?? []
         persistName(name)
         persistTrade(selectedTrade)
+        persistReferral(selectedReferral)
 
         Task { @MainActor in
-            let outcome = await boundary.createCompany(name: name, industries: industries)
+            let outcome = await boundary.createCompany(
+                name: name,
+                industries: industries,
+                referralSource: selectedReferral
+            )
             isCreating = false
             handle(outcome)
         }
@@ -428,6 +472,12 @@ struct CompanyNameStepView: View {
         onUpdateFormData { $0.industries = trade.map { [$0] } }
     }
 
+    /// Persist the "how'd you find us" slug (nil when cleared) so a killed-mid-flow
+    /// resume keeps the answer.
+    private func persistReferral(_ slug: String?) {
+        onUpdateFormData { $0.referralMethod = slug }
+    }
+
     // MARK: - Primary trades (flow-local; the company's main line of work)
 
     /// The trade chip options. Ordered by trade frequency among OPS's audience.
@@ -448,11 +498,15 @@ struct CompanyNameStepView: View {
 
 // MARK: - Trade chip flow (wrap layout, single-select)
 
-/// A wrapping row of single-select trade chips. §4.3 chip visual: chipRadius,
+/// A wrapping row of single-select chips. §4.3 chip visual: chipRadius,
 /// surfaceInput fill, hairline border, 36pt min height (the one sanctioned sub-44pt
 /// target). Selected chip brightens (surfaceActive + brighter border) — NO accent.
-private struct TradeChipFlow: View {
-    let trades: [String]
+///
+/// Options are `(value, label)` pairs so the STORED value can differ from the
+/// displayed copy — trades store their label, referral sources store a stable
+/// slug whose wording is free to change.
+private struct OptionChipFlow: View {
+    let options: [(value: String, label: String)]
     let selected: String?
     let onSelect: (String) -> Void
 
@@ -460,11 +514,11 @@ private struct TradeChipFlow: View {
         // A simple wrapping flow built on `FlowLayout` so chips reflow to the next
         // line as needed — no horizontal scroll, every option visible at a glance.
         FlowLayout(spacing: OPSStyle.Layout.spacing2) {
-            ForEach(trades, id: \.self) { trade in
+            ForEach(options, id: \.value) { option in
                 TradeChip(
-                    label: trade,
-                    isSelected: selected == trade,
-                    action: { onSelect(trade) }
+                    label: option.label,
+                    isSelected: selected == option.value,
+                    action: { onSelect(option.value) }
                 )
             }
         }
@@ -549,7 +603,11 @@ struct CompanyNameValidation: Equatable {
 /// A preview/stub boundary — no network. Returns a fixed outcome.
 private struct PreviewCompanyBoundary: CompanyCreationBoundary {
     var outcome: CompanyCreationOutcome = .created(code: "BR8K-90ZT")
-    func createCompany(name: String, industries: [String]) async -> CompanyCreationOutcome { outcome }
+    func createCompany(
+        name: String,
+        industries: [String],
+        referralSource: String?
+    ) async -> CompanyCreationOutcome { outcome }
 }
 
 #Preview("CompanyNameStepView — default") {

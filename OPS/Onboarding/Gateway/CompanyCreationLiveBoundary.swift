@@ -33,7 +33,11 @@ struct CompanyCreationLiveBoundary: CompanyCreationBoundary {
 
     let manager: OnboardingManager
 
-    func createCompany(name: String, industries: [String]) async -> CompanyCreationOutcome {
+    func createCompany(
+        name: String,
+        industries: [String],
+        referralSource: String?
+    ) async -> CompanyCreationOutcome {
         // Ensure the company-creator flow is selected so the manager's state is
         // configured the way createCompanyViaRPC expects (idempotent).
         manager.selectFlow(.companyCreator)
@@ -44,6 +48,10 @@ struct CompanyCreationLiveBoundary: CompanyCreationBoundary {
         // The manager models a SINGLE primary industry string; the optional trade
         // chip is 0/1 element, so take the first (empty = no industry).
         manager.state.companyData.industry = industries.first ?? ""
+        // "How'd you find us" (Unified Attribution P2). The shared RPC does not
+        // accept it, so the manager writes it to companies.referral_method after
+        // the company exists — same pattern web uses for its extra fields.
+        manager.state.companyData.referralMethod = referralSource
 
         do {
             let code = try await manager.createCompanyViaRPC()

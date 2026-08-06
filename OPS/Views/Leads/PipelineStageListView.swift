@@ -56,6 +56,10 @@ struct PipelineStageListView: View {
     /// one source for the whole surface, so a lead reads the same name here as
     /// it does in the queue. Empty when the assignment gate is closed.
     var assigneeIndex: [String: String] = [:]
+    /// Raises the tab's one site-visit cover for a lead — the card's VISIT chip
+    /// (addendum §14.3). Routed up rather than owned here for the same reason
+    /// `onLeadTap` is: one destination per surface, never a nested second one.
+    var onStartSiteVisit: (Opportunity) -> Void = { _ in }
 
     @EnvironmentObject private var dataController: DataController
     @EnvironmentObject private var permissionStore: PermissionStore
@@ -76,12 +80,14 @@ struct PipelineStageListView: View {
         viewModel: PipelineViewModel,
         onLeadTap: @escaping (Opportunity) -> Void = { _ in },
         onRequestSheet: @escaping (LeadsSheet) -> Void = { _ in },
-        assigneeIndex: [String: String] = [:]
+        assigneeIndex: [String: String] = [:],
+        onStartSiteVisit: @escaping (Opportunity) -> Void = { _ in }
     ) {
         _viewModel = ObservedObject(wrappedValue: viewModel)
         self.onLeadTap = onLeadTap
         self.onRequestSheet = onRequestSheet
         self.assigneeIndex = assigneeIndex
+        self.onStartSiteVisit = onStartSiteVisit
         _selectedStage = State(initialValue: stage)
     }
 
@@ -279,6 +285,7 @@ struct PipelineStageListView: View {
             canEdit: canEdit(lead),
             canConvert: canConvert(lead),
             assigneeLabel: assigneeIndex[lead.id],
+            onStartSiteVisit: { onStartSiteVisit(lead) },
             onTap:     { onLeadTap(lead) },
             onLog:     { onRequestSheet(.log(lead)) },
             onHandled: { markHandled(lead) },

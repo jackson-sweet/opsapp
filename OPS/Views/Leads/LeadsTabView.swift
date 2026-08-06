@@ -246,7 +246,10 @@ struct LeadsTabView: View {
                     onRequestSheet: { activeSheet = $0 },
                     // One source for assignee labels: the console resolves
                     // them, the browser reads them.
-                    assigneeIndex: assigneeIndex
+                    assigneeIndex: assigneeIndex,
+                    // One site-visit cover for the whole tab — the browser
+                    // raises the same one the queue does.
+                    onStartSiteVisit: { activeSiteVisitLead = $0 }
                 )
                 .environmentObject(dataController)
                 .environmentObject(permissionStore)
@@ -635,6 +638,13 @@ struct LeadsTabView: View {
             canEdit: canEdit(lead),
             canConvert: canConvert(lead),
             assigneeLabel: assignees[lead.id],
+            // The SAME cover the detail screen, the day sheet, the FAB and the
+            // add-lead sheet already drive — `SiteVisitCaptureViewModel
+            // .loadOrCreateVisit` resumes this lead's open visit or starts one.
+            // The card gates its own chip on `canConvert && !isTerminal`
+            // (verbatim LeadDetailView's), and `canConvert` above is already
+            // entity-relative, so no second gate belongs here.
+            onStartSiteVisit: { activeSiteVisitLead = lead },
             onTap:     { detailLead = lead },
             onLog:     { activeSheet = .log(lead) },
             onHandled: { markHandled(lead) },

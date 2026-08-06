@@ -888,6 +888,74 @@ final class SyncEngine {
         let changedFields: [String: Any]
     }
 
+    enum TransactionalOperationStagingError: Error {
+        case contextUnavailable
+        case contextMismatch
+        case payloadEncodingFailed
+    }
+
+    /// Inserts a complete ordered batch into an already-open ModelContext
+    /// transaction without saving it. Payloads are encoded before the first
+    /// insert, so the production stager itself is all-or-nothing; the caller's
+    /// transaction owns the final atomic commit with the associated model edits.
+    func stageOperationsForTransaction(
+        _ specs: [BulkOperationSpec],
+        in transactionContext: ModelContext
+    ) throws -> [SyncOperation] {
+        guard let modelContext else {
+            throw TransactionalOperationStagingError.contextUnavailable
+        }
+        guard modelContext === transactionContext else {
+            throw TransactionalOperationStagingError.contextMismatch
+        }
+        guard !specs.isEmpty else { return [] }
+
+        let prepared: [(spec: BulkOperationSpec, payload: Data)]
+        do {
+            prepared = try specs.map { spec in
+                (
+                    spec,
+                    try JSONSerialization.data(
+                        withJSONObject: spec.changedFields,
+                        options: []
+                    )
+                )
+            }
+        } catch {
+            throw TransactionalOperationStagingError.payloadEncodingFailed
+        }
+
+        var nextCreatedAt = Date()
+        return prepared.map { preparedOperation in
+            let spec = preparedOperation.spec
+            let operation = SyncOperation(
+                entityType: spec.entityType.rawValue,
+                entityId: spec.entityId.lowercased(),
+                operationType: spec.operationType,
+                payload: preparedOperation.payload,
+                changedFields: Array(spec.changedFields.keys),
+                previousValues: nil,
+                priority: 1,
+                dependsOnId: nil
+            )
+            operation.createdAt = nextCreatedAt
+            nextCreatedAt = Date(
+                timeIntervalSinceReferenceDate:
+                    nextCreatedAt.timeIntervalSinceReferenceDate.nextUp
+            )
+            transactionContext.insert(operation)
+            return operation
+        }
+    }
+
+    /// Refreshes observable outbox state only after the caller's shared model +
+    /// ledger transaction has committed successfully.
+    func didPersistStagedOperations(_ operations: [SyncOperation]) {
+        guard !operations.isEmpty else { return }
+        refreshPendingCount()
+        print("[SYNC_ENGINE] Persisted \(operations.count) staged operation(s) atomically")
+    }
+
     /// Enqueue many operations with a SINGLE context save and NO per-op push.
     /// Built for bulk applies (priority-queue / auto-schedule run) so N task
     /// writes don't trigger N saves + N pushes — the cause of the main-thread

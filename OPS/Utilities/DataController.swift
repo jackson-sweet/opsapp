@@ -5732,13 +5732,40 @@ class DataController: ObservableObject {
 
     // MARK: - Restore Operations (Trash / Undo)
 
+    typealias TrashRecoveryOperationStager = (
+        [SyncEngine.BulkOperationSpec],
+        ModelContext
+    ) throws -> [SyncOperation]
+
+    private enum TrashRecoveryTransactionFailure: Error {
+        case stagingFailed
+        case incompleteLedger
+    }
+
     /// Restores one Trash record, or a task plus its deleted Project parent, as
-    /// one local recovery decision. The local tombstones MUST persist before
-    /// any outbound operation is created. A failed save restores the exact
-    /// in-memory values and leaves the sync ledger untouched.
+    /// one durable local transaction. Tombstone removal and the complete,
+    /// parent-first outbound ledger batch commit together or neither commits.
     @MainActor
     func restoreTrash(_ plan: TrashRecoveryPlan) async throws -> TrashRestoreResult {
-        guard let context = modelContext, syncEngine != nil else {
+        guard let syncEngine else {
+            throw TrashRestoreError.contextUnavailable
+        }
+        return try await restoreTrash(
+            plan,
+            stagingOperationsWith: { specs, context in
+                try syncEngine.stageOperationsForTransaction(specs, in: context)
+            }
+        )
+    }
+
+    /// Injectable transaction seam used by durability regression coverage.
+    /// Production always supplies SyncEngine's encode-first stager above.
+    @MainActor
+    func restoreTrash(
+        _ plan: TrashRecoveryPlan,
+        stagingOperationsWith stageOperations: TrashRecoveryOperationStager
+    ) async throws -> TrashRestoreResult {
+        guard let context = modelContext, let syncEngine else {
             throw TrashRestoreError.contextUnavailable
         }
         guard plan.isRestorable else {
@@ -5764,82 +5791,138 @@ class DataController: ObservableObject {
             }
         }
 
+        // ModelContext.transaction owns every change made after this point.
+        // Flush any unrelated pending edits first so rollback can be scoped to
+        // this recovery decision without discarding another feature's work.
+        do {
+            if context.hasChanges {
+                try context.save()
+            }
+        } catch {
+            throw TrashRestoreError.persistenceFailed(error.localizedDescription)
+        }
+
+        let operationIDsBeforeTransaction: Set<UUID>
+        do {
+            operationIDsBeforeTransaction = Set(
+                try context.fetch(FetchDescriptor<SyncOperation>()).map(\.id)
+            )
+        } catch {
+            throw TrashRestoreError.persistenceFailed(error.localizedDescription)
+        }
+
         var seen = Set<String>()
         let orderedEntities = plan.restoreOrder.filter { seen.insert($0.stableID).inserted }
-        var rollback: [() -> Void] = []
         var restored: [TrashRecoveryEntityRef] = []
+        var stagedOperations: [SyncOperation] = []
 
         do {
-            for entity in orderedEntities {
-                switch entity.kind {
-                case .project:
-                    let project = try trashProject(id: entity.id, context: context)
-                    guard project.deletedAt != nil else { continue }
-                    let deletedAt = project.deletedAt
-                    let needsSync = project.needsSync
-                    rollback.append {
-                        project.deletedAt = deletedAt
-                        project.needsSync = needsSync
-                    }
-                    project.deletedAt = nil
-                    project.needsSync = true
-                    restored.append(entity)
+            try context.transaction {
+                for entity in orderedEntities {
+                    switch entity.kind {
+                    case .project:
+                        let project = try trashProject(id: entity.id, context: context)
+                        guard project.deletedAt != nil else { continue }
+                        project.deletedAt = nil
+                        project.needsSync = true
+                        restored.append(entity)
 
-                case .client:
-                    let client = try trashClient(id: entity.id, context: context)
-                    guard client.deletedAt != nil else { continue }
-                    let deletedAt = client.deletedAt
-                    let needsSync = client.needsSync
-                    rollback.append {
-                        client.deletedAt = deletedAt
-                        client.needsSync = needsSync
-                    }
-                    client.deletedAt = nil
-                    client.needsSync = true
-                    restored.append(entity)
+                    case .client:
+                        let client = try trashClient(id: entity.id, context: context)
+                        guard client.deletedAt != nil else { continue }
+                        client.deletedAt = nil
+                        client.needsSync = true
+                        restored.append(entity)
 
-                case .task:
-                    let task = try trashTask(id: entity.id, context: context)
-                    guard task.deletedAt != nil else { continue }
-                    let deletedAt = task.deletedAt
-                    let needsSync = task.needsSync
-                    rollback.append {
-                        task.deletedAt = deletedAt
-                        task.needsSync = needsSync
+                    case .task:
+                        let task = try trashTask(id: entity.id, context: context)
+                        guard task.deletedAt != nil else { continue }
+                        task.deletedAt = nil
+                        task.needsSync = true
+                        restored.append(entity)
                     }
-                    task.deletedAt = nil
-                    task.needsSync = true
-                    restored.append(entity)
+                }
+
+                guard !restored.isEmpty else {
+                    throw TrashRestoreError.nothingToRestore
+                }
+
+                let operationSpecs = restored.map { entity in
+                    SyncEngine.BulkOperationSpec(
+                        entityType: syncEntityType(for: entity.kind),
+                        entityId: entity.id,
+                        operationType: "update",
+                        changedFields: ["deleted_at": NSNull()]
+                    )
+                }
+
+                do {
+                    stagedOperations = try stageOperations(operationSpecs, context)
+                } catch {
+                    throw TrashRecoveryTransactionFailure.stagingFailed
+                }
+
+                let stagedIDs = Set(stagedOperations.map(\.id))
+                let operationIDsInsideTransaction = Set(
+                    try context.fetch(FetchDescriptor<SyncOperation>()).map(\.id)
+                )
+                let preservesParentFirstOrder = zip(
+                    stagedOperations,
+                    stagedOperations.dropFirst()
+                ).allSatisfy { pair in
+                    pair.0.createdAt < pair.1.createdAt
+                }
+                let hasCompleteNewBatch = stagedOperations.count == operationSpecs.count
+                    && stagedIDs.count == operationSpecs.count
+                    && stagedIDs.isDisjoint(with: operationIDsBeforeTransaction)
+                    && stagedIDs.isSubset(of: operationIDsInsideTransaction)
+                    && preservesParentFirstOrder
+                    && zip(stagedOperations, operationSpecs).allSatisfy { pair in
+                        stagedTrashOperationMatches(pair.0, spec: pair.1)
+                    }
+
+                guard hasCompleteNewBatch else {
+                    throw TrashRecoveryTransactionFailure.incompleteLedger
                 }
             }
-
-            guard !restored.isEmpty else { throw TrashRestoreError.nothingToRestore }
-            try context.save()
         } catch {
-            rollback.reversed().forEach { $0() }
+            // The preflight save above established a clean baseline, so this
+            // discards every partial insert and restores every mutated model to
+            // its exact committed tombstone/needsSync state.
+            context.rollback()
+            if error is TrashRecoveryTransactionFailure {
+                throw TrashRestoreError.syncQueueFailed
+            }
             if let restoreError = error as? TrashRestoreError {
                 throw restoreError
             }
             throw TrashRestoreError.persistenceFailed(error.localizedDescription)
         }
 
-        let operationSpecs = restored.map { entity in
-            SyncEngine.BulkOperationSpec(
-                entityType: syncEntityType(for: entity.kind),
-                entityId: entity.id,
-                operationType: "update",
-                changedFields: ["deleted_at": NSNull()]
-            )
-        }
-        let recorded = syncEngine.recordOperations(operationSpecs)
-        guard recorded == operationSpecs.count else {
-            throw TrashRestoreError.syncQueueFailed
-        }
+        syncEngine.didPersistStagedOperations(stagedOperations)
 
         if connectivity?.shouldAttemptSync == true {
             Task { await syncEngine.pushPending() }
         }
         return TrashRestoreResult(restored: restored)
+    }
+
+    private func stagedTrashOperationMatches(
+        _ operation: SyncOperation,
+        spec: SyncEngine.BulkOperationSpec
+    ) -> Bool {
+        guard operation.entityType == spec.entityType.rawValue,
+              operation.entityId == spec.entityId.lowercased(),
+              operation.operationType == spec.operationType,
+              operation.isPending,
+              Set(operation.getChangedFields()) == Set(spec.changedFields.keys),
+              let payload = try? JSONSerialization.jsonObject(with: operation.payload),
+              let fields = payload as? [String: Any],
+              Set(fields.keys) == Set(spec.changedFields.keys),
+              fields["deleted_at"] is NSNull else {
+            return false
+        }
+        return true
     }
 
     @MainActor

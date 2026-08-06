@@ -18,6 +18,7 @@ struct DeckBuilderView: View {
     @State private var showing3DScreenshotShare = false
     @State private var screenshotImage: UIImage?
     @State private var editingTitleText: String = ""
+    @State private var measuredBottomChromeHeight: CGFloat = 0
     @StateObject private var estimateVM = EstimateViewModel()
     @Environment(\.modelContext) private var env_modelContext
     @Environment(\.scenePhase) private var scenePhase
@@ -42,6 +43,16 @@ struct DeckBuilderView: View {
         return keyWindow?.safeAreaInsets.top ?? 0
     }
 
+    /// The 2D canvas deliberately renders beneath the home-indicator region,
+    /// while interactive chrome stays above it. Read the live key-window inset
+    /// so compact and Dynamic Island phones receive the same physical-edge
+    /// canvas treatment without placing controls in the unsafe region.
+    private var bottomSafeAreaInset: CGFloat {
+        let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
+        let keyWindow = scenes.flatMap { $0.windows }.first(where: { $0.isKeyWindow })
+        return keyWindow?.safeAreaInsets.bottom ?? 0
+    }
+
     /// Extra top padding applied to every floating canvas overlay (title
     /// pill, edit cluster, live-dim pill, screenshot button) ON TOP of the
     /// inherited safe-area inset. The container ZStack/VStack already
@@ -53,6 +64,14 @@ struct DeckBuilderView: View {
     /// the title visibly far below the island.
     private var floatingHeaderTopPadding: CGFloat {
         max(0, OPSStyle.Layout.spacing3 - topSafeAreaInset)
+    }
+
+    /// In 2D the root canvas ignores every safe area, so its floating header
+    /// needs the complete top clearance rather than the 3D view's incremental
+    /// padding. This recreates the existing safe header position while the
+    /// rendered canvas continues behind the hardware cutout.
+    private var fullBleedHeaderTopPadding: CGFloat {
+        max(OPSStyle.Layout.spacing3, topSafeAreaInset)
     }
 
     init(deckDesign: DeckDesign, modelContext: ModelContext, syncEngine: SyncEngine? = nil, projectName: String? = nil) {
@@ -104,20 +123,22 @@ struct DeckBuilderView: View {
                 }
                 .transition(.opacity)
             } else {
-                // 2D mode: canvas fills screen, title bar floats on top
+                // 2D mode: one full-screen render surface with every control
+                // floating above it. Bottom chrome no longer subtracts its
+                // height from the canvas; its measured height instead defines
+                // the unobstructed camera and gesture work area.
                 ZStack(alignment: .top) {
-                    // Full-bleed canvas — extends under the status bar / dynamic
-                    // island and to the screen edges. The bottom DeckToolbar is
-                    // a sibling of this ZStack so the bottom safe-area inset is
-                    // preserved for the home indicator. Bug 0a5f3fe1.
                     ZStack(alignment: .bottomTrailing) {
-                        DeckCanvasView(viewModel: viewModel)
-                            .ignoresSafeArea(edges: [.top, .horizontal])
+                        DeckCanvasView(
+                            viewModel: viewModel,
+                            bottomChromeInset: measuredBottomChromeHeight
+                        )
 
                         if PerimeterSpeedDrawToolbarPolicy.showsCanvasOverlay(for: viewModel.perimeterEntry) {
                             PerimeterSpeedDrawOverlayView(viewModel: viewModel)
                                 .padding(.horizontal, OPSStyle.Layout.spacing3)
-                                .padding(.bottom, OPSStyle.Layout.spacing3)
+                                .padding(.bottom, bottomSafeAreaInset + OPSStyle.Layout.spacing3)
+                                .reportDeckBuilderBottomChromeHeight()
                                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
                                 .transition(.opacity.combined(with: .move(edge: .bottom)))
                                 .zIndex(30)
@@ -136,7 +157,7 @@ struct DeckBuilderView: View {
                             && PerimeterSpeedDrawToolbarPolicy.showsStandardToolbar(for: viewModel.perimeterEntry) {
                             AssignmentWheelView(viewModel: viewModel)
                                 .padding(.trailing, OPSStyle.Layout.spacing4)
-                                .padding(.bottom, OPSStyle.Layout.spacing4)
+                                .padding(.bottom, measuredBottomChromeHeight + OPSStyle.Layout.spacing4)
                                 .transition(.scale.combined(with: .opacity))
                         }
 
@@ -208,14 +229,19 @@ struct DeckBuilderView: View {
                         // position whether or not a draw is in flight.
                         let canEditDeck = PermissionStore.shared.can("deck_builder.edit")
                         let showEditCluster = canEditDeck && viewModel.liveDimensionLabel == nil
-                        let showMetrics = viewModel.isClosed && viewModel.totalArea != nil
-                        let hasLeadingPill = viewModel.liveDimensionLabel != nil || showMetrics
+                        let metricReadout = DeckBuilderMetricReadout.build(
+                            drawingData: viewModel.drawingData,
+                            selection: viewModel.selection,
+                            wholeArea: viewModel.totalArea,
+                            wholeLength: viewModel.totalPerimeter
+                        )
+                        let hasLeadingPill = viewModel.liveDimensionLabel != nil || metricReadout.shouldDisplay
                         if hasLeadingPill || showEditCluster {
                             HStack(alignment: .center, spacing: OPSStyle.Layout.spacing2) {
                                 if let liveLabel = viewModel.liveDimensionLabel {
                                     liveDimensionPill(label: liveLabel)
-                                } else if showMetrics, let area = viewModel.totalArea {
-                                    metricsContent(area: area)
+                                } else if metricReadout.shouldDisplay {
+                                    metricsContent(readout: metricReadout)
                                 }
                                 Spacer(minLength: 0)
                                 if showEditCluster {
@@ -232,34 +258,39 @@ struct DeckBuilderView: View {
 
                         Spacer(minLength: 0)
                     }
-                    // Floating header sits inside the safe area while the canvas
-                    // extends under it. Horizontal: spacing4 from screen edge so
-                    // the title pill clears the rounded corners and never bleeds
-                    // off-screen. Top: `floatingHeaderTopPadding` reads the device
-                    // safe-area inset so the pill always sits below the Dynamic
-                    // Island / notch instead of being clipped by it (bug
-                    // 55083a46). spacing3 is the minimum on devices without a
-                    // hardware cutout (small iPhone SE).
+                    // The 2D root is physically full bleed, so this overlay adds
+                    // its own hardware-safe top clearance. Horizontal spacing4
+                    // clears rounded screen corners and keeps every pill within
+                    // the narrow-phone viewport.
                     .padding(.horizontal, OPSStyle.Layout.spacing4)
-                    .padding(.top, floatingHeaderTopPadding)
+                    .padding(.top, fullBleedHeaderTopPadding)
                     .allowsHitTesting(true)
 
-                } // end ZStack (top-aligned, floating title over canvas)
-
-                if PerimeterSpeedDrawToolbarPolicy.showsStandardToolbar(for: viewModel.perimeterEntry) {
-                    // Toolbar — below the canvas. Wrapped in horizontal padding +
-                    // bottom gap + clipped corners so its cardBackground reads as a
-                    // contained pill instead of a full-width bar bleeding to the
-                    // screen edges. Matches the floating header pill aesthetic.
-                    // Bug 0a5f3fe1 follow-up.
-                    DeckToolbar(viewModel: viewModel)
-                        .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                            .stroke(OPSStyle.Colors.cardBorder.opacity(0.6), lineWidth: OPSStyle.Layout.Border.standard)
-                        )
-                        .padding(.horizontal, OPSStyle.Layout.spacing4)
-                        .padding(.bottom, OPSStyle.Layout.spacing2)
+                    if PerimeterSpeedDrawToolbarPolicy.showsStandardToolbar(for: viewModel.perimeterEntry) {
+                        // The toolbar is chrome over the full-bleed canvas. Its
+                        // complete footprint (including safe-area clearance) is
+                        // reported before the flexible bottom-alignment frame so
+                        // camera fitting and overlays stay above it.
+                        DeckToolbar(viewModel: viewModel)
+                            .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
+                                    .stroke(
+                                        OPSStyle.Colors.cardBorder.opacity(0.6),
+                                        lineWidth: OPSStyle.Layout.Border.standard
+                                    )
+                            )
+                            .padding(.horizontal, OPSStyle.Layout.spacing4)
+                            .padding(.bottom, bottomSafeAreaInset + OPSStyle.Layout.spacing2)
+                            .reportDeckBuilderBottomChromeHeight()
+                            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+                            .zIndex(30)
+                    }
+                } // end ZStack (top-aligned, floating chrome over canvas)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .ignoresSafeArea()
+                .onPreferenceChange(DeckBuilderBottomChromeHeightPreferenceKey.self) { height in
+                    measuredBottomChromeHeight = height
                 }
             }
         }
@@ -787,33 +818,55 @@ struct DeckBuilderView: View {
 
     // MARK: - Metrics + AR content (compact, single-row)
 
-    /// Pill-shaped metrics content (sqft + lin ft). Sized to its intrinsic
-    /// width; the parent decides whether to share a row with the AR banner.
+    /// Stable two-field instrument. Empty selection shows the whole design;
+    /// any active selection becomes authoritative immediately, with an em dash
+    /// for a measurement that selection cannot supply (for example, vertex-only
+    /// or edge-only area).
     @ViewBuilder
-    private func metricsContent(area: Double) -> some View {
-        HStack(spacing: OPSStyle.Layout.spacing3) {
-            Label(DimensionEngine.formatArea(area, system: viewModel.drawingData.config.measurementSystem),
-                  systemImage: "square.dashed")
-                .font(OPSStyle.Typography.bodyBold)
-                .foregroundColor(Color.white)
-                .lineLimit(1)
-            if let perimeter = viewModel.totalPerimeter {
-                Label(DimensionEngine.format(perimeter, system: viewModel.drawingData.config.measurementSystem),
-                      systemImage: "ruler")
-                    .font(OPSStyle.Typography.bodyBold)
-                    .foregroundColor(OPSStyle.Colors.secondaryText)
-                    .lineLimit(1)
+    private func metricsContent(readout: DeckBuilderMetricReadout.Result) -> some View {
+        HStack(spacing: OPSStyle.Layout.spacing2) {
+            if readout.scope == .selection {
+                Image(systemName: OPSStyle.Icons.checkmarkCircleFill)
+                    .font(.system(size: OPSStyle.Layout.IconSize.xs))
+                    .foregroundColor(OPSStyle.Colors.primaryAccent)
             }
+
+            metricField(title: "LENGTH", value: readout.lengthText)
+
+            Rectangle()
+                .fill(OPSStyle.Colors.cardBorder)
+                .frame(width: OPSStyle.Layout.Border.standard, height: OPSStyle.Layout.spacing4)
+
+            metricField(title: "AREA", value: readout.areaText)
         }
-        .padding(.horizontal, OPSStyle.Layout.spacing3)
-        .padding(.vertical, OPSStyle.Layout.spacing2)
+        .padding(.horizontal, OPSStyle.Layout.spacing2_5)
+        .padding(.vertical, OPSStyle.Layout.spacing1)
         .background(OPSStyle.Colors.cardBackground.opacity(0.96))
-        .cornerRadius(OPSStyle.Layout.cornerRadius)
         .overlay(
             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                 .stroke(OPSStyle.Colors.cardBorder.opacity(0.5), lineWidth: OPSStyle.Layout.Border.standard)
         )
-        .fixedSize(horizontal: true, vertical: false)
+        .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius))
+        .fixedSize(horizontal: false, vertical: true)
+        .layoutPriority(1)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(readout.scope == .selection ? "Selected measurements" : "Design measurements")
+        .accessibilityValue("Length \(readout.lengthText), area \(readout.areaText)")
+    }
+
+    private func metricField(title: String, value: String) -> some View {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
+            Text(title)
+                .font(OPSStyle.Typography.category)
+                .foregroundColor(OPSStyle.Colors.secondaryText)
+            Text(value)
+                .font(OPSStyle.Typography.dataValue)
+                .monospacedDigit()
+                .foregroundColor(OPSStyle.Colors.primaryText)
+                .lineLimit(1)
+                .minimumScaleFactor(0.85)
+        }
+        .frame(minWidth: OPSStyle.Layout.touchTargetMin, alignment: .leading)
     }
 
     /// State of the AR-derived dimensions banner.
@@ -876,4 +929,30 @@ struct DeckBuilderView: View {
         }
     }
 
+}
+
+/// Reports the actual bottom instrument footprint without coupling the canvas
+/// to any toolbar's internal row count. `max` is intentional during animated
+/// swaps, when outgoing and incoming chrome can both publish for one frame.
+private struct DeckBuilderBottomChromeHeightPreferenceKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = max(value, nextValue())
+    }
+}
+
+private extension View {
+    /// Apply before a flexible full-screen alignment frame so GeometryReader
+    /// measures only the instrument and its safe-area clearance.
+    func reportDeckBuilderBottomChromeHeight() -> some View {
+        background {
+            GeometryReader { geometry in
+                Color.clear.preference(
+                    key: DeckBuilderBottomChromeHeightPreferenceKey.self,
+                    value: geometry.size.height
+                )
+            }
+        }
+    }
 }

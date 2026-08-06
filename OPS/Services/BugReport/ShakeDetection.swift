@@ -17,9 +17,9 @@ extension UIWindow {
         guard motion == .motionShake else { return }
         // No `isKeyWindow` gate: when the keyboard is up a text-effects /
         // keyboard window becomes key, so gating on it dropped the shake while
-        // editing. Posting unconditionally is safe — `handleShake` debounces
-        // and the BugReportPresenter.isPresenting guard collapses any duplicate
-        // posts from multiple windows into a single presentation.
+        // editing. Posting unconditionally is safe — the shared bug-report
+        // trigger coordinator debounces and presenter-latches duplicate posts
+        // from multiple windows into a single presentation.
         NotificationCenter.default.post(name: .deviceDidShake, object: nil)
     }
 }

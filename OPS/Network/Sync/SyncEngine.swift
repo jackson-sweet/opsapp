@@ -1314,6 +1314,13 @@ final class SyncEngine {
             // permanent rejection or crosses tenants.
             self.enqueueOrphanedSiteVisitWrites()
 
+            // A media upload that parked because its local bytes were gone
+            // can never be revived by the normal path (parked work never
+            // auto-retries, and the orphan sweep treats parked as unresolved).
+            // Re-read the filesystem: retire pointers that are truly dead, and
+            // hand back any whose file is actually present.
+            SiteVisitParkedMediaReconciler.reconcile(in: modelContext)
+
             // Same class of safety net for deck→project links: a stranded link
             // (needsSync set, no op recorded) re-records its update here and
             // drains in this very pass.

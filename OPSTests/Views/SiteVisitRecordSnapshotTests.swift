@@ -48,7 +48,7 @@ final class SiteVisitRecordSnapshotTests: XCTestCase {
     private func fullMetadata() -> SiteVisitPacketMetadata {
         SiteVisitPacketMetadata(
             siteVisitId: "visit-1",
-            photoCount: 6,
+            photoCount: 7,
             measurements: [
                 .init(label: "Deck footprint", value: "12' x 16'"),
                 .init(label: "Height above grade", value: "30\""),
@@ -56,6 +56,22 @@ final class SiteVisitRecordSnapshotTests: XCTestCase {
             ],
             notes: ["Gate code 4417. Dog in the yard — call ahead.", "Owner wants composite, not cedar."],
             checklist: ["What the client wants", "Deck design"],
+            checklistItems: [
+                .init(
+                    fieldId: "client-goals",
+                    label: "What the client wants",
+                    value: "Composite, not cedar",
+                    kind: SiteVisitFieldKind.longText.rawValue,
+                    artifactCount: 0
+                ),
+                .init(
+                    fieldId: "deck-design",
+                    label: "Deck design",
+                    value: "DESIGN ATTACHED",
+                    kind: SiteVisitFieldKind.deckDesign.rawValue,
+                    artifactCount: 1
+                )
+            ],
             address: "1100 Maple Ave, Springfield",
             contactName: "Helen Calloway",
             companyName: "Calloway Ltd",
@@ -66,7 +82,7 @@ final class SiteVisitRecordSnapshotTests: XCTestCase {
     private func record(canViewFinancials: Bool) -> SiteVisitRecord {
         SiteVisitRecord.assemble(
             metadata: fullMetadata(),
-            photoURLs: [],
+            photoURLs: (1...7).map { "file:///tmp/site-visit-photo-\($0).jpg" },
             capturedAt: Date(timeIntervalSince1970: 1_780_000_000),
             operatorName: "Dale Harmon",
             estimatedValue: leadValue,

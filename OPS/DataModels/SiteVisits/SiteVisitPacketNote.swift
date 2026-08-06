@@ -52,6 +52,7 @@ struct SiteVisitPacketNote {
         }
 
         let checklist = payload.checklistLines
+        let checklistItems = payload.checklistItems
 
         // Nothing captured — no packet entry at all.
         if photoCount == 0 && measurements.isEmpty && notes.isEmpty && checklist.isEmpty {
@@ -77,6 +78,19 @@ struct SiteVisitPacketNote {
         }
         if !notes.isEmpty { metadata["notes"] = notes }
         if !checklist.isEmpty { metadata["checklist"] = checklist }
+        if !checklistItems.isEmpty {
+            metadata["checklist_items"] = checklistItems.map { item in
+                var object: [String: Any] = [:]
+                if let fieldId = item.fieldId { object["field_id"] = fieldId }
+                if let label = item.label { object["label"] = label }
+                if let value = item.value { object["value"] = value }
+                if let kind = item.kind { object["kind"] = kind }
+                if let artifactCount = item.artifactCount {
+                    object["artifact_count"] = artifactCount
+                }
+                return object
+            }
+        }
         if let address = payload.address?.trimmingCharacters(in: .whitespacesAndNewlines),
            !address.isEmpty {
             metadata["address"] = address

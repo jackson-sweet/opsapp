@@ -21,6 +21,42 @@
 
 import Foundation
 
+/// Additive checklist anatomy carried beside the legacy packet strings.
+///
+/// String raw values deliberately cross the packet boundary instead of the
+/// app enum. A future client may author a kind this build does not know yet;
+/// that row must still decode and render as text rather than invalidating the
+/// entire visit record.
+struct SiteVisitPacketChecklistItem: Codable, Equatable {
+    let fieldId: String?
+    let label: String?
+    let value: String?
+    let kind: String?
+    let artifactCount: Int?
+
+    enum CodingKeys: String, CodingKey {
+        case fieldId = "field_id"
+        case label
+        case value
+        case kind
+        case artifactCount = "artifact_count"
+    }
+
+    init(
+        fieldId: String?,
+        label: String?,
+        value: String?,
+        kind: String?,
+        artifactCount: Int?
+    ) {
+        self.fieldId = fieldId
+        self.label = label
+        self.value = value
+        self.kind = kind
+        self.artifactCount = artifactCount
+    }
+}
+
 struct SiteVisitPacketMetadata: Decodable, Equatable {
     struct Measurement: Decodable, Equatable {
         let label: String
@@ -32,6 +68,7 @@ struct SiteVisitPacketMetadata: Decodable, Equatable {
     let measurements: [Measurement]?
     let notes: [String]?
     let checklist: [String]?
+    let checklistItems: [SiteVisitPacketChecklistItem]?
     /// Where the visit happened. Additive — packets written before the record
     /// carry nil and simply render no ADDRESS line.
     let address: String?
@@ -47,10 +84,60 @@ struct SiteVisitPacketMetadata: Decodable, Equatable {
         case measurements
         case notes
         case checklist
+        case checklistItems = "checklist_items"
         case address
         case contactName    = "contact_name"
         case companyName    = "company_name"
         case deckDesignId   = "deck_design_id"
+    }
+
+    init(
+        siteVisitId: String?,
+        photoCount: Int?,
+        measurements: [Measurement]?,
+        notes: [String]?,
+        checklist: [String]?,
+        checklistItems: [SiteVisitPacketChecklistItem]? = nil,
+        address: String?,
+        contactName: String?,
+        companyName: String?,
+        deckDesignId: String?
+    ) {
+        self.siteVisitId = siteVisitId
+        self.photoCount = photoCount
+        self.measurements = measurements
+        self.notes = notes
+        self.checklist = checklist
+        self.checklistItems = checklistItems
+        self.address = address
+        self.contactName = contactName
+        self.companyName = companyName
+        self.deckDesignId = deckDesignId
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        siteVisitId = try container.decodeIfPresent(String.self, forKey: .siteVisitId)
+        photoCount = try container.decodeIfPresent(Int.self, forKey: .photoCount)
+        measurements = try container.decodeIfPresent([Measurement].self, forKey: .measurements)
+        notes = try container.decodeIfPresent([String].self, forKey: .notes)
+        checklist = try container.decodeIfPresent([String].self, forKey: .checklist)
+
+        // This key is additive. A future or partially-written item must not
+        // invalidate the legacy packet fields that older clients still need.
+        do {
+            checklistItems = try container.decodeIfPresent(
+                [SiteVisitPacketChecklistItem].self,
+                forKey: .checklistItems
+            )
+        } catch {
+            checklistItems = nil
+        }
+
+        address = try container.decodeIfPresent(String.self, forKey: .address)
+        contactName = try container.decodeIfPresent(String.self, forKey: .contactName)
+        companyName = try container.decodeIfPresent(String.self, forKey: .companyName)
+        deckDesignId = try container.decodeIfPresent(String.self, forKey: .deckDesignId)
     }
 
     static func decode(from json: String?) -> SiteVisitPacketMetadata? {

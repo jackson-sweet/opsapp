@@ -67,8 +67,18 @@ enum SyncErrorClassifier {
                 return .transient
             }
         }
-        if error is SiteVisitMediaSyncError {
-            return .permanent
+        // Media failures split on whether the bytes still exist. An absent file
+        // can never come back (the local copy was the only one until upload) —
+        // that is terminal. A file that is present but unreadable right now
+        // (Data Protection during a locked-device drain) must retry, or a
+        // perfectly good photo gets written off.
+        if let mediaError = error as? SiteVisitMediaSyncError {
+            switch mediaError {
+            case .localFileMissing, .invalidRemoteURL:
+                return .permanent
+            case .localFileUnreadable:
+                return .transient
+            }
         }
 
         // 1. URLError — Foundation network layer.

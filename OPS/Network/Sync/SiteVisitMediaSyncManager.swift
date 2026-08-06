@@ -11,13 +11,22 @@ import Foundation
 import SwiftData
 
 enum SiteVisitMediaSyncError: Error, Equatable, LocalizedError {
+    /// The bytes are gone. A local capture's file is the ONLY copy until it
+    /// uploads, so an absent file can never become present again — terminal.
     case localFileMissing(String)
+    /// The file IS on disk but could not be read on this attempt (iOS Data
+    /// Protection while the device is locked during a background drain,
+    /// transient I/O). Never terminal: retiring on this would throw away the
+    /// pointer to a photo that is perfectly fine.
+    case localFileUnreadable(String)
     case invalidRemoteURL(String)
 
     var errorDescription: String? {
         switch self {
         case .localFileMissing(let source):
             return "Site-visit media file is missing: \(source)"
+        case .localFileUnreadable(let source):
+            return "Site-visit media file could not be read: \(source)"
         case .invalidRemoteURL(let value):
             return "Site-visit upload returned an invalid URL: \(value)"
         }
@@ -85,7 +94,32 @@ struct SiteVisitMediaSyncManager {
                 continue
             }
 
-            let asset = try loader(source)
+            let asset: LoadedAsset
+            do {
+                asset = try loader(source)
+            } catch let error as SiteVisitMediaSyncError {
+                guard case .localFileMissing = error else { throw error }
+                // The bytes are gone and the local file was the only copy, so
+                // no future drain can ever succeed. Clearing the dead pointer
+                // makes this row match what the server and every other device
+                // already hold (a null asset URL) and stops the operation being
+                // re-queued and re-parked forever. The artifact, its visit,
+                // notes and checklist answers all survive untouched.
+                try context.transaction {
+                    guard sourceURL(for: variant, artifact: artifact) == source else {
+                        return
+                    }
+                    setSourceURL(nil, for: variant, artifact: artifact)
+                    artifact.updatedAt = Date()
+                    artifact.needsSync = true
+                    try queueArtifactURLUpsert(
+                        artifact,
+                        dependsOn: mediaOperation,
+                        context: context
+                    )
+                }
+                continue
+            }
             let remoteURL = try await uploader(
                 artifact.siteVisitId.lowercased(),
                 artifact.id.lowercased(),
@@ -179,8 +213,10 @@ struct SiteVisitMediaSyncManager {
         }
     }
 
+    /// Optional so the same writer both records an upload result and clears a
+    /// pointer whose bytes are permanently gone.
     private func setSourceURL(
-        _ value: String,
+        _ value: String?,
         for variant: SiteVisitArtifactVariant,
         artifact: SiteVisitCaptureArtifact
     ) {
@@ -210,6 +246,7 @@ struct SiteVisitMediaSyncManager {
         } else {
             fileURL = ImageFileManager.shared.getFileURL(for: source)
         }
+        // An unresolvable key and an absent file are the same fact: no bytes.
         guard let fileURL,
               FileManager.default.fileExists(atPath: fileURL.path) else {
             throw SiteVisitMediaSyncError.localFileMissing(source)
@@ -220,8 +257,16 @@ struct SiteVisitMediaSyncManager {
                 contentType(forExtension: fileURL.pathExtension)
             )
         } catch {
-            throw SiteVisitMediaSyncError.localFileMissing(source)
+            // The file IS on disk — this read failed for some other reason, so
+            // a later drain can still succeed. Never treat this as terminal.
+            throw SiteVisitMediaSyncError.localFileUnreadable(source)
         }
+    }
+
+    /// Test seam for the absent/unreadable split. Production callers reach
+    /// `loadAsset` through the injected `loader`.
+    static func loadAssetForTesting(_ source: String) throws -> LoadedAsset {
+        try loadAsset(source)
     }
 
     private static func contentType(forExtension raw: String) -> String {

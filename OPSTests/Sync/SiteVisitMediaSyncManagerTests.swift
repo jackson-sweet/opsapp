@@ -126,14 +126,97 @@ final class SiteVisitMediaSyncManagerTests: XCTestCase {
         XCTAssertEqual(uploadCount, 0)
     }
 
-    func test_missingLocalFileIsPermanentInsteadOfInfiniteRetry() async throws {
+    // MARK: - Permanently gone vs temporarily unreadable
+    //
+    // A local capture's file is the ONLY copy until it uploads, so an ABSENT
+    // file can never become present again — retiring it is correct. A file that
+    // is on disk but unreadable right now (iOS Data Protection while the device
+    // is locked during a background drain) must never be retired: that would
+    // destroy the pointer to a photo that is perfectly fine.
+
+    func test_absentFileClassifiesPermanentAndUnreadableFileClassifiesTransient() {
+        XCTAssertEqual(
+            SyncErrorClassifier.disposition(for: SiteVisitMediaSyncError.localFileMissing("gone")),
+            .permanent
+        )
+        XCTAssertEqual(
+            SyncErrorClassifier.disposition(
+                for: SiteVisitMediaSyncError.localFileUnreadable("locked")
+            ),
+            .transient
+        )
+        XCTAssertEqual(
+            SyncErrorClassifier.disposition(for: SiteVisitMediaSyncError.invalidRemoteURL("nope")),
+            .permanent
+        )
+    }
+
+    func test_loadAssetReportsUnreadableWhenFileExistsButCannotBeRead() throws {
+        // A directory stands in for a Data-Protection-locked file: the path
+        // exists, but reading it as file data fails.
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("unreadable-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        XCTAssertThrowsError(
+            try SiteVisitMediaSyncManager.loadAssetForTesting(directory.path)
+        ) { error in
+            guard case SiteVisitMediaSyncError.localFileUnreadable = error else {
+                return XCTFail("Expected .localFileUnreadable, got \(error)")
+            }
+        }
+    }
+
+    func test_loadAssetReportsMissingWhenFileIsAbsent() {
+        let absent = FileManager.default.temporaryDirectory
+            .appendingPathComponent("absent-\(UUID().uuidString).jpg").path
+
+        XCTAssertThrowsError(
+            try SiteVisitMediaSyncManager.loadAssetForTesting(absent)
+        ) { error in
+            guard case SiteVisitMediaSyncError.localFileMissing = error else {
+                return XCTFail("Expected .localFileMissing, got \(error)")
+            }
+        }
+    }
+
+    func test_absentVariantIsRetiredAndOperationCompletesWithoutThrowing() async throws {
         let context = try makeContainer().mainContext
         let artifact = makeArtifact()
         context.insert(artifact)
         let media = try insertMediaOperation(for: artifact, in: context)
+
+        var uploadCount = 0
+        let manager = SiteVisitMediaSyncManager(
+            uploader: { _, _, _, _, _ in uploadCount += 1; return "" },
+            loader: { source in throw SiteVisitMediaSyncError.localFileMissing(source) }
+        )
+
+        // Must NOT throw: with no bytes anywhere there is nothing left to do,
+        // so the operation is finished rather than parked forever.
+        try await manager.uploadPendingMedia(
+            artifactId: artifactId,
+            mediaOperation: media,
+            context: context
+        )
+
+        XCTAssertEqual(uploadCount, 0, "Nothing to upload when every file is gone")
+        XCTAssertNil(artifact.localAssetURL, "Dead pointer must be cleared")
+        XCTAssertNil(artifact.renderedAssetURL)
+        XCTAssertNil(artifact.thumbnailURL)
+        XCTAssertTrue(artifact.needsSync, "Cleared state must reach the server")
+    }
+
+    func test_unreadableVariantThrowsAndPreservesItsLocalPointer() async throws {
+        let context = try makeContainer().mainContext
+        let artifact = makeArtifact()
+        context.insert(artifact)
+        let media = try insertMediaOperation(for: artifact, in: context)
+
         let manager = SiteVisitMediaSyncManager(
             uploader: { _, _, _, _, _ in "" },
-            loader: { _ in throw SiteVisitMediaSyncError.localFileMissing("gone") }
+            loader: { source in throw SiteVisitMediaSyncError.localFileUnreadable(source) }
         )
 
         do {
@@ -142,11 +225,55 @@ final class SiteVisitMediaSyncManagerTests: XCTestCase {
                 mediaOperation: media,
                 context: context
             )
-            XCTFail("Expected a deterministic local-file failure")
+            XCTFail("A temporarily unreadable file must not resolve the operation")
         } catch let error as SiteVisitMediaSyncError {
-            XCTAssertEqual(error, .localFileMissing("gone"))
-            XCTAssertEqual(SyncErrorClassifier.disposition(for: error), .permanent)
+            guard case .localFileUnreadable = error else {
+                return XCTFail("Expected .localFileUnreadable, got \(error)")
+            }
         }
+
+        XCTAssertEqual(
+            artifact.localAssetURL,
+            "local://project_images/original.jpg",
+            "A readable-later photo must keep its pointer"
+        )
+    }
+
+    func test_retiringOneArtifactNeverTouchesAnother() async throws {
+        let context = try makeContainer().mainContext
+        let artifact = makeArtifact()
+        artifact.renderedAssetURL = nil
+        artifact.thumbnailURL = nil
+        context.insert(artifact)
+        let healthy = SiteVisitCaptureArtifact(
+            id: "55555555-5555-4555-8555-555555555555",
+            siteVisitId: visitId,
+            companyId: companyId,
+            kind: .photo,
+            source: .camera,
+            localAssetURL: "local://project_images/present.jpg",
+            createdBy: userId,
+            createdAt: Date(timeIntervalSince1970: 1_700_000_100)
+        )
+        context.insert(healthy)
+        let media = try insertMediaOperation(for: artifact, in: context)
+
+        let manager = SiteVisitMediaSyncManager(
+            uploader: { _, _, _, _, _ in "https://cdn.ops.test/ok.jpg" },
+            loader: { source in throw SiteVisitMediaSyncError.localFileMissing(source) }
+        )
+        try await manager.uploadPendingMedia(
+            artifactId: artifactId,
+            mediaOperation: media,
+            context: context
+        )
+
+        XCTAssertNil(artifact.localAssetURL)
+        XCTAssertEqual(
+            healthy.localAssetURL,
+            "local://project_images/present.jpg",
+            "Retiring one artifact must never touch another"
+        )
     }
 
     func test_presignContractUsesExplicitTargetFieldsAndNoCallerFolder() throws {

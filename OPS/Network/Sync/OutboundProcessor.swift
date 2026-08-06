@@ -1138,34 +1138,10 @@ final class OutboundProcessor {
     }
 
     /// Converts a [String: Any] dictionary to [String: AnyJSON] for Supabase update calls.
+    /// Delegates to the one shared converter. This used to be a local copy that
+    /// matched `Int` before `Bool`, which flattened every JSON boolean to 0/1 —
+    /// see `AnyJSONBridge`.
     private func payloadToAnyJSON(_ payload: [String: Any]) -> [String: AnyJSON] {
-        var result: [String: AnyJSON] = [:]
-        for (key, value) in payload {
-            result[key] = convertToAnyJSON(value)
-        }
-        return result
-    }
-
-    /// Recursively converts a Swift value to AnyJSON.
-    private func convertToAnyJSON(_ value: Any) -> AnyJSON {
-        switch value {
-        case let string as String:
-            return .string(string)
-        case let int as Int:
-            return .integer(int)
-        case let double as Double:
-            return .double(double)
-        case let bool as Bool:
-            return .bool(bool)
-        case let array as [Any]:
-            return .array(array.map { convertToAnyJSON($0) })
-        case let dict as [String: Any]:
-            return .object(dict.mapValues { convertToAnyJSON($0) })
-        case is NSNull:
-            return .null
-        default:
-            // Fallback: convert to string representation
-            return .string("\(value)")
-        }
+        AnyJSONBridge.payload(payload)
     }
 }

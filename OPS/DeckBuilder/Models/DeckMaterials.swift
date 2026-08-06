@@ -347,6 +347,10 @@ struct DeckMaterialsSnapshot: Codable, Equatable {
         self.orderMode = try c.decodeIfPresent(VinylOrderMode.self, forKey: .orderMode) ?? .cutList
         self.fullRollLengthFeet = try c.decodeIfPresent(Double.self, forKey: .fullRollLengthFeet) ?? 75
         self.orderedRollCount = try c.decodeIfPresent(Int.self, forKey: .orderedRollCount)
-        self.isOrderedEdited = try c.decodeIfPresent(Bool.self, forKey: .isOrderedEdited) ?? false
+        // Lenient for the same reason as `VinylOrderSettings`: pushed booleans
+        // are numbers in every stored blob. `DeckDrawingData` reads
+        // `orderedMaterials` with `try?`, so a strict Bool did not raise — it
+        // silently nilled the whole ordered-materials snapshot.
+        self.isOrderedEdited = try c.decodeLegacyBoolIfPresent(forKey: .isOrderedEdited) ?? false
     }
 }

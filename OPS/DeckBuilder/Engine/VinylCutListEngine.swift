@@ -97,7 +97,11 @@ struct VinylOrderSettings: Equatable, Codable {
         self.direction = try c.decodeIfPresent(VinylLayoutDirection.self, forKey: .direction) ?? .automatic
         let rawPatternMode = try c.decodeIfPresent(String.self, forKey: .patternMode)
         self.patternMode = rawPatternMode.flatMap(VinylPatternMode.init(rawValue:)) ?? .solid
-        self.allowsDirectionalChanges = try c.decodeIfPresent(Bool.self, forKey: .allowsDirectionalChanges) ?? false
+        // Lenient: every boolean this app pushed inside `drawing_data` was
+        // flattened to 0/1 by the outbound bridge, and `DeckDrawingData` decodes
+        // `vinylOrderSettings` with a plain `try` — so a strict Bool here threw
+        // out the entire drawing on pull.
+        self.allowsDirectionalChanges = try c.decodeLegacyBoolIfPresent(forKey: .allowsDirectionalChanges) ?? false
         self.offcutMinWidthInches = try c.decodeIfPresent(Double.self, forKey: .offcutMinWidthInches) ?? 6
     }
 

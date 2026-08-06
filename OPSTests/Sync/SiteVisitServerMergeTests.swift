@@ -265,6 +265,279 @@ final class SiteVisitServerMergeTests: XCTestCase {
         XCTAssertEqual(local.notes, "Server changed the note")
     }
 
+    func testLogicalChecklistMatchRekeysDirtyRowAndEveryUnresolvedOperationInPlace() throws {
+        let context = try makeContext()
+        let localId = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee"
+        let serverAnswer = try XCTUnwrap(makeBundle().checklistAnswers.first)
+        let visit = makeLocalVisit()
+        let local = makeLocalAnswer(id: localId, value: "Local unsent width")
+        context.insert(visit)
+        context.insert(local)
+
+        let firstDependencyId = UUID()
+        let first = try makeChecklistOperation(
+            answerId: localId,
+            operationType: "create",
+            status: "parked",
+            changedFields: ["answer_value"],
+            dependsOnId: firstDependencyId.uuidString.lowercased()
+        )
+        first.retryCount = 7
+        first.createdAt = Date(timeIntervalSince1970: 10)
+        first.lastAttemptedAt = Date(timeIntervalSince1970: 20)
+        first.lastError = "23505 active field collision"
+        first.previousValues = Data("previous".utf8)
+
+        let second = try makeChecklistOperation(
+            answerId: localId,
+            operationType: "update",
+            status: "failed",
+            changedFields: ["answer_value"]
+        )
+        second.retryCount = 20
+        second.createdAt = Date(timeIntervalSince1970: 30)
+        second.lastAttemptedAt = Date(timeIntervalSince1970: 40)
+        second.lastError = "offline retry budget exhausted"
+
+        let completion = try makeCompletionOperation(
+            dependsOnId: first.id.uuidString.lowercased()
+        )
+        context.insert(first)
+        context.insert(second)
+        context.insert(completion)
+        try context.save()
+
+        let firstSnapshot = OperationSnapshot(first)
+        let secondSnapshot = OperationSnapshot(second)
+        let completionSnapshot = OperationSnapshot(completion)
+        let now = Date(timeIntervalSince1970: 1_000)
+
+        let report = try SiteVisitServerMerge.merge(
+            checklistAnswer: serverAnswer,
+            companyId: companyId,
+            into: context,
+            now: now
+        )
+
+        XCTAssertEqual(report, SiteVisitMergeReport(inserted: 0, updated: 1, unchanged: 0))
+        let answers = try context.fetch(FetchDescriptor<SiteVisitChecklistAnswer>())
+        XCTAssertEqual(answers.count, 1)
+        XCTAssertTrue(answers[0] === local)
+        XCTAssertEqual(local.id, serverAnswer.id)
+        XCTAssertEqual(local.answerValue.text, "Local unsent width")
+        XCTAssertEqual(local.label, serverAnswer.label)
+        XCTAssertTrue(local.needsSync)
+        XCTAssertEqual(local.lastSyncedAt, now)
+
+        XCTAssertEqual(OperationSnapshot(first), firstSnapshot.rekeyed(to: serverAnswer.id))
+        XCTAssertEqual(OperationSnapshot(second), secondSnapshot.rekeyed(to: serverAnswer.id))
+        XCTAssertEqual(OperationSnapshot(completion), completionSnapshot)
+        XCTAssertEqual(completion.dependsOnId, first.id.uuidString.lowercased())
+
+        for operation in [first, second] {
+            let envelope = try JSONDecoder().decode(
+                SiteVisitSyncOperation.Payload.self,
+                from: operation.payload
+            )
+            XCTAssertEqual(envelope.entityId, serverAnswer.id)
+            XCTAssertEqual(envelope.siteVisitId, visitId)
+            XCTAssertEqual(envelope.companyId, companyId)
+        }
+    }
+
+    func testRekeyedChecklistRetrySendsServerIdentityAndReleasesPacketCompletion() async throws {
+        let context = try makeContext()
+        let localId = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee"
+        let serverAnswer = try XCTUnwrap(makeBundle().checklistAnswers.first)
+        let visit = makeLocalVisit()
+        let local = makeLocalAnswer(id: localId, value: "Local retry value")
+        context.insert(visit)
+        context.insert(local)
+
+        let operation = try makeChecklistOperation(
+            answerId: localId,
+            operationType: "create",
+            status: "parked",
+            changedFields: ["answer_value"]
+        )
+        let completion = try makeCompletionOperation(
+            dependsOnId: operation.id.uuidString.lowercased()
+        )
+        context.insert(operation)
+        context.insert(completion)
+        try context.save()
+
+        _ = try SiteVisitServerMerge.merge(
+            checklistAnswer: serverAnswer,
+            companyId: companyId,
+            into: context,
+            now: Date(timeIntervalSince1970: 2_000)
+        )
+        operation.status = "pending"
+        operation.retryCount = 0
+        operation.lastAttemptedAt = nil
+        operation.lastError = nil
+
+        XCTAssertEqual(
+            SiteVisitOutboundSync.readyPendingOperationIds(
+                in: try context.fetch(FetchDescriptor<SyncOperation>())
+            ),
+            [operation.id]
+        )
+
+        let remote = RecordingChecklistAnswerWriter(response: serverAnswer)
+        let sync = SiteVisitOutboundSync(
+            repositoryFactory: { _ in remote },
+            mediaManager: SiteVisitMediaSyncManager(
+                uploader: { _, _, _, _, _ in "" },
+                loader: { _ in throw URLError(.fileDoesNotExist) }
+            )
+        )
+
+        XCTAssertTrue(
+            try await sync.executeIfHandled(
+                operation: operation,
+                context: context,
+                activeCompanyId: companyId
+            )
+        )
+        let payload = try XCTUnwrap(remote.checklistPayloads.first)
+        XCTAssertEqual(payload.id, serverAnswer.id)
+        XCTAssertEqual(payload.answerValue.text, "Local retry value")
+
+        operation.status = "completed"
+        operation.completedAt = Date(timeIntervalSince1970: 2_001)
+        XCTAssertEqual(
+            SiteVisitOutboundSync.readyPendingOperationIds(
+                in: try context.fetch(FetchDescriptor<SyncOperation>())
+            ),
+            [completion.id]
+        )
+    }
+
+    func testAmbiguousDirtyLogicalChecklistMatchesFailBeforeBundleWrites() throws {
+        let context = try makeContext()
+        let first = makeLocalAnswer(
+            id: "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee",
+            value: "First unsent value"
+        )
+        let second = makeLocalAnswer(
+            id: "ffffffff-ffff-4fff-8fff-ffffffffffff",
+            value: "Second unsent value"
+        )
+        context.insert(first)
+        context.insert(second)
+        try context.save()
+        let bundle = try makeBundle()
+        let answerOnlyBundle = SiteVisitBundleDTO(
+            visit: bundle.visit,
+            artifacts: [],
+            checklistAnswers: bundle.checklistAnswers,
+            identityDrafts: []
+        )
+
+        XCTAssertThrowsError(
+            try SiteVisitServerMerge.merge(bundle: answerOnlyBundle, into: context)
+        ) { error in
+            XCTAssertTrue(error is SiteVisitMergeError)
+        }
+
+        XCTAssertTrue(try context.fetch(FetchDescriptor<SiteVisit>()).isEmpty)
+        XCTAssertEqual(
+            Set(try context.fetch(FetchDescriptor<SiteVisitChecklistAnswer>()).map(\.id)),
+            [first.id, second.id]
+        )
+        XCTAssertFalse(context.hasChanges)
+    }
+
+    func testMalformedUnresolvedChecklistEnvelopeFailsBeforeBundleWrites() throws {
+        let context = try makeContext()
+        let localId = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee"
+        let local = makeLocalAnswer(id: localId, value: "Never discard this")
+        let operation = SyncOperation(
+            entityType: SyncEntityType.siteVisitChecklistAnswer.rawValue,
+            entityId: localId,
+            operationType: "create",
+            payload: Data("not-json".utf8),
+            changedFields: ["answer_value"]
+        )
+        operation.status = "parked"
+        operation.retryCount = 3
+        operation.lastError = "Original failure"
+        context.insert(local)
+        context.insert(operation)
+        try context.save()
+        let bundle = try makeBundle()
+        let answerOnlyBundle = SiteVisitBundleDTO(
+            visit: bundle.visit,
+            artifacts: [],
+            checklistAnswers: bundle.checklistAnswers,
+            identityDrafts: []
+        )
+
+        XCTAssertThrowsError(
+            try SiteVisitServerMerge.merge(bundle: answerOnlyBundle, into: context)
+        ) { error in
+            XCTAssertTrue(error is SiteVisitMergeError)
+        }
+
+        XCTAssertTrue(try context.fetch(FetchDescriptor<SiteVisit>()).isEmpty)
+        XCTAssertEqual(local.id, localId)
+        XCTAssertEqual(local.answerValue.text, "Never discard this")
+        XCTAssertEqual(operation.entityId, localId)
+        XCTAssertEqual(operation.payload, Data("not-json".utf8))
+        XCTAssertEqual(operation.status, "parked")
+        XCTAssertEqual(operation.retryCount, 3)
+        XCTAssertEqual(operation.lastError, "Original failure")
+        XCTAssertFalse(context.hasChanges)
+    }
+
+    func testMisroutedUnresolvedChecklistEnvelopeFailsBeforeBundleWrites() throws {
+        let context = try makeContext()
+        let localId = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee"
+        let wrongEntityId = "ffffffff-ffff-4fff-8fff-ffffffffffff"
+        let local = makeLocalAnswer(id: localId, value: "Keep this routed value")
+        let originalPayload = try JSONEncoder().encode(
+            SiteVisitSyncOperation.Payload(
+                companyId: companyId,
+                siteVisitId: visitId,
+                entityId: wrongEntityId
+            )
+        )
+        let operation = SyncOperation(
+            entityType: SyncEntityType.siteVisitChecklistAnswer.rawValue,
+            entityId: localId,
+            operationType: "update",
+            payload: originalPayload,
+            changedFields: ["answer_value"]
+        )
+        operation.status = "failed"
+        context.insert(local)
+        context.insert(operation)
+        try context.save()
+        let bundle = try makeBundle()
+        let answerOnlyBundle = SiteVisitBundleDTO(
+            visit: bundle.visit,
+            artifacts: [],
+            checklistAnswers: bundle.checklistAnswers,
+            identityDrafts: []
+        )
+
+        XCTAssertThrowsError(
+            try SiteVisitServerMerge.merge(bundle: answerOnlyBundle, into: context)
+        ) { error in
+            XCTAssertTrue(error is SiteVisitMergeError)
+        }
+
+        XCTAssertTrue(try context.fetch(FetchDescriptor<SiteVisit>()).isEmpty)
+        XCTAssertEqual(local.id, localId)
+        XCTAssertEqual(local.answerValue.text, "Keep this routed value")
+        XCTAssertEqual(operation.entityId, localId)
+        XCTAssertEqual(operation.payload, originalPayload)
+        XCTAssertEqual(operation.status, "failed")
+        XCTAssertFalse(context.hasChanges)
+    }
+
     private func makeContext() throws -> ModelContext {
         let schema = Schema([
             SiteVisit.self,
@@ -275,6 +548,79 @@ final class SiteVisitServerMergeTests: XCTestCase {
         ])
         let configuration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
         return try ModelContext(ModelContainer(for: schema, configurations: [configuration]))
+    }
+
+    private func makeLocalVisit() -> SiteVisit {
+        SiteVisit(
+            id: visitId,
+            opportunityId: opportunityId,
+            companyId: companyId,
+            status: .inProgress,
+            scheduledAt: Date(timeIntervalSince1970: 1),
+            createdBy: userId
+        )
+    }
+
+    private func makeLocalAnswer(id: String, value: String) -> SiteVisitChecklistAnswer {
+        SiteVisitChecklistAnswer(
+            id: id,
+            siteVisitId: visitId,
+            companyId: companyId,
+            opportunityId: opportunityId,
+            siteVisitTypeId: "estimate",
+            fieldId: "width",
+            label: "Local width",
+            kind: .measurement,
+            required: true,
+            sortOrder: 10,
+            answerValue: SiteVisitChecklistValue(text: value),
+            createdBy: userId,
+            createdAt: Date(timeIntervalSince1970: 2)
+        )
+    }
+
+    private func makeChecklistOperation(
+        answerId: String,
+        operationType: String,
+        status: String,
+        changedFields: [String],
+        dependsOnId: String? = nil
+    ) throws -> SyncOperation {
+        let operation = SyncOperation(
+            entityType: SyncEntityType.siteVisitChecklistAnswer.rawValue,
+            entityId: answerId,
+            operationType: operationType,
+            payload: try JSONEncoder().encode(
+                SiteVisitSyncOperation.Payload(
+                    companyId: companyId,
+                    siteVisitId: visitId,
+                    entityId: answerId
+                )
+            ),
+            changedFields: changedFields,
+            dependsOnId: dependsOnId
+        )
+        operation.status = status
+        return operation
+    }
+
+    private func makeCompletionOperation(dependsOnId: String) throws -> SyncOperation {
+        SyncOperation(
+            entityType: SyncEntityType.siteVisit.rawValue,
+            entityId: visitId,
+            operationType: SiteVisitSyncOperation.completionOperationType,
+            payload: try JSONEncoder().encode(
+                SiteVisitSyncOperation.Payload(
+                    companyId: companyId,
+                    siteVisitId: visitId,
+                    entityId: visitId,
+                    completion: SiteVisitCompletionPayload(notes: "Packet committed")
+                )
+            ),
+            changedFields: ["status"],
+            priority: 0,
+            dependsOnId: dependsOnId
+        )
     }
 
     private func makeBundle() throws -> SiteVisitBundleDTO {
@@ -339,5 +685,110 @@ final class SiteVisitServerMergeTests: XCTestCase {
         }
         """.utf8)
         return try JSONDecoder().decode(SiteVisitBundleDTO.self, from: data)
+    }
+}
+
+private struct OperationSnapshot: Equatable {
+    let id: UUID
+    let entityId: String
+    let operationType: String
+    let changedFields: String
+    let createdAt: Date
+    let retryCount: Int
+    let lastAttemptedAt: Date?
+    let status: String
+    let lastError: String?
+    let previousValues: Data?
+    let priority: Int
+    let requiresWiFi: Bool
+    let dependsOnId: String?
+    let completedAt: Date?
+    let serverConfirmedAt: Date?
+
+    init(_ operation: SyncOperation) {
+        id = operation.id
+        entityId = operation.entityId
+        operationType = operation.operationType
+        changedFields = operation.changedFields
+        createdAt = operation.createdAt
+        retryCount = operation.retryCount
+        lastAttemptedAt = operation.lastAttemptedAt
+        status = operation.status
+        lastError = operation.lastError
+        previousValues = operation.previousValues
+        priority = operation.priority
+        requiresWiFi = operation.requiresWiFi
+        dependsOnId = operation.dependsOnId
+        completedAt = operation.completedAt
+        serverConfirmedAt = operation.serverConfirmedAt
+    }
+
+    private init(copying source: OperationSnapshot, entityId: String) {
+        id = source.id
+        self.entityId = entityId
+        operationType = source.operationType
+        changedFields = source.changedFields
+        createdAt = source.createdAt
+        retryCount = source.retryCount
+        lastAttemptedAt = source.lastAttemptedAt
+        status = source.status
+        lastError = source.lastError
+        previousValues = source.previousValues
+        priority = source.priority
+        requiresWiFi = source.requiresWiFi
+        dependsOnId = source.dependsOnId
+        completedAt = source.completedAt
+        serverConfirmedAt = source.serverConfirmedAt
+    }
+
+    func rekeyed(to entityId: String) -> OperationSnapshot {
+        OperationSnapshot(copying: self, entityId: entityId)
+    }
+}
+
+private final class RecordingChecklistAnswerWriter: SiteVisitRemoteWriting {
+    let response: SiteVisitChecklistAnswerDTO
+    var checklistPayloads: [UpsertSiteVisitChecklistAnswerDTO] = []
+
+    init(response: SiteVisitChecklistAnswerDTO) {
+        self.response = response
+    }
+
+    func upsertVisit(_ payload: CreateSiteVisitDTO) async throws -> SiteVisitDTO {
+        throw SiteVisitRepositoryError.transport("Unexpected visit upsert")
+    }
+
+    func upsertArtifact(
+        _ payload: UpsertSiteVisitArtifactDTO
+    ) async throws -> SiteVisitArtifactDTO {
+        throw SiteVisitRepositoryError.transport("Unexpected artifact upsert")
+    }
+
+    func upsertChecklistAnswer(
+        _ payload: UpsertSiteVisitChecklistAnswerDTO
+    ) async throws -> SiteVisitChecklistAnswerDTO {
+        checklistPayloads.append(payload)
+        return response
+    }
+
+    func upsertIdentityDraft(
+        _ payload: UpsertSiteVisitIdentityDraftDTO
+    ) async throws -> SiteVisitIdentityDraftDTO {
+        throw SiteVisitRepositoryError.transport("Unexpected identity upsert")
+    }
+
+    func softDelete(
+        _ table: SiteVisitRemoteTable,
+        id: String,
+        at deletedAt: Date
+    ) async throws {
+        throw SiteVisitRepositoryError.transport("Unexpected soft delete")
+    }
+
+    func completeSiteVisit(
+        _ id: String,
+        completion: SiteVisitCompletionPayload
+    ) async throws -> SiteVisitCompletionResponseDTO {
+        throw SiteVisitRepositoryError.transport("Unexpected completion")
     }
 }

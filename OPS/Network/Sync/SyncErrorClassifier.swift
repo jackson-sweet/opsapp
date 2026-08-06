@@ -65,6 +65,24 @@ enum SyncErrorClassifier {
                 return .permanent
             case .transport:
                 return .transient
+            case let .server(code, message, _, _):
+                if code == "42501"
+                    || code?.hasPrefix("PGRST3") == true
+                    || message.contains("401")
+                    || message.localizedCaseInsensitiveContains("JWT") {
+                    return .auth
+                }
+                if code == "PGRST202"
+                    || code == "PGRST204"
+                    || code?.hasPrefix("PGRST2") == true {
+                    return .permanent
+                }
+                if let disposition = disposition(forPostgrestCode: code) {
+                    return disposition
+                }
+                return stringDisposition(
+                    for: siteVisitError.localizedDescription
+                ) ?? .transient
             }
         }
         // Media failures split on whether the bytes still exist. An absent file

@@ -59,29 +59,36 @@ protocol SiteVisitRemoteWriting: AnyObject {
     ) async throws -> SiteVisitCompletionResponseDTO
 }
 
-enum SiteVisitRepositoryError: Error, Equatable {
+enum SiteVisitRepositoryError: Error, Equatable, LocalizedError {
     case authorization(String)
     case dependency(String)
     case schemaCapability(String)
     case transport(String)
+    case server(code: String?, message: String, detail: String?, hint: String?)
     case malformedServerData(String)
     case companyMismatch(expected: String, received: String)
     case visitNotFound(String)
 
-    static func classify(postgrestCode: String?, message: String) -> SiteVisitRepositoryError {
-        let code = postgrestCode ?? ""
-        if code == "42501" || code.hasPrefix("PGRST3")
-            || message.contains("401") || message.localizedCaseInsensitiveContains("JWT") {
-            return .authorization(message)
+    var errorDescription: String? {
+        switch self {
+        case .authorization(let message),
+             .dependency(let message),
+             .schemaCapability(let message),
+             .transport(let message),
+             .malformedServerData(let message):
+            return message
+        case let .server(code, message, detail, hint):
+            var components = [String]()
+            if let code, !code.isEmpty { components.append("[\(code)]") }
+            components.append(message)
+            if let detail, !detail.isEmpty { components.append("Detail: \(detail)") }
+            if let hint, !hint.isEmpty { components.append("Hint: \(hint)") }
+            return components.joined(separator: " ")
+        case let .companyMismatch(expected, received):
+            return "Site-visit company mismatch. Expected \(expected), received \(received)."
+        case .visitNotFound(let id):
+            return "Site visit \(id) was not found."
         }
-        if code == "23503" || code == "23502" || code == "P0002" {
-            return .dependency(message)
-        }
-        if code == "PGRST202" || code == "PGRST204" || code.hasPrefix("PGRST2")
-            || code == "42P01" || code == "42703" || code == "42883" {
-            return .schemaCapability(message)
-        }
-        return .transport(message)
     }
 
     static func wrapping(_ error: Error) -> SiteVisitRepositoryError {
@@ -92,7 +99,12 @@ enum SiteVisitRepositoryError: Error, Equatable {
             return .malformedServerData(String(describing: decoding))
         }
         if let postgrest = error as? PostgrestError {
-            return classify(postgrestCode: postgrest.code, message: postgrest.message)
+            return .server(
+                code: postgrest.code,
+                message: postgrest.message,
+                detail: postgrest.detail,
+                hint: postgrest.hint
+            )
         }
         if let http = error as? HTTPError {
             let status = http.response.statusCode

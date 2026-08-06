@@ -466,13 +466,21 @@ struct SiteVisitOutboundSync {
         excluding operation: SyncOperation,
         context: ModelContext
     ) -> Bool {
-        let operations = (
-            try? context.fetch(FetchDescriptor<SyncOperation>())
-        ) ?? []
+        let rawType = entityType.rawValue
+        let exact = entityId
+        let lower = entityId.lowercased()
+        let upper = entityId.uppercased()
+        let descriptor = FetchDescriptor<SyncOperation>(
+            predicate: #Predicate {
+                $0.entityType == rawType
+                    && ($0.entityId == exact
+                        || $0.entityId == lower
+                        || $0.entityId == upper)
+            }
+        )
+        let operations = (try? context.fetch(descriptor)) ?? []
         return operations.contains {
             $0.id != operation.id
-                && $0.entityType == entityType.rawValue
-                && $0.entityId.lowercased() == entityId.lowercased()
                 && $0.operationType
                     != SiteVisitSyncOperation.completionOperationType
                 && $0.operationType != SiteVisitSyncOperation.mediaOperationType
@@ -480,37 +488,70 @@ struct SiteVisitOutboundSync {
         }
     }
 
+    // MARK: - Single-row lookups
+    //
+    // Predicate-scoped and fetchLimit-1 on purpose. A whole-table fetch plus an
+    // in-memory id filter registers every site-visit row in the actor's context
+    // on every single operation; interleaved with this drain's unique-id
+    // `context.transaction` saves, that desynced the context's registration map
+    // and hit a fatal "Duplicate registration attempt" (bug 3eef6ad7).
+    //
+    // Ids here are only ever all-lowercase (model inits lowercase them, and
+    // Postgres lowercases every uuid) or all-uppercase (`UUID().uuidString`), so
+    // three candidates cover the space. There is deliberately NO table-scan
+    // fallback — that would reintroduce the crash.
+
     private func fetchVisit(id: String, context: ModelContext) throws -> SiteVisit? {
-        try context.fetch(FetchDescriptor<SiteVisit>()).first {
-            $0.id.lowercased() == id.lowercased()
-        }
+        let exact = id
+        let lower = id.lowercased()
+        let upper = id.uppercased()
+        var descriptor = FetchDescriptor<SiteVisit>(
+            predicate: #Predicate { $0.id == exact || $0.id == lower || $0.id == upper }
+        )
+        descriptor.fetchLimit = 1
+        return try context.fetch(descriptor).first
     }
 
     private func fetchArtifact(
         id: String,
         context: ModelContext
     ) throws -> SiteVisitCaptureArtifact? {
-        try context.fetch(FetchDescriptor<SiteVisitCaptureArtifact>()).first {
-            $0.id.lowercased() == id.lowercased()
-        }
+        let exact = id
+        let lower = id.lowercased()
+        let upper = id.uppercased()
+        var descriptor = FetchDescriptor<SiteVisitCaptureArtifact>(
+            predicate: #Predicate { $0.id == exact || $0.id == lower || $0.id == upper }
+        )
+        descriptor.fetchLimit = 1
+        return try context.fetch(descriptor).first
     }
 
     private func fetchAnswer(
         id: String,
         context: ModelContext
     ) throws -> SiteVisitChecklistAnswer? {
-        try context.fetch(FetchDescriptor<SiteVisitChecklistAnswer>()).first {
-            $0.id.lowercased() == id.lowercased()
-        }
+        let exact = id
+        let lower = id.lowercased()
+        let upper = id.uppercased()
+        var descriptor = FetchDescriptor<SiteVisitChecklistAnswer>(
+            predicate: #Predicate { $0.id == exact || $0.id == lower || $0.id == upper }
+        )
+        descriptor.fetchLimit = 1
+        return try context.fetch(descriptor).first
     }
 
     private func fetchDraft(
         id: String,
         context: ModelContext
     ) throws -> SiteVisitIdentityDraft? {
-        try context.fetch(FetchDescriptor<SiteVisitIdentityDraft>()).first {
-            $0.id.lowercased() == id.lowercased()
-        }
+        let exact = id
+        let lower = id.lowercased()
+        let upper = id.uppercased()
+        var descriptor = FetchDescriptor<SiteVisitIdentityDraft>(
+            predicate: #Predicate { $0.id == exact || $0.id == lower || $0.id == upper }
+        )
+        descriptor.fetchLimit = 1
+        return try context.fetch(descriptor).first
     }
 
     private func requireCompany(_ actual: String, expected: String) throws {

@@ -6,6 +6,18 @@
 //  Remote fields merge only when no durable local operation protects them;
 //  remote tombstones and the server-owned activity id always converge.
 //
+//  Two hard rules keep this off the crash path that killed the backlog drain
+//  (bug 3eef6ad7):
+//
+//  1. Every row lookup is a predicate-scoped, fetchLimit-1 fetch. A whole-table
+//     fetch + in-memory id filter materializes and registers every site-visit
+//     row in the actor's context on every echo, which — interleaved with the
+//     drain's unique-id `context.transaction` saves — desynced the context's
+//     registration map and hit a fatal "Duplicate registration attempt".
+//  2. A merge that would change nothing opens no transaction at all. Realtime
+//     echoes the very rows the drain just pushed, so most inbound work is
+//     redundant; bumping `lastSyncedAt` alone forced a full save cycle per echo.
+//
 
 import Foundation
 import SwiftData
@@ -13,6 +25,9 @@ import SwiftData
 struct SiteVisitMergeReport: Equatable {
     var inserted = 0
     var updated = 0
+    /// Rows whose incoming snapshot matched local state exactly. These take no
+    /// transaction and no write — a redundant echo must be free.
+    var unchanged = 0
 }
 
 enum SiteVisitMergeError: Error, Equatable {
@@ -34,6 +49,35 @@ enum SiteVisitServerMerge {
         "notes", "internal_notes", "measurements", "photos", "calendar_event_id",
         "deleted_at",
     ]
+
+    /// What one row's merge resolved to. The write is deferred so the caller can
+    /// decide whether a transaction is needed at all.
+    private enum MergeOutcome {
+        case unchanged
+        case inserted(() -> Void)
+        case updated(() -> Void)
+
+        var requiresWrite: Bool {
+            if case .unchanged = self { return false }
+            return true
+        }
+    }
+
+    private static func apply(
+        _ outcome: MergeOutcome,
+        report: inout SiteVisitMergeReport
+    ) {
+        switch outcome {
+        case .unchanged:
+            report.unchanged += 1
+        case .inserted(let write):
+            write()
+            report.inserted += 1
+        case .updated(let write):
+            write()
+            report.updated += 1
+        }
+    }
 
     static func merge(
         bundle: SiteVisitBundleDTO,
@@ -106,8 +150,13 @@ enum SiteVisitServerMerge {
     ) throws -> SiteVisitMergeReport {
         try requireCompany(visit.companyId, expected: companyId)
         var report = SiteVisitMergeReport()
+        let outcome = try planMerge(visit: visit, in: context, now: now)
+        guard outcome.requiresWrite else {
+            report.unchanged += 1
+            return report
+        }
         try context.transaction {
-            try merge(visit: visit, into: context, now: now, report: &report)
+            apply(outcome, report: &report)
         }
         return report
     }
@@ -122,15 +171,22 @@ enum SiteVisitServerMerge {
         now: Date = Date()
     ) throws -> SiteVisitMergeReport {
         try requireCompany(artifact.companyId, expected: companyId)
+        // Parent check and diff are pure reads, so a redundant echo resolves
+        // without ever opening a transaction.
+        try requireParent(
+            artifact.siteVisitId,
+            table: "site_visit_artifacts",
+            childId: artifact.id,
+            context: context
+        )
         var report = SiteVisitMergeReport()
+        let outcome = try planMerge(artifact: artifact, in: context, now: now)
+        guard outcome.requiresWrite else {
+            report.unchanged += 1
+            return report
+        }
         try context.transaction {
-            try requireParent(
-                artifact.siteVisitId,
-                table: "site_visit_artifacts",
-                childId: artifact.id,
-                context: context
-            )
-            try merge(artifact: artifact, into: context, now: now, report: &report)
+            apply(outcome, report: &report)
         }
         return report
     }
@@ -142,20 +198,20 @@ enum SiteVisitServerMerge {
         now: Date = Date()
     ) throws -> SiteVisitMergeReport {
         try requireCompany(checklistAnswer.companyId, expected: companyId)
+        try requireParent(
+            checklistAnswer.siteVisitId,
+            table: "site_visit_checklist_answers",
+            childId: checklistAnswer.id,
+            context: context
+        )
         var report = SiteVisitMergeReport()
+        let outcome = try planMerge(checklistAnswer: checklistAnswer, in: context, now: now)
+        guard outcome.requiresWrite else {
+            report.unchanged += 1
+            return report
+        }
         try context.transaction {
-            try requireParent(
-                checklistAnswer.siteVisitId,
-                table: "site_visit_checklist_answers",
-                childId: checklistAnswer.id,
-                context: context
-            )
-            try merge(
-                checklistAnswer: checklistAnswer,
-                into: context,
-                now: now,
-                report: &report
-            )
+            apply(outcome, report: &report)
         }
         return report
     }
@@ -167,20 +223,20 @@ enum SiteVisitServerMerge {
         now: Date = Date()
     ) throws -> SiteVisitMergeReport {
         try requireCompany(identityDraft.companyId, expected: companyId)
+        try requireParent(
+            identityDraft.siteVisitId,
+            table: "site_visit_identity_drafts",
+            childId: identityDraft.id,
+            context: context
+        )
         var report = SiteVisitMergeReport()
+        let outcome = try planMerge(identityDraft: identityDraft, in: context, now: now)
+        guard outcome.requiresWrite else {
+            report.unchanged += 1
+            return report
+        }
         try context.transaction {
-            try requireParent(
-                identityDraft.siteVisitId,
-                table: "site_visit_identity_drafts",
-                childId: identityDraft.id,
-                context: context
-            )
-            try merge(
-                identityDraft: identityDraft,
-                into: context,
-                now: now,
-                report: &report
-            )
+            apply(outcome, report: &report)
         }
         return report
     }
@@ -193,18 +249,89 @@ enum SiteVisitServerMerge {
         now: Date,
         report: inout SiteVisitMergeReport
     ) throws {
-        if let existing = try fetch(SiteVisit.self, id: dto.id, in: context) {
-            let isStale = existing.lastSyncedAt != nil
-                && isOlder(dto.updatedAt, than: existing.updatedAt)
-            let protection = protectedFields(
-                entityType: EntityType.visit,
-                entityId: dto.id,
-                modelNeedsSync: existing.needsSync,
-                fallbackFields: parentMutableFields,
-                context: context,
-                now: now
-            )
-            let accept = { field in !isStale && protection.accepts(field) }
+        apply(try planMerge(visit: dto, in: context, now: now), report: &report)
+    }
+
+    private static func planMerge(
+        visit dto: SiteVisitDTO,
+        in context: ModelContext,
+        now: Date
+    ) throws -> MergeOutcome {
+        guard let existing = try fetchVisit(id: dto.id, in: context) else {
+            return .inserted {
+                let model = SiteVisit(
+                    id: dto.id,
+                    opportunityId: dto.opportunityId,
+                    companyId: dto.companyId,
+                    projectId: dto.projectId,
+                    projectRef: dto.projectRef,
+                    clientId: dto.clientId,
+                    clientRef: dto.clientRef,
+                    status: dto.status,
+                    scheduledAt: dto.scheduledAt,
+                    durationMinutes: dto.durationMinutes,
+                    assigneeIds: dto.assigneeIds,
+                    createdBy: dto.createdBy,
+                    loggedActivityId: dto.activityId,
+                    createdAt: dto.createdAt ?? dto.scheduledAt
+                )
+                model.completedAt = dto.completedAt
+                model.notes = dto.notes
+                model.internalNotes = dto.internalNotes
+                model.measurements = dto.measurements
+                model.photos = dto.photos
+                model.calendarEventId = dto.calendarEventId
+                model.updatedAt = dto.updatedAt
+                model.deletedAt = dto.deletedAt
+                model.lastSyncedAt = now
+                model.needsSync = false
+                context.insert(model)
+            }
+        }
+
+        let isStale = existing.lastSyncedAt != nil
+            && isOlder(dto.updatedAt, than: existing.updatedAt)
+        let protection = protectedFields(
+            entityType: EntityType.visit,
+            entityId: dto.id,
+            modelNeedsSync: existing.needsSync,
+            fallbackFields: parentMutableFields,
+            context: context,
+            now: now
+        )
+        let accept = { field in !isStale && protection.accepts(field) }
+        let acceptsTombstone = dto.deletedAt != nil || accept("deleted_at")
+
+        let changed =
+            (accept("opportunity_id") && existing.opportunityId != dto.opportunityId)
+            || (accept("project_id") && existing.projectId != dto.projectId)
+            || (accept("project_ref") && existing.projectRef != dto.projectRef)
+            || (accept("client_id") && existing.clientId != dto.clientId)
+            || (accept("client_ref") && existing.clientRef != dto.clientRef)
+            || (accept("scheduled_at") && existing.scheduledAt != dto.scheduledAt)
+            || (accept("duration_minutes") && existing.durationMinutes != dto.durationMinutes)
+            || (accept("assignee_ids") && existing.assigneeIds != dto.assigneeIds)
+            || (accept("status") && existing.status != dto.status)
+            || (accept("completed_at") && existing.completedAt != dto.completedAt)
+            || (accept("notes") && existing.notes != dto.notes)
+            || (accept("internal_notes") && existing.internalNotes != dto.internalNotes)
+            || (accept("measurements") && existing.measurements != dto.measurements)
+            || (accept("photos") && existing.photos != dto.photos)
+            || (accept("calendar_event_id") && existing.calendarEventId != dto.calendarEventId)
+            || (acceptsTombstone && existing.deletedAt != dto.deletedAt)
+            || (!isStale && (
+                existing.loggedActivityId != dto.activityId
+                    || existing.createdBy != dto.createdBy
+                    || (dto.createdAt.map { $0 != existing.createdAt } ?? false)
+                    || existing.updatedAt != dto.updatedAt
+            ))
+            // A row that has never been marked synced must record that it now is.
+            || existing.lastSyncedAt == nil
+            || existing.needsSync != protection.hasLocalWork
+
+        guard changed else { return .unchanged }
+
+        return .updated {
             if accept("opportunity_id") { existing.opportunityId = dto.opportunityId }
             if accept("project_id") { existing.projectId = dto.projectId }
             if accept("project_ref") { existing.projectRef = dto.projectRef }
@@ -220,7 +347,7 @@ enum SiteVisitServerMerge {
             if accept("measurements") { existing.measurements = dto.measurements }
             if accept("photos") { existing.photos = dto.photos }
             if accept("calendar_event_id") { existing.calendarEventId = dto.calendarEventId }
-            if dto.deletedAt != nil || accept("deleted_at") {
+            if acceptsTombstone {
                 existing.deletedAt = dto.deletedAt
             }
 
@@ -234,36 +361,6 @@ enum SiteVisitServerMerge {
             }
             existing.lastSyncedAt = now
             existing.needsSync = protection.hasLocalWork
-            report.updated += 1
-        } else {
-            let model = SiteVisit(
-                id: dto.id,
-                opportunityId: dto.opportunityId,
-                companyId: dto.companyId,
-                projectId: dto.projectId,
-                projectRef: dto.projectRef,
-                clientId: dto.clientId,
-                clientRef: dto.clientRef,
-                status: dto.status,
-                scheduledAt: dto.scheduledAt,
-                durationMinutes: dto.durationMinutes,
-                assigneeIds: dto.assigneeIds,
-                createdBy: dto.createdBy,
-                loggedActivityId: dto.activityId,
-                createdAt: dto.createdAt ?? dto.scheduledAt
-            )
-            model.completedAt = dto.completedAt
-            model.notes = dto.notes
-            model.internalNotes = dto.internalNotes
-            model.measurements = dto.measurements
-            model.photos = dto.photos
-            model.calendarEventId = dto.calendarEventId
-            model.updatedAt = dto.updatedAt
-            model.deletedAt = dto.deletedAt
-            model.lastSyncedAt = now
-            model.needsSync = false
-            context.insert(model)
-            report.inserted += 1
         }
     }
 
@@ -275,23 +372,89 @@ enum SiteVisitServerMerge {
         now: Date,
         report: inout SiteVisitMergeReport
     ) throws {
+        apply(try planMerge(artifact: dto, in: context, now: now), report: &report)
+    }
+
+    private static func planMerge(
+        artifact dto: SiteVisitArtifactDTO,
+        in context: ModelContext,
+        now: Date
+    ) throws -> MergeOutcome {
         let fields: Set<String> = [
             "opportunity_id", "kind", "source", "title", "body", "asset_url",
             "rendered_asset_url", "thumbnail_url", "dimensions", "deck_design_id",
             "included_in_project_review", "captured_at", "deleted_at",
         ]
-        if let existing = try fetch(SiteVisitCaptureArtifact.self, id: dto.id, in: context) {
-            let isStale = existing.lastSyncedAt != nil
-                && isOlder(dto.updatedAt, than: existing.updatedAt)
-            let protection = protectedFields(
-                entityType: EntityType.artifact,
-                entityId: dto.id,
-                modelNeedsSync: existing.needsSync,
-                fallbackFields: fields,
-                context: context,
-                now: now
-            )
-            let accept = { field in !isStale && protection.accepts(field) }
+        let dimensions = try dimensionsJSON(dto.dimensions)
+
+        guard let existing = try fetchArtifact(id: dto.id, in: context) else {
+            return .inserted {
+                let model = SiteVisitCaptureArtifact(
+                    id: dto.id,
+                    siteVisitId: dto.siteVisitId,
+                    companyId: dto.companyId,
+                    opportunityId: dto.opportunityId,
+                    kind: dto.kind,
+                    source: dto.source,
+                    title: dto.title,
+                    body: dto.body,
+                    localAssetURL: dto.assetURL,
+                    renderedAssetURL: dto.renderedAssetURL,
+                    thumbnailURL: dto.thumbnailURL,
+                    dimensionsJSON: dimensions,
+                    deckDesignId: dto.deckDesignId,
+                    includedInProjectReview: dto.includedInProjectReview,
+                    capturedAt: dto.capturedAt,
+                    createdBy: dto.createdBy,
+                    createdAt: dto.createdAt
+                )
+                model.updatedAt = dto.updatedAt
+                model.deletedAt = dto.deletedAt
+                model.lastSyncedAt = now
+                model.needsSync = false
+                context.insert(model)
+            }
+        }
+
+        let isStale = existing.lastSyncedAt != nil
+            && isOlder(dto.updatedAt, than: existing.updatedAt)
+        let protection = protectedFields(
+            entityType: EntityType.artifact,
+            entityId: dto.id,
+            modelNeedsSync: existing.needsSync,
+            fallbackFields: fields,
+            context: context,
+            now: now
+        )
+        let accept = { field in !isStale && protection.accepts(field) }
+        let acceptsTombstone = dto.deletedAt != nil || accept("deleted_at")
+
+        let changed =
+            (accept("opportunity_id") && existing.opportunityId != dto.opportunityId)
+            || (accept("kind") && existing.kind != dto.kind)
+            || (accept("source") && existing.source != dto.source)
+            || (accept("title") && existing.title != dto.title)
+            || (accept("body") && existing.body != dto.body)
+            || (accept("asset_url") && existing.localAssetURL != dto.assetURL)
+            || (accept("rendered_asset_url") && existing.renderedAssetURL != dto.renderedAssetURL)
+            || (accept("thumbnail_url") && existing.thumbnailURL != dto.thumbnailURL)
+            || (accept("dimensions") && existing.dimensionsJSON != dimensions)
+            || (accept("deck_design_id") && existing.deckDesignId != dto.deckDesignId)
+            || (accept("included_in_project_review")
+                && existing.includedInProjectReview != dto.includedInProjectReview)
+            || (accept("captured_at") && existing.capturedAt != dto.capturedAt)
+            || (acceptsTombstone && existing.deletedAt != dto.deletedAt)
+            || (!isStale && (
+                existing.createdBy != dto.createdBy
+                    || existing.createdAt != dto.createdAt
+                    || existing.updatedAt != dto.updatedAt
+            ))
+            || existing.lastSyncedAt == nil
+            || existing.needsSync != protection.hasLocalWork
+
+        guard changed else { return .unchanged }
+
+        return .updated {
             if accept("opportunity_id") { existing.opportunityId = dto.opportunityId }
             if accept("kind") { existing.kind = dto.kind }
             if accept("source") { existing.source = dto.source }
@@ -300,13 +463,13 @@ enum SiteVisitServerMerge {
             if accept("asset_url") { existing.localAssetURL = dto.assetURL }
             if accept("rendered_asset_url") { existing.renderedAssetURL = dto.renderedAssetURL }
             if accept("thumbnail_url") { existing.thumbnailURL = dto.thumbnailURL }
-            if accept("dimensions") { existing.dimensionsJSON = try dimensionsJSON(dto.dimensions) }
+            if accept("dimensions") { existing.dimensionsJSON = dimensions }
             if accept("deck_design_id") { existing.deckDesignId = dto.deckDesignId }
             if accept("included_in_project_review") {
                 existing.includedInProjectReview = dto.includedInProjectReview
             }
             if accept("captured_at") { existing.capturedAt = dto.capturedAt }
-            if dto.deletedAt != nil || accept("deleted_at") { existing.deletedAt = dto.deletedAt }
+            if acceptsTombstone { existing.deletedAt = dto.deletedAt }
             if !isStale {
                 existing.createdBy = dto.createdBy
                 existing.createdAt = dto.createdAt
@@ -314,33 +477,6 @@ enum SiteVisitServerMerge {
             }
             existing.lastSyncedAt = now
             existing.needsSync = protection.hasLocalWork
-            report.updated += 1
-        } else {
-            let model = SiteVisitCaptureArtifact(
-                id: dto.id,
-                siteVisitId: dto.siteVisitId,
-                companyId: dto.companyId,
-                opportunityId: dto.opportunityId,
-                kind: dto.kind,
-                source: dto.source,
-                title: dto.title,
-                body: dto.body,
-                localAssetURL: dto.assetURL,
-                renderedAssetURL: dto.renderedAssetURL,
-                thumbnailURL: dto.thumbnailURL,
-                dimensionsJSON: try dimensionsJSON(dto.dimensions),
-                deckDesignId: dto.deckDesignId,
-                includedInProjectReview: dto.includedInProjectReview,
-                capturedAt: dto.capturedAt,
-                createdBy: dto.createdBy,
-                createdAt: dto.createdAt
-            )
-            model.updatedAt = dto.updatedAt
-            model.deletedAt = dto.deletedAt
-            model.lastSyncedAt = now
-            model.needsSync = false
-            context.insert(model)
-            report.inserted += 1
         }
     }
 
@@ -352,22 +488,80 @@ enum SiteVisitServerMerge {
         now: Date,
         report: inout SiteVisitMergeReport
     ) throws {
+        apply(try planMerge(checklistAnswer: dto, in: context, now: now), report: &report)
+    }
+
+    private static func planMerge(
+        checklistAnswer dto: SiteVisitChecklistAnswerDTO,
+        in context: ModelContext,
+        now: Date
+    ) throws -> MergeOutcome {
         let fields: Set<String> = [
             "opportunity_id", "site_visit_type_id", "field_id", "label", "kind",
             "required", "help_text", "sort_order", "answer_value", "deleted_at",
         ]
-        if let existing = try fetch(SiteVisitChecklistAnswer.self, id: dto.id, in: context) {
-            let isStale = existing.lastSyncedAt != nil
-                && isOlder(dto.updatedAt, than: existing.updatedAt)
-            let protection = protectedFields(
-                entityType: EntityType.checklistAnswer,
-                entityId: dto.id,
-                modelNeedsSync: existing.needsSync,
-                fallbackFields: fields,
-                context: context,
-                now: now
-            )
-            let accept = { field in !isStale && protection.accepts(field) }
+
+        guard let existing = try fetchAnswer(id: dto.id, in: context) else {
+            return .inserted {
+                let model = SiteVisitChecklistAnswer(
+                    id: dto.id,
+                    siteVisitId: dto.siteVisitId,
+                    companyId: dto.companyId,
+                    opportunityId: dto.opportunityId,
+                    siteVisitTypeId: dto.siteVisitTypeId,
+                    fieldId: dto.fieldId,
+                    label: dto.label,
+                    kind: dto.kind,
+                    required: dto.required,
+                    helpText: dto.helpText,
+                    sortOrder: dto.sortOrder,
+                    answerValue: dto.answerValue,
+                    createdBy: dto.createdBy,
+                    createdAt: dto.createdAt
+                )
+                model.updatedAt = dto.updatedAt
+                model.deletedAt = dto.deletedAt
+                model.lastSyncedAt = now
+                model.needsSync = false
+                context.insert(model)
+            }
+        }
+
+        let isStale = existing.lastSyncedAt != nil
+            && isOlder(dto.updatedAt, than: existing.updatedAt)
+        let protection = protectedFields(
+            entityType: EntityType.checklistAnswer,
+            entityId: dto.id,
+            modelNeedsSync: existing.needsSync,
+            fallbackFields: fields,
+            context: context,
+            now: now
+        )
+        let accept = { field in !isStale && protection.accepts(field) }
+        let acceptsTombstone = dto.deletedAt != nil || accept("deleted_at")
+
+        let changed =
+            (accept("opportunity_id") && existing.opportunityId != dto.opportunityId)
+            || (accept("site_visit_type_id") && existing.siteVisitTypeId != dto.siteVisitTypeId)
+            || (accept("field_id") && existing.fieldId != dto.fieldId)
+            || (accept("label") && existing.label != dto.label)
+            || (accept("kind") && existing.kind != dto.kind)
+            || (accept("required") && existing.required != dto.required)
+            || (accept("help_text") && existing.helpText != dto.helpText)
+            || (accept("sort_order") && existing.sortOrder != dto.sortOrder)
+            || (accept("answer_value") && existing.answerValue != dto.answerValue)
+            || (acceptsTombstone && existing.deletedAt != dto.deletedAt)
+            || (!isStale && (
+                existing.createdBy != dto.createdBy
+                    || existing.createdAt != dto.createdAt
+                    || existing.updatedAt != dto.updatedAt
+            ))
+            || existing.lastSyncedAt == nil
+            || existing.needsSync != protection.hasLocalWork
+
+        guard changed else { return .unchanged }
+
+        return .updated {
             if accept("opportunity_id") { existing.opportunityId = dto.opportunityId }
             if accept("site_visit_type_id") { existing.siteVisitTypeId = dto.siteVisitTypeId }
             if accept("field_id") { existing.fieldId = dto.fieldId }
@@ -376,8 +570,10 @@ enum SiteVisitServerMerge {
             if accept("required") { existing.required = dto.required }
             if accept("help_text") { existing.helpText = dto.helpText }
             if accept("sort_order") { existing.sortOrder = dto.sortOrder }
+            // NOTE: this setter also stamps updatedAt/needsSync; the
+            // server-owned reconciliation below deliberately overwrites both.
             if accept("answer_value") { existing.answerValue = dto.answerValue }
-            if dto.deletedAt != nil || accept("deleted_at") { existing.deletedAt = dto.deletedAt }
+            if acceptsTombstone { existing.deletedAt = dto.deletedAt }
             if !isStale {
                 existing.createdBy = dto.createdBy
                 existing.createdAt = dto.createdAt
@@ -385,30 +581,6 @@ enum SiteVisitServerMerge {
             }
             existing.lastSyncedAt = now
             existing.needsSync = protection.hasLocalWork
-            report.updated += 1
-        } else {
-            let model = SiteVisitChecklistAnswer(
-                id: dto.id,
-                siteVisitId: dto.siteVisitId,
-                companyId: dto.companyId,
-                opportunityId: dto.opportunityId,
-                siteVisitTypeId: dto.siteVisitTypeId,
-                fieldId: dto.fieldId,
-                label: dto.label,
-                kind: dto.kind,
-                required: dto.required,
-                helpText: dto.helpText,
-                sortOrder: dto.sortOrder,
-                answerValue: dto.answerValue,
-                createdBy: dto.createdBy,
-                createdAt: dto.createdAt
-            )
-            model.updatedAt = dto.updatedAt
-            model.deletedAt = dto.deletedAt
-            model.lastSyncedAt = now
-            model.needsSync = false
-            context.insert(model)
-            report.inserted += 1
         }
     }
 
@@ -420,23 +592,91 @@ enum SiteVisitServerMerge {
         now: Date,
         report: inout SiteVisitMergeReport
     ) throws {
+        apply(try planMerge(identityDraft: dto, in: context, now: now), report: &report)
+    }
+
+    private static func planMerge(
+        identityDraft dto: SiteVisitIdentityDraftDTO,
+        in context: ModelContext,
+        now: Date
+    ) throws -> MergeOutcome {
         let fields: Set<String> = [
             "opportunity_id", "client_id", "sub_client_id", "client_name",
             "contact_name", "preferred_email", "additional_emails", "phone_number",
             "address", "notes", "last_committed_at", "deleted_at",
         ]
-        if let existing = try fetch(SiteVisitIdentityDraft.self, id: dto.id, in: context) {
-            let isStale = existing.lastSyncedAt != nil
-                && isOlder(dto.updatedAt, than: existing.updatedAt)
-            let protection = protectedFields(
-                entityType: EntityType.identityDraft,
-                entityId: dto.id,
-                modelNeedsSync: existing.needsSync,
-                fallbackFields: fields,
-                context: context,
-                now: now
-            )
-            let accept = { field in !isStale && protection.accepts(field) }
+
+        guard let existing = try fetchDraft(id: dto.id, in: context) else {
+            return .inserted {
+                let model = SiteVisitIdentityDraft(
+                    id: dto.id,
+                    siteVisitId: dto.siteVisitId,
+                    companyId: dto.companyId,
+                    opportunityId: dto.opportunityId,
+                    clientId: dto.clientId,
+                    subClientId: dto.subClientId,
+                    searchText: "",
+                    clientName: dto.clientName,
+                    contactName: dto.contactName,
+                    preferredEmail: dto.preferredEmail,
+                    additionalEmails: dto.additionalEmails,
+                    phoneNumber: dto.phoneNumber,
+                    address: dto.address,
+                    notes: dto.notes,
+                    createdBy: dto.createdBy,
+                    createdAt: dto.createdAt
+                )
+                model.updatedAt = dto.updatedAt
+                model.lastCommittedAt = dto.lastCommittedAt
+                model.deletedAt = dto.deletedAt
+                model.lastSyncedAt = now
+                model.needsSync = false
+                context.insert(model)
+            }
+        }
+
+        let isStale = existing.lastSyncedAt != nil
+            && isOlder(dto.updatedAt, than: existing.updatedAt)
+        let protection = protectedFields(
+            entityType: EntityType.identityDraft,
+            entityId: dto.id,
+            modelNeedsSync: existing.needsSync,
+            fallbackFields: fields,
+            context: context,
+            now: now
+        )
+        let accept = { field in !isStale && protection.accepts(field) }
+        let acceptsTombstone = dto.deletedAt != nil || accept("deleted_at")
+        // The model's setter trims and drops empties, so compare against the
+        // value the write would actually store.
+        let normalizedEmails = dto.additionalEmails
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+
+        let changed =
+            (accept("opportunity_id") && existing.opportunityId != dto.opportunityId)
+            || (accept("client_id") && existing.clientId != dto.clientId)
+            || (accept("sub_client_id") && existing.subClientId != dto.subClientId)
+            || (accept("client_name") && existing.clientName != dto.clientName)
+            || (accept("contact_name") && existing.contactName != dto.contactName)
+            || (accept("preferred_email") && existing.preferredEmail != dto.preferredEmail)
+            || (accept("additional_emails") && existing.additionalEmails != normalizedEmails)
+            || (accept("phone_number") && existing.phoneNumber != dto.phoneNumber)
+            || (accept("address") && existing.address != dto.address)
+            || (accept("notes") && existing.notes != dto.notes)
+            || (accept("last_committed_at") && existing.lastCommittedAt != dto.lastCommittedAt)
+            || (acceptsTombstone && existing.deletedAt != dto.deletedAt)
+            || (!isStale && (
+                existing.createdBy != dto.createdBy
+                    || existing.createdAt != dto.createdAt
+                    || existing.updatedAt != dto.updatedAt
+            ))
+            || existing.lastSyncedAt == nil
+            || existing.needsSync != protection.hasLocalWork
+
+        guard changed else { return .unchanged }
+
+        return .updated {
             if accept("opportunity_id") { existing.opportunityId = dto.opportunityId }
             if accept("client_id") { existing.clientId = dto.clientId }
             if accept("sub_client_id") { existing.subClientId = dto.subClientId }
@@ -448,7 +688,7 @@ enum SiteVisitServerMerge {
             if accept("address") { existing.address = dto.address }
             if accept("notes") { existing.notes = dto.notes }
             if accept("last_committed_at") { existing.lastCommittedAt = dto.lastCommittedAt }
-            if dto.deletedAt != nil || accept("deleted_at") { existing.deletedAt = dto.deletedAt }
+            if acceptsTombstone { existing.deletedAt = dto.deletedAt }
             if !isStale {
                 existing.createdBy = dto.createdBy
                 existing.createdAt = dto.createdAt
@@ -456,33 +696,6 @@ enum SiteVisitServerMerge {
             }
             existing.lastSyncedAt = now
             existing.needsSync = protection.hasLocalWork
-            report.updated += 1
-        } else {
-            let model = SiteVisitIdentityDraft(
-                id: dto.id,
-                siteVisitId: dto.siteVisitId,
-                companyId: dto.companyId,
-                opportunityId: dto.opportunityId,
-                clientId: dto.clientId,
-                subClientId: dto.subClientId,
-                searchText: "",
-                clientName: dto.clientName,
-                contactName: dto.contactName,
-                preferredEmail: dto.preferredEmail,
-                additionalEmails: dto.additionalEmails,
-                phoneNumber: dto.phoneNumber,
-                address: dto.address,
-                notes: dto.notes,
-                createdBy: dto.createdBy,
-                createdAt: dto.createdAt
-            )
-            model.updatedAt = dto.updatedAt
-            model.lastCommittedAt = dto.lastCommittedAt
-            model.deletedAt = dto.deletedAt
-            model.lastSyncedAt = now
-            model.needsSync = false
-            context.insert(model)
-            report.inserted += 1
         }
     }
 
@@ -613,7 +826,7 @@ enum SiteVisitServerMerge {
         childId: String,
         context: ModelContext
     ) throws {
-        guard try fetch(SiteVisit.self, id: siteVisitId, in: context) != nil else {
+        guard try fetchVisit(id: siteVisitId, in: context) != nil else {
             throw SiteVisitMergeError.orphanedChild(
                 table: table,
                 childId: childId,
@@ -665,16 +878,67 @@ enum SiteVisitServerMerge {
         )
     }
 
-    private static func fetch<Model: PersistentModel>(
-        _ type: Model.Type,
+    // MARK: - Single-row lookups
+    //
+    // Ids in this codebase are only ever all-lowercase (model inits lowercase,
+    // and Postgres lowercases every uuid) or all-uppercase (`UUID().uuidString`),
+    // so three candidates cover the space. There is deliberately NO table-scan
+    // fallback — that is exactly the pattern that crashed the drain.
+
+    private static func fetchVisit(
         id: String,
         in context: ModelContext
-    ) throws -> Model? where Model: Identifiable, Model.ID == String {
+    ) throws -> SiteVisit? {
+        let exact = id
         let lower = id.lowercased()
         let upper = id.uppercased()
-        return try context.fetch(FetchDescriptor<Model>()).first {
-            $0.id == id || $0.id == lower || $0.id == upper
-        }
+        var descriptor = FetchDescriptor<SiteVisit>(
+            predicate: #Predicate { $0.id == exact || $0.id == lower || $0.id == upper }
+        )
+        descriptor.fetchLimit = 1
+        return try context.fetch(descriptor).first
+    }
+
+    private static func fetchArtifact(
+        id: String,
+        in context: ModelContext
+    ) throws -> SiteVisitCaptureArtifact? {
+        let exact = id
+        let lower = id.lowercased()
+        let upper = id.uppercased()
+        var descriptor = FetchDescriptor<SiteVisitCaptureArtifact>(
+            predicate: #Predicate { $0.id == exact || $0.id == lower || $0.id == upper }
+        )
+        descriptor.fetchLimit = 1
+        return try context.fetch(descriptor).first
+    }
+
+    private static func fetchAnswer(
+        id: String,
+        in context: ModelContext
+    ) throws -> SiteVisitChecklistAnswer? {
+        let exact = id
+        let lower = id.lowercased()
+        let upper = id.uppercased()
+        var descriptor = FetchDescriptor<SiteVisitChecklistAnswer>(
+            predicate: #Predicate { $0.id == exact || $0.id == lower || $0.id == upper }
+        )
+        descriptor.fetchLimit = 1
+        return try context.fetch(descriptor).first
+    }
+
+    private static func fetchDraft(
+        id: String,
+        in context: ModelContext
+    ) throws -> SiteVisitIdentityDraft? {
+        let exact = id
+        let lower = id.lowercased()
+        let upper = id.uppercased()
+        var descriptor = FetchDescriptor<SiteVisitIdentityDraft>(
+            predicate: #Predicate { $0.id == exact || $0.id == lower || $0.id == upper }
+        )
+        descriptor.fetchLimit = 1
+        return try context.fetch(descriptor).first
     }
 
     private static func dimensionsJSON(_ dimensions: DimensionsData?) throws -> String? {

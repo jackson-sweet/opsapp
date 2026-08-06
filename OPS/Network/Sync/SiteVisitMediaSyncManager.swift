@@ -59,13 +59,20 @@ struct SiteVisitMediaSyncManager {
         mediaOperation: SyncOperation,
         context: ModelContext
     ) async throws {
+        // Predicate-scoped, fetchLimit 1: this runs once per media operation
+        // inside the same drain that crashed on a whole-table fetch registering
+        // every artifact in the actor's context (bug 3eef6ad7).
+        let exact = artifactId
         let canonicalId = artifactId.lowercased()
-        let artifacts = try context.fetch(
-            FetchDescriptor<SiteVisitCaptureArtifact>()
+        let upper = artifactId.uppercased()
+        var descriptor = FetchDescriptor<SiteVisitCaptureArtifact>(
+            predicate: #Predicate {
+                $0.id == exact || $0.id == canonicalId || $0.id == upper
+            }
         )
-        guard let artifact = artifacts.first(where: {
-            $0.id.lowercased() == canonicalId
-        }), artifact.deletedAt == nil else {
+        descriptor.fetchLimit = 1
+        guard let artifact = try context.fetch(descriptor).first,
+              artifact.deletedAt == nil else {
             // The capture was removed after this operation was queued. The
             // corresponding CRUD tombstone owns the server outcome; media is a
             // safe no-op.

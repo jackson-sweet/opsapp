@@ -183,6 +183,88 @@ final class SiteVisitServerMergeTests: XCTestCase {
         XCTAssertFalse(context.hasChanges)
     }
 
+    /// The row lookups are predicate-scoped now, and `merge(delta:)` checks each
+    /// child's parent inside the same transaction that inserted it. If a
+    /// predicate fetch could not see a pending insert, every delta pull carrying
+    /// a brand-new visit and its children would start throwing `orphanedChild`.
+    func testDeltaMergeAcceptsChildrenOfAParentInsertedInTheSameTransaction() throws {
+        let context = try makeContext()
+        let bundle = try makeBundle()
+
+        let report = try SiteVisitServerMerge.merge(
+            delta: SiteVisitDeltaBundleDTO(
+                visits: [bundle.visit],
+                artifacts: bundle.artifacts,
+                checklistAnswers: bundle.checklistAnswers,
+                identityDrafts: bundle.identityDrafts
+            ),
+            companyId: companyId,
+            into: context
+        )
+
+        XCTAssertEqual(report.inserted, 4)
+        XCTAssertEqual(report.updated, 0)
+        XCTAssertEqual(
+            try context.fetch(FetchDescriptor<SiteVisitCaptureArtifact>()).count,
+            1
+        )
+    }
+
+    /// Realtime echoes the very rows the outbound drain just pushed. A redundant
+    /// echo must resolve as `unchanged` — no transaction, no write, and no
+    /// movement in `updatedAt`/`lastSyncedAt`.
+    func testRedundantEchoResolvesUnchangedAndWritesNothing() throws {
+        let context = try makeContext()
+        let bundle = try makeBundle()
+        _ = try SiteVisitServerMerge.merge(bundle: bundle, into: context)
+
+        // First echo settles any timestamp normalization.
+        _ = try SiteVisitServerMerge.merge(
+            visit: bundle.visit,
+            companyId: companyId,
+            into: context
+        )
+        let local = try XCTUnwrap(
+            try context.fetch(FetchDescriptor<SiteVisit>()).first
+        )
+        let updatedAt = local.updatedAt
+        let lastSyncedAt = local.lastSyncedAt
+        let needsSync = local.needsSync
+
+        let report = try SiteVisitServerMerge.merge(
+            visit: bundle.visit,
+            companyId: companyId,
+            into: context
+        )
+
+        XCTAssertEqual(report.unchanged, 1)
+        XCTAssertEqual(report.updated, 0)
+        XCTAssertEqual(report.inserted, 0)
+        XCTAssertEqual(local.updatedAt, updatedAt)
+        XCTAssertEqual(local.lastSyncedAt, lastSyncedAt)
+        XCTAssertEqual(local.needsSync, needsSync)
+    }
+
+    /// A genuine change still merges — the short-circuit must not swallow work.
+    func testChangedEchoStillWrites() throws {
+        let context = try makeContext()
+        let bundle = try makeBundle()
+        _ = try SiteVisitServerMerge.merge(bundle: bundle, into: context)
+
+        let report = try SiteVisitServerMerge.merge(
+            visit: bundle.visit.replacing(notes: "Server changed the note"),
+            companyId: companyId,
+            into: context
+        )
+
+        XCTAssertEqual(report.updated, 1)
+        XCTAssertEqual(report.unchanged, 0)
+        let local = try XCTUnwrap(
+            try context.fetch(FetchDescriptor<SiteVisit>()).first
+        )
+        XCTAssertEqual(local.notes, "Server changed the note")
+    }
+
     private func makeContext() throws -> ModelContext {
         let schema = Schema([
             SiteVisit.self,

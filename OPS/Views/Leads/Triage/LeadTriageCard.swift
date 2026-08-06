@@ -248,7 +248,7 @@ struct LeadTriageCard: View {
                 }
             }
             .padding(.horizontal, OPSStyle.Layout.spacing3)
-            .padding(.vertical, 12)
+            .padding(.vertical, OPSStyle.Layout.spacing2_5)
 
             // Summary footer band — full-bleed under a hairline
             if showsSummaryBand {

@@ -63,6 +63,7 @@ struct SettingsRoute: Equatable {
         case integrations
         case projectSettings
         case taskTypes
+        case siteVisitTypes
         case allPhotos
         case myExpenses
         case reviewExpenses
@@ -163,6 +164,7 @@ enum SettingsDeepLink {
     static let security          = Notification.Name("SettingsDeepLink.security")
     static let projectSettings   = Notification.Name("SettingsDeepLink.projectSettings")
     static let taskTypes         = Notification.Name("SettingsDeepLink.taskTypes")
+    static let siteVisitTypes    = Notification.Name("SettingsDeepLink.siteVisitTypes")
     static let permissions       = Notification.Name("SettingsDeepLink.permissions")
     static let inventorySettings = Notification.Name("SettingsDeepLink.inventorySettings")
     static let integrations      = Notification.Name("SettingsDeepLink.integrations")
@@ -184,6 +186,7 @@ enum SettingsDeepLink {
         case "security":            return security
         case "projectSettings":     return projectSettings
         case "taskTypes":           return taskTypes
+        case "siteVisitTypes":      return siteVisitTypes
         case "permissions":         return permissions
         case "inventorySettings":   return inventorySettings
         case "integrations":        return integrations
@@ -329,6 +332,10 @@ enum SettingsSearchIndex {
 
         if isAdminOrOffice {
             entries.append(contentsOf: projectRulesEntries(hasFinanceView: hasFinanceView))
+        }
+
+        if isAdmin {
+            entries.append(contentsOf: siteVisitTypeEntries())
         }
 
         if hasInventoryAccess {
@@ -531,6 +538,46 @@ enum SettingsSearchIndex {
                 keywords: ["billing", "invoices", "receipts", "billing history", "past charges", "payment history"],
                 route: route("billing_history")
             ),
+        ]
+    }
+
+    // MARK: - Site Visit Types
+
+    private static func siteVisitTypeEntries() -> [SettingsSearchEntry] {
+        let route: (String?) -> SettingsRoute = {
+            SettingsRoute(.siteVisitTypes, section: $0)
+        }
+        return [
+            SettingsSearchEntry(
+                title: "Site Visit Types",
+                breadcrumb: ["Site Visit Types"],
+                icon: "checklist",
+                keywords: [
+                    "site visit", "checklist", "inspection", "visit type",
+                    "form fields", "site checklist", "field visit"
+                ],
+                route: route(nil)
+            ),
+            SettingsSearchEntry(
+                title: "Create Site Visit Type",
+                breadcrumb: ["Site Visit Types"],
+                icon: "plus.rectangle.on.rectangle",
+                keywords: [
+                    "new checklist", "custom checklist", "new visit type",
+                    "create form"
+                ],
+                route: route("add_type")
+            ),
+            SettingsSearchEntry(
+                title: "Show or Hide Checklist Fields",
+                breadcrumb: ["Site Visit Types"],
+                icon: "switch.2",
+                keywords: [
+                    "toggle fields", "hide field", "show field", "required field",
+                    "edit checklist"
+                ],
+                route: route("fields")
+            )
         ]
     }
 

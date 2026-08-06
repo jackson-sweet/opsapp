@@ -32,6 +32,7 @@ final class InboundProcessor {
     private var clientRepo: ClientRepository
     private var companyRepo: CompanyRepository
     private var taskTypeRepo: TaskTypeRepository
+    private var siteVisitTypeRepo: SiteVisitTypeRepository
     private var projectNoteRepo: ProjectNoteRepository
     private var projectPhotoRepo: ProjectPhotoRepository
     private var photoAnnotationRepo: PhotoAnnotationRepository
@@ -72,6 +73,7 @@ final class InboundProcessor {
         self.clientRepo = ClientRepository(companyId: companyId)
         self.companyRepo = CompanyRepository()
         self.taskTypeRepo = TaskTypeRepository(companyId: companyId)
+        self.siteVisitTypeRepo = SiteVisitTypeRepository(companyId: companyId)
         self.projectNoteRepo = ProjectNoteRepository(companyId: companyId)
         self.projectPhotoRepo = ProjectPhotoRepository(companyId: companyId)
         self.photoAnnotationRepo = PhotoAnnotationRepository(companyId: companyId)
@@ -118,6 +120,7 @@ final class InboundProcessor {
         self.clientRepo = ClientRepository(companyId: newCompanyId)
         self.companyRepo = CompanyRepository()
         self.taskTypeRepo = TaskTypeRepository(companyId: newCompanyId)
+        self.siteVisitTypeRepo = SiteVisitTypeRepository(companyId: newCompanyId)
         self.projectNoteRepo = ProjectNoteRepository(companyId: newCompanyId)
         self.projectPhotoRepo = ProjectPhotoRepository(companyId: newCompanyId)
         self.photoAnnotationRepo = PhotoAnnotationRepository(companyId: newCompanyId)
@@ -149,6 +152,7 @@ final class InboundProcessor {
         .client,
         .subClient,
         .taskType,
+        .siteVisitType,
         .taskTypeReminder,
         .project,
         .projectTask,
@@ -412,6 +416,8 @@ final class InboundProcessor {
             try await syncClients(since: since, context: context)
         case .taskType:
             try await syncTaskTypes(since: since, context: context)
+        case .siteVisitType:
+            try await syncSiteVisitTypes(since: since, context: context)
         case .project:
             try await syncProjects(since: since, context: context)
         case .projectTask:
@@ -861,6 +867,36 @@ final class InboundProcessor {
     }
 
     // MARK: - TaskType Sync
+
+    private func syncSiteVisitTypes(
+        since: Date?,
+        context: ModelContext
+    ) async throws {
+        let dtos = try await siteVisitTypeRepo.fetchAll(since: since)
+        for dto in dtos {
+            let id = dto.id.lowercased()
+            let accepted = acceptableFields(
+                entityType: .siteVisitType,
+                entityId: id,
+                fields: Array(SiteVisitTypeServerMerge.mutableFields),
+                context: context
+            )
+            _ = try SiteVisitTypeServerMerge.merge(
+                dto: dto,
+                accepting: accepted,
+                hasPendingLocalOperation: hasPendingOperations(
+                    entityType: .siteVisitType,
+                    entityId: id,
+                    context: context
+                ),
+                context: context
+            )
+        }
+        if !dtos.isEmpty { try context.save() }
+        if !dtos.isEmpty {
+            InboundChangeSignal.post(entityNames: ["SiteVisitType"])
+        }
+    }
 
     private func syncTaskTypes(since: Date?, context: ModelContext) async throws {
         let dtos = try await taskTypeRepo.fetchAll(since: since)

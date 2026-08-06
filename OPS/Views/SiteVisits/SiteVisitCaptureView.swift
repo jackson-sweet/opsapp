@@ -54,6 +54,9 @@ struct SiteVisitCaptureView: View {
                         ?? dataController.currentUser?.companyId
                         ?? ""
                     guard !companyId.isEmpty else { return }
+                    _ = try? dataController.ensureSiteVisitTypesSeeded(
+                        deckBuilderEnabled: PermissionStore.shared.isFeatureEnabled("deck_builder")
+                    )
                     let vm = SiteVisitCaptureViewModel(
                         opportunity: opportunity,
                         companyId: companyId,
@@ -125,6 +128,12 @@ private struct SiteVisitCaptureConsole: View {
     /// dismissal in reach of the visit's own fullScreenCover (bug 5d5df5b0).
     /// The console root is the stable presentation slot.
     @State private var showingContactPicker = false
+    @State private var showingChecklistGuide = false
+    @State private var showingChecklistSettings = false
+
+    private var canManageSiteVisitTypes: Bool {
+        PermissionStore.shared.can("settings.company")
+    }
 
     var body: some View {
         ScrollViewReader { scrollProxy in
@@ -204,6 +213,13 @@ private struct SiteVisitCaptureConsole: View {
                 viewModel.currentOpportunity?.address ?? viewModel.identityDraft?.address ?? "",
                 "deck", "membrane", "railing", "stairs", "vinyl", "slope", "drainage"
             ].filter { !$0.isEmpty }
+
+            if canManageSiteVisitTypes,
+               SiteVisitChecklistGuideStore().shouldPresent(
+                userId: dataController.currentUser?.id
+               ) {
+                showingChecklistGuide = true
+            }
         }
         .onChange(of: speechManager.state) { oldValue, newValue in
             if oldValue == .recording && newValue == .idle {
@@ -308,6 +324,31 @@ private struct SiteVisitCaptureConsole: View {
                 onRequestLeadCapture: { pendingIdentityFocus = true }
             )
             .environmentObject(dataController)
+        }
+        .sheet(isPresented: $showingChecklistGuide) {
+            SiteVisitChecklistGuideView(
+                onOpenSettings: openChecklistSettingsFromGuide,
+                onNotNow: { showingChecklistGuide = false },
+                onNeverShowAgain: {
+                    SiteVisitChecklistGuideStore().suppress(
+                        userId: dataController.currentUser?.id
+                    )
+                    showingChecklistGuide = false
+                }
+            )
+            .presentationDetents([.medium])
+            .presentationDragIndicator(.hidden)
+        }
+        .fullScreenCover(isPresented: $showingChecklistSettings) {
+            NavigationStack {
+                SiteVisitTypeSettingsView()
+                    .environmentObject(dataController)
+            }
+        }
+        .onChange(of: showingChecklistSettings) { wasShowing, isShowing in
+            if wasShowing && !isShowing {
+                viewModel.refreshSiteVisitTypesAfterSettings()
+            }
         }
         .confirmationDialog(
             "CLOSE THIS VISIT?",
@@ -620,6 +661,41 @@ private struct SiteVisitCaptureConsole: View {
                             }
                             .buttonStyle(.plain)
                         }
+
+                        if canManageSiteVisitTypes {
+                            Button {
+                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                                showingChecklistSettings = true
+                            } label: {
+                                HStack(spacing: OPSStyle.Layout.spacing1) {
+                                    Image(systemName: OPSStyle.Icons.adjust)
+                                    Text("EDIT TYPES")
+                                }
+                                .font(OPSStyle.Typography.miniLabel)
+                                .foregroundColor(OPSStyle.Colors.text2)
+                                .padding(.horizontal, OPSStyle.Layout.spacing2)
+                                .frame(minHeight: OPSStyle.Layout.touchTargetMin)
+                                .background(
+                                    RoundedRectangle(
+                                        cornerRadius: OPSStyle.Layout.buttonRadius,
+                                        style: .continuous
+                                    )
+                                    .fill(OPSStyle.Colors.surfaceInput)
+                                )
+                                .overlay(
+                                    RoundedRectangle(
+                                        cornerRadius: OPSStyle.Layout.buttonRadius,
+                                        style: .continuous
+                                    )
+                                    .strokeBorder(
+                                        OPSStyle.Colors.line,
+                                        lineWidth: OPSStyle.Layout.Border.standard
+                                    )
+                                )
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel("Edit site visit types in Settings")
+                        }
                     }
                 }
                 .scrollIndicators(.hidden)
@@ -713,6 +789,16 @@ private struct SiteVisitCaptureConsole: View {
         }
         .padding(OPSStyle.Layout.spacing3)
         .glassSurface()
+    }
+
+    private func openChecklistSettingsFromGuide() {
+        SiteVisitChecklistGuideStore().suppress(
+            userId: dataController.currentUser?.id
+        )
+        showingChecklistGuide = false
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+            showingChecklistSettings = true
+        }
     }
 
     private func actionBar(scrollProxy: ScrollViewProxy) -> some View {

@@ -378,6 +378,48 @@ final class SiteVisitCaptureViewModel: ObservableObject {
             }
     }
 
+    /// Re-reads company templates after the Settings cover closes. A blank
+    /// checklist can adopt the edited definition; once the operator has answered
+    /// anything, the visit-time snapshot remains untouched.
+    func refreshSiteVisitTypesAfterSettings() {
+        let selectedId = selectedSiteVisitType?.id
+        reloadSiteVisitTypes()
+
+        guard let selectedId,
+              let refreshedType = siteVisitTypes.first(where: { $0.id == selectedId }) else {
+            if let fallback = siteVisitTypes.first(where: \.isDefault) ?? siteVisitTypes.first {
+                selectSiteVisitType(fallback)
+            }
+            return
+        }
+
+        selectedSiteVisitType = refreshedType
+        guard !checklistAnswers.contains(where: { $0.isActive && $0.isAnswered }),
+              let visit = siteVisit else {
+            return
+        }
+
+        let existing = fetchChecklistAnswers(siteVisitId: visit.id).filter(\.isActive)
+        let replacements = SiteVisitChecklistAnswer.makeAnswers(
+            for: refreshedType,
+            siteVisitId: visit.id,
+            companyId: companyId,
+            opportunityId: activeOpportunityId,
+            createdBy: userId
+        )
+        guard persistSiteVisitChanges({
+            let now = Date()
+            for answer in existing {
+                answer.deletedAt = now
+                answer.updatedAt = now
+                answer.needsSync = true
+            }
+            for answer in replacements { modelContext.insert(answer) }
+        }) else { return }
+        reloadChecklistAnswers()
+        hydrateChecklistAnswersFromCapturedEvidence()
+    }
+
     func selectSiteVisitType(_ type: SiteVisitType) {
         guard let visit = requireVisit() else { return }
 
@@ -1710,8 +1752,12 @@ final class SiteVisitCaptureViewModel: ObservableObject {
                     existing.sortOrder = builtIn.sortOrder
                     changedExisting = true
                 }
-                if existing.fields != builtIn.fields {
-                    existing.fields = builtIn.fields
+                let reconciledFields = SiteVisitTypeTemplateReconciler.reconciledFields(
+                    existing: existing.fields,
+                    canonical: builtIn.fields
+                )
+                if existing.fields != reconciledFields {
+                    existing.fields = reconciledFields
                     changedExisting = true
                 }
                 didChange = didChange || changedExisting

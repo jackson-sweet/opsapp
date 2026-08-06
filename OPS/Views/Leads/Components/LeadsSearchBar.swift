@@ -17,6 +17,11 @@ import SwiftUI
 
 struct LeadsSearchBar: View {
     @Binding var query: String
+    /// Fires on every focus transition. The console uses the gained edge to
+    /// scroll the command band away (addendum §15.3); it deliberately ignores
+    /// the lost edge, so dismissing the keyboard leaves the operator exactly
+    /// where he was reading.
+    var onFocusChange: (Bool) -> Void = { _ in }
 
     @FocusState private var isFocused: Bool
 
@@ -79,6 +84,7 @@ struct LeadsSearchBar: View {
                 )
         )
         .animation(OPSStyle.Animation.hover, value: isFocused)
+        .onChange(of: isFocused) { _, focused in onFocusChange(focused) }
         // The visual field is 40pt; the target is the sanctioned 44pt floor,
         // and a tap anywhere in it lands in the field.
         .frame(minHeight: OPSStyle.Layout.touchTargetMin)

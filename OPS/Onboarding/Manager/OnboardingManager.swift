@@ -1120,6 +1120,33 @@ class OnboardingManager: ObservableObject {
         throw OnboardingManagerError.serverError("Could not parse company-creation response: \(raw.prefix(300))")
     }
 
+    /// Write the "how'd you find us" answer to `companies.referral_method`
+    /// (Unified Attribution P2).
+    ///
+    /// Separate from `create_company_for_owner` on purpose: that RPC is the
+    /// shared, atomic company-creation path for BOTH platforms and is the
+    /// highest-risk code in the product. An acquisition-analytics field does not
+    /// justify changing its signature, so this is a follow-up update — exactly
+    /// how web persists the extra profile fields the RPC does not accept.
+    ///
+    /// Never throws. Only known `ReferralSource` slugs are written, so a stale
+    /// persisted value can't put arbitrary text in the column.
+    private func persistReferralMethod(companyId: String) async {
+        guard let slug = state.companyData.referralMethod,
+              ReferralSource.from(slug: slug) != nil else { return }
+
+        do {
+            try await SupabaseService.shared.client
+                .from("companies")
+                .update(["referral_method": slug])
+                .eq("id", value: companyId)
+                .execute()
+            print("[ONBOARDING_MANAGER] ✅ referral_method persisted: \(slug)")
+        } catch {
+            print("[ONBOARDING_MANAGER] ⚠️ referral_method write failed (non-fatal): \(error)")
+        }
+    }
+
     /// Extracts the server token (e.g. `NO_USER_ROW`) from a thrown RPC error.
     /// `create_company_for_owner` raises the token AS the exception message, and
     /// `PostgrestError.message` carries it. Falls back to `localizedDescription`.
@@ -1212,6 +1239,15 @@ class OnboardingManager: ObservableObject {
             let companyId = result.companyId
             let companyCode = result.companyCode
             print("[ONBOARDING_MANAGER] RPC company \(result.alreadyExisted ? "reused" : "created"): \(companyId), code: \(companyCode)")
+
+            // "How'd you find us" (Unified Attribution P2). The shared RPC does
+            // not accept it, so it is written here, after the company exists —
+            // the same follow-up-update pattern web uses for its extra fields.
+            //
+            // Best-effort and non-fatal by design: this is the acquisition
+            // signal, not the company. A failure here must never surface as a
+            // failed signup, so it is logged and swallowed.
+            await persistReferralMethod(companyId: companyId)
 
             // Persist into local state exactly like createCompany() does, so the
             // CrewCode screen renders the DB-truth code and resume is correct.

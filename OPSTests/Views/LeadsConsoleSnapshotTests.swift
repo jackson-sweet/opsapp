@@ -9,9 +9,11 @@
 //  runs). A rendering harness, not an assertion suite: it writes PNGs for a
 //  human to inspect and for docs/artifacts.
 //
-//  Six proofs, one per spec §11.7 row: working band, quiet band, search with
+//  Eight proofs. Six from spec §11.7 — working band, quiet band, search with
 //  matches, NO MATCHES, NEWEST flat with assignee labels, stage browser tabs
-//  (WON active).
+//  (WON active) — plus two the round-2 addendum adds: the compressed card with
+//  its VISIT action (§14), and the filter control holding a non-default sort
+//  AND crew, reading `NEWEST · DANA W` (§15.1).
 //
 //  Run:  xcodebuild test -scheme OPS \
 //          -destination 'platform=iOS Simulator,name=iPhone 17,OS=26.5' \
@@ -228,6 +230,80 @@ final class LeadsConsoleSnapshotTests: XCTestCase {
             console(workingPipeline(),
                     controls: LeadsListControls(sort: .newest),
                     container: container)
+        }
+    }
+
+    /// The filter control holding BOTH halves — the addendum's `NEWEST · DANA W`
+    /// (§15.1). Proves the control names its own state without being opened,
+    /// that the field yields the width rather than the control truncating, and
+    /// that the queue underneath is genuinely narrowed to one operator.
+    func testRenderConsoleFilterControlActive() throws {
+        let container = try crewContainer()
+        renderToPNG("console-filter-active") {
+            console(workingPipeline(),
+                    controls: LeadsListControls(sort: .newest, crew: .member(danaId)),
+                    container: container)
+        }
+    }
+
+    // MARK: - Card (addendum §14)
+
+    /// The compressed card in the three states the addendum changed, at the
+    /// real 390pt frame:
+    ///
+    ///   1. priced + assigned + convert scope — the four-chip action row
+    ///      `CALL · TEXT · EMAIL · VISIT` plus the log glyph, which is the
+    ///      truncation proof;
+    ///   2. unpriced, no contact detail — the value slot is ABSENT rather than
+    ///      showing `—`, and VISIT is the only live chip;
+    ///   3. terminal (WON) — no segment bar, no action row.
+    ///
+    /// Also prints the fitted card height so the compression is a measured
+    /// number rather than a claim.
+    func testRenderCompressedCardWithVisitAction() throws {
+        let priced = lead(id: "ccccccc1-0000-0000-0000-000000000001",
+                          contact: "Marcus Webb", title: "Roof tear-off — 28 sq",
+                          stage: .quoting, value: 14_200, daysInStage: 5, followUpInDays: -3,
+                          assignedTo: jasonId, source: "referral",
+                          email: "marcus@example.com", phone: "(555) 123-4567")
+        let unpriced = lead(id: "ccccccc2-0000-0000-0000-000000000002",
+                            contact: "Jamie Park", title: "Leak repair — kitchen ceiling",
+                            stage: .newLead, daysInStage: 0)
+        let won = lead(id: "ccccccc3-0000-0000-0000-000000000003",
+                       contact: "Tom Liu", title: "Maple Lane porch",
+                       stage: .won, value: 11_200, daysInStage: 12,
+                       assignedTo: jasonId, source: "referral", closedDaysAgo: 3)
+        let viewModel = PipelineViewModel.previewLoaded(
+            opportunities: [priced, unpriced, won], currentUserId: jasonId
+        )
+
+        // The queue's real content width: the 390pt frame less the list's
+        // spacing3_5 gutters. Measured, not assumed.
+        let contentWidth = frameSize.width - (OPSStyle.Layout.spacing3_5 * 2)
+        let sizing = UIHostingController(
+            rootView: LeadTriageCard(lead: priced, viewModel: viewModel, bucket: .overdue,
+                                     assigneeLabel: "JASON W", onStartSiteVisit: {})
+                .frame(width: contentWidth)
+                .leadsPreviewEnvironment()
+        )
+        let fitted = sizing.sizeThatFits(
+            in: CGSize(width: contentWidth, height: .greatestFiniteMagnitude)
+        )
+        print("📏 CARD HEIGHT (compressed, \(Int(contentWidth))pt wide): \(fitted.height)pt")
+
+        renderToPNG("card-compressed-visit") {
+            VStack(spacing: OPSStyle.Layout.spacing2) {
+                LeadTriageCard(lead: priced, viewModel: viewModel, bucket: .overdue,
+                               assigneeLabel: "JASON W", onStartSiteVisit: {})
+                LeadTriageCard(lead: unpriced, viewModel: viewModel, bucket: .fresh,
+                               assigneeLabel: "UNASSIGNED", onStartSiteVisit: {})
+                LeadTriageCard(lead: won, viewModel: viewModel, bucket: .all,
+                               assigneeLabel: "JASON W", onStartSiteVisit: {})
+            }
+            .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+            .background(OPSStyle.Colors.background)
+            .leadsPreviewEnvironment()
         }
     }
 

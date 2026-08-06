@@ -276,7 +276,11 @@ final class OnboardingScreensTests: XCTestCase {
         private(set) var lastName: String?
         private(set) var lastIndustries: [String]?
 
-        func createCompany(name: String, industries: [String]) async -> CompanyCreationOutcome {
+        func createCompany(
+            name: String,
+            industries: [String],
+            referralSource: String? = nil
+        ) async -> CompanyCreationOutcome {
             callCount += 1
             lastName = name
             lastIndustries = industries

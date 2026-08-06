@@ -137,6 +137,13 @@ struct OnboardingCompanyData: Codable, Equatable {
     var phone: String = ""
     var email: String = ""
 
+    /// "How'd you find us" answer (Unified Attribution P2) — a `ReferralSource`
+    /// slug, persisted to `companies.referral_method` after the company is
+    /// created. Optional (not a defaulted non-optional) so synthesized Decodable
+    /// treats it as nil in state saved before this field existed, rather than
+    /// throwing keyNotFound and wiping a user's in-progress onboarding.
+    var referralMethod: String?
+
     /// Check if company profile is complete (required fields for company creator)
     var hasRequiredCompanyFields: Bool {
         !name.isEmpty && !industry.isEmpty && !size.isEmpty && !age.isEmpty

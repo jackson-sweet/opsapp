@@ -45,6 +45,10 @@ struct OnboardingFormData: Codable, Equatable {
     var email: String?
     var companyName: String?
     var industries: [String]?
+    /// Owner path — "how'd you find us" answer (Unified Attribution P2), a
+    /// `ReferralSource` slug. Optional/additive so state saved before this field
+    /// existed still decodes.
+    var referralMethod: String?
     /// Crew path — the code the user typed to join an existing company.
     var enteredCrewCode: String?
     /// Owner path — the code returned by the create-company RPC.

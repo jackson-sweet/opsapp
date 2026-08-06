@@ -10,8 +10,8 @@
 //      [command band]             need-action hero / quiet line + metrics +
 //                                 stage bar → BY STAGE ▸
 //      [won nudge]                conditional — unconverted wins → convert
-//      [sticky band]              search field + SORT + CREW, then the bucket
-//                                 chips and a hairline
+//      [sticky band]              full-width search field + one filter control,
+//                                 then the bucket chips and a hairline
 //      [queue]                    LeadTriageCard rows — grouped by urgency, or
 //                                 flat under NEWEST / VALUE / a live search
 //
@@ -369,54 +369,81 @@ struct LeadsTabView: View {
 
     // MARK: - Console
 
+    /// The sticky band's scroll anchor (addendum §15.3). Focusing the field
+    /// scrolls this to the top, so the command band goes away and the operator
+    /// types directly above the queue instead of two thirds down the screen.
+    private static let bandAnchorID = "leads-queue-band"
+
     private var consoleScroll: some View {
         // Resolved once here, then handed down — see `assigneeIndex`.
         let assignees = assigneeIndex
-        return ScrollView {
-            LazyVStack(alignment: .leading, spacing: 0, pinnedViews: [.sectionHeaders]) {
-                LeadsSummary(viewModel: viewModel, onByStage: { footerStage = entryStage })
-                    .padding(.top, OPSStyle.Layout.spacing1)
+        return ScrollViewReader { proxy in
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 0, pinnedViews: [.sectionHeaders]) {
+                    LeadsSummary(viewModel: viewModel, onByStage: { footerStage = entryStage })
+                        .padding(.top, OPSStyle.Layout.spacing1)
 
-                if !convertibleUnconvertedWins.isEmpty {
-                    LeadsWonNudge(
-                        count: convertibleUnconvertedWins.count,
-                        totalValue: unconvertedWonValue,
-                        onTap: { presentWonConvert() }
-                    )
-                    .padding(.top, OPSStyle.Layout.spacing3)
-                }
+                    if !convertibleUnconvertedWins.isEmpty {
+                        LeadsWonNudge(
+                            count: convertibleUnconvertedWins.count,
+                            totalValue: unconvertedWonValue,
+                            onTap: { presentWonConvert() }
+                        )
+                        .padding(.top, OPSStyle.Layout.spacing3)
+                    }
 
-                Section {
-                    queueBody(assignees: assignees)
-                        .padding(.top, OPSStyle.Layout.spacing2_5)
-                } header: {
-                    queueBand
+                    Section {
+                        queueBody(assignees: assignees)
+                            .padding(.top, OPSStyle.Layout.spacing2_5)
+                    } header: {
+                        queueBand(proxy: proxy)
+                            .id(Self.bandAnchorID)
+                    }
                 }
             }
-        }
-        .scrollIndicators(.hidden)
-        // Typing costs the queue two thirds of the screen; a drag down hands
-        // it straight back without a DONE tap.
-        .scrollDismissesKeyboard(.interactively)
-        .refreshable {
-            // Manual pull-to-refresh — same silent merge reload as
-            // the realtime / foreground triggers, so rows update in
-            // place with no skeleton flash. System refresh control,
-            // no custom styling. iOS 17.6 supports .refreshable on
-            // ScrollView.
-            await viewModel.loadData(silent: true)
+            .scrollIndicators(.hidden)
+            // Typing costs the queue two thirds of the screen; a drag down hands
+            // it straight back without a DONE tap.
+            .scrollDismissesKeyboard(.interactively)
+            .refreshable {
+                // Manual pull-to-refresh — same silent merge reload as
+                // the realtime / foreground triggers, so rows update in
+                // place with no skeleton flash. System refresh control,
+                // no custom styling. iOS 17.6 supports .refreshable on
+                // ScrollView.
+                await viewModel.loadData(silent: true)
+            }
         }
     }
 
     // MARK: - Sticky control band
 
-    private var queueBand: some View {
+    private func queueBand(proxy: ScrollViewProxy) -> some View {
         LeadsQueueBand(
             controls: $controls,
             chips: bucketChips,
             selectedChipId: filterBinding,
             roster: roster,
-            showsCrew: showsAssignment
+            crewCounts: crewCounts,
+            showsCrew: showsAssignment,
+            onSearchFocusChange: { focused in
+                // Gained edge only. On blur the operator keeps his place —
+                // dismissing a keyboard is not a request to be moved.
+                guard focused else { return }
+                withAnimation(OPSStyle.Animation.standard) {
+                    proxy.scrollTo(Self.bandAnchorID, anchor: .top)
+                }
+            }
+        )
+    }
+
+    /// The filter menu's crew-row counts, resolved once per render from the
+    /// same buckets the queue reads.
+    private var crewCounts: LeadsCrewCounts {
+        LeadsQueryEngine.crewCounts(
+            buckets: buckets,
+            currentUserId: viewModel.currentUserId,
+            roster: roster
         )
     }
 

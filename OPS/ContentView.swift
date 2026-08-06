@@ -624,9 +624,6 @@ struct PINGatedView: View {
     // Permission change overlay — sits above all navigation stacks, sheets, and modals
     @State private var showPermissionChangeOverlay = false
 
-    // Bug reporting
-    @State private var lastShakeTime: Date = .distantPast
-
     // Wizard system
     @StateObject private var wizardStateManager = WizardStateManager()
     @StateObject private var wizardTriggerService = WizardTriggerService()
@@ -1040,7 +1037,7 @@ struct PINGatedView: View {
         // any open sheet/cover and is never blocked by the sheet-on-sheet
         // deadlock. See BugReportPresenter.swift.
         .onReceive(NotificationCenter.default.publisher(for: .deviceDidShake)) { _ in
-            handleShake()
+            requestBugReport(source: .shake)
         }
         // MARK: - Company Setup Prompt Sheet (2nd+ launch)
         .sheet(isPresented: $showCompanySetupPrompt) {
@@ -1096,40 +1093,14 @@ struct PINGatedView: View {
         }
     }
 
-    // MARK: - Shake Handler
+    // MARK: - Bug Report Trigger
 
-    private func handleShake() {
-        // Debounce: a single physical shake can emit several motionEnded events,
-        // and removing the isKeyWindow gate means multiple windows may post.
-        // Collapse that burst into one trigger.
-        let now = Date()
-        guard now.timeIntervalSince(lastShakeTime) > 1.5 else { return }
-
-        // Don't trigger during tutorial
-        // TutorialStateManager is not available here as EnvironmentObject,
-        // but we can check via the dataController or UserDefaults
-        if appState.shouldRestartTutorial { return }
-
-        // Don't trigger if the report is already up. Guarding on the presenter
-        // (not a SwiftUI binding) means a blocked/failed presentation can never
-        // leave a stuck flag that silently kills every future shake.
-        guard !BugReportPresenter.shared.isPresenting else { return }
-
-        // Don't trigger if not authenticated
-        guard dataController.isAuthenticated else { return }
-
-        lastShakeTime = now
-
-        // Capture the current screen (including any open sheet) before the
-        // report window steals key status, then present above everything.
-        let screenshot = BugReportCaptureService.shared.captureScreenshot()
-        BugReportPresenter.shared.present(
-            screenshot: screenshot,
+    private func requestBugReport(source: BugReportTriggerCoordinator.Source) {
+        BugReportTriggerCoordinator.shared.trigger(
+            source: source,
             appState: appState,
             dataController: dataController
         )
-
-        DebugLogger.shared.log("Bug report triggered via shake", level: .info, category: "BugReport")
     }
 
 }

@@ -33,6 +33,13 @@ struct SiteVisitMergeReport: Equatable {
 enum SiteVisitMergeError: Error, Equatable {
     case companyMismatch(expected: String, received: String)
     case orphanedChild(table: String, childId: String, siteVisitId: String)
+    case ambiguousChecklistAnswers(
+        siteVisitId: String,
+        fieldId: String,
+        answerIds: [String]
+    )
+    case unsafeChecklistAnswer(answerId: String, reason: String)
+    case unsafeChecklistOperation(operationId: UUID, reason: String)
 }
 
 enum SiteVisitServerMerge {
@@ -50,6 +57,10 @@ enum SiteVisitServerMerge {
         "deleted_at",
     ]
 
+    private static let checklistUnresolvedStatuses: Set<String> = [
+        "pending", "inProgress", "failed", "parked",
+    ]
+
     /// What one row's merge resolved to. The write is deferred so the caller can
     /// decide whether a transaction is needed at all.
     private enum MergeOutcome {
@@ -61,6 +72,11 @@ enum SiteVisitServerMerge {
             if case .unchanged = self { return false }
             return true
         }
+    }
+
+    private struct ChecklistLogicalIdentity: Hashable {
+        let siteVisitId: String
+        let fieldId: String
     }
 
     private static func apply(
@@ -84,7 +100,7 @@ enum SiteVisitServerMerge {
         into context: ModelContext,
         now: Date = Date()
     ) throws -> SiteVisitMergeReport {
-        try validate(bundle: bundle)
+        try validate(bundle: bundle, context: context)
         var report = SiteVisitMergeReport()
         try context.transaction {
             try merge(visit: bundle.visit, into: context, now: now, report: &report)
@@ -291,7 +307,7 @@ enum SiteVisitServerMerge {
 
         let isStale = existing.lastSyncedAt != nil
             && isOlder(dto.updatedAt, than: existing.updatedAt)
-        let protection = protectedFields(
+        let protection = try protectedFields(
             entityType: EntityType.visit,
             entityId: dto.id,
             modelNeedsSync: existing.needsSync,
@@ -418,7 +434,7 @@ enum SiteVisitServerMerge {
 
         let isStale = existing.lastSyncedAt != nil
             && isOlder(dto.updatedAt, than: existing.updatedAt)
-        let protection = protectedFields(
+        let protection = try protectedFields(
             entityType: EntityType.artifact,
             entityId: dto.id,
             modelNeedsSync: existing.needsSync,
@@ -482,6 +498,199 @@ enum SiteVisitServerMerge {
 
     // MARK: - Checklist answer
 
+    private struct ChecklistOperationMigration {
+        let operation: SyncOperation
+        let payload: Data
+    }
+
+    private struct ChecklistAnswerResolution {
+        let answer: SiteVisitChecklistAnswer?
+        let canonicalId: String
+        let operationMigrations: [ChecklistOperationMigration]
+
+        var requiresIdentityMigration: Bool {
+            guard let answer else { return false }
+            return answer.id.lowercased() != canonicalId.lowercased()
+        }
+
+        func applyIdentityMigration() {
+            guard requiresIdentityMigration, let answer else { return }
+            answer.id = canonicalId.lowercased()
+            for migration in operationMigrations {
+                migration.operation.entityId = canonicalId.lowercased()
+                migration.operation.payload = migration.payload
+            }
+        }
+    }
+
+    private static func resolveChecklistAnswer(
+        _ dto: SiteVisitChecklistAnswerDTO,
+        in context: ModelContext
+    ) throws -> ChecklistAnswerResolution {
+        let exact = try fetchAnswer(id: dto.id, in: context)
+        if let exact {
+            try requireCompany(exact.companyId, expected: dto.companyId)
+            guard exact.siteVisitId.lowercased() == dto.siteVisitId.lowercased() else {
+                throw SiteVisitMergeError.unsafeChecklistAnswer(
+                    answerId: exact.id,
+                    reason: "Canonical id belongs to a different site visit"
+                )
+            }
+        }
+
+        // A tombstone is identified only by its server id. The active logical
+        // identity may now belong to a newer replacement answer and must not be
+        // absorbed into an older deleted row.
+        guard dto.deletedAt == nil else {
+            return ChecklistAnswerResolution(
+                answer: exact,
+                canonicalId: dto.id,
+                operationMigrations: []
+            )
+        }
+
+        let logicalMatches = try fetchActiveAnswers(
+            siteVisitId: dto.siteVisitId,
+            fieldId: dto.fieldId,
+            in: context
+        )
+        if logicalMatches.count > 1 {
+            throw SiteVisitMergeError.ambiguousChecklistAnswers(
+                siteVisitId: dto.siteVisitId,
+                fieldId: dto.fieldId,
+                answerIds: logicalMatches.map(\.id).sorted()
+            )
+        }
+
+        if let exact {
+            let conflicts = logicalMatches.filter {
+                $0.id.lowercased() != exact.id.lowercased()
+            }
+            guard conflicts.isEmpty else {
+                throw SiteVisitMergeError.ambiguousChecklistAnswers(
+                    siteVisitId: dto.siteVisitId,
+                    fieldId: dto.fieldId,
+                    answerIds: ([exact.id] + conflicts.map(\.id)).sorted()
+                )
+            }
+            return ChecklistAnswerResolution(
+                answer: exact,
+                canonicalId: dto.id,
+                operationMigrations: []
+            )
+        }
+
+        guard let logical = logicalMatches.first else {
+            return ChecklistAnswerResolution(
+                answer: nil,
+                canonicalId: dto.id,
+                operationMigrations: []
+            )
+        }
+        try requireCompany(logical.companyId, expected: dto.companyId)
+        let operationMigrations = try prepareChecklistOperationMigrations(
+            from: logical.id,
+            to: dto.id,
+            companyId: dto.companyId,
+            siteVisitId: dto.siteVisitId,
+            context: context
+        )
+        return ChecklistAnswerResolution(
+            answer: logical,
+            canonicalId: dto.id,
+            operationMigrations: operationMigrations
+        )
+    }
+
+    private static func prepareChecklistOperationMigrations(
+        from oldId: String,
+        to canonicalId: String,
+        companyId: String,
+        siteVisitId: String,
+        context: ModelContext
+    ) throws -> [ChecklistOperationMigration] {
+        let sourceOperations = try fetchChecklistOperations(
+            answerId: oldId,
+            in: context
+        )
+        if let unsafe = sourceOperations.first(where: {
+            $0.status != "completed"
+                && !checklistUnresolvedStatuses.contains($0.status)
+        }) {
+            throw SiteVisitMergeError.unsafeChecklistOperation(
+                operationId: unsafe.id,
+                reason: "Unknown or quarantined operation lifecycle \(unsafe.status)"
+            )
+        }
+
+        let unresolved = sourceOperations.filter {
+            checklistUnresolvedStatuses.contains($0.status)
+        }
+        let targetOperations = try fetchChecklistOperations(
+            answerId: canonicalId,
+            in: context
+        )
+        if let collision = targetOperations.first(where: {
+            $0.status != "completed"
+        }) {
+            throw SiteVisitMergeError.unsafeChecklistOperation(
+                operationId: collision.id,
+                reason: "Canonical answer already has unresolved queue work"
+            )
+        }
+
+        let decoder = JSONDecoder()
+        let encoder = JSONEncoder()
+        return try unresolved.map { operation in
+            guard ["create", "update", "delete"].contains(operation.operationType) else {
+                throw SiteVisitMergeError.unsafeChecklistOperation(
+                    operationId: operation.id,
+                    reason: "Unexpected checklist operation type \(operation.operationType)"
+                )
+            }
+
+            let envelope: SiteVisitSyncOperation.Payload
+            do {
+                envelope = try decoder.decode(
+                    SiteVisitSyncOperation.Payload.self,
+                    from: operation.payload
+                )
+            } catch {
+                throw SiteVisitMergeError.unsafeChecklistOperation(
+                    operationId: operation.id,
+                    reason: "Operation payload is not a site-visit envelope"
+                )
+            }
+
+            guard envelope.entityId.lowercased() == oldId.lowercased(),
+                  envelope.siteVisitId.lowercased() == siteVisitId.lowercased(),
+                  envelope.companyId.lowercased() == companyId.lowercased(),
+                  envelope.completion == nil else {
+                throw SiteVisitMergeError.unsafeChecklistOperation(
+                    operationId: operation.id,
+                    reason: "Operation routing does not match the local checklist answer"
+                )
+            }
+
+            let replacement = SiteVisitSyncOperation.Payload(
+                companyId: envelope.companyId,
+                siteVisitId: envelope.siteVisitId,
+                entityId: canonicalId
+            )
+            do {
+                return ChecklistOperationMigration(
+                    operation: operation,
+                    payload: try encoder.encode(replacement)
+                )
+            } catch {
+                throw SiteVisitMergeError.unsafeChecklistOperation(
+                    operationId: operation.id,
+                    reason: "Canonical operation payload could not be encoded"
+                )
+            }
+        }
+    }
+
     private static func merge(
         checklistAnswer dto: SiteVisitChecklistAnswerDTO,
         into context: ModelContext,
@@ -501,7 +710,8 @@ enum SiteVisitServerMerge {
             "required", "help_text", "sort_order", "answer_value", "deleted_at",
         ]
 
-        guard let existing = try fetchAnswer(id: dto.id, in: context) else {
+        let resolution = try resolveChecklistAnswer(dto, in: context)
+        guard let existing = resolution.answer else {
             return .inserted {
                 let model = SiteVisitChecklistAnswer(
                     id: dto.id,
@@ -529,9 +739,9 @@ enum SiteVisitServerMerge {
 
         let isStale = existing.lastSyncedAt != nil
             && isOlder(dto.updatedAt, than: existing.updatedAt)
-        let protection = protectedFields(
+        let protection = try protectedFields(
             entityType: EntityType.checklistAnswer,
-            entityId: dto.id,
+            entityId: existing.id,
             modelNeedsSync: existing.needsSync,
             fallbackFields: fields,
             context: context,
@@ -541,7 +751,8 @@ enum SiteVisitServerMerge {
         let acceptsTombstone = dto.deletedAt != nil || accept("deleted_at")
 
         let changed =
-            (accept("opportunity_id") && existing.opportunityId != dto.opportunityId)
+            resolution.requiresIdentityMigration
+            || (accept("opportunity_id") && existing.opportunityId != dto.opportunityId)
             || (accept("site_visit_type_id") && existing.siteVisitTypeId != dto.siteVisitTypeId)
             || (accept("field_id") && existing.fieldId != dto.fieldId)
             || (accept("label") && existing.label != dto.label)
@@ -562,6 +773,7 @@ enum SiteVisitServerMerge {
         guard changed else { return .unchanged }
 
         return .updated {
+            resolution.applyIdentityMigration()
             if accept("opportunity_id") { existing.opportunityId = dto.opportunityId }
             if accept("site_visit_type_id") { existing.siteVisitTypeId = dto.siteVisitTypeId }
             if accept("field_id") { existing.fieldId = dto.fieldId }
@@ -637,7 +849,7 @@ enum SiteVisitServerMerge {
 
         let isStale = existing.lastSyncedAt != nil
             && isOlder(dto.updatedAt, than: existing.updatedAt)
-        let protection = protectedFields(
+        let protection = try protectedFields(
             entityType: EntityType.identityDraft,
             entityId: dto.id,
             modelNeedsSync: existing.needsSync,
@@ -701,7 +913,10 @@ enum SiteVisitServerMerge {
 
     // MARK: - Validation and field protection
 
-    private static func validate(bundle: SiteVisitBundleDTO) throws {
+    private static func validate(
+        bundle: SiteVisitBundleDTO,
+        context: ModelContext
+    ) throws {
         let companyId = bundle.visit.companyId
         for child in bundle.identityDrafts {
             try validateChild(
@@ -722,6 +937,10 @@ enum SiteVisitServerMerge {
                 parent: bundle.visit,
                 companyId: companyId
             )
+        }
+        try validateIncomingChecklistIdentities(bundle.checklistAnswers)
+        for child in bundle.checklistAnswers {
+            _ = try resolveChecklistAnswer(child, in: context)
         }
         for child in bundle.artifacts {
             try validateChild(
@@ -780,6 +999,31 @@ enum SiteVisitServerMerge {
                 table: "site_visit_artifacts",
                 childId: child.id,
                 siteVisitId: child.siteVisitId
+            )
+        }
+
+        try validateIncomingChecklistIdentities(delta.checklistAnswers)
+        for child in delta.checklistAnswers {
+            _ = try resolveChecklistAnswer(child, in: context)
+        }
+    }
+
+    private static func validateIncomingChecklistIdentities(
+        _ answers: [SiteVisitChecklistAnswerDTO]
+    ) throws {
+        let activeByIdentity = Dictionary(
+            grouping: answers.filter { $0.deletedAt == nil }
+        ) {
+            ChecklistLogicalIdentity(
+                siteVisitId: $0.siteVisitId.lowercased(),
+                fieldId: $0.fieldId
+            )
+        }
+        for (identity, rows) in activeByIdentity where rows.count > 1 {
+            throw SiteVisitMergeError.ambiguousChecklistAnswers(
+                siteVisitId: identity.siteVisitId,
+                fieldId: identity.fieldId,
+                answerIds: rows.map(\.id).sorted()
             )
         }
     }
@@ -851,7 +1095,7 @@ enum SiteVisitServerMerge {
         fallbackFields: Set<String>,
         context: ModelContext,
         now: Date
-    ) -> Protection {
+    ) throws -> Protection {
         let lower = entityId.lowercased()
         let upper = entityId.uppercased()
         let descriptor = FetchDescriptor<SyncOperation>(
@@ -860,21 +1104,41 @@ enum SiteVisitServerMerge {
                     && ($0.entityId == entityId || $0.entityId == lower || $0.entityId == upper)
             }
         )
-        let operations = (try? context.fetch(descriptor)) ?? []
+        let operations = try context.fetch(descriptor)
         var protected = SyncFieldGuard.protectedFields(from: operations, now: now)
-        let unresolved = operations.contains {
-            ["pending", "inProgress", "failed", "parked"].contains($0.status)
+        let unresolvedOperations = operations.filter {
+            checklistUnresolvedStatuses.contains($0.status)
+        }
+        let unresolved = !unresolvedOperations.isEmpty
+
+        // A checklist packet remains the phone's durable source of truth until
+        // the server accepts it or the operator explicitly discards it. Generic
+        // field protection intentionally expires failed/parked writes after 60s;
+        // checklist answers cannot use that expiry because the local value may
+        // be the only copy of measurements or field notes.
+        if entityType == EntityType.checklistAnswer {
+            for operation in unresolvedOperations {
+                let changedFields = operation.getChangedFields()
+                protected.formUnion(
+                    changedFields.isEmpty ? fallbackFields : Set(changedFields)
+                )
+            }
         }
 
         // Historical local writes may predate the durable operation queue. Do
         // not let the first inbound echo erase them; the orphan sweep will
         // synthesize the missing operation in the outbound task.
-        if modelNeedsSync && operations.isEmpty {
+        if modelNeedsSync
+            && (operations.isEmpty
+                || (entityType == EntityType.checklistAnswer && !unresolved)) {
             protected.formUnion(fallbackFields)
         }
         return Protection(
             fields: protected,
-            hasLocalWork: unresolved || (modelNeedsSync && operations.isEmpty)
+            hasLocalWork: unresolved
+                || (modelNeedsSync
+                    && (operations.isEmpty
+                        || (entityType == EntityType.checklistAnswer && !unresolved)))
         )
     }
 
@@ -925,6 +1189,48 @@ enum SiteVisitServerMerge {
         )
         descriptor.fetchLimit = 1
         return try context.fetch(descriptor).first
+    }
+
+    private static func fetchActiveAnswers(
+        siteVisitId: String,
+        fieldId: String,
+        in context: ModelContext
+    ) throws -> [SiteVisitChecklistAnswer] {
+        let exactVisitId = siteVisitId
+        let lowerVisitId = siteVisitId.lowercased()
+        let upperVisitId = siteVisitId.uppercased()
+        var descriptor = FetchDescriptor<SiteVisitChecklistAnswer>(
+            predicate: #Predicate {
+                ($0.siteVisitId == exactVisitId
+                    || $0.siteVisitId == lowerVisitId
+                    || $0.siteVisitId == upperVisitId)
+                    && $0.fieldId == fieldId
+                    && $0.deletedAt == nil
+            }
+        )
+        // Two rows are already an unsafe ambiguity. A small bounded read keeps
+        // realtime reconciliation from materializing the full checklist table.
+        descriptor.fetchLimit = 2
+        return try context.fetch(descriptor)
+    }
+
+    private static func fetchChecklistOperations(
+        answerId: String,
+        in context: ModelContext
+    ) throws -> [SyncOperation] {
+        let entityType = EntityType.checklistAnswer
+        let exact = answerId
+        let lower = answerId.lowercased()
+        let upper = answerId.uppercased()
+        let descriptor = FetchDescriptor<SyncOperation>(
+            predicate: #Predicate {
+                $0.entityType == entityType
+                    && ($0.entityId == exact
+                        || $0.entityId == lower
+                        || $0.entityId == upper)
+            }
+        )
+        return try context.fetch(descriptor)
     }
 
     private static func fetchDraft(

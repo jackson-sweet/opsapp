@@ -547,6 +547,9 @@ enum OPSStyle {
         // Spec'd component heights that sit between the touch-target presets.
         static let inputHeight: CGFloat = 48.0          // §9 text input height (mobile touch)
         static let bottomCTAHeight: CGFloat = 52.0      // §8 bottom-anchored primary CTA (thumb zone)
+        /// Global keyboard band: a full 44pt DONE target plus one 8pt
+        /// separation token above the keyboard edge.
+        static let keyboardAccessoryHeight: CGFloat = touchTargetMin + spacing2
         static let chipMinHeight: CGFloat = 36.0        // §4.3 filter / form-picker chip — the one sanctioned sub-44pt target
         static let segmentedControlInset: CGFloat = 3.0 // §4.1 inset between container and segments
         static let segmentedControlRadius: CGFloat = 5.0

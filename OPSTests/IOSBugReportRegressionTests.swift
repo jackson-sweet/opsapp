@@ -172,6 +172,46 @@ final class IOSBugReportRegressionTests: XCTestCase {
     }
 
     @MainActor
+    func testGlobalKeyboardDoneAccessoryLeavesTokenizedSpaceBelowAction() {
+        let textField = UITextField()
+        let accessory = OPSKeyboardDoneAccessoryView(editingResponder: textField)
+        accessory.frame = CGRect(
+            x: .zero,
+            y: .zero,
+            width: 320,
+            height: OPSStyle.Layout.keyboardAccessoryHeight
+        )
+
+        let host = UIView(frame: accessory.bounds)
+        host.addSubview(accessory)
+        host.layoutIfNeeded()
+        accessory.layoutIfNeeded()
+
+        let doneFrame = accessory.doneButton.convert(
+            accessory.doneButton.bounds,
+            to: accessory
+        )
+        let bottomSeparation = accessory.bounds.maxY - doneFrame.maxY
+
+        XCTAssertEqual(
+            OPSStyle.Layout.keyboardAccessoryHeight,
+            OPSStyle.Layout.touchTargetMin + OPSStyle.Layout.spacing2
+        )
+        XCTAssertEqual(
+            accessory.intrinsicContentSize.height,
+            OPSStyle.Layout.keyboardAccessoryHeight
+        )
+        XCTAssertGreaterThan(
+            accessory.intrinsicContentSize.height,
+            OPSStyle.Layout.touchTargetMin
+        )
+        XCTAssertGreaterThanOrEqual(doneFrame.height, OPSStyle.Layout.touchTargetMin)
+        XCTAssertGreaterThan(bottomSeparation, .zero)
+        XCTAssertEqual(accessory.doneButton.accessibilityIdentifier, "ops.keyboard.done")
+        XCTAssertTrue(accessory.doneButton.isUserInteractionEnabled)
+    }
+
+    @MainActor
     func testGlobalKeyboardDoneAccessoryDoesNotStackOnRepeatedEditing() {
         let notificationCenter = NotificationCenter()
         let coordinator = OPSKeyboardDoneAccessoryCoordinator(
@@ -213,7 +253,7 @@ final class IOSBugReportRegressionTests: XCTestCase {
         )
         XCTAssertEqual(
             accessory.intrinsicContentSize.height,
-            OPSStyle.Layout.touchTargetMin
+            OPSStyle.Layout.keyboardAccessoryHeight
         )
 
         notificationCenter.post(

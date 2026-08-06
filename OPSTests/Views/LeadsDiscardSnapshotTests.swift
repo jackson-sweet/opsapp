@@ -78,8 +78,8 @@ final class LeadsDiscardSnapshotTests: XCTestCase {
         }
     }
 
-    /// Phase C correction surface — reasons are visible at once and every row
-    /// is the submit action; no second confirmation or mandatory note.
+    /// Phase C correction surface — reasons are visible at once, selection is
+    /// explicit, and one bottom action commits it; no mandatory note.
     func testRenderPhaseCDispositionReasons() {
         snapshot("phase_c_disposition_reasons", size: CGSize(width: 393, height: 852)) {
             LeadDispositionReasonSheet(

@@ -385,6 +385,8 @@ final class OutboundProcessor {
             try await handleCompany(entityId: entityId, operationType: operationType, payload: payload, companyId: companyId)
         case .taskType:
             try await handleTaskType(entityId: entityId, operationType: operationType, payload: payload, companyId: companyId)
+        case .siteVisitType:
+            try await handleSiteVisitType(entityId: entityId, operationType: operationType, payload: payload, companyId: companyId)
         case .deckDesign:
             try await handleDeckDesign(entityId: entityId, operationType: operationType, payload: payload, companyId: companyId)
         case .wizardState:
@@ -472,6 +474,12 @@ final class OutboundProcessor {
         "icon", "is_default", "display_order", "dependencies",
         "default_team_member_ids",
         "deleted_at", "created_at", "updated_at"
+    ]
+
+    private static let validSiteVisitTypeColumns: Set<String> = [
+        "id", "company_id", "slug", "name", "description_text",
+        "is_system_template", "is_default", "sort_order", "fields",
+        "created_at", "updated_at", "deleted_at"
     ]
 
     private static let validDeckDesignColumns: Set<String> = [
@@ -673,6 +681,35 @@ final class OutboundProcessor {
 
         default:
             print("[OutboundProcessor] Unknown operation type '\(operationType)' for taskType")
+        }
+    }
+
+    private func handleSiteVisitType(
+        entityId: String,
+        operationType: String,
+        payload: [String: Any],
+        companyId: String
+    ) async throws {
+        let repo = SiteVisitTypeRepository(companyId: companyId)
+        let sanitized = payload.filter {
+            Self.validSiteVisitTypeColumns.contains($0.key)
+        }
+
+        switch operationType {
+        case "create":
+            let data = try JSONSerialization.data(withJSONObject: sanitized)
+            try await repo.upsert(try JSONDecoder().decode(SiteVisitTypeDTO.self, from: data))
+        case "update":
+            try await repo.updateFields(
+                entityId,
+                fields: payloadToAnyJSON(sanitized)
+            )
+        case "delete":
+            try await repo.softDelete(entityId)
+        default:
+            throw SyncError.encodingFailed(
+                detail: "Unsupported siteVisitType operation: \(operationType)"
+            )
         }
     }
 

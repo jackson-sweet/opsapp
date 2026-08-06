@@ -44,6 +44,7 @@ struct SettingsView: View {
         case organizationDetails
         case manageTeam
         case taskTypes
+        case siteVisitTypes
         case inventorySettings
         case pipelineSettings
 
@@ -198,8 +199,20 @@ struct SettingsView: View {
                             // Operations section — workflow rules. Bug 4014b472 moved these out
                             // of BUSINESS: task taxonomy, scheduling, project review rules, and
                             // inventory are app-behavior config, not company identity.
-                            if isAdminOrOffice || permissionStore.can("catalog.view") || permissionStore.leadAccessPolicy.canEditAny {
+                            if isAdmin || isAdminOrOffice || permissionStore.can("catalog.view") || permissionStore.leadAccessPolicy.canEditAny {
                                 settingsSection(title: "OPERATIONS") {
+                                    if isAdmin {
+                                        settingsRow(
+                                            icon: OPSStyle.Icons.checklist,
+                                            title: "Site Visit Types",
+                                            action: { activeDestination = .siteVisitTypes }
+                                        )
+
+                                        if isAdminOrOffice || permissionStore.can("catalog.view") || permissionStore.leadAccessPolicy.canEditAny {
+                                            sectionDivider
+                                        }
+                                    }
+
                                     if isAdminOrOffice {
                                         settingsRow(
                                             icon: "square.grid.2x2",
@@ -650,6 +663,11 @@ struct SettingsView: View {
                 TaskSettingsView()
                     .environmentObject(dataController)
             }
+        case .siteVisitTypes:
+            NavigationStack {
+                SiteVisitTypeSettingsView()
+                    .environmentObject(dataController)
+            }
         case .inventorySettings:
             NavigationStack {
                 InventorySettingsView()
@@ -847,6 +865,7 @@ struct SettingsView: View {
         case .integrations:          activeDestination = .integrations
         case .projectSettings:       activeDestination = .projectSettings
         case .taskTypes:             activeDestination = .taskTypes
+        case .siteVisitTypes:        activeDestination = .siteVisitTypes
         case .allPhotos:             activeDestination = .allPhotos
         case .myExpenses:            activeDestination = .myExpenses
         case .reviewExpenses:        activeDestination = .reviewExpenses

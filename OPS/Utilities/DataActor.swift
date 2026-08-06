@@ -93,6 +93,7 @@ actor DataActor {
         .client,
         .subClient,
         .taskType,
+        .siteVisitType,
         .project,
         .projectTask,
         .wizardState,
@@ -419,6 +420,8 @@ actor DataActor {
             try await syncClients(since: since, repos: repos)
         case .taskType:
             try await syncTaskTypes(since: since, repos: repos)
+        case .siteVisitType:
+            try await syncSiteVisitTypes(since: since, repos: repos)
         case .project:
             try await syncProjects(since: since, repos: repos)
         case .projectTask:
@@ -816,6 +819,21 @@ actor DataActor {
 
     // MARK: - Sync: TaskTypes
 
+    private func syncSiteVisitTypes(
+        since: Date?,
+        repos: InboundRepositories
+    ) async throws {
+        let dtos = try await repos.siteVisitType.fetchAll(since: since)
+        guard !dtos.isEmpty else { return }
+
+        try modelContext.transaction {
+            for dto in dtos {
+                try mergeSiteVisitType(dto: dto)
+            }
+        }
+        inboundMergedEntityNames.insert("SiteVisitType")
+    }
+
     private func syncTaskTypes(since: Date?, repos: InboundRepositories) async throws {
         let dtos = try await repos.taskType.fetchAll(since: since)
         guard !dtos.isEmpty else { return }
@@ -939,6 +957,23 @@ actor DataActor {
             model.needsSync = false
             modelContext.insert(model)
         }
+    }
+
+    private func mergeSiteVisitType(dto: SiteVisitTypeDTO) throws {
+        let id = dto.id.lowercased()
+        _ = try SiteVisitTypeServerMerge.merge(
+            dto: dto,
+            accepting: acceptableFields(
+                entityType: .siteVisitType,
+                entityId: id,
+                fields: Array(SiteVisitTypeServerMerge.mutableFields)
+            ),
+            hasPendingLocalOperation: hasPendingOperations(
+                entityType: .siteVisitType,
+                entityId: id
+            ),
+            context: modelContext
+        )
     }
 
     // MARK: - Sync: Projects (permission-scoped)
@@ -3792,6 +3827,7 @@ actor DataActor {
                 case .client(let dto):                  try mergeClient(dto: dto)
                 case .company(let dto):                 try mergeCompany(dto: dto)
                 case .taskType(let dto):                try mergeTaskType(dto: dto)
+                case .siteVisitType(let dto):           try mergeSiteVisitType(dto: dto)
                 case .subClient(let dto):               try mergeSubClient(dto: dto)
                 case .projectNote(let dto):             try mergeProjectNote(dto: dto)
                 case .projectPhoto(let dto):            try mergeProjectPhoto(dto: dto)
@@ -3849,6 +3885,14 @@ actor DataActor {
                     }
                 case "task_types":
                     if let m = try modelContext.fetch(FetchDescriptor<TaskType>(predicate: #Predicate { $0.id == id })).first {
+                        m.deletedAt = Date()
+                    }
+                case "site_visit_types":
+                    if let m = try modelContext.fetch(
+                        FetchDescriptor<SiteVisitType>(
+                            predicate: #Predicate { $0.id == id }
+                        )
+                    ).first {
                         m.deletedAt = Date()
                     }
                 case "sub_clients":
@@ -4210,6 +4254,8 @@ actor DataActor {
             try await handleCompany(entityId: entityId, operationType: operationType, payload: payload, companyId: companyId)
         case .taskType:
             try await handleTaskType(entityId: entityId, operationType: operationType, payload: payload, companyId: companyId)
+        case .siteVisitType:
+            try await handleSiteVisitType(entityId: entityId, operationType: operationType, payload: payload, companyId: companyId)
         case .deckDesign:
             try await handleDeckDesign(entityId: entityId, operationType: operationType, payload: payload, companyId: companyId)
         case .wizardState:
@@ -4372,6 +4418,35 @@ actor DataActor {
 
         default:
             print("[DataActor] Unknown operation type '\(operationType)' for taskType")
+        }
+    }
+
+    private func handleSiteVisitType(
+        entityId: String,
+        operationType: String,
+        payload: [String: Any],
+        companyId: String
+    ) async throws {
+        let repo = SiteVisitTypeRepository(companyId: companyId)
+        let sanitized = payload.filter {
+            Self.validSiteVisitTypeColumns.contains($0.key)
+        }
+
+        switch operationType {
+        case "create":
+            let data = try JSONSerialization.data(withJSONObject: sanitized)
+            try await repo.upsert(try JSONDecoder().decode(SiteVisitTypeDTO.self, from: data))
+        case "update":
+            try await repo.updateFields(
+                entityId,
+                fields: payloadToAnyJSON(sanitized)
+            )
+        case "delete":
+            try await repo.softDelete(entityId)
+        default:
+            throw SyncError.encodingFailed(
+                detail: "Unsupported siteVisitType operation: \(operationType)"
+            )
         }
     }
 
@@ -4729,6 +4804,12 @@ actor DataActor {
         "deleted_at", "created_at", "updated_at"
     ]
 
+    private static let validSiteVisitTypeColumns: Set<String> = [
+        "id", "company_id", "slug", "name", "description_text",
+        "is_system_template", "is_default", "sort_order", "fields",
+        "created_at", "updated_at", "deleted_at"
+    ]
+
     private static let validDeckDesignColumns: Set<String> = [
         "id", "company_id", "project_id", "opportunity_id", "title", "drawing_data",
         "thumbnail_url", "version", "created_by",
@@ -4919,6 +5000,7 @@ enum RealtimeUpdate: Sendable {
     case client(SupabaseClientDTO)
     case company(SupabaseCompanyDTO)
     case taskType(SupabaseTaskTypeDTO)
+    case siteVisitType(SiteVisitTypeDTO)
     case subClient(SupabaseSubClientDTO)
     case projectNote(ProjectNoteDTO)
     case projectPhoto(ProjectPhotoDTO)
@@ -4952,6 +5034,7 @@ struct InboundRepositories {
     let client: ClientRepository
     let company: CompanyRepository
     let taskType: TaskTypeRepository
+    let siteVisitType: SiteVisitTypeRepository
     let projectNote: ProjectNoteRepository
     let projectPhoto: ProjectPhotoRepository
     let photoAnnotation: PhotoAnnotationRepository
@@ -4981,6 +5064,7 @@ struct InboundRepositories {
         self.client = ClientRepository(companyId: companyId)
         self.company = CompanyRepository()
         self.taskType = TaskTypeRepository(companyId: companyId)
+        self.siteVisitType = SiteVisitTypeRepository(companyId: companyId)
         self.projectNote = ProjectNoteRepository(companyId: companyId)
         self.projectPhoto = ProjectPhotoRepository(companyId: companyId)
         self.photoAnnotation = PhotoAnnotationRepository(companyId: companyId)

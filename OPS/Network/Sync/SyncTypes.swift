@@ -191,6 +191,7 @@ enum SyncEntityType: String, CaseIterable {
     // Task reminder templates + per-task instances (bug 4f00c2d7).
     case taskTypeReminder
     case taskReminder
+    case siteVisitType
 
     /// The corresponding Supabase table name for this entity type.
     var supabaseTable: String {
@@ -250,6 +251,7 @@ enum SyncEntityType: String, CaseIterable {
         case .inventorySnapshotItem: return "inventory_snapshot_items"
         case .taskTypeReminder:      return "task_type_reminders"
         case .taskReminder:          return "task_reminders"
+        case .siteVisitType:         return "site_visit_types"
         }
     }
 
@@ -299,6 +301,7 @@ enum SyncEntityType: String, CaseIterable {
         // depend on project_tasks (priority 6).
         case .taskTypeReminder:                              return 5
         case .taskReminder:                                  return 7
+        case .siteVisitType:                                 return 5
         }
     }
 }

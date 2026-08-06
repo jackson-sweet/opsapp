@@ -208,6 +208,7 @@ final class RealtimeProcessor: ObservableObject {
         "clients",
         "sub_clients",
         "task_types",
+        "site_visit_types",
         "project_notes",
         "project_photos",
         "project_photo_annotations",
@@ -990,6 +991,24 @@ final class RealtimeProcessor: ObservableObject {
                 try upsertTaskType(context: context, id: dto.id, model: model, pendingFields: pendingFields)
                 InboundChangeSignal.post(entityNames: ["TaskType"])
 
+            case "site_visit_types":
+                let dto = try record.decodeRecord(as: SiteVisitTypeDTO.self, decoder: decoder)
+                let id = dto.id.lowercased()
+                let pendingFields = protectedFieldsForEntity(
+                    entityType: .siteVisitType,
+                    entityId: id,
+                    context: context
+                )
+                _ = try SiteVisitTypeServerMerge.merge(
+                    dto: dto,
+                    accepting: SiteVisitTypeServerMerge.mutableFields
+                        .subtracting(pendingFields),
+                    hasPendingLocalOperation: !pendingFields.isEmpty,
+                    context: context
+                )
+                try context.save()
+                InboundChangeSignal.post(entityNames: ["SiteVisitType"])
+
             case "sub_clients":
                 let dto = try record.decodeRecord(as: SupabaseSubClientDTO.self, decoder: decoder)
                 let model = dto.toModel()
@@ -1133,6 +1152,16 @@ final class RealtimeProcessor: ObservableObject {
                 }
                 InboundChangeSignal.post(entityNames: ["TaskType"])
 
+            case "site_visit_types":
+                let descriptor = FetchDescriptor<SiteVisitType>(
+                    predicate: #Predicate { $0.id == id }
+                )
+                if let existing = try context.fetch(descriptor).first {
+                    existing.deletedAt = Date()
+                    try context.save()
+                }
+                InboundChangeSignal.post(entityNames: ["SiteVisitType"])
+
             case "sub_clients":
                 let descriptor = FetchDescriptor<SubClient>(predicate: #Predicate { $0.id == id })
                 if let existing = try context.fetch(descriptor).first {
@@ -1253,6 +1282,10 @@ final class RealtimeProcessor: ObservableObject {
                 let dto = try record.decodeRecord(as: SupabaseTaskTypeDTO.self, decoder: decoder)
                 Task { await actor.handleRealtimeUpdate(.taskType(dto)) }
 
+            case "site_visit_types":
+                let dto = try record.decodeRecord(as: SiteVisitTypeDTO.self, decoder: decoder)
+                Task { await actor.handleRealtimeUpdate(.siteVisitType(dto)) }
+
             case "sub_clients":
                 let dto = try record.decodeRecord(as: SupabaseSubClientDTO.self, decoder: decoder)
                 Task { await actor.handleRealtimeUpdate(.subClient(dto)) }
@@ -1365,7 +1398,7 @@ final class RealtimeProcessor: ObservableObject {
         do {
             switch table {
             case "projects", "users", "clients", "companies",
-                 "task_types", "sub_clients", "project_notes", "project_photos",
+                 "task_types", "site_visit_types", "sub_clients", "project_notes", "project_photos",
                  "project_photo_annotations",
                  "deck_designs",
                  // Catalog parents with surrogate-id identity. catalog_snapshots

@@ -191,6 +191,7 @@ enum SyncEntityType: String, CaseIterable {
     // Task reminder templates + per-task instances (bug 4f00c2d7).
     case taskTypeReminder
     case taskReminder
+    case siteVisitType
     case siteVisit
     case siteVisitArtifact
     case siteVisitChecklistAnswer
@@ -254,6 +255,7 @@ enum SyncEntityType: String, CaseIterable {
         case .inventorySnapshotItem: return "inventory_snapshot_items"
         case .taskTypeReminder:      return "task_type_reminders"
         case .taskReminder:          return "task_reminders"
+        case .siteVisitType:         return "site_visit_types"
         case .siteVisit:             return "site_visits"
         case .siteVisitArtifact:     return "site_visit_artifacts"
         case .siteVisitChecklistAnswer:
@@ -309,6 +311,7 @@ enum SyncEntityType: String, CaseIterable {
         // depend on project_tasks (priority 6).
         case .taskTypeReminder:                              return 5
         case .taskReminder:                                  return 7
+        case .siteVisitType:                                 return 5
         case .siteVisit:                                     return 6
         case .siteVisitArtifact,
              .siteVisitChecklistAnswer,

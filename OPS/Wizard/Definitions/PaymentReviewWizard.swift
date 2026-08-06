@@ -26,11 +26,11 @@ struct PaymentReviewWizard: WizardDefinitionProtocol {
     let estimatedMinutes = 2
 
     let steps: [WizardStepDefinition] = [
-        // Step 1: Navigate to the review button in the header
+        // Step 1: Navigate to payment review through the header action menu.
         WizardStepDefinition(
             id: "open_payment_review",
-            instruction: "TAP THE REVIEW ICON",
-            description: "Tap the card stack icon in the header to open payment review.",
+            instruction: "OPEN PAYMENT REVIEW",
+            description: "Open the header actions, then choose Payment review.",
             targetScreen: "JobBoard",
             canSkip: false,
             completionNotification: "WizardPaymentReviewOpened"

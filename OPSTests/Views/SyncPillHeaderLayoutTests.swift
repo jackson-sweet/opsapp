@@ -37,7 +37,7 @@ import SwiftUI
 @MainActor
 final class SyncPillHeaderLayoutTests: XCTestCase {
 
-    private let captureSize = CGSize(width: 390, height: 260)
+    private let captureHeight: CGFloat = 260
 
     /// Every header type that carries the circular search button in its trailing
     /// cluster — the surfaces the bug was reported on.
@@ -84,6 +84,7 @@ final class SyncPillHeaderLayoutTests: XCTestCase {
     private struct Harness: View {
         let headerType: AppHeader.HeaderType
         let count: Int
+        var width: CGFloat = 390
         var isParked: Bool = false
         var typeSize: DynamicTypeSize = .large
         var sink: Measurements?
@@ -93,7 +94,7 @@ final class SyncPillHeaderLayoutTests: XCTestCase {
         var body: some View {
             ZStack(alignment: .top) {
                 VStack(spacing: 0) {
-                    AppHeader(headerType: headerType)
+                    configuredHeader
                     Spacer(minLength: 0)
                 }
                 .onPreferenceChange(AppHeaderHeightKey.self) { headerBandHeight = $0 }
@@ -112,7 +113,7 @@ final class SyncPillHeaderLayoutTests: XCTestCase {
                 .padding(.top, headerBandHeight)
                 .zIndex(1)
             }
-            .frame(width: 390, alignment: .top)
+            .frame(width: width, alignment: .top)
             .background(OPSStyle.Colors.background)
             .environment(\.colorScheme, .dark)
             .dynamicTypeSize(typeSize)
@@ -127,11 +128,44 @@ final class SyncPillHeaderLayoutTests: XCTestCase {
                 .allowsHitTesting(false)
             }
         }
+
+        @ViewBuilder
+        private var configuredHeader: some View {
+            switch headerType {
+            case .schedule:
+                AppHeader(
+                    headerType: .schedule,
+                    onFilterTapped: {},
+                    onMonthTapped: {},
+                    onScopeToggled: {},
+                    isScopeAll: true,
+                    hasActiveFilters: true,
+                    filterCount: 2
+                )
+            case .jobBoard:
+                AppHeader(
+                    headerType: .jobBoard,
+                    onPaymentReviewTapped: {},
+                    paymentReviewBadgeCount: 3,
+                    onTaskReviewTapped: {},
+                    taskReviewBadgeCount: 2,
+                    onUnscheduledReviewTapped: {},
+                    unscheduledReviewBadgeCount: 1
+                )
+            case .inventory:
+                AppHeader(headerType: .inventory, onInsightsTapped: {})
+            case .leads:
+                AppHeader(headerType: .leads, onAddLead: {})
+            case .home, .settings, .pipeline, .books:
+                AppHeader(headerType: headerType)
+            }
+        }
     }
 
     private func harness(
         _ headerType: AppHeader.HeaderType,
         count: Int,
+        width: CGFloat = 390,
         isParked: Bool = false,
         typeSize: DynamicTypeSize = .large,
         sink: Measurements? = nil
@@ -139,6 +173,7 @@ final class SyncPillHeaderLayoutTests: XCTestCase {
         Harness(
             headerType: headerType,
             count: count,
+            width: width,
             isParked: isParked,
             typeSize: typeSize,
             sink: sink
@@ -153,14 +188,23 @@ final class SyncPillHeaderLayoutTests: XCTestCase {
     private func measure(
         _ headerType: AppHeader.HeaderType,
         count: Int,
+        width: CGFloat = 390,
         isParked: Bool = false,
         typeSize: DynamicTypeSize = .large
     ) throws -> Measurements {
         let sink = Measurements()
         let view = harness(
-            headerType, count: count, isParked: isParked, typeSize: typeSize, sink: sink
+            headerType,
+            count: count,
+            width: width,
+            isParked: isParked,
+            typeSize: typeSize,
+            sink: sink
         )
-        _ = try FixedSizeSnapshot.render(view, size: captureSize)
+        _ = try FixedSizeSnapshot.render(
+            view,
+            size: CGSize(width: width, height: captureHeight)
+        )
         return sink
     }
 
@@ -169,27 +213,53 @@ final class SyncPillHeaderLayoutTests: XCTestCase {
     /// The pill must sit entirely below the header on every surface that carries
     /// the search button. This is exactly what was broken.
     func testPillClearsHeaderOnEverySearchHeader() throws {
-        for header in searchHeaders {
-            let measured = try measure(header.type, count: 2)
+        for width in [CGFloat(320), CGFloat(390)] {
+            for header in searchHeaders {
+                let measured = try measure(header.type, count: 2, width: width)
 
-            let pill = try XCTUnwrap(measured.pill, "\(header.name): pill was never measured")
-            let headerHeight = try XCTUnwrap(
-                measured.headerHeight, "\(header.name): header height was never published"
-            )
+                let label = "\(header.name) @ \(Int(width))pt"
+                let pill = try XCTUnwrap(measured.pill, "\(label): pill was never measured")
+                let headerHeight = try XCTUnwrap(
+                    measured.headerHeight, "\(label): header height was never published"
+                )
 
-            XCTAssertGreaterThan(
-                headerHeight, 0,
-                "\(header.name): header reported zero height — the band would collapse onto it"
-            )
-            XCTAssertFalse(pill.isEmpty, "\(header.name): pill has an empty frame")
-            XCTAssertGreaterThanOrEqual(
-                pill.minY, headerHeight,
-                """
-                \(header.name): the pill starts at \(pill.minY) but the header runs to \
-                \(headerHeight) — they overlap, which is the reported bug.
-                """
-            )
+                XCTAssertGreaterThan(
+                    headerHeight, 0,
+                    "\(label): header reported zero height — the band would collapse onto it"
+                )
+                XCTAssertFalse(pill.isEmpty, "\(label): pill has an empty frame")
+                XCTAssertGreaterThanOrEqual(
+                    pill.minY, headerHeight,
+                    """
+                    \(label): the pill starts at \(pill.minY) but the header runs to \
+                    \(headerHeight) — they overlap, which is the reported bug.
+                    """
+                )
+            }
         }
+    }
+
+    func testHeaderBandUsesNominalTokenAndGrowsForDynamicType() throws {
+        let nominal = try measure(.jobBoard, count: 2, width: 320)
+        let accessibility = try measure(
+            .jobBoard,
+            count: 2,
+            width: 320,
+            typeSize: .accessibility5
+        )
+        let nominalHeight = try XCTUnwrap(nominal.headerHeight)
+        let accessibilityHeight = try XCTUnwrap(accessibility.headerHeight)
+
+        XCTAssertEqual(
+            nominalHeight,
+            OPSStyle.Layout.screenHeaderBandHeight,
+            accuracy: 0.5
+        )
+        XCTAssertGreaterThan(
+            accessibilityHeight,
+            nominalHeight,
+            "AppHeader must grow with Dynamic Type rather than clipping the Cake Mono title"
+        )
     }
 
     /// The reported clip was the word "LOOK" vanishing. The pill must render its
@@ -223,7 +293,7 @@ final class SyncPillHeaderLayoutTests: XCTestCase {
                 "\(testCase.name): pill runs off the leading edge — the label is being cut"
             )
             XCTAssertLessThanOrEqual(
-                pill.maxX, captureSize.width + 0.5,
+                pill.maxX, 390.5,
                 "\(testCase.name): pill runs off the trailing edge"
             )
 
@@ -241,24 +311,40 @@ final class SyncPillHeaderLayoutTests: XCTestCase {
     // MARK: - Visual proof
 
     func testSnapshotPillAndSearchButtonCoexist() throws {
-        try snapshot("sync-pill-header-reported-count-2", harness(.jobBoard, count: 2))
-        try snapshot("sync-pill-header-schedule-4-buttons", harness(.schedule, count: 2))
-        try snapshot("sync-pill-header-leads-plus-and-search", harness(.leads, count: 2))
+        try snapshot("sync-pill-header-reported-count-2", harness(.jobBoard, count: 2), width: 390)
+        try snapshot(
+            "sync-pill-header-schedule-two-actions-320",
+            harness(.schedule, count: 2, width: 320),
+            width: 320
+        )
+        try snapshot(
+            "sync-pill-header-leads-plus-and-search",
+            harness(.leads, count: 2),
+            width: 390
+        )
     }
 
     func testSnapshotPillAtLargeCountAndType() throws {
-        try snapshot("sync-pill-header-count-128", harness(.jobBoard, count: 128))
-        try snapshot("sync-pill-header-parked-rose", harness(.jobBoard, count: 7, isParked: true))
+        try snapshot("sync-pill-header-count-128", harness(.jobBoard, count: 128), width: 390)
+        try snapshot(
+            "sync-pill-header-parked-rose",
+            harness(.jobBoard, count: 7, isParked: true),
+            width: 390
+        )
         try snapshot(
             "sync-pill-header-a11y3-count-99",
-            harness(.jobBoard, count: 99, typeSize: .accessibility3)
+            harness(.jobBoard, count: 99, typeSize: .accessibility3),
+            width: 390
         )
     }
 
     // MARK: - Snapshot helper
 
-    private func snapshot<V: View>(_ name: String, _ view: V) throws {
-        let image = try FixedSizeSnapshot.render(view, size: captureSize)
+    private func snapshot<V: View>(_ name: String, _ view: V, width: CGFloat) throws {
+        let image = try FixedSizeSnapshot.render(
+            view,
+            size: CGSize(width: width, height: captureHeight)
+        )
         guard let data = image.pngData() else {
             XCTFail("Failed to render \(name)")
             return

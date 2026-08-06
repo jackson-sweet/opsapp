@@ -20,6 +20,109 @@
 
 import SwiftUI
 
+/// Shared, testable policy for the mobile header's trailing edge. The visual
+/// spec permits no more than two actions; extra actions must move into one of
+/// those slots (normally an overflow menu) rather than widening the band.
+enum OPSHeaderGeometry {
+    enum AccessibilityPosition: Equatable {
+        case leading
+        case title
+        case trailing(Int)
+    }
+
+    static let maximumTrailingActionCount = 2
+
+    static func visibleTrailingActions<Action>(from actions: [Action]) -> [Action] {
+        Array(actions.prefix(maximumTrailingActionCount))
+    }
+
+    static func accessibilityOrder(
+        hasLeading: Bool,
+        trailingActionCount: Int
+    ) -> [AccessibilityPosition] {
+        var positions: [AccessibilityPosition] = hasLeading ? [.leading, .title] : [.title]
+        let visibleCount = min(max(0, trailingActionCount), maximumTrailingActionCount)
+        positions.append(contentsOf: (0..<visibleCount).map(AccessibilityPosition.trailing))
+        return positions
+    }
+
+    static func accessibilitySortPriority(
+        for position: AccessibilityPosition
+    ) -> Double {
+        switch position {
+        case .leading:
+            return Double(maximumTrailingActionCount + 1)
+        case .title:
+            return Double(maximumTrailingActionCount)
+        case .trailing(let index):
+            return Double(maximumTrailingActionCount - index - 1)
+        }
+    }
+}
+
+/// Makes an arbitrary custom header control glove-safe without requiring every
+/// legacy caller to rebuild its button label. Empty header slots are omitted by
+/// OPSScreenHeader, so root titles still begin at the canonical leading inset.
+struct OPSHeaderControlSlot<Content: View>: View {
+    private let position: OPSHeaderGeometry.AccessibilityPosition
+    private let alignment: Alignment
+    private let content: Content
+
+    init(
+        position: OPSHeaderGeometry.AccessibilityPosition,
+        alignment: Alignment,
+        @ViewBuilder content: () -> Content
+    ) {
+        self.position = position
+        self.alignment = alignment
+        self.content = content()
+    }
+
+    var body: some View {
+        content
+            .frame(
+                minWidth: OPSStyle.Layout.touchTargetMin,
+                minHeight: OPSStyle.Layout.touchTargetMin,
+                alignment: alignment
+            )
+            .contentShape(Rectangle())
+            .accessibilitySortPriority(
+                OPSHeaderGeometry.accessibilitySortPriority(for: position)
+            )
+    }
+}
+
+/// A source-order-preserving trailing action row that enforces the two-action
+/// policy even if a future caller accidentally supplies more.
+struct OPSHeaderActionStrip<Action: Identifiable, ActionContent: View>: View {
+    private let actions: [Action]
+    private let actionContent: (Action) -> ActionContent
+
+    init(
+        _ actions: [Action],
+        @ViewBuilder actionContent: @escaping (Action) -> ActionContent
+    ) {
+        self.actions = actions
+        self.actionContent = actionContent
+    }
+
+    var body: some View {
+        HStack(spacing: OPSStyle.Layout.spacing2) {
+            let visibleActions = OPSHeaderGeometry.visibleTrailingActions(from: actions)
+            ForEach(visibleActions.indices, id: \.self) { index in
+                actionContent(visibleActions[index])
+                    .accessibilitySortPriority(
+                        OPSHeaderGeometry.accessibilitySortPriority(
+                            for: .trailing(index)
+                        )
+                    )
+            }
+        }
+        .fixedSize(horizontal: true, vertical: false)
+        .accessibilityElement(children: .contain)
+    }
+}
+
 struct OPSScreenHeader<Leading: View, Trailing: View>: View {
     private let title: String
     private let leading: Leading
@@ -37,19 +140,51 @@ struct OPSScreenHeader<Leading: View, Trailing: View>: View {
 
     var body: some View {
         HStack(alignment: .center, spacing: OPSStyle.Layout.spacing2_5) {
-            leading
+            leadingSlot
+
             Text(title)
                 .font(OPSStyle.Typography.screenTitle(for: title))
                 .textCase(.uppercase)
                 .foregroundColor(OPSStyle.Colors.text)
-                .lineLimit(1)
-                .minimumScaleFactor(0.7)
+                .multilineTextAlignment(.leading)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .fixedSize(horizontal: false, vertical: true)
                 .layoutPriority(1)
-            Spacer(minLength: OPSStyle.Layout.spacing2)
-            trailing
+                .accessibilityAddTraits(.isHeader)
+                .accessibilitySortPriority(
+                    OPSHeaderGeometry.accessibilitySortPriority(for: .title)
+                )
+
+            trailingSlot
         }
-        .padding(.horizontal, OPSStyle.Layout.spacing3_5) // 20pt §2.1
-        .frame(minHeight: 52, alignment: .center)         // 52pt content §2.1
+        .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+        .frame(
+            minHeight: OPSStyle.Layout.screenHeaderBandHeight,
+            alignment: .center
+        )
+        .accessibilityElement(children: .contain)
+    }
+
+    @ViewBuilder
+    private var leadingSlot: some View {
+        if Leading.self == EmptyView.self {
+            EmptyView()
+        } else {
+            OPSHeaderControlSlot(position: .leading, alignment: .leading) {
+                leading
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var trailingSlot: some View {
+        if Trailing.self == EmptyView.self {
+            EmptyView()
+        } else {
+            OPSHeaderControlSlot(position: .trailing(0), alignment: .trailing) {
+                trailing
+            }
+        }
     }
 }
 
@@ -85,6 +220,7 @@ struct OPSHeaderBackButton: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .accessibilityLabel(label.map { "Back to \($0)" } ?? "Back")
     }
 }
 
@@ -106,5 +242,6 @@ struct OPSHeaderCloseButton: View {
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .accessibilityLabel("Close")
     }
 }

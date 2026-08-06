@@ -543,6 +543,10 @@ enum OPSStyle {
         static let touchTargetStandard = 56.0
         static let touchTargetLarge = 64.0
 
+        /// Canonical custom-header content band (MOBILE.md §2.1). This excludes
+        /// the system safe area and is a minimum: Dynamic Type may grow it.
+        static let screenHeaderBandHeight: CGFloat = 52.0
+
         // Mobile control heights — `ops-design-system/project/mobile/MOBILE.md`.
         // Spec'd component heights that sit between the touch-target presets.
         static let inputHeight: CGFloat = 48.0          // §9 text input height (mobile touch)

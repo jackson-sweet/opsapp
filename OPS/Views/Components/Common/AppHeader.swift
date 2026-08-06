@@ -11,13 +11,9 @@ import SwiftUI
 //
 // The header lives inline at the top of every tab's view, so when the user
 // switches tabs the whole tab — header + body — slides as one unit via
-// MainTabView's tab transition. Every right-side action button (search,
-// filter, scope, month, review, insights) is part of this same trailing
-// HStack, so they share one baseline, stay vertically aligned, and animate
-// identically. (Earlier builds lifted the search button into a separate
-// fixed overlay to keep it stationary across tab swaps — that desynced it
-// from the other buttons and left it misaligned on tabs with a taller title
-// block. The overlay is gone; the search button is a normal sibling again.)
+// MainTabView's tab transition. Root metadata sits in the first content strip
+// below the canonical title band, and every trailing action flows through the
+// shared two-slot policy in OPSScreenHeader.
 
 /// Measured height of the tab's `AppHeader`, published so app-level overlays can
 /// park BENEATH the header band instead of colliding with it.
@@ -34,11 +30,8 @@ import SwiftUI
 /// can never be overlapped while the slide is in flight. It settles onto the
 /// surviving header's height once the transition completes.
 struct AppHeaderHeightKey: PreferenceKey {
-    /// Floor used before any header reports, and by tabs that render no
-    /// `AppHeader` at all: one 44pt action button plus the header's vertical
-    /// padding on both sides.
-    static let defaultValue: CGFloat =
-        OPSStyle.Layout.touchTargetMin + OPSStyle.Layout.spacing2_5 * 2
+    /// Floor used before any header reports and by tabs without an AppHeader.
+    static let defaultValue: CGFloat = OPSStyle.Layout.screenHeaderBandHeight
 
     static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
         value = max(value, nextValue())
@@ -55,6 +48,16 @@ struct AppHeader: View {
         case pipeline
         case books
         case leads
+    }
+
+    private enum TrailingAction: String, Identifiable {
+        case scheduleMenu
+        case jobBoardMenu
+        case inventoryInsights
+        case newLead
+        case search
+
+        var id: String { rawValue }
     }
 
     @EnvironmentObject private var dataController: DataController
@@ -121,8 +124,6 @@ struct AppHeader: View {
     
     var body: some View {
         headerContent
-            // Every branch reports through one place, so an app-level overlay
-            // always knows where this header ends (see AppHeaderHeightKey).
             .background(
                 GeometryReader { proxy in
                     Color.clear.preference(
@@ -131,435 +132,12 @@ struct AppHeader: View {
                     )
                 }
             )
-    }
-
-    @ViewBuilder
-    private var headerContent: some View {
-
-        if headerType == .home {
-
-            HStack {
-                VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2_5) {
-                    Text(title)
-                        .font(OPSStyle.Typography.screenTitle(for: title))
-                        .textCase(.uppercase)
-                        .foregroundColor(OPSStyle.Colors.text)
-
-                    HStack(spacing: OPSStyle.Layout.spacing2) {
-                        if let company = dataController.getCurrentUserCompany() {
-                            Text(company.name.uppercased())
-                                .font(OPSStyle.Typography.caption)
-                                .foregroundColor(OPSStyle.Colors.secondaryText)
-                            
-                            // Show subscription badge if relevant
-                            if let status = company.subscriptionStatus,
-                               let statusEnum = SubscriptionStatus(rawValue: status) {
-                                HStack(spacing: OPSStyle.Layout.spacing1) {
-                                    Circle()
-                                        .fill(statusColor(for: statusEnum))
-                                        .frame(width: 6, height: 6)
-
-                                    Text(statusText(for: statusEnum))
-                                        .font(OPSStyle.Typography.smallCaption)
-                                        .foregroundColor(statusColor(for: statusEnum))
-                                }
-                            }
-                        }
-                    }
-                }
-                
-                Spacer()
-
-                // User avatar with sync indicator and notification bell overlay
-                Button(action: {
-                    appState.showingNotifications = true
-                }) {
-                    ZStack {
-                        // Avatar — dimmed when sync operations are pending/active.
-                        // Opacity is driven by local @State (avatarIsDimmed), not
-                        // the live published values, so tab-switch transitions
-                        // render the avatar's final opacity up front and the slide
-                        // animates uniformly with the rest of the header.
-                        Group {
-                            if let user = dataController.currentUser {
-                                UserAvatar(user: user, size: 44)
-                                    .overlay(
-                                        Circle()
-                                            .stroke(OPSStyle.Colors.primaryText, lineWidth: OPSStyle.Layout.Border.thick)
-                                    )
-                            } else {
-                                UserAvatar(
-                                    firstName: "U",
-                                    lastName: "",
-                                    size: 44,
-                                    backgroundColor: OPSStyle.Colors.primaryAccent
-                                )
-                                .overlay(
-                                    Circle()
-                                        .stroke(OPSStyle.Colors.primaryText, lineWidth: OPSStyle.Layout.Border.thick)
-                                    )
-                            }
-                        }
-                        .opacity(avatarIsDimmed ? 0.35 : 1.0)
-
-                        // Sync overlay — spinning icon with count in center
-                        if dataController.syncEngine.pendingOperationCount > 0 || dataController.syncEngine.isSyncing {
-                            AvatarSyncOverlay(
-                                count: dataController.syncEngine.pendingOperationCount,
-                                isSyncing: dataController.syncEngine.isSyncing
-                            )
-                        }
-
-                        // Notification indicator — bottom-left of avatar
-                        // Shows bell when no unread; shows count replacing bell when unread
-                        ZStack {
-                            Circle()
-                                .fill(OPSStyle.Colors.background)
-                                .frame(width: 22, height: 22)
-
-                            if appState.unreadNotificationCount > 0 {
-                                Text("\(min(appState.unreadNotificationCount, 99))")
-                                    .font(OPSStyle.Typography.metadata)
-                                    .foregroundColor(OPSStyle.Colors.primaryAccent)
-                            } else {
-                                Image(systemName: "bell")
-                                    .font(.system(size: 11, weight: .semibold))
-                                    .foregroundColor(OPSStyle.Colors.primaryText)
-                            }
-                        }
-                        .offset(x: -14, y: 14)
-                    }
-                }
-                .buttonStyle(PlainButtonStyle())
-            }
-            .padding(.horizontal, OPSStyle.Layout.spacing3_5)
-            .padding(.vertical, OPSStyle.Layout.spacing2_5)
-            .background(
-                LinearGradient(
-                    colors: [
-                        OPSStyle.Colors.background,
-                        OPSStyle.Colors.background.opacity(0.85),
-                        OPSStyle.Colors.background.opacity(0.0)
-                    ],
-                    startPoint: .top,
-                    endPoint: .bottom
-                )
-                .ignoresSafeArea()
-            )
-            .sheet(isPresented: $appState.showingNotifications, onDismiss: {
-                // Process any deep-link baton left by a notification row tap.
-                // Fires AFTER this sheet is fully gone, so the target sheet
-                // can present without a sheet-on-sheet race.
-                if let deepLink = appState.pendingRailDeepLink {
-                    appState.pendingRailDeepLink = nil
-                    switch deepLink {
-                    case "photoStorage":
-                        appState.showPhotoStorage = true
-                    default:
-                        break
-                    }
-                }
-            }) {
-                NavigationStack {
-                    NotificationListView()
-                        .environmentObject(dataController)
-                        .environmentObject(appState)
+            .background {
+                if headerType == .home {
+                    OPSStyle.Layout.Gradients.headerFade
+                        .ignoresSafeArea(edges: .top)
                 }
             }
-            .onAppear {
-                appState.refreshUnreadCount()
-                // Seed dim state without animation so tab-enter renders the
-                // final opacity immediately — the tab-slide carries the avatar.
-                avatarIsDimmed = dataController.syncEngine.pendingOperationCount > 0 || dataController.syncEngine.isSyncing
-            }
-            .onChange(of: dataController.syncEngine.pendingOperationCount) { _, _ in
-                withAnimation(OPSStyle.Animation.standard) {
-                    avatarIsDimmed = dataController.syncEngine.pendingOperationCount > 0 || dataController.syncEngine.isSyncing
-                }
-            }
-            .onChange(of: dataController.syncEngine.isSyncing) { _, _ in
-                withAnimation(OPSStyle.Animation.standard) {
-                    avatarIsDimmed = dataController.syncEngine.pendingOperationCount > 0 || dataController.syncEngine.isSyncing
-                }
-            }
-            .onReceive(NotificationCenter.default.publisher(for: .notificationReceived)) { _ in
-                appState.refreshUnreadCount()
-            }
-            .onReceive(NotificationCenter.default.publisher(for: .pushNotificationReceived)) { _ in
-                appState.refreshUnreadCount()
-            }
-            .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
-                appState.refreshUnreadCount()
-            }
-
-        } else if headerType == .settings && appState.isSettingsSearchActive {
-            // Bug G5 — expanded search state for Settings tab. The title and
-            // trailing actions collapse; the full row becomes a single input
-            // with a leading magnifier, inline clear button, and trailing
-            // CANCEL action. Animation is spring-driven via OPSStyle tokens.
-            settingsSearchField
-                .padding(.horizontal, OPSStyle.Layout.spacing3_5)
-                .padding(.vertical, OPSStyle.Layout.spacing2_5)
-                .transition(.opacity)
-        } else {
-
-            HStack {
-                VStack(alignment: .leading, spacing: 0) {
-                    Text(title)
-                        .font(OPSStyle.Typography.screenTitle(for: title))
-                        .textCase(.uppercase)
-                        .foregroundColor(OPSStyle.Colors.text)
-
-                    // Show date subtitle for schedule view
-                    if headerType == .schedule {
-                        HStack(spacing: OPSStyle.Layout.spacing2) {
-                            Text("TODAY")
-                                .font(OPSStyle.Typography.caption)
-                                .foregroundColor(OPSStyle.Colors.secondaryText)
-                            
-                            Text("|")
-                                .font(OPSStyle.Typography.caption)
-                                .foregroundColor(OPSStyle.Colors.secondaryText)
-                            
-                            Text(todayDateString)
-                                .font(OPSStyle.Typography.caption)
-                                .foregroundColor(OPSStyle.Colors.secondaryText)
-                        }
-                    }
-                }
-                
-                Spacer()
-                
-                // Action buttons — schedule and job board
-                HStack(spacing: OPSStyle.Layout.spacing2) {
-                    // Calendar/month toggle button (schedule only)
-                    if headerType == .schedule, let onMonthTapped = onMonthTapped {
-                        Button(action: onMonthTapped) {
-                            Image(systemName: "calendar")
-                                .font(OPSStyle.Typography.bodyBold)
-                                .foregroundColor(OPSStyle.Colors.primaryText)
-                                .frame(width: 44, height: 44)
-                                .background(OPSStyle.Colors.fillNeutral)
-                                .clipShape(Circle())
-                        }
-                        .buttonStyle(PlainButtonStyle())
-                        .wizardTarget("toggle_month", style: .circle)
-                    }
-
-                    // Filter button (schedule only)
-                    if headerType == .schedule, let onFilterTapped = onFilterTapped {
-                        Button(action: onFilterTapped) {
-                            ZStack {
-                                Image(systemName: hasActiveFilters ? "line.3.horizontal.decrease.circle.fill" : "line.3.horizontal.decrease.circle")
-                                    .font(OPSStyle.Typography.bodyBold)
-                                    .foregroundColor(hasActiveFilters ? OPSStyle.Colors.text : OPSStyle.Colors.primaryText)
-                                    .frame(width: 44, height: 44)
-                                    .background(OPSStyle.Colors.fillNeutral)
-                                    .clipShape(Circle())
-
-                                // Show filter count badge if filters are active
-                                if hasActiveFilters && filterCount > 0 {
-                                    Text("\(filterCount)")
-                                        .font(OPSStyle.Typography.smallCaption)
-                                        .foregroundColor(OPSStyle.Colors.primaryText)
-                                        .padding(OPSStyle.Layout.spacing1)
-                                        .background(OPSStyle.Colors.primaryAccent)
-                                        .clipShape(Circle())
-                                        .offset(x: 14, y: -14)
-                                }
-                            }
-                        }
-                        .buttonStyle(PlainButtonStyle())
-                    }
-
-                    // ALL/MINE scope toggle (schedule only)
-                    if headerType == .schedule, let onScopeToggled = onScopeToggled {
-                        Button(action: onScopeToggled) {
-                            ZStack {
-                                Image(systemName: isScopeAll ? "person.2" : "person")
-                                    .font(OPSStyle.Typography.bodyBold)
-                                    .foregroundColor(isScopeAll ? OPSStyle.Colors.primaryText : OPSStyle.Colors.text)
-                                    .frame(width: 44, height: 44)
-                                    .background(OPSStyle.Colors.fillNeutral)
-                                    .clipShape(Circle())
-
-                                // Indicator dot when MINE is selected
-                                if !isScopeAll {
-                                    Circle()
-                                        .fill(OPSStyle.Colors.text)
-                                        .frame(width: 8, height: 8)
-                                        .offset(x: 14, y: -14)
-                                }
-                            }
-                        }
-                        .buttonStyle(PlainButtonStyle())
-                    }
-
-                    if headerType == .jobBoard {
-                        // Unscheduled task review button
-                        if let onUnscheduledReviewTapped {
-                            Button(action: { onUnscheduledReviewTapped() }) {
-                                ZStack(alignment: .topTrailing) {
-                                    Image(systemName: "calendar.badge.exclamationmark")
-                                        .font(OPSStyle.Typography.bodyBold)
-                                        .foregroundColor(OPSStyle.Colors.primaryText)
-                                        .frame(width: 44, height: 44)
-                                        .background(OPSStyle.Colors.fillNeutral)
-                                        .clipShape(Circle())
-
-                                    if unscheduledReviewBadgeCount > 0 {
-                                        Text("\(unscheduledReviewBadgeCount)")
-                                            .font(OPSStyle.Typography.smallCaption)
-                                            .foregroundColor(OPSStyle.Colors.invertedText)
-                                            .padding(.horizontal, 5)
-                                            .padding(.vertical, 2)
-                                            .background(OPSStyle.Colors.warningStatus)
-                                            .clipShape(Capsule())
-                                            .offset(x: 6, y: -4)
-                                            // Explicit entry animation so the
-                                            // count visibly lands when the tab
-                                            // slide completes — without this
-                                            // the badge renders at its offset
-                                            // instantly and reads as "already
-                                            // in place" (bug 5d66ee80).
-                                            .transition(.scale(scale: 0.6).combined(with: .opacity))
-                                    }
-                                }
-                            }
-                            .buttonStyle(PlainButtonStyle())
-                        }
-
-                        // Task review button
-                        if onTaskReviewTapped != nil || isTaskReviewLocked {
-                            Button(action: {
-                                if isTaskReviewLocked {
-                                    showLockedMessage = taskReviewLockedMessage
-                                    showLockedAlert = true
-                                } else {
-                                    onTaskReviewTapped?()
-                                }
-                            }) {
-                                ZStack(alignment: .topTrailing) {
-                                    Image(systemName: "checklist")
-                                        .font(OPSStyle.Typography.bodyBold)
-                                        .foregroundColor(isTaskReviewLocked ? OPSStyle.Colors.tertiaryText : OPSStyle.Colors.primaryText)
-                                        .frame(width: 44, height: 44)
-                                        .background(OPSStyle.Colors.fillNeutral)
-                                        .clipShape(Circle())
-
-                                    if !isTaskReviewLocked && taskReviewBadgeCount > 0 {
-                                        Text("\(taskReviewBadgeCount)")
-                                            .font(OPSStyle.Typography.smallCaption)
-                                            .foregroundColor(OPSStyle.Colors.invertedText)
-                                            .padding(.horizontal, 5)
-                                            .padding(.vertical, 2)
-                                            .background(OPSStyle.Colors.warningStatus)
-                                            .clipShape(Capsule())
-                                            .offset(x: 6, y: -4)
-                                            .transition(.scale(scale: 0.6).combined(with: .opacity))
-                                    }
-                                }
-                            }
-                            .buttonStyle(PlainButtonStyle())
-                            .wizardTarget("open_task_review")
-                        }
-
-                        // Payment review button
-                        if onPaymentReviewTapped != nil || isPaymentReviewLocked {
-                            Button(action: {
-                                if isPaymentReviewLocked {
-                                    showLockedMessage = paymentReviewLockedMessage
-                                    showLockedAlert = true
-                                } else {
-                                    onPaymentReviewTapped?()
-                                }
-                            }) {
-                                ZStack(alignment: .topTrailing) {
-                                    Image(systemName: "rectangle.stack.fill")
-                                        .font(OPSStyle.Typography.bodyBold)
-                                        .foregroundColor(isPaymentReviewLocked ? OPSStyle.Colors.tertiaryText : OPSStyle.Colors.primaryText)
-                                        .frame(width: 44, height: 44)
-                                        .background(OPSStyle.Colors.fillNeutral)
-                                        .clipShape(Circle())
-
-                                    if !isPaymentReviewLocked && paymentReviewBadgeCount > 0 {
-                                        Text("\(paymentReviewBadgeCount)")
-                                            .font(OPSStyle.Typography.smallCaption)
-                                            .foregroundColor(OPSStyle.Colors.invertedText)
-                                            .padding(.horizontal, 5)
-                                            .padding(.vertical, 2)
-                                            .background(OPSStyle.Colors.warningStatus)
-                                            .clipShape(Capsule())
-                                            .offset(x: 6, y: -4)
-                                            .transition(.scale(scale: 0.6).combined(with: .opacity))
-                                    }
-                                }
-                            }
-                            .buttonStyle(PlainButtonStyle())
-                            .wizardTarget("open_payment_review")
-                        }
-
-                    }
-
-                    // Insights button (inventory only)
-                    if headerType == .inventory, let onInsightsTapped = onInsightsTapped {
-                        Button(action: onInsightsTapped) {
-                            Image(systemName: "chart.line.uptrend.xyaxis")
-                                .font(OPSStyle.Typography.bodyBold)
-                                .foregroundColor(OPSStyle.Colors.primaryText)
-                                .frame(width: 44, height: 44)
-                                .background(OPSStyle.Colors.fillNeutral)
-                                .clipShape(Circle())
-                        }
-                        .buttonStyle(PlainButtonStyle())
-                    }
-
-                    // Add-lead button (leads only) — sits just left of search.
-                    if headerType == .leads, let onAddLead {
-                        Button(action: {
-                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                            onAddLead()
-                        }) {
-                            Image(systemName: "plus")
-                                .font(OPSStyle.Typography.bodyBold)
-                                .foregroundColor(OPSStyle.Colors.primaryText)
-                                .frame(width: 44, height: 44)
-                                .background(OPSStyle.Colors.fillNeutral)
-                                .clipShape(Circle())
-                        }
-                        .buttonStyle(PlainButtonStyle())
-                        .accessibilityLabel("New lead")
-                    }
-
-                    // Universal search button — rightmost in the trailing
-                    // cluster on every tab except home. It's a normal sibling
-                    // of the tab-specific buttons, so it shares their baseline
-                    // and slides with the rest of the header on a tab switch.
-                    //
-                    // Bug G5 — Settings tab uses an expanding-in-place input;
-                    // tapping the icon flips appState.isSettingsSearchActive
-                    // so the header re-renders as the full-width input (see
-                    // the `.settings && isSettingsSearchActive` branch above).
-                    UniversalSearchButton {
-                        if headerType == .settings {
-                            // Settings searches in place — flip the active flag
-                            // so the header re-renders as the full-width input,
-                            // then drop focus onto the field.
-                            withAnimation(OPSStyle.Animation.spring) {
-                                appState.isSettingsSearchActive = true
-                            }
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-                                settingsSearchFocused = true
-                            }
-                        } else {
-                            appState.showingUniversalSearch = true
-                        }
-                    }
-                }
-
-            }
-            .padding(.horizontal, OPSStyle.Layout.spacing3_5)
-            .padding(.vertical, OPSStyle.Layout.spacing2_5)
             .onChange(of: showLockedAlert) { _, showing in
                 guard showing else { return }
                 let message = showLockedMessage ?? ""
@@ -567,7 +145,437 @@ struct AppHeader: View {
                 ToastCenter.shared.present(Toast(label: label, tone: .warning))
                 showLockedAlert = false
             }
+    }
 
+    private var headerContent: some View {
+        VStack(spacing: 0) {
+            headerBand
+            contextStrip
+        }
+    }
+
+    @ViewBuilder
+    private var headerBand: some View {
+        if headerType == .home {
+            OPSScreenHeader(title, trailing: { avatarButton })
+        } else if headerType == .settings && appState.isSettingsSearchActive {
+            settingsSearchField
+                .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+                .frame(minHeight: OPSStyle.Layout.screenHeaderBandHeight)
+                .transition(.opacity)
+        } else {
+            OPSScreenHeader(
+                title,
+                trailing: {
+                    OPSHeaderActionStrip(trailingActions) { action in
+                        trailingAction(action)
+                    }
+                }
+            )
+        }
+    }
+
+    @ViewBuilder
+    private var contextStrip: some View {
+        if headerType == .home,
+           let company = dataController.getCurrentUserCompany() {
+            HStack(spacing: OPSStyle.Layout.spacing2) {
+                Text(company.name.uppercased())
+                    .font(OPSStyle.Typography.caption)
+                    .foregroundColor(OPSStyle.Colors.secondaryText)
+
+                if let status = company.subscriptionStatus,
+                   let statusEnum = SubscriptionStatus(rawValue: status) {
+                    HStack(spacing: OPSStyle.Layout.spacing1) {
+                        Circle()
+                            .fill(statusColor(for: statusEnum))
+                            .frame(
+                                width: OPSStyle.Layout.Indicator.dotSM,
+                                height: OPSStyle.Layout.Indicator.dotSM
+                            )
+
+                        Text(statusText(for: statusEnum))
+                            .font(OPSStyle.Typography.smallCaption)
+                            .foregroundColor(statusColor(for: statusEnum))
+                    }
+                }
+
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+            .padding(.bottom, OPSStyle.Layout.spacing2)
+            .accessibilityElement(children: .combine)
+        } else if headerType == .schedule {
+            HStack(spacing: OPSStyle.Layout.spacing2) {
+                Text("TODAY")
+                Text("·")
+                Text(todayDateString)
+                Spacer(minLength: 0)
+            }
+            .font(OPSStyle.Typography.caption)
+            .foregroundColor(OPSStyle.Colors.secondaryText)
+            .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+            .padding(.bottom, OPSStyle.Layout.spacing2)
+            .accessibilityElement(children: .combine)
+        }
+    }
+
+    private var trailingActions: [TrailingAction] {
+        switch headerType {
+        case .schedule:
+            return hasScheduleMenuActions ? [.scheduleMenu, .search] : [.search]
+        case .jobBoard:
+            return hasJobBoardMenuActions ? [.jobBoardMenu, .search] : [.search]
+        case .inventory:
+            return onInsightsTapped == nil ? [.search] : [.inventoryInsights, .search]
+        case .leads:
+            return onAddLead == nil ? [.search] : [.newLead, .search]
+        case .settings, .pipeline, .books:
+            return [.search]
+        case .home:
+            return []
+        }
+    }
+
+    private var hasScheduleMenuActions: Bool {
+        onMonthTapped != nil || onFilterTapped != nil || onScopeToggled != nil
+    }
+
+    private var hasJobBoardMenuActions: Bool {
+        onUnscheduledReviewTapped != nil
+            || onTaskReviewTapped != nil
+            || isTaskReviewLocked
+            || onPaymentReviewTapped != nil
+            || isPaymentReviewLocked
+    }
+
+    @ViewBuilder
+    private func trailingAction(_ action: TrailingAction) -> some View {
+        switch action {
+        case .scheduleMenu:
+            scheduleMenu
+        case .jobBoardMenu:
+            jobBoardMenu
+        case .inventoryInsights:
+            Button(action: { onInsightsTapped?() }) {
+                headerActionIcon(symbol: "chart.line.uptrend.xyaxis")
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Inventory insights")
+        case .newLead:
+            Button {
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                onAddLead?()
+            } label: {
+                headerActionIcon(symbol: OPSStyle.Icons.plus)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("New lead")
+        case .search:
+            UniversalSearchButton(action: openSearch)
+        }
+    }
+
+    private var scheduleMenu: some View {
+        Menu {
+            if let onMonthTapped {
+                Button(action: onMonthTapped) {
+                    Label("MONTH VIEW", systemImage: OPSStyle.Icons.calendar)
+                }
+            }
+            if let onFilterTapped {
+                Button(action: onFilterTapped) {
+                    Label(scheduleFilterMenuTitle, systemImage: OPSStyle.Icons.filter)
+                }
+            }
+            if let onScopeToggled {
+                Button(action: onScopeToggled) {
+                    Label(
+                        isScopeAll ? "MY SCHEDULE" : "ALL TEAM",
+                        systemImage: isScopeAll
+                            ? OPSStyle.Icons.person
+                            : OPSStyle.Icons.personTwo
+                    )
+                }
+            }
+        } label: {
+            headerMenuLabel(
+                accessibilityLabel: "Schedule actions",
+                badgeCount: hasActiveFilters ? filterCount : 0,
+                showsIndicator: hasActiveFilters
+            )
+        }
+        .buttonStyle(.plain)
+        .wizardTarget("toggle_month", style: .circle)
+    }
+
+    private var jobBoardMenu: some View {
+        Menu {
+            if let onUnscheduledReviewTapped {
+                Button(action: onUnscheduledReviewTapped) {
+                    Label(
+                        reviewMenuTitle("UNSCHEDULED", count: unscheduledReviewBadgeCount),
+                        systemImage: OPSStyle.Icons.deadline
+                    )
+                }
+            }
+            if onTaskReviewTapped != nil || isTaskReviewLocked {
+                Button(action: openTaskReview) {
+                    Label(
+                        reviewMenuTitle(
+                            "TASK REVIEW",
+                            count: taskReviewBadgeCount,
+                            isLocked: isTaskReviewLocked
+                        ),
+                        systemImage: OPSStyle.Icons.task
+                    )
+                }
+            }
+            if onPaymentReviewTapped != nil || isPaymentReviewLocked {
+                Button(action: openPaymentReview) {
+                    Label(
+                        reviewMenuTitle(
+                            "PAYMENT REVIEW",
+                            count: paymentReviewBadgeCount,
+                            isLocked: isPaymentReviewLocked
+                        ),
+                        systemImage: "rectangle.stack.fill"
+                    )
+                }
+            }
+        } label: {
+            headerMenuLabel(
+                accessibilityLabel: "Review actions",
+                badgeCount: jobBoardBadgeCount,
+                showsIndicator: jobBoardBadgeCount > 0
+            )
+        }
+        .buttonStyle(.plain)
+        .wizardTarget(
+            style: .circle,
+            "open_task_review",
+            "open_payment_review"
+        )
+    }
+
+    private func headerActionIcon(symbol: String) -> some View {
+        Image(systemName: symbol)
+            .font(OPSStyle.Typography.bodyBold)
+            .foregroundColor(OPSStyle.Colors.primaryText)
+            .frame(
+                width: OPSStyle.Layout.touchTargetMin,
+                height: OPSStyle.Layout.touchTargetMin
+            )
+            .background(OPSStyle.Colors.fillNeutral)
+            .clipShape(Circle())
+            .contentShape(Circle())
+    }
+
+    private func headerMenuLabel(
+        accessibilityLabel: String,
+        badgeCount: Int,
+        showsIndicator: Bool
+    ) -> some View {
+        ZStack(alignment: .topTrailing) {
+            headerActionIcon(symbol: OPSStyle.Icons.ellipsis)
+
+            if badgeCount > 0 {
+                Text("\(min(badgeCount, 99))")
+                    .font(OPSStyle.Typography.smallCaption)
+                    .foregroundColor(OPSStyle.Colors.invertedText)
+                    .padding(.horizontal, OPSStyle.Layout.spacing1)
+                    .padding(.vertical, OPSStyle.Layout.spacing1 / 2)
+                    .background(OPSStyle.Colors.warningStatus)
+                    .clipShape(Capsule())
+                    .offset(
+                        x: OPSStyle.Layout.spacing1,
+                        y: -OPSStyle.Layout.spacing1
+                    )
+            } else if showsIndicator {
+                Circle()
+                    .fill(OPSStyle.Colors.text)
+                    .frame(
+                        width: OPSStyle.Layout.Indicator.dotMD,
+                        height: OPSStyle.Layout.Indicator.dotMD
+                    )
+                    .offset(
+                        x: OPSStyle.Layout.spacing1,
+                        y: -OPSStyle.Layout.spacing1
+                    )
+            }
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(accessibilityLabel)
+        .accessibilityValue(badgeCount > 0 ? "\(badgeCount) items" : "")
+    }
+
+    private var scheduleFilterMenuTitle: String {
+        guard hasActiveFilters else { return "FILTERS" }
+        return filterCount > 0 ? "FILTERS · \(filterCount)" : "FILTERS · ACTIVE"
+    }
+
+    private var jobBoardBadgeCount: Int {
+        max(0, unscheduledReviewBadgeCount)
+            + (isTaskReviewLocked ? 0 : max(0, taskReviewBadgeCount))
+            + (isPaymentReviewLocked ? 0 : max(0, paymentReviewBadgeCount))
+    }
+
+    private func reviewMenuTitle(
+        _ label: String,
+        count: Int,
+        isLocked: Bool = false
+    ) -> String {
+        if isLocked { return "\(label) · LOCKED" }
+        return count > 0 ? "\(label) · \(count)" : label
+    }
+
+    private func openTaskReview() {
+        if isTaskReviewLocked {
+            showLockedMessage = taskReviewLockedMessage
+            showLockedAlert = true
+        } else {
+            onTaskReviewTapped?()
+        }
+    }
+
+    private func openPaymentReview() {
+        if isPaymentReviewLocked {
+            showLockedMessage = paymentReviewLockedMessage
+            showLockedAlert = true
+        } else {
+            onPaymentReviewTapped?()
+        }
+    }
+
+    private func openSearch() {
+        if headerType == .settings {
+            withAnimation(OPSStyle.Animation.standard) {
+                appState.isSettingsSearchActive = true
+            }
+            DispatchQueue.main.async {
+                settingsSearchFocused = true
+            }
+        } else {
+            appState.showingUniversalSearch = true
+        }
+    }
+
+    private var avatarButton: some View {
+        Button(action: { appState.showingNotifications = true }) {
+            ZStack {
+                Group {
+                    if let user = dataController.currentUser {
+                        UserAvatar(user: user, size: OPSStyle.Layout.touchTargetMin)
+                    } else {
+                        UserAvatar(
+                            firstName: "U",
+                            lastName: "",
+                            size: OPSStyle.Layout.touchTargetMin,
+                            backgroundColor: OPSStyle.Colors.primaryAccent
+                        )
+                    }
+                }
+                .overlay(
+                    Circle().stroke(
+                        OPSStyle.Colors.primaryText,
+                        lineWidth: OPSStyle.Layout.Border.thick
+                    )
+                )
+                .opacity(
+                    avatarIsDimmed
+                        ? OPSStyle.Layout.Opacity.light
+                        : 1
+                )
+
+                if dataController.syncEngine.pendingOperationCount > 0
+                    || dataController.syncEngine.isSyncing {
+                    AvatarSyncOverlay(
+                        count: dataController.syncEngine.pendingOperationCount,
+                        isSyncing: dataController.syncEngine.isSyncing
+                    )
+                }
+
+                ZStack {
+                    Circle()
+                        .fill(OPSStyle.Colors.background)
+                        .frame(
+                            width: OPSStyle.Layout.touchTargetMin / 2,
+                            height: OPSStyle.Layout.touchTargetMin / 2
+                        )
+
+                    if appState.unreadNotificationCount > 0 {
+                        Text("\(min(appState.unreadNotificationCount, 99))")
+                            .font(OPSStyle.Typography.metadata)
+                            .foregroundColor(OPSStyle.Colors.primaryAccent)
+                    } else {
+                        Image(systemName: "bell")
+                            .font(.system(
+                                size: OPSStyle.Layout.IconSize.xs,
+                                weight: .semibold
+                            ))
+                            .foregroundColor(OPSStyle.Colors.primaryText)
+                    }
+                }
+                .offset(
+                    x: -(OPSStyle.Layout.touchTargetMin / 3),
+                    y: OPSStyle.Layout.touchTargetMin / 3
+                )
+            }
+            .frame(
+                width: OPSStyle.Layout.touchTargetMin,
+                height: OPSStyle.Layout.touchTargetMin
+            )
+            .contentShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Notifications")
+        .accessibilityValue(
+            appState.unreadNotificationCount > 0
+                ? "\(appState.unreadNotificationCount) unread"
+                : "No unread notifications"
+        )
+        .sheet(isPresented: $appState.showingNotifications, onDismiss: {
+            if let deepLink = appState.pendingRailDeepLink {
+                appState.pendingRailDeepLink = nil
+                if deepLink == "photoStorage" {
+                    appState.showPhotoStorage = true
+                }
+            }
+        }) {
+            NavigationStack {
+                NotificationListView()
+                    .environmentObject(dataController)
+                    .environmentObject(appState)
+            }
+        }
+        .onAppear {
+            appState.refreshUnreadCount()
+            avatarIsDimmed = dataController.syncEngine.pendingOperationCount > 0
+                || dataController.syncEngine.isSyncing
+        }
+        .onChange(of: dataController.syncEngine.pendingOperationCount) { _, _ in
+            withAnimation(OPSStyle.Animation.standard) {
+                avatarIsDimmed = dataController.syncEngine.pendingOperationCount > 0
+                    || dataController.syncEngine.isSyncing
+            }
+        }
+        .onChange(of: dataController.syncEngine.isSyncing) { _, _ in
+            withAnimation(OPSStyle.Animation.standard) {
+                avatarIsDimmed = dataController.syncEngine.pendingOperationCount > 0
+                    || dataController.syncEngine.isSyncing
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .notificationReceived)) { _ in
+            appState.refreshUnreadCount()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .pushNotificationReceived)) { _ in
+            appState.refreshUnreadCount()
+        }
+        .onReceive(
+            NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)
+        ) { _ in
+            appState.refreshUnreadCount()
         }
     }
 
@@ -581,7 +589,7 @@ struct AppHeader: View {
     /// content on the same animation.
     private var settingsSearchField: some View {
         HStack(spacing: OPSStyle.Layout.spacing2_5) {
-            Image(systemName: "magnifyingglass")
+            Image(systemName: OPSStyle.Icons.search)
                 .font(.system(size: OPSStyle.Layout.IconSize.md, weight: .semibold))
                 .foregroundColor(OPSStyle.Colors.secondaryText)
 
@@ -593,44 +601,53 @@ struct AppHeader: View {
                 .autocapitalization(.none)
                 .submitLabel(.search)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .frame(minHeight: 32)
+                .frame(minHeight: OPSStyle.Layout.touchTargetMin)
 
             if !appState.settingsSearchQuery.isEmpty {
                 Button(action: {
                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
                     appState.settingsSearchQuery = ""
                 }) {
-                    Image(systemName: "xmark.circle.fill")
+                    Image(systemName: OPSStyle.Icons.xmarkCircleFill)
                         .font(.system(size: OPSStyle.Layout.IconSize.md))
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
                 }
-                .buttonStyle(PlainButtonStyle())
-                .frame(width: 32, height: 32)
+                .buttonStyle(.plain)
+                .frame(
+                    width: OPSStyle.Layout.touchTargetMin,
+                    height: OPSStyle.Layout.touchTargetMin
+                )
+                .accessibilityLabel("Clear search")
             }
 
             Button(action: closeSettingsSearch) {
                 Text("CANCEL")
-                    .font(OPSStyle.Typography.captionBold)
+                    .font(OPSStyle.Typography.buttonLabel)
                     .foregroundColor(OPSStyle.Colors.primaryAccent)
             }
-            .frame(minHeight: OPSStyle.Layout.touchTargetMin)
-            .buttonStyle(PlainButtonStyle())
+            .frame(
+                minWidth: OPSStyle.Layout.touchTargetMin,
+                minHeight: OPSStyle.Layout.touchTargetMin
+            )
+            .buttonStyle(.plain)
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 6)
-        .frame(minHeight: 44)
+        .padding(.horizontal, OPSStyle.Layout.spacing3)
+        .frame(minHeight: OPSStyle.Layout.touchTargetMin)
         .background(OPSStyle.Colors.surfaceInput)
         .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.panelRadius))
         .overlay(
             RoundedRectangle(cornerRadius: OPSStyle.Layout.panelRadius)
-                .stroke(OPSStyle.Colors.primaryAccent.opacity(0.4), lineWidth: OPSStyle.Layout.Border.standard)
+                .stroke(
+                    OPSStyle.Colors.inputFieldBorderFocus,
+                    lineWidth: OPSStyle.Layout.Border.standard
+                )
         )
     }
 
     private func closeSettingsSearch() {
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
         settingsSearchFocused = false
-        withAnimation(OPSStyle.Animation.spring) {
+        withAnimation(OPSStyle.Animation.standard) {
             appState.isSettingsSearchActive = false
             appState.settingsSearchQuery = ""
         }

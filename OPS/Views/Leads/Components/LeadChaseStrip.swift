@@ -158,7 +158,7 @@ struct LeadChaseStrip: View {
     private func stripBody(_ c: (label: String, tone: Color, action: Action?), showsAction: Bool) -> some View {
         HStack(spacing: OPSStyle.Layout.spacing2_5) {
             Text(c.label)
-                .font(.custom("JetBrainsMono-Medium", size: 11))
+                .font(OPSStyle.Typography.category)
                 .tracking(OPSStyle.Typography.trackingStandard)
                 .textCase(.uppercase)
                 .foregroundColor(c.tone)
@@ -182,7 +182,7 @@ struct LeadChaseStrip: View {
                             cornerRadius: OPSStyle.Layout.chipRadius,
                             style: .continuous
                         )
-                        .fill(c.tone.opacity(0.12))
+                        .fill(c.tone.opacity(OPSStyle.Layout.Opacity.subtle))
                     )
                     .overlay(
                         RoundedRectangle(
@@ -207,15 +207,15 @@ struct LeadChaseStrip: View {
                     .minimumScaleFactor(0.75)
             }
         }
-        .padding(.horizontal, 11)
-        .padding(.vertical, 9)
+        .padding(.horizontal, OPSStyle.Layout.spacing2_5)
+        .padding(.vertical, OPSStyle.Layout.spacing2)
         .frame(maxWidth: .infinity, minHeight: OPSStyle.Layout.touchTargetMin)
         .background(
             RoundedRectangle(
                 cornerRadius: OPSStyle.Layout.sidebarHoverRadius,
                 style: .continuous
             )
-            .fill(c.tone.opacity(0.08))
+            .fill(c.tone.opacity(OPSStyle.Layout.Opacity.subtle))
         )
         .overlay(
             RoundedRectangle(
@@ -223,7 +223,7 @@ struct LeadChaseStrip: View {
                 style: .continuous
             )
             .strokeBorder(
-                c.tone.opacity(0.24),
+                c.tone.opacity(OPSStyle.Layout.Opacity.light),
                 lineWidth: OPSStyle.Layout.Border.standard
             )
         )

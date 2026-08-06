@@ -248,7 +248,7 @@ Jackson's review of the shipped console. Six directives, plus three "what is thi
 | Question | Answer in code | Fix |
 |---|---|---|
 | "What is the dash in the top right?" | `valueText` returns `—` when `estimatedValue` is nil/0 | Omit the value slot entirely when there is no value. `—` is the rule for a *metric that has a slot* (a KPI line); a scan card should not reserve money space for a lead that has none. |
-| "What is the subtitle drawing from, why truncated so fast?" | `jobLine` prefers `descriptionText` (long email-body extract) over `title` (short job name) | **Flip the priority**: `title` first, `descriptionText` only as fallback. Keep one line. The line stays — "Roof tear-off — 28 sq" is what a scanning owner needs; the long extract was the defect, not the line itself. |
+| "What is the subtitle drawing from, why truncated so fast?" | `jobLine` prefers `descriptionText` (long email-body extract) over `title` (short job name) | **Delete the line.** *(Superseded, Jackson 2026-08-06.)* The first answer was "flip the priority — `title` first, keep one line". Jackson's call on seeing it: the line goes entirely. The queue is scanned by WHO and WHAT'S DUE; a job name the operator has to read is a second reading pass on every row, and the name plus the chase strip already identify the lead. The job is one tap away in the dossier. `jobLine` is deleted with it — no `title` / `descriptionText` fallback survives on the card. |
 | "What are the dashed filled lines?" | 6-segment stage progress bar (`metaRow`, 62pt, accent-tinted to `stageIndex`) | **Delete it.** The stage chip already states the stage in words (`QUOTING · 5D`). It was the only accent on the card and it carried zero information the chip lacked. |
 
 ### 14.2 New card anatomy
@@ -257,7 +257,6 @@ Jackson's review of the shipped console. Six directives, plus three "what is thi
 ┌──────────────────────────────────────────────┐
 │ [QUOTING · 5D ▾]                     $14,200 │  value omitted when none
 │ Marcus Webb                 DANA W · WEBSITE │  name flexes, meta truncates
-│ Roof tear-off — 28 sq                        │  title-first, omitted when absent
 │ [→ CHASE · 5D LATE          [HANDLED ✓]]     │  chase strip — unchanged, 44pt
 │ ──────────────────────────────────────────── │
 │ [CALL] [TEXT] [EMAIL] [VISIT]            [✎] │  actions
@@ -265,8 +264,9 @@ Jackson's review of the shipped console. Six directives, plus three "what is thi
 ```
 
 - **Meta row is deleted as a band.** `assigneeLabel · source` moves to the trailing edge of the name row (same 8.5 JBMono-Regular / 0.7 tracking / `text-3`+`textMute` treatment). Name takes `layoutPriority(1)`; the meta cluster truncates first.
-- **Padding:** card inset `.vertical` 15 → 12. Inter-band `spacing2_5` → `spacing2` for the name/job/chase group; the action row keeps its hairline + `spacing2_5` separation.
-- Net: 7 stacked bands → 5; ≈195pt vs ≈245pt per card. Terminal cards lose the same bar (its olive/neutral variants go with it).
+- **Job subtitle is deleted** *(Jackson 2026-08-06 — see §14.1)*. The card's information bands are stage+value, name+meta, chase strip.
+- **Padding:** card inset `.vertical` 15 → 12. Inter-band `spacing2_5` → `spacing2` across the whole stage/name/chase group — a uniform 8pt so the three top bands read as one tight block; the action row keeps its hairline + `spacing2_5` separation, which is the card's only deliberate pause and is what separates reading from doing.
+- Net: 7 stacked bands → 4. **Measured: 250pt → 198pt per card** — a 52pt (21%) saving on every row. Both figures are pixel-scanned from the same lead (Cedar Ridge HOA, the first OVERDUE card) in the round-1 and round-2 `console-band-working.png` at the same start row: the card fill `rgb(20,20,21)` spans 750px in round 1 and 595px in round 2 at 3×. Two full cards now clear the fold where round 1 showed one and a sliver. Terminal cards lose the same bar (its olive/neutral variants go with it).
 
 ### 14.3 VISIT action
 

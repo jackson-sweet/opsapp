@@ -5,15 +5,13 @@
 //  Leads redesign (2026-07-17) — the chase-console card, spec §4 / mockup
 //  card-face-v3, compressed by the round-2 addendum (§14). One card, one job:
 //  tell the operator whose move it is and let them flip it without drilling in.
-//  Five bands, top to bottom:
+//  Four bands, top to bottom:
 //
 //    • stage chip (hosting LeadStatusMenu — QUOTED · 9D ▾) + estimated value.
 //      The value slot is OMITTED, not dashed, when the lead carries no money:
 //      a scan card does not reserve space for a figure that does not exist.
 //    • contact name, with `assigneeLabel · source` on the trailing edge. The
 //      name flexes; the meta cluster is what truncates.
-//    • the job ("Roof tear-off — 28 sq") — `title` first, the description
-//      extract only as a fallback.
 //    • CHASE STRIP — state left (→ YOUR MOVE · 2D / → CHASE · 3D LATE /
 //      THEIR MOVE · BACK FRI / NEW · 2H), HANDLED ✓ / ADJUST chip right.
 //      The whole strip is ONE 44pt control.
@@ -22,9 +20,14 @@
 //    • summary footer band — // SUMMARY · 2D AGO ⌄, unfolds the agent
 //      summary (lavender agent rail). Only when ai_summary exists.
 //
-//  The 6-segment stage progress bar is gone (addendum §14.1): the stage chip
-//  already states the stage in words, and the bar was the card's only accent
-//  while carrying nothing the chip lacked. The card is now monochrome.
+//  Two things the round-1 card drew are gone. The 6-segment stage progress
+//  bar (addendum §14.1): the stage chip already states the stage in words, and
+//  the bar was the card's only accent while carrying nothing the chip lacked —
+//  the card is now monochrome. And the job subtitle (Jackson, 2026-08-06):
+//  re-sourcing it to `title` was the round-2 plan, but the queue is scanned by
+//  WHO and WHAT'S DUE, and a job name the operator must read is a second
+//  reading pass on every row. The name and the chase strip carry the card; the
+//  job is one tap away in the dossier.
 //
 //  Terminal leads (the by-stage drill reuses this card): outcome strip,
 //  no contact row, no band, plain stage tag (no menu).
@@ -216,15 +219,6 @@ struct LeadTriageCard: View {
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.top, OPSStyle.Layout.spacing2)
-
-                // Job
-                if let job = jobLine {
-                    Text(job)
-                        .font(.custom("Mohave-Regular", size: 13.5))
-                        .foregroundColor(OPSStyle.Colors.text2)
-                        .lineLimit(1).truncationMode(.tail)
-                        .padding(.top, 2)
-                }
 
                 // Chase strip / terminal outcome
                 if isTerminal {
@@ -660,19 +654,6 @@ struct LeadTriageCard: View {
     private var summaryAccessibilityLabel: String {
         let freshness = summaryStamp.map { ", updated \($0.lowercased())" } ?? ""
         return "Summary\(freshness), \(summaryExpanded ? "expanded" : "collapsed")"
-    }
-
-    // MARK: Derived copy
-
-    /// `title` first (addendum §14.1). The job NAME — "Roof tear-off — 28 sq"
-    /// — is what a scanning owner needs; `descriptionText` is usually an email
-    /// body extract that truncates into noise three words in. It stays as the
-    /// fallback because a lead captured without a title still has to say
-    /// something about the work.
-    private var jobLine: String? {
-        if let t = lead.title, !t.isEmpty { return t }
-        if let d = lead.descriptionText, !d.isEmpty { return d }
-        return nil
     }
 
 }

@@ -30,7 +30,7 @@ struct TaskReviewWizard: WizardDefinitionProtocol {
         WizardStepDefinition(
             id: "open_task_review",
             instruction: "OPEN TASK REVIEW",
-            description: "Tap the task review button to begin.",
+            description: "Open the header actions, then choose Task review.",
             targetScreen: "JobBoard",
             canSkip: false,
             completionNotification: "WizardTaskReviewOpened"

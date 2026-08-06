@@ -16,35 +16,42 @@ struct QuickActionSheetHeader: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            HStack {
-                Button(action: onDismiss) {
-                    Image(systemName: OPSStyle.Icons.xmark)
-                        .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .semibold))
-                        .foregroundColor(OPSStyle.Colors.primaryText)
-                }
-
-                Spacer()
-
-                Text(title.uppercased())
-                    .font(OPSStyle.Typography.bodyBold)
-                    .foregroundColor(OPSStyle.Colors.primaryText)
-
-                Spacer()
-
-                Button(action: onSave) {
-                    if isSaving {
-                        ProgressView()
-                            .progressViewStyle(CircularProgressViewStyle(tint: OPSStyle.Colors.primaryText))
-                    } else {
-                        Text("SAVE")
-                            .font(OPSStyle.Typography.bodyBold)
-                            .foregroundColor(canSave ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.tertiaryText)
+            OPSScreenHeader(
+                title,
+                leading: {
+                    OPSHeaderCloseButton(action: onDismiss)
+                },
+                trailing: {
+                    Button(action: onSave) {
+                        Group {
+                            if isSaving {
+                                ProgressView()
+                                    .progressViewStyle(
+                                        CircularProgressViewStyle(
+                                            tint: OPSStyle.Colors.primaryText
+                                        )
+                                    )
+                            } else {
+                                Text("SAVE")
+                                    .font(OPSStyle.Typography.buttonLabel)
+                                    .foregroundColor(
+                                        canSave
+                                            ? OPSStyle.Colors.primaryAccent
+                                            : OPSStyle.Colors.tertiaryText
+                                    )
+                            }
+                        }
+                        .frame(
+                            minWidth: OPSStyle.Layout.touchTargetMin,
+                            minHeight: OPSStyle.Layout.touchTargetMin
+                        )
+                        .contentShape(Rectangle())
                     }
+                    .buttonStyle(.plain)
+                    .disabled(!canSave || isSaving)
+                    .accessibilityLabel(isSaving ? "Saving" : "Save")
                 }
-                .disabled(!canSave || isSaving)
-            }
-            .padding(.horizontal, OPSStyle.Layout.spacing3_5)
-            .padding(.vertical, OPSStyle.Layout.spacing3)
+            )
             .background(OPSStyle.Colors.background)
 
             Divider()

@@ -834,24 +834,9 @@ struct PINGatedView: View {
                         }
                 }
 
-                // Sync restored notification — tap VIEW to open PENDING WORK
-                PushInMessage(
-                    isPresented: Binding(
-                        get: { dataController.showSyncRestoredAlert },
-                        set: { dataController.showSyncRestoredAlert = $0 }
-                    ),
-                    title: "SYNCING \(dataController.pendingSyncCount) ITEM\(dataController.pendingSyncCount == 1 ? "" : "S")...",
-                    subtitle: "Connection restored",
-                    type: .info,
-                    autoDismissAfter: 4.0,
-                    actionLabel: "VIEW",
-                    onAction: { showPendingWorkFromToast = true }
-                )
-                .zIndex(2)
-                .fullScreenCover(isPresented: $showPendingWorkFromToast) {
-                    PendingWorkScreen(leading: .close)
-                        .environmentObject(dataController)
-                }
+                // Reconnect notice now rides the standardized Toast, presented
+                // from the `showSyncRestoredAlert` observer below rather than
+                // living in this stack. See that handler for why.
 
                 // Task created success notification
                 PushInMessage(
@@ -968,6 +953,37 @@ struct PINGatedView: View {
                     object: nil
                 )
             }
+        }
+        // Reconnect notice. This was a bespoke `PushInMessage` tinted with
+        // `primaryAccent` — the steel blue reserved for primary CTAs and focus
+        // rings, never for status — and it duplicated a surface the design
+        // system already owns. It now routes through `ToastCenter`, so it
+        // inherits the glass surface, earth-tone semantics, sunlight-tuned ink,
+        // haptic, queueing, and the dedicated toast window that renders above
+        // sheets. `.success` (olive) is the honest tone: the event being
+        // announced is that the connection came back and queued work is moving.
+        // The VIEW tap-through keeps the operator's route into PENDING WORK.
+        .onChange(of: dataController.showSyncRestoredAlert) { _, isPresented in
+            guard isPresented else { return }
+            ToastCenter.shared.present(
+                Toast(
+                    label: SyncStatusCopy.connectionRestored(
+                        pendingCount: dataController.pendingSyncCount
+                    ),
+                    tone: .success,
+                    autoDismissAfter: 4.0,
+                    action: ToastAction(label: SyncStatusCopy.connectionRestoredAction) {
+                        showPendingWorkFromToast = true
+                    }
+                )
+            )
+            // The toast owns its own lifetime from here; clear the flag so a
+            // later reconnect can raise it again.
+            dataController.showSyncRestoredAlert = false
+        }
+        .fullScreenCover(isPresented: $showPendingWorkFromToast) {
+            PendingWorkScreen(leading: .close)
+                .environmentObject(dataController)
         }
         // MentionAccessIndex freshness on user switch. The index is
         // rebuilt on every full sync (SyncEngine.swift:569), but a

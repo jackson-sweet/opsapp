@@ -168,6 +168,20 @@ enum SyncStatusCopy {
         }
     }
 
+    /// Reconnect toast — raised once when connectivity returns with work still
+    /// queued (never at zero; `DataController` gates on `hasPendingSyncs`).
+    ///
+    /// Says the event first, then what it means for the operator's work. It
+    /// deliberately reuses `changeWord` so the toast, the panel header and the
+    /// pending list all count the same things in the same words — the toast used
+    /// to say "ITEMS" while every other sync surface said "changes".
+    static func connectionRestored(pendingCount: Int) -> String {
+        "// BACK ONLINE · SAVING \(pendingCount) \(changeWord(pendingCount).uppercased())"
+    }
+
+    /// Tap-through on the reconnect toast — opens PENDING WORK.
+    static let connectionRestoredAction = "VIEW"
+
     private static func changeWord(_ count: Int) -> String {
         count == 1 ? "change" : "changes"
     }

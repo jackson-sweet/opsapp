@@ -14,6 +14,30 @@ final class SyncStatusCopyPendingWorkTests: XCTestCase {
 
     private typealias Copy = SyncStatusCopy.PendingWork
 
+    // MARK: - Reconnect toast
+
+    func testConnectionRestoredTogglesSingularAndPlural() {
+        XCTAssertEqual(
+            SyncStatusCopy.connectionRestored(pendingCount: 1),
+            "// BACK ONLINE · SAVING 1 CHANGE"
+        )
+        XCTAssertEqual(
+            SyncStatusCopy.connectionRestored(pendingCount: 2),
+            "// BACK ONLINE · SAVING 2 CHANGES"
+        )
+        XCTAssertEqual(SyncStatusCopy.connectionRestoredAction, "VIEW")
+    }
+
+    /// The toast used to say "ITEMS" while the panel header said "changes" for
+    /// the very same queue. One vocabulary, one count.
+    func testConnectionRestoredSharesThePanelsVocabulary() {
+        let toast = SyncStatusCopy.connectionRestored(pendingCount: 3)
+        let header = SyncStatusCopy.header(pendingCount: 3, failedCount: 0, isSyncing: true)
+        XCTAssertTrue(toast.contains("CHANGES"))
+        XCTAssertTrue(header.contains("changes"))
+        XCTAssertFalse(toast.contains("ITEM"))
+    }
+
     // MARK: - Screen + section headers
 
     func testScreenAndSectionHeaders() {

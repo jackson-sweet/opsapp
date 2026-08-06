@@ -183,11 +183,101 @@ final class TrashRecoveryTests: XCTestCase {
         XCTAssertTrue(project.needsSync)
         XCTAssertTrue(task.needsSync)
 
+        let operations = try context.fetch(
+            FetchDescriptor<SyncOperation>(
+                sortBy: [SortDescriptor(\.createdAt, order: .forward)]
+            )
+        )
+        XCTAssertEqual(
+            operations.map(\.entityType),
+            [SyncEntityType.project.rawValue, SyncEntityType.projectTask.rawValue]
+        )
+        guard operations.count == 2 else {
+            return XCTFail("Expected one parent operation followed by one task operation")
+        }
+        XCTAssertLessThan(operations[0].createdAt, operations[1].createdAt)
+        XCTAssertFalse(context.hasChanges)
+    }
+
+    func testZeroOperationStagingRollsBackProjectMutationBeforeCommit() async throws {
+        UserDefaults.standard.set(false, forKey: "feature.useDataActor")
+        let container = try makeContainer(allowsSave: true)
+        let context = ModelContext(container)
+        let project = makeProject(id: "project-1", title: "Cedar deck")
+        let originalDeletedAt = try XCTUnwrap(project.deletedAt)
+        context.insert(project)
+        try context.save()
+
+        let controller = configuredController(context: context)
+        do {
+            _ = try await controller.restoreTrash(
+                TrashRecoveryPolicy.plan(for: project),
+                stagingOperationsWith: { specs, _ in
+                    XCTAssertNil(project.deletedAt, "Fault injection must run after the local mutation")
+                    XCTAssertTrue(project.needsSync)
+                    XCTAssertEqual(specs.count, 1)
+                    return []
+                }
+            )
+            XCTFail("A restore without its outbound operation must not commit")
+        } catch let error as TrashRestoreError {
+            guard case .syncQueueFailed = error else {
+                return XCTFail("Expected sync ledger failure, got \(error)")
+            }
+        }
+
+        XCTAssertEqual(project.deletedAt, originalDeletedAt)
+        XCTAssertFalse(project.needsSync)
         let operations = try context.fetch(FetchDescriptor<SyncOperation>())
-        XCTAssertEqual(Set(operations.map(\.entityType)), Set([
-            SyncEntityType.project.rawValue,
-            SyncEntityType.projectTask.rawValue,
-        ]))
+        XCTAssertTrue(operations.isEmpty)
+        XCTAssertFalse(context.hasChanges)
+    }
+
+    func testPartialOperationStagingRollsBackParentTaskAndPartialLedger() async throws {
+        UserDefaults.standard.set(false, forKey: "feature.useDataActor")
+        let container = try makeContainer(allowsSave: true)
+        let context = ModelContext(container)
+        let project = makeProject(id: "project-1", title: "Cedar deck")
+        let task = makeTask(id: "task-1", project: project)
+        let originalProjectDeletedAt = try XCTUnwrap(project.deletedAt)
+        let originalTaskDeletedAt = try XCTUnwrap(task.deletedAt)
+        context.insert(project)
+        context.insert(task)
+        try context.save()
+
+        let controller = configuredController(context: context)
+        do {
+            _ = try await controller.restoreTrash(
+                TrashRecoveryPolicy.plan(for: task, projects: [project]),
+                stagingOperationsWith: { specs, transactionContext in
+                    XCTAssertNil(project.deletedAt, "Parent must be mutated before ledger staging")
+                    XCTAssertNil(task.deletedAt, "Task must be mutated before ledger staging")
+                    XCTAssertTrue(project.needsSync)
+                    XCTAssertTrue(task.needsSync)
+                    XCTAssertEqual(
+                        specs.map(\.entityType),
+                        [SyncEntityType.project, SyncEntityType.projectTask]
+                    )
+
+                    let partialOperation = try self.makeSyncOperation(from: specs[0])
+                    transactionContext.insert(partialOperation)
+                    return [partialOperation]
+                }
+            )
+            XCTFail("A parent-task restore with a partial outbound ledger must not commit")
+        } catch let error as TrashRestoreError {
+            guard case .syncQueueFailed = error else {
+                return XCTFail("Expected sync ledger failure, got \(error)")
+            }
+        }
+
+        XCTAssertEqual(project.deletedAt, originalProjectDeletedAt)
+        XCTAssertEqual(task.deletedAt, originalTaskDeletedAt)
+        XCTAssertFalse(project.needsSync)
+        XCTAssertFalse(task.needsSync)
+        let operations = try context.fetch(FetchDescriptor<SyncOperation>())
+        XCTAssertTrue(operations.isEmpty)
+        XCTAssertFalse(context.hasChanges)
     }
 
     func testFailedLocalSaveRollsBackTombstoneAndNeverQueuesSuccess() async throws {
@@ -252,6 +342,7 @@ final class TrashRecoveryTests: XCTestCase {
         XCTAssertFalse(project.needsSync)
         let operations = try context.fetch(FetchDescriptor<SyncOperation>())
         XCTAssertTrue(operations.isEmpty)
+        XCTAssertFalse(context.hasChanges)
     }
 
     // MARK: - Fixtures
@@ -289,6 +380,22 @@ final class TrashRecoveryTests: XCTestCase {
             connectivity: controller.connectivity
         )
         return controller
+    }
+
+    private func makeSyncOperation(
+        from spec: SyncEngine.BulkOperationSpec
+    ) throws -> SyncOperation {
+        let payload = try JSONSerialization.data(
+            withJSONObject: spec.changedFields,
+            options: []
+        )
+        return SyncOperation(
+            entityType: spec.entityType.rawValue,
+            entityId: spec.entityId.lowercased(),
+            operationType: spec.operationType,
+            payload: payload,
+            changedFields: Array(spec.changedFields.keys)
+        )
     }
 
     private func makeContainer(allowsSave: Bool) throws -> ModelContainer {

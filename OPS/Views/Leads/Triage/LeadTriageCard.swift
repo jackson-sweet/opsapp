@@ -3,19 +3,28 @@
 //  OPS
 //
 //  Leads redesign (2026-07-17) — the chase-console card, spec §4 / mockup
-//  card-face-v3. One card, one job: tell the operator whose move it is and
-//  let them flip it without drilling in. Structure, top to bottom:
+//  card-face-v3, compressed by the round-2 addendum (§14). One card, one job:
+//  tell the operator whose move it is and let them flip it without drilling in.
+//  Five bands, top to bottom:
 //
-//    • contact + estimated value
-//    • the job ("Roof tear-off — 28 sq")
+//    • stage chip (hosting LeadStatusMenu — QUOTED · 9D ▾) + estimated value.
+//      The value slot is OMITTED, not dashed, when the lead carries no money:
+//      a scan card does not reserve space for a figure that does not exist.
+//    • contact name, with `assigneeLabel · source` on the trailing edge. The
+//      name flexes; the meta cluster is what truncates.
+//    • the job ("Roof tear-off — 28 sq") — `title` first, the description
+//      extract only as a fallback.
 //    • CHASE STRIP — state left (→ YOUR MOVE · 2D / → CHASE · 3D LATE /
 //      THEIR MOVE · BACK FRI / NEW · 2H), HANDLED ✓ / ADJUST chip right.
 //      The whole strip is ONE 44pt control.
-//    • meta row (information only) — 6-segment stage progress, the stage
-//      chip hosting LeadStatusMenu (QUOTED · 9D ▾), source. Win % deleted.
-//    • contact row — CALL / TEXT / EMAIL do-and-stamp + ✎ full log sheet
+//    • contact row — CALL / TEXT / EMAIL / VISIT do-and-stamp + ✎ full log
+//      sheet, under a hairline.
 //    • summary footer band — // SUMMARY · 2D AGO ⌄, unfolds the agent
 //      summary (lavender agent rail). Only when ai_summary exists.
+//
+//  The 6-segment stage progress bar is gone (addendum §14.1): the stage chip
+//  already states the stage in words, and the bar was the card's only accent
+//  while carrying nothing the chip lacked. The card is now monochrome.
 //
 //  Terminal leads (the by-stage drill reuses this card): outcome strip,
 //  no contact row, no band, plain stage tag (no menu).
@@ -37,6 +46,10 @@ struct LeadTriageCard: View {
     /// token entirely: a solo operator, or any surface where assignment carries
     /// no information, never sees it. Cards never look a name up themselves.
     var assigneeLabel: String? = nil
+    /// The VISIT chip's action. nil hides the chip outright (addendum §14.3),
+    /// so every call site that has no site-visit path — the day sheet's own
+    /// card, the previews — is untouched by its arrival.
+    var onStartSiteVisit: (() -> Void)? = nil
     var onTap: () -> Void = {}
     var onLog: () -> Void = {}                 // ✎ full sheet
     var onHandled: () -> Void = {}             // strip button (yourMove/overdue/dueToday)
@@ -62,6 +75,7 @@ struct LeadTriageCard: View {
         canEdit: Bool = true,
         canConvert: Bool = true,
         assigneeLabel: String? = nil,
+        onStartSiteVisit: (() -> Void)? = nil,
         onTap: @escaping () -> Void = {},
         onLog: @escaping () -> Void = {},
         onHandled: @escaping () -> Void = {},
@@ -81,6 +95,7 @@ struct LeadTriageCard: View {
         self.canEdit = canEdit
         self.canConvert = canConvert
         self.assigneeLabel = assigneeLabel
+        self.onStartSiteVisit = onStartSiteVisit
         self.onTap = onTap
         self.onLog = onLog
         self.onHandled = onHandled
@@ -113,11 +128,15 @@ struct LeadTriageCard: View {
     private var effectiveBucket: PipelineViewModel.TriageBucket {
         bucket == .all ? viewModel.bucketOf(lead) : bucket
     }
-    private var valueText: String {
-        guard let v = lead.estimatedValue, v > 0 else { return "—" }
+    /// nil when the lead carries no money, and the slot then disappears
+    /// entirely (addendum §14.1). `—` is the empty-state rule for a metric
+    /// that OWNS a slot — a KPI line, where the reader is asking "how much?"
+    /// and deserves an answer. A scan card is not asking; it should not spend
+    /// a column of the value tier on a lead that has no value yet.
+    private var valueText: String? {
+        guard let v = lead.estimatedValue, v > 0 else { return nil }
         return BooksFormat.currency(v)
     }
-    private var stageIndex: Int { PipelineStage.openStages.firstIndex(of: lead.stage) ?? 0 }
     private var hasPhone: Bool {
         guard let p = lead.contactPhone else { return false }
         return !p.trimmingCharacters(in: .whitespaces).isEmpty
@@ -174,19 +193,29 @@ struct LeadTriageCard: View {
 
                     Spacer(minLength: 0)
 
-                    Text(valueText)
-                        .font(.custom("JetBrainsMono-Medium", size: 16))
-                        .foregroundColor((lead.estimatedValue ?? 0) > 0 ? OPSStyle.Colors.text : OPSStyle.Colors.textMute)
-                        .monospacedDigit()
+                    if let valueText {
+                        Text(valueText)
+                            .font(.custom("JetBrainsMono-Medium", size: 16))
+                            .foregroundColor(OPSStyle.Colors.text)
+                            .monospacedDigit()
+                    }
                 }
 
-                // Contact
-                Text(lead.displayContactName)
-                    .font(OPSStyle.Typography.bodyBold)
-                    .foregroundColor(OPSStyle.Colors.text)
-                    .lineLimit(1).truncationMode(.tail)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.top, OPSStyle.Layout.spacing2)
+                // Contact — name flexes, `DANA W · WEBSITE` rides the trailing
+                // edge and is the side that gives up width (addendum §14.2).
+                HStack(alignment: .firstTextBaseline, spacing: OPSStyle.Layout.spacing2) {
+                    Text(lead.displayContactName)
+                        .font(OPSStyle.Typography.bodyBold)
+                        .foregroundColor(OPSStyle.Colors.text)
+                        .lineLimit(1).truncationMode(.tail)
+                        .layoutPriority(1)
+
+                    Spacer(minLength: 0)
+
+                    metaCluster
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.top, OPSStyle.Layout.spacing2)
 
                 // Job
                 if let job = jobLine {
@@ -199,7 +228,7 @@ struct LeadTriageCard: View {
 
                 // Chase strip / terminal outcome
                 if isTerminal {
-                    outcomeStrip.padding(.top, OPSStyle.Layout.spacing2_5)
+                    outcomeStrip.padding(.top, OPSStyle.Layout.spacing2)
                 } else {
                     LeadChaseStrip(
                         lead: lead,
@@ -218,10 +247,6 @@ struct LeadTriageCard: View {
                     .padding(.top, OPSStyle.Layout.spacing2_5)
                 }
 
-                // Meta — stage progress · source
-                metaRow
-                    .padding(.top, OPSStyle.Layout.spacing2_5)
-
                 // Quick contact — open leads only
                 if !isTerminal {
                     contactRow
@@ -229,7 +254,7 @@ struct LeadTriageCard: View {
                 }
             }
             .padding(.horizontal, OPSStyle.Layout.spacing3)
-            .padding(.vertical, 15)
+            .padding(.vertical, 12)
 
             // Summary footer band — full-bleed under a hairline
             if showsSummaryBand {
@@ -414,7 +439,7 @@ struct LeadTriageCard: View {
         }
     }
 
-    // MARK: Meta row (information only)
+    // MARK: Stage control + meta cluster (information only)
 
     @ViewBuilder
     private var stageControl: some View {
@@ -449,69 +474,60 @@ struct LeadTriageCard: View {
         return source.uppercased()
     }
 
-    private var metaRow: some View {
-        HStack(spacing: OPSStyle.Layout.spacing2_5) {
-            // Stage progress — 6 segments filled to the current stage
-            HStack(spacing: 2) {
-                ForEach(0..<6, id: \.self) { idx in
-                    RoundedRectangle(cornerRadius: 1, style: .continuous)
-                        .fill(segmentColor(idx))
-                        .frame(height: 3)
-                }
+    /// `JASON W · REFERRAL` on the trailing edge of the name row. Assignee is
+    /// operational (text-3), source is provenance (textMute): one step apart so
+    /// the eye lands on the name first. Source keeps its slot; a long assignee
+    /// truncates before provenance is sacrificed, and the whole cluster yields
+    /// to the contact name beside it.
+    private var metaCluster: some View {
+        HStack(spacing: 4) {
+            if let assigneeLabel {
+                Text(assigneeLabel)
+                    .foregroundColor(assigneeLabel == Self.unassignedToken
+                                     ? OPSStyle.Colors.textMute
+                                     : OPSStyle.Colors.text3)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
             }
-            .frame(width: 62)
-            .accessibilityHidden(true)
-
-            Spacer(minLength: 0)
-
-            // Trailing cluster — `JASON W · REFERRAL`. Assignee is operational
-            // (text-3), source is provenance (textMute): one step apart so the
-            // eye lands on the name first. Source keeps its slot; a long name
-            // truncates before provenance is sacrificed.
-            HStack(spacing: 4) {
-                if let assigneeLabel {
-                    Text(assigneeLabel)
-                        .foregroundColor(assigneeLabel == Self.unassignedToken
-                                         ? OPSStyle.Colors.textMute
-                                         : OPSStyle.Colors.text3)
-                        .lineLimit(1)
-                        .truncationMode(.tail)
-                }
-                if assigneeLabel != nil, sourceText != nil {
-                    Text("·")
-                        .foregroundColor(OPSStyle.Colors.textMute)
-                        .layoutPriority(1)
-                }
-                if let sourceText {
-                    Text(sourceText)
-                        .foregroundColor(OPSStyle.Colors.textMute)
-                        .lineLimit(1)
-                        .layoutPriority(1)
-                }
+            if assigneeLabel != nil, sourceText != nil {
+                Text("·")
+                    .foregroundColor(OPSStyle.Colors.textMute)
+                    .layoutPriority(1)
             }
-            .font(.custom("JetBrainsMono-Regular", size: 8.5))
-            .tracking(0.7)
+            if let sourceText {
+                Text(sourceText)
+                    .foregroundColor(OPSStyle.Colors.textMute)
+                    .lineLimit(1)
+                    .layoutPriority(1)
+            }
         }
+        .font(.custom("JetBrainsMono-Regular", size: 8.5))
+        .tracking(0.7)
     }
 
-    private func segmentColor(_ idx: Int) -> Color {
-        if isTerminal {
-            // Won reads as a completed bar (all olive); lost / discarded carry no
-            // progress meaning, so the track stays neutral.
-            return lead.stage == .won ? OPSStyle.Colors.olive.opacity(0.5) : OPSStyle.Colors.fillNeutralDim
-        }
-        if idx < stageIndex { return OPSStyle.Colors.opsAccent.opacity(0.45) }
-        if idx == stageIndex { return OPSStyle.Colors.opsAccent }
-        return OPSStyle.Colors.fillNeutralDim
-    }
+    // MARK: Quick contact (do-and-stamp, spec §3 / addendum §14.3)
 
-    // MARK: Quick contact (do-and-stamp, spec §3)
+    /// VISIT rides the same gate `LeadDetailView`'s START SITE VISIT menu item
+    /// uses — convert scope on THIS lead, and the lead still open. Hidden, not
+    /// disabled: an operator without convert scope has no visit path anywhere
+    /// else either, so a dimmed chip would only advertise a door that is not
+    /// his. `onStartSiteVisit == nil` closes it at the call site (the day
+    /// sheet's own card owns the visit panel and passes nothing here).
+    private var showsVisitChip: Bool {
+        onStartSiteVisit != nil && canConvert && !isTerminal
+    }
 
     private var contactRow: some View {
         HStack(spacing: OPSStyle.Layout.spacing2) {
             ContactChipButton(label: "CALL", isEnabled: hasPhone) { placeCall() }
             ContactChipButton(label: "TEXT", isEnabled: hasPhone) { touchText() }
             ContactChipButton(label: "EMAIL", isEnabled: hasEmail) { touchEmail() }
+            if showsVisitChip, let onStartSiteVisit {
+                ContactChipButton(label: "VISIT", isEnabled: true) {
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    onStartSiteVisit()
+                }
+            }
             if canEdit {
                 LeadQuickGlyph(icon: "square.and.pencil", tint: OPSStyle.Colors.text2, action: onLog)
                     .accessibilityLabel("Log activity")
@@ -648,9 +664,14 @@ struct LeadTriageCard: View {
 
     // MARK: Derived copy
 
+    /// `title` first (addendum §14.1). The job NAME — "Roof tear-off — 28 sq"
+    /// — is what a scanning owner needs; `descriptionText` is usually an email
+    /// body extract that truncates into noise three words in. It stays as the
+    /// fallback because a lead captured without a title still has to say
+    /// something about the work.
     private var jobLine: String? {
-        if let d = lead.descriptionText, !d.isEmpty { return d }
         if let t = lead.title, !t.isEmpty { return t }
+        if let d = lead.descriptionText, !d.isEmpty { return d }
         return nil
     }
 
@@ -753,17 +774,20 @@ private struct LeadQuickGlyph: View {
                     return o
                 }(),
                 viewModel: .previewLoaded(), bucket: .waitingOnThem,
-                // Crew of two or more — the meta row reads `JASON W · REFERRAL`.
+                // Crew of two or more — the name row reads `JASON W · REFERRAL`.
                 assigneeLabel: "JASON W"
             )
-            // FRESH — nobody owns it yet, and there is no source to pair with.
+            // FRESH — nobody owns it yet, no source to pair with, no value on
+            // file (the value slot disappears rather than printing a dash), and
+            // a convert grant, so the fourth VISIT chip is in the row.
             LeadTriageCard(
                 lead: Opportunity.preview(
                     title: "Leak repair — kitchen ceiling", contactName: "Jamie Park",
-                    stage: .newLead, estimatedValue: 2_200, daysInStage: 0
+                    stage: .newLead, daysInStage: 0
                 ),
                 viewModel: .previewLoaded(), bucket: .fresh,
-                assigneeLabel: "UNASSIGNED"
+                assigneeLabel: "UNASSIGNED",
+                onStartSiteVisit: {}
             )
         }
         .padding(OPSStyle.Layout.spacing3_5)

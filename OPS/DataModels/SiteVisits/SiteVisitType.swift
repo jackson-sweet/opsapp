@@ -8,7 +8,7 @@
 import Foundation
 import SwiftData
 
-enum SiteVisitFieldKind: String, Codable, CaseIterable, Hashable {
+enum SiteVisitFieldKind: String, Codable, CaseIterable, Hashable, Sendable {
     case checkbox = "checkbox"
     case yesNoNA = "yes_no_na"
     case shortText = "short_text"
@@ -32,13 +32,16 @@ enum SiteVisitFieldKind: String, Codable, CaseIterable, Hashable {
     }
 }
 
-struct SiteVisitTypeFieldDefinition: Codable, Equatable, Identifiable {
+struct SiteVisitTypeFieldDefinition: Codable, Equatable, Identifiable, Sendable {
     var id: String
     var label: String
     var kind: SiteVisitFieldKind
     var required: Bool
     var helpText: String?
     var sortOrder: Int
+    /// Optional for wire compatibility with checklist definitions written by
+    /// older builds. A missing value means shown.
+    var isVisible: Bool?
 
     init(
         id: String = UUID().uuidString,
@@ -46,6 +49,7 @@ struct SiteVisitTypeFieldDefinition: Codable, Equatable, Identifiable {
         kind: SiteVisitFieldKind,
         required: Bool = false,
         helpText: String? = nil,
+        isVisible: Bool = true,
         sortOrder: Int
     ) {
         self.id = id
@@ -53,7 +57,40 @@ struct SiteVisitTypeFieldDefinition: Codable, Equatable, Identifiable {
         self.kind = kind
         self.required = required
         self.helpText = helpText
+        self.isVisible = isVisible
         self.sortOrder = sortOrder
+    }
+
+    var isShown: Bool {
+        isVisible != false
+    }
+}
+
+enum SiteVisitTypeTemplateReconciler {
+    /// Refreshes product-owned field metadata without undoing a company's
+    /// visibility, required, or ordering choices. Company-added fields remain
+    /// in place and newly shipped canonical fields are appended.
+    static func reconciledFields(
+        existing: [SiteVisitTypeFieldDefinition],
+        canonical: [SiteVisitTypeFieldDefinition]
+    ) -> [SiteVisitTypeFieldDefinition] {
+        let canonicalById = Dictionary(uniqueKeysWithValues: canonical.map { ($0.id, $0) })
+        let existingIds = Set(existing.map(\.id))
+
+        var result = existing.map { field in
+            guard let productField = canonicalById[field.id] else { return field }
+            var merged = field
+            merged.label = productField.label
+            merged.kind = productField.kind
+            merged.helpText = productField.helpText
+            return merged
+        }
+
+        result.append(contentsOf: canonical.filter { !existingIds.contains($0.id) })
+        return result.sorted { lhs, rhs in
+            if lhs.sortOrder == rhs.sortOrder { return lhs.id < rhs.id }
+            return lhs.sortOrder < rhs.sortOrder
+        }
     }
 }
 
@@ -148,7 +185,7 @@ final class SiteVisitType: Identifiable {
         self.isDefault = isDefault
         self.sortOrder = sortOrder
         self.createdAt = createdAt
-        self.needsSync = !isSystemTemplate
+        self.needsSync = true
         self.fields = fields
     }
 
@@ -164,9 +201,7 @@ final class SiteVisitType: Identifiable {
         set {
             fieldsData = try? JSONEncoder().encode(newValue.sorted { $0.sortOrder < $1.sortOrder })
             updatedAt = Date()
-            if !isSystemTemplate {
-                needsSync = true
-            }
+            needsSync = true
         }
     }
 
@@ -341,7 +376,7 @@ final class SiteVisitChecklistAnswer: Identifiable {
         opportunityId: String?,
         createdBy: String?
     ) -> [SiteVisitChecklistAnswer] {
-        siteVisitType.fields.map { field in
+        siteVisitType.fields.filter(\.isShown).map { field in
             SiteVisitChecklistAnswer(
                 siteVisitId: siteVisitId,
                 companyId: companyId,

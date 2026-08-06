@@ -3,11 +3,11 @@
 //  OPSTests
 //
 //  Visual proof for the site-visit form overhaul (site-visit report):
-//  the numbered, sequential layout (1 · LEAD → 2 · CHECKLIST → 3 · NOTES)
-//  and the per-field REQUIRED → DONE markers. Renders the real
+//  the numbered, sequential layout (1 · LEAD → LEAD SUMMARY → 2 · CHECKLIST
+//  → 3 · NOTES) and the per-field REQUIRED → DONE markers. Renders the real
 //  SiteVisitCaptureView against the current in-memory schema with a
-//  bound name-only lead, so the name group reads DONE while the contact and
-//  address groups still read REQUIRED — both states in one shot.
+//  bound name-only lead and a deliberately long summary, so narrow-width
+//  wrapping, the read-only band, and both requirement states are visible.
 //
 //  Run:  xcodebuild test -scheme OPS \
 //          -destination 'platform=iOS Simulator,name=iPhone 17,OS=26.5' \
@@ -23,9 +23,6 @@ import SwiftData
 
 @MainActor
 final class SiteVisitFormSnapshotTests: XCTestCase {
-
-    private let deviceWidth: CGFloat = 393
-
     private var outDir: URL {
         let dir = URL(fileURLWithPath: NSTemporaryDirectory())
             .appendingPathComponent("ops-site-visit-form-shots", isDirectory: true)
@@ -48,25 +45,41 @@ final class SiteVisitFormSnapshotTests: XCTestCase {
             contactName: "Dale Harmon",
             stage: .newLead
         )
+        lead.aiSummary = "Dale wants the existing cedar deck measured before Friday. Confirm stair rise, railing transitions, drainage at the patio door, and whether the current framing can carry composite boards without replacement."
 
         let view = SiteVisitCaptureView(opportunity: lead, onCreateProject: { _ in })
             .environmentObject(DataController())
             .modelContainer(container)
 
-        snapshot("01_lead_form_required_markers", height: 900, settle: 3.0) { view }
+        snapshot(
+            "01_lead_form_summary_320_accessibility",
+            width: 320,
+            height: 1_800,
+            settle: 3.0,
+            sizeCategory: .accessibilityExtraLarge
+        ) { view }
+        snapshot(
+            "02_lead_form_summary_390",
+            width: 390,
+            height: 1_800,
+            settle: 3.0
+        ) { view }
     }
 
     private func snapshot<V: View>(
         _ name: String,
+        width: CGFloat,
         height: CGFloat,
         settle: TimeInterval,
+        sizeCategory: ContentSizeCategory = .large,
         @ViewBuilder _ content: () -> V
     ) {
-        let size = CGSize(width: deviceWidth, height: height)
+        let size = CGSize(width: width, height: height)
         let host = UIHostingController(
             rootView: content()
-                .frame(width: deviceWidth, height: height)
+                .frame(width: width, height: height)
                 .environment(\.colorScheme, .dark)
+                .environment(\.sizeCategory, sizeCategory)
         )
         host.view.backgroundColor = .black
 

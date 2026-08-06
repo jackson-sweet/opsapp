@@ -214,19 +214,17 @@ final class SiteVisitRecordTests: XCTestCase {
 
     // MARK: - Photo strip
 
-    func test_photoStrip_showsTheFirstFourAndCountsTheRemainder() {
+    func test_photoEvidenceRetainsEveryURLForTheViewer() {
         let subject = record(
             metadata(photoCount: 7),
             photoURLs: (1...7).map { "photo-\($0).jpg" }
         )
-        XCTAssertEqual(subject.visiblePhotoURLs.count, 4)
-        XCTAssertEqual(subject.additionalPhotoCount, 3, "The rest collapse into a +N tile.")
+        XCTAssertEqual(subject.photoURLs.count, 7)
     }
 
-    func test_photoStrip_hasNoOverflowTileWhenEverythingFits() {
+    func test_photoEvidenceKeepsCaptureOrder() {
         let subject = record(metadata(photoCount: 3), photoURLs: ["a.jpg", "b.jpg", "c.jpg"])
-        XCTAssertEqual(subject.visiblePhotoURLs.count, 3)
-        XCTAssertEqual(subject.additionalPhotoCount, 0)
+        XCTAssertEqual(subject.photoURLs, ["a.jpg", "b.jpg", "c.jpg"])
     }
 
     /// The count comes from the metadata (written at capture, device-independent);
@@ -236,6 +234,6 @@ final class SiteVisitRecordTests: XCTestCase {
         let subject = record(metadata(photoCount: 5), photoURLs: [])
         XCTAssertEqual(subject.photoCount, 5)
         XCTAssertEqual(subject.summaryLine, "5 PHOTOS")
-        XCTAssertTrue(subject.visiblePhotoURLs.isEmpty)
+        XCTAssertTrue(subject.photoURLs.isEmpty)
     }
 }

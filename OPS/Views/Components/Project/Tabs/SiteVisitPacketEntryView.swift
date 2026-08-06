@@ -29,6 +29,49 @@
 import SwiftUI
 import SwiftData
 
+/// One photo selection, owned by the record sheet that presents the viewer.
+/// Keeping this state inside the sheet lets the full-screen viewer present
+/// immediately instead of waiting for the sheet to dismiss first.
+struct SiteVisitRecordViewerState: Identifiable, Equatable {
+    let id = UUID()
+    let photos: [String]
+    let index: Int
+
+    static func selecting(photos: [String], index: Int) -> SiteVisitRecordViewerState? {
+        guard photos.indices.contains(index) else { return nil }
+        return SiteVisitRecordViewerState(photos: photos, index: index)
+    }
+}
+
+/// Modal boundary for the record and its photo viewer. The full-screen cover
+/// must live below the sheet in the presentation tree; otherwise UIKit queues
+/// it behind the still-open sheet and the thumbnail appears unresponsive.
+struct SiteVisitRecordSheet: View {
+    let record: SiteVisitRecord
+    let projectId: String
+
+    @EnvironmentObject private var dataController: DataController
+    @State private var viewerState: SiteVisitRecordViewerState?
+
+    var body: some View {
+        SiteVisitRecordView(
+            record: record,
+            onPhotoTap: { photos, index in
+                viewerState = .selecting(photos: photos, index: index)
+            }
+        )
+        .fullScreenCover(item: $viewerState) { state in
+            PhotoCommentViewer(
+                photos: state.photos,
+                initialIndex: state.index,
+                onDismiss: { viewerState = nil },
+                projectId: projectId
+            )
+            .environmentObject(dataController)
+        }
+    }
+}
+
 // MARK: - Feed entry
 
 struct SiteVisitPacketEntryView: View {
@@ -43,13 +86,6 @@ struct SiteVisitPacketEntryView: View {
     @Query private var linkedOpportunities: [Opportunity]
 
     @State private var showRecord = false
-    @State private var viewerState: RecordViewerState?
-
-    private struct RecordViewerState: Identifiable {
-        let id = UUID()
-        let photos: [String]
-        let index: Int
-    }
 
     init(note: ProjectNote, authorName: String, teamMember: TeamMember?) {
         self.note = note
@@ -107,19 +143,8 @@ struct SiteVisitPacketEntryView: View {
             onOpen: { showRecord = true }
         )
         .sheet(isPresented: $showRecord) {
-            SiteVisitRecordView(
+            SiteVisitRecordSheet(
                 record: record,
-                onPhotoTap: { photos, index in
-                    viewerState = RecordViewerState(photos: photos, index: index)
-                }
-            )
-            .environmentObject(dataController)
-        }
-        .fullScreenCover(item: $viewerState) { state in
-            PhotoCommentViewer(
-                photos: state.photos,
-                initialIndex: state.index,
-                onDismiss: { viewerState = nil },
                 projectId: note.projectId
             )
             .environmentObject(dataController)

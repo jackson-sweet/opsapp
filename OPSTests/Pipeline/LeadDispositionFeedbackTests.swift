@@ -114,6 +114,27 @@ final class LeadDispositionFeedbackTests: XCTestCase {
         )
     }
 
+    func testBlankOptionalContextRemainsAnExplicitNullRPCArgument() throws {
+        let params = LeadFeedbackApplyParams(
+            opportunityId: "lead-1",
+            reasonCode: "spam",
+            optionalNote: nil,
+            idempotencyKey: "lead-disposition:test-1"
+        )
+
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = .sortedKeys
+
+        let payload = try XCTUnwrap(
+            String(data: encoder.encode(params), encoding: .utf8)
+        )
+
+        XCTAssertEqual(
+            payload,
+            #"{"p_idempotency_key":"lead-disposition:test-1","p_opportunity_id":"lead-1","p_optional_note":null,"p_reason_code":"spam"}"#
+        )
+    }
+
     func testApplyAndUndoReuseStableIdempotencyKeysUntilCompletion() {
         var keys = LeadDispositionIdempotencyKeys()
 

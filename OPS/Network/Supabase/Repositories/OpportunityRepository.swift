@@ -11,6 +11,35 @@
 import Foundation
 import Supabase
 
+/// PostgREST resolves RPC overloads from the keys present in the JSON body.
+/// A synthesized `Encodable` omits nil optionals, so nullable parameters that
+/// are still required by the function signature must encode their key as null.
+struct LeadFeedbackApplyParams: Encodable {
+    let opportunityId: String
+    let reasonCode: String
+    let optionalNote: String?
+    let idempotencyKey: String
+
+    private enum CodingKeys: String, CodingKey {
+        case opportunityId = "p_opportunity_id"
+        case reasonCode = "p_reason_code"
+        case optionalNote = "p_optional_note"
+        case idempotencyKey = "p_idempotency_key"
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(opportunityId, forKey: .opportunityId)
+        try container.encode(reasonCode, forKey: .reasonCode)
+        if let optionalNote {
+            try container.encode(optionalNote, forKey: .optionalNote)
+        } else {
+            try container.encodeNil(forKey: .optionalNote)
+        }
+        try container.encode(idempotencyKey, forKey: .idempotencyKey)
+    }
+}
+
 class OpportunityRepository {
     enum RPC {
         static let createGuarded = "create_opportunity_guarded"
@@ -428,20 +457,14 @@ class OpportunityRepository {
         note: String?,
         idempotencyKey: String
     ) async throws -> LeadDispositionResult {
-        struct Params: Encodable {
-            let p_opportunity_id: String
-            let p_reason_code: String
-            let p_optional_note: String?
-            let p_idempotency_key: String
-        }
         return try await client
             .rpc(
                 RPC.applyLeadDisposition,
-                params: Params(
-                    p_opportunity_id: opportunityId,
-                    p_reason_code: reason.rawValue,
-                    p_optional_note: LeadDispositionInteractionPolicy.normalizedNote(note ?? ""),
-                    p_idempotency_key: idempotencyKey
+                params: LeadFeedbackApplyParams(
+                    opportunityId: opportunityId,
+                    reasonCode: reason.rawValue,
+                    optionalNote: LeadDispositionInteractionPolicy.normalizedNote(note ?? ""),
+                    idempotencyKey: idempotencyKey
                 )
             )
             .single()
@@ -487,22 +510,16 @@ class OpportunityRepository {
         if Self.archiveRPCUnavailable {
             throw OpportunityRepositoryError.archiveRPCUnavailable
         }
-        struct Params: Encodable {
-            let p_opportunity_id: String
-            let p_reason_code: String
-            let p_optional_note: String?
-            let p_idempotency_key: String
-        }
         do {
             return try await client
                 .rpc(
                     RPC.applyLeadArchive,
-                    params: Params(
-                        p_opportunity_id: opportunityId,
-                        p_reason_code: LeadArchiveReason.submittedCode(for: reason),
-                        p_optional_note: LeadDispositionInteractionPolicy
+                    params: LeadFeedbackApplyParams(
+                        opportunityId: opportunityId,
+                        reasonCode: LeadArchiveReason.submittedCode(for: reason),
+                        optionalNote: LeadDispositionInteractionPolicy
                             .normalizedNote(note ?? ""),
-                        p_idempotency_key: idempotencyKey
+                        idempotencyKey: idempotencyKey
                     )
                 )
                 .single()

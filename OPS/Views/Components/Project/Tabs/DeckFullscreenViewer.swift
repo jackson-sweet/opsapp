@@ -186,40 +186,47 @@ struct DeckFullscreenViewer: View {
     }
 
     private var topBar: some View {
-        HStack(alignment: .top, spacing: OPSStyle.Layout.spacing3) {
-            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
+            HStack(alignment: .top, spacing: OPSStyle.Layout.spacing2) {
                 Text(title)
-                    .font(OPSStyle.Typography.screenTitle)
+                    .font(OPSStyle.Typography.screenTitle(for: title))
                     .foregroundColor(OPSStyle.Colors.primaryText)
-                    .lineLimit(1)
-                    .truncationMode(.tail)
                     .textCase(.uppercase)
+                    .layoutPriority(1)
+
+                Spacer(minLength: OPSStyle.Layout.spacing2)
+
+                // Keep the actions together so the title owns every remaining
+                // point in the primary header row.
+                HStack(spacing: 0) {
+                    editButton
+                    closeButton
+                }
+            }
+
+            HStack(alignment: .center, spacing: OPSStyle.Layout.spacing2) {
                 Text(summaryReadout)
                     .font(OPSStyle.Typography.metadata)
                     .monospacedDigit()
                     .foregroundColor(OPSStyle.Colors.secondaryText)
-            }
 
-            Spacer(minLength: OPSStyle.Layout.spacing2)
+                Spacer(minLength: OPSStyle.Layout.spacing2)
 
-            SegmentedControl(
-                selection: $viewMode,
-                options: [
-                    (DeckTabViewMode.threeD, "3D"),
-                    (DeckTabViewMode.twoD, "2D")
-                ]
-            )
-            .frame(width: 108)
-            .onChange(of: viewMode) { _, _ in
-                UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                isViewportInteracting = false
-            }
-
-            // One trailing action cluster — EDIT then close, butted together so
-            // the pair costs the title one 44pt slot rather than two.
-            HStack(spacing: 0) {
-                editButton
-                closeButton
+                SegmentedControl(
+                    selection: $viewMode,
+                    options: [
+                        (DeckTabViewMode.threeD, "3D"),
+                        (DeckTabViewMode.twoD, "2D")
+                    ]
+                )
+                .frame(
+                    width: OPSStyle.Layout.segmentedItemMinWidth * 2
+                        + OPSStyle.Layout.spacing1
+                )
+                .onChange(of: viewMode) { _, _ in
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    isViewportInteracting = false
+                }
             }
         }
         .padding(.horizontal, OPSStyle.Layout.spacing3)
@@ -239,8 +246,8 @@ struct DeckFullscreenViewer: View {
     }
 
     /// The deck tab's own EDIT verb, carried into fullscreen: same word, same
-    /// accent, same 44pt target, trailing the mode control exactly as it does
-    /// on the inline control bar. Absent entirely without the grant, and it
+    /// accent, same 44pt target. It stays in the title row while the mode
+    /// control sits directly below. Absent entirely without the grant, and it
     /// rides the chrome fade with everything else in the top bar.
     @ViewBuilder
     private var editButton: some View {

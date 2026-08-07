@@ -3,9 +3,9 @@
 //  OPSTests
 //
 //  Visual-verification harness for the deck fullscreen viewer. Renders the real
-//  `DeckFullscreenViewer` (2D mode) across tool states to PNGs via SwiftUI's
-//  `ImageRenderer`, so the new top bar + tool rail + peek-sheet chrome can be
-//  eyeballed headlessly. NOT a pass/fail test — it writes images for inspection.
+//  `DeckFullscreenViewer` (2D mode) across tool states to PNGs via the shared
+//  fixed-size snapshot host, so the top bar + tool rail + peek-sheet chrome can
+//  be eyeballed headlessly. NOT a pass/fail image test — it writes PNGs for inspection.
 //
 //  3D is covered by DeckSceneSnapshotTests (SCNRenderer). ImageRenderer cannot
 //  capture SceneKit, and it does not run `onAppear` — so these fixtures are
@@ -35,10 +35,9 @@ final class DeckFullscreenSnapshotTests: XCTestCase {
         return dir
     }
 
-    /// Render via a real `UIHostingController` in a visible `UIWindow`. Unlike
-    /// `ImageRenderer`, this resolves asset-catalog colors (OPS's canvas/accent
-    /// colors are `Color("…")`) AND runs the SwiftUI lifecycle — so
-    /// `DeckTab2DView.centerViewport()` fires in `onAppear` and the plan is framed.
+    /// Render through the app host's real window. This resolves asset-catalog
+    /// colors, runs the SwiftUI lifecycle, and remains reliable when the full
+    /// suite has already moved the simulator host out of the foreground pipeline.
     private func snapshot(
         _ name: String,
         toolState: DeckViewerToolState,
@@ -57,23 +56,12 @@ final class DeckFullscreenSnapshotTests: XCTestCase {
             onEdit: canEdit ? {} : nil
         )
 
-        let host = UIHostingController(rootView: view)
-        host.overrideUserInterfaceStyle = .dark
-        host.view.frame = CGRect(origin: .zero, size: frameSize)
-        host.view.backgroundColor = .black
-
-        let window = UIWindow(frame: CGRect(origin: .zero, size: frameSize))
-        window.overrideUserInterfaceStyle = .dark
-        window.rootViewController = host
-        window.makeKeyAndVisible()
-        host.view.setNeedsLayout()
-        host.view.layoutIfNeeded()
-        // Let onAppear + the centering re-layout settle before capture.
-        RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.6))
-
-        let renderer = UIGraphicsImageRenderer(size: frameSize)
-        let image = renderer.image { _ in
-            host.view.drawHierarchy(in: host.view.bounds, afterScreenUpdates: true)
+        let image: UIImage
+        do {
+            image = try FixedSizeSnapshot.render(view, size: frameSize)
+        } catch {
+            XCTFail("Failed to render \(name): \(error)")
+            return
         }
 
         guard let data = image.pngData() else {
@@ -88,7 +76,58 @@ final class DeckFullscreenSnapshotTests: XCTestCase {
         print("📸 SNAPSHOT \(name)")
     }
 
+    private func fixedSizeSnapshot(title: String, canEdit: Bool) throws -> UIImage {
+        try FixedSizeSnapshot.render(
+            DeckFullscreenViewer(
+                title: title,
+                drawingData: Self.centeredSingleLevel(),
+                viewMode: .constant(.twoD),
+                toolState: DeckViewerToolState(),
+                onClose: {},
+                onEdit: canEdit ? {} : nil
+            ),
+            size: frameSize
+        )
+    }
+
+    private func croppedHeader(from image: UIImage) throws -> Data {
+        let scale = image.scale
+        let cropRect = CGRect(x: 0, y: 0, width: 280, height: 110).applying(
+            CGAffineTransform(scaleX: scale, y: scale)
+        )
+        let croppedImage = try XCTUnwrap(image.cgImage?.cropping(to: cropRect))
+        return try XCTUnwrap(
+            UIImage(cgImage: croppedImage, scale: scale, orientation: image.imageOrientation)
+                .pngData()
+        )
+    }
+
     // MARK: - Renders
+
+    func testEditableHeaderPreservesTheTitleSuffix() throws {
+        let northTitle = "CEDAR DECK EXTENSION NORTH"
+        let firstNorth = try croppedHeader(
+            from: fixedSizeSnapshot(title: northTitle, canEdit: true)
+        )
+        let secondNorth = try croppedHeader(
+            from: fixedSizeSnapshot(title: northTitle, canEdit: true)
+        )
+        let south = try croppedHeader(
+            from: fixedSizeSnapshot(title: "CEDAR DECK EXTENSION SOUTH", canEdit: true)
+        )
+
+        XCTAssertEqual(
+            firstNorth,
+            secondNorth,
+            "The fixed-size header renderer must be deterministic before comparing title suffixes."
+        )
+
+        XCTAssertNotEqual(
+            firstNorth,
+            south,
+            "The editable fullscreen header must leave enough width to render the title suffix."
+        )
+    }
 
     func testRenderFullscreenChrome() {
         // 1. Single-level, no tools — top bar + base rail (measure/select/dims/fit).
@@ -165,13 +204,13 @@ final class DeckFullscreenSnapshotTests: XCTestCase {
     /// passes nil — never a greyed-out button advertising an action that can
     /// only refuse. The pair is the proof that the gate is the host's call.
     func testRenderEditAffordance() {
-        // Granted — EDIT sits between the mode control and close, in the deck
-        // tab's own accent/weight, one 44pt target.
-        snapshot("10-edit-granted", toolState: DeckViewerToolState(),
-                 drawingData: Self.centeredSingleLevel(), title: "MERIDIAN DECK",
+        // Granted — the exact reported title owns the first row with EDIT and
+        // close; the compact mode control sits directly below it.
+        snapshot("10-edit-granted-reported-title", toolState: DeckViewerToolState(),
+                 drawingData: Self.centeredSingleLevel(), title: "2734 Heron St",
                  canEdit: true)
 
-        // Denied — the top bar is byte-for-byte the shipped bar again.
+        // Denied — only the permission-gated EDIT action disappears.
         snapshot("11-edit-denied", toolState: DeckViewerToolState(),
                  drawingData: Self.centeredSingleLevel(), title: "MERIDIAN DECK",
                  canEdit: false)

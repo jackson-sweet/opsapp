@@ -226,6 +226,10 @@ private struct SiteVisitTypeEditorView: View {
             }
     }
 
+    private var deckBuilderEnabled: Bool {
+        PermissionStore.shared.isFeatureEnabled("deck_builder")
+    }
+
     var body: some View {
         ZStack {
             OPSStyle.Colors.background.ignoresSafeArea()
@@ -295,19 +299,21 @@ private struct SiteVisitTypeEditorView: View {
             sectionLabel("VISIT TYPE")
 
             VStack(spacing: OPSStyle.Layout.spacing2) {
-                TextField("NAME", text: $draft.name)
-                    .textInputAutocapitalization(.words)
-                    .disabled(draft.isSystemTemplate)
-                    .opsFieldStyle()
-
-                TextField(
-                    "DESCRIPTION",
-                    text: $draft.descriptionText,
-                    axis: .vertical
+                FormField(
+                    title: "NAME",
+                    placeholder: "Visit type name",
+                    text: $draft.name,
+                    isEditable: !draft.isSystemTemplate,
+                    autocapitalization: .words
                 )
-                .lineLimit(2...4)
-                .disabled(draft.isSystemTemplate)
-                .opsFieldStyle()
+
+                FormTextEditor(
+                    title: "DESCRIPTION",
+                    placeholder: "What this visit is for",
+                    text: $draft.descriptionText,
+                    isEditable: !draft.isSystemTemplate,
+                    height: OPSStyle.Layout.inputHeight * 2
+                )
 
                 if !draft.isDefault {
                     Button {
@@ -373,7 +379,7 @@ private struct SiteVisitTypeEditorView: View {
                     Text("ADD FIELD")
                         .font(OPSStyle.Typography.captionBold)
                 }
-                .foregroundColor(OPSStyle.Colors.primaryAccent)
+                .foregroundColor(OPSStyle.Colors.primaryText)
                 .frame(maxWidth: .infinity, minHeight: OPSStyle.Layout.touchTargetStandard)
                 .background(
                     RoundedRectangle(
@@ -425,45 +431,32 @@ private struct SiteVisitTypeEditorView: View {
                 }
             }
 
-            TextField(
-                "FIELD LABEL",
+            FormField(
+                title: "FIELD LABEL",
+                placeholder: "Field label",
                 text: Binding(
                     get: { draft.fields[index].label },
                     set: { draft.fields[index].label = $0 }
-                )
+                ),
+                isEditable: !locked
             )
-            .disabled(locked)
-            .opsFieldStyle()
 
-            Menu {
-                ForEach(SiteVisitFieldKind.settingsChoices, id: \.self) { kind in
-                    Button(kind.settingsName) {
-                        draft.fields[index].kind = kind
-                    }
-                }
-            } label: {
-                HStack {
-                    Text(draft.fields[index].kind.settingsName)
-                        .font(OPSStyle.Typography.body)
-                        .foregroundColor(OPSStyle.Colors.primaryText)
-                    Spacer()
-                    Image(systemName: OPSStyle.Icons.sort)
-                        .foregroundColor(OPSStyle.Colors.tertiaryText)
-                }
-                .padding(.horizontal, OPSStyle.Layout.spacing3)
-                .frame(minHeight: OPSStyle.Layout.touchTargetMin)
-                .background(
-                    RoundedRectangle(
-                        cornerRadius: OPSStyle.Layout.buttonRadius,
-                        style: .continuous
-                    )
-                    .fill(OPSStyle.Colors.surfaceInput)
-                )
-            }
-            .disabled(locked)
+            FormSelectField(
+                title: "FIELD TYPE",
+                selection: Binding(
+                    get: { draft.fields[index].kind },
+                    set: { draft.fields[index].kind = $0 }
+                ),
+                options: SiteVisitTypeSettingsLogic.availableFieldKinds(
+                    deckBuilderEnabled: deckBuilderEnabled,
+                    preserving: draft.fields[index].kind
+                ),
+                optionName: { $0.settingsName },
+                isEnabled: !locked
+            )
 
-            Toggle(
-                "SHOWN ON SITE VISITS",
+            FormToggle(
+                title: "SHOWN ON SITE VISITS",
                 isOn: Binding(
                     get: { draft.fields[index].isShown },
                     set: {
@@ -472,24 +465,15 @@ private struct SiteVisitTypeEditorView: View {
                     }
                 )
             )
-            .font(OPSStyle.Typography.captionBold)
-            .foregroundColor(OPSStyle.Colors.primaryText)
-            .tint(OPSStyle.Colors.primaryAccent)
-            .frame(minHeight: OPSStyle.Layout.touchTargetMin)
 
-            Toggle(
-                "REQUIRED",
+            FormToggle(
+                title: "REQUIRED",
                 isOn: Binding(
                     get: { draft.fields[index].required },
                     set: { draft.fields[index].required = $0 }
-                )
+                ),
+                isEnabled: draft.fields[index].isShown
             )
-            .font(OPSStyle.Typography.captionBold)
-            .foregroundColor(OPSStyle.Colors.primaryText)
-            .tint(OPSStyle.Colors.primaryAccent)
-            .disabled(!draft.fields[index].isShown)
-            .opacity(draft.fields[index].isShown ? 1 : 0.5)
-            .frame(minHeight: OPSStyle.Layout.touchTargetMin)
         }
         .padding(OPSStyle.Layout.spacing3)
         .glassSurface()
@@ -587,10 +571,6 @@ private struct SiteVisitTypeEditorView: View {
 }
 
 private extension SiteVisitFieldKind {
-    static var settingsChoices: [SiteVisitFieldKind] {
-        [.checkbox, .yesNoNA, .shortText, .longText, .measurement, .photo, .photoMarkup]
-    }
-
     var settingsName: String {
         switch self {
         case .checkbox: return "Checkbox"
@@ -602,32 +582,5 @@ private extension SiteVisitFieldKind {
         case .photoMarkup: return "Photo + markup"
         case .deckDesign: return "Deck design"
         }
-    }
-}
-
-private extension View {
-    func opsFieldStyle() -> some View {
-        self
-            .font(OPSStyle.Typography.body)
-            .foregroundColor(OPSStyle.Colors.primaryText)
-            .padding(.horizontal, OPSStyle.Layout.spacing3)
-            .frame(minHeight: OPSStyle.Layout.touchTargetMin)
-            .background(
-                RoundedRectangle(
-                    cornerRadius: OPSStyle.Layout.buttonRadius,
-                    style: .continuous
-                )
-                .fill(OPSStyle.Colors.surfaceInput)
-            )
-            .overlay(
-                RoundedRectangle(
-                    cornerRadius: OPSStyle.Layout.buttonRadius,
-                    style: .continuous
-                )
-                .strokeBorder(
-                    OPSStyle.Colors.cardBorder,
-                    lineWidth: OPSStyle.Layout.Border.standard
-                )
-            )
     }
 }

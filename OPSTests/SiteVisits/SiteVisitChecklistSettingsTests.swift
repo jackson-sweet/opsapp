@@ -5,6 +5,7 @@
 //  Reusable checklist-template behavior and the one-time settings guide.
 //
 
+import SwiftData
 import XCTest
 @testable import OPS
 
@@ -217,5 +218,94 @@ final class SiteVisitChecklistSettingsTests: XCTestCase {
                 .descriptionTooLong
             )
         }
+    }
+
+    func test_deckDesignIsAvailableWhenDeckBuilderIsEnabled() {
+        let kinds = SiteVisitTypeSettingsLogic.availableFieldKinds(
+            deckBuilderEnabled: true
+        )
+
+        XCTAssertTrue(kinds.contains(.deckDesign))
+    }
+
+    func test_existingDeckDesignRemainsSelectableWhenDeckBuilderIsDisabled() {
+        let kinds = SiteVisitTypeSettingsLogic.availableFieldKinds(
+            deckBuilderEnabled: false,
+            preserving: .deckDesign
+        )
+
+        XCTAssertTrue(kinds.contains(.deckDesign))
+    }
+
+    func test_deckDesignIsUnavailableWhenDeckBuilderIsDisabled() {
+        let kinds = SiteVisitTypeSettingsLogic.availableFieldKinds(
+            deckBuilderEnabled: false
+        )
+
+        XCTAssertFalse(kinds.contains(.deckDesign))
+    }
+
+    @MainActor
+    func test_companyDefaultFromServerReplacesTheLocalDefault() throws {
+        let configuration = ModelConfiguration(isStoredInMemoryOnly: true)
+        let container = try ModelContainer(
+            for: SiteVisitType.self,
+            configurations: configuration
+        )
+        let context = container.mainContext
+        let templates = SiteVisitType.builtInTemplates(
+            companyId: "company-1",
+            deckBuilderEnabled: false
+        )
+        let estimate = try XCTUnwrap(templates.first { $0.slug == "estimate" })
+        let serviceCall = try XCTUnwrap(templates.first { $0.slug == "service_call" })
+        context.insert(estimate)
+        context.insert(serviceCall)
+        try context.save()
+
+        let estimateUpdate = SiteVisitTypeDTO(
+            id: estimate.id,
+            companyId: estimate.companyId,
+            slug: estimate.slug,
+            name: estimate.name,
+            descriptionText: estimate.descriptionText,
+            isSystemTemplate: true,
+            isDefault: false,
+            sortOrder: estimate.sortOrder,
+            fields: estimate.fields,
+            createdAt: nil,
+            updatedAt: "2026-08-06T20:00:00Z",
+            deletedAt: nil
+        )
+        let serviceCallUpdate = SiteVisitTypeDTO(
+            id: serviceCall.id,
+            companyId: serviceCall.companyId,
+            slug: serviceCall.slug,
+            name: serviceCall.name,
+            descriptionText: serviceCall.descriptionText,
+            isSystemTemplate: true,
+            isDefault: true,
+            sortOrder: serviceCall.sortOrder,
+            fields: serviceCall.fields,
+            createdAt: nil,
+            updatedAt: "2026-08-06T20:00:00Z",
+            deletedAt: nil
+        )
+
+        try SiteVisitTypeServerMerge.merge(
+            dto: estimateUpdate,
+            accepting: SiteVisitTypeServerMerge.mutableFields,
+            hasPendingLocalOperation: false,
+            context: context
+        )
+        try SiteVisitTypeServerMerge.merge(
+            dto: serviceCallUpdate,
+            accepting: SiteVisitTypeServerMerge.mutableFields,
+            hasPendingLocalOperation: false,
+            context: context
+        )
+
+        XCTAssertFalse(estimate.isDefault)
+        XCTAssertTrue(serviceCall.isDefault)
     }
 }

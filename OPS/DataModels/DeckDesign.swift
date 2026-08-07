@@ -9,6 +9,38 @@
 import Foundation
 import SwiftData
 
+/// Per-model decode cache for the persisted drawing payload.
+///
+/// SwiftUI can ask a deck host whether it has renderable geometry many times
+/// in a single pull gesture. `DeckDrawingData.fromJSON` performs both Codable
+/// decoding and integrity repair, so repeating it on every body evaluation can
+/// monopolize the main thread long enough for the iOS watchdog to terminate the
+/// app. The exact source string is the cache key, which also makes direct
+/// server-sync replacements self-invalidating.
+final class DeckDrawingDataCache {
+    private var sourceJSON: String?
+    private var decodedDrawing: DeckDrawingData?
+
+    func resolve(
+        json: String,
+        decoder: (String) -> DeckDrawingData? = { DeckDrawingData.fromJSON($0) }
+    ) -> DeckDrawingData {
+        if sourceJSON == json, let decodedDrawing {
+            return decodedDrawing
+        }
+
+        let decoded = decoder(json) ?? DeckDrawingData()
+        sourceJSON = json
+        decodedDrawing = decoded
+        return decoded
+    }
+
+    func store(_ drawing: DeckDrawingData, json: String) {
+        sourceJSON = json
+        decodedDrawing = drawing
+    }
+}
+
 @Model
 final class DeckDesign: Identifiable {
     @Attribute(.unique) var id: String
@@ -34,6 +66,11 @@ final class DeckDesign: Identifiable {
     var createdAt: Date
     var updatedAt: Date?
 
+    /// Runtime-only reference storage. Mutating the cache's internals does not
+    /// publish a SwiftData model change, so reads during a gesture do not create
+    /// a new AttributeGraph update cycle.
+    @Transient private var drawingDataCache = DeckDrawingDataCache()
+
     init(
         id: String = UUID().uuidString,
         companyId: String,
@@ -57,10 +94,12 @@ final class DeckDesign: Identifiable {
 
     var drawingData: DeckDrawingData {
         get {
-            DeckDrawingData.fromJSON(drawingDataJSON) ?? DeckDrawingData()
+            drawingDataCache.resolve(json: drawingDataJSON)
         }
         set {
-            drawingDataJSON = newValue.toJSON()
+            let json = newValue.toJSON()
+            drawingDataJSON = json
+            drawingDataCache.store(newValue, json: json)
             updatedAt = Date()
             needsSync = true
         }
@@ -88,10 +127,11 @@ final class DeckDesign: Identifiable {
     }
 
     var hasRenderableGeometry: Bool {
-        if drawingData.isMultiLevel {
-            return drawingData.levels.contains { !$0.vertices.isEmpty }
+        let drawing = drawingData
+        if drawing.isMultiLevel {
+            return drawing.levels.contains { !$0.vertices.isEmpty }
         }
-        return !drawingData.vertices.isEmpty
+        return !drawing.vertices.isEmpty
     }
 
     static func displayCandidate(in designs: [DeckDesign], forProjectId projectId: String) -> DeckDesign? {

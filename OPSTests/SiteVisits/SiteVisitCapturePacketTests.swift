@@ -12,6 +12,61 @@ import SwiftData
 
 final class SiteVisitCapturePacketTests: XCTestCase {
 
+    @MainActor
+    func testSubmittedNoteEditsInPlaceAndReturnsToSyncQueue() throws {
+        let container = try makeSiteVisitCaptureContainer()
+        let context = container.mainContext
+        let viewModel = SiteVisitCaptureViewModel(
+            opportunity: nil,
+            companyId: "company-1",
+            userId: "user-1",
+            modelContext: context
+        )
+        viewModel.loadOrCreateVisit()
+        viewModel.noteDraft = "Original site note"
+        viewModel.commitNote()
+
+        let artifact = try XCTUnwrap(viewModel.activeArtifacts.first)
+        let originalId = artifact.id
+        let originalCapturedAt = artifact.capturedAt
+        artifact.needsSync = false
+        artifact.lastSyncedAt = Date(timeIntervalSince1970: 10)
+        try context.save()
+
+        XCTAssertTrue(
+            viewModel.updateNoteArtifact(
+                artifact,
+                body: "  Revised stair and rail scope.  "
+            )
+        )
+
+        XCTAssertEqual(artifact.id, originalId)
+        XCTAssertEqual(artifact.capturedAt, originalCapturedAt)
+        XCTAssertEqual(artifact.body, "Revised stair and rail scope.")
+        XCTAssertNotNil(artifact.updatedAt)
+        XCTAssertTrue(artifact.needsSync)
+        XCTAssertEqual(viewModel.activeArtifacts.first?.body, artifact.body)
+    }
+
+    @MainActor
+    func testSubmittedNoteRejectsBlankEditWithoutChangingArtifact() throws {
+        let container = try makeSiteVisitCaptureContainer()
+        let context = container.mainContext
+        let viewModel = SiteVisitCaptureViewModel(
+            opportunity: nil,
+            companyId: "company-1",
+            userId: "user-1",
+            modelContext: context
+        )
+        viewModel.loadOrCreateVisit()
+        viewModel.noteDraft = "Keep this note"
+        viewModel.commitNote()
+        let artifact = try XCTUnwrap(viewModel.activeArtifacts.first)
+
+        XCTAssertFalse(viewModel.updateNoteArtifact(artifact, body: " \n "))
+        XCTAssertEqual(artifact.body, "Keep this note")
+    }
+
     func test_builtinSiteVisitTypesCreateChecklistAnswerSnapshots() throws {
         let templates = SiteVisitType.builtInTemplates(
             companyId: "company-1",

@@ -745,6 +745,31 @@ final class SiteVisitCaptureViewModel: ObservableObject {
         reloadArtifacts()
     }
 
+    /// Edits a committed note/transcript in place so its stable artifact id,
+    /// capture order, project inclusion, and offline sync history are preserved.
+    @discardableResult
+    func updateNoteArtifact(
+        _ artifact: SiteVisitCaptureArtifact,
+        body: String
+    ) -> Bool {
+        let trimmed = body.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty,
+              artifact.isActive,
+              artifact.pipesToProjectNotes,
+              artifacts.contains(where: { $0.id == artifact.id }) else {
+            return false
+        }
+
+        guard persistSiteVisitChanges({
+            artifact.body = trimmed
+            artifact.updatedAt = Date()
+            artifact.needsSync = true
+        }) else { return false }
+        reloadArtifacts()
+        hydrateChecklistAnswersFromCapturedEvidence()
+        return true
+    }
+
     @discardableResult
     func saveMarkup(
         _ artifact: SiteVisitCaptureArtifact,

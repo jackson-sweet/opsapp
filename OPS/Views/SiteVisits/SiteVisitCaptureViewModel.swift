@@ -1419,10 +1419,8 @@ final class SiteVisitCaptureViewModel: ObservableObject {
                     existing.descriptionText = builtIn.descriptionText
                     changedExisting = true
                 }
-                if existing.isDefault != builtIn.isDefault {
-                    existing.isDefault = builtIn.isDefault
-                    changedExisting = true
-                }
+                // The default is company-owned configuration. Reopening Site Visit
+                // must never replace the administrator's selection with a built-in default.
                 if existing.sortOrder != builtIn.sortOrder {
                     existing.sortOrder = builtIn.sortOrder
                     changedExisting = true

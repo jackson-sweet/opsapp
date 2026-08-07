@@ -479,6 +479,50 @@ final class SiteVisitCapturePacketTests: XCTestCase {
     }
 
     @MainActor
+    func test_openingSiteVisitPreservesTheCompanyDefaultVisitType() throws {
+        let container = try makeSiteVisitCaptureContainer()
+        let context = container.mainContext
+        let originallyDisabled = PermissionStore.shared.disabledFlags.contains("deck_builder")
+        PermissionStore.shared.disabledFlags.insert("deck_builder")
+        defer {
+            if !originallyDisabled {
+                PermissionStore.shared.disabledFlags.remove("deck_builder")
+            }
+        }
+
+        let templates = SiteVisitType.builtInTemplates(
+            companyId: "company-1",
+            deckBuilderEnabled: false
+        )
+        let estimate = try XCTUnwrap(templates.first { $0.slug == "estimate" })
+        let serviceCall = try XCTUnwrap(templates.first { $0.slug == "service_call" })
+        estimate.isDefault = false
+        serviceCall.isDefault = true
+        templates.forEach(context.insert)
+
+        let opportunity = Opportunity(
+            id: "lead-1",
+            companyId: "company-1",
+            contactName: "Helen Calloway"
+        )
+        context.insert(opportunity)
+        try context.save()
+
+        let viewModel = SiteVisitCaptureViewModel(
+            opportunity: opportunity,
+            companyId: "company-1",
+            userId: "user-1",
+            modelContext: context
+        )
+
+        viewModel.loadOrCreateVisit()
+
+        XCTAssertFalse(estimate.isDefault)
+        XCTAssertTrue(serviceCall.isDefault)
+        XCTAssertEqual(viewModel.selectedSiteVisitType?.id, serviceCall.id)
+    }
+
+    @MainActor
     func test_answeredChecklistCanCompleteVisitAndBuildProjectPayloadWithoutArtifacts() async throws {
         let container = try makeSiteVisitCaptureContainer()
         let context = container.mainContext

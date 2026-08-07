@@ -24,6 +24,7 @@ struct FormField: View {
     var isEditable: Bool = true
     var isSecure: Bool = false
     var keyboardType: UIKeyboardType = .default
+    var autocapitalization: TextInputAutocapitalization = .sentences
 
     @FocusState private var isFocused: Bool
 
@@ -32,7 +33,7 @@ struct FormField: View {
             Text(title.uppercased())
                 .font(OPSStyle.Typography.caption)
                 .foregroundColor(OPSStyle.Colors.text3)
-                .tracking(0.12 * 14)
+                .tracking(OPSStyle.Typography.trackingStandard)
                 .frame(maxWidth: .infinity, alignment: .leading)
 
             if isEditable {
@@ -50,21 +51,25 @@ struct FormField: View {
                 SecureField(placeholder, text: $text)
             } else {
                 TextField(placeholder, text: $text)
-                    .keyboardType(keyboardType)
             }
         }
+        .keyboardType(keyboardType)
+        .textInputAutocapitalization(autocapitalization)
         .font(OPSStyle.Typography.body)
         .foregroundColor(OPSStyle.Colors.text)
         .tint(OPSStyle.Colors.text)
         .focused($isFocused)
-        .padding()
+        .padding(.horizontal, OPSStyle.Layout.spacing3)
+        .frame(minHeight: OPSStyle.Layout.inputHeight)
         .background(OPSStyle.Colors.surfaceInput)
         .cornerRadius(OPSStyle.Layout.buttonRadius)
         .overlay(
             RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius)
                 .stroke(
-                    isFocused ? Color.white.opacity(0.20) : OPSStyle.Colors.line,
-                    lineWidth: 1
+                    isFocused
+                        ? OPSStyle.Colors.inputFieldBorderFocus
+                        : OPSStyle.Colors.inputFieldBorder,
+                    lineWidth: OPSStyle.Layout.Border.standard
                 )
         )
         .animation(OPSStyle.Animation.hover, value: isFocused)
@@ -74,13 +79,17 @@ struct FormField: View {
         Text(text.isEmpty ? "Not set" : text)
             .font(OPSStyle.Typography.body)
             .foregroundColor(text.isEmpty ? OPSStyle.Colors.text3 : OPSStyle.Colors.text)
-            .padding()
+            .padding(.horizontal, OPSStyle.Layout.spacing3)
+            .frame(minHeight: OPSStyle.Layout.inputHeight)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(OPSStyle.Colors.surfaceInput)
             .cornerRadius(OPSStyle.Layout.buttonRadius)
             .overlay(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius)
-                    .stroke(OPSStyle.Colors.line, lineWidth: 1)
+                    .stroke(
+                        OPSStyle.Colors.inputFieldBorder,
+                        lineWidth: OPSStyle.Layout.Border.standard
+                    )
             )
     }
 }
@@ -92,7 +101,7 @@ struct FormTextEditor: View {
     var placeholder: String = ""
     @Binding var text: String
     var isEditable: Bool = true
-    var height: CGFloat = 150
+    var height: CGFloat = OPSStyle.Layout.inputHeight * 3
 
     @FocusState private var isFocused: Bool
 
@@ -101,7 +110,7 @@ struct FormTextEditor: View {
             Text(title.uppercased())
                 .font(OPSStyle.Typography.caption)
                 .foregroundColor(OPSStyle.Colors.text3)
-                .tracking(0.12 * 14)
+                .tracking(OPSStyle.Typography.trackingStandard)
                 .frame(maxWidth: .infinity, alignment: .leading)
 
             if isEditable {
@@ -110,13 +119,16 @@ struct FormTextEditor: View {
                 Text(text.isEmpty ? "Not set" : text)
                     .font(OPSStyle.Typography.body)
                     .foregroundColor(text.isEmpty ? OPSStyle.Colors.text3 : OPSStyle.Colors.text)
-                    .padding()
-                    .frame(maxWidth: .infinity, maxHeight: height, alignment: .topLeading)
+                    .padding(OPSStyle.Layout.spacing3)
+                    .frame(maxWidth: .infinity, minHeight: height, alignment: .topLeading)
                     .background(OPSStyle.Colors.surfaceInput)
                     .cornerRadius(OPSStyle.Layout.buttonRadius)
                     .overlay(
                         RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius)
-                            .stroke(OPSStyle.Colors.line, lineWidth: 1)
+                            .stroke(
+                                OPSStyle.Colors.inputFieldBorder,
+                                lineWidth: OPSStyle.Layout.Border.standard
+                            )
                     )
             }
         }
@@ -133,15 +145,18 @@ struct FormTextEditor: View {
                     .foregroundColor(OPSStyle.Colors.text)
                     .tint(OPSStyle.Colors.text)
                     .focused($isFocused)
-                    .background(Color.clear)
+                    .scrollContentBackground(.hidden)
+                    .background(OPSStyle.Colors.surfaceInput)
                     .cornerRadius(OPSStyle.Layout.buttonRadius)
             }
             .frame(height: height)
             .overlay(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius)
                     .stroke(
-                        isFocused ? Color.white.opacity(0.20) : OPSStyle.Colors.line,
-                        lineWidth: 1
+                        isFocused
+                            ? OPSStyle.Colors.inputFieldBorderFocus
+                            : OPSStyle.Colors.inputFieldBorder,
+                        lineWidth: OPSStyle.Layout.Border.standard
                     )
             )
             .animation(OPSStyle.Animation.hover, value: isFocused)
@@ -158,25 +173,87 @@ struct FormTextEditor: View {
     }
 }
 
+// MARK: - FormSelectField
+
+/// Menu-backed select field that matches the standard OPS input shell.
+struct FormSelectField<Option: Hashable>: View {
+    var title: String
+    @Binding var selection: Option
+    var options: [Option]
+    var optionName: (Option) -> String
+    var isEnabled: Bool = true
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
+            Text(title.uppercased())
+                .font(OPSStyle.Typography.caption)
+                .foregroundColor(OPSStyle.Colors.text3)
+                .tracking(OPSStyle.Typography.trackingStandard)
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+            Menu {
+                ForEach(options, id: \.self) { option in
+                    Button(optionName(option)) {
+                        selection = option
+                    }
+                }
+            } label: {
+                HStack(spacing: OPSStyle.Layout.spacing2) {
+                    Text(optionName(selection))
+                        .font(OPSStyle.Typography.body)
+                        .foregroundColor(
+                            isEnabled ? OPSStyle.Colors.text : OPSStyle.Colors.text3
+                        )
+                    Spacer()
+                    Image(systemName: OPSStyle.Icons.chevronDown)
+                        .font(.system(size: OPSStyle.Layout.IconSize.sm))
+                        .foregroundColor(OPSStyle.Colors.text3)
+                }
+                .padding(.horizontal, OPSStyle.Layout.spacing3)
+                .frame(maxWidth: .infinity, minHeight: OPSStyle.Layout.inputHeight)
+                .background(OPSStyle.Colors.surfaceInput)
+                .cornerRadius(OPSStyle.Layout.buttonRadius)
+                .overlay(
+                    RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius)
+                        .stroke(
+                            OPSStyle.Colors.inputFieldBorder,
+                            lineWidth: OPSStyle.Layout.Border.standard
+                        )
+                )
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .disabled(!isEnabled)
+            .accessibilityLabel(title)
+            .accessibilityValue(optionName(selection))
+        }
+    }
+}
+
 // MARK: - FormToggle
 
 /// Toggle with text-ladder behavior. Spec: no accent on toggles.
 struct FormToggle: View {
     var title: String
-    var description: String
+    var description: String? = nil
     @Binding var isOn: Bool
+    var isEnabled: Bool = true
     var onToggleChanged: ((Bool) -> Void)? = nil
 
     var body: some View {
-        HStack {
+        HStack(spacing: OPSStyle.Layout.spacing3) {
             VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
                 Text(title.uppercased())
                     .font(OPSStyle.Typography.body)
-                    .foregroundColor(OPSStyle.Colors.text)
+                    .foregroundColor(
+                        isEnabled ? OPSStyle.Colors.text : OPSStyle.Colors.text3
+                    )
 
-                Text(description)
-                    .font(OPSStyle.Typography.smallCaption)
-                    .foregroundColor(OPSStyle.Colors.text3)
+                if let description, !description.isEmpty {
+                    Text(description)
+                        .font(OPSStyle.Typography.smallCaption)
+                        .foregroundColor(OPSStyle.Colors.text3)
+                }
             }
 
             Spacer()
@@ -191,12 +268,17 @@ struct FormToggle: View {
             .labelsHidden()
             .toggleStyle(SwitchToggleStyle(tint: OPSStyle.Colors.text))
         }
+        .disabled(!isEnabled)
         .padding(OPSStyle.Layout.spacing3)
+        .frame(minHeight: OPSStyle.Layout.inputHeight)
         .background(OPSStyle.Colors.surfaceInput)
         .cornerRadius(OPSStyle.Layout.buttonRadius)
         .overlay(
             RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius)
-                .stroke(OPSStyle.Colors.line, lineWidth: 1)
+                .stroke(
+                    OPSStyle.Colors.inputFieldBorder,
+                    lineWidth: OPSStyle.Layout.Border.standard
+                )
         )
     }
 }

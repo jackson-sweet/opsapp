@@ -98,6 +98,27 @@ enum SiteVisitTypeSettingsLogic {
     static let maximumFieldLabelLength = 500
     static let maximumHelpTextLength = 2_000
 
+    static func availableFieldKinds(
+        deckBuilderEnabled: Bool,
+        preserving currentKind: SiteVisitFieldKind? = nil
+    ) -> [SiteVisitFieldKind] {
+        var kinds: [SiteVisitFieldKind] = [
+            .checkbox,
+            .yesNoNA,
+            .shortText,
+            .longText,
+            .measurement,
+            .photo,
+            .photoMarkup,
+        ]
+
+        if deckBuilderEnabled || currentKind == .deckDesign {
+            kinds.append(.deckDesign)
+        }
+
+        return kinds
+    }
+
     static func normalizedName(_ value: String) throws -> String {
         let normalized = value.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !normalized.isEmpty else {

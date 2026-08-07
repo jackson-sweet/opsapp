@@ -7,7 +7,6 @@ import UIKit
 struct DeckBuilderView: View {
     @StateObject private var viewModel: DeckBuilderViewModel
     @Environment(\.dismiss) private var dismiss
-    @State private var isSaving = false
     @State private var showingTemplatePicker = false
     @State private var showingTemplateReplaceConfirm = false
     @State private var showingSketchCapture = false
@@ -543,26 +542,14 @@ struct DeckBuilderView: View {
         HStack(spacing: OPSStyle.Layout.spacing2) {
             // Close
             Button {
-                guard !isSaving else { return }
-                isSaving = true
-                Task {
-                    await viewModel.renderAndSave()
-                    viewModel.flushBeforeExit()
-                    dismiss()
-                }
+                viewModel.saveForExit()
+                dismiss()
             } label: {
-                if isSaving {
-                    ProgressView()
-                        .tint(.white)
-                        .frame(width: OPSStyle.Layout.touchTargetMin, height: OPSStyle.Layout.touchTargetMin)
-                } else {
-                    Image(systemName: OPSStyle.Icons.xmark)
-                        .font(.system(size: OPSStyle.Layout.IconSize.md))
-                        .foregroundColor(OPSStyle.Colors.primaryText)
-                        .frame(width: OPSStyle.Layout.touchTargetMin, height: OPSStyle.Layout.touchTargetMin)
-                }
+                Image(systemName: OPSStyle.Icons.xmark)
+                    .font(.system(size: OPSStyle.Layout.IconSize.md))
+                    .foregroundColor(OPSStyle.Colors.primaryText)
+                    .frame(width: OPSStyle.Layout.touchTargetMin, height: OPSStyle.Layout.touchTargetMin)
             }
-            .disabled(isSaving)
 
             // Save status dot — tracks local persistence, not remote sync.
             // Color encodes state (green = saved, amber = saving). Text label

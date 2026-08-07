@@ -199,6 +199,7 @@ struct DaySheetLeadCard: View {
             case .injected(let design, let preview):
                 if let design = design {
                     LeadDeckPanel(design: design,
+                                  displayTitle: lead.deckDesignTitle,
                                   injectedPreview: preview,
                                   onOpen: onViewDeck)
                 }
@@ -662,7 +663,11 @@ private struct DaySheetDeckResolver: View {
         // empty resolver would never run its self-repair fetch.
         VStack(spacing: 0) {
             if let design = candidate {
-                LeadDeckPanel(design: design, onOpen: onOpen)
+                LeadDeckPanel(
+                    design: design,
+                    displayTitle: opportunity.deckDesignTitle,
+                    onOpen: onOpen
+                )
             }
         }
         .task(id: opportunity.id) {

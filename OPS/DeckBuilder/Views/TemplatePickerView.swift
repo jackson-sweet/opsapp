@@ -8,6 +8,7 @@ struct TemplatePickerView: View {
     let projectId: String?
     /// Set when creating from a LEAD — stamped onto the generated design.
     let opportunityId: String?
+    let preferredDesignTitle: String?
     let companyId: String
     let userId: String?
     let onDesignCreated: (DeckDesign) -> Void
@@ -24,6 +25,7 @@ struct TemplatePickerView: View {
         initialTab: Int,
         projectId: String?,
         opportunityId: String? = nil,
+        preferredDesignTitle: String? = nil,
         companyId: String,
         userId: String?,
         onDesignCreated: @escaping (DeckDesign) -> Void
@@ -31,6 +33,7 @@ struct TemplatePickerView: View {
         self.initialTab = initialTab
         self.projectId = projectId
         self.opportunityId = opportunityId
+        self.preferredDesignTitle = preferredDesignTitle
         self.companyId = companyId
         self.userId = userId
         self.onDesignCreated = onDesignCreated
@@ -271,7 +274,10 @@ struct TemplatePickerView: View {
             companyId: companyId,
             projectId: projectId,
             opportunityId: opportunityId,
-            title: "\(template.displayName) Deck",
+            title: DeckDesignTitlePolicy.resolve(
+                preferred: preferredDesignTitle,
+                fallback: "\(template.displayName) Deck"
+            ),
             createdBy: userId
         )
         design.drawingData = drawingData
@@ -289,7 +295,10 @@ struct TemplatePickerView: View {
             companyId: companyId,
             projectId: nil,
             opportunityId: opportunityId,
-            title: "Copy of \(original.title)",
+            title: DeckDesignTitlePolicy.resolve(
+                preferred: preferredDesignTitle,
+                fallback: "Copy of \(original.title)"
+            ),
             createdBy: userId
         )
         design.drawingData = copiedData

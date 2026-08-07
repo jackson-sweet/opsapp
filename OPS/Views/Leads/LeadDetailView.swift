@@ -557,6 +557,7 @@ struct LeadDetailView: View {
         CreationPickerView(
             projectId: nil,
             opportunityId: opportunity.id,
+            preferredDesignTitle: opportunity.deckDesignTitle,
             companyId: opportunity.companyId,
             userId: dataController.currentUser?.id,
             onDesignCreated: { design in
@@ -576,7 +577,7 @@ struct LeadDetailView: View {
                 deckDesign: design,
                 modelContext: modelContext,
                 syncEngine: dataController.syncEngine,
-                projectName: opportunity.displayContactName
+                projectName: opportunity.deckDesignTitle
             )
         }
     }

@@ -149,7 +149,7 @@ struct LeadDaySheetView: View {
         }
         .fullScreenCover(item: $deckViewing) { request in
             DeckFullscreenViewer(
-                title: request.lead.displayContactName,
+                title: request.lead.deckDesignTitle,
                 drawingData: request.design.drawingData,
                 viewMode: $deckViewMode,
                 toolState: deckToolState,

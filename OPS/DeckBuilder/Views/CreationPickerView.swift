@@ -11,6 +11,8 @@ struct CreationPickerView: View {
     /// Set when creating from a LEAD — the design carries opportunity_id so it
     /// surfaces on the lead and re-parents to the project at conversion.
     var opportunityId: String? = nil
+    /// Lead-owned designs use the lead address for every creation mode.
+    var preferredDesignTitle: String? = nil
     let companyId: String
     let userId: String?
     let onDesignCreated: (DeckDesign) -> Void
@@ -107,7 +109,10 @@ struct CreationPickerView: View {
                     companyId: companyId,
                     projectId: projectId,
                     opportunityId: opportunityId,
-                    title: scanResult.clientNameCandidate.map { "\($0) Deck" } ?? "Scanned Deck",
+                    title: DeckDesignTitlePolicy.resolve(
+                        preferred: preferredDesignTitle,
+                        fallback: scanResult.clientNameCandidate.map { "\($0) Deck" } ?? "Scanned Deck"
+                    ),
                     drawingDataJSON: drawingData.toJSON(),
                     createdBy: userId
                 )
@@ -128,7 +133,10 @@ struct CreationPickerView: View {
                     companyId: companyId,
                     projectId: projectId,
                     opportunityId: opportunityId,
-                    title: "AR Deck Sketch",
+                    title: DeckDesignTitlePolicy.resolve(
+                        preferred: preferredDesignTitle,
+                        fallback: "AR Deck Sketch"
+                    ),
                     drawingDataJSON: drawingData.toJSON(),
                     createdBy: userId
                 )
@@ -144,6 +152,7 @@ struct CreationPickerView: View {
                 initialTab: templatePickerInitialTab,
                 projectId: projectId,
                 opportunityId: opportunityId,
+                preferredDesignTitle: preferredDesignTitle,
                 companyId: companyId,
                 userId: userId,
                 onDesignCreated: { design in
@@ -197,14 +206,18 @@ struct CreationPickerView: View {
 
     private func createBlankDesign() -> DeckDesign {
         // Auto-assign title from project context if available
-        let title: String
+        let fallbackTitle: String
         if let projectId = projectId, let project = try? modelContext.fetch(
             FetchDescriptor<Project>(predicate: #Predicate { $0.id == projectId })
         ).first {
-            title = "\(project.title) — Deck"
+            fallbackTitle = "\(project.title) — Deck"
         } else {
-            title = "Untitled Deck"
+            fallbackTitle = "Untitled Deck"
         }
+        let title = DeckDesignTitlePolicy.resolve(
+            preferred: preferredDesignTitle,
+            fallback: fallbackTitle
+        )
 
         // Do NOT insert into modelContext yet. The design is handed to the
         // DeckBuilderViewModel which will insert + save on the first real edit.

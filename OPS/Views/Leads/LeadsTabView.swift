@@ -115,7 +115,7 @@ struct LeadsTabView: View {
     /// A deck to open full-screen, with the lead it belongs to for the title.
     private struct DeckOpenRequest: Identifiable {
         let design: DeckDesign
-        let leadName: String
+        let leadDeckTitle: String
         var id: String { design.id }
     }
 
@@ -345,7 +345,7 @@ struct LeadsTabView: View {
                 onFullLead: { detailLead = $0 },
                 onOpenDeck: { lead, design in
                     deckRequest = DeckOpenRequest(design: design,
-                                                  leadName: lead.displayContactName)
+                                                  leadDeckTitle: lead.deckDesignTitle)
                 },
                 onStage: { lead, stage in setStage(lead, to: stage) },
                 onWon: { presentWon($0) },
@@ -891,7 +891,7 @@ struct LeadsTabView: View {
                 deckDesign: request.design,
                 modelContext: modelContext,
                 syncEngine: dataController.syncEngine,
-                projectName: request.leadName
+                projectName: request.leadDeckTitle
             )
         }
     }

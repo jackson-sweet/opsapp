@@ -131,7 +131,7 @@ struct LeadDeckScreen: View {
     /// the same name the dossier, the day-sheet card, and the builder title this
     /// lead's work with, so the drawing is never orphaned from its job.
     private var header: some View {
-        OPSScreenHeader(opportunity.displayContactName) {
+        OPSScreenHeader(opportunity.deckDesignTitle) {
             OPSHeaderBackButton(label: "LEAD") {
                 dismiss()
             }
@@ -195,7 +195,7 @@ struct LeadDeckScreen: View {
 
     private func fullscreenViewer(design: DeckDesign) -> some View {
         DeckFullscreenViewer(
-            title: opportunity.displayContactName,
+            title: opportunity.deckDesignTitle,
             drawingData: design.drawingData,
             viewMode: $deckViewMode,
             toolState: deckToolState,
@@ -337,6 +337,7 @@ struct LeadDeckScreen: View {
         CreationPickerView(
             projectId: nil,
             opportunityId: opportunity.id,
+            preferredDesignTitle: opportunity.deckDesignTitle,
             companyId: opportunity.companyId,
             userId: dataController.currentUser?.id,
             onDesignCreated: { design in
@@ -356,7 +357,7 @@ struct LeadDeckScreen: View {
                 deckDesign: design,
                 modelContext: modelContext,
                 syncEngine: dataController.syncEngine,
-                projectName: opportunity.displayContactName
+                projectName: opportunity.deckDesignTitle
             )
         }
     }

@@ -76,7 +76,7 @@ struct LeadDeckSection: View {
         } label: {
             HStack(spacing: OPSStyle.Layout.spacing2_5) {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(design.title)
+                    Text(opportunity.deckDesignTitle)
                         .font(.custom("Mohave-Medium", size: 14))
                         .foregroundColor(OPSStyle.Colors.text)
                         .lineLimit(1)
@@ -99,7 +99,7 @@ struct LeadDeckSection: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(PlainButtonStyle())
-        .accessibilityLabel("Open deck design \(design.title)")
+        .accessibilityLabel("Open deck design \(opportunity.deckDesignTitle)")
     }
 
     private var startAffordance: some View {

@@ -254,7 +254,10 @@ final class SiteVisitCaptureViewModel: ObservableObject {
     }
 
     var deckDesignTitle: String {
-        "\(visitDisplayName == "Unlinked visit" ? "Site visit" : visitDisplayName) deck"
+        if let currentOpportunity {
+            return currentOpportunity.deckDesignTitle
+        }
+        return "\(visitDisplayName == "Unlinked visit" ? "Site visit" : visitDisplayName) deck"
     }
 
     var hasBoundOpportunity: Bool {

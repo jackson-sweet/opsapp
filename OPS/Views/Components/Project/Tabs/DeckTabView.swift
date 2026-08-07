@@ -38,12 +38,12 @@ enum DeckOwner: Equatable {
 
     /// The label on the viewport's floating title pill. A project carries a
     /// real title of its own; a lead's `title` is optional and is at best an
-    /// inquiry subject line, so leads use the same label the shipped lead
-    /// deck-builder route already titles a lead's deck with — the contact.
+    /// inquiry subject line, so lead decks use their stable job-site address
+    /// (with the shared missing-address fallback).
     var title: String {
         switch self {
         case .project(let project): return project.title
-        case .lead(let lead): return lead.displayContactName
+        case .lead(let lead): return lead.deckDesignTitle
         }
     }
 

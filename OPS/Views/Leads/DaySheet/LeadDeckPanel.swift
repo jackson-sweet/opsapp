@@ -37,6 +37,7 @@ import UIKit
 struct LeadDeckPanel: View {
 
     let design: DeckDesign
+    let displayTitle: String
     var onOpen: (DeckDesign) -> Void = { _ in }
 
     /// `W × L · MATERIAL · RAIL`, resolved once at construction. Reading
@@ -54,10 +55,15 @@ struct LeadDeckPanel: View {
 
     init(
         design: DeckDesign,
+        displayTitle: String? = nil,
         injectedPreview: UIImage? = nil,
         onOpen: @escaping (DeckDesign) -> Void = { _ in }
     ) {
         self.design = design
+        self.displayTitle = DeckDesignTitlePolicy.resolve(
+            preferred: displayTitle,
+            fallback: design.title
+        )
         self.onOpen = onOpen
         self.meta = Self.metaLine(for: design)
         self.injectedPreview = injectedPreview
@@ -139,7 +145,7 @@ struct LeadDeckPanel: View {
     private var caption: some View {
         HStack(spacing: OPSStyle.Layout.spacing2_5) {
             VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
-                Text(design.title)
+                Text(displayTitle)
                     .font(OPSStyle.Typography.cardBody)
                     .foregroundColor(OPSStyle.Colors.text)
                     .lineLimit(1)
@@ -177,7 +183,7 @@ struct LeadDeckPanel: View {
 
     private var accessibilityLabelText: String {
         let tail = meta.map { ", \($0.lowercased())" } ?? ""
-        return "Deck design \(design.title)\(tail)"
+        return "Deck design \(displayTitle)\(tail)"
     }
 
     // MARK: - Meta line

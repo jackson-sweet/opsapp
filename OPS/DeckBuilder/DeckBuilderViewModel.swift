@@ -36,6 +36,11 @@ class DeckBuilderViewModel: ObservableObject {
     /// pre-fix offline-only build (local saves succeed, nothing pushes).
     /// Bug ab554b5f.
     private weak var syncEngine: SyncEngine?
+    /// Thumbnail work is injectable so exit-save behavior can be proven
+    /// without touching the renderer or network. Production defaults preserve
+    /// the shipped renderer and S3 upload path.
+    private let thumbnailRenderer: (DeckDrawingData) -> UIImage?
+    private let thumbnailUploader: (UIImage, DeckDesign) async throws -> String
     /// True after we've enqueued at least one create op for `deckDesign.id`.
     /// Subsequent edits enqueue updates instead. Persists across app launches
     /// implicitly via `lastSyncedAt` on the model — see `enqueueDeckDesignSync`.
@@ -565,10 +570,22 @@ class DeckBuilderViewModel: ObservableObject {
 
     // MARK: - Init
 
-    init(deckDesign: DeckDesign, modelContext: ModelContext? = nil, syncEngine: SyncEngine? = nil) {
+    init(
+        deckDesign: DeckDesign,
+        modelContext: ModelContext? = nil,
+        syncEngine: SyncEngine? = nil,
+        thumbnailRenderer: @escaping (DeckDrawingData) -> UIImage? = { drawingData in
+            DeckRenderer.renderToPNG(drawingData: drawingData)
+        },
+        thumbnailUploader: @escaping (UIImage, DeckDesign) async throws -> String = { image, design in
+            try await DeckRenderer.saveToS3(image: image, deckDesign: design)
+        }
+    ) {
         self.deckDesign = deckDesign
         self.modelContext = modelContext
         self.syncEngine = syncEngine
+        self.thumbnailRenderer = thumbnailRenderer
+        self.thumbnailUploader = thumbnailUploader
         var loaded = deckDesign.drawingData
         // Backfill the catalog-facing `components` projection on legacy
         // designs that were saved before the deck-catalog vocabulary
@@ -3885,23 +3902,26 @@ class DeckBuilderViewModel: ObservableObject {
         ToastCenter.shared.present(Feedback.Deck.designCleared)
     }
 
-    // MARK: - Render + Save Thumbnail
+    // MARK: - Exit Save + Thumbnail
 
-    func renderAndSave() async {
+    /// Commits the drawing synchronously, then returns optional best-effort
+    /// thumbnail work for the caller to leave running after dismissal. The
+    /// network can be offline or slow without holding the builder on screen.
+    @discardableResult
+    func saveForExit() -> Task<Void, Never>? {
         // Bug 14555d2c — short-circuit when the user is exiting a drawing
         // with no committed geometry. The previous flow always called
         // `save()` (which inserts the deckDesign + enqueues a Supabase
         // create op for an empty record) and then ran the renderer + S3
-        // upload (which produces a blank 1024×1024 white PNG and hangs
-        // the close-button spinner on the network upload, reading as a
-        // crash to the user). For a transient blank canvas there is
+        // upload (which produces a blank 1024×1024 white PNG). For a
+        // transient blank canvas there is
         // genuinely nothing to persist or upload — drop everything and
         // return so the dismiss happens immediately.
         let hasGeometry = hasAnyCommittedGeometry
         let isPersisted = deckDesign.modelContext != nil
 
         if !hasGeometry && !isPersisted {
-            return
+            return nil
         }
 
         // Bug a34a2fbe — persist the drawing FIRST, unconditionally. The
@@ -3927,34 +3947,41 @@ class DeckBuilderViewModel: ObservableObject {
         // drawing has no geometry. The renderer returns a blank white PNG
         // for empty drawings (its inner draw block early-returns but the
         // outer image renderer always emits a buffer), and shipping that
-        // to S3 costs a slow network round-trip on the close-button
-        // spinner for no user-facing benefit. The persisted record above
-        // still captures the cleared state so the deck tab updates.
-        guard hasGeometry else { return }
+        // to S3 costs a network round-trip for no user-facing benefit. The
+        // persisted record above still captures the cleared state so the deck
+        // tab updates.
+        guard hasGeometry else { return nil }
 
-        guard let image = DeckRenderer.renderToPNG(drawingData: drawingData) else {
-            print("[DeckBuilder] Thumbnail render returned nil — drawing already saved, skipping S3 upload")
-            return
-        }
+        let drawingSnapshot = drawingData
+        return Task {
+            // Let the close action finish its dismissal transaction before
+            // starting even the local render. The drawing is already durable.
+            await Task.yield()
 
-        do {
-            let url = try await DeckRenderer.saveToS3(image: image, deckDesign: deckDesign)
-            deckDesign.thumbnailURL = url
-            // Re-save so thumbnailURL hits the store (and gets enqueued for
-            // sync via the setter chain on DeckDesign).
-            save()
-
-            // Insert project_photos row so the deck drawing appears in the project gallery
-            if let projectId = deckDesign.projectId {
-                try await insertProjectPhoto(
-                    url: url,
-                    projectId: projectId,
-                    companyId: deckDesign.companyId,
-                    uploadedBy: deckDesign.createdBy ?? ""
-                )
+            guard let image = thumbnailRenderer(drawingSnapshot) else {
+                print("[DeckBuilder] Thumbnail render returned nil — drawing already saved, skipping S3 upload")
+                return
             }
-        } catch {
-            print("[DeckBuilder] Failed to save thumbnail: \(error) — drawing was already persisted by the initial save()")
+
+            do {
+                let url = try await thumbnailUploader(image, deckDesign)
+                deckDesign.thumbnailURL = url
+                // Re-save so thumbnailURL hits the store and joins the normal
+                // deck-design sync path.
+                save()
+
+                // Insert project_photos row so the deck drawing appears in the project gallery
+                if let projectId = deckDesign.projectId {
+                    try await insertProjectPhoto(
+                        url: url,
+                        projectId: projectId,
+                        companyId: deckDesign.companyId,
+                        uploadedBy: deckDesign.createdBy ?? ""
+                    )
+                }
+            } catch {
+                print("[DeckBuilder] Failed to save thumbnail: \(error) — drawing was already persisted by the initial save()")
+            }
         }
     }
 

@@ -9,6 +9,7 @@
 import CoreGraphics
 import SceneKit
 import simd
+import UIKit
 import XCTest
 @testable import OPS
 
@@ -1070,6 +1071,52 @@ final class DeckBuilderRegressionTests: XCTestCase {
         XCTAssertEqual(design.drawingData.vertices.count, 3)
         XCTAssertEqual(design.drawingData.edges.count, 2)
         XCTAssertTrue(design.needsSync)
+    }
+
+    func testExitSaveReturnsBeforeThumbnailUploadCompletes() async throws {
+        var original = DeckDrawingData()
+        original.vertices = [
+            DeckVertex(id: "v1", position: CGPoint(x: 0, y: 0)),
+            DeckVertex(id: "v2", position: CGPoint(x: 120, y: 0)),
+        ]
+        original.edges = [
+            DeckEdge(id: "e1", startVertexId: "v1", endVertexId: "v2")
+        ]
+
+        var edited = original
+        edited.vertices.append(DeckVertex(id: "v3", position: CGPoint(x: 120, y: 120)))
+        edited.edges.append(DeckEdge(id: "e2", startVertexId: "v2", endVertexId: "v3"))
+
+        let uploadStarted = expectation(description: "thumbnail upload started")
+        let releaseUpload = expectation(description: "thumbnail upload released")
+        let design = deckDesign(drawingData: original)
+        let viewModel = DeckBuilderViewModel(
+            deckDesign: design,
+            thumbnailRenderer: { _ in UIImage() },
+            thumbnailUploader: { _, _ in
+                uploadStarted.fulfill()
+                await self.fulfillment(of: [releaseUpload], timeout: 2)
+                return "https://cdn.ops.test/decks/lead.jpg"
+            }
+        )
+        viewModel.drawingData = edited
+
+        let thumbnailWork = viewModel.saveForExit()
+
+        XCTAssertEqual(design.drawingData.vertices.count, 3)
+        XCTAssertEqual(design.drawingData.edges.count, 2)
+        XCTAssertTrue(design.needsSync)
+        XCTAssertNotNil(thumbnailWork)
+        await fulfillment(of: [uploadStarted], timeout: 1)
+        XCTAssertNil(
+            design.thumbnailURL,
+            "The caller must regain control while the optional thumbnail upload is still suspended."
+        )
+
+        releaseUpload.fulfill()
+        await thumbnailWork?.value
+
+        XCTAssertEqual(design.thumbnailURL, "https://cdn.ops.test/decks/lead.jpg")
     }
 
     private func deckDesign(drawingData: DeckDrawingData) -> DeckDesign {

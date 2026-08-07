@@ -1450,6 +1450,11 @@ class DataController: ObservableObject {
         // signed-out user's directory. Safe no-op if nothing is running.
         PhotoPrefetchService.shared.cancelPrefetch()
 
+        // Private lead-file bytes and decoded previews are session-scoped.
+        // Cancel and invalidate them synchronously before auth is torn down so
+        // a late request from the old operator cannot repopulate either cache.
+        LeadAttachmentContentLoader.resetForLogout()
+
         // Capture the current user id BEFORE clearAuthentication() wipes it,
         // so SpotlightIndexManager.clearAll can remove the user-scoped backfill
         // flag. Without this, the async Task below would read a nil currentUserId

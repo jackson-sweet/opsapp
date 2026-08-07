@@ -15,8 +15,8 @@
 //  or earth-tone.
 //
 //  Sits at `bottom + 49pt` above the safe-area inset so the custom tab
-//  bar (49pt) has clearance. A solid-floor gradient (.clear → bg.85 → bg)
-//  drawn behind the bar masks any scrolling rows leaking through.
+//  bar (49pt) has clearance. The buttons float directly over the document
+//  using MOBILE.md's single sanctioned floating-CTA elevation token.
 //
 //  Caller is responsible for hiding this bar when `stage.isTerminal`.
 //
@@ -36,33 +36,39 @@ struct StickyActionBar: View {
             } else if canEdit {
                 editButton
                     .frame(maxWidth: .infinity)
-                    .frame(height: 48)
+                    .frame(height: OPSStyle.Layout.inputHeight)
             } else if canConvert {
                 wonButton
                     .frame(maxWidth: .infinity)
-                    .frame(height: 48)
+                    .frame(height: OPSStyle.Layout.inputHeight)
             }
         }
         .padding(.horizontal, OPSStyle.Layout.spacing3_5)
         .padding(.top, OPSStyle.Layout.spacing3)
-        .padding(.bottom, 14)
-        .background(floorGradient)
+        .padding(.bottom, OPSStyle.Layout.spacing2_5)
+        .compositingGroup()
+        .shadow(
+            color: OPSStyle.Layout.floatingElevation.color,
+            radius: OPSStyle.Layout.floatingElevation.radius,
+            x: OPSStyle.Layout.floatingElevation.x,
+            y: OPSStyle.Layout.floatingElevation.y
+        )
     }
 
     // MARK: - Edit + Won pair (flex 1 : 1.5)
 
     private var actionPair: some View {
         GeometryReader { geo in
-            let available = geo.size.width - 8   // gap between the two
+            let available = geo.size.width - OPSStyle.Layout.spacing2
             let unit = available / 2.5
             let editWidth = unit
             let wonWidth  = unit * 1.5
             HStack(spacing: OPSStyle.Layout.spacing2) {
-                editButton.frame(width: editWidth, height: 48)
-                wonButton.frame(width: wonWidth, height: 48)
+                editButton.frame(width: editWidth, height: OPSStyle.Layout.inputHeight)
+                wonButton.frame(width: wonWidth, height: OPSStyle.Layout.inputHeight)
             }
         }
-        .frame(height: 48)
+        .frame(height: OPSStyle.Layout.inputHeight)
     }
 
     private var editButton: some View {
@@ -117,22 +123,6 @@ struct StickyActionBar: View {
         .accessibilityLabel("Mark won and convert to project")
     }
 
-    // MARK: - Floor gradient
-
-    /// Solid-floor gradient behind the bar so scrolling activity rows fade
-    /// out below 25% of the bar's height — keeps the bar legible without a
-    /// hard top border that would read as a divider.
-    private var floorGradient: LinearGradient {
-        LinearGradient(
-            colors: [
-                Color.clear,
-                OPSStyle.Colors.background.opacity(0.85),
-                OPSStyle.Colors.background
-            ],
-            startPoint: .top,
-            endPoint: .bottom
-        )
-    }
 }
 
 // MARK: - Previews

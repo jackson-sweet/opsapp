@@ -33,6 +33,11 @@ import SwiftData
 import PhotosUI
 import UIKit
 
+private struct PreparedLeadAttachment: Sendable {
+    let fileURL: URL
+    let directoryURL: URL
+}
+
 struct LeadDetailView: View {
     let opportunity: Opportunity
 
@@ -93,7 +98,9 @@ struct LeadDetailView: View {
     @State private var isAddingToClient = false
     @State private var showingClientDetail = false
     @State private var estimateToOpen: Estimate?
-    @State private var isFetchingAttachment = false
+    @State private var showingAttachments = false
+    @State private var attachmentToOpenAfterSheet: LeadAttachment?
+    @State private var preparedAttachmentToOpenAfterSheet: PreparedLeadAttachment?
 
     // One activity stream (spec §5.10)
     @State private var showingActivityHistory = false
@@ -151,7 +158,6 @@ struct LeadDetailView: View {
     var body: some View {
         ZStack(alignment: .bottom) {
             OPSStyle.Colors.background.ignoresSafeArea()
-            Atmosphere(tone: atmosphereTone)
 
             ZStack(alignment: .top) {
                 // Layer 1: fixed map background (ProjectDetailsView treatment)
@@ -267,6 +273,7 @@ struct LeadDetailView: View {
                                             UIImpactFeedbackGenerator(style: .light).impactOccurred()
                                             showingClientDetail = true
                                         },
+                                        onOpenAddress: { openDirections() },
                                         onOpenProject: { openLinkedProject() },
                                         onMatchProject: {
                                             UIImpactFeedbackGenerator(style: .light).impactOccurred()
@@ -279,7 +286,7 @@ struct LeadDetailView: View {
                                         onTapPhoto: { items, index in
                                             photoViewerState = LeadPhotoViewerState(items: items, initialIndex: index)
                                         },
-                                        onOpenAttachment: { openAttachment($0) },
+                                        onOpenAttachments: { showingAttachments = true },
                                         onOpenEstimate: { estimateToOpen = $0 }
                                     )
                                     .padding(.top, 22)
@@ -478,6 +485,17 @@ struct LeadDetailView: View {
                     .environmentObject(dataController)
                     .environmentObject(permissionStore)
             }
+        }
+        .sheet(
+            isPresented: $showingAttachments,
+            onDismiss: openAttachmentAfterSheetDismisses
+        ) {
+            LeadAttachmentsSheet(attachments: vm.attachments) { attachment in
+                await prepareAttachmentForOpening(attachment)
+            }
+            .presentationDetents([.medium, .large])
+            .presentationDragIndicator(.visible)
+            .presentationBackground(OPSStyle.Colors.background)
         }
         .fullScreenCover(item: $deckDesignToOpen) { design in
             deckBuilder(design: design)
@@ -853,45 +871,87 @@ struct LeadDetailView: View {
         }
     }
 
-    /// FILES tap — external attachments open their source; stored ones stream
-    /// through the authenticated ops-web proxy into a temp file, then the
-    /// share sheet (QuickLook-equivalent preview + save/send in one surface).
-    private func openAttachment(_ attachment: LeadAttachment) {
-        if attachment.ingestStatus == "external" {
-            guard let raw = attachment.sourceUrl, let url = URL(string: raw) else { return }
-            UIApplication.shared.open(url)
+    /// Prepares the selected file while its sheet remains visible. This keeps
+    /// loading feedback attached to the tapped row and avoids presenting a
+    /// second sheet until the attachment browser has fully dismissed.
+    @MainActor
+    private func prepareAttachmentForOpening(_ attachment: LeadAttachment) async {
+        let status = attachment.ingestStatus
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+
+        switch status {
+        case "external":
+            guard let rawURL = attachment.sourceUrl,
+                  let url = URL(string: rawURL),
+                  url.scheme?.lowercased() == "https" else {
+                ToastCenter.shared.present(Toast(label: "// FILE UNAVAILABLE", tone: .error))
+                return
+            }
+            attachmentToOpenAfterSheet = attachment
+            showingAttachments = false
+
+        case "stored":
+            do {
+                let data = try await LeadAttachmentContentLoader.data(for: attachment)
+                let safeName = LeadAttachmentPresentation.safeFilename(
+                    filename: attachment.filename,
+                    mimeType: attachment.mimeType
+                )
+                let prepared = try await Task.detached(priority: .userInitiated) {
+                    let fileManager = FileManager.default
+                    let directoryURL = fileManager.temporaryDirectory
+                        .appendingPathComponent("lead-attachments", isDirectory: true)
+                        .appendingPathComponent(UUID().uuidString, isDirectory: true)
+                    try fileManager.createDirectory(
+                        at: directoryURL,
+                        withIntermediateDirectories: true
+                    )
+                    let fileURL = directoryURL.appendingPathComponent(safeName)
+
+                    do {
+                        try data.write(to: fileURL, options: .atomic)
+                    } catch {
+                        try? fileManager.removeItem(at: directoryURL)
+                        throw error
+                    }
+
+                    return PreparedLeadAttachment(
+                        fileURL: fileURL,
+                        directoryURL: directoryURL
+                    )
+                }.value
+                preparedAttachmentToOpenAfterSheet = prepared
+                showingAttachments = false
+            } catch {
+                ToastCenter.shared.present(Toast(label: "// FILE UNAVAILABLE", tone: .error))
+            }
+
+        default:
+            ToastCenter.shared.present(Toast(label: "// FILE UNAVAILABLE", tone: .error))
+        }
+    }
+
+    @MainActor
+    private func openAttachmentAfterSheetDismisses() {
+        if let prepared = preparedAttachmentToOpenAfterSheet {
+            preparedAttachmentToOpenAfterSheet = nil
+            presentShareSheet(
+                [prepared.fileURL],
+                cleanupURLs: [prepared.directoryURL]
+            )
             return
         }
-        guard !isFetchingAttachment else { return }
-        isFetchingAttachment = true
-        Task {
-            defer { isFetchingAttachment = false }
-            do {
-                let token = try await FirebaseAuthService.shared.getIDToken()
-                var comps = URLComponents(
-                    url: AppConfiguration.apiBaseURL.appendingPathComponent("/api/integrations/email/attachment"),
-                    resolvingAgainstBaseURL: false
-                )
-                comps?.queryItems = [URLQueryItem(name: "id", value: attachment.id)]
-                guard let url = comps?.url else { return }
-                var request = URLRequest(url: url)
-                request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-                let (data, response) = try await URLSession.shared.data(for: request)
-                guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
-                    throw URLError(.badServerResponse)
-                }
-                let tempURL = FileManager.default.temporaryDirectory
-                    .appendingPathComponent(attachment.displayName)
-                try data.write(to: tempURL)
-                await MainActor.run {
-                    presentShareSheet([tempURL])
-                }
-            } catch {
-                await MainActor.run {
-                    ToastCenter.shared.present(Toast(label: "// FILE UNAVAILABLE", tone: .error))
-                }
-            }
+
+        guard let attachment = attachmentToOpenAfterSheet else { return }
+        attachmentToOpenAfterSheet = nil
+        guard let rawURL = attachment.sourceUrl,
+              let url = URL(string: rawURL),
+              url.scheme?.lowercased() == "https" else {
+            ToastCenter.shared.present(Toast(label: "// FILE UNAVAILABLE", tone: .error))
+            return
         }
+        UIApplication.shared.open(url)
     }
 
     // MARK: - Share lead summary
@@ -922,8 +982,14 @@ struct LeadDetailView: View {
 
     /// Imperative present from the top controller — the codebase's standing
     /// share-sheet pattern (PhotoGalleryViewer et al).
-    private func presentShareSheet(_ items: [Any]) {
+    private func presentShareSheet(_ items: [Any], cleanupURLs: [URL] = []) {
         let activityVC = UIActivityViewController(activityItems: items, applicationActivities: nil)
+        activityVC.completionWithItemsHandler = { _, _, _, _ in
+            let fileManager = FileManager.default
+            for url in cleanupURLs {
+                try? fileManager.removeItem(at: url)
+            }
+        }
         if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
            let window = windowScene.windows.first {
             var top = window.rootViewController
@@ -931,6 +997,11 @@ struct LeadDetailView: View {
                 top = presented
             }
             top?.present(activityVC, animated: true)
+        } else {
+            let fileManager = FileManager.default
+            for url in cleanupURLs {
+                try? fileManager.removeItem(at: url)
+            }
         }
     }
 
@@ -990,15 +1061,11 @@ struct LeadDetailView: View {
     /// Directions to the site — address string when present, raw coordinates
     /// otherwise (a map hero can exist on a coordinate-only lead).
     private func openDirections() {
-        let query: String
-        if let address = opportunity.address, !address.isEmpty {
-            query = address.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
-        } else if let coords = mapCoordinates {
-            query = "\(coords.lat),\(coords.lon)"
-        } else {
-            return
-        }
-        guard let url = URL(string: "https://maps.apple.com/?daddr=\(query)") else { return }
+        guard let url = LeadDetailsAddressPresentation.directionsURL(
+            address: opportunity.address,
+            latitude: mapCoordinates?.lat,
+            longitude: mapCoordinates?.lon
+        ) else { return }
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
         UIApplication.shared.open(url)
     }
@@ -1121,15 +1188,6 @@ struct LeadDetailView: View {
 
     private func normalizedUserId(_ value: String) -> String {
         value.lowercased()
-    }
-
-    private var atmosphereTone: Atmosphere.Tone {
-        switch opportunity.stage {
-        case .won:                                   return .olive
-        case .lost:                                  return .rose
-        case .quoted, .followUp, .negotiation:       return .tan
-        case .newLead, .qualifying, .quoting, .discarded:  return .steel
-        }
     }
 
     private var showWonNotConverted: Bool {

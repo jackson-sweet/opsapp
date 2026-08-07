@@ -15,7 +15,7 @@ import SwiftUI
 /// One FILES row — an email attachment the pipeline attributed to this lead.
 /// `stored` rows stream through the authenticated ops-web proxy; `external`
 /// rows open their source URL.
-struct LeadAttachment: Decodable, Identifiable, Equatable {
+struct LeadAttachment: Decodable, Identifiable, Equatable, Sendable {
     let id: String
     let filename: String?
     let mimeType: String?

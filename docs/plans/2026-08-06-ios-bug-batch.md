@@ -2,7 +2,7 @@
 
 > **For the executing agent:** REQUIRED SUB-SKILL: Use `custom-skills:executing-plans` to implement this plan task-by-task.
 
-**Goal:** Resolve the seventeen 2026-08-06 iOS reports with durable sync repair, safer recovery actions, deliberate lead lifecycle interactions, responsive Project and Lead Details records, selection-aware Deck Designer metrics, and one canonical mobile chrome system.
+**Goal:** Resolve the seventeen 2026-08-06 iOS reports plus the confirmed Lead Details follow-ups with durable sync repair, safer recovery actions, deliberate lead lifecycle interactions, responsive Project and Lead Details records, selection-aware Deck Designer metrics, and one canonical mobile chrome system.
 
 **Architecture:** Keep authoritative business decisions at the existing Supabase/RPC boundaries while repairing client orchestration and offline reconciliation. Separate pure policies/state from SwiftUI rendering so each reported failure has deterministic unit coverage, then add focused snapshots for presentation and accessibility. Land each report as an atomic commit and do not mutate production customer data.
 
@@ -623,7 +623,9 @@ Do not push, deploy, mutate customer records, or claim App Store/device proof wi
 - Modify: `OPS/Views/Leads/Components/StickyActionBar.swift`
 - Modify: `OPS/Views/Leads/Components/DetailHero.swift`
 - Modify: `OPS/Views/Leads/Components/LeadDetailsDocument.swift`
+- Create: `OPS/Views/Leads/Components/LeadDetailsAddressPresentation.swift`
 - Modify: `OPS/Views/Leads/LeadDetailView.swift`
+- Create: `OPSTests/Views/LeadDetailsAddressPresentationTests.swift`
 - Test: `OPSTests/Views/LeadDetailScrollTests.swift`
 - Test: `OPSTests/Views/DetailsTabSnapshotTests.swift`
 
@@ -643,7 +645,7 @@ Delete `floorGradient`. Apply the one sanctioned floating CTA shadow to the actu
 
 **Step 4: Unify the sticky header and page canvas**
 
-Use the canonical `headerFade` behind `LeadDetailStickyHeader`, remove the stage-colored page `Atmosphere`, and retain the pure-black `OPSStyle.Colors.background` safe-area fill and map bridge.
+Keep the sticky identity on the same solid-black canvas as the page, append the canonical `headerFade` as its pinned lower tail, remove the stage-colored page `Atmosphere`, and retain the pure-black safe-area fill and map bridge.
 
 **Step 5: Add ADDRESS to the document**
 
@@ -663,4 +665,51 @@ git add OPS/Views/Leads/Components/StickyActionBar.swift \
   OPSTests/Views/LeadDetailScrollTests.swift \
   OPSTests/Views/DetailsTabSnapshotTests.swift
 git commit -m "fix(leads): refine sticky detail chrome"
+```
+
+### Task 16: Promote email images into Lead Photos and collapse attachments
+
+**Skills:** `custom-skills:interface-design`, `custom-skills:mobile-ux-design`, `ops-copywriter:ops-copywriter`, `custom-skills:audit-design-system`, `superpowers:test-driven-development`, `supabase:supabase`.
+
+**Files:**
+- Modify: `OPS/ViewModels/LeadDetailViewModel.swift`
+- Modify: `OPS/Utilities/DataController.swift`
+- Modify: `OPS/Views/Leads/Components/LeadDetailsDocument.swift`
+- Modify: `OPS/Views/Leads/Components/LeadPhotosSection.swift`
+- Modify: `OPS/Views/Leads/Components/LeadPhotoViewer.swift`
+- Modify: `OPS/Views/Leads/LeadDetailView.swift`
+- Create: `OPS/Views/Leads/Components/LeadAttachmentPresentation.swift`
+- Create: `OPS/Views/Leads/Components/LeadAttachmentContentLoader.swift`
+- Create: `OPS/Views/Leads/Components/LeadAttachmentsSheet.swift`
+- Create: `OPSTests/Views/LeadAttachmentPresentationTests.swift`
+- Modify: `OPSTests/Pipeline/LeadPhotoOptimisticDisplayTests.swift`
+
+**Design tokens:** Existing black canvas, `commandCard`, sheet-title, `touchTargetMin`, `touchTargetStandard`, `buttonRadius`, `line*`, `spacing*`, typography, and icon tokens only.
+
+**Step 1: Write the media and count contracts**
+
+Assert `1 attachment` / `12 attachments`, raster recognition from MIME or legacy filename, safe leaf filenames for temporary previews, and the stricter Lead Photos rule: only `stored` raster attachments qualify. PDFs, SVGs, generic files, and external provenance links remain attachment-sheet records only.
+
+**Step 2: Collapse the FILES document row**
+
+Keep estimates actionable and replace the inline attachment loop with one minimum-44pt `N attachments` button. Zero attachments expose no dead button.
+
+**Step 3: Add the attachment sheet**
+
+Present one medium/large black sheet owned by `LeadDetailView`. Render a fixed thumbnail slot, filename, sender/date, and chevron per attachment in the RPC's newest-first order. Stored images and first-page PDF previews load through the bearer-authenticated attachment endpoint with a two-request gate and the canonical 25 MiB file ceiling; unsupported and external records use the canonical document glyph so sender-controlled URLs are never fetched merely by opening the sheet. Selecting a stored row keeps visible progress on that line until the bytes are ready, then dismisses the list and opens a sanitized UUID-scoped temporary file without requiring the operator to close the sheet manually. Logout synchronously cancels and generation-invalidates private attachment work before authentication teardown.
+
+**Step 4: Merge stored email photos into the existing viewer**
+
+Add a read-only email-attachment photo item after queued and manual lead photos. Reuse the authenticated preview loader and the existing full-screen pager. Never expose or execute DELETE for email evidence; manual remote and queued photos retain their current removal behavior.
+
+**Step 5: Verify without a full build**
+
+Run the standalone pure presentation contract, parse every touched Swift file, run `git diff --check`, and audit the task-owned UI delta for raw styling and undersized targets. Do not run another full Xcode build unless Jackson explicitly asks.
+
+**Step 6: Commit**
+
+```bash
+git add OPS/Views/Leads OPSTests/Pipeline/LeadPhotoOptimisticDisplayTests.swift \
+  OPSTests/Views/LeadAttachmentPresentationTests.swift docs/plans/2026-08-06-ios-bug-batch.md
+git commit -m "fix(leads): promote email photos and compact attachments"
 ```

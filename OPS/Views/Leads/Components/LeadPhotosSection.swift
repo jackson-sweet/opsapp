@@ -15,15 +15,33 @@
 
 import SwiftUI
 
+struct LeadRemotePhoto: Equatable {
+    /// Normalized URL used for display and stable SwiftUI identity.
+    let displayURL: String
+    /// Exact database value used by the compare-and-remove mutation.
+    let storedURL: String
+}
+
 /// One tile in the strip / page in the viewer.
 enum LeadPhotoItem: Identifiable, Equatable {
-    case remote(String)                       // full public S3 URL
+    case remote(LeadRemotePhoto)              // public URL + exact stored value
     case queued(PendingLeadImageUpload)       // local bytes awaiting upload
+    case emailAttachment(LeadAttachment)      // authenticated, read-only email evidence
 
     var id: String {
         switch self {
-        case .remote(let url):     return url
+        case .remote(let photo):   return photo.displayURL
         case .queued(let pending): return pending.id
+        case .emailAttachment(let attachment): return "email:\(attachment.id)"
+        }
+    }
+
+    var canDeleteFromLead: Bool {
+        switch self {
+        case .remote, .queued:
+            return true
+        case .emailAttachment:
+            return false
         }
     }
 }
@@ -41,10 +59,20 @@ enum LeadPhotoStripItem: Identifiable, Equatable {
 }
 
 enum LeadPhotoStripPresentation {
+    static func uniqueRemotePhotosNewestFirst(_ remoteURLs: [String]) -> [LeadRemotePhoto] {
+        var seen: Set<String> = []
+        return remoteURLs.reversed().compactMap { rawURL in
+            let url = rawURL.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !url.isEmpty, seen.insert(url).inserted else { return nil }
+            return LeadRemotePhoto(displayURL: url, storedURL: rawURL)
+        }
+    }
+
     static func items(
         reservationIDs: [String],
         queued: [PendingLeadImageUpload],
-        remoteURLs: [String]
+        remoteURLs: [String],
+        emailPhotoAttachments: [LeadAttachment] = []
     ) -> [LeadPhotoStripItem] {
         let orderedQueued = queued.sorted { lhs, rhs in
             if lhs.timestamp != rhs.timestamp {
@@ -65,11 +93,20 @@ enum LeadPhotoStripPresentation {
         let otherQueued = orderedQueued
             .filter { !reservationSet.contains($0.id) }
             .map { LeadPhotoStripItem.photo(.queued($0)) }
-        let remote = remoteURLs
-            .filter { !$0.isEmpty }
-            .reversed()
+        let emailPhotos = emailPhotoAttachments
+            .filter {
+                LeadAttachmentPresentation.isLeadPhoto(
+                    ingestStatus: $0.ingestStatus,
+                    mimeType: $0.mimeType,
+                    filename: $0.filename
+                )
+            }
+            .map { LeadPhotoStripItem.photo(.emailAttachment($0)) }
+        let remote = uniqueRemotePhotosNewestFirst(remoteURLs)
             .map { LeadPhotoStripItem.photo(.remote($0)) }
-        return reservedItems + otherQueued + remote
+        // Local work first, then the lead's manual gallery, then immutable
+        // email evidence. This preserves the established manual-photo order.
+        return reservedItems + otherQueued + remote + emailPhotos
     }
 }
 
@@ -81,6 +118,9 @@ struct LeadPhotosSection: View {
     /// spec §3.4.1). One strip, two densities — never two strips.
     var tileSize: CGFloat = 84
     var importingPhotoIDs: [String] = []
+    /// Canonical stored email images attributed to this lead. They share the
+    /// photo viewer but remain read-only correspondence evidence.
+    var emailPhotoAttachments: [LeadAttachment] = []
     /// Parent presents the camera / library dialog.
     var onAdd: () -> Void = {}
     /// Parent presents the full-screen viewer at the tapped index.
@@ -100,11 +140,19 @@ struct LeadPhotosSection: View {
                 return (lhs.batchIndex ?? 0) < (rhs.batchIndex ?? 0)
             }
             .map(LeadPhotoItem.queued)
-        let remote = opportunity.images
-            .filter { !$0.isEmpty }
-            .reversed()
+        let remote = LeadPhotoStripPresentation
+            .uniqueRemotePhotosNewestFirst(opportunity.images)
             .map(LeadPhotoItem.remote)
-        return queued + remote
+        let emailPhotos = emailPhotoAttachments
+            .filter {
+                LeadAttachmentPresentation.isLeadPhoto(
+                    ingestStatus: $0.ingestStatus,
+                    mimeType: $0.mimeType,
+                    filename: $0.filename
+                )
+            }
+            .map(LeadPhotoItem.emailAttachment)
+        return queued + remote + emailPhotos
     }
 
     var stripItems: [LeadPhotoStripItem] {
@@ -112,7 +160,8 @@ struct LeadPhotosSection: View {
             reservationIDs: importingPhotoIDs,
             queued: imageService.queuedUploads(for: opportunity.id)
                 .filter { $0.localURL.hasPrefix("local://") },
-            remoteURLs: opportunity.images
+            remoteURLs: opportunity.images,
+            emailPhotoAttachments: emailPhotoAttachments
         )
     }
 
@@ -134,7 +183,7 @@ struct LeadPhotosSection: View {
             // intrinsic width to the vertical parent unless it is capped, so
             // the photo strip was widening the whole dossier.
             ScrollView(.horizontal) {
-                HStack(spacing: OPSStyle.Layout.spacing2_5) {
+                LazyHStack(spacing: OPSStyle.Layout.spacing2_5) {
                     if canManage {
                         addTile
                     }
@@ -228,8 +277,8 @@ struct LeadPhotosSection: View {
     private func tile(for item: LeadPhotoItem) -> some View {
         ZStack(alignment: .bottomLeading) {
             switch item {
-            case .remote(let url):
-                AsyncImage(url: URL(string: url)) { phase in
+            case .remote(let photo):
+                AsyncImage(url: URL(string: photo.displayURL)) { phase in
                     switch phase {
                     case .success(let image):
                         image.resizable().scaledToFill()
@@ -247,6 +296,11 @@ struct LeadPhotosSection: View {
                 } else {
                     brokenTile
                 }
+            case .emailAttachment(let attachment):
+                LeadAttachmentPreview(
+                    attachment: attachment,
+                    maxPixelSize: tileSize * UIScreen.main.scale
+                )
             }
 
             if case .queued = item {
@@ -282,6 +336,8 @@ struct LeadPhotosSection: View {
         switch item {
         case .remote:  return "Photo \(index + 1)"
         case .queued:  return "Photo \(index + 1), queued for upload"
+        case .emailAttachment(let attachment):
+            return "Photo \(index + 1), \(attachment.displayName), from email"
         }
     }
 }

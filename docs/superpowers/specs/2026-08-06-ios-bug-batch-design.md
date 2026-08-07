@@ -19,6 +19,10 @@ Approved for implementation by Jackson on 2026-08-06. This document records the 
 11. Direct report — the standalone Project Details status row is oversized; status belongs inside DETAILS.
 12. Direct report — the Deck Designer canvas stops above the bottom toolbar instead of continuing to the screen edge.
 13. Direct report — Deck Designer length and surface area continue to show whole-design totals while geometry is selected.
+14. Direct report — the Lead Details action bar uses a full-height gradient with a visible cutoff instead of reading as floating controls.
+15. Direct report — the Lead Details document omits the lead's site address.
+16. Direct report — the pinned Lead Details identity header needs a gradient fill while it floats above scrolling content.
+17. Direct report — the Lead Details page canvas must use the same pure-black base as its sticky header.
 
 ## Product outcome
 
@@ -99,6 +103,30 @@ The 2D toolbar is currently a sibling below the canvas, which shortens the actua
 ### Deck Designer selection metrics
 
 The existing `DeckSelectionReadout` already computes selected surface area and selected edge length from authoritative deck geometry. The top metrics pill will recompute synchronously from `viewModel.selection`: any non-empty selection is selection context, with `—` for a measurement type the selection does not contain (including `—` / `—` for vertex-only selection); only an empty selection shows whole-design area and perimeter. The pill identifies selection context without adding a chart—the selected geometry on the canvas is the primary visualization. Selection changes, multi-select, deselection, edits, undo, and unit-system changes all update the readout without a second cache.
+
+### Lead Details sticky chrome and address
+
+The bottom action pair is already the screen's single floating CTA cluster, but
+`StickyActionBar` paints a clear-to-black floor across the whole footer. The
+outer 49pt tab-bar clearance is outside that paint, creating the reported hard
+cutoff and transparent-looking strip. Remove the floor entirely and lift the
+actual button cluster with the one sanctioned mobile floating-CTA elevation
+token (`OPSStyle.Layout.floatingElevation`). The controls remain in the same
+thumb position, keep their 48pt targets, and float directly over the scrolling
+document; form and sheet footers outside Lead Details are unchanged.
+
+The pinned identity header keeps its current content and accessibility grouping
+but replaces the solid rectangle with the canonical black-to-clear
+`headerFade`. The screen itself removes its stage-colored `Atmosphere` layer and
+uses `OPSStyle.Colors.background` as the uninterrupted L0 canvas, so the fade
+always resolves into the exact same pure black instead of a differently tinted
+page.
+
+The DETAILS document adds one fixed `ADDRESS` row between CLIENT and PROJECT.
+It displays the trimmed `Opportunity.address`, wraps long addresses, and shows
+the canonical `—` empty value. A populated row is one minimum-44pt button that
+opens the existing Apple Maps directions path; it does not introduce another
+address store, edit flow, or network lookup.
 
 ## Interaction and motion
 

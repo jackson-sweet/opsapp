@@ -2,7 +2,7 @@
 
 > **For the executing agent:** REQUIRED SUB-SKILL: Use `custom-skills:executing-plans` to implement this plan task-by-task.
 
-**Goal:** Resolve the thirteen 2026-08-06 iOS reports with durable sync repair, safer recovery actions, deliberate lead lifecycle interactions, responsive Project Details records, selection-aware Deck Designer metrics, and one canonical mobile chrome system.
+**Goal:** Resolve the seventeen 2026-08-06 iOS reports with durable sync repair, safer recovery actions, deliberate lead lifecycle interactions, responsive Project and Lead Details records, selection-aware Deck Designer metrics, and one canonical mobile chrome system.
 
 **Architecture:** Keep authoritative business decisions at the existing Supabase/RPC boundaries while repairing client orchestration and offline reconciliation. Separate pure policies/state from SwiftUI rendering so each reported failure has deterministic unit coverage, then add focused snapshots for presentation and accessibility. Land each report as an atomic commit and do not mutate production customer data.
 
@@ -614,3 +614,53 @@ git -C /Users/jacksonsweet/Projects/OPS/ops-software-bible commit \
 ```
 
 Do not push, deploy, mutate customer records, or claim App Store/device proof without Jackson's explicit authorization and direct evidence.
+
+### Task 15: Correct Lead Details sticky chrome and expose the address
+
+**Skills:** `custom-skills:interface-design`, `custom-skills:mobile-ux-design`, `custom-skills:ui-ux-pro-max`, `custom-skills:wireframe`, `ops-copywriter:ops-copywriter`, `custom-skills:audit-design-system`, `superpowers:test-driven-development`.
+
+**Files:**
+- Modify: `OPS/Views/Leads/Components/StickyActionBar.swift`
+- Modify: `OPS/Views/Leads/Components/DetailHero.swift`
+- Modify: `OPS/Views/Leads/Components/LeadDetailsDocument.swift`
+- Modify: `OPS/Views/Leads/LeadDetailView.swift`
+- Test: `OPSTests/Views/LeadDetailScrollTests.swift`
+- Test: `OPSTests/Views/DetailsTabSnapshotTests.swift`
+
+**Design tokens:** `OPSStyle.Colors.background`, `OPSStyle.Layout.Gradients.headerFade`, `OPSStyle.Layout.floatingElevation`, `touchTargetMin`, `inputHeight`, `spacing*`, `text*`, and the existing `DocRow` anatomy. No new raw color, spacing, radius, font, gradient, or shadow value.
+
+**Step 1: Confirm the four source contracts are red**
+
+Assert that the details document contains an ADDRESS row, the sticky action bar uses `floatingElevation` and no `LinearGradient`, the sticky identity uses `headerFade`, and the page does not mount an `Atmosphere` layer.
+
+**Step 2: Add the address behavior contract**
+
+Cover populated, whitespace-only, and nil addresses. A populated address renders verbatim after trimming, uses one minimum-44pt directions button, and empty addresses render `—` without a false route affordance.
+
+**Step 3: Replace the footer floor with floating elevation**
+
+Delete `floorGradient`. Apply the one sanctioned floating CTA shadow to the actual action cluster, preserve its tab-bar clearance and button hierarchy, and keep all values tokenized.
+
+**Step 4: Unify the sticky header and page canvas**
+
+Use the canonical `headerFade` behind `LeadDetailStickyHeader`, remove the stage-colored page `Atmosphere`, and retain the pure-black `OPSStyle.Colors.background` safe-area fill and map bridge.
+
+**Step 5: Add ADDRESS to the document**
+
+Insert the row between CLIENT and PROJECT. Route populated taps through the existing `openDirections()` method; do not add persistence or a second address source.
+
+**Step 6: Verify without a full build**
+
+Run the four source contracts, parse every changed Swift file with `swiftc -parse`, run `git diff --check`, and audit only the task-owned UI delta for token violations. Do not run another full Xcode build unless Jackson explicitly asks.
+
+**Step 7: Commit**
+
+```bash
+git add OPS/Views/Leads/Components/StickyActionBar.swift \
+  OPS/Views/Leads/Components/DetailHero.swift \
+  OPS/Views/Leads/Components/LeadDetailsDocument.swift \
+  OPS/Views/Leads/LeadDetailView.swift \
+  OPSTests/Views/LeadDetailScrollTests.swift \
+  OPSTests/Views/DetailsTabSnapshotTests.swift
+git commit -m "fix(leads): refine sticky detail chrome"
+```

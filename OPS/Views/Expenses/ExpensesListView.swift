@@ -33,6 +33,7 @@ struct ExpensesListView: View {
     @EnvironmentObject private var dataController: DataController
     @EnvironmentObject private var permissionStore: PermissionStore
     @Query private var teamMembers: [TeamMember]
+    @Query private var users: [User]
 
     @State private var selectedBucket: ExpenseBucket = .review
     @State private var hasAutoSelectedBucket = false
@@ -330,6 +331,10 @@ struct ExpensesListView: View {
 
     private func resolveCrewName(_ userId: String?) -> String {
         guard let userId = userId else { return "UNASSIGNED" }
+        if let user = users.first(where: { $0.id == userId }),
+           !user.fullName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return user.fullName.uppercased()
+        }
         if let member = teamMembers.first(where: { $0.id == userId }) {
             return member.fullName.uppercased()
         }

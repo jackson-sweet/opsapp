@@ -262,7 +262,7 @@ struct ConvertToProjectSheet: View {
         case .unavailable:
             return "This project was rejected as a match during the last attempt."
         case .reviewOnly:
-            return "Another project for this client, at a different address. Projects can only be matched at the same address."
+            return "This project can be reviewed here but is not available to link."
         }
     }
 
@@ -1069,20 +1069,37 @@ struct ConvertToProjectSheet: View {
             // and closed the sheet's only committing action, even though the
             // authoritative preflight had already succeeded.
             var matchableCandidateIds: Set<String> = []
+            var manualCandidates: [ManualProjectLinkCandidate] = []
             do {
-                matchableCandidateIds = try await service.matchableCandidateProjectIds(
-                    for: opportunity,
-                    candidates: preflight.duplicateCandidates
+                manualCandidates = try await service.manualProjectLinkCandidates(
+                    for: opportunity
+                )
+                matchableCandidateIds = Set(
+                    manualCandidates.map { $0.projectId.lowercased() }
                 )
             } catch {
+                // The new complete-manual-list RPC may not be deployed yet.
+                // Preserve the proven same-address path as a compatibility
+                // fallback, but report that the complete link list could not
+                // be checked.
                 candidateLinkCheckFailed = true
+                do {
+                    matchableCandidateIds = try await service
+                        .matchableCandidateProjectIds(
+                            for: opportunity,
+                            candidates: preflight.duplicateCandidates
+                        )
+                } catch {
+                    matchableCandidateIds = []
+                }
             }
 
             let state = Self.reducePreflight(
                 preflight,
                 matchableCandidateIds: matchableCandidateIds,
                 candidateLinkCheckFailed: candidateLinkCheckFailed,
-                unavailableMatchProjectIds: unavailableMatchProjectIds
+                unavailableMatchProjectIds: unavailableMatchProjectIds,
+                manualCandidates: manualCandidates
             )
             creationBlocker = state.creationBlocker
             clientOtherProjects = state.refs
@@ -1786,7 +1803,8 @@ extension ConvertToProjectSheet {
     /// could not tell "already belongs to another lead" apart from "we could
     /// not check" — and the sheet blamed an admin for both.
     enum RelatedProjectLinkState: Equatable {
-        /// Same address, server-approved, and unlinked (or already this lead's).
+        /// Server-approved and unlinked (or already this lead's). Address is a
+        /// ranking signal, not a requirement.
         case matchable
         /// Same address and server-approved, but it already belongs to a
         /// DIFFERENT lead. The commit would reject a link; review only.
@@ -1796,9 +1814,7 @@ extension ConvertToProjectSheet {
         case unverified
         /// A target this session's commit already rejected.
         case unavailable
-        /// Another project of the same client at a different address. The
-        /// server forbids cross-address links, so this is context, not an
-        /// option.
+        /// Visible context that the server did not authorize as a target.
         case reviewOnly
     }
 
@@ -1825,13 +1841,14 @@ extension ConvertToProjectSheet {
         _ preflight: ConversionPreflight,
         matchableCandidateIds: Set<String>,
         candidateLinkCheckFailed: Bool,
-        unavailableMatchProjectIds: Set<String>
+        unavailableMatchProjectIds: Set<String>,
+        manualCandidates: [ManualProjectLinkCandidate] = []
     ) -> PreflightViewState {
         var seen = Set<String>()
         var refs: [RelatedProjectRef] = []
 
         for candidate in preflight.duplicateCandidates
-        where seen.insert(candidate.projectId).inserted {
+        where seen.insert(candidate.projectId.lowercased()).inserted {
             let id = candidate.projectId.lowercased()
             let linkState: RelatedProjectLinkState
             if unavailableMatchProjectIds.contains(id) {
@@ -1848,17 +1865,36 @@ extension ConvertToProjectSheet {
                 title: candidate.title ?? "",
                 address: candidate.address,
                 status: nil,
-                linkState: linkState
+                linkState: linkState,
+                isAddressSuggestion: true
             ))
         }
         for other in preflight.otherClientProjects
-        where seen.insert(other.projectId).inserted {
+        where seen.insert(other.projectId.lowercased()).inserted {
+            let id = other.projectId.lowercased()
             refs.append(RelatedProjectRef(
                 id: other.projectId,
                 title: other.title ?? "",
                 address: other.address,
                 status: other.status.flatMap { Status(rawValue: $0) },
-                linkState: .reviewOnly
+                linkState: unavailableMatchProjectIds.contains(id)
+                    ? .unavailable
+                    : (matchableCandidateIds.contains(id) ? .matchable : .reviewOnly),
+                isAddressSuggestion: false
+            ))
+        }
+        for candidate in manualCandidates
+        where seen.insert(candidate.projectId.lowercased()).inserted {
+            let id = candidate.projectId.lowercased()
+            refs.append(RelatedProjectRef(
+                id: candidate.projectId,
+                title: candidate.title ?? "",
+                address: candidate.address,
+                status: candidate.status.flatMap { Status(rawValue: $0) },
+                linkState: unavailableMatchProjectIds.contains(id)
+                    ? .unavailable
+                    : .matchable,
+                isAddressSuggestion: candidate.sameAddress
             ))
         }
 
@@ -2088,10 +2124,28 @@ extension ConvertToProjectSheet {
         let address: String?
         let status: Status?
         let linkState: RelatedProjectLinkState
+        let isAddressSuggestion: Bool
 
-        /// A same-address project. These gate CREATE — the server rejects a
-        /// nil-link create alongside one, whatever its link state.
-        var isLikelyDuplicate: Bool { linkState != .reviewOnly }
+        init(
+            id: String,
+            title: String,
+            address: String?,
+            status: Status?,
+            linkState: RelatedProjectLinkState,
+            isAddressSuggestion: Bool = false
+        ) {
+            self.id = id
+            self.title = title
+            self.address = address
+            self.status = status
+            self.linkState = linkState
+            self.isAddressSuggestion = isAddressSuggestion
+        }
+
+        /// Same-address suggestions gate CREATE under the independent server
+        /// dedupe contract. A manually selectable project at another address
+        /// remains an option without becoming a duplicate warning.
+        var isLikelyDuplicate: Bool { isAddressSuggestion }
 
         var interaction: RelatedProjectInteraction {
             linkState == .matchable ? .match : .peek

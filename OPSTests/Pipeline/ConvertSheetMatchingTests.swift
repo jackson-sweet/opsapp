@@ -147,22 +147,23 @@ final class ConvertSheetMatchingTests: XCTestCase {
         XCTAssertEqual(state.refs.first?.actionLabel, "REVIEW")
     }
 
-    /// Other-client projects are review-only by server contract (cross-address
-    /// links are forbidden) — they carry no action label and never gate CREATE.
-    func testOtherClientProjectsAreReviewOnlyAndDoNotGateCreate() throws {
+    /// A server-authorized project at another address remains selectable. It is
+    /// not a duplicate suggestion, so leaving it unselected never gates CREATE.
+    func testDifferentAddressProjectIsSelectableButDoesNotGateCreate() throws {
         let state = ConvertToProjectSheet.reducePreflight(
             try preflight(others: [("project-b", "Douglas St porch")]),
-            matchableCandidateIds: [],
+            matchableCandidateIds: ["project-b"],
             candidateLinkCheckFailed: false,
             unavailableMatchProjectIds: []
         )
 
-        XCTAssertEqual(state.refs.first?.linkState, .reviewOnly)
-        XCTAssertNil(state.refs.first?.actionLabel)
+        XCTAssertEqual(state.refs.first?.linkState, .matchable)
+        XCTAssertEqual(state.refs.first?.interaction, .match)
+        XCTAssertEqual(state.refs.first?.actionLabel, "MATCH")
         XCTAssertNil(state.statusMessage)
         XCTAssertFalse(
             state.refs.contains(where: \.isLikelyDuplicate),
-            "an other-client project is not a duplicate and must not block CREATE"
+            "a manual option is not automatically a duplicate suggestion"
         )
     }
 

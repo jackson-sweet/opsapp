@@ -1,4 +1,5 @@
 import XCTest
+import Supabase
 @testable import OPS
 
 final class SiteVisitRepositoryTests: XCTestCase {
@@ -117,23 +118,105 @@ final class SiteVisitRepositoryTests: XCTestCase {
         XCTAssertTrue(transport.requests.isEmpty)
     }
 
-    func testErrorClassifierSeparatesAuthDependencySchemaAndTransport() {
+    func testStructuredServerErrorsRetainAuthPermanentAndTransportDisposition() {
         XCTAssertEqual(
-            SiteVisitRepositoryError.classify(postgrestCode: "42501", message: "RLS denied"),
-            .authorization("RLS denied")
+            SyncErrorClassifier.disposition(
+                for: SiteVisitRepositoryError.server(
+                    code: "42501",
+                    message: "RLS denied",
+                    detail: nil,
+                    hint: nil
+                )
+            ),
+            .auth
         )
         XCTAssertEqual(
-            SiteVisitRepositoryError.classify(postgrestCode: "23503", message: "FK missing"),
-            .dependency("FK missing")
+            SyncErrorClassifier.disposition(
+                for: SiteVisitRepositoryError.server(
+                    code: "23503",
+                    message: "FK missing",
+                    detail: nil,
+                    hint: nil
+                )
+            ),
+            .permanent
         )
         XCTAssertEqual(
-            SiteVisitRepositoryError.classify(postgrestCode: "PGRST202", message: "RPC missing"),
-            .schemaCapability("RPC missing")
+            SyncErrorClassifier.disposition(
+                for: SiteVisitRepositoryError.server(
+                    code: "PGRST202",
+                    message: "RPC missing",
+                    detail: nil,
+                    hint: nil
+                )
+            ),
+            .permanent
         )
         XCTAssertEqual(
-            SiteVisitRepositoryError.classify(postgrestCode: nil, message: "connection lost"),
-            .transport("connection lost")
+            SyncErrorClassifier.disposition(
+                for: SiteVisitRepositoryError.server(
+                    code: nil,
+                    message: "connection lost",
+                    detail: nil,
+                    hint: nil
+                )
+            ),
+            .transient
         )
+    }
+
+    func testPostgrestFailurePreservesCodeMessageDetailAndHintForQueuePolicy() async throws {
+        let transport = RecordingSiteVisitTransport()
+        transport.responseProvider = { _ in
+            throw PostgrestError(
+                detail: "Key (site_visit_id, field_id) already exists.",
+                hint: "Reconcile the canonical server answer before retrying.",
+                code: "23505",
+                message: "duplicate key value violates unique constraint \"site_visit_checklist_answers_active_field_uidx\""
+            )
+        }
+        let repository = SiteVisitRepository(companyId: companyId, transport: transport)
+
+        do {
+            _ = try await repository.fetchAll()
+            XCTFail("Expected the structured PostgREST failure")
+        } catch let error as SiteVisitRepositoryError {
+            guard case let .server(code, message, detail, hint) = error else {
+                return XCTFail("Expected structured server context, got \(error)")
+            }
+            XCTAssertEqual(code, "23505")
+            XCTAssertEqual(
+                message,
+                "duplicate key value violates unique constraint \"site_visit_checklist_answers_active_field_uidx\""
+            )
+            XCTAssertEqual(detail, "Key (site_visit_id, field_id) already exists.")
+            XCTAssertEqual(hint, "Reconcile the canonical server answer before retrying.")
+            XCTAssertTrue(error.localizedDescription.contains("23505"))
+            XCTAssertTrue(error.localizedDescription.contains("duplicate key value"))
+            XCTAssertTrue(error.localizedDescription.contains("Key (site_visit_id, field_id) already exists."))
+            XCTAssertTrue(error.localizedDescription.contains("Reconcile the canonical server answer"))
+            XCTAssertEqual(SyncErrorClassifier.disposition(for: error), .permanent)
+            XCTAssertFalse(
+                errorIndicatesPrimaryKeyViolation(error),
+                "The logical active-field unique index is not an idempotent primary-key retry"
+            )
+        } catch {
+            XCTFail("Expected SiteVisitRepositoryError, got \(error)")
+        }
+    }
+
+    func testWrappedPostgrestPrimaryKeyViolationRemainsAnIdempotentCreateRetry() {
+        let error = SiteVisitRepositoryError.wrapping(
+            PostgrestError(
+                detail: "Key (id) already exists.",
+                hint: nil,
+                code: "23505",
+                message: "duplicate key value violates unique constraint \"site_visit_checklist_answers_pkey\""
+            )
+        )
+
+        XCTAssertTrue(errorIndicatesPrimaryKeyViolation(error))
+        XCTAssertEqual(SyncErrorClassifier.disposition(for: error), .permanent)
     }
 
     private static func parentArrayJSON(visitId: String, companyId: String, userId: String) -> Data {

@@ -236,6 +236,29 @@ final class LeadConversionService {
         })
     }
 
+    /// Every project an operator may explicitly link to this lead. Duplicate
+    /// preflight remains the authority for CREATE safety; this read is the
+    /// authority for MANUAL choice, where address/client are ranking signals
+    /// rather than eligibility gates.
+    func manualProjectLinkCandidates(
+        for lead: Opportunity
+    ) async throws -> [ManualProjectLinkCandidate] {
+        struct Params: Encodable {
+            let p_opportunity_id: String
+        }
+        do {
+            return try await client
+                .rpc(
+                    "get_manual_project_link_candidates",
+                    params: Params(p_opportunity_id: lead.id)
+                )
+                .execute()
+                .value
+        } catch {
+            throw Self.mapRPCError(error)
+        }
+    }
+
     nonisolated static func projectLinkIsAvailable(
         opportunityId: String?,
         opportunityRef: String?,
@@ -619,6 +642,24 @@ struct PreflightClientProject: Decodable {
     enum CodingKeys: String, CodingKey {
         case projectId = "project_id"
         case title, address, status
+    }
+}
+
+/// One server-authorized manual project target. `sameAddress` and
+/// `sameClient` only explain ordering; neither can make a project ineligible.
+struct ManualProjectLinkCandidate: Decodable, Equatable {
+    let projectId: String
+    let title: String?
+    let address: String?
+    let status: String?
+    let sameAddress: Bool
+    let sameClient: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case projectId = "project_id"
+        case title, address, status
+        case sameAddress = "same_address"
+        case sameClient = "same_client"
     }
 }
 

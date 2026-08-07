@@ -187,6 +187,17 @@ final class HomeBillableAndNeedsTasksSnapshotTests: XCTestCase {
         XCTAssertEqual(HomeBillableThisWeekCard.amountText(for: valued), "$12,600")
     }
 
+    func testCollapsedCountUsesCompactJobLabel() {
+        XCTAssertEqual(HomeBillableThisWeekCard.jobCountText(for: fourClosingJobs), "4 JOBS")
+    }
+
+    func testRenderBillableCollapsedCompactRow() {
+        UserDefaults.standard.set(false, forKey: "homeBillableThisWeekExpanded")
+        hostSnapshot("home_billable_collapsed_compact", height: 100) {
+            HomeBillableThisWeekCard(rollup: fourClosingJobs, onSelect: { _ in })
+        }
+    }
+
     func testRenderBillableExpandedAllJobs() {
         UserDefaults.standard.set(true, forKey: "homeBillableThisWeekExpanded")
         hostSnapshot("home_billable_expanded_all_jobs", height: 380) {

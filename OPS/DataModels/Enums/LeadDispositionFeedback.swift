@@ -17,7 +17,7 @@ enum LeadDispositionOutcome: String, Codable, Equatable {
 }
 
 enum LeadDispositionSelectionBehavior: Equatable {
-    case submitImmediately
+    case selectThenSubmit
 }
 
 enum LeadDispositionReason: String, Codable, CaseIterable, Hashable {
@@ -93,10 +93,49 @@ enum LeadDispositionReason: String, Codable, CaseIterable, Hashable {
     }
 
     var selectionBehavior: LeadDispositionSelectionBehavior {
-        .submitImmediately
+        .selectThenSubmit
     }
 
     var requiresSecondConfirmation: Bool { false }
+}
+
+/// Pure interaction state for the structured discard-reason sheet.
+///
+/// Selecting a reason is intentionally separate from sending it. A failed
+/// request keeps the operator's choice visible so retrying never requires a
+/// second pass through the list.
+struct LeadDispositionReasonSelectionState: Equatable {
+    private(set) var selectedReason: LeadDispositionReason?
+    private(set) var isSubmitting = false
+    private(set) var inlineError: String?
+
+    var canSubmit: Bool {
+        selectedReason != nil && !isSubmitting
+    }
+
+    mutating func select(_ reason: LeadDispositionReason) {
+        guard !isSubmitting else { return }
+        selectedReason = reason
+        inlineError = nil
+    }
+
+    mutating func beginSubmission() -> LeadDispositionReason? {
+        guard canSubmit, let selectedReason else { return nil }
+        isSubmitting = true
+        inlineError = nil
+        return selectedReason
+    }
+
+    mutating func finishSubmission(succeeded: Bool) {
+        isSubmitting = false
+
+        if succeeded {
+            selectedReason = nil
+            inlineError = nil
+        } else {
+            inlineError = "COULD NOT UPDATE LEAD · TRY AGAIN"
+        }
+    }
 }
 
 enum LeadDispositionInteractionRoute: Equatable {

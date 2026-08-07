@@ -21,65 +21,62 @@ struct SettingsHeader: View {
     var onEditTapped: (() -> Void)? = nil
 
     var body: some View {
-        HStack {
-            // Back button — clean, no card background
-            Button(action: {
-                onBackTapped()
-            }) {
-                Image(systemName: OPSStyle.Icons.chevronLeft)
-                    .font(.system(size: OPSStyle.Layout.IconSize.md, weight: .semibold))
-                    .foregroundColor(OPSStyle.Colors.primaryText)
-            }
-            .frame(
-                width: OPSStyle.Layout.touchTargetMin,
-                height: OPSStyle.Layout.touchTargetMin
+        // Compatibility wrapper: every existing Settings call site inherits
+        // the canonical band without initializer churn.
+        if let trailingIcon {
+            OPSScreenHeader(
+                title,
+                leading: {
+                    OPSHeaderBackButton(action: onBackTapped)
+                },
+                trailing: {
+                    Button(action: { onEditTapped?() }) {
+                        Image(systemName: trailingIcon)
+                            .font(.system(
+                                size: OPSStyle.Layout.IconSize.md,
+                                weight: .semibold
+                            ))
+                            .foregroundColor(OPSStyle.Colors.primaryAccent)
+                            .frame(
+                                width: OPSStyle.Layout.touchTargetMin,
+                                height: OPSStyle.Layout.touchTargetMin
+                            )
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(trailingAccessibilityLabel ?? "Action")
+                }
             )
-
-            Spacer()
-
-            // Title — centered, bodyBold matching expense form toolbar
-            Text(title.uppercased())
-                .font(OPSStyle.Typography.bodyBold)
-                .foregroundColor(OPSStyle.Colors.primaryText)
-
-            Spacer()
-
-            // Edit button or spacer for balance
-            if let trailingIcon {
-                Button(action: {
-                    onEditTapped?()
-                }) {
-                    Image(systemName: trailingIcon)
-                        .font(.system(
-                            size: OPSStyle.Layout.IconSize.md,
-                            weight: .semibold
-                        ))
-                        .foregroundColor(OPSStyle.Colors.primaryAccent)
+        } else if showEditButton {
+            let actionLabel = editButtonText ?? (isEditing ? "Cancel" : "Edit")
+            OPSScreenHeader(
+                title,
+                leading: {
+                    OPSHeaderBackButton(action: onBackTapped)
+                },
+                trailing: {
+                    Button(action: { onEditTapped?() }) {
+                        Text(actionLabel.uppercased())
+                            .font(OPSStyle.Typography.buttonLabel)
+                            .foregroundColor(OPSStyle.Colors.primaryAccent)
+                            .frame(
+                                minWidth: OPSStyle.Layout.touchTargetMin,
+                                minHeight: OPSStyle.Layout.touchTargetMin
+                            )
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(actionLabel)
                 }
-                .frame(
-                    width: OPSStyle.Layout.touchTargetMin,
-                    height: OPSStyle.Layout.touchTargetMin
-                )
-                .accessibilityLabel(
-                    trailingAccessibilityLabel ?? "Action"
-                )
-            } else if showEditButton {
-                Button(action: {
-                    onEditTapped?()
-                }) {
-                    Text((editButtonText ?? (isEditing ? "Cancel" : "Edit")).uppercased())
-                        .font(OPSStyle.Typography.bodyBold)
-                        .foregroundColor(OPSStyle.Colors.primaryAccent)
+            )
+        } else {
+            OPSScreenHeader(
+                title,
+                leading: {
+                    OPSHeaderBackButton(action: onBackTapped)
                 }
-                .frame(height: OPSStyle.Layout.touchTargetMin)
-            } else {
-                // Empty spacer to balance the header
-                Spacer()
-                    .frame(width: OPSStyle.Layout.touchTargetMin)
-            }
+            )
         }
-        .padding(.horizontal, OPSStyle.Layout.spacing3_5)
-        .padding(.top, OPSStyle.Layout.spacing2_5)
     }
 }
 

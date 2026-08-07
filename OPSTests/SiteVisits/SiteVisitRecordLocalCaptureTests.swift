@@ -121,8 +121,7 @@ final class SiteVisitRecordLocalCaptureTests: XCTestCase {
             artifact(kind: .photo, localAssetURL: "local://photo-2", capturedAt: 1_100)
         ]))
 
-        XCTAssertEqual(subject.visiblePhotoURLs, ["local://photo-1", "local://photo-2"])
-        XCTAssertEqual(subject.additionalPhotoCount, 0)
+        XCTAssertEqual(subject.photoURLs, ["local://photo-1", "local://photo-2"])
     }
 
     func test_identityPrefersTheLeadThenTheDraftsBusiness() throws {

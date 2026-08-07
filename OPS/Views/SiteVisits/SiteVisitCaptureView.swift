@@ -112,6 +112,7 @@ private struct SiteVisitCaptureConsole: View {
     @State private var activeDeckDesign: DeckDesign?
     @State private var markupArtifact: SiteVisitCaptureArtifact?
     @State private var previewArtifact: SiteVisitCaptureArtifact?
+    @State private var editingNoteArtifact: SiteVisitCaptureArtifact?
     @State private var isPacketExpanded = true
     @State private var showingDimensionedCapture = false
     @State private var showingCloseConfirm = false
@@ -151,21 +152,14 @@ private struct SiteVisitCaptureConsole: View {
                         VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing3) {
                             // Bug (site-visit report) — a sequential checklist the
                             // operator works top-to-bottom: the LEAD form (step 1,
-                            // always required) sits at the top, the type-dependent
-                            // CHECKLIST (step 2, variable fields) directly below it,
-                            // then NOTES (step 3). statusStrip is the at-a-glance
+                            // always required) sits at the top. A linked lead's
+                            // read-only summary follows when one exists, then the
+                            // type-dependent CHECKLIST (step 2, variable fields)
+                            // and NOTES (step 3). statusStrip is the at-a-glance
                             // readout above; the captured packet is the flat list
                             // at the bottom.
                             statusStrip
-                            SiteVisitIdentityPanel(
-                                viewModel: viewModel,
-                                isExpanded: $identityExpanded,
-                                isPresentingContactPicker: $showingContactPicker
-                            )
-                            .id(SiteVisitCaptureScrollTarget.identity)
-                            checklistPanel
-                            quickNotePanel
-                                .id(SiteVisitCaptureScrollTarget.notes)
+                            primaryFormSections
                             packetPanel
                         }
                         .padding(.horizontal, OPSStyle.Layout.spacing3_5)
@@ -306,6 +300,13 @@ private struct SiteVisitCaptureConsole: View {
                     markupArtifact = artifact
                 }
             }
+        }
+        .sheet(item: $editingNoteArtifact) { artifact in
+            SiteVisitNoteEditSheet(artifact: artifact) { body in
+                viewModel.updateNoteArtifact(artifact, body: body)
+            }
+            .presentationDetents([.medium])
+            .presentationDragIndicator(.hidden)
         }
         .background(
             ContactPicker(isPresented: $showingContactPicker) { contact in
@@ -490,6 +491,39 @@ private struct SiteVisitCaptureConsole: View {
             .nestedCard()
     }
 
+    /// One tested sequence owns the form's information hierarchy. A bound
+    /// lead's authoritative `aiSummary` sits after identity and before the
+    /// checklist; nil or whitespace-only summaries add no empty chrome.
+    private var primaryFormSections: some View {
+        ForEach(
+            SiteVisitPrimaryFormSemantics.orderedSections(
+                boundLeadSummary: viewModel.currentOpportunity?.aiSummary
+            )
+        ) { section in
+            primaryFormSection(section)
+        }
+    }
+
+    @ViewBuilder
+    private func primaryFormSection(_ section: SiteVisitPrimaryFormSection) -> some View {
+        switch section {
+        case .identity:
+            SiteVisitIdentityPanel(
+                viewModel: viewModel,
+                isExpanded: $identityExpanded,
+                isPresentingContactPicker: $showingContactPicker
+            )
+            .id(SiteVisitCaptureScrollTarget.identity)
+        case .leadSummary(let presentation):
+            SiteVisitLeadSummaryBand(presentation: presentation)
+        case .checklist:
+            checklistPanel
+        case .notes:
+            quickNotePanel
+                .id(SiteVisitCaptureScrollTarget.notes)
+        }
+    }
+
     private var quickNotePanel: some View {
         VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
             panelHeader("3 · NOTES", trailing: speechStateLabel)
@@ -610,6 +644,9 @@ private struct SiteVisitCaptureConsole: View {
                                 onMarkup: {
                                     markupArtifact = artifact
                                 },
+                                onEdit: artifact.pipesToProjectNotes ? {
+                                    editingNoteArtifact = artifact
+                                } : nil,
                                 onIncludedChange: { included in
                                     viewModel.setIncluded(artifact, included: included)
                                 }
@@ -982,6 +1019,49 @@ private struct SiteVisitCaptureMetric: View {
                 .foregroundColor(OPSStyle.Colors.text3)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+/// Read-only lead context at the exact decision point where the operator starts
+/// scope capture. This reuses the lead surfaces' agent-provenance band instead
+/// of introducing another card or a second editable summary field.
+private struct SiteVisitLeadSummaryBand: View {
+    let presentation: SiteVisitLeadSummaryPresentation
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
+            HStack(spacing: 0) {
+                Text("// ")
+                    .foregroundColor(OPSStyle.Colors.textMute)
+                Text("LEAD SUMMARY")
+                    .foregroundColor(OPSStyle.Colors.agent)
+            }
+            .font(OPSStyle.Typography.miniLabelBold)
+            .textCase(.uppercase)
+
+            Text(presentation.text)
+                .font(OPSStyle.Typography.cardBody)
+                .foregroundColor(OPSStyle.Colors.text2)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .padding(OPSStyle.Layout.spacing2_5)
+        .padding(.leading, OPSStyle.Layout.Border.thick)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(OPSStyle.Colors.agentSoft)
+        .overlay(alignment: .leading) {
+            Rectangle()
+                .fill(OPSStyle.Colors.agentLine)
+                .frame(width: OPSStyle.Layout.Border.thick)
+        }
+        .clipShape(
+            RoundedRectangle(
+                cornerRadius: OPSStyle.Layout.cardRadius,
+                style: .continuous
+            )
+        )
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(presentation.accessibilityLabel)
     }
 }
 
@@ -1514,7 +1594,10 @@ private struct SiteVisitIdentityPanel: View {
                 )
                 .overlay(
                     RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius, style: .continuous)
-                        .strokeBorder(OPSStyle.Colors.line, lineWidth: 1)
+                        .strokeBorder(
+                            OPSStyle.Colors.line,
+                            lineWidth: OPSStyle.Layout.Border.standard
+                        )
                 )
 
             if let caption {
@@ -1877,6 +1960,7 @@ private struct SiteVisitArtifactRow: View {
     let artifact: SiteVisitCaptureArtifact
     let onPreview: (() -> Void)?
     let onMarkup: (() -> Void)?
+    let onEdit: (() -> Void)?
     let onIncludedChange: (Bool) -> Void
 
     var body: some View {
@@ -1912,6 +1996,17 @@ private struct SiteVisitArtifactRow: View {
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("Markup photo")
+            }
+
+            if artifact.pipesToProjectNotes, let onEdit {
+                Button(action: onEdit) {
+                    Image(systemName: OPSStyle.Icons.pencil)
+                        .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .semibold))
+                        .foregroundColor(OPSStyle.Colors.text2)
+                        .frame(width: OPSStyle.Layout.touchTargetMin, height: OPSStyle.Layout.touchTargetMin)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Edit note")
             }
 
             // Whether this capture flows into the project when the visit converts.
@@ -2001,6 +2096,80 @@ private struct SiteVisitArtifactRow: View {
     }
 }
 
+private struct SiteVisitNoteEditSheet: View {
+    let artifact: SiteVisitCaptureArtifact
+    let onSave: (String) -> Bool
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var draft: String
+    @FocusState private var isFocused: Bool
+
+    init(
+        artifact: SiteVisitCaptureArtifact,
+        onSave: @escaping (String) -> Bool
+    ) {
+        self.artifact = artifact
+        self.onSave = onSave
+        _draft = State(initialValue: artifact.body ?? "")
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing3) {
+            HStack {
+                Text("EDIT NOTE")
+                    .font(OPSStyle.Typography.title)
+                    .foregroundColor(OPSStyle.Colors.text)
+                Spacer()
+                Button("CANCEL") { dismiss() }
+                    .font(OPSStyle.Typography.captionBold)
+                    .foregroundColor(OPSStyle.Colors.text3)
+            }
+
+            TextEditor(text: $draft)
+                .font(OPSStyle.Typography.body)
+                .foregroundColor(OPSStyle.Colors.text)
+                .scrollContentBackground(.hidden)
+                .padding(OPSStyle.Layout.spacing2)
+                .frame(minHeight: OPSStyle.Layout.touchTargetMin * 3)
+                .background(
+                    RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius, style: .continuous)
+                        .fill(OPSStyle.Colors.surfaceInput)
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius, style: .continuous)
+                        .strokeBorder(OPSStyle.Colors.line, lineWidth: 1)
+                )
+                .focused($isFocused)
+
+            Button {
+                guard onSave(draft) else { return }
+                UINotificationFeedbackGenerator().notificationOccurred(.success)
+                dismiss()
+            } label: {
+                Text("SAVE NOTE")
+                    .font(OPSStyle.Typography.captionBold)
+                    .foregroundColor(canSave ? OPSStyle.Colors.invertedText : OPSStyle.Colors.text3)
+                    .frame(maxWidth: .infinity)
+                    .frame(minHeight: OPSStyle.Layout.touchTargetMin)
+                    .background(
+                        RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius, style: .continuous)
+                            .fill(canSave ? OPSStyle.Colors.opsAccent : OPSStyle.Colors.surfaceHover)
+                    )
+            }
+            .buttonStyle(.plain)
+            .disabled(!canSave)
+        }
+        .padding(OPSStyle.Layout.spacing3_5)
+        .background(OPSStyle.Colors.background.ignoresSafeArea())
+        .preferredColorScheme(.dark)
+        .onAppear { isFocused = true }
+    }
+
+    private var canSave: Bool {
+        !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+}
+
 private struct SiteVisitArtifactThumbnail: View {
     let artifact: SiteVisitCaptureArtifact
     let fallbackIcon: String
@@ -2053,6 +2222,7 @@ private struct SiteVisitReviewSheet: View {
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var dataController: DataController
     @State private var previewArtifact: SiteVisitCaptureArtifact?
+    @State private var editingNoteArtifact: SiteVisitCaptureArtifact?
     @State private var isCreatingLead = false
     @State private var isSaving = false
     // Bug (site-visit report) — the lead stage the visit will leave the lead
@@ -2134,6 +2304,13 @@ private struct SiteVisitReviewSheet: View {
         }
         .sheet(item: $previewArtifact) { artifact in
             SiteVisitPhotoPreviewSheet(artifact: artifact, onMarkup: nil)
+        }
+        .sheet(item: $editingNoteArtifact) { artifact in
+            SiteVisitNoteEditSheet(artifact: artifact) { body in
+                viewModel.updateNoteArtifact(artifact, body: body)
+            }
+            .presentationDetents([.medium])
+            .presentationDragIndicator(.hidden)
         }
     }
 
@@ -2274,6 +2451,9 @@ private struct SiteVisitReviewSheet: View {
                         previewArtifact = artifact
                     } : nil,
                     onMarkup: nil,
+                    onEdit: artifact.pipesToProjectNotes ? {
+                        editingNoteArtifact = artifact
+                    } : nil,
                     onIncludedChange: { included in
                         viewModel.setIncluded(artifact, included: included)
                     }

@@ -21,11 +21,10 @@
 //    a guest with its own manners. Linking a lead happens once per project,
 //    ever; a card of its own would give a once-ever action permanent prime real
 //    estate. The card owns the hairline above it — see DetailsTabView.shows(_:).
-//  · When there is nothing to match — no candidate leads, or no permission —
-//    the row is ABSENT, not an em dash and not a disabled button. An
-//    affordance advertising an impossible action is worse than no affordance,
-//    and the server only accepts a link whose target shares the lead's
-//    address, so most projects genuinely have no candidates.
+//  · When there is nothing to match — no eligible won leads, or no permission
+//    — the row is ABSENT, not an em dash and not a disabled button. Address
+//    and client identity rank likely provenance first; they never hide a valid
+//    manual choice.
 //  · Committing goes through `LeadConversionService` with `linkToProjectId`,
 //    never a direct patch: the four-column link contract, the disposition
 //    audit row, and the estimate/task/photo carryover all live inside that one
@@ -85,39 +84,55 @@ enum ProjectLeadRow {
         let label: String
     }
 
-    /// Leads this project may legitimately be matched to.
-    ///
-    /// The address test is the load-bearing one: the conversion RPC refuses a
-    /// link whose target project is not at the lead's normalized address, so
-    /// offering a same-client lead from a different job site would walk the
-    /// operator straight into a rejection. Same normalization the sheet's own
-    /// create-address fingerprint uses, so the two agree about what "same
-    /// address" means. The client is deliberately NOT a filter — the server
-    /// does not require it either — but it orders the result, because when two
-    /// leads share an address the one on this project's client is the likelier
-    /// answer and should be the first thing the operator reads.
+    /// Leads this project may legitimately be matched to. Company, Won state,
+    /// and an unused project link are hard gates. Address/client identity are
+    /// suggestions only: exact address + client first, then address, then
+    /// client, then every remaining eligible lead in stable source order.
     static func matchableLeads(
         project: ProjectContext,
         leads: [LeadCandidate]
     ) -> [LeadCandidate] {
         let projectAddress = normalized(project.address)
-        guard !projectAddress.isEmpty else { return [] }
-
-        let matching = leads.filter { lead in
+        let eligible = leads.filter { lead in
             guard lead.companyId == project.companyId else { return false }
             guard lead.stage == .won else { return false }
             guard (lead.projectId ?? "")
                 .trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return false }
-            return normalized(lead.address) == projectAddress
+            return true
         }
+        let projectClientId = project.clientId?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
 
-        guard let projectClientId = project.clientId, !projectClientId.isEmpty else {
-            return matching
+        return eligible.enumerated().sorted { lhs, rhs in
+            let lhsRank = suggestionRank(
+                lhs.element,
+                projectAddress: projectAddress,
+                projectClientId: projectClientId
+            )
+            let rhsRank = suggestionRank(
+                rhs.element,
+                projectAddress: projectAddress,
+                projectClientId: projectClientId
+            )
+            return lhsRank == rhsRank ? lhs.offset < rhs.offset : lhsRank < rhsRank
+        }.map(\.element)
+    }
+
+    private static func suggestionRank(
+        _ lead: LeadCandidate,
+        projectAddress: String,
+        projectClientId: String?
+    ) -> Int {
+        let addressMatches = !projectAddress.isEmpty
+            && normalized(lead.address) == projectAddress
+        let clientMatches = projectClientId?.isEmpty == false
+            && lead.clientId == projectClientId
+        switch (addressMatches, clientMatches) {
+        case (true, true): return 0
+        case (true, false): return 1
+        case (false, true): return 2
+        case (false, false): return 3
         }
-        // Stable partition — same-client leads keep their relative order, and
-        // so does everything else.
-        return matching.filter { $0.clientId == projectClientId }
-            + matching.filter { $0.clientId != projectClientId }
     }
 
     private static func normalized(_ address: String?) -> String {

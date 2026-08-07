@@ -83,6 +83,7 @@ struct ExpenseBucketQueue: View {
                 amountColor: OPSStyle.Colors.text
             ) {
                 metaText(batch.batchNumber)
+                metaText(nameFor(batch.submittedBy).uppercased())
                 if let count = stats?.count, count > 0 {
                     metaText("\(count) LINE\(count == 1 ? "" : "S")")
                 }
@@ -137,6 +138,7 @@ struct ExpenseBucketQueue: View {
                 amountColor: OPSStyle.Colors.text
             ) {
                 metaText(batch.batchNumber)
+                metaText(nameFor(batch.submittedBy).uppercased())
                 if status == .autoApproved {
                     BooksPillView(pill: BooksPill(text: "AUTO", color: OPSStyle.Colors.secondaryText))
                 }

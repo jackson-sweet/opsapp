@@ -31,7 +31,7 @@ struct SettingsView: View {
         case profile, organization, subscription
         case notifications, map, dataStorage, security
         case productsServices, integrations, projectSettings
-        case whatsNew, reportIssue, developerDashboard
+        case whatsNew, developerDashboard
         case allPhotos, myExpenses, reviewExpenses
         case pendingWork
         case permissions
@@ -396,8 +396,8 @@ struct SettingsView: View {
 
                                 settingsRow(
                                     icon: OPSStyle.Icons.alert,
-                                    title: "Report Issue",
-                                    action: { activeDestination = .reportIssue }
+                                    title: "REPORT A BUG",
+                                    action: { requestBugReport() }
                                 )
 
                                 sectionDivider
@@ -598,10 +598,6 @@ struct SettingsView: View {
             NavigationStack {
                 WhatsNewView()
             }
-        case .reportIssue:
-            NavigationStack {
-                ReportIssueView()
-            }
         case .developerDashboard:
             NavigationStack {
                 DeveloperDashboard()
@@ -790,7 +786,11 @@ struct SettingsView: View {
     /// hierarchy visible without consuming the title slot.
     private func settingsSearchResultRow(for entry: SettingsSearchEntry) -> some View {
         Button(action: {
-            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            // Bug reporting supplies its haptic only after the shared trigger
+            // boundary accepts the request. Other settings routes commit here.
+            if entry.route.destination != .reportBug {
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            }
             // Close the search on commit so returning from the destination
             // leaves Settings in its default state.
             withAnimation(OPSStyle.Animation.spring) {
@@ -886,7 +886,7 @@ struct SettingsView: View {
         case .laserMeter:            activeDestination = .laserMeter
         case .inventorySettings:    activeDestination = .inventorySettings
         case .whatsNew:              activeDestination = .whatsNew
-        case .reportIssue:           activeDestination = .reportIssue
+        case .reportBug:             requestBugReport()
         case .wizardManagement:      activeDestination = .wizardManagement
         case .trash:                 activeDestination = .trash
         }
@@ -1204,6 +1204,17 @@ struct SettingsView: View {
     }
 
     // MARK: - Tutorial Restart
+
+    private func requestBugReport() {
+        let outcome = BugReportTriggerCoordinator.shared.trigger(
+            source: .settings,
+            appState: appState,
+            dataController: dataController
+        )
+
+        guard case .accepted = outcome else { return }
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+    }
 
     private func restartTutorial() {
         guard dataController.currentUser != nil else { return }

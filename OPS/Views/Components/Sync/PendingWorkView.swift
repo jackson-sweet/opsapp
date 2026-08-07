@@ -28,7 +28,7 @@ import SwiftData
 struct PendingWorkActions {
     var retryItem: (RecoveryItem) -> Void
     var retryAll: () -> Void
-    var discardItem: (RecoveryItem) -> Void
+    var discardItem: @MainActor (RecoveryItem) async -> Bool
     var exportItem: (RecoveryItem) -> Void
     var linkDesign: (String, PendingWorkLinkTarget) -> Void
     var openDraft: (DraftSnapshot) -> Void
@@ -37,7 +37,7 @@ struct PendingWorkActions {
 
     /// Inert actions for previews / snapshot tests.
     static let noop = PendingWorkActions(
-        retryItem: { _ in }, retryAll: {}, discardItem: { _ in }, exportItem: { _ in },
+        retryItem: { _ in }, retryAll: {}, discardItem: { _ in false }, exportItem: { _ in },
         linkDesign: { _, _ in }, openDraft: { _ in }, openDesign: { _ in }, dismiss: {}
     )
 }
@@ -54,6 +54,10 @@ struct PendingWorkView: View {
 
     @State private var detailItem: RecoveryItem?
     @State private var linkingDesign: OrphanDesignSnapshot?
+    @State private var openRowID: String?
+    @State private var pendingDiscardItem: RecoveryItem?
+    @State private var discardErrorMessage: String?
+    @State private var discardInFlightID: String?
 
     private var showRetryAll: Bool { inventory.attentionCount > 0 }
 
@@ -107,7 +111,7 @@ struct PendingWorkView: View {
                 now: now,
                 onRetry: { actions.retryItem(item) },
                 onExport: { actions.exportItem(item) },
-                onDiscard: { actions.discardItem(item) }
+                onDiscard: { await actions.discardItem(item) }
             )
         }
         .sheet(item: $linkingDesign) { design in
@@ -115,6 +119,51 @@ struct PendingWorkView: View {
                 searchProvider: searchLinkTargets,
                 onSelect: { target in actions.linkDesign(design.id, target) }
             )
+        }
+        .confirmationDialog(
+            SyncStatusCopy.PendingWork.discardConfirmTitle,
+            isPresented: discardConfirmationIsPresented,
+            titleVisibility: .visible
+        ) {
+            if let item = pendingDiscardItem {
+                Button(
+                    SyncStatusCopy.PendingWork.deleteAction,
+                    role: .destructive
+                ) {
+                    pendingDiscardItem = nil
+                    Task { @MainActor in
+                        guard discardInFlightID == nil else { return }
+                        discardInFlightID = item.id
+                        let succeeded = await actions.discardItem(item)
+                        discardInFlightID = nil
+                        if !succeeded {
+                            discardErrorMessage =
+                                SyncStatusCopy.PendingWork.discardFailure
+                        }
+                    }
+                }
+            }
+            Button(
+                SyncStatusCopy.PendingWork.cancelAction,
+                role: .cancel
+            ) {
+                pendingDiscardItem = nil
+            }
+        } message: {
+            Text(discardConfirmationBody)
+        }
+        .alert(
+            SyncStatusCopy.PendingWork.discardFailureTitle,
+            isPresented: discardErrorIsPresented
+        ) {
+            Button(
+                SyncStatusCopy.PendingWork.acknowledgeAction,
+                role: .cancel
+            ) {
+                discardErrorMessage = nil
+            }
+        } message: {
+            Text(discardErrorMessage ?? "")
         }
     }
 
@@ -156,37 +205,105 @@ struct PendingWorkView: View {
     private func entryView(for item: RecoveryItem) -> some View {
         switch item {
         case .bundle(let bundle):
-            PendingWorkBundleCard(
-                bundle: bundle,
-                now: now,
-                onTap: { detailItem = item },
-                onRetry: { actions.retryItem(item) }
-            )
+            swipeRow(for: item) {
+                PendingWorkBundleCard(
+                    bundle: bundle,
+                    now: now,
+                    onTap: { detailItem = item },
+                    onRetry: { actions.retryItem(item) }
+                )
+            }
         case .op, .autocreate, .photos:
-            PendingWorkEntryRow(
-                item: item,
-                now: now,
-                onTap: { detailItem = item },
-                onRetry: { actions.retryItem(item) }
-            )
+            swipeRow(for: item) {
+                PendingWorkEntryRow(
+                    item: item,
+                    now: now,
+                    onTap: { detailItem = item },
+                    onRetry: { actions.retryItem(item) }
+                )
+            }
         case .quarantinedVisit:
-            PendingWorkEntryRow(
-                item: item,
-                now: now,
-                onTap: { detailItem = item },
-                onRetry: {},
-                showsRetry: false
-            )
+            swipeRow(for: item) {
+                PendingWorkEntryRow(
+                    item: item,
+                    now: now,
+                    onTap: { detailItem = item },
+                    onRetry: {},
+                    showsRetry: false
+                )
+            }
         case .draft(let draft):
-            PendingWorkDraftRow(draft: draft, now: now, onOpen: { actions.openDraft(draft) })
+            swipeRow(for: item) {
+                PendingWorkDraftRow(
+                    draft: draft,
+                    now: now,
+                    onOpen: { actions.openDraft(draft) }
+                )
+            }
         case .orphanDesign(let design):
-            PendingWorkOrphanRow(
-                design: design,
-                now: now,
-                onOpen: { actions.openDesign(design) },
-                onLink: { linkingDesign = design }
-            )
+            swipeRow(for: item) {
+                PendingWorkOrphanRow(
+                    design: design,
+                    now: now,
+                    onOpen: { actions.openDesign(design) },
+                    onLink: { linkingDesign = design }
+                )
+            }
         }
+    }
+
+    private func swipeRow<Content: View>(
+        for item: RecoveryItem,
+        @ViewBuilder content: @escaping () -> Content
+    ) -> some View {
+        OPSSwipeRow(
+            rowID: item.id,
+            trailing: discardActions(for: item),
+            allowsFullSwipe: false,
+            openRowID: $openRowID,
+            content: content
+        )
+    }
+
+    private func discardActions(for item: RecoveryItem) -> [OPSRowAction] {
+        guard discardInFlightID == nil,
+              item.discardPolicy.canDiscard else { return [] }
+        return [
+            OPSRowAction(
+                id: "delete:\(item.id)",
+                label: SyncStatusCopy.PendingWork.deleteAction,
+                menuTitle: SyncStatusCopy.PendingWork.deleteAction,
+                icon: OPSStyle.Icons.delete,
+                tone: OPSStyle.Colors.rose,
+                isDestructive: true,
+                handler: { pendingDiscardItem = item }
+            ),
+        ]
+    }
+
+    private var discardConfirmationIsPresented: Binding<Bool> {
+        Binding(
+            get: { pendingDiscardItem != nil },
+            set: { isPresented in
+                if !isPresented { pendingDiscardItem = nil }
+            }
+        )
+    }
+
+    private var discardErrorIsPresented: Binding<Bool> {
+        Binding(
+            get: { discardErrorMessage != nil },
+            set: { isPresented in
+                if !isPresented { discardErrorMessage = nil }
+            }
+        )
+    }
+
+    private var discardConfirmationBody: String {
+        guard let scope = pendingDiscardItem?.discardPolicy.confirmationScope else {
+            return SyncStatusCopy.PendingWork.discardConfirmBody
+        }
+        return SyncStatusCopy.PendingWork.discardConfirmationBody(for: scope)
     }
 
     // MARK: - Floating RETRY ALL (the screen's single accent element · §8)
@@ -337,7 +454,7 @@ struct PendingWorkScreen: View {
         PendingWorkActions(
             retryItem: { retry(item: $0) },
             retryAll: { retryAll() },
-            discardItem: { discard(item: $0) },
+            discardItem: { await discard(item: $0) },
             exportItem: { export(item: $0) },
             linkDesign: { link(designId: $0, to: $1) },
             openDraft: { openDraft($0) },
@@ -455,24 +572,29 @@ struct PendingWorkScreen: View {
 
     // MARK: - Discard (spec §4 semantics)
 
-    private func discard(item: RecoveryItem) {
+    private func discard(item: RecoveryItem) async -> Bool {
+        guard item.discardPolicy.canDiscard else { return false }
+
+        let succeeded: Bool
         switch item {
-        case .op(let snapshot, _, _):
-            // Create → the local entity was never sent: delete it, then drop the
-            // op. Update/link → cancel the op only; server state wins on inbound.
-            if snapshot.operationType == "create" {
-                deleteLocalEntity(entityType: snapshot.entityType, entityId: snapshot.entityId)
-            }
-            cancelOperation(id: snapshot.id)
         case .autocreate(let snapshot, _, _):
+            let normalizedClientId = snapshot.clientId.lowercased()
+            guard queue.parkedRequests.contains(where: {
+                $0.clientId.lowercased() == normalizedClientId
+            }) else {
+                refresh()
+                return false
+            }
             queue.removeRequest(clientId: snapshot.clientId)
+            succeeded = !(queue.activeRequests + queue.parkedRequests)
+                .contains { $0.clientId.lowercased() == normalizedClientId }
         case .photos(let grouped, _):
-            deletePhotos(ids: grouped.map(\.id))
+            succeeded = deletePhotos(ids: grouped.map(\.id))
         case .bundle(let bundle):
-            discardBundle(bundle)
+            succeeded = discardBundle(bundle)
         case .quarantinedVisit(let visit):
             do {
-                try SiteVisitRecoveryVault.shared.discardQuarantinedWork(
+                succeeded = try SiteVisitRecoveryVault.shared.discardQuarantinedWork(
                     id: visit.id,
                     userId: visit.userId,
                     companyId: visit.companyId,
@@ -481,38 +603,26 @@ struct PendingWorkScreen: View {
                 )
             } catch {
                 print("[PENDING_WORK] Quarantined site-visit discard failed: \(error)")
+                succeeded = false
             }
-        case .draft, .orphanDesign:
-            break
+        case .op, .draft, .orphanDesign:
+            succeeded = false
         }
-        try? modelContext.save()
+
         refresh()
+        return succeeded
     }
 
-    private func discardBundle(_ bundle: SiteVisitBundle) {
-        for opId in Set(bundle.syncOperationIds) {
-            if let op = fetchOperation(id: opId) {
-                if op.operationType == "create" {
-                    deleteLocalEntity(entityType: op.entityType, entityId: op.entityId)
-                }
-                dataController.syncEngine.cancelOperation(op)
-            }
+    private func discardBundle(_ bundle: SiteVisitBundle) -> Bool {
+        let packetOperations = bundle.siteVisitOperationIds.compactMap(fetchOperation)
+        guard !packetOperations.contains(where: { $0.status == "inProgress" }) else {
+            return false
         }
-        for member in bundle.members {
-            if let clientId = member.autocreateClientId {
-                queue.removeRequest(clientId: clientId)
-            } else if !member.photoIds.isEmpty {
-                deletePhotos(ids: member.photoIds)
-            }
-        }
-        // Remove a never-sent packet locally, or queue tenant-scoped tombstones
-        // when any part of the packet has already reached the server.
-        deleteVisitPacket(siteVisitId: bundle.siteVisitId)
-    }
 
-    private func cancelOperation(id: UUID) {
-        guard let op = fetchOperation(id: id) else { return }
-        dataController.syncEngine.cancelOperation(op)
+        // DELETE on a visit row covers the visit packet only. Client, lead,
+        // deck, and loose-photo work remain individually recoverable; this
+        // avoids a single swipe erasing records outside the confirmation copy.
+        return deleteVisitPacket(siteVisitId: bundle.siteVisitId)
     }
 
     private func fetchOperation(id: UUID) -> SyncOperation? {
@@ -521,32 +631,14 @@ struct PendingWorkScreen: View {
         return (try? modelContext.fetch(descriptor))?.first
     }
 
-    /// Hard-deletes a never-sent local entity for the field-created types that
-    /// surface here. Unmapped types fall back to op-cancel only (the sync record
-    /// is dropped; the local row lingers harmlessly) — no blind delete.
-    private func deleteLocalEntity(entityType: String, entityId: String) {
-        let target = entityId.lowercased()
-        switch entityType {
-        case "client":
-            deleteFirst(FetchDescriptor<Client>(predicate: #Predicate<Client> { $0.id == target }))
-        case "deckDesign":
-            deleteFirst(FetchDescriptor<DeckDesign>(predicate: #Predicate<DeckDesign> { $0.id == target }))
-        case "projectTask":
-            deleteFirst(FetchDescriptor<ProjectTask>(predicate: #Predicate<ProjectTask> { $0.id == target }))
-        case "project":
-            deleteFirst(FetchDescriptor<Project>(predicate: #Predicate<Project> { $0.id == target }))
-        case "opportunity":
-            deleteFirst(FetchDescriptor<Opportunity>(predicate: #Predicate<Opportunity> { $0.id == target }))
-        default:
-            break
-        }
-    }
-
-    private func deleteVisitPacket(siteVisitId: String) {
+    @discardableResult
+    private func deleteVisitPacket(siteVisitId: String) -> Bool {
         let visitDescriptor = FetchDescriptor<SiteVisit>(
             predicate: #Predicate<SiteVisit> { $0.id == siteVisitId }
         )
-        guard let visit = (try? modelContext.fetch(visitDescriptor))?.first else { return }
+        guard let visit = (try? modelContext.fetch(visitDescriptor))?.first else {
+            return false
+        }
         let artifactDescriptor = FetchDescriptor<SiteVisitCaptureArtifact>(
             predicate: #Predicate<SiteVisitCaptureArtifact> { $0.siteVisitId == siteVisitId }
         )
@@ -599,28 +691,39 @@ struct PendingWorkScreen: View {
                     }
                 }
             }
+            return true
         } catch {
             print("[PENDING_WORK] Site-visit discard save failed: \(error)")
+            return false
         }
     }
 
-    private func deletePhotos(ids: [String]) {
-        guard !ids.isEmpty else { return }
+    private func deletePhotos(ids: [String]) -> Bool {
+        guard !ids.isEmpty else { return false }
         let idSet = Set(ids)
         let descriptor = FetchDescriptor<LocalPhoto>()
-        guard let photos = try? modelContext.fetch(descriptor) else { return }
-        for photo in photos where idSet.contains(photo.id) {
-            if FileManager.default.fileExists(atPath: photo.localPath) {
-                try? FileManager.default.removeItem(atPath: photo.localPath)
-            }
-            modelContext.delete(photo)
+        guard let allPhotos = try? modelContext.fetch(descriptor) else { return false }
+        let photos = allPhotos.filter { idSet.contains($0.id) }
+        guard Set(photos.map(\.id)) == idSet,
+              photos.allSatisfy({ $0.status == "failed" }) else {
+            return false
         }
-    }
 
-    private func deleteFirst<T: PersistentModel>(_ descriptor: FetchDescriptor<T>) {
-        if let model = (try? modelContext.fetch(descriptor))?.first {
-            modelContext.delete(model)
+        let filePaths = photos.map(\.localPath)
+        do {
+            for photo in photos { modelContext.delete(photo) }
+            try modelContext.save()
+        } catch {
+            modelContext.rollback()
+            return false
         }
+
+        // The SwiftData receipt is authoritative. File cleanup is best-effort;
+        // an orphaned cache file is safer than reporting a deleted row as live.
+        for path in filePaths where FileManager.default.fileExists(atPath: path) {
+            try? FileManager.default.removeItem(atPath: path)
+        }
+        return true
     }
 
     // MARK: - Export

@@ -53,7 +53,7 @@ struct LeadPhotoViewer: View {
             VStack {
                 topBar
                 Spacer()
-                if canManage {
+                if canManage && currentItemCanDelete {
                     deleteBar
                 }
             }
@@ -92,6 +92,11 @@ struct LeadPhotoViewer: View {
 
     private var counterText: String {
         String(format: "%02d / %02d", min(currentIndex + 1, items.count), items.count)
+    }
+
+    private var currentItemCanDelete: Bool {
+        guard items.indices.contains(currentIndex) else { return false }
+        return items[currentIndex].canDeleteFromLead
     }
 
     private var deleteBar: some View {
@@ -140,13 +145,18 @@ struct LeadPhotoViewer: View {
     private func deleteCurrent() {
         guard items.indices.contains(currentIndex) else { return }
         let item = items[currentIndex]
+        guard item.canDeleteFromLead else { return }
+        let itemID = item.id
         isDeleting = true
 
         Task {
             let url: String
             switch item {
-            case .remote(let remoteURL): url = remoteURL
+            case .remote(let photo):     url = photo.storedURL
             case .queued(let pending):   url = pending.localURL
+            case .emailAttachment:
+                isDeleting = false
+                return
             }
 
             let ok = await LeadImageService.shared.deleteImage(url, from: opportunity)
@@ -155,12 +165,15 @@ struct LeadPhotoViewer: View {
                 ToastCenter.shared.present(Toast(label: Feedback.Err.deleteFailed, tone: .error))
                 return
             }
+            guard let removedIndex = items.firstIndex(where: { $0.id == itemID }) else { return }
             UINotificationFeedbackGenerator().notificationOccurred(.success)
-            items.remove(at: currentIndex)
+            items.remove(at: removedIndex)
             if items.isEmpty {
                 dismiss()
-            } else if currentIndex >= items.count {
-                currentIndex = items.count - 1
+            } else if currentIndex > removedIndex {
+                currentIndex -= 1
+            } else if currentIndex == removedIndex {
+                currentIndex = min(removedIndex, items.count - 1)
             }
         }
     }
@@ -201,8 +214,8 @@ private struct ZoomablePhotoPage: View {
     @ViewBuilder
     private var content: some View {
         switch item {
-        case .remote(let url):
-            AsyncImage(url: URL(string: url)) { phase in
+        case .remote(let photo):
+            AsyncImage(url: URL(string: photo.displayURL)) { phase in
                 switch phase {
                 case .success(let image):
                     image.resizable().scaledToFit()
@@ -229,6 +242,13 @@ private struct ZoomablePhotoPage: View {
                     .font(.system(size: 28))
                     .foregroundColor(OPSStyle.Colors.textMute)
             }
+        case .emailAttachment(let attachment):
+            LeadAttachmentPreview(
+                attachment: attachment,
+                maxPixelSize: LeadAttachmentContentLoader.viewerMaxPixelSize,
+                contentMode: .fit,
+                showsFailureMessage: true
+            )
         }
     }
 

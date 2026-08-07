@@ -176,10 +176,11 @@ struct SiteVisitProjectPayload: Equatable {
     let deckDesignIds: [String]
     let checklistAnswerIds: [String]
     let checklistLines: [String]
-    // Record fields — additive, defaulted, and declared LAST so every existing
-    // caller's memberwise init is unaffected. They travel into the site-visit
-    // packet so the SITE VISIT RECORD can name who was met on a teammate's
-    // device that holds none of the local artifacts.
+    var checklistItems: [SiteVisitPacketChecklistItem] = []
+    // Record fields — additive and defaulted so existing callers remain valid.
+    // They travel into the site-visit packet so the SITE VISIT RECORD can name
+    // who was met and preserve checklist anatomy on a teammate's device that
+    // holds none of the local artifacts.
     //
     // The lead's VALUE deliberately does not travel with them: the packet syncs
     // into a column OPS-Web renders ungated, so money is resolved at render
@@ -209,6 +210,7 @@ enum SiteVisitProjectPayloadBuilder {
                 }
                 return lhs.sortOrder < rhs.sortOrder
             }
+        let checklist = includedAnswers.compactMap(Self.checklistRepresentation)
 
         return SiteVisitProjectPayload(
             siteVisitId: siteVisitId,
@@ -221,35 +223,59 @@ enum SiteVisitProjectPayloadBuilder {
                 artifact.pipesToProjectDeckDesign ? artifact.deckDesignId : nil
             },
             checklistAnswerIds: includedAnswers.map(\.id),
-            checklistLines: includedAnswers.compactMap(Self.checklistLine),
+            checklistLines: checklist.map(\.legacyLine),
+            checklistItems: checklist.map(\.item),
             contactName: contactName,
             companyName: companyName
         )
     }
 
-    private static func checklistLine(from answer: SiteVisitChecklistAnswer) -> String? {
+    private struct ChecklistRepresentation {
+        let legacyLine: String
+        let item: SiteVisitPacketChecklistItem
+    }
+
+    private static func checklistRepresentation(
+        from answer: SiteVisitChecklistAnswer
+    ) -> ChecklistRepresentation? {
         let value = answer.answerValue
         let renderedValue: String
+        let artifactCount: Int
         switch answer.kind {
         case .checkbox:
             guard let boolValue = value.boolValue else { return nil }
             renderedValue = boolValue ? "YES" : "NO"
+            artifactCount = 0
         case .yesNoNA:
             guard let choice = value.choice?.trimmingCharacters(in: .whitespacesAndNewlines),
                   !choice.isEmpty else { return nil }
             renderedValue = choice.uppercased()
+            artifactCount = 0
         case .shortText, .longText, .measurement:
             guard let text = value.text?.trimmingCharacters(in: .whitespacesAndNewlines),
                   !text.isEmpty else { return nil }
             renderedValue = text
+            artifactCount = 0
         case .photo, .photoMarkup:
             guard !value.artifactIds.isEmpty else { return nil }
             renderedValue = "\(value.artifactIds.count) CAPTURED"
+            artifactCount = value.artifactIds.count
         case .deckDesign:
             guard let deckDesignId = value.deckDesignId,
                   !deckDesignId.isEmpty else { return nil }
             renderedValue = "DECK DESIGN \(deckDesignId)"
+            artifactCount = 1
         }
-        return "CHECKLIST :: \(answer.label): \(renderedValue)"
+
+        return ChecklistRepresentation(
+            legacyLine: "CHECKLIST :: \(answer.label): \(renderedValue)",
+            item: SiteVisitPacketChecklistItem(
+                fieldId: answer.fieldId,
+                label: answer.label,
+                value: renderedValue,
+                kind: answer.kind.rawValue,
+                artifactCount: artifactCount
+            )
+        )
     }
 }

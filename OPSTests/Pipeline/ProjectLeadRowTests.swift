@@ -8,9 +8,9 @@
 //  project that obviously belongs to a won lead had no affordance at all.
 //
 //  These pin the project-side row's state machine and its candidate rule. The
-//  row is HIDDEN rather than empty when nothing can be matched: an affordance
-//  advertising an impossible action is worse than no affordance, and the
-//  server only accepts a link whose target shares the lead's address.
+//  row is HIDDEN rather than empty when nothing can be matched. Address and
+//  client identity rank suggestions, but never remove a legitimate company-
+//  scoped won lead from an operator's manual picker.
 //
 
 import XCTest
@@ -169,28 +169,26 @@ final class ProjectLeadRowTests: XCTestCase {
         XCTAssertEqual(candidates.map(\.id), ["same"])
     }
 
-    /// The server forbids linking across addresses, so a same-client lead at a
-    /// different address is NOT a candidate — offering it would dead-end the
-    /// operator at commit.
-    func testSameClientDifferentAddressIsNotACandidate() {
+    /// Address is a suggestion, never a manual-link gate.
+    func testSameClientDifferentAddressRemainsACandidate() {
         let candidates = ProjectLeadRow.matchableLeads(
             project: project,
             leads: [lead(id: "elsewhere", address: "12 Douglas St, Victoria BC")]
         )
-        XCTAssertTrue(candidates.isEmpty)
+        XCTAssertEqual(candidates.map(\.id), ["elsewhere"])
     }
 
-    /// A lead with no address cannot prove sameness — the server rejects it.
-    func testAddresslessLeadIsNotACandidate() {
+    /// Missing address cannot hide a lead from an explicit operator choice.
+    func testAddresslessLeadRemainsACandidate() {
         let candidates = ProjectLeadRow.matchableLeads(
             project: project,
             leads: [lead(id: "blank", address: "   ")]
         )
-        XCTAssertTrue(candidates.isEmpty)
+        XCTAssertEqual(candidates.map(\.id), ["blank"])
     }
 
-    /// A project with no address of its own has nothing to match against.
-    func testProjectWithoutAnAddressHasNoCandidates() {
+    /// A project without an address still exposes the complete manual list.
+    func testProjectWithoutAnAddressStillHasCandidates() {
         let candidates = ProjectLeadRow.matchableLeads(
             project: ProjectLeadRow.ProjectContext(
                 companyId: "company-1",
@@ -199,7 +197,7 @@ final class ProjectLeadRowTests: XCTestCase {
             ),
             leads: [lead(id: "lead-1")]
         )
-        XCTAssertTrue(candidates.isEmpty)
+        XCTAssertEqual(candidates.map(\.id), ["lead-1"])
     }
 
     /// Company isolation is absolute, whatever the address says.
@@ -211,21 +209,21 @@ final class ProjectLeadRowTests: XCTestCase {
         XCTAssertTrue(candidates.isEmpty)
     }
 
-    /// The client is not a filter — the server does not require it — but when
-    /// several leads share an address, the one on this project's client is the
-    /// likelier answer and must be the first thing the operator reads.
-    func testSameClientCandidatesAreOrderedFirst() {
+    /// Exact address is the strongest suggestion, then same client; neither is
+    /// a filter and the remaining eligible leads preserve their store order.
+    func testAddressThenClientSuggestionsAreOrderedFirst() {
         let candidates = ProjectLeadRow.matchableLeads(
             project: project,
             leads: [
-                lead(id: "other-client-a", clientId: "client-9"),
-                lead(id: "same-client", clientId: "client-1"),
-                lead(id: "other-client-b", clientId: nil),
+                lead(id: "unrelated", clientId: "client-9", address: "12 Douglas St"),
+                lead(id: "same-client", clientId: "client-1", address: "88 King St"),
+                lead(id: "same-address", clientId: nil),
+                lead(id: "exact", clientId: "client-1"),
             ]
         )
         XCTAssertEqual(
             candidates.map(\.id),
-            ["same-client", "other-client-a", "other-client-b"]
+            ["exact", "same-address", "same-client", "unrelated"]
         )
     }
 }

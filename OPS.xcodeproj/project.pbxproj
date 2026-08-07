@@ -539,7 +539,7 @@
 			);
 			outputPaths = (
 			);
-			runOnlyForDeploymentPostprocessing = 0;
+			runOnlyForDeploymentPostprocessing = 1;
 			shellPath = /bin/sh;
 			shellScript = "# Only upload dSYMs during archive builds — Debug builds don't generate dSYMs.\n# -gsp passes the plist path explicitly so the Firebase run binary doesn't have\n# to discover GOOGLE_APP_ID via the build environment (which Xcode 16's\n# PBXFileSystemSynchronizedRootGroup doesn't expose to ScriptBuildPhases the\n# way the legacy file references did). Belt-and-suspenders with the inputPaths\n# entry above so Xcode also declares the plist as a build dependency.\nif [ \"$ACTION\" = \"install\" ]; then\n  \"${BUILD_DIR%/Build/*}/SourcePackages/checkouts/firebase-ios-sdk/Crashlytics/run\" -gsp \"${SRCROOT}/OPS/GoogleService-Info.plist\"\nfi\n";
 		};

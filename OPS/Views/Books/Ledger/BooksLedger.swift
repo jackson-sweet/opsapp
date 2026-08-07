@@ -251,9 +251,9 @@ struct BooksLedger: View {
     // MARK: - Expenses
 
     private var expenseRows: [ExpenseDTO] {
-        expenseVM.expenses
-            .filter(expenseFilter.matches)
-            .sorted { expenseRank($0) < expenseRank($1) }
+        BooksExpenseOrdering.sorted(
+            expenseVM.expenses.filter(expenseFilter.matches)
+        )
     }
 
     @ViewBuilder
@@ -280,17 +280,6 @@ struct BooksLedger: View {
                 }
                 BooksLedgerEndMarker(text: "\(expenseRows.count) EXPENSES")
             }
-        }
-    }
-
-    private func expenseRank(_ exp: ExpenseDTO) -> Int {
-        if exp.receiptImageUrl?.isEmpty ?? true { return 0 }
-        switch ExpenseStatus(rawValue: exp.status) {
-        case .submitted:             return 1
-        case .draft:                 return 2
-        case .approved, .reimbursed: return 3
-        case .rejected:              return 4
-        case nil:                    return 5
         }
     }
 
@@ -383,5 +372,37 @@ struct BooksLedger: View {
         let allowed = expense.submittedBy == user.id || user.role == .admin || user.role == .owner
         let status = ExpenseStatus(rawValue: expense.status)
         return allowed && status != .approved && status != .reimbursed
+    }
+}
+
+/// Spend-log ordering contract: cleared money first, then newest expense.
+/// Receipt completeness remains visible in the row status but never hijacks
+/// chronology or pushes approved work beneath drafts.
+enum BooksExpenseOrdering {
+    static func sorted(_ expenses: [ExpenseDTO]) -> [ExpenseDTO] {
+        expenses.sorted(by: comesBefore)
+    }
+
+    static func comesBefore(_ lhs: ExpenseDTO, _ rhs: ExpenseDTO) -> Bool {
+        let lhsApproved = isApproved(lhs)
+        let rhsApproved = isApproved(rhs)
+        if lhsApproved != rhsApproved { return lhsApproved }
+
+        let lhsDate = recencyDate(lhs)
+        let rhsDate = recencyDate(rhs)
+        if lhsDate != rhsDate { return lhsDate > rhsDate }
+        return lhs.id < rhs.id
+    }
+
+    private static func isApproved(_ expense: ExpenseDTO) -> Bool {
+        let status = ExpenseStatus(rawValue: expense.status)
+        return status == .approved || status == .reimbursed
+    }
+
+    private static func recencyDate(_ expense: ExpenseDTO) -> Date {
+        ExpenseBuckets.parseDate(expense.expenseDate)
+            ?? ExpenseBuckets.parseDate(expense.updatedAt)
+            ?? ExpenseBuckets.parseDate(expense.createdAt)
+            ?? .distantPast
     }
 }

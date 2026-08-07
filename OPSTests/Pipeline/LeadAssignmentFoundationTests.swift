@@ -188,7 +188,8 @@ final class LeadAssignmentFoundationTests: XCTestCase {
             title: "3998 Holland Ave",
             address: "3998 Holland Ave, Victoria bc",
             status: nil,
-            linkState: .matchable
+            linkState: .matchable,
+            isAddressSuggestion: true
         )
         let reviewOnlyProject = ConvertToProjectSheet.RelatedProjectRef(
             id: "project-review",
@@ -202,7 +203,8 @@ final class LeadAssignmentFoundationTests: XCTestCase {
             title: "Already linked project",
             address: "3998 Holland Ave, Victoria bc",
             status: .accepted,
-            linkState: .linkedElsewhere
+            linkState: .linkedElsewhere,
+            isAddressSuggestion: true
         )
 
         XCTAssertEqual(matchCandidate.interaction, .match)

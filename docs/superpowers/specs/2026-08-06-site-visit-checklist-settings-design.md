@@ -50,4 +50,3 @@ Guide title: `CHECKLISTS`
 Guide body: `Site visit checklists are company-wide. Edit fields or build a new visit type in Settings.`
 
 Settings support line: `Changes apply to future visits. Existing visit records stay unchanged.`
-

@@ -202,6 +202,25 @@ struct PendingWorkRetryGlyph: View {
     }
 }
 
+/// Thirty days is a review threshold, never an expiry. The tag is deliberately
+/// quiet and non-interactive so RETRY / OPEN / LINK remain the row's clear move.
+struct PendingWorkReviewTag: View {
+    let item: RecoveryItem
+    let now: Date
+
+    @ViewBuilder
+    var body: some View {
+        if item.reviewState(now: now) == .stale30Days {
+            Text(SyncStatusCopy.PendingWork.staleReviewTag)
+                .font(OPSStyle.Typography.nanoLabel)
+                .foregroundColor(OPSStyle.Colors.tan)
+                .accessibilityLabel(
+                    SyncStatusCopy.PendingWork.staleReviewAccessibility
+                )
+        }
+    }
+}
+
 // MARK: - Loose entry row (op / autocreate / photos)
 
 /// A single scan row for a loose sync item. Whole row taps to the detail sheet;
@@ -237,6 +256,8 @@ struct PendingWorkEntryRow: View {
             }
 
             Spacer(minLength: OPSStyle.Layout.spacing1)
+
+            PendingWorkReviewTag(item: item, now: now)
 
             Text(PendingWorkVisuals.relativeTime(from: item.sortDate, now: now))
                 .font(OPSStyle.Typography.metadata)
@@ -286,6 +307,8 @@ struct PendingWorkBundleCard: View {
                         .lineLimit(1)
 
                     Spacer(minLength: OPSStyle.Layout.spacing1)
+
+                    PendingWorkReviewTag(item: .bundle(bundle), now: now)
 
                     Text(PendingWorkVisuals.relativeTime(from: bundle.createdAt, now: now))
                         .font(OPSStyle.Typography.metadata)
@@ -375,6 +398,8 @@ struct PendingWorkDraftRow: View {
 
             Spacer(minLength: OPSStyle.Layout.spacing1)
 
+            PendingWorkReviewTag(item: .draft(draft), now: now)
+
             Image(systemName: "arrow.right")
                 .font(.system(size: 13, weight: .semibold))
                 .foregroundColor(OPSStyle.Colors.text3)
@@ -415,6 +440,8 @@ struct PendingWorkOrphanRow: View {
             }
 
             Spacer(minLength: OPSStyle.Layout.spacing1)
+
+            PendingWorkReviewTag(item: .orphanDesign(design), now: now)
 
             Button(action: onLink) {
                 Text(SyncStatusCopy.PendingWork.linkAction)

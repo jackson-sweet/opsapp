@@ -132,6 +132,7 @@ final class UnifiedLogActivityViewModel: ObservableObject {
     private var modelContext: ModelContext?
     private var activityRepository: ActivityRepository?
     private var opportunityRepository: OpportunityRepository?
+    private let leadSummaryRefreshService: any LeadSummaryRefreshing
     private var cancellables = Set<AnyCancellable>()
 
     /// Guards `configure()` against re-running on a second `.onAppear` (a
@@ -147,8 +148,12 @@ final class UnifiedLogActivityViewModel: ObservableObject {
 
     // MARK: - Init
 
-    init(entry: Entry) {
+    init(
+        entry: Entry,
+        leadSummaryRefreshService: any LeadSummaryRefreshing = LeadSummaryRefreshService.shared
+    ) {
         self.entry = entry
+        self.leadSummaryRefreshService = leadSummaryRefreshService
 
         switch entry {
         case .genericFAB:
@@ -492,6 +497,15 @@ final class UnifiedLogActivityViewModel: ObservableObject {
                 resolvedOpportunityId = opp.id
                 opp.lastActivityAt = Date()
                 try? modelContext?.save()
+
+                // The activity row is already durable. Refresh Phase C in the
+                // background so a model/network outage cannot turn a valid
+                // operator entry into a failed save.
+                let opportunityId = opp.id
+                let refresher = leadSummaryRefreshService
+                Task {
+                    await refresher.requestRefresh(opportunityId: opportunityId)
+                }
             }
 
             target = resolvedTarget

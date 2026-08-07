@@ -77,6 +77,42 @@ final class LeadPhotoOptimisticDisplayTests: XCTestCase {
         XCTAssertEqual(items[1], .importing("reservation-second"))
     }
 
+    func test_storedEmailPhotosFollowManualPhotosAndCannotBeDeleted() {
+        let attachment = LeadAttachment(
+            id: "attachment-1",
+            filename: "site.jpg",
+            mimeType: "image/jpeg",
+            sourceUrl: nil,
+            fromEmail: "client@example.com",
+            ingestStatus: "stored",
+            occurredAt: "2026-08-07T12:00:00Z",
+            createdAt: "2026-08-07T12:00:00Z"
+        )
+
+        let items = LeadPhotoStripPresentation.items(
+            reservationIDs: [],
+            queued: [],
+            remoteURLs: [
+                "  https://example.test/manual.jpg  ",
+                "  https://example.test/manual.jpg  ",
+                "   "
+            ],
+            emailPhotoAttachments: [attachment]
+        )
+
+        XCTAssertEqual(
+            items.map(\.id),
+            ["https://example.test/manual.jpg", "email:attachment-1"]
+        )
+        XCTAssertFalse(LeadPhotoItem.emailAttachment(attachment).canDeleteFromLead)
+        guard case .photo(.remote(let remotePhoto)) = items[0] else {
+            return XCTFail("Expected normalized manual photo first")
+        }
+        XCTAssertEqual(remotePhoto.displayURL, "https://example.test/manual.jpg")
+        XCTAssertEqual(remotePhoto.storedURL, "  https://example.test/manual.jpg  ")
+        XCTAssertTrue(LeadPhotoItem.remote(remotePhoto).canDeleteFromLead)
+    }
+
     func test_drainReconciliationPreservesPhotoQueuedAfterSnapshot() {
         let snapshotItem = pending(localURL: "local://project_images/snapshot.jpg")
         let failedSnapshotItem = pending(localURL: "local://project_images/failed.jpg")

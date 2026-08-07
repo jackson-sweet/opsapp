@@ -138,7 +138,7 @@ final class SiteVisitPacketNoteTests: XCTestCase {
 
         let permitted: Set<String> = [
             "site_visit_id", "photo_count", "measurements", "notes",
-            "checklist", "address", "contact_name", "company_name", "deck_design_id"
+            "checklist", "checklist_items", "address", "contact_name", "company_name", "deck_design_id"
         ]
         XCTAssertTrue(
             Set(metadata.keys).isSubset(of: permitted),

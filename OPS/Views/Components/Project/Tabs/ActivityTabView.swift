@@ -16,6 +16,10 @@ struct ActivityTabView: View {
     let onShowNoteImagePicker: () -> Void
     let onPhotoTap: ([String], Int) -> Void
     var onProjectPhotoTap: ((Int) -> Void)? = nil
+    /// The proxy for ProjectDetails' actual vertical ScrollView. A local
+    /// ScrollViewReader has no scrollable descendant and cannot lift this
+    /// composer above the keyboard.
+    let scrollProxy: ScrollViewProxy
     @Binding var noteFieldFocused: Bool
 
     @Environment(\.tutorialMode) private var tutorialMode
@@ -24,45 +28,43 @@ struct ActivityTabView: View {
     @FocusState private var isTextFieldFocused: Bool
 
     var body: some View {
-        ScrollViewReader { proxy in
-            VStack(alignment: .leading, spacing: 0) {
-                // Project photos
-                projectPhotosSection
+        VStack(alignment: .leading, spacing: 0) {
+            // Project photos
+            projectPhotosSection
 
-                // Compose bar
-                composeBar
-                    .id("composeBar")
+            // Compose bar
+            composeBar
+                .id("composeBar")
 
-                // Notes feed
-                notesFeed
+            // Notes feed
+            notesFeed
 
-                // Bottom spacer for scroll
-                Spacer()
-                    .frame(height: 200)
-            }
-            // Sync FocusState ↔ Binding
-            .onChange(of: isTextFieldFocused) { _, newValue in
-                noteFieldFocused = newValue
-                if newValue {
-                    // Scroll compose bar into view above keyboard
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                        withAnimation(OPSStyle.Animation.standard) {
-                            proxy.scrollTo("composeBar", anchor: .bottom)
-                        }
+            // Bottom spacer for scroll
+            Spacer()
+                .frame(height: 200)
+        }
+        // Sync FocusState ↔ Binding
+        .onChange(of: isTextFieldFocused) { _, newValue in
+            noteFieldFocused = newValue
+            if newValue {
+                // Scroll compose bar into view above keyboard
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                    withAnimation(OPSStyle.Animation.standard) {
+                        scrollProxy.scrollTo("composeBar", anchor: .bottom)
                     }
                 }
             }
-            .onChange(of: noteFieldFocused) { _, newValue in
-                if newValue { isTextFieldFocused = true }
-            }
-            .onAppear {
-                NotificationCenter.default.post(name: Notification.Name("WizardActivityTabViewed"), object: nil)
-            }
-            .onReceive(NotificationCenter.default.publisher(for: Notification.Name("WizardScrollToTarget"))) { notification in
-                if let stepId = notification.userInfo?["stepId"] as? String {
-                    withAnimation {
-                        proxy.scrollTo("wizard_active_\(stepId)", anchor: .top)
-                    }
+        }
+        .onChange(of: noteFieldFocused) { _, newValue in
+            if newValue { isTextFieldFocused = true }
+        }
+        .onAppear {
+            NotificationCenter.default.post(name: Notification.Name("WizardActivityTabViewed"), object: nil)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("WizardScrollToTarget"))) { notification in
+            if let stepId = notification.userInfo?["stepId"] as? String {
+                withAnimation {
+                    scrollProxy.scrollTo("wizard_active_\(stepId)", anchor: .top)
                 }
             }
         }

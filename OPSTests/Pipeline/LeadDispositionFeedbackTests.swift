@@ -3,7 +3,7 @@
 //  OPSTests
 //
 //  Phase C lead correction contract: reason vocabulary, canonical outcomes,
-//  disabled-mode routing, one-tap semantics, DTO decoding, and guarded Undo
+//  disabled-mode routing, deliberate selection semantics, DTO decoding, and guarded Undo
 //  state application.
 //
 
@@ -71,7 +71,7 @@ final class LeadDispositionFeedbackTests: XCTestCase {
         XCTAssertTrue(LeadDispositionReason.notAFit.changesLifecycle)
     }
 
-    func testPhaseCRouteIsStructuredAndStandardReasonsSubmitImmediately() {
+    func testPhaseCRouteIsStructuredAndStandardReasonsRequireDeliberateCommitment() {
         XCTAssertEqual(
             LeadDispositionInteractionPolicy.route(
                 phaseCEnabled: true,
@@ -80,9 +80,80 @@ final class LeadDispositionFeedbackTests: XCTestCase {
             .structuredReason
         )
         for reason in LeadDispositionReason.standardReasons {
-            XCTAssertEqual(reason.selectionBehavior, .submitImmediately)
+            XCTAssertEqual(reason.selectionBehavior, .selectThenSubmit)
             XCTAssertFalse(reason.requiresSecondConfirmation)
         }
+    }
+
+    func testReasonSelectionDoesNotBecomeARequestUntilSubmitBegins() {
+        var state = LeadDispositionReasonSelectionState()
+
+        XCTAssertNil(state.selectedReason)
+        XCTAssertFalse(state.canSubmit)
+        XCTAssertNil(state.beginSubmission())
+
+        state.select(.spam)
+
+        XCTAssertEqual(state.selectedReason, .spam)
+        XCTAssertTrue(state.canSubmit)
+        XCTAssertFalse(state.isSubmitting)
+        XCTAssertNil(state.inlineError)
+
+        XCTAssertEqual(state.beginSubmission(), .spam)
+        XCTAssertTrue(state.isSubmitting)
+        XCTAssertFalse(state.canSubmit)
+    }
+
+    func testFailedReasonSubmissionKeepsSelectionAndExposesInlineRetry() {
+        var state = LeadDispositionReasonSelectionState()
+        state.select(.vendorSales)
+        XCTAssertEqual(state.beginSubmission(), .vendorSales)
+
+        state.finishSubmission(succeeded: false)
+
+        XCTAssertEqual(state.selectedReason, .vendorSales)
+        XCTAssertFalse(state.isSubmitting)
+        XCTAssertTrue(state.canSubmit)
+        XCTAssertEqual(state.inlineError, "COULD NOT UPDATE LEAD · TRY AGAIN")
+    }
+
+    func testSubmittingReasonRejectsDuplicateRequestsAndSelectionChanges() {
+        var state = LeadDispositionReasonSelectionState()
+        state.select(.spam)
+
+        XCTAssertEqual(state.beginSubmission(), .spam)
+        XCTAssertNil(state.beginSubmission())
+
+        state.select(.other)
+
+        XCTAssertEqual(state.selectedReason, .spam)
+        XCTAssertTrue(state.isSubmitting)
+    }
+
+    func testChangingReasonAfterFailureClearsOnlyTheInlineError() {
+        var state = LeadDispositionReasonSelectionState()
+        state.select(.spam)
+        _ = state.beginSubmission()
+        state.finishSubmission(succeeded: false)
+
+        state.select(.other)
+
+        XCTAssertEqual(state.selectedReason, .other)
+        XCTAssertNil(state.inlineError)
+        XCTAssertTrue(state.canSubmit)
+    }
+
+    func testSuccessfulReasonSubmissionClearsTransientState() {
+        var state = LeadDispositionReasonSelectionState()
+        state.select(.testTraffic)
+        _ = state.beginSubmission()
+
+        state.finishSubmission(succeeded: true)
+
+        XCTAssertNil(state.selectedReason)
+        XCTAssertNil(state.inlineError)
+        XCTAssertFalse(state.isSubmitting)
+        XCTAssertFalse(state.canSubmit)
     }
 
     func testDisabledRoutePreservesExistingEducationAndConfirmation() {

@@ -1450,6 +1450,11 @@ class DataController: ObservableObject {
         // signed-out user's directory. Safe no-op if nothing is running.
         PhotoPrefetchService.shared.cancelPrefetch()
 
+        // Private lead-file bytes and decoded previews are session-scoped.
+        // Cancel and invalidate them synchronously before auth is torn down so
+        // a late request from the old operator cannot repopulate either cache.
+        LeadAttachmentContentLoader.resetForLogout()
+
         // Capture the current user id BEFORE clearAuthentication() wipes it,
         // so SpotlightIndexManager.clearAll can remove the user-scoped backfill
         // flag. Without this, the async Task below would read a nil currentUserId
@@ -5732,55 +5737,243 @@ class DataController: ObservableObject {
 
     // MARK: - Restore Operations (Trash / Undo)
 
-    /// Clear the soft-delete tombstone on a project and push the change.
-    /// Used by Settings > Trash to let admins bring back accidentally
-    /// deleted projects. Sync op uses NSNull() so PostgREST writes an
-    /// actual SQL NULL instead of the string "null".
-    @MainActor
-    func restoreProject(_ project: Project) async throws {
-        project.deletedAt = nil
-        project.needsSync = true
-        try? modelContext?.save()
+    typealias TrashRecoveryOperationStager = (
+        [SyncEngine.BulkOperationSpec],
+        ModelContext
+    ) throws -> [SyncOperation]
 
-        syncEngine.recordOperation(
-            entityType: .project,
-            entityId: project.id,
-            operationType: "update",
-            changedFields: ["deleted_at": NSNull()]
-        )
-        print("[DataController] Project restored: \(project.id)")
+    private enum TrashRecoveryTransactionFailure: Error {
+        case stagingFailed
+        case incompleteLedger
     }
 
-    /// Clear the soft-delete tombstone on a client and push the change.
+    /// Restores one Trash record, or a task plus its deleted Project parent, as
+    /// one durable local transaction. Tombstone removal and the complete,
+    /// parent-first outbound ledger batch commit together or neither commits.
     @MainActor
-    func restoreClient(_ client: Client) async throws {
-        client.deletedAt = nil
-        client.needsSync = true
-        try? modelContext?.save()
-
-        syncEngine.recordOperation(
-            entityType: .client,
-            entityId: client.id,
-            operationType: "update",
-            changedFields: ["deleted_at": NSNull()]
+    func restoreTrash(_ plan: TrashRecoveryPlan) async throws -> TrashRestoreResult {
+        guard let syncEngine else {
+            throw TrashRestoreError.contextUnavailable
+        }
+        return try await restoreTrash(
+            plan,
+            stagingOperationsWith: { specs, context in
+                try syncEngine.stageOperationsForTransaction(specs, in: context)
+            }
         )
-        print("[DataController] Client restored: \(client.id)")
     }
 
-    /// Clear the soft-delete tombstone on a task and push the change.
+    /// Injectable transaction seam used by durability regression coverage.
+    /// Production always supplies SyncEngine's encode-first stager above.
     @MainActor
-    func restoreTask(_ task: ProjectTask) async throws {
-        task.deletedAt = nil
-        task.needsSync = true
-        try? modelContext?.save()
+    func restoreTrash(
+        _ plan: TrashRecoveryPlan,
+        stagingOperationsWith stageOperations: TrashRecoveryOperationStager
+    ) async throws -> TrashRestoreResult {
+        guard let context = modelContext, let syncEngine else {
+            throw TrashRestoreError.contextUnavailable
+        }
+        guard plan.isRestorable else {
+            if plan.availability == .unsupported(.projectNotOnDevice) {
+                throw TrashRestoreError.projectNotOnDevice
+            }
+            throw TrashRestoreError.nothingToRestore
+        }
 
-        syncEngine.recordOperation(
-            entityType: .projectTask,
-            entityId: task.id,
-            operationType: "update",
-            changedFields: ["deleted_at": NSNull()]
-        )
-        print("[DataController] Task restored: \(task.id)")
+        // Defense in depth: callers cannot restore a task while its required
+        // Project parent remains tombstoned, even if they hand us a stale or
+        // malformed plan instead of one produced by TrashRecoveryPolicy.
+        if plan.primary.kind == .task {
+            let task = try trashTask(id: plan.primary.id, context: context)
+            guard let project = try trashProjectIfPresent(id: task.projectId, context: context) else {
+                throw TrashRestoreError.projectNotOnDevice
+            }
+            let includesParent = plan.restoreOrder.contains {
+                $0.kind == .project && $0.id == project.id
+            }
+            if project.deletedAt != nil, !includesParent {
+                throw TrashRestoreError.parentRestoreRequired(project.title)
+            }
+        }
+
+        // ModelContext.transaction owns every change made after this point.
+        // Flush any unrelated pending edits first so rollback can be scoped to
+        // this recovery decision without discarding another feature's work.
+        do {
+            if context.hasChanges {
+                try context.save()
+            }
+        } catch {
+            throw TrashRestoreError.persistenceFailed(error.localizedDescription)
+        }
+
+        let operationIDsBeforeTransaction: Set<UUID>
+        do {
+            operationIDsBeforeTransaction = Set(
+                try context.fetch(FetchDescriptor<SyncOperation>()).map(\.id)
+            )
+        } catch {
+            throw TrashRestoreError.persistenceFailed(error.localizedDescription)
+        }
+
+        var seen = Set<String>()
+        let orderedEntities = plan.restoreOrder.filter { seen.insert($0.stableID).inserted }
+        var restored: [TrashRecoveryEntityRef] = []
+        var stagedOperations: [SyncOperation] = []
+
+        do {
+            try context.transaction {
+                for entity in orderedEntities {
+                    switch entity.kind {
+                    case .project:
+                        let project = try trashProject(id: entity.id, context: context)
+                        guard project.deletedAt != nil else { continue }
+                        project.deletedAt = nil
+                        project.needsSync = true
+                        restored.append(entity)
+
+                    case .client:
+                        let client = try trashClient(id: entity.id, context: context)
+                        guard client.deletedAt != nil else { continue }
+                        client.deletedAt = nil
+                        client.needsSync = true
+                        restored.append(entity)
+
+                    case .task:
+                        let task = try trashTask(id: entity.id, context: context)
+                        guard task.deletedAt != nil else { continue }
+                        task.deletedAt = nil
+                        task.needsSync = true
+                        restored.append(entity)
+                    }
+                }
+
+                guard !restored.isEmpty else {
+                    throw TrashRestoreError.nothingToRestore
+                }
+
+                let operationSpecs = restored.map { entity in
+                    SyncEngine.BulkOperationSpec(
+                        entityType: syncEntityType(for: entity.kind),
+                        entityId: entity.id,
+                        operationType: "update",
+                        changedFields: ["deleted_at": NSNull()]
+                    )
+                }
+
+                do {
+                    stagedOperations = try stageOperations(operationSpecs, context)
+                } catch {
+                    throw TrashRecoveryTransactionFailure.stagingFailed
+                }
+
+                let stagedIDs = Set(stagedOperations.map(\.id))
+                let operationIDsInsideTransaction = Set(
+                    try context.fetch(FetchDescriptor<SyncOperation>()).map(\.id)
+                )
+                let preservesParentFirstOrder = zip(
+                    stagedOperations,
+                    stagedOperations.dropFirst()
+                ).allSatisfy { pair in
+                    pair.0.createdAt < pair.1.createdAt
+                }
+                let hasCompleteNewBatch = stagedOperations.count == operationSpecs.count
+                    && stagedIDs.count == operationSpecs.count
+                    && stagedIDs.isDisjoint(with: operationIDsBeforeTransaction)
+                    && stagedIDs.isSubset(of: operationIDsInsideTransaction)
+                    && preservesParentFirstOrder
+                    && zip(stagedOperations, operationSpecs).allSatisfy { pair in
+                        stagedTrashOperationMatches(pair.0, spec: pair.1)
+                    }
+
+                guard hasCompleteNewBatch else {
+                    throw TrashRecoveryTransactionFailure.incompleteLedger
+                }
+            }
+        } catch {
+            // The preflight save above established a clean baseline, so this
+            // discards every partial insert and restores every mutated model to
+            // its exact committed tombstone/needsSync state.
+            context.rollback()
+            if error is TrashRecoveryTransactionFailure {
+                throw TrashRestoreError.syncQueueFailed
+            }
+            if let restoreError = error as? TrashRestoreError {
+                throw restoreError
+            }
+            throw TrashRestoreError.persistenceFailed(error.localizedDescription)
+        }
+
+        syncEngine.didPersistStagedOperations(stagedOperations)
+
+        if connectivity?.shouldAttemptSync == true {
+            Task { await syncEngine.pushPending() }
+        }
+        return TrashRestoreResult(restored: restored)
+    }
+
+    private func stagedTrashOperationMatches(
+        _ operation: SyncOperation,
+        spec: SyncEngine.BulkOperationSpec
+    ) -> Bool {
+        guard operation.entityType == spec.entityType.rawValue,
+              operation.entityId == spec.entityId.lowercased(),
+              operation.operationType == spec.operationType,
+              operation.isPending,
+              Set(operation.getChangedFields()) == Set(spec.changedFields.keys),
+              let payload = try? JSONSerialization.jsonObject(with: operation.payload),
+              let fields = payload as? [String: Any],
+              Set(fields.keys) == Set(spec.changedFields.keys),
+              fields["deleted_at"] is NSNull else {
+            return false
+        }
+        return true
+    }
+
+    @MainActor
+    private func trashProject(id: String, context: ModelContext) throws -> Project {
+        guard let project = try trashProjectIfPresent(id: id, context: context) else {
+            throw TrashRestoreError.entityNotOnDevice(.project)
+        }
+        return project
+    }
+
+    @MainActor
+    private func trashProjectIfPresent(id: String, context: ModelContext) throws -> Project? {
+        let entityID = id
+        return try context.fetch(
+            FetchDescriptor<Project>(predicate: #Predicate { $0.id == entityID })
+        ).first
+    }
+
+    @MainActor
+    private func trashClient(id: String, context: ModelContext) throws -> Client {
+        let entityID = id
+        guard let client = try context.fetch(
+            FetchDescriptor<Client>(predicate: #Predicate { $0.id == entityID })
+        ).first else {
+            throw TrashRestoreError.entityNotOnDevice(.client)
+        }
+        return client
+    }
+
+    @MainActor
+    private func trashTask(id: String, context: ModelContext) throws -> ProjectTask {
+        let entityID = id
+        guard let task = try context.fetch(
+            FetchDescriptor<ProjectTask>(predicate: #Predicate { $0.id == entityID })
+        ).first else {
+            throw TrashRestoreError.entityNotOnDevice(.task)
+        }
+        return task
+    }
+
+    private func syncEntityType(for kind: TrashRecoveryEntityKind) -> SyncEntityType {
+        switch kind {
+        case .project: return .project
+        case .client: return .client
+        case .task: return .projectTask
+        }
     }
 
     /// Update task - SINGLE SOURCE OF TRUTH

@@ -257,6 +257,7 @@ enum Feedback {
         static let roleUpdated      = Toast(label: "// ROLE UPDATED", tone: .success)
         static let permissionUpdated = Toast(label: "// PERMISSION UPDATED", tone: .success)
         static let permissionsSaved = Toast(label: "// PERMISSIONS SAVED", tone: .success)
+        static let itemRestored      = Toast(label: "// ITEM RESTORED", tone: .success)
         static let roleCreated      = Toast(label: "// ROLE ADDED", tone: .success)
         static let roleRenamed      = Toast(label: "// ROLE RENAMED", tone: .success)
         static let roleDuplicated   = Toast(label: "// ROLE COPIED", tone: .success)
@@ -503,7 +504,7 @@ enum Feedback {
         Settings.profileUpdated, Settings.roleAssigned, Settings.memberRemoved, Settings.invitationRevoked, Settings.invitationsSent,
         Settings.accountDeleted, Settings.resetLinkSent, Settings.issueReported, Settings.requestSubmitted, Settings.featureInTesting,
         Settings.spaceFreed, Settings.photosRemoved, Settings.photosPinned, Settings.photosSaved, Settings.roleUpdated,
-        Settings.permissionUpdated, Settings.permissionsSaved, Settings.roleCreated, Settings.roleRenamed, Settings.roleDuplicated,
+        Settings.permissionUpdated, Settings.permissionsSaved, Settings.itemRestored, Settings.roleCreated, Settings.roleRenamed, Settings.roleDuplicated,
         Settings.roleDeleted, Settings.seatsUpdated, Settings.seatGranted, Settings.seatRevoked, Settings.premiumVoice(openSettings: {}),
         Project.titleSaved, Project.descriptionSaved, Project.notePosted, Project.commentPosted,
         Contact.subSaved, Contact.subDeleted, Contact.fieldUpdated, Contact.roleUpdated,

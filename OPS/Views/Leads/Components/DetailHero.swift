@@ -204,8 +204,9 @@ struct DetailHero: View {
 /// `Section` header inside a `LazyVStack(pinnedViews: [.sectionHeaders])` — the
 /// same mechanism ProjectDetailsView uses for its title.
 ///
-/// The solid background is load-bearing: a pinned header with a transparent
-/// background lets the scrolling document run underneath it and read as smear.
+/// A solid identity foundation keeps the title stable while the canonical
+/// fade tail lets the scrolling document disappear softly beneath the pinned
+/// edge.
 struct LeadDetailStickyHeader: View {
     let opportunity: Opportunity
     /// Resolved client name (LeadDetailViewModel.client) — nil until loaded or
@@ -221,12 +222,19 @@ struct LeadDetailStickyHeader: View {
     }
 
     var body: some View {
-        identityBlock
-            .padding(.horizontal, OPSStyle.Layout.spacing3_5)
-            .padding(.top, OPSStyle.Layout.spacing2_5)
-            .padding(.bottom, OPSStyle.Layout.spacing3)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(OPSStyle.Colors.background)
+        VStack(spacing: 0) {
+            identityBlock
+                .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+                .padding(.top, OPSStyle.Layout.spacing2_5)
+                .padding(.bottom, OPSStyle.Layout.spacing3)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(OPSStyle.Colors.background)
+
+            OPSStyle.Layout.Gradients.headerFade
+                .frame(height: OPSStyle.Layout.spacing4)
+                .allowsHitTesting(false)
+                .accessibilityHidden(true)
+        }
     }
 
     /// Lead identity (id, days-in-stage, title, people, address) grouped into

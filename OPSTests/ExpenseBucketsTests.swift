@@ -57,7 +57,8 @@ final class ExpenseBucketsTests: XCTestCase {
         amount: Double = 50,
         flaggedBy: String? = nil,
         expenseDate: String? = "2026-07-05",
-        allocated: Bool = false
+        allocated: Bool = false,
+        updatedAt: String = "2026-07-05T10:00:00Z"
     ) -> ExpenseDTO {
         ExpenseDTO(
             id: id,
@@ -93,13 +94,40 @@ final class ExpenseBucketsTests: XCTestCase {
             accountingSyncId: nil,
             accountingSyncedAt: nil,
             createdAt: "2026-07-05T10:00:00Z",
-            updatedAt: "2026-07-05T10:00:00Z",
+            updatedAt: updatedAt,
             deletedAt: nil,
             allocations: allocated
                 ? [ExpenseAllocationDTO(id: "a-\(id)", expenseId: id, projectId: "proj", percentage: 100, amount: nil)]
                 : nil,
             category: nil
         )
+    }
+
+    // MARK: - Spend log ordering
+
+    func testSpendLogPutsApprovedStatesFirstThenNewestExpense() {
+        let rows = [
+            line(id: "new-draft", status: "draft", expenseDate: "2026-08-07"),
+            line(id: "old-approved", status: "approved", expenseDate: "2026-08-01"),
+            line(id: "new-approved", status: "reimbursed", expenseDate: "2026-08-06"),
+            line(id: "submitted", status: "submitted", expenseDate: "2026-08-05")
+        ]
+
+        XCTAssertEqual(
+            BooksExpenseOrdering.sorted(rows).map(\.id),
+            ["new-approved", "old-approved", "new-draft", "submitted"]
+        )
+    }
+
+    func testSpendLogUsesUpdatedTimestampWhenExpenseDateIsMissing() {
+        let rows = [
+            line(id: "older", status: "submitted", expenseDate: nil,
+                 updatedAt: "2026-08-01T12:00:00Z"),
+            line(id: "newer", status: "submitted", expenseDate: nil,
+                 updatedAt: "2026-08-06T12:00:00Z")
+        ]
+
+        XCTAssertEqual(BooksExpenseOrdering.sorted(rows).map(\.id), ["newer", "older"])
     }
 
     /// Fixed "now": July 11, 2026 (local calendar).

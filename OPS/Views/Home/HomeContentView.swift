@@ -635,7 +635,11 @@ struct HomeBillableThisWeekCard: View {
                 .transition(.opacity)
             }
         }
-        .opsCardStyle(padding: OPSStyle.Layout.spacing3)
+        .opsCardStyle(
+            padding: isExpanded
+                ? OPSStyle.Layout.spacing3
+                : OPSStyle.Layout.spacing2
+        )
         // Restore the persisted state without animation so the card simply
         // appears in its last state rather than animating open on every launch.
         .onAppear { isExpanded = persistedExpanded }
@@ -654,6 +658,10 @@ struct HomeBillableThisWeekCard: View {
     /// reads as money the whole way down whether or not a job is valued.
     static func amountText(for candidate: HomeBillableProjectCandidate) -> String {
         candidate.amount.map(BooksFormat.currency) ?? BooksFormat.emptyCurrency
+    }
+
+    static func jobCountText(for rollup: HomeBillableThisWeekRollup) -> String {
+        "\(rollup.projectCount) \(rollup.projectCount == 1 ? "JOB" : "JOBS")"
     }
 
     /// Up to this many jobs the detail renders inline and the card hugs its
@@ -681,8 +689,49 @@ struct HomeBillableThisWeekCard: View {
 
     private var header: some View {
         Button(action: toggle) {
-            HStack(alignment: .center, spacing: OPSStyle.Layout.spacing2) {
-                VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
+            Group {
+                if isExpanded {
+                    expandedHeader
+                } else {
+                    collapsedHeader
+                }
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var collapsedHeader: some View {
+        HStack(alignment: .center, spacing: OPSStyle.Layout.spacing2) {
+            Text("// BILLABLE THIS WEEK")
+                .font(OPSStyle.Typography.caption)
+                .foregroundColor(OPSStyle.Colors.textMute)
+                .lineLimit(1)
+
+            Spacer(minLength: OPSStyle.Layout.spacing1)
+
+            Text(Self.totalText(for: rollup))
+                .font(OPSStyle.Typography.dataValue)
+                .foregroundColor(rollup.hasKnownAmounts ? OPSStyle.Colors.text : OPSStyle.Colors.text3)
+                .monospacedDigit()
+                .lineLimit(1)
+
+            Text(Self.jobCountText(for: rollup))
+                .font(OPSStyle.Typography.caption)
+                .foregroundColor(OPSStyle.Colors.finRevenue)
+                .monospacedDigit()
+                .lineLimit(1)
+
+            Image(systemName: OPSStyle.Icons.chevronDown)
+                .font(OPSStyle.Typography.smallCaption)
+                .foregroundColor(OPSStyle.Colors.textMute)
+        }
+        .frame(minHeight: OPSStyle.Layout.touchTargetMin)
+    }
+
+    private var expandedHeader: some View {
+        HStack(alignment: .center, spacing: OPSStyle.Layout.spacing2) {
+            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
                     Text("// BILLABLE THIS WEEK")
                         .font(OPSStyle.Typography.caption)
                         .foregroundColor(OPSStyle.Colors.textMute)
@@ -694,11 +743,11 @@ struct HomeBillableThisWeekCard: View {
                         .font(OPSStyle.Typography.dataValueLg)
                         .foregroundColor(rollup.hasKnownAmounts ? OPSStyle.Colors.text : OPSStyle.Colors.text3)
                         .monospacedDigit()
-                }
+            }
 
-                Spacer()
+            Spacer()
 
-                VStack(alignment: .trailing, spacing: OPSStyle.Layout.spacing1) {
+            VStack(alignment: .trailing, spacing: OPSStyle.Layout.spacing1) {
                     Text("\(rollup.projectCount)")
                         .font(OPSStyle.Typography.cardTitle)
                         .foregroundColor(OPSStyle.Colors.finRevenue)
@@ -706,19 +755,14 @@ struct HomeBillableThisWeekCard: View {
                     Text(rollup.projectCount == 1 ? "JOB" : "JOBS")
                         .font(OPSStyle.Typography.caption)
                         .foregroundColor(OPSStyle.Colors.text3)
-                }
-
-                // Disclosure chevron — points down when collapsed, rotates
-                // 180° to point up when expanded. Single OPS easing, no spring.
-                Image(systemName: OPSStyle.Icons.chevronDown)
-                    .font(OPSStyle.Typography.smallCaption)
-                    .foregroundColor(OPSStyle.Colors.textMute)
-                    .rotationEffect(.degrees(isExpanded ? 180 : 0))
-                    .padding(.leading, OPSStyle.Layout.spacing1)
             }
-            .contentShape(Rectangle())
+
+            Image(systemName: OPSStyle.Icons.chevronDown)
+                .font(OPSStyle.Typography.smallCaption)
+                .foregroundColor(OPSStyle.Colors.textMute)
+                .rotationEffect(.degrees(180))
+                .padding(.leading, OPSStyle.Layout.spacing1)
         }
-        .buttonStyle(.plain)
     }
 
     private func toggle() {

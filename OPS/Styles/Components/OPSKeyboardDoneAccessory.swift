@@ -14,11 +14,13 @@ import UIKit
 @MainActor
 final class OPSKeyboardDoneAccessoryView: UIToolbar {
     private weak var editingResponder: UIResponder?
+    private let doneContainer = UIView()
+    let doneButton = UIButton(type: .system)
 
     override var intrinsicContentSize: CGSize {
         CGSize(
             width: UIView.noIntrinsicMetric,
-            height: OPSStyle.Layout.touchTargetMin
+            height: OPSStyle.Layout.keyboardAccessoryHeight
         )
     }
 
@@ -29,7 +31,7 @@ final class OPSKeyboardDoneAccessoryView: UIToolbar {
             x: .zero,
             y: .zero,
             width: .zero,
-            height: OPSStyle.Layout.touchTargetMin
+            height: OPSStyle.Layout.keyboardAccessoryHeight
         ))
 
         barStyle = .black
@@ -37,21 +39,42 @@ final class OPSKeyboardDoneAccessoryView: UIToolbar {
         autoresizingMask = [.flexibleWidth]
         tintColor = UIColor(OPSStyle.Colors.primaryText)
 
-        let doneItem = UIBarButtonItem(
-            title: "DONE",
-            style: .plain,
-            target: self,
-            action: #selector(dismissKeyboard)
-        )
+        doneContainer.translatesAutoresizingMaskIntoConstraints = false
+        doneContainer.isAccessibilityElement = false
+
+        doneButton.translatesAutoresizingMaskIntoConstraints = false
+        doneButton.setTitle("DONE", for: .normal)
+        doneButton.titleLabel?.font = OPSStyle.Typography.uiButtonLabel
+        doneButton.setTitleColor(UIColor(OPSStyle.Colors.primaryText), for: .normal)
+        doneButton.accessibilityLabel = "Done"
+        doneButton.accessibilityIdentifier = "ops.keyboard.done"
+        doneButton.addTarget(self, action: #selector(dismissKeyboard), for: .touchUpInside)
+
+        doneContainer.addSubview(doneButton)
+        NSLayoutConstraint.activate([
+            doneContainer.widthAnchor.constraint(
+                greaterThanOrEqualToConstant: OPSStyle.Layout.touchTargetMin
+            ),
+            doneContainer.heightAnchor.constraint(
+                equalToConstant: OPSStyle.Layout.keyboardAccessoryHeight
+            ),
+            doneButton.leadingAnchor.constraint(equalTo: doneContainer.leadingAnchor),
+            doneButton.trailingAnchor.constraint(equalTo: doneContainer.trailingAnchor),
+            doneButton.heightAnchor.constraint(equalToConstant: OPSStyle.Layout.touchTargetMin),
+            doneButton.bottomAnchor.constraint(
+                equalTo: doneContainer.bottomAnchor,
+                constant: -OPSStyle.Layout.spacing2
+            )
+        ])
+
+        let doneItem = UIBarButtonItem(customView: doneContainer)
+        // Retain item identity and target/action for UIKit command routing and
+        // the existing exactly-once dismissal regression.
+        doneItem.title = "DONE"
+        doneItem.target = self
+        doneItem.action = #selector(dismissKeyboard)
         doneItem.accessibilityLabel = "Done"
         doneItem.accessibilityIdentifier = "ops.keyboard.done"
-        doneItem.setTitleTextAttributes(
-            [
-                .font: OPSStyle.Typography.uiButtonLabel,
-                .foregroundColor: UIColor(OPSStyle.Colors.primaryText)
-            ],
-            for: .normal
-        )
 
         items = [
             UIBarButtonItem(systemItem: .flexibleSpace),

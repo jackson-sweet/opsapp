@@ -103,6 +103,8 @@ struct ConvertToProjectSheet: View {
     @State private var requiresMatchReviewRefresh = false
     @State private var verifiedCreateAddressFingerprint: String?
     @State private var pendingCreateAddressFingerprint: String?
+    @State private var initialClientAddressRecheckGate =
+        InitialClientAddressRecheckGate()
     /// A hidden linked project must be verified through the guarded conversion
     /// RPC before the client may present a committed win. While this flag is
     /// set, the sheet exposes no create/retry action.
@@ -232,9 +234,19 @@ struct ConvertToProjectSheet: View {
             .presentationDragIndicator(.visible)
         }
         .task {
-            let recoveredCommittedConversion = await loadPreflight()
+            let recoveredCommittedConversion = await Self.runInitialLoad(
+                resolveLinkedClient: {
+                    await resolveLinkedClient()
+                },
+                applyAddressPrefill: {
+                    applyInitialAddressPrefill()
+                },
+                loadPreflight: {
+                    await loadPreflight()
+                }
+            )
             guard !recoveredCommittedConversion else { return }
-            applyInitialFormValues()
+            applyInitialFinancialValue()
         }
     }
 
@@ -250,7 +262,7 @@ struct ConvertToProjectSheet: View {
         case .unavailable:
             return "This project was rejected as a match during the last attempt."
         case .reviewOnly:
-            return "Another project for this client, at a different address. Projects can only be matched at the same address."
+            return "This project can be reviewed here but is not available to link."
         }
     }
 
@@ -1017,7 +1029,8 @@ struct ConvertToProjectSheet: View {
         errorMessage = nil
         candidateLinkCheckFailed = false
         chipNotice = nil
-        resolveLinkedClient()
+
+        var shouldAutomaticallyRecheckClientAddress = false
 
         // SERVER preflight — single source of truth for render state + suggested
         // name. Replaces the prior local SwiftData duplicate/other-projects
@@ -1056,32 +1069,68 @@ struct ConvertToProjectSheet: View {
             // and closed the sheet's only committing action, even though the
             // authoritative preflight had already succeeded.
             var matchableCandidateIds: Set<String> = []
+            var manualCandidates: [ManualProjectLinkCandidate] = []
             do {
-                matchableCandidateIds = try await service.matchableCandidateProjectIds(
-                    for: opportunity,
-                    candidates: preflight.duplicateCandidates
+                manualCandidates = try await service.manualProjectLinkCandidates(
+                    for: opportunity
+                )
+                matchableCandidateIds = Set(
+                    manualCandidates.map { $0.projectId.lowercased() }
                 )
             } catch {
+                // The new complete-manual-list RPC may not be deployed yet.
+                // Preserve the proven same-address path as a compatibility
+                // fallback, but report that the complete link list could not
+                // be checked.
                 candidateLinkCheckFailed = true
+                do {
+                    matchableCandidateIds = try await service
+                        .matchableCandidateProjectIds(
+                            for: opportunity,
+                            candidates: preflight.duplicateCandidates
+                        )
+                } catch {
+                    matchableCandidateIds = []
+                }
             }
 
             let state = Self.reducePreflight(
                 preflight,
                 matchableCandidateIds: matchableCandidateIds,
                 candidateLinkCheckFailed: candidateLinkCheckFailed,
-                unavailableMatchProjectIds: unavailableMatchProjectIds
+                unavailableMatchProjectIds: unavailableMatchProjectIds,
+                manualCandidates: manualCandidates
             )
             creationBlocker = state.creationBlocker
             clientOtherProjects = state.refs
             chipNotice = state.refs.isEmpty ? nil : state.statusMessage
             errorMessage = state.refs.isEmpty ? state.statusMessage : nil
             preflightFailed = false
+            shouldAutomaticallyRecheckClientAddress =
+                initialClientAddressRecheckGate.consume(
+                    creationBlocker: creationBlocker,
+                    address: addressText,
+                    isFromClient: addressIsFromClient
+                )
         } catch {
             // Fail closed. RETRY CHECK is the only committing footer action
             // until the authoritative preflight read passes.
             preflightFailed = true
             suggestedName = ""
             errorMessage = "COULD NOT CHECK PROJECTS — RETRY"
+        }
+
+        if shouldAutomaticallyRecheckClientAddress {
+            do {
+                return try await stopForCreateAddressRecheckIfNeeded(
+                    companyId: companyId
+                )
+            } catch {
+                // The authoritative preflight succeeded. Keep its blocker and
+                // the borrowed address visible so the operator can retry the
+                // existing CHECK ADDRESS action without retyping anything.
+                errorMessage = simplifyError(error)
+            }
         }
 
         // Network fetch (estimates + line items) — still drives the tasks preview.
@@ -1139,20 +1188,34 @@ struct ConvertToProjectSheet: View {
     /// Resolves the lead's linked client from the local store, then the
     /// repository. The client record holds the address and contact details a
     /// client-page lead never got its own copy of (bug a7df1f37).
-    private func resolveLinkedClient() {
-        guard linkedClient == nil,
-              let clientId = opportunity.clientId?
-                .trimmingCharacters(in: .whitespacesAndNewlines),
-              !clientId.isEmpty else { return }
+    private func resolveLinkedClient() async {
+        guard linkedClient == nil else { return }
 
-        var descriptor = FetchDescriptor<Client>(
-            predicate: #Predicate<Client> { $0.id == clientId }
+        linkedClient = await Self.resolveLinkedClientValue(
+            clientId: opportunity.clientId,
+            local: { clientId in
+                var descriptor = FetchDescriptor<Client>(
+                    predicate: #Predicate<Client> { $0.id == clientId }
+                )
+                descriptor.fetchLimit = 1
+                guard let local = (try? modelContext.fetch(descriptor))?.first,
+                      local.companyId == opportunity.companyId else {
+                    return nil
+                }
+                return local
+            },
+            remote: { clientId in
+                let repository = ClientRepository(companyId: opportunity.companyId)
+                let dto = try await repository.fetchOne(clientId)
+                guard dto.companyId == opportunity.companyId else {
+                    throw LinkedClientResolutionError.tenantMismatch
+                }
+                return dto.toModel()
+            }
         )
-        descriptor.fetchLimit = 1
-        linkedClient = (try? modelContext.fetch(descriptor))?.first
     }
 
-    private func applyInitialFormValues() {
+    private func applyInitialAddressPrefill() {
         if addressText.isEmpty {
             let prefill = Self.addressPrefill(
                 opportunityAddress: opportunity.address,
@@ -1167,6 +1230,9 @@ struct ConvertToProjectSheet: View {
             prefilledLongitude = prefill.longitude
             addressIsFromClient = prefill.isFromClient
         }
+    }
+
+    private func applyInitialFinancialValue() {
         if actualValueText.isEmpty {
             let prefillValue = estimateBundles.first?.estimate.total
                 ?? opportunity.estimatedValue
@@ -1513,8 +1579,19 @@ struct ConvertToProjectSheet: View {
         hasLoadedPreflight = false
 
         Task {
-            let recovered = await loadPreflight()
+            let recovered = await Self.runInitialLoad(
+                resolveLinkedClient: {
+                    await resolveLinkedClient()
+                },
+                applyAddressPrefill: {
+                    applyInitialAddressPrefill()
+                },
+                loadPreflight: {
+                    await loadPreflight()
+                }
+            )
             if recovered { return }
+            applyInitialFinancialValue()
             if !preflightFailed {
                 requiresMatchReviewRefresh = false
                 if let pendingCreateAddressFingerprint {
@@ -1726,7 +1803,8 @@ extension ConvertToProjectSheet {
     /// could not tell "already belongs to another lead" apart from "we could
     /// not check" — and the sheet blamed an admin for both.
     enum RelatedProjectLinkState: Equatable {
-        /// Same address, server-approved, and unlinked (or already this lead's).
+        /// Server-approved and unlinked (or already this lead's). Address is a
+        /// ranking signal, not a requirement.
         case matchable
         /// Same address and server-approved, but it already belongs to a
         /// DIFFERENT lead. The commit would reject a link; review only.
@@ -1736,9 +1814,7 @@ extension ConvertToProjectSheet {
         case unverified
         /// A target this session's commit already rejected.
         case unavailable
-        /// Another project of the same client at a different address. The
-        /// server forbids cross-address links, so this is context, not an
-        /// option.
+        /// Visible context that the server did not authorize as a target.
         case reviewOnly
     }
 
@@ -1765,13 +1841,14 @@ extension ConvertToProjectSheet {
         _ preflight: ConversionPreflight,
         matchableCandidateIds: Set<String>,
         candidateLinkCheckFailed: Bool,
-        unavailableMatchProjectIds: Set<String>
+        unavailableMatchProjectIds: Set<String>,
+        manualCandidates: [ManualProjectLinkCandidate] = []
     ) -> PreflightViewState {
         var seen = Set<String>()
         var refs: [RelatedProjectRef] = []
 
         for candidate in preflight.duplicateCandidates
-        where seen.insert(candidate.projectId).inserted {
+        where seen.insert(candidate.projectId.lowercased()).inserted {
             let id = candidate.projectId.lowercased()
             let linkState: RelatedProjectLinkState
             if unavailableMatchProjectIds.contains(id) {
@@ -1788,17 +1865,36 @@ extension ConvertToProjectSheet {
                 title: candidate.title ?? "",
                 address: candidate.address,
                 status: nil,
-                linkState: linkState
+                linkState: linkState,
+                isAddressSuggestion: true
             ))
         }
         for other in preflight.otherClientProjects
-        where seen.insert(other.projectId).inserted {
+        where seen.insert(other.projectId.lowercased()).inserted {
+            let id = other.projectId.lowercased()
             refs.append(RelatedProjectRef(
                 id: other.projectId,
                 title: other.title ?? "",
                 address: other.address,
                 status: other.status.flatMap { Status(rawValue: $0) },
-                linkState: .reviewOnly
+                linkState: unavailableMatchProjectIds.contains(id)
+                    ? .unavailable
+                    : (matchableCandidateIds.contains(id) ? .matchable : .reviewOnly),
+                isAddressSuggestion: false
+            ))
+        }
+        for candidate in manualCandidates
+        where seen.insert(candidate.projectId.lowercased()).inserted {
+            let id = candidate.projectId.lowercased()
+            refs.append(RelatedProjectRef(
+                id: candidate.projectId,
+                title: candidate.title ?? "",
+                address: candidate.address,
+                status: candidate.status.flatMap { Status(rawValue: $0) },
+                linkState: unavailableMatchProjectIds.contains(id)
+                    ? .unavailable
+                    : .matchable,
+                isAddressSuggestion: candidate.sameAddress
             ))
         }
 
@@ -1857,6 +1953,66 @@ extension ConvertToProjectSheet {
     }
 
     // MARK: - Prefill (bug a7df1f37)
+
+    /// Executes the opening sequence in the only safe order: client identity,
+    /// visible address, then the authoritative duplicate preflight.
+    @MainActor
+    static func runInitialLoad(
+        resolveLinkedClient: () async -> Void,
+        applyAddressPrefill: () -> Void,
+        loadPreflight: () async -> Bool
+    ) async -> Bool {
+        await resolveLinkedClient()
+        applyAddressPrefill()
+        return await loadPreflight()
+    }
+
+    /// Predicate-scoped local resolution with a tenant-scoped repository
+    /// fallback. The generic value keeps the ordering contract deterministic
+    /// in tests while production passes the real SwiftData `Client` model.
+    @MainActor
+    static func resolveLinkedClientValue<Value>(
+        clientId: String?,
+        local: (String) -> Value?,
+        remote: (String) async throws -> Value
+    ) async -> Value? {
+        guard let clientId = clientId?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+              !clientId.isEmpty else { return nil }
+
+        if let localValue = local(clientId) {
+            return localValue
+        }
+
+        return try? await remote(clientId)
+    }
+
+    /// One-shot guard for the only automatic write. A client-borrowed address
+    /// is pushed onto the lead only after the server proves it cannot match
+    /// projects without that denormalized value.
+    struct InitialClientAddressRecheckGate: Equatable {
+        private(set) var hasAttempted = false
+
+        mutating func consume(
+            creationBlocker: ConversionPreflightCreationBlocker?,
+            address: String,
+            isFromClient: Bool
+        ) -> Bool {
+            guard !hasAttempted,
+                  creationBlocker == .addressRequired,
+                  isFromClient,
+                  !address.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                return false
+            }
+
+            hasAttempted = true
+            return true
+        }
+    }
+
+    private enum LinkedClientResolutionError: Error {
+        case tenantMismatch
+    }
 
     /// The ADDRESS the convert form opens with, and where it came from.
     struct AddressPrefill: Equatable {
@@ -1968,10 +2124,28 @@ extension ConvertToProjectSheet {
         let address: String?
         let status: Status?
         let linkState: RelatedProjectLinkState
+        let isAddressSuggestion: Bool
 
-        /// A same-address project. These gate CREATE — the server rejects a
-        /// nil-link create alongside one, whatever its link state.
-        var isLikelyDuplicate: Bool { linkState != .reviewOnly }
+        init(
+            id: String,
+            title: String,
+            address: String?,
+            status: Status?,
+            linkState: RelatedProjectLinkState,
+            isAddressSuggestion: Bool = false
+        ) {
+            self.id = id
+            self.title = title
+            self.address = address
+            self.status = status
+            self.linkState = linkState
+            self.isAddressSuggestion = isAddressSuggestion
+        }
+
+        /// Same-address suggestions gate CREATE under the independent server
+        /// dedupe contract. A manually selectable project at another address
+        /// remains an option without becoming a duplicate warning.
+        var isLikelyDuplicate: Bool { isAddressSuggestion }
 
         var interaction: RelatedProjectInteraction {
             linkState == .matchable ? .match : .peek

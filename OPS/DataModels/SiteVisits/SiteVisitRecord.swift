@@ -34,6 +34,29 @@ import Foundation
 
 struct SiteVisitRecord: Equatable {
 
+    struct ChecklistItem: Equatable {
+        let fieldId: String?
+        let label: String?
+        let value: String
+        let kind: String?
+        let artifactCount: Int
+
+        var fieldKind: SiteVisitFieldKind? {
+            kind.flatMap(SiteVisitFieldKind.init(rawValue:))
+        }
+
+        /// Prose gets its own line. Compact field facts can share a row until
+        /// Dynamic Type or a long value makes the view choose the stacked form.
+        var prefersStackedPresentation: Bool {
+            switch fieldKind {
+            case .shortText, .longText, .none:
+                return true
+            case .checkbox, .yesNoNA, .measurement, .photo, .photoMarkup, .deckDesign:
+                return false
+            }
+        }
+    }
+
     /// The parts of a record that can render. Membership is content-driven:
     /// if a section is absent from this set, it captured nothing (or, for
     /// `.value`, the viewer may not see money).
@@ -48,19 +71,16 @@ struct SiteVisitRecord: Equatable {
         case value
     }
 
-    /// How many thumbnails the strip shows before collapsing the rest into
-    /// a `+N` tile. Four fits one row at a glance-able size on a 390pt frame.
-    static let photoStripLimit = 4
-
     let capturedAt: Date
     let operatorName: String
     let identityLine: String?
     let address: String?
     let photoCount: Int
-    let visiblePhotoURLs: [String]
-    let additionalPhotoCount: Int
+    /// Every available visit photo, in capture order. Presentation scrolls;
+    /// the model never truncates the evidence handed to the full-screen viewer.
+    let photoURLs: [String]
     let measurements: [SiteVisitPacketMetadata.Measurement]
-    let checklist: [String]
+    let checklistItems: [ChecklistItem]
     let notes: [String]
     let hasDeckDesign: Bool
     /// Already permission-filtered and already formatted. `nil` means the
@@ -68,6 +88,20 @@ struct SiteVisitRecord: Equatable {
     /// see it. The view layer cannot tell the difference, by design.
     let value: String?
     let sections: Set<Section>
+
+    /// Compatibility for call sites that only need to know whether checklist
+    /// evidence exists. New presentation must use `checklistItems` so labels and
+    /// typed values remain separate.
+    var checklist: [String] {
+        checklistItems.map { item in
+            guard let label = item.label else { return item.value }
+            return "\(label): \(item.value)"
+        }
+    }
+
+    var missingPhotoCount: Int {
+        max(0, photoCount - photoURLs.count)
+    }
 
     /// The operator's own shorthand for what came back from site —
     /// `4 PHOTOS · 2 MEASUREMENTS · DECK`. Counts evidence, never money, so it
@@ -86,7 +120,7 @@ struct SiteVisitRecord: Equatable {
         if !notes.isEmpty {
             parts.append(notes.count == 1 ? "1 NOTE" : "\(notes.count) NOTES")
         }
-        if !checklist.isEmpty {
+        if !checklistItems.isEmpty {
             parts.append("CHECKLIST")
         }
         return parts.isEmpty ? nil : parts.joined(separator: " · ")
@@ -112,11 +146,11 @@ struct SiteVisitRecord: Equatable {
         canViewFinancials: Bool
     ) -> SiteVisitRecord {
         let measurements = metadata?.measurements ?? []
-        let checklist = metadata?.checklist ?? []
+        let checklistItems = Self.checklistItems(from: metadata)
         let notes = metadata?.notes ?? []
         // The count is authored at capture and travels in the metadata, so the
         // tally stays honest on a device whose photos have not synced yet.
-        let photoCount = metadata?.photoCount ?? photoURLs.count
+        let photoCount = max(metadata?.photoCount ?? photoURLs.count, photoURLs.count)
         let hasDeck = (metadata?.deckDesignId?.trimmedOrNil) != nil
 
         let identityLine = Self.identityLine(
@@ -124,9 +158,6 @@ struct SiteVisitRecord: Equatable {
             companyName: metadata?.companyName
         )
         let address = metadata?.address?.trimmedOrNil
-
-        let visible = Array(photoURLs.prefix(photoStripLimit))
-        let overflow = max(0, photoURLs.count - visible.count)
 
         // The single gate. A restricted viewer never receives the number, so
         // no downstream view can leak it by accident. The amount comes from the
@@ -144,7 +175,7 @@ struct SiteVisitRecord: Equatable {
         if photoCount > 0 { sections.insert(.photos) }
         if !measurements.isEmpty { sections.insert(.measurements) }
         if hasDeck { sections.insert(.deck) }
-        if !checklist.isEmpty { sections.insert(.checklist) }
+        if !checklistItems.isEmpty { sections.insert(.checklist) }
         if !notes.isEmpty { sections.insert(.notes) }
         if value != nil { sections.insert(.value) }
 
@@ -154,10 +185,9 @@ struct SiteVisitRecord: Equatable {
             identityLine: identityLine,
             address: address,
             photoCount: photoCount,
-            visiblePhotoURLs: visible,
-            additionalPhotoCount: overflow,
+            photoURLs: photoURLs,
             measurements: measurements,
-            checklist: checklist,
+            checklistItems: checklistItems,
             notes: notes,
             hasDeckDesign: hasDeck,
             value: value,
@@ -234,6 +264,97 @@ struct SiteVisitRecord: Equatable {
             .compactMap { $0 }
             .map { $0.uppercased() }
         return parts.isEmpty ? nil : parts.joined(separator: " · ")
+    }
+
+    private static func checklistItems(
+        from metadata: SiteVisitPacketMetadata?
+    ) -> [ChecklistItem] {
+        if let structured = metadata?.checklistItems, !structured.isEmpty {
+            let normalized = structured.compactMap(Self.normalizedChecklistItem)
+            if !normalized.isEmpty { return normalized }
+        }
+
+        return (metadata?.checklist ?? []).compactMap(Self.legacyChecklistItem)
+    }
+
+    private static func normalizedChecklistItem(
+        _ item: SiteVisitPacketChecklistItem
+    ) -> ChecklistItem? {
+        let label = item.label?.trimmedOrNil
+        let value = item.value?.trimmedOrNil
+
+        guard label != nil || value != nil else { return nil }
+        guard let value else {
+            return ChecklistItem(
+                fieldId: item.fieldId?.trimmedOrNil,
+                label: nil,
+                value: label ?? "",
+                kind: item.kind?.trimmedOrNil,
+                artifactCount: max(0, item.artifactCount ?? 0)
+            )
+        }
+
+        return ChecklistItem(
+            fieldId: item.fieldId?.trimmedOrNil,
+            label: label,
+            value: value,
+            kind: item.kind?.trimmedOrNil,
+            artifactCount: max(0, item.artifactCount ?? 0)
+        )
+    }
+
+    /// Parses only the first separator so an answer such as `Code: 4812`
+    /// remains intact. Unknown or malformed lines stay visible as value-only
+    /// rows; compatibility must never become data loss.
+    private static func legacyChecklistItem(_ rawLine: String) -> ChecklistItem? {
+        let trimmed = rawLine.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+
+        let prefix = "CHECKLIST ::"
+        let content: String
+        if trimmed.hasPrefix(prefix) {
+            content = String(trimmed.dropFirst(prefix.count))
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+        } else {
+            content = trimmed
+        }
+
+        guard !content.isEmpty else { return nil }
+        guard let separator = content.firstIndex(of: ":") else {
+            return ChecklistItem(
+                fieldId: nil,
+                label: nil,
+                value: content,
+                kind: nil,
+                artifactCount: 0
+            )
+        }
+
+        let label = String(content[..<separator])
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let valueStart = content.index(after: separator)
+        let value = String(content[valueStart...])
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+
+        guard !label.isEmpty, !value.isEmpty else {
+            let visible = value.isEmpty ? label : value
+            guard !visible.isEmpty else { return nil }
+            return ChecklistItem(
+                fieldId: nil,
+                label: nil,
+                value: visible,
+                kind: nil,
+                artifactCount: 0
+            )
+        }
+
+        return ChecklistItem(
+            fieldId: nil,
+            label: label,
+            value: value,
+            kind: nil,
+            artifactCount: 0
+        )
     }
 }
 

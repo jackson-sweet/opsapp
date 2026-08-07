@@ -16,6 +16,30 @@ import SwiftUI
 import SwiftData
 import MapKit
 
+/// Stable reading order for the project's one DETAILS document. Status is the
+/// first fact about the job, not a separate oversized section above it.
+enum ProjectInfoRow: Int, CaseIterable {
+    case status, client, lead, address, timeline, description, team
+
+    var label: String {
+        switch self {
+        case .status: return "STATUS"
+        case .client: return "CLIENT"
+        case .lead: return "LEAD"
+        case .address: return "ADDRESS"
+        case .timeline: return "TIMELINE"
+        case .description: return "NOTES"
+        case .team: return "TEAM"
+        }
+    }
+}
+
+enum ProjectStatusRowPolicy {
+    static func canChangeStatus(canEdit: Bool, hasAction: Bool) -> Bool {
+        canEdit && hasAction
+    }
+}
+
 struct DetailsTabView: View {
     @Bindable var project: Project
     @ObservedObject var viewModel: ProjectDetailsViewModel
@@ -74,20 +98,9 @@ struct DetailsTabView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing4) {
-            // STATUS — current project status + manual change control.
-            // Bug f3a300f7 — opens the existing ProjectStatusChangeSheet
-            // through the parent's `showingStatusPicker` hook.
-            StatusSection(
-                status: project.status,
-                canEdit: viewModel.canEditProject,
-                onChangeStatus: onChangeStatus
-            )
-
-            // PROJECT INFO — client, lead, address, timeline, description,
-            // team in ONE document card of hairline-separated rows. Five
-            // separately-labelled cards made the reader parse five objects to
-            // answer one question: what is this job, and where. One header,
-            // one mono label column, one row per field.
+            // PROJECT INFO — status, client, lead, address, timeline,
+            // description, team in ONE document card of hairline-separated
+            // rows. One header, one mono label column, one row per field.
             projectInfoCard
 
             // VINYL ORDER MARKER — order tracking is a purchasing/office concern,
@@ -168,13 +181,12 @@ struct DetailsTabView: View {
 
     // MARK: - Project Info Card
 
-    /// The project's identity block — who it's for, where it came from, where
-    /// it is, when it runs, what it is, who's on it — as ONE document card, in
-    /// the same anatomy the lead dossier uses (LeadDetailsDocument.swift): a
-    /// `DETAILS` header above a solid raised card, a mono label column down the
-    /// left, the field's own content to its right, hairlines between rows. Two
-    /// surfaces that answer "who is this for, and what is it" should not be two
-    /// different objects.
+    /// The project's identity block — its status, who it's for, where it came
+    /// from, where it is, when it runs, what it is, who's on it — as ONE
+    /// document card, in the same anatomy the lead dossier uses
+    /// (LeadDetailsDocument.swift): a `DETAILS` header above a solid raised
+    /// card, a mono label column down the left, the field's own content to its
+    /// right, hairlines between rows.
     ///
     /// The row ORDER NEVER CHANGES and blanks render in place. ADDRESS,
     /// TIMELINE and DESCRIPTION always render: a field that vanishes when it is
@@ -202,6 +214,15 @@ struct DetailsTabView: View {
                 .padding(.bottom, 10)
 
             VStack(spacing: 0) {
+                if shows(.status) {
+                    hairline(above: .status)
+                    ProjectStatusRow(
+                        status: project.status,
+                        canEdit: viewModel.canEditProject,
+                        onChangeStatus: onChangeStatus
+                    )
+                }
+
                 if shows(.client) {
                     hairline(above: .client)
                     ClientRow(
@@ -265,14 +286,6 @@ struct DetailsTabView: View {
         }
     }
 
-    /// The info card's rows, in render order. The order is the reading order:
-    /// who it's for, where it came from, where it is, when it runs, what it is,
-    /// who's on it — and it is the same order on every project, for every
-    /// viewer, always.
-    private enum InfoRow: Int, CaseIterable {
-        case client, lead, address, timeline, description, team
-    }
-
     /// Whether a row renders, for this viewer. Single source of truth for the
     /// row and for the hairline above it.
     ///
@@ -280,8 +293,10 @@ struct DetailsTabView: View {
     /// its own blank (or its invitation) in place, so the card's shape is a
     /// property of the viewer, not of how much has been filled in yet. LEAD is
     /// the documented exception; see `projectInfoCard`.
-    private func shows(_ row: InfoRow) -> Bool {
+    private func shows(_ row: ProjectInfoRow) -> Bool {
         switch row {
+        case .status:
+            return true
         case .client:
             return access.showsClient
         case .lead:
@@ -301,8 +316,8 @@ struct DetailsTabView: View {
     /// the card, so the card never opens or closes on a rule and two lines
     /// never meet where a gated row used to be.
     @ViewBuilder
-    private func hairline(above row: InfoRow) -> some View {
-        if InfoRow.allCases.prefix(row.rawValue).contains(where: { shows($0) }) {
+    private func hairline(above row: ProjectInfoRow) -> some View {
+        if ProjectInfoRow.allCases.prefix(row.rawValue).contains(where: { shows($0) }) {
             Rectangle()
                 .fill(OPSStyle.Colors.lineSoft)
                 .frame(height: 1)
@@ -430,72 +445,62 @@ private struct ProjectTimelineRow: View {
     }
 }
 
-// MARK: - Status Section
+// MARK: - Status Row
 
-/// Project status row — shows the current status as the app's standard
-/// job-status badge and, for users with edit permission, opens the existing
-/// `ProjectStatusChangeSheet` picker. Mirrors the Details-tab card pattern
-/// (section label outside, `cardBackgroundDark` card with `cardBorder`).
-///
-/// Bug f3a300f7 — the status picker sheet and its `showingStatusPicker`
-/// hook already existed in ProjectDetailsView but nothing on the Details
-/// surface ever triggered it. This section is that trigger.
-private struct StatusSection: View {
+/// The first row in DETAILS. It keeps the canonical status badge and existing
+/// picker action while taking no more space than the other document facts.
+private struct ProjectStatusRow: View {
     let status: Status
     let canEdit: Bool
     var onChangeStatus: (() -> Void)? = nil
 
-    // Compact, single-line status field — a labelled value row, not a
-    // content-weight glass card. A single enum value doesn't warrant the same
-    // card the content-rich sections use; the original full card read oversized
-    // and bolted-on at the top of the tab (bug f3a300f7 follow-up).
-    private var row: some View {
-        HStack(spacing: OPSStyle.Layout.spacing2_5) {
-            // Inline label — reuses the app's `[ LABEL ]` section-label convention.
-            Text("[ STATUS ]")
-                .font(OPSStyle.Typography.smallCaption)
-                .textCase(.uppercase)
-                .tracking(1)
-                .foregroundColor(OPSStyle.Colors.tertiaryText)
+    private var canChangeStatus: Bool {
+        ProjectStatusRowPolicy.canChangeStatus(
+            canEdit: canEdit,
+            hasAction: onChangeStatus != nil
+        )
+    }
 
-            Spacer(minLength: 12)
+    private var value: some View {
+        HStack(spacing: OPSStyle.Layout.spacing2) {
+            StatusBadge.forJobStatus(status, size: .small)
+            Spacer(minLength: .zero)
 
-            // Current status — canonical badge at the standard (medium) size.
-            StatusBadge.forJobStatus(status, size: .medium)
-
-            // The whole row is tappable; a chevron signals it (no separate label).
-            if canEdit {
+            if canChangeStatus {
                 Image(systemName: OPSStyle.Icons.chevronRight)
                     .font(.system(size: OPSStyle.Layout.IconSize.xs))
-                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+                    .foregroundColor(OPSStyle.Colors.text3)
             }
         }
+        .frame(maxWidth: .infinity)
+    }
+
+    private var row: some View {
+        DocRow(label: ProjectInfoRow.status.label, labelWidth: ProjectInfoDoc.labelColumnWidth) {
+            value
+        }
         .frame(minHeight: OPSStyle.Layout.touchTargetMin)
-        .padding(.horizontal, OPSStyle.Layout.spacing3_5)
         .contentShape(Rectangle())
     }
 
+    @ViewBuilder
     var body: some View {
-        VStack(spacing: 0) {
-            if canEdit, let onChangeStatus {
-                Button(action: {
-                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                    onChangeStatus()
-                }) {
-                    row
-                }
-                .buttonStyle(PlainButtonStyle())
-            } else {
+        if canChangeStatus, let onChangeStatus {
+            Button(action: {
+                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                onChangeStatus()
+            }) {
                 row
             }
-
-            // Hairline anchors the backgroundless field above the content
-            // sections below it.
-            Rectangle()
-                .fill(OPSStyle.Colors.separator)
-                .frame(height: 1)
-                .padding(.horizontal, OPSStyle.Layout.spacing3_5)
-                .padding(.top, OPSStyle.Layout.spacing2)
+            .buttonStyle(PlainButtonStyle())
+            .accessibilityLabel("Status")
+            .accessibilityValue(status.displayName)
+            .accessibilityHint("Change status")
+        } else {
+            row
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel("Status")
+                .accessibilityValue(status.displayName)
         }
     }
 }
@@ -1419,7 +1424,7 @@ func sectionLabel(_ title: String) -> some View {
 
 // MARK: - Project Info Document Kit
 
-/// The project-info document's shared geometry and type, in one place so five
+/// The project-info document's shared geometry and type, in one place so its
 /// fields cannot drift apart. The values are the lead dossier's own
 /// (LeadDetailsDocument.swift) — this card is deliberately the same document,
 /// and matching that reference exactly is the point.
@@ -1439,7 +1444,7 @@ enum ProjectInfoDoc {
     /// Every project-info label, for the width assertion. The card renders
     /// exactly these, in exactly this order. LEAD only renders when the project
     /// has provenance to state, but it shares the column and must fit it.
-    static let labels = ["CLIENT", "LEAD", "ADDRESS", "TIMELINE", "NOTES", "TEAM"]
+    static let labels = ProjectInfoRow.allCases.map(\.label)
 
     /// The document's value line — every row's primary text.
     static let valueFont = Font.custom("Mohave-Medium", size: 14)

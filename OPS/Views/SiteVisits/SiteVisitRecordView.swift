@@ -141,16 +141,33 @@ struct SiteVisitRecordTag: View {
 
 // MARK: - Full record
 
-/// The full site-visit record. Sections render only when the visit filled
-/// them — a record of a photos-only walkthrough is a header and a photo strip,
-/// not a page of empty headings.
+/// Geometry that keeps the field document pinned to the sheet's real width.
+/// Photo count is deliberately presentation input, but never affects the
+/// document width: evidence scrolls inside a bounded rail instead of asking
+/// SwiftUI for an ever-wider sheet.
+struct SiteVisitRecordPresentationMetrics: Equatable {
+    let availableWidth: CGFloat
+    let photoCount: Int
+
+    var documentWidth: CGFloat { max(.zero, availableWidth) }
+    var photoTargetSize: CGFloat {
+        max(PhotoThumbnail.tileSize, OPSStyle.Layout.touchTargetMin)
+    }
+    var showsEvidenceRail: Bool { photoCount > 0 }
+}
+
+/// The full site-visit record. Evidence gets a horizontal rail; the actual
+/// field facts stay in one raised document with internal hairlines. Sections
+/// still render only when the visit filled them.
 struct SiteVisitRecordView: View {
     let record: SiteVisitRecord
     /// Tapping a thumbnail opens the viewer. Nil disables photo tap-through
     /// (a lead-side record has no project gallery to open into).
     var onPhotoTap: (([String], Int) -> Void)?
 
-    @Environment(\.dismiss) private var dismiss
+    private enum DocumentSection: Int, CaseIterable {
+        case site, measurements, deck, checklist, notes, value
+    }
 
     private var dateLine: String {
         let formatter = DateFormatter()
@@ -160,28 +177,32 @@ struct SiteVisitRecordView: View {
     }
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing3) {
-                header
+        GeometryReader { geometry in
+            let horizontalInset = OPSStyle.Layout.spacing3_5
+            let metrics = SiteVisitRecordPresentationMetrics(
+                availableWidth: geometry.size.width - (horizontalInset * 2),
+                photoCount: record.photoCount
+            )
 
-                if record.sections.contains(.identity) || record.sections.contains(.address) {
-                    siteBlock
+            ScrollView {
+                VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing3) {
+                    header
+
+                    if metrics.showsEvidenceRail {
+                        photosSection(metrics: metrics)
+                    }
+
+                    if hasDocumentContent {
+                        document
+                    } else if record.isEmpty {
+                        emptyState
+                    }
+
+                    Spacer(minLength: OPSStyle.Layout.spacing5)
                 }
-
-                if record.sections.contains(.photos) { photosSection }
-                if record.sections.contains(.measurements) { measurementsSection }
-                if record.sections.contains(.deck) { deckSection }
-                if record.sections.contains(.checklist) { checklistSection }
-                if record.sections.contains(.notes) { notesSection }
-                // Money renders last and only when the viewer is cleared for
-                // it — `record.value` is already nil otherwise.
-                if record.sections.contains(.value) { valueSection }
-
-                if record.isEmpty { emptyState }
-
-                Spacer(minLength: OPSStyle.Layout.spacing5)
+                .frame(width: metrics.documentWidth, alignment: .leading)
+                .padding(.horizontal, horizontalInset)
             }
-            .padding(.horizontal, OPSStyle.Layout.spacing3)
         }
         .background(OPSStyle.Colors.background)
         .preferredColorScheme(.dark)
@@ -196,22 +217,20 @@ struct SiteVisitRecordView: View {
             Text("// SITE VISIT")
                 .font(OPSStyle.Typography.panelTitle)
                 .foregroundColor(OPSStyle.Colors.textMute)
-                .kerning(1.6)
 
             Text(record.operatorName.uppercased())
                 .font(OPSStyle.Typography.section)
-                .foregroundColor(OPSStyle.Colors.primaryText)
+                .foregroundColor(OPSStyle.Colors.text)
 
             Text(dateLine)
                 .font(OPSStyle.Typography.smallCaption)
-                .foregroundColor(OPSStyle.Colors.tertiaryText)
+                .foregroundColor(OPSStyle.Colors.text3)
                 .monospacedDigit()
 
             if let summary = record.summaryLine {
                 Text(summary)
                     .font(OPSStyle.Typography.miniLabel)
-                    .foregroundColor(OPSStyle.Colors.secondaryText)
-                    .kerning(1.2)
+                    .foregroundColor(OPSStyle.Colors.text2)
                     .padding(.top, OPSStyle.Layout.spacing1)
             }
         }
@@ -219,172 +238,307 @@ struct SiteVisitRecordView: View {
         .padding(.top, OPSStyle.Layout.spacing3)
     }
 
-    // MARK: Site (identity + address)
+    // MARK: Photos
 
-    private var siteBlock: some View {
-        section("// SITE") {
+    private func photosSection(metrics: SiteVisitRecordPresentationMetrics) -> some View {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
+            documentLabel("PHOTOS")
+
+            if record.photoURLs.isEmpty {
+                Text("\(record.photoCount) NOT DOWNLOADED")
+                    .font(OPSStyle.Typography.miniLabel)
+                    .foregroundColor(OPSStyle.Colors.textMute)
+                    .monospacedDigit()
+                    .frame(minHeight: OPSStyle.Layout.touchTargetMin, alignment: .leading)
+            } else {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    LazyHStack(spacing: OPSStyle.Layout.spacing2) {
+                        ForEach(Array(record.photoURLs.enumerated()), id: \.offset) { index, url in
+                            photoTile(
+                                url: url,
+                                index: index,
+                                targetSize: metrics.photoTargetSize
+                            )
+                        }
+                    }
+                }
+
+                if record.missingPhotoCount > 0 {
+                    Text("\(record.missingPhotoCount) NOT DOWNLOADED")
+                        .font(OPSStyle.Typography.miniLabel)
+                        .foregroundColor(OPSStyle.Colors.textMute)
+                        .monospacedDigit()
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    @ViewBuilder
+    private func photoTile(url: String, index: Int, targetSize: CGFloat) -> some View {
+        let thumbnail = PhotoThumbnail(url: url, project: nil, remoteThumbnailURL: nil)
+            .frame(width: targetSize, height: targetSize)
+            .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius))
+            .overlay(
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
+                    .stroke(
+                        OPSStyle.Colors.cardBorder,
+                        lineWidth: OPSStyle.Layout.Border.standard
+                    )
+            )
+
+        if let onPhotoTap {
+            Button {
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                onPhotoTap(record.photoURLs, index)
+            } label: {
+                thumbnail
+            }
+            .buttonStyle(PlainButtonStyle())
+            .accessibilityLabel("View photo \(index + 1) of \(record.photoURLs.count)")
+        } else {
+            thumbnail
+                .accessibilityLabel("Photo \(index + 1) of \(record.photoURLs.count)")
+        }
+    }
+
+    // MARK: Field document
+
+    private var hasDocumentContent: Bool {
+        DocumentSection.allCases.contains(where: shows)
+    }
+
+    private var document: some View {
+        VStack(spacing: 0) {
+            if shows(.site) {
+                documentDivider(above: .site)
+                siteSection
+            }
+            if shows(.measurements) {
+                documentDivider(above: .measurements)
+                measurementsSection
+            }
+            if shows(.deck) {
+                documentDivider(above: .deck)
+                deckSection
+            }
+            if shows(.checklist) {
+                documentDivider(above: .checklist)
+                checklistSection
+            }
+            if shows(.notes) {
+                documentDivider(above: .notes)
+                notesSection
+            }
+            // Money stays last and `record.value` is already permission-gated.
+            if shows(.value) {
+                documentDivider(above: .value)
+                valueSection
+            }
+        }
+        .commandCard()
+    }
+
+    private func shows(_ section: DocumentSection) -> Bool {
+        switch section {
+        case .site:
+            return record.sections.contains(.identity) || record.sections.contains(.address)
+        case .measurements:
+            return record.sections.contains(.measurements)
+        case .deck:
+            return record.sections.contains(.deck)
+        case .checklist:
+            return record.sections.contains(.checklist)
+        case .notes:
+            return record.sections.contains(.notes)
+        case .value:
+            return record.sections.contains(.value)
+        }
+    }
+
+    @ViewBuilder
+    private func documentDivider(above section: DocumentSection) -> some View {
+        if DocumentSection.allCases.prefix(section.rawValue).contains(where: shows) {
+            Rectangle()
+                .fill(OPSStyle.Colors.lineSoft)
+                .frame(height: OPSStyle.Layout.Border.standard)
+                .padding(.horizontal, OPSStyle.Layout.spacing3)
+        }
+    }
+
+    private var siteSection: some View {
+        documentSection("SITE") {
             VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
                 if let identity = record.identityLine {
                     Text(identity)
                         .font(OPSStyle.Typography.bodyBold)
-                        .foregroundColor(OPSStyle.Colors.primaryText)
+                        .foregroundColor(OPSStyle.Colors.text)
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 if let address = record.address {
                     Text(address.uppercased())
                         .font(OPSStyle.Typography.smallCaption)
-                        .foregroundColor(OPSStyle.Colors.secondaryText)
+                        .foregroundColor(OPSStyle.Colors.text2)
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
         }
     }
 
-    // MARK: Photos
-
-    private var photosSection: some View {
-        section("// PHOTOS") {
-            if record.visiblePhotoURLs.isEmpty {
-                // The count travelled with the record but the images have not
-                // reached this device yet. Say so in numbers, not apology.
-                Text("\(record.photoCount) NOT DOWNLOADED")
-                    .font(OPSStyle.Typography.miniLabel)
-                    .foregroundColor(OPSStyle.Colors.textMute)
-                    .kerning(1.2)
-                    .monospacedDigit()
-            } else {
-                HStack(spacing: OPSStyle.Layout.spacing2) {
-                    ForEach(Array(record.visiblePhotoURLs.enumerated()), id: \.element) { index, url in
-                        Button {
-                            guard let onPhotoTap else { return }
-                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                            onPhotoTap(record.visiblePhotoURLs, index)
-                        } label: {
-                            PhotoThumbnail(url: url, project: nil, remoteThumbnailURL: nil)
-                                .frame(width: PhotoThumbnail.tileSize, height: PhotoThumbnail.tileSize)
-                                .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius))
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                                        .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
-                                )
-                        }
-                        .buttonStyle(PlainButtonStyle())
-                        .disabled(onPhotoTap == nil)
-                    }
-
-                    if record.additionalPhotoCount > 0 {
-                        Text("+\(record.additionalPhotoCount)")
-                            .font(OPSStyle.Typography.captionBold)
-                            .foregroundColor(OPSStyle.Colors.secondaryText)
-                            .monospacedDigit()
-                            .frame(width: PhotoThumbnail.tileSize, height: PhotoThumbnail.tileSize)
-                            .background(
-                                RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                                    .fill(OPSStyle.Colors.surfaceInput)
-                            )
-                            .overlay(
-                                RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: 1)
-                            )
-                    }
-
-                    Spacer(minLength: 0)
-                }
-            }
-        }
-    }
-
-    // MARK: Measurements
-
     private var measurementsSection: some View {
-        section("// MEASUREMENTS") {
+        documentSection("MEASUREMENTS") {
             VStack(spacing: 0) {
                 ForEach(Array(record.measurements.enumerated()), id: \.offset) { index, measurement in
-                    HStack(alignment: .firstTextBaseline, spacing: OPSStyle.Layout.spacing2) {
-                        Text(measurement.label.uppercased())
-                            .font(OPSStyle.Typography.miniLabel)
-                            .foregroundColor(OPSStyle.Colors.tertiaryText)
-                            .kerning(1.2)
-                        Spacer(minLength: OPSStyle.Layout.spacing2)
-                        Text(measurement.value)
-                            .font(OPSStyle.Typography.captionBold)
-                            .foregroundColor(OPSStyle.Colors.primaryText)
-                            .monospacedDigit()
-                            .multilineTextAlignment(.trailing)
-                    }
-                    .padding(.vertical, OPSStyle.Layout.spacing2)
+                    factRow(label: measurement.label, value: measurement.value)
 
                     if index < record.measurements.count - 1 {
-                        Rectangle()
-                            .fill(OPSStyle.Colors.line)
-                            .frame(height: 1)
+                        factDivider
                     }
                 }
             }
         }
     }
 
-    // MARK: Deck
-
     private var deckSection: some View {
-        section("// DECK DESIGN") {
+        documentSection("DECK DESIGN") {
             HStack(spacing: OPSStyle.Layout.spacing2) {
-                Image(systemName: "square.grid.3x3")
+                Image(systemName: OPSStyle.Icons.grid)
                     .font(.system(size: OPSStyle.Layout.IconSize.sm))
                     .foregroundColor(OPSStyle.Colors.tanTextM)
                 Text("DESIGN ATTACHED")
                     .font(OPSStyle.Typography.miniLabel)
-                    .foregroundColor(OPSStyle.Colors.secondaryText)
-                    .kerning(1.2)
-                Spacer(minLength: 0)
+                    .foregroundColor(OPSStyle.Colors.text2)
+                Spacer(minLength: .zero)
             }
+            .frame(minHeight: OPSStyle.Layout.touchTargetMin)
+            .accessibilityElement(children: .combine)
         }
     }
 
-    // MARK: Checklist
-
     private var checklistSection: some View {
-        section("// CHECKLIST") {
-            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
-                ForEach(Array(record.checklist.enumerated()), id: \.offset) { _, line in
-                    HStack(alignment: .firstTextBaseline, spacing: OPSStyle.Layout.spacing2) {
-                        Image(systemName: "checkmark")
-                            .font(.system(size: OPSStyle.Layout.IconSize.xs, weight: .semibold))
-                            .foregroundColor(OPSStyle.Colors.oliveTextM)
-                        Text(line)
-                            .font(OPSStyle.Typography.body)
-                            .foregroundColor(OPSStyle.Colors.primaryText)
-                            .fixedSize(horizontal: false, vertical: true)
+        documentSection("CHECKLIST") {
+            VStack(spacing: 0) {
+                ForEach(Array(record.checklistItems.enumerated()), id: \.offset) { index, item in
+                    checklistRow(item)
+
+                    if index < record.checklistItems.count - 1 {
+                        factDivider
                     }
                 }
             }
         }
     }
 
-    // MARK: Notes
+    @ViewBuilder
+    private func checklistRow(_ item: SiteVisitRecord.ChecklistItem) -> some View {
+        if let label = item.label {
+            if item.prefersStackedPresentation {
+                stackedFact(label: label, value: item.value)
+            } else {
+                ViewThatFits(in: .horizontal) {
+                    inlineFact(label: label, value: item.value)
+                    stackedFact(label: label, value: item.value)
+                }
+            }
+        } else {
+            HStack(alignment: .firstTextBaseline, spacing: OPSStyle.Layout.spacing2) {
+                Image(systemName: OPSStyle.Icons.checkmark)
+                    .font(.system(size: OPSStyle.Layout.IconSize.xs, weight: .semibold))
+                    .foregroundColor(OPSStyle.Colors.oliveTextM)
+                Text(item.value)
+                    .font(OPSStyle.Typography.body)
+                    .foregroundColor(OPSStyle.Colors.text)
+                    .fixedSize(horizontal: false, vertical: true)
+                Spacer(minLength: .zero)
+            }
+            .frame(minHeight: OPSStyle.Layout.touchTargetMin, alignment: .leading)
+            .accessibilityElement(children: .combine)
+        }
+    }
 
     private var notesSection: some View {
-        section("// NOTES") {
-            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2_5) {
-                ForEach(Array(record.notes.enumerated()), id: \.offset) { _, text in
+        documentSection("NOTES") {
+            VStack(alignment: .leading, spacing: 0) {
+                ForEach(Array(record.notes.enumerated()), id: \.offset) { index, text in
                     Text(text)
                         .font(OPSStyle.Typography.body)
-                        .foregroundColor(OPSStyle.Colors.primaryText)
+                        .foregroundColor(OPSStyle.Colors.text)
                         .fixedSize(horizontal: false, vertical: true)
+                        .frame(
+                            maxWidth: .infinity,
+                            minHeight: OPSStyle.Layout.touchTargetMin,
+                            alignment: .leading
+                        )
+
+                    if index < record.notes.count - 1 {
+                        factDivider
+                    }
                 }
             }
         }
     }
 
-    // MARK: Value (financial — permission-filtered upstream)
-
     private var valueSection: some View {
-        section("// VALUE") {
+        documentSection("VALUE") {
             Text(record.value ?? "")
                 .font(OPSStyle.Typography.cardTitle)
-                .foregroundColor(OPSStyle.Colors.primaryText)
+                .foregroundColor(OPSStyle.Colors.text)
                 .monospacedDigit()
+                .frame(minHeight: OPSStyle.Layout.touchTargetMin, alignment: .leading)
         }
+    }
+
+    private func factRow(label: String, value: String) -> some View {
+        ViewThatFits(in: .horizontal) {
+            inlineFact(label: label, value: value)
+            stackedFact(label: label, value: value)
+        }
+    }
+
+    private func inlineFact(label: String, value: String) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: OPSStyle.Layout.spacing2) {
+            factLabel(label, keepsSingleLine: true)
+            Spacer(minLength: OPSStyle.Layout.spacing2)
+            Text(value)
+                .font(OPSStyle.Typography.captionBold)
+                .foregroundColor(OPSStyle.Colors.text)
+                .monospacedDigit()
+                .lineLimit(1)
+                .multilineTextAlignment(.trailing)
+        }
+        .frame(minHeight: OPSStyle.Layout.touchTargetMin)
+        .accessibilityElement(children: .combine)
+    }
+
+    private func stackedFact(label: String, value: String) -> some View {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
+            factLabel(label, keepsSingleLine: false)
+            Text(value)
+                .font(OPSStyle.Typography.body)
+                .foregroundColor(OPSStyle.Colors.text)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .frame(
+            maxWidth: .infinity,
+            minHeight: OPSStyle.Layout.touchTargetMin,
+            alignment: .leading
+        )
+        .accessibilityElement(children: .combine)
+    }
+
+    private func factLabel(_ label: String, keepsSingleLine: Bool) -> some View {
+        Text(label)
+            .font(OPSStyle.Typography.miniLabel)
+            .textCase(.uppercase)
+            .foregroundColor(OPSStyle.Colors.text3)
+            .lineLimit(keepsSingleLine ? 1 : nil)
+            .fixedSize(horizontal: keepsSingleLine, vertical: !keepsSingleLine)
+    }
+
+    private var factDivider: some View {
+        Rectangle()
+            .fill(OPSStyle.Colors.lineSoft)
+            .frame(height: OPSStyle.Layout.Border.standard)
     }
 
     // MARK: Empty
@@ -393,32 +547,33 @@ struct SiteVisitRecordView: View {
         VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
             Text("—")
                 .font(OPSStyle.Typography.section)
-                .foregroundColor(OPSStyle.Colors.tertiaryText)
+                .foregroundColor(OPSStyle.Colors.text3)
             Text("// NOTHING CAPTURED")
                 .font(OPSStyle.Typography.miniLabel)
                 .foregroundColor(OPSStyle.Colors.textMute)
-                .kerning(1.6)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.vertical, OPSStyle.Layout.spacing4)
+        .padding(OPSStyle.Layout.spacing3)
+        .commandCard()
     }
 
     // MARK: Section chrome
 
-    @ViewBuilder
-    private func section<Content: View>(
+    private func documentLabel(_ title: String) -> some View {
+        Text("// \(title)")
+            .font(OPSStyle.Typography.panelTitle)
+            .foregroundColor(OPSStyle.Colors.text3)
+    }
+
+    private func documentSection<Content: View>(
         _ title: String,
         @ViewBuilder content: () -> Content
     ) -> some View {
         VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
-            Text(title)
-                .font(OPSStyle.Typography.panelTitle)
-                .foregroundColor(OPSStyle.Colors.tertiaryText)
-                .kerning(1.4)
+            documentLabel(title)
             content()
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(OPSStyle.Layout.spacing3)
-        .glassSurface()
     }
 }

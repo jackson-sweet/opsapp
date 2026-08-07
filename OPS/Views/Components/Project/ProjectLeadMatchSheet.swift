@@ -10,9 +10,8 @@
 //  disposition audit row, and the estimate / task / photo carryover all belong
 //  to that one transaction.
 //
-//  Candidates are restricted to leads at this project's address, because the
-//  RPC rejects anything else — the picker must not offer a choice the commit
-//  will refuse.
+//  Candidates include every eligible won lead in the company. Address and
+//  client identity are suggestions only and order the likely provenance first.
 //
 
 import SwiftUI
@@ -74,7 +73,7 @@ struct ProjectLeadMatchSheet: View {
         HStack(alignment: .top, spacing: 0) {
             Text("// ")
                 .foregroundColor(OPSStyle.Colors.textMute)
-            Text("Won leads at this address that have not been converted yet. Matching marks the lead won against this project and carries its estimates, tasks and photos across.")
+            Text("Won leads without a project. Likely matches appear first. Matching links the lead here and carries its estimates, tasks and photos across.")
                 .foregroundColor(OPSStyle.Colors.text3)
         }
         .font(OPSStyle.Typography.miniLabel)

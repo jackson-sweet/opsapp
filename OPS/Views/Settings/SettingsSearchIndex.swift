@@ -71,7 +71,7 @@ struct SettingsRoute: Equatable {
         case laserMeter
         case inventorySettings
         case whatsNew
-        case reportIssue
+        case reportBug
         case wizardManagement
         case trash
     }
@@ -1207,14 +1207,14 @@ enum SettingsSearchIndex {
                 route: SettingsRoute(.whatsNew)
             ),
             SettingsSearchEntry(
-                title: "Report Issue",
-                breadcrumb: ["Report Issue"],
+                title: "REPORT A BUG",
+                breadcrumb: ["REPORT A BUG"],
                 icon: OPSStyle.Icons.alert,
                 keywords: [
-                    "report", "report issue", "bug", "feedback", "help",
+                    "report", "report issue", "report a bug", "bug", "feedback", "help",
                     "support", "contact", "broken", "not working", "crash"
                 ],
-                route: SettingsRoute(.reportIssue)
+                route: SettingsRoute(.reportBug)
             ),
             SettingsSearchEntry(
                 title: "Setup",

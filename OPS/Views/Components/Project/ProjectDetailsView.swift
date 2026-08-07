@@ -419,8 +419,9 @@ struct ProjectDetailsView: View {
             }
 
             // Layer 2: Scrollable content that slides up over the map
-            ScrollView {
-                LazyVStack(spacing: 0, pinnedViews: [.sectionHeaders]) {
+            ScrollViewReader { projectScrollProxy in
+                ScrollView {
+                    LazyVStack(spacing: 0, pinnedViews: [.sectionHeaders]) {
                     // Initial spacer — positions content in lower portion of map.
                     // Pulled down 40pt so the gradient starts later, revealing
                     // more map above the title (Bug a2f7e6fa).
@@ -441,7 +442,7 @@ struct ProjectDetailsView: View {
 
                     // Pinned header: title + tab bar (solid background blocks content behind it)
                     Section(header: stickyHeader) {
-                        tabContent
+                        tabContent(scrollProxy: projectScrollProxy)
                             .padding(.bottom, 100)
                             .background(OPSStyle.Colors.background)
                     }
@@ -459,25 +460,27 @@ struct ProjectDetailsView: View {
                     }
                     .frame(height: 0)
                 }
+                    .background(
+                        GeometryReader { g in
+                            Color.clear.onChange(of: g.size.height, initial: true) { _, h in
+                                deckContentHeight = h
+                            }
+                        }
+                    )
+                }
+                .coordinateSpace(name: deckScrollSpace)
+                // Force the bottom rubber-band even when the deck tab's content fits the
+                // viewport, so the pull-up-to-expand gesture is always available.
+                .scrollBounceBehavior(.always, axes: .vertical)
+                .scrollDismissesKeyboard(.interactively)
                 .background(
                     GeometryReader { g in
                         Color.clear.onChange(of: g.size.height, initial: true) { _, h in
-                            deckContentHeight = h
+                            deckViewportHeight = h
                         }
                     }
                 )
             }
-            .coordinateSpace(name: deckScrollSpace)
-            // Force the bottom rubber-band even when the deck tab's content fits the
-            // viewport, so the pull-up-to-expand gesture is always available.
-            .scrollBounceBehavior(.always, axes: .vertical)
-            .background(
-                GeometryReader { g in
-                    Color.clear.onChange(of: g.size.height, initial: true) { _, h in
-                        deckViewportHeight = h
-                    }
-                }
-            )
 
             // Layer 3: Task picker overlay (below nav bar)
             if showingTaskPicker {
@@ -875,7 +878,7 @@ struct ProjectDetailsView: View {
     // MARK: - Tab Content
 
     @ViewBuilder
-    private var tabContent: some View {
+    private func tabContent(scrollProxy: ScrollViewProxy) -> some View {
         switch viewModel.selectedTab {
         case .activity:
             ActivityTabView(
@@ -892,6 +895,7 @@ struct ProjectDetailsView: View {
                     viewModel.selectedPhotoIndex = index
                     viewModel.showingPhotoViewer = true
                 },
+                scrollProxy: scrollProxy,
                 noteFieldFocused: $isNoteComposing
             )
 
@@ -1369,8 +1373,9 @@ struct ProjectDetailsView: View {
 
     // MARK: - LEAD provenance (bug a3c4e216)
 
-    /// Won, unconverted leads at this project's address. The commit refuses
-    /// anything else, so the picker must not offer anything else.
+    /// Every company-scoped won, unconverted lead the operator may choose.
+    /// Address and client identity order likely provenance first; they never
+    /// remove a manual choice.
     private var leadMatchCandidates: [Opportunity] {
         let matchable = ProjectLeadRow.matchableLeads(
             project: ProjectLeadRow.ProjectContext(

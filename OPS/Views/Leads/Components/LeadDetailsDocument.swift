@@ -7,12 +7,13 @@
 //
 //      CLIENT   Calloway Homes          →   (opens ContactDetailView)
 //               HELEN — ON FILE            (roster state / ADD TO CLIENT)
+//      ADDRESS  1240 Maple Ave          →   (opens directions)
 //      PROJECT  Maple Lane porch          →  (open only once linked)
 //      PROJECT  MATCH PROJECT                (won + unconverted only)
 //      LAST WORD← THEM · 2D — Re: quote     (latest meaningful correspondence)
 //      DECK     Backyard deck v2        →
 //      PHOTOS   [ADD][▦][▦][▦] …
-//      FILES    quote-v2.pdf · EST-0142 …
+//      FILES    12 attachments             →
 //
 //  58pt mono label column; content region right. The DECK row is omitted
 //  entirely (not `—`) when the deck_builder feature is off — a permanently
@@ -45,6 +46,7 @@ struct LeadDetailsDocument: View {
     var isAddingToClient: Bool = false
     var onAddToClient: () -> Void = {}
     var onOpenClient: () -> Void = {}
+    var onOpenAddress: () -> Void = {}
     var onOpenProject: () -> Void = {}
     var onMatchProject: () -> Void = {}
     /// Push `LeadDeckScreen`. The row identifies the drawing; the screen owns
@@ -54,7 +56,7 @@ struct LeadDetailsDocument: View {
     var importingPhotoIDs: [String] = []
     var onAddPhotos: () -> Void = {}
     var onTapPhoto: (_ items: [LeadPhotoItem], _ index: Int) -> Void = { _, _ in }
-    var onOpenAttachment: (LeadAttachment) -> Void = { _ in }
+    var onOpenAttachments: () -> Void = {}
     var onOpenEstimate: (Estimate) -> Void = { _ in }
 
     enum ProjectRowPresentation: Equatable {
@@ -97,6 +99,8 @@ struct LeadDetailsDocument: View {
             VStack(spacing: 0) {
                 clientRow
                 rowDivider
+                addressRow
+                rowDivider
                 projectRow
                 if correspondence != nil {
                     rowDivider
@@ -119,6 +123,7 @@ struct LeadDetailsDocument: View {
                         opportunity: lead,
                         canManage: canEdit,
                         importingPhotoIDs: importingPhotoIDs,
+                        emailPhotoAttachments: attachments,
                         onAdd: onAddPhotos,
                         onTap: onTapPhoto
                     )
@@ -226,6 +231,45 @@ struct LeadDetailsDocument: View {
             .split(separator: " ")
             .first.map(String.init)?
             .uppercased() ?? lead.displayContactName.uppercased()
+    }
+
+    // MARK: - ADDRESS
+
+    private var addressRow: some View {
+        let presentation = LeadDetailsAddressPresentation.resolve(lead.address)
+
+        return DocRow(label: "ADDRESS") {
+            switch presentation {
+            case .routable(let address):
+                Button(action: onOpenAddress) {
+                    HStack(spacing: OPSStyle.Layout.spacing2) {
+                        Text(presentation.displayValue)
+                            .font(OPSStyle.Typography.bodyEmphasis)
+                            .foregroundColor(OPSStyle.Colors.text)
+                            .fixedSize(horizontal: false, vertical: true)
+
+                        Spacer(minLength: 0)
+
+                        Image(systemName: OPSStyle.Icons.chevronRight)
+                            .font(.system(size: OPSStyle.Layout.IconSize.xs, weight: .regular))
+                            .foregroundColor(OPSStyle.Colors.text3)
+                    }
+                    .frame(
+                        maxWidth: .infinity,
+                        minHeight: OPSStyle.Layout.touchTargetMin,
+                        alignment: .leading
+                    )
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Open directions to \(address)")
+
+            case .empty:
+                Text(presentation.displayValue)
+                    .font(OPSStyle.Typography.bodyEmphasis)
+                    .foregroundColor(OPSStyle.Colors.textMute)
+            }
+        }
     }
 
     // MARK: - PROJECT
@@ -353,17 +397,41 @@ struct LeadDetailsDocument: View {
                             action: { onOpenEstimate(estimate) }
                         )
                     }
-                    ForEach(attachments) { attachment in
-                        fileLine(
-                            icon: "paperclip",
-                            name: attachment.displayName,
-                            meta: attachmentMeta(attachment),
-                            action: { onOpenAttachment(attachment) }
-                        )
+                    if !attachments.isEmpty {
+                        attachmentSummaryLine
                     }
                 }
             }
         }
+    }
+
+    private var attachmentSummaryLine: some View {
+        Button {
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            onOpenAttachments()
+        } label: {
+            HStack(spacing: OPSStyle.Layout.spacing2_5) {
+                Image(systemName: OPSStyle.Icons.documents)
+                    .font(.system(size: OPSStyle.Layout.IconSize.xs, weight: .regular))
+                    .foregroundColor(OPSStyle.Colors.text3)
+
+                Text(LeadAttachmentPresentation.summary(count: attachments.count))
+                    .font(OPSStyle.Typography.bodyEmphasis)
+                    .foregroundColor(OPSStyle.Colors.text)
+
+                Spacer(minLength: 0)
+
+                Image(systemName: OPSStyle.Icons.chevronRight)
+                    .font(.system(size: OPSStyle.Layout.IconSize.xs, weight: .regular))
+                    .foregroundColor(OPSStyle.Colors.textMute)
+            }
+            .frame(minHeight: OPSStyle.Layout.touchTargetMin)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(
+            "Open \(LeadAttachmentPresentation.summary(count: attachments.count))"
+        )
     }
 
     private func fileLine(icon: String, name: String, meta: String, action: @escaping () -> Void) -> some View {
@@ -402,16 +470,6 @@ struct LeadDetailsDocument: View {
         .accessibilityLabel("Open \(name)")
     }
 
-    private func attachmentMeta(_ attachment: LeadAttachment) -> String {
-        var parts: [String] = []
-        if let from = attachment.fromEmail, !from.isEmpty { parts.append(from) }
-        if let date = attachment.date {
-            let f = DateFormatter()
-            f.dateFormat = "MMM d"
-            parts.append(f.string(from: date).uppercased())
-        }
-        return parts.isEmpty ? attachment.ingestStatus.uppercased() : parts.joined(separator: " · ")
-    }
 }
 
 // MARK: - Document row (58pt mono label column)

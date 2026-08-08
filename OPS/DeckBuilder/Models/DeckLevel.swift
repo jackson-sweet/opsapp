@@ -16,6 +16,9 @@ struct DeckLevel: Identifiable, Codable, Equatable {
     var perVertexElevation: Bool = false
     var displayColor: LevelColor = .blue
     var sortOrder: Int = 0
+    /// Runtime-only; exact-key validation prevents stale reuse after a value
+    /// copy mutates this level's geometry.
+    private var geometrySnapshotCache = DeckExactDerivedCache<DeckGeometryContextKey, DeckGeometryContextSnapshot>()
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -83,63 +86,11 @@ struct DeckLevel: Identifiable, Codable, Equatable {
     }
 
     var isClosed: Bool {
-        guard vertices.count >= 3, edges.count >= 3 else { return false }
-        var adjacency: [String: Set<String>] = [:]
-        for edge in edges {
-            adjacency[edge.startVertexId, default: []].insert(edge.endVertexId)
-            adjacency[edge.endVertexId, default: []].insert(edge.startVertexId)
-        }
-        return vertices.allSatisfy { (adjacency[$0.id]?.count ?? 0) == 2 }
+        geometrySnapshot.isDegreeTwoClosed
     }
 
     var orderedPositions: [CGPoint] {
-        // Matches DeckDrawingData.orderedPositions — walks via previous-vertex-aware
-        // traversal so polygon fill follows the visible boundary on concave/construction-
-        // mole shapes. See DeckDrawingData for the detailed rationale.
-        guard vertices.count >= 3, edges.count >= 3 else {
-            return vertices.map { $0.position }
-        }
-
-        var adjacency: [String: [String]] = [:]
-        for edge in edges {
-            adjacency[edge.startVertexId, default: []].append(edge.endVertexId)
-            adjacency[edge.endVertexId, default: []].append(edge.startVertexId)
-        }
-
-        for vertex in vertices {
-            if (adjacency[vertex.id]?.count ?? 0) != 2 { return vertices.map { $0.position } }
-        }
-
-        guard let startId = vertices.first?.id else { return vertices.map { $0.position } }
-        var ordered: [CGPoint] = []
-        var visited: Set<String> = [startId]
-        var previousId: String? = nil
-        var currentId = startId
-
-        if let v = vertex(byId: startId) { ordered.append(v.position) }
-
-        for _ in 0..<vertices.count - 1 {
-            guard let neighbors = adjacency[currentId] else { break }
-            let nextId: String?
-            if let prev = previousId {
-                nextId = neighbors.first(where: { $0 != prev })
-            } else {
-                nextId = neighbors.sorted().first
-            }
-            guard let next = nextId, !visited.contains(next) else { break }
-            visited.insert(next)
-            previousId = currentId
-            currentId = next
-            if let v = vertex(byId: next) { ordered.append(v.position) }
-        }
-
-        guard ordered.count == vertices.count else { return vertices.map { $0.position } }
-        // Match DeckDrawingData.orderedPositions: normalize winding so any
-        // direction-sensitive consumer sees a stable orientation.
-        if PolygonMath.signedArea(vertices: ordered) > 0 {
-            ordered.reverse()
-        }
-        return ordered
+        geometrySnapshot.orderedPositions
     }
 
     /// Every closed face in this level's edge graph. Replaces the all-or-nothing
@@ -147,7 +98,35 @@ struct DeckLevel: Identifiable, Codable, Equatable {
     /// detail lines beyond the perimeter (DECK-NEW-1). Returns empty when no
     /// loop has been closed yet.
     var detectedSurfaces: [DetectedSurface] {
-        SurfaceDetector.detect(vertices: vertices, edges: edges)
+        geometrySnapshot.detectedSurfaces
+    }
+
+    var geometrySnapshot: DeckGeometryContextSnapshot {
+        let key = DeckGeometryContextSnapshot.key(vertices: vertices, edges: edges)
+        return geometrySnapshotCache.resolve(key: key) {
+            DeckGeometryContextSnapshot.build(
+                vertices: vertices,
+                edges: edges,
+                closureRequiresSingleWalk: false
+            )
+        }
+    }
+
+    var geometrySnapshotComputationCount: Int {
+        geometrySnapshotCache.missCount
+    }
+
+    static func == (lhs: DeckLevel, rhs: DeckLevel) -> Bool {
+        lhs.id == rhs.id
+            && lhs.name == rhs.name
+            && lhs.vertices == rhs.vertices
+            && lhs.edges == rhs.edges
+            && lhs.footprint == rhs.footprint
+            && lhs.surfaces == rhs.surfaces
+            && lhs.elevation == rhs.elevation
+            && lhs.perVertexElevation == rhs.perVertexElevation
+            && lhs.displayColor == rhs.displayColor
+            && lhs.sortOrder == rhs.sortOrder
     }
 
     /// Effective elevation for a vertex (per-vertex if enabled, otherwise uniform)

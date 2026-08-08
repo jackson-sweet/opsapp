@@ -761,6 +761,10 @@ struct DeckDrawingData: Codable {
 
     private var framingStorage: FramingPlan? = nil
     private var framingRoundTrip: FramingRoundTrip = .absent
+    /// Runtime-only exact geometry derivations. Custom Codable intentionally
+    /// omits both caches; persisted and synced drawing JSON is unchanged.
+    private var rootGeometrySnapshotCache = DeckExactDerivedCache<DeckGeometryContextKey, DeckGeometryContextSnapshot>()
+    private var drawingGeometrySnapshotCache = DeckExactDerivedCache<DeckDrawingGeometryKey, DeckDrawingGeometrySnapshot>()
 
     private enum FramingRoundTrip {
         case absent
@@ -950,41 +954,7 @@ struct DeckDrawingData: Codable {
     }
 
     var isClosed: Bool {
-        guard vertices.count >= 3, edges.count >= 3 else { return false }
-
-        // Build adjacency: vertex → [connected vertex ids]
-        var adjacency: [String: Set<String>] = [:]
-        for edge in edges {
-            adjacency[edge.startVertexId, default: []].insert(edge.endVertexId)
-            adjacency[edge.endVertexId, default: []].insert(edge.startVertexId)
-        }
-
-        // Every vertex must have exactly 2 connections for a simple polygon
-        for vertex in vertices {
-            let connections = adjacency[vertex.id]?.count ?? 0
-            if connections != 2 { return false }
-        }
-
-        // Walk the graph from the first vertex — must visit all vertices and return to start
-        guard let startId = vertices.first?.id else { return false }
-        var visited: Set<String> = [startId]
-        var currentId = startId
-
-        for _ in 0..<vertices.count {
-            guard let neighbors = adjacency[currentId] else { return false }
-            let unvisited = neighbors.subtracting(visited)
-
-            if unvisited.isEmpty {
-                // Only valid if we've visited all vertices and can return to start
-                return visited.count == vertices.count && neighbors.contains(startId)
-            }
-
-            guard let nextId = unvisited.first else { return false }
-            visited.insert(nextId)
-            currentId = nextId
-        }
-
-        return false
+        geometrySnapshot.root.isSingleClosedWalk
     }
 
     /// Ordered vertex positions for rendering — walks the edge graph in geometric order
@@ -997,65 +967,7 @@ struct DeckDrawingData: Codable {
     /// filled the enclosed region of that broken path — bleeding fill outside the real
     /// edges. Previous-vertex-aware traversal guarantees the walk follows edges only.
     var orderedPositions: [CGPoint] {
-        guard vertices.count >= 3, edges.count >= 3 else {
-            return vertices.map { $0.position }
-        }
-
-        var adjacency: [String: [String]] = [:]
-        for edge in edges {
-            adjacency[edge.startVertexId, default: []].append(edge.endVertexId)
-            adjacency[edge.endVertexId, default: []].append(edge.startVertexId)
-        }
-
-        for vertex in vertices {
-            let connections = adjacency[vertex.id]?.count ?? 0
-            if connections != 2 { return vertices.map { $0.position } }
-        }
-
-        guard let startId = vertices.first?.id else { return vertices.map { $0.position } }
-        var ordered: [CGPoint] = []
-        var visited: Set<String> = [startId]
-        var previousId: String? = nil
-        var currentId = startId
-
-        if let startVertex = vertex(byId: startId) {
-            ordered.append(startVertex.position)
-        }
-
-        for _ in 0..<vertices.count - 1 {
-            guard let neighbors = adjacency[currentId] else { break }
-            // Pick the neighbor we didn't arrive from. On the first step previousId is
-            // nil, so we fall back to a deterministic pick (sorted) — this is the only
-            // place winding direction is chosen.
-            let nextId: String?
-            if let prev = previousId {
-                nextId = neighbors.first(where: { $0 != prev })
-            } else {
-                nextId = neighbors.sorted().first
-            }
-            guard let next = nextId, !visited.contains(next) else { break }
-            visited.insert(next)
-            previousId = currentId
-            currentId = next
-            if let v = vertex(byId: next) {
-                ordered.append(v.position)
-            }
-        }
-
-        guard ordered.count == vertices.count else {
-            return vertices.map { $0.position }
-        }
-
-        // Normalize winding so the walk always returns vertices in the same
-        // visual direction (CCW in SwiftUI canvas coordinates → negative
-        // shoelace). The first-step pick is otherwise arbitrary and depends
-        // on UUID sort, which would silently flip direction for any future
-        // consumer that cares (3D normals, fill rules, etc.).
-        if PolygonMath.signedArea(vertices: ordered) > 0 {
-            ordered.reverse()
-        }
-
-        return ordered
+        geometrySnapshot.root.orderedPositions
     }
 
     /// Every closed face in this drawing's edge graph. Replaces the
@@ -1066,7 +978,7 @@ struct DeckDrawingData: Codable {
     /// for its own surfaces — this top-level array only inspects the
     /// single-level fields.
     var detectedSurfaces: [DetectedSurface] {
-        SurfaceDetector.detect(vertices: vertices, edges: edges)
+        geometrySnapshot.root.detectedSurfaces
     }
 
     /// True when the drawing has at least one closed surface — anywhere.
@@ -1121,30 +1033,58 @@ struct DeckDrawingData: Codable {
 
     /// Total area across all levels in square inches
     func totalRealWorldArea(scaleFactor: Double) -> Double {
-        if isMultiLevel {
-            return levels.reduce(0) { total, level in
-                let surfaces = level.detectedSurfaces
-                if surfaces.isEmpty {
-                    guard level.isClosed,
-                          !PolygonMath.isSelfIntersecting(vertices: level.orderedPositions) else { return total }
-                    return total + PolygonMath.realWorldArea(vertices: level.orderedPositions, scaleFactor: scaleFactor)
-                }
-                return total + surfaces.reduce(0) { surfaceTotal, surface in
-                    guard !PolygonMath.isSelfIntersecting(vertices: surface.positions) else { return surfaceTotal }
-                    return surfaceTotal + PolygonMath.realWorldArea(vertices: surface.positions, scaleFactor: scaleFactor)
-                }
+        guard scaleFactor > 0, let canvasArea = geometrySnapshot.totalCanvasArea else { return 0 }
+        return canvasArea / (scaleFactor * scaleFactor)
+    }
+
+    /// Stable derived boundary for renderers, selection readouts, and metrics.
+    /// The exact key is rebuilt in O(V+E); the graph/face derivation only runs
+    /// when geometry itself changes.
+    var geometrySnapshot: DeckDrawingGeometrySnapshot {
+        let rootKey = DeckGeometryContextSnapshot.key(vertices: vertices, edges: edges)
+        let levelKeys = levels.map {
+            DeckLevelGeometrySnapshot(
+                levelId: $0.id,
+                key: DeckGeometryContextSnapshot.key(vertices: $0.vertices, edges: $0.edges)
+            )
+        }
+        let drawingKey = DeckDrawingGeometryKey(root: rootKey, levels: levelKeys)
+
+        return drawingGeometrySnapshotCache.resolve(key: drawingKey) {
+            let root = rootGeometrySnapshotCache.resolve(key: rootKey) {
+                DeckGeometryContextSnapshot.build(
+                    vertices: vertices,
+                    edges: edges,
+                    closureRequiresSingleWalk: true
+                )
             }
+            let levelContexts = levels.map { level in
+                (id: level.id, context: level.geometrySnapshot)
+            }
+            let areaValues = isMultiLevel
+                ? levelContexts.compactMap { $0.context.totalCanvasArea }
+                : [root.totalCanvasArea].compactMap { $0 }
+            let perimeterValues = isMultiLevel
+                ? levelContexts.compactMap { $0.context.totalCanvasPerimeter }
+                : [root.totalCanvasPerimeter].compactMap { $0 }
+            let totalArea = areaValues.reduce(0, +)
+            let totalPerimeter = perimeterValues.reduce(0, +)
+            var allVertexPositionsById = root.vertexPositionsById
+            for level in levelContexts {
+                allVertexPositionsById.merge(level.context.vertexPositionsById) { current, _ in current }
+            }
+            return DeckDrawingGeometrySnapshot(
+                root: root,
+                levels: levelContexts,
+                allVertexPositionsById: allVertexPositionsById,
+                totalCanvasArea: totalArea > 0 ? totalArea : nil,
+                totalCanvasPerimeter: totalPerimeter > 0 ? totalPerimeter : nil
+            )
         }
-        let surfaces = detectedSurfaces
-        if surfaces.isEmpty {
-            guard isClosed,
-                  !PolygonMath.isSelfIntersecting(vertices: orderedPositions) else { return 0 }
-            return PolygonMath.realWorldArea(vertices: orderedPositions, scaleFactor: scaleFactor)
-        }
-        return surfaces.reduce(0) { total, surface in
-            guard !PolygonMath.isSelfIntersecting(vertices: surface.positions) else { return total }
-            return total + PolygonMath.realWorldArea(vertices: surface.positions, scaleFactor: scaleFactor)
-        }
+    }
+
+    var geometrySnapshotComputationCount: Int {
+        rootGeometrySnapshotCache.missCount
     }
 
     /// Get a level by ID

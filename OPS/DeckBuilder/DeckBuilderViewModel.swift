@@ -22,6 +22,33 @@ enum DeckLabelEditTarget: Hashable {
     case footprint(levelId: String?)
 }
 
+/// Ephemeral canvas geometry. Gesture callbacks update this at most once per
+/// display interval; committed drawing state, topology, undo, persistence,
+/// sync, and 3D remain untouched until the gesture ends.
+struct DeckLiveGeometryOverlay: Equatable {
+    var vertexPositionsById: [String: CGPoint] = [:]
+    var alignmentGuides: [AlignmentGuide] = []
+
+    var isEmpty: Bool { vertexPositionsById.isEmpty && alignmentGuides.isEmpty }
+}
+
+/// One-shot native display callback. The link invalidates itself before
+/// invoking the action, so it cannot outlive a dismissed builder even if its
+/// weak view-model target has already gone away.
+@MainActor
+private final class DeckDisplayFrameTarget: NSObject {
+    private let action: @MainActor () -> Void
+
+    init(action: @escaping @MainActor () -> Void) {
+        self.action = action
+    }
+
+    @objc func displayFrame(_ displayLink: CADisplayLink) {
+        displayLink.invalidate()
+        action()
+    }
+}
+
 @MainActor
 class DeckBuilderViewModel: ObservableObject {
 
@@ -41,6 +68,7 @@ class DeckBuilderViewModel: ObservableObject {
     /// the shipped renderer and S3 upload path.
     private let thumbnailRenderer: (DeckDrawingData) -> UIImage?
     private let thumbnailUploader: (UIImage, DeckDesign) async throws -> String
+    private let drawingEncoder: (DeckDrawingData) -> String
     /// True after we've enqueued at least one create op for `deckDesign.id`.
     /// Subsequent edits enqueue updates instead. Persists across app launches
     /// implicitly via `lastSyncedAt` on the model — see `enqueueDeckDesignSync`.
@@ -56,7 +84,25 @@ class DeckBuilderViewModel: ObservableObject {
 
     // MARK: - Drawing State
 
-    @Published var drawingData: DeckDrawingData
+    @Published var drawingData: DeckDrawingData {
+        didSet {
+            drawingRevision &+= 1
+            isLocallySaved = false
+        }
+    }
+    /// Monotonic identity for committed drawing changes. SceneKit consumes
+    /// this instead of synchronously JSON-encoding the drawing in updateUIView.
+    private(set) var drawingRevision: UInt64 = 0
+    @Published private(set) var liveGeometryOverlay = DeckLiveGeometryOverlay()
+    private enum LiveGeometryRequest {
+        case vertex(id: String, rawPosition: CGPoint)
+        case selection(rawDelta: CGSize)
+    }
+    private var liveGeometryFrameBatcher = DeckGestureFrameBatcher<LiveGeometryRequest>()
+    private var liveGeometryDisplayLink: CADisplayLink?
+    private var liveGeometryDisplayTarget: DeckDisplayFrameTarget?
+    var liveGeometrySubmissionCount: Int { liveGeometryFrameBatcher.submissionCount }
+    var liveGeometryPublicationCount: Int { liveGeometryFrameBatcher.publicationCount }
     @Published var drawingMode: DrawingMode = .idle
     @Published var activeTool: DrawingTool = .draw
     @Published var perimeterEntry: PerimeterEntryMode = .idle
@@ -341,13 +387,19 @@ class DeckBuilderViewModel: ObservableObject {
                 if persisted.isEmpty && (!legacy.assignedItems.isEmpty || legacy.label != nil) {
                     reconciled = SurfaceReconciler.migratedFromLegacy(detected: detected, legacyFootprint: legacy)
                     if !reconciled.isEmpty {
-                        drawingData.levels[i].footprint.assignedItems.removeAll()
-                        drawingData.levels[i].footprint.label = nil
+                        if !drawingData.levels[i].footprint.assignedItems.isEmpty {
+                            drawingData.levels[i].footprint.assignedItems.removeAll()
+                        }
+                        if drawingData.levels[i].footprint.label != nil {
+                            drawingData.levels[i].footprint.label = nil
+                        }
                     }
                 } else {
                     reconciled = SurfaceReconciler.reconcile(detected: detected, persisted: persisted)
                 }
-                drawingData.levels[i].surfaces = reconciled
+                if drawingData.levels[i].surfaces != reconciled {
+                    drawingData.levels[i].surfaces = reconciled
+                }
             }
         } else {
             let detected = drawingData.detectedSurfaces
@@ -357,13 +409,19 @@ class DeckBuilderViewModel: ObservableObject {
             if persisted.isEmpty && (!legacy.assignedItems.isEmpty || legacy.label != nil) {
                 reconciled = SurfaceReconciler.migratedFromLegacy(detected: detected, legacyFootprint: legacy)
                 if !reconciled.isEmpty {
-                    drawingData.footprint.assignedItems.removeAll()
-                    drawingData.footprint.label = nil
+                    if !drawingData.footprint.assignedItems.isEmpty {
+                        drawingData.footprint.assignedItems.removeAll()
+                    }
+                    if drawingData.footprint.label != nil {
+                        drawingData.footprint.label = nil
+                    }
                 }
             } else {
                 reconciled = SurfaceReconciler.reconcile(detected: detected, persisted: persisted)
             }
-            drawingData.surfaces = reconciled
+            if drawingData.surfaces != reconciled {
+                drawingData.surfaces = reconciled
+            }
         }
 
         // Drop selection IDs that no longer correspond to any persisted surface.
@@ -382,6 +440,150 @@ class DeckBuilderViewModel: ObservableObject {
     private func activeVertex(byId id: String) -> DeckVertex? {
         if isMultiLevel, let level = activeLevel { return level.vertex(byId: id) }
         return drawingData.vertex(byId: id)
+    }
+
+    /// Canvas-only vertex lookup that overlays the newest frame-coalesced
+    /// gesture position without mutating the committed drawing value.
+    func renderVertex(byId id: String) -> DeckVertex? {
+        guard var vertex = findVertex(byId: id) else { return nil }
+        if let livePosition = liveGeometryOverlay.vertexPositionsById[id] {
+            vertex.position = livePosition
+        }
+        return vertex
+    }
+
+    func renderPosition(for vertexId: String, fallback: CGPoint) -> CGPoint {
+        liveGeometryOverlay.vertexPositionsById[vertexId] ?? fallback
+    }
+
+    func renderPositions(for surface: DetectedSurface) -> [CGPoint] {
+        zip(surface.vertexIds, surface.positions).map { vertexId, fallback in
+            renderPosition(for: vertexId, fallback: fallback)
+        }
+    }
+
+    /// Mirrors dimension semantics for the live overlay without writing the
+    /// recalculated value into the drawing on every gesture callback.
+    func renderEdge(_ source: DeckEdge) -> DeckEdge {
+        guard liveGeometryOverlay.vertexPositionsById[source.startVertexId] != nil
+                || liveGeometryOverlay.vertexPositionsById[source.endVertexId] != nil,
+              let start = renderVertex(byId: source.startVertexId),
+              let end = renderVertex(byId: source.endVertexId) else { return source }
+
+        var edge = source
+        let canvasDistance = SnapEngine.distance(start.position, end.position)
+        if edge.dimensionSource == .scale {
+            let scale = drawingData.scaleFactor.flatMap { $0 > 0 ? $0 : nil }
+                ?? Self.prescaleFallbackScale
+            edge.dimension = canvasDistance / scale
+            edge.dimensionStale = false
+        } else if let typed = edge.dimension,
+                  let scale = drawingData.scaleFactor,
+                  scale > 0 {
+            edge.dimensionStale = abs((canvasDistance / scale) - typed) >= 0.5
+        } else {
+            edge.dimensionStale = false
+        }
+        return edge
+    }
+
+    private var activeGeometrySnapshot: DeckGeometryContextSnapshot {
+        if isMultiLevel,
+           let levelId = activeLevel?.id,
+           let levelSnapshot = drawingData.geometrySnapshot.level(id: levelId) {
+            return levelSnapshot
+        }
+        return drawingData.geometrySnapshot.root
+    }
+
+    private func submitLiveGeometryRequest(_ request: LiveGeometryRequest) {
+        guard liveGeometryFrameBatcher.submit(request) else { return }
+        let target = DeckDisplayFrameTarget { [weak self] in
+            self?.flushPendingLiveGeometryFrame()
+        }
+        let displayLink = CADisplayLink(target: target, selector: #selector(DeckDisplayFrameTarget.displayFrame(_:)))
+        liveGeometryDisplayTarget = target
+        liveGeometryDisplayLink = displayLink
+        displayLink.add(to: .main, forMode: .common)
+    }
+
+    /// Internal for deterministic regression tests; production calls arrive
+    /// from the scheduled display-sized frame slot.
+    func flushPendingLiveGeometryFrame() {
+        liveGeometryDisplayLink?.invalidate()
+        liveGeometryDisplayLink = nil
+        liveGeometryDisplayTarget = nil
+        guard let request = liveGeometryFrameBatcher.consume() else { return }
+
+        switch request {
+        case .vertex(let id, let rawPosition):
+            let position = SnapEngine.snapToGrid(
+                rawPosition,
+                gridSpacing: lengthSnapInCanvasPoints()
+            )
+            liveGeometryOverlay = DeckLiveGeometryOverlay(
+                vertexPositionsById: [id: position],
+                alignmentGuides: []
+            )
+            alignmentGuides = []
+        case .selection(let rawDelta):
+            let resolved = resolveSelectionMoveDelta(rawDelta)
+            let positions = selectionMoveOriginalVertices.mapValues { original in
+                CGPoint(
+                    x: original.x + resolved.delta.width,
+                    y: original.y + resolved.delta.height
+                )
+            }
+            liveGeometryOverlay = DeckLiveGeometryOverlay(
+                vertexPositionsById: positions,
+                alignmentGuides: resolved.guides
+            )
+            alignmentGuides = resolved.guides
+        }
+    }
+
+    private func clearLiveGeometryOverlay() {
+        liveGeometryDisplayLink?.invalidate()
+        liveGeometryDisplayLink = nil
+        liveGeometryDisplayTarget = nil
+        liveGeometryFrameBatcher.reset()
+        if !liveGeometryOverlay.isEmpty {
+            liveGeometryOverlay = DeckLiveGeometryOverlay()
+        }
+        alignmentGuides = []
+    }
+
+    @discardableResult
+    private func commitActiveGeometryPositions(
+        _ positions: [String: CGPoint]
+    ) -> DeckGeometryMutationMetrics? {
+        guard !positions.isEmpty else { return nil }
+        var nextDrawing = drawingData
+        let result: DeckGeometryMutationResult<DeckVertex, DeckEdge>
+        if isMultiLevel, activeLevelIndex < nextDrawing.levels.count {
+            let level = nextDrawing.levels[activeLevelIndex]
+            result = DeckGeometryMutationEngine.applying(
+                positions: positions,
+                to: level.vertices,
+                edges: level.edges,
+                scaleFactor: nextDrawing.scaleFactor,
+                fallbackScale: Self.prescaleFallbackScale
+            )
+            nextDrawing.levels[activeLevelIndex].vertices = result.vertices
+            nextDrawing.levels[activeLevelIndex].edges = result.edges
+        } else {
+            result = DeckGeometryMutationEngine.applying(
+                positions: positions,
+                to: nextDrawing.vertices,
+                edges: nextDrawing.edges,
+                scaleFactor: nextDrawing.scaleFactor,
+                fallbackScale: Self.prescaleFallbackScale
+            )
+            nextDrawing.vertices = result.vertices
+            nextDrawing.edges = result.edges
+        }
+        drawingData = nextDrawing
+        return result.metrics
     }
 
     /// Update a vertex in the active context
@@ -457,43 +659,9 @@ class DeckBuilderViewModel: ObservableObject {
 
     var totalArea: Double? {
         let scale = drawingData.effectiveScaleFactor
-        if isMultiLevel {
-            // DECK-NEW-1 — sum every detected face on every level, not the
-            // single all-vertices polygon. Falls back to the legacy
-            // perimeter calculation for levels that are simple closed
-            // polygons but produce no detected surfaces (degenerate edge
-            // cases). Self-intersecting faces are excluded since their
-            // shoelace area is not a usable measurement.
-            var total: Double = 0
-            for level in drawingData.levels {
-                let surfaces = level.detectedSurfaces
-                if surfaces.isEmpty {
-                    guard level.isClosed,
-                          !PolygonMath.isSelfIntersecting(vertices: level.orderedPositions) else { continue }
-                    total += PolygonMath.realWorldArea(vertices: level.orderedPositions, scaleFactor: scale)
-                } else {
-                    for surface in surfaces {
-                        guard !PolygonMath.isSelfIntersecting(vertices: surface.positions) else { continue }
-                        total += PolygonMath.realWorldArea(vertices: surface.positions, scaleFactor: scale)
-                    }
-                }
-            }
-            return total > 0 ? total : nil
-        }
-        // Single-level — sum across all detected surfaces.
-        let surfaces = drawingData.detectedSurfaces
-        if !surfaces.isEmpty {
-            var total: Double = 0
-            for surface in surfaces {
-                guard !PolygonMath.isSelfIntersecting(vertices: surface.positions) else { continue }
-                total += PolygonMath.realWorldArea(vertices: surface.positions, scaleFactor: scale)
-            }
-            return total > 0 ? total : nil
-        }
-        guard isClosed else { return nil }
-        let positions = drawingData.orderedPositions
-        guard !PolygonMath.isSelfIntersecting(vertices: positions) else { return nil }
-        return PolygonMath.realWorldArea(vertices: positions, scaleFactor: scale)
+        guard scale > 0,
+              let canvasArea = drawingData.geometrySnapshot.totalCanvasArea else { return nil }
+        return canvasArea / (scale * scale)
     }
 
     var selectedSurfaceSummary: DeckSurfaceSelectionSummary? {
@@ -513,15 +681,9 @@ class DeckBuilderViewModel: ObservableObject {
 
     var totalPerimeter: Double? {
         let scale = drawingData.effectiveScaleFactor
-        if isMultiLevel {
-            let totalPts = drawingData.levels.reduce(0.0) { total, level in
-                total + PolygonMath.perimeter(vertices: level.orderedPositions)
-            }
-            guard totalPts > 0 else { return nil }
-            return totalPts / scale
-        }
-        guard activeEdges.count > 0 else { return nil }
-        return PolygonMath.perimeter(vertices: drawingData.orderedPositions) / scale
+        guard scale > 0,
+              let canvasPerimeter = drawingData.geometrySnapshot.totalCanvasPerimeter else { return nil }
+        return canvasPerimeter / scale
     }
 
     /// Live "12' 6\"  90°" string for the in-progress draw. Returned as a
@@ -574,6 +736,7 @@ class DeckBuilderViewModel: ObservableObject {
         deckDesign: DeckDesign,
         modelContext: ModelContext? = nil,
         syncEngine: SyncEngine? = nil,
+        drawingEncoder: @escaping (DeckDrawingData) -> String = { $0.toJSON() },
         thumbnailRenderer: @escaping (DeckDrawingData) -> UIImage? = { drawingData in
             DeckRenderer.renderToPNG(drawingData: drawingData)
         },
@@ -584,6 +747,7 @@ class DeckBuilderViewModel: ObservableObject {
         self.deckDesign = deckDesign
         self.modelContext = modelContext
         self.syncEngine = syncEngine
+        self.drawingEncoder = drawingEncoder
         self.thumbnailRenderer = thumbnailRenderer
         self.thumbnailUploader = thumbnailUploader
         var loaded = deckDesign.drawingData
@@ -725,7 +889,7 @@ class DeckBuilderViewModel: ObservableObject {
         if !isLocallySaved {
             return true
         }
-        return drawingData.toJSON() != deckDesign.drawingDataJSON
+        return hasPendingSave
     }
 
     private func triggerPendingDeckDesignSync() {
@@ -1977,25 +2141,27 @@ class DeckBuilderViewModel: ObservableObject {
         // Drop any leftover guides from a previous draw — none of the non-
         // .drawing modes render guides, but clearing the array prevents a
         // stale value from being restored next time .drawing begins.
-        alignmentGuides = []
+        clearLiveGeometryOverlay()
         drawingMode = .draggingVertex(vertexId: vertexId)
     }
 
     func updateVertexDrag(to position: CGPoint) {
         guard case .draggingVertex(let vertexId) = drawingMode else { return }
-        guard var vertex = activeVertex(byId: vertexId) else {
+        guard activeGeometrySnapshot.vertexPositionsById[vertexId] != nil else {
             print("[DeckBuilder] updateVertexDrag: vertex \(vertexId) not found, cancelling drag")
             drawingMode = .idle
             return
         }
-        vertex.position = SnapEngine.snapToGrid(position, gridSpacing: lengthSnapInCanvasPoints())
-        activeUpdateVertex(vertex)
-        // Recalculate dimensions in realtime so labels update during drag
-        recalculateEdgeDimensions(connectedTo: vertexId)
+        submitLiveGeometryRequest(.vertex(id: vertexId, rawPosition: position))
     }
 
     func endVertexDrag() {
         if case .draggingVertex(let vertexId) = drawingMode {
+            flushPendingLiveGeometryFrame()
+            let committedPositions = liveGeometryOverlay.vertexPositionsById
+            _ = commitActiveGeometryPositions(committedPositions)
+            clearLiveGeometryOverlay()
+
             // Check if dragged vertex overlaps another vertex (merge to close polygon)
             if let draggedVertex = activeVertex(byId: vertexId),
                let mergeTargetId = SnapEngine.findSnapTarget(
@@ -2054,11 +2220,12 @@ class DeckBuilderViewModel: ObservableObject {
                     }
                 }
             } else {
-                recalculateEdgeDimensions(connectedTo: vertexId)
+                // The indexed commit above already recalculated every connected
+                // edge exactly once.
             }
         }
         drawingMode = .idle
-        save()
+        scheduleSave(after: 0)
     }
 
     // MARK: - Selection XY Move
@@ -2094,7 +2261,7 @@ class DeckBuilderViewModel: ObservableObject {
         }
         selectionMoveStart = nil
         selectionMoveOriginalVertices.removeAll()
-        alignmentGuides = []
+        clearLiveGeometryOverlay()
         isSelectionMoveArmed = false
         hapticLight()
     }
@@ -2115,7 +2282,7 @@ class DeckBuilderViewModel: ObservableObject {
             uniquingKeysWith: { first, _ in first }
         )
         drawingMode = .movingSelection
-        alignmentGuides = []
+        clearLiveGeometryOverlay()
     }
 
     func updateSelectionMove(to point: CGPoint) {
@@ -2124,26 +2291,23 @@ class DeckBuilderViewModel: ObservableObject {
               !selectionMoveOriginalVertices.isEmpty else { return }
 
         let rawDelta = CGSize(width: point.x - start.x, height: point.y - start.y)
-        let resolved = resolveSelectionMoveDelta(rawDelta)
-        applySelectionMove(delta: resolved.delta)
-        alignmentGuides = resolved.guides
+        submitLiveGeometryRequest(.selection(rawDelta: rawDelta))
     }
 
     func endSelectionMove() {
         guard case .movingSelection = drawingMode else { return }
-        let movedIds = Set(selectionMoveOriginalVertices.keys)
-        for vertexId in movedIds {
-            recalculateEdgeDimensions(connectedTo: vertexId)
-        }
+        flushPendingLiveGeometryFrame()
+        let committedPositions = liveGeometryOverlay.vertexPositionsById
+        _ = commitActiveGeometryPositions(committedPositions)
+        clearLiveGeometryOverlay()
         drawingMode = .idle
         // isSelectionMoveArmed intentionally NOT cleared — Move-XY is a sticky
         // toggle, so a follow-up drag in the canvas can start another move
         // without the user re-tapping the toolbar.
         selectionMoveStart = nil
         selectionMoveOriginalVertices.removeAll()
-        alignmentGuides = []
         hapticMedium()
-        save()
+        scheduleSave(after: 0)
     }
 
     // MARK: - Copy / Paste Selection
@@ -2298,20 +2462,6 @@ class DeckBuilderViewModel: ObservableObject {
         return ids
     }
 
-    private func applySelectionMove(delta: CGSize) {
-        for (vertexId, original) in selectionMoveOriginalVertices {
-            guard var vertex = activeVertex(byId: vertexId) else { continue }
-            vertex.position = CGPoint(
-                x: original.x + delta.width,
-                y: original.y + delta.height
-            )
-            activeUpdateVertex(vertex)
-        }
-        for vertexId in selectionMoveOriginalVertices.keys {
-            recalculateEdgeDimensions(connectedTo: vertexId)
-        }
-    }
-
     /// A single snap proposal evaluated during a selection move — a 1-DOF
     /// linear constraint pinning `delta · normal == offset`. Snaps used to be
     /// picked one-at-a-time (the resolver applied grid → parallel → ONE-OF
@@ -2340,10 +2490,11 @@ class DeckBuilderViewModel: ObservableObject {
         // refine the axes they lock; any axis left free keeps this value.
         var delta = gridSnappedSelectionDelta(rawDelta)
 
+        let geometry = activeGeometrySnapshot
         var candidates: [SelectionMoveConstraint] = []
-        candidates.append(contentsOf: vertexSnappedSelectionDelta(baseline: delta))
-        candidates.append(contentsOf: edgeSnappedSelectionDelta(baseline: delta))
-        candidates.append(contentsOf: parallelSnappedSelectionDelta(rawDelta: rawDelta))
+        candidates.append(contentsOf: vertexSnappedSelectionDelta(baseline: delta, geometry: geometry))
+        candidates.append(contentsOf: edgeSnappedSelectionDelta(baseline: delta, geometry: geometry))
+        candidates.append(contentsOf: parallelSnappedSelectionDelta(rawDelta: rawDelta, geometry: geometry))
         candidates.sort { $0.sortDistance < $1.sortDistance }
 
         // Two independent 1-DOF locks fully pin the 2D delta (solved via a
@@ -2382,17 +2533,18 @@ class DeckBuilderViewModel: ObservableObject {
     /// direction must be zero. One candidate per qualifying edge so the
     /// accumulator can pick the closest and (if independent normals)
     /// compound a second on a different free axis.
-    private func parallelSnappedSelectionDelta(rawDelta: CGSize) -> [SelectionMoveConstraint] {
+    private func parallelSnappedSelectionDelta(
+        rawDelta: CGSize,
+        geometry: DeckGeometryContextSnapshot
+    ) -> [SelectionMoveConstraint] {
         let length = hypot(rawDelta.width, rawDelta.height)
         guard length > 0 else { return [] }
         let threshold = CGFloat(max(8.0, drawingData.config.endpointSnapRadius * 0.35))
 
         var results: [SelectionMoveConstraint] = []
-        for edge in activeEdges {
-            guard let start = activeVertex(byId: edge.startVertexId),
-                  let end = activeVertex(byId: edge.endVertexId) else { continue }
-            let dx = end.position.x - start.position.x
-            let dy = end.position.y - start.position.y
+        for edge in geometry.edgeSegments {
+            let dx = edge.end.x - edge.start.x
+            let dy = edge.end.y - edge.start.y
             let edgeLen = hypot(dx, dy)
             guard edgeLen > 0 else { continue }
             // Unit perpendicular to the edge — the move's component along
@@ -2406,8 +2558,8 @@ class DeckBuilderViewModel: ObservableObject {
                 offset: 0,
                 sortDistance: residual,
                 guide: AlignmentGuide(
-                    from: start.position,
-                    to: end.position,
+                    from: edge.start,
+                    to: edge.end,
                     type: .parallel,
                     referenceLabel: "\u{2225}"
                 )
@@ -2423,19 +2575,22 @@ class DeckBuilderViewModel: ObservableObject {
     /// vertex), or just the free axis when an edge snap has already locked
     /// the other (= the moved vertex aligns to the static one on one axis,
     /// to whatever the edge snap dictates on the other).
-    private func vertexSnappedSelectionDelta(baseline: CGSize) -> [SelectionMoveConstraint] {
+    private func vertexSnappedSelectionDelta(
+        baseline: CGSize,
+        geometry: DeckGeometryContextSnapshot
+    ) -> [SelectionMoveConstraint] {
         let movingIds = Set(selectionMoveOriginalVertices.keys)
-        let staticVertices = activeVertices.filter { !movingIds.contains($0.id) }
+        let staticVertices = geometry.vertexPositionsById.filter { !movingIds.contains($0.key) }
         guard !staticVertices.isEmpty else { return [] }
 
         var best: (distance: Double, original: CGPoint, moved: CGPoint, target: CGPoint)?
         for original in selectionMoveOriginalVertices.values {
             let moved = CGPoint(x: original.x + baseline.width, y: original.y + baseline.height)
-            for target in staticVertices {
-                let distance = SnapEngine.distance(moved, target.position)
+            for (_, target) in staticVertices {
+                let distance = SnapEngine.distance(moved, target)
                 guard distance <= drawingData.config.endpointSnapRadius else { continue }
                 if best == nil || distance < best!.distance {
-                    best = (distance, original, moved, target.position)
+                    best = (distance, original, moved, target)
                 }
             }
         }
@@ -2478,7 +2633,10 @@ class DeckBuilderViewModel: ObservableObject {
     /// endpoints. One candidate per (moving vertex, static edge) pair in
     /// range — the resolver compounds two independent-normal candidates
     /// for the bug's stated "two edges colinear simultaneously" case.
-    private func edgeSnappedSelectionDelta(baseline: CGSize) -> [SelectionMoveConstraint] {
+    private func edgeSnappedSelectionDelta(
+        baseline: CGSize,
+        geometry: DeckGeometryContextSnapshot
+    ) -> [SelectionMoveConstraint] {
         let movingIds = Set(selectionMoveOriginalVertices.keys)
         var results: [SelectionMoveConstraint] = []
         for (_, original) in selectionMoveOriginalVertices {
@@ -2486,33 +2644,31 @@ class DeckBuilderViewModel: ObservableObject {
                 x: original.x + baseline.width,
                 y: original.y + baseline.height
             )
-            for edge in activeEdges {
+            for edge in geometry.edgeSegments {
                 guard !movingIds.contains(edge.startVertexId),
-                      !movingIds.contains(edge.endVertexId),
-                      let start = activeVertex(byId: edge.startVertexId),
-                      let end = activeVertex(byId: edge.endVertexId) else { continue }
-                let dx = end.position.x - start.position.x
-                let dy = end.position.y - start.position.y
+                      !movingIds.contains(edge.endVertexId) else { continue }
+                let dx = edge.end.x - edge.start.x
+                let dy = edge.end.y - edge.start.y
                 let edgeLen = hypot(dx, dy)
                 guard edgeLen > 0 else { continue }
                 let projection = Self.closestPoint(
-                    onSegmentFrom: start.position,
-                    to: end.position,
+                    onSegmentFrom: edge.start,
+                    to: edge.end,
                     point: moved
                 )
                 let segmentDistance = SnapEngine.distance(moved, projection)
                 guard segmentDistance <= drawingData.config.endpointSnapRadius else { continue }
                 let nx = -dy / edgeLen
                 let ny =  dx / edgeLen
-                let offset = (start.position.x - original.x) * nx
-                           + (start.position.y - original.y) * ny
+                let offset = (edge.start.x - original.x) * nx
+                           + (edge.start.y - original.y) * ny
                 results.append(SelectionMoveConstraint(
                     normal: CGVector(dx: nx, dy: ny),
                     offset: offset,
                     sortDistance: CGFloat(segmentDistance),
                     guide: AlignmentGuide(
-                        from: start.position,
-                        to: end.position,
+                        from: edge.start,
+                        to: edge.end,
                         type: .parallel,
                         referenceLabel: nil
                     )
@@ -3652,9 +3808,12 @@ class DeckBuilderViewModel: ObservableObject {
     /// Queues a save instead of running one now. Repeated calls collapse into
     /// a single write.
     func scheduleSave() {
+        scheduleSave(after: deferredSaveDebounce)
+    }
+
+    private func scheduleSave(after interval: TimeInterval) {
         isLocallySaved = false
         deferredSaveTask?.cancel()
-        let interval = deferredSaveDebounce
         deferredSaveTask = Task { [weak self] in
             try? await Task.sleep(nanoseconds: UInt64(max(0, interval) * 1_000_000_000))
             guard !Task.isCancelled, let self else { return }
@@ -3690,7 +3849,8 @@ class DeckBuilderViewModel: ObservableObject {
         reconcileSurfaces()
 
         isLocallySaved = false
-        deckDesign.drawingData = drawingData  // triggers needsSync via setter
+        let drawingJSONString = drawingEncoder(drawingData)
+        deckDesign.storeDrawingData(drawingData, json: drawingJSONString)
         // Insert on first save if the design was created via the blank-canvas
         // path (which defers insertion until there's real geometry to persist).
         // SwiftData rejects insert on an already-inserted model, so check first.
@@ -3711,7 +3871,7 @@ class DeckBuilderViewModel: ObservableObject {
         // Without this, the local row's `needsSync` flag flipped on but the
         // server never learned about the deck design. Idempotent — re-queueing
         // the same id is fine (OutboundProcessor coalesces).
-        enqueueDeckDesignSync()
+        enqueueDeckDesignSync(drawingJSONString: drawingJSONString)
 
         // Bug 2b1f1a9e — first edit on an EXISTING drawing surfaces the
         // autosave prompt (new drawings already auto-enabled it in init).
@@ -3771,7 +3931,7 @@ class DeckBuilderViewModel: ObservableObject {
     /// Safe to call when `syncEngine` is nil (preview / test). The local
     /// SwiftData save still happens — only the network push is skipped.
     /// Bug ab554b5f.
-    private func enqueueDeckDesignSync() {
+    private func enqueueDeckDesignSync(drawingJSONString suppliedDrawingJSONString: String? = nil) {
         guard let syncEngine else { return }
 
         let nowIso = ISO8601DateFormatter().string(from: Date())
@@ -3783,7 +3943,7 @@ class DeckBuilderViewModel: ObservableObject {
         // round-trip succeeds. Encoding to JSON-string then re-parsing keeps
         // the conversion isolated to this site (no AnyCodable plumbing
         // anywhere else).
-        let drawingJSONString = drawingData.toJSON()
+        let drawingJSONString = suppliedDrawingJSONString ?? drawingData.toJSON()
         let drawingObject: Any = (try? JSONSerialization.jsonObject(
             with: Data(drawingJSONString.utf8),
             options: []

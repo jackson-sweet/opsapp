@@ -113,7 +113,9 @@ struct DeckCanvasView: View {
     /// no interaction can cross an invisible, fixed boundary. The workspace is
     /// view state only; these coordinates are never translated or rewritten.
     private var workspaceContentPoints: [CGPoint] {
-        var points = viewModel.drawingData.allVertices.map(\.position)
+        var points = viewModel.drawingData.allVertices.map {
+            viewModel.renderPosition(for: $0.id, fallback: $0.position)
+        }
         points.append(contentsOf: DeckCanvasWorkspaceExtentResolver.stairPoints(in: viewModel.drawingData))
 
         if case .drawing(_, let startPosition, let currentEnd) = viewModel.drawingMode {
@@ -362,7 +364,7 @@ struct DeckCanvasView: View {
     // MARK: - Canvas Content
 
     private var canvasContent: some View {
-        Canvas { context, size in
+        Canvas(opaque: false, colorMode: .nonLinear, rendersAsynchronously: true) { context, size in
             // Apply pan + zoom inside the Canvas so it redraws at the viewport's
             // native pixel density at any scale. The outer scaleEffect/offset
             // were removed — see makeBody comment for the bug context (e289b094).
@@ -395,7 +397,11 @@ struct DeckCanvasView: View {
                         drawLevelFootprint(context: context, level: activeLevel)
                     }
                     for edge in activeLevel.edges {
-                        drawEdge(context: context, edge: edge, vertexLookup: activeLevel.vertex(byId:))
+                        drawEdge(
+                            context: context,
+                            edge: viewModel.renderEdge(edge),
+                            vertexLookup: viewModel.renderVertex(byId:)
+                        )
                     }
                     if let preview = viewModel.perimeterDraftPreview {
                         drawPerimeterDraftPreview(context: context, preview: preview)
@@ -407,10 +413,15 @@ struct DeckCanvasView: View {
                         drawAlignmentGuides(context: context)
                     }
                     for vertex in activeLevel.vertices {
-                        drawVertex(context: context, vertex: vertex)
+                        drawVertex(context: context, vertex: viewModel.renderVertex(byId: vertex.id) ?? vertex)
                     }
                     for edge in activeLevel.edges {
-                        drawDimensionLabel(context: context, edge: edge, vertexLookup: activeLevel.vertex(byId:), canvasSize: size)
+                        drawDimensionLabel(
+                            context: context,
+                            edge: viewModel.renderEdge(edge),
+                            vertexLookup: viewModel.renderVertex(byId:),
+                            canvasSize: size
+                        )
                     }
                     if let anchor = viewModel.perimeterEntry.activeAnchor {
                         drawPerimeterActiveAnchor(context: context, anchor: anchor)
@@ -435,7 +446,11 @@ struct DeckCanvasView: View {
                     drawPoolOverlay(context: context, diameterInches: poolDiameter, scaleFactor: scale)
                 }
                 for edge in viewModel.drawingData.edges {
-                    drawEdge(context: context, edge: edge, vertexLookup: viewModel.drawingData.vertex(byId:))
+                    drawEdge(
+                        context: context,
+                        edge: viewModel.renderEdge(edge),
+                        vertexLookup: viewModel.renderVertex(byId:)
+                    )
                 }
                 if let preview = viewModel.perimeterDraftPreview {
                     drawPerimeterDraftPreview(context: context, preview: preview)
@@ -447,10 +462,15 @@ struct DeckCanvasView: View {
                     drawAlignmentGuides(context: context)
                 }
                 for vertex in viewModel.drawingData.vertices {
-                    drawVertex(context: context, vertex: vertex)
+                    drawVertex(context: context, vertex: viewModel.renderVertex(byId: vertex.id) ?? vertex)
                 }
                 for edge in viewModel.drawingData.edges {
-                    drawDimensionLabel(context: context, edge: edge, vertexLookup: viewModel.drawingData.vertex(byId:), canvasSize: size)
+                    drawDimensionLabel(
+                        context: context,
+                        edge: viewModel.renderEdge(edge),
+                        vertexLookup: viewModel.renderVertex(byId:),
+                        canvasSize: size
+                    )
                 }
                 if let anchor = viewModel.perimeterEntry.activeAnchor {
                     drawPerimeterActiveAnchor(context: context, anchor: anchor)
@@ -470,6 +490,10 @@ struct DeckCanvasView: View {
             // Lasso selection path (canvas space)
             if case .lassoing(let points) = viewModel.drawingMode, points.count >= 2 {
                 drawLassoPath(context: context, points: points)
+            }
+
+            if case .movingSelection = viewModel.drawingMode {
+                drawAlignmentGuides(context: context)
             }
 
             // Draw last so the workspace edge remains legible with the grid on
@@ -672,7 +696,7 @@ struct DeckCanvasView: View {
             )
             drawOneSurface(
                 context: context,
-                positions: detected.positions,
+                positions: viewModel.renderPositions(for: detected),
                 isSelected: resolved.persistedId.map { selectedIds.contains($0) } ?? false,
                 assignedItems: resolved.assignedItems,
                 label: resolved.label
@@ -696,7 +720,7 @@ struct DeckCanvasView: View {
             )
             drawOneSurface(
                 context: context,
-                positions: detected.positions,
+                positions: viewModel.renderPositions(for: detected),
                 isSelected: resolved.persistedId.map { selectedIds.contains($0) } ?? false,
                 assignedItems: resolved.assignedItems,
                 label: resolved.label
@@ -808,7 +832,9 @@ struct DeckCanvasView: View {
     // MARK: - Pool Overlay
 
     private func drawPoolOverlay(context: GraphicsContext, diameterInches: Double, scaleFactor: Double) {
-        let positions = viewModel.drawingData.orderedPositions
+        let positions = viewModel.drawingData.vertices.map {
+            viewModel.renderPosition(for: $0.id, fallback: $0.position)
+        }
         guard positions.count >= 3 else { return }
         let cx = positions.map(\.x).reduce(0, +) / CGFloat(positions.count)
         let cy = positions.map(\.y).reduce(0, +) / CGFloat(positions.count)
@@ -1618,13 +1644,7 @@ struct DeckCanvasView: View {
     // MARK: - Helpers
 
     private func resolveVertex(byId id: String) -> DeckVertex? {
-        if viewModel.isMultiLevel {
-            for level in viewModel.drawingData.levels {
-                if let v = level.vertex(byId: id) { return v }
-            }
-            return nil
-        }
-        return viewModel.drawingData.vertex(byId: id)
+        viewModel.renderVertex(byId: id)
     }
 
     // MARK: - Viewport Centering

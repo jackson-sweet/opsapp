@@ -54,6 +54,7 @@ struct CatalogView: View {
     @State private var showGuidedCatalogSetup: Bool = false
     @State private var showImport: Bool = false
     @State private var showAddVariant: Bool = false
+    @State private var showBulkAddVariants: Bool = false
     @State private var showAddFamily: Bool = false
     @State private var showNewService: Bool = false
     @State private var showNewGood: Bool = false
@@ -128,6 +129,13 @@ struct CatalogView: View {
         .sheet(isPresented: $showAddVariant) {
             VariantFormSheet()
                 .environmentObject(dataController)
+        }
+        .fullScreenCover(isPresented: $showBulkAddVariants) {
+            CatalogBulkVariantExpansionFlow(
+                companyId: dataController.currentUser?.companyId ?? ""
+            )
+            .environmentObject(dataController)
+            .environmentObject(permissionStore)
         }
         .sheet(isPresented: $showAddFamily) {
             AddFamilySheet()
@@ -260,6 +268,9 @@ struct CatalogView: View {
                             }
                             Button { showAddVariant = true } label: {
                                 Label("Add Variant", systemImage: "plus.app")
+                            }
+                            Button { showBulkAddVariants = true } label: {
+                                Label("Bulk Add Variants", systemImage: OPSStyle.Icons.grid)
                             }
                             Button { showAddFamily = true } label: {
                                 Label("Add Family", systemImage: "square.stack.3d.up")

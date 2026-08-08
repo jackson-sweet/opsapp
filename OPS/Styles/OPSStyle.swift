@@ -1009,6 +1009,7 @@ enum OPSStyle {
         static let arrowRight = "arrow.right"               // THE icon for a directional right arrow (list-row affordance)
         static let expand = "arrow.up.left.and.arrow.down.right" // THE icon for entering a focused full-screen view
         static let fit = "arrow.down.right.and.arrow.up.left"    // THE icon for fitting content back into its viewport
+        static let connectivityUnavailable = "wifi.slash"       // THE icon for an offline / unavailable connection
 
         // MARK: - Legacy SF Symbols (Currently in Use)
         // These are used in existing code - during Track F migration, replace with semantic icons above

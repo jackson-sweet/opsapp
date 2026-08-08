@@ -203,6 +203,10 @@ begin
 
     if exists (
         select 1
+        from jsonb_array_elements(v_new_values) as requested(value)
+        where jsonb_typeof(requested.value) <> 'string'
+    ) or exists (
+        select 1
         from jsonb_array_elements_text(v_new_values) as requested(value)
         where btrim(requested.value) = ''
     ) or exists (
@@ -487,9 +491,13 @@ begin
         if exists (
             select 1
             from (
-                select array_agg(cvov.option_value_id order by cvov.option_value_id)::text as signature
+                select coalesce(
+                    array_agg(cvov.option_value_id order by cvov.option_value_id)
+                        filter (where cvov.option_value_id is not null),
+                    array[]::uuid[]
+                )::text as signature
                 from public.catalog_variants cv
-                join public.catalog_variant_option_values cvov
+                left join public.catalog_variant_option_values cvov
                   on cvov.variant_id = cv.id
                  and cvov.deleted_at is null
                 where cv.catalog_item_id = v_family_id

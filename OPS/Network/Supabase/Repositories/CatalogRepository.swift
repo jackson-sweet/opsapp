@@ -31,6 +31,20 @@ class CatalogRepository {
         return try await client.rpc("catalog_setup_save", params: params).execute().value
     }
 
+    func expandVariants(
+        request: CatalogBulkVariantExpansionRequest
+    ) async throws -> CatalogBulkVariantExpansionResponse {
+        let params = CatalogBulkVariantExpansionRPCParams(
+            p_company_id: companyId,
+            p_idempotency_key: request.idempotencyKey,
+            p_payload: request
+        )
+        return try await client.rpc(
+            "catalog_bulk_expand_variants",
+            params: params
+        ).execute().value
+    }
+
     // MARK: - Categories
 
     func fetchCategoriesForSync(since: Date? = nil) async throws -> [CatalogCategoryDTO] {
@@ -441,4 +455,10 @@ private struct CatalogSetupSaveRPCParams: Encodable {
     let p_company_id: String
     let p_idempotency_key: String
     let p_payload: CatalogSetupSavePayload
+}
+
+private struct CatalogBulkVariantExpansionRPCParams: Encodable {
+    let p_company_id: String
+    let p_idempotency_key: String
+    let p_payload: CatalogBulkVariantExpansionRequest
 }

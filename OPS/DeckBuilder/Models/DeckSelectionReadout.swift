@@ -96,9 +96,9 @@ enum DeckSelectionReadout {
         var edgeOrder: [String] = []
         var stairCount = 0
         var stairRunInches: Double = 0
-        let allVertices = vertices(in: drawingData)
+        let vertexPositionsById = drawingData.geometrySnapshot.allVertexPositionsById
         for edge in edges(in: drawingData) where selectedEdgeIds.contains(edge.id) {
-            let length = edgeLengthInches(edge, vertices: allVertices, scale: scale) ?? 0
+            let length = edgeLengthInches(edge, positionsById: vertexPositionsById, scale: scale) ?? 0
             let label = edgeCategoryLabel(edge)
             if edgeTotals[label] == nil { edgeOrder.append(label) }
             edgeTotals[label, default: 0] += length
@@ -161,9 +161,21 @@ enum DeckSelectionReadout {
     /// canvas length over the effective scale. Searches `vertices` for the edge's
     /// endpoints (works across levels).
     static func edgeLengthInches(_ edge: DeckEdge, vertices: [DeckVertex], scale: Double) -> Double? {
+        let positionsById = Dictionary(
+            vertices.map { ($0.id, $0.position) },
+            uniquingKeysWith: { current, _ in current }
+        )
+        return edgeLengthInches(edge, positionsById: positionsById, scale: scale)
+    }
+
+    static func edgeLengthInches(
+        _ edge: DeckEdge,
+        positionsById: [String: CGPoint],
+        scale: Double
+    ) -> Double? {
         if let dim = edge.dimension, dim > 0 { return dim }
-        guard let s = vertices.first(where: { $0.id == edge.startVertexId })?.position,
-              let e = vertices.first(where: { $0.id == edge.endVertexId })?.position else { return nil }
+        guard let s = positionsById[edge.startVertexId],
+              let e = positionsById[edge.endVertexId] else { return nil }
         return SnapEngine.distance(s, e) / scale
     }
 }

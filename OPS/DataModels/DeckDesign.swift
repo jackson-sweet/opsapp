@@ -98,11 +98,18 @@ final class DeckDesign: Identifiable {
         }
         set {
             let json = newValue.toJSON()
-            drawingDataJSON = json
-            drawingDataCache.store(newValue, json: json)
-            updatedAt = Date()
-            needsSync = true
+            storeDrawingData(newValue, json: json)
         }
+    }
+
+    /// Stores a drawing whose canonical JSON has already been produced by the
+    /// save boundary. This avoids repeating the full encoder pass for the model
+    /// setter and outbound sync payload.
+    func storeDrawingData(_ drawing: DeckDrawingData, json: String) {
+        drawingDataJSON = json
+        drawingDataCache.store(drawing, json: json)
+        updatedAt = Date()
+        needsSync = true
     }
 
     // MARK: - Convenience

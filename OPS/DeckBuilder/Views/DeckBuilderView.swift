@@ -108,7 +108,11 @@ struct DeckBuilderView: View {
                     .padding(.top, floatingHeaderTopPadding)
 
                 ZStack(alignment: .topTrailing) {
-                    DeckScene3DView(drawingData: viewModel.drawingData, controller: scene3DController)
+                    DeckScene3DView(
+                        drawingData: viewModel.drawingData,
+                        drawingRevision: viewModel.drawingRevision,
+                        controller: scene3DController
+                    )
                         .transition(.opacity)
 
                     screenshot3DButton

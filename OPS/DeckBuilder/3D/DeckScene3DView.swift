@@ -9,7 +9,6 @@ import SceneKit
 class Scene3DController: ObservableObject {
     fileprivate var scnView: SCNView?
     fileprivate var scene: SCNScene?
-    fileprivate var lastDrawingJSON: String = ""
 
     func setCameraPreset(_ preset: CameraPreset) {
         guard let scnView = scnView, let scene = scene else { return }
@@ -53,13 +52,16 @@ class Scene3DController: ObservableObject {
 
 struct DeckScene3DView: UIViewRepresentable {
     let drawingData: DeckDrawingData
+    let drawingRevision: UInt64
     let controller: Scene3DController
 
     func makeCoordinator() -> Coordinator {
         Coordinator()
     }
 
-    class Coordinator {}
+    final class Coordinator {
+        var revisionGate = DeckSceneRevisionGate()
+    }
 
     func makeUIView(context: Context) -> SCNView {
         let scnView = SCNView()
@@ -82,14 +84,13 @@ struct DeckScene3DView: UIViewRepresentable {
 
         controller.scnView = scnView
         controller.scene = scene
-        controller.lastDrawingJSON = drawingData.toJSON()
+        _ = context.coordinator.revisionGate.shouldRebuild(for: drawingRevision)
 
         return scnView
     }
 
     func updateUIView(_ uiView: SCNView, context: Context) {
-        let currentJSON = drawingData.toJSON()
-        guard currentJSON != controller.lastDrawingJSON else { return }
+        guard context.coordinator.revisionGate.shouldRebuild(for: drawingRevision) else { return }
 
         let scene = DeckSceneBuilder.buildCalibratedScene(from: drawingData)
         uiView.scene = scene
@@ -99,7 +100,6 @@ struct DeckScene3DView: UIViewRepresentable {
         }
 
         controller.scene = scene
-        controller.lastDrawingJSON = currentJSON
     }
 }
 

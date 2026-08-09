@@ -11,6 +11,231 @@ import XCTest
 
 final class DeckStairRenderPlannerTests: XCTestCase {
 
+    func testPlanMarksRightAlignedStairBoundaryAndLabelsAdjacentEdgeWidth() throws {
+        let plan = try XCTUnwrap(DeckStairRenderPlanner.plan(
+            edgeStart: CGPoint(x: 0, y: 0),
+            edgeEnd: CGPoint(x: 222, y: 0),
+            polygonVertices: [
+                CGPoint(x: 0, y: 0),
+                CGPoint(x: 222, y: 0),
+                CGPoint(x: 222, y: 96),
+                CGPoint(x: 0, y: 96)
+            ],
+            config: StairConfig(
+                width: 48,
+                runPerTread: 10,
+                treadCount: 4,
+                alignment: .right
+            ),
+            treadCount: 4,
+            scaleFactor: 1,
+            measurementSystem: .imperial
+        ))
+
+        XCTAssertEqual(plan.boundaryMarkers.count, 1)
+        XCTAssertEqual(plan.boundaryMarkers[0].x, 174, accuracy: 0.01)
+        XCTAssertEqual(plan.boundaryMarkers[0].y, 0, accuracy: 0.01)
+        XCTAssertEqual(plan.adjacentEdgeLabels.map(\.text), ["14' 6\""])
+        XCTAssertEqual(plan.adjacentEdgeLabels[0].position.x, 87, accuracy: 0.01)
+        let widthLabel = try XCTUnwrap(plan.dimensionLabels.first { $0.kind == .width })
+        XCTAssertEqual(plan.adjacentEdgeLabels.map(\.lane), [1])
+        XCTAssertGreaterThan(
+            abs(plan.adjacentEdgeLabels[0].position.y),
+            abs(widthLabel.position.y)
+        )
+        XCTAssertTrue(plan.framePoints.contains(plan.boundaryMarkers[0]))
+        XCTAssertTrue(plan.framePoints.contains(plan.adjacentEdgeLabels[0].position))
+    }
+
+    func testPlanMarksBothCenteredStairBoundariesAndLabelsBothAdjacentSpans() throws {
+        let plan = try XCTUnwrap(DeckStairRenderPlanner.plan(
+            edgeStart: CGPoint(x: 0, y: 0),
+            edgeEnd: CGPoint(x: 144, y: 0),
+            polygonVertices: [
+                CGPoint(x: 0, y: 0),
+                CGPoint(x: 144, y: 0),
+                CGPoint(x: 144, y: 96),
+                CGPoint(x: 0, y: 96)
+            ],
+            config: StairConfig(width: 48, runPerTread: 10, treadCount: 4),
+            treadCount: 4,
+            scaleFactor: 1,
+            measurementSystem: .imperial
+        ))
+
+        XCTAssertEqual(plan.boundaryMarkers.map(\.x), [48, 96])
+        XCTAssertEqual(plan.adjacentEdgeLabels.map(\.text), ["4'", "4'"])
+        XCTAssertEqual(plan.adjacentEdgeLabels.map(\.lane), [1, 2])
+    }
+
+    func testPlanUsesSeparateLanesForNearFullCenteredStairSpans() throws {
+        let plan = try XCTUnwrap(DeckStairRenderPlanner.plan(
+            edgeStart: CGPoint(x: 0, y: 0),
+            edgeEnd: CGPoint(x: 54, y: 0),
+            polygonVertices: [
+                CGPoint(x: 0, y: 0),
+                CGPoint(x: 54, y: 0),
+                CGPoint(x: 54, y: 96),
+                CGPoint(x: 0, y: 96)
+            ],
+            config: StairConfig(width: 48, runPerTread: 10, treadCount: 4),
+            treadCount: 4,
+            scaleFactor: 1,
+            measurementSystem: .imperial
+        ))
+
+        XCTAssertEqual(plan.boundaryMarkers.map(\.x), [3, 51])
+        XCTAssertEqual(plan.adjacentEdgeLabels.map(\.text), ["3\"", "3\""])
+        XCTAssertEqual(plan.adjacentEdgeLabels.map(\.lane), [1, 2])
+        XCTAssertNotEqual(
+            plan.adjacentEdgeLabels[0].position.y,
+            plan.adjacentEdgeLabels[1].position.y
+        )
+    }
+
+    func testPlanLabelsBothGapsWhenRightAlignedStairHasOffset() throws {
+        let plan = try XCTUnwrap(DeckStairRenderPlanner.plan(
+            edgeStart: CGPoint(x: 0, y: 0),
+            edgeEnd: CGPoint(x: 222, y: 0),
+            polygonVertices: [],
+            config: StairConfig(
+                width: 48,
+                runPerTread: 10,
+                treadCount: 4,
+                alignment: .right,
+                offset: 12
+            ),
+            treadCount: 4,
+            scaleFactor: 1,
+            measurementSystem: .imperial
+        ))
+
+        XCTAssertEqual(plan.boundaryMarkers.map(\.x), [162, 210])
+        XCTAssertEqual(plan.adjacentEdgeLabels.map(\.text), ["13' 6\"", "1'"])
+        XCTAssertEqual(plan.adjacentEdgeLabels.map(\.lane), [1, 2])
+    }
+
+    func testPlanPreservesLeftAlignmentWhenEdgeDirectionIsReversed() throws {
+        let plan = try XCTUnwrap(DeckStairRenderPlanner.plan(
+            edgeStart: CGPoint(x: 222, y: 0),
+            edgeEnd: CGPoint(x: 0, y: 0),
+            polygonVertices: [],
+            config: StairConfig(
+                width: 48,
+                runPerTread: 10,
+                treadCount: 4,
+                alignment: .left
+            ),
+            treadCount: 4,
+            scaleFactor: 1,
+            measurementSystem: .imperial
+        ))
+
+        XCTAssertEqual(plan.boundaryMarkers.count, 1)
+        XCTAssertEqual(plan.boundaryMarkers[0].x, 174, accuracy: 0.01)
+        XCTAssertEqual(plan.adjacentEdgeLabels.map(\.text), ["14' 6\""])
+    }
+
+    func testPlanFormatsStairAndAdjacentWidthsForMetricDrawings() throws {
+        let plan = try XCTUnwrap(DeckStairRenderPlanner.plan(
+            edgeStart: CGPoint(x: 0, y: 0),
+            edgeEnd: CGPoint(x: 222, y: 0),
+            polygonVertices: [],
+            config: StairConfig(
+                width: 48,
+                runPerTread: 10,
+                treadCount: 4,
+                alignment: .right
+            ),
+            treadCount: 4,
+            scaleFactor: 1,
+            measurementSystem: .metric
+        ))
+
+        XCTAssertEqual(plan.dimensionLabels.first { $0.kind == .width }?.text, "WIDTH 1.22 m")
+        XCTAssertEqual(plan.adjacentEdgeLabels.map(\.text), ["4.42 m"])
+    }
+
+    func testPlanUsesAuthoritativeEdgeDimensionForAdjacentSpanText() throws {
+        let plan = try XCTUnwrap(DeckStairRenderPlanner.plan(
+            edgeStart: CGPoint(x: 0, y: 0),
+            edgeEnd: CGPoint(x: 200, y: 0),
+            polygonVertices: [],
+            config: StairConfig(
+                width: 48,
+                runPerTread: 10,
+                treadCount: 4,
+                alignment: .right
+            ),
+            treadCount: 4,
+            scaleFactor: 1,
+            measurementSystem: .imperial,
+            edgeDimensionInches: 222
+        ))
+
+        // Geometry still anchors to the actual drawn edge, while the printed
+        // field measurement follows the edge's authoritative typed dimension.
+        XCTAssertEqual(plan.boundaryMarkers.map(\.x), [152])
+        XCTAssertEqual(plan.adjacentEdgeLabels.map(\.text), ["14' 6\""])
+    }
+
+    func testEdgeLabelLanesStayScreenStableAcrossZoomRange() throws {
+        let plan = try XCTUnwrap(DeckStairRenderPlanner.plan(
+            edgeStart: CGPoint(x: 0, y: 0),
+            edgeEnd: CGPoint(x: 54, y: 0),
+            polygonVertices: [],
+            config: StairConfig(width: 48, runPerTread: 10, treadCount: 4),
+            treadCount: 4,
+            scaleFactor: 1,
+            measurementSystem: .imperial
+        ))
+        let width = try XCTUnwrap(plan.dimensionLabels.first { $0.kind == .width })
+        let adjacent = plan.adjacentEdgeLabels
+
+        for zoom: CGFloat in [0.3, 1, 4] {
+            let widthPosition = plan.edgeLabelPosition(for: width, zoomScale: zoom)
+            let firstPosition = plan.edgeLabelPosition(for: adjacent[0], zoomScale: zoom)
+            let secondPosition = plan.edgeLabelPosition(for: adjacent[1], zoomScale: zoom)
+
+            XCTAssertEqual(
+                abs(widthPosition.y) * zoom,
+                CGFloat(OPSStyle.Layout.spacing3),
+                accuracy: 0.01
+            )
+            XCTAssertEqual(
+                abs(firstPosition.y) * zoom,
+                CGFloat(OPSStyle.Layout.spacing3) + CGFloat(OPSStyle.Layout.spacing4),
+                accuracy: 0.01
+            )
+            XCTAssertEqual(
+                abs(secondPosition.y) * zoom,
+                CGFloat(OPSStyle.Layout.spacing3)
+                    + CGFloat(OPSStyle.Layout.spacing4) * 2,
+                accuracy: 0.01
+            )
+        }
+    }
+
+    func testPlanDoesNotAddSyntheticBoundaryForFullWidthStairs() throws {
+        let plan = try XCTUnwrap(DeckStairRenderPlanner.plan(
+            edgeStart: CGPoint(x: 0, y: 0),
+            edgeEnd: CGPoint(x: 48, y: 0),
+            polygonVertices: [
+                CGPoint(x: 0, y: 0),
+                CGPoint(x: 48, y: 0),
+                CGPoint(x: 48, y: 96),
+                CGPoint(x: 0, y: 96)
+            ],
+            config: StairConfig(width: 48, runPerTread: 10, treadCount: 4),
+            treadCount: 4,
+            scaleFactor: 1,
+            measurementSystem: .imperial
+        ))
+
+        XCTAssertTrue(plan.boundaryMarkers.isEmpty)
+        XCTAssertTrue(plan.adjacentEdgeLabels.isEmpty)
+    }
+
     func testPlanAddsReadableWidthAndRunLabelsForEdgeStairs() {
         let plan = DeckStairRenderPlanner.plan(
             edgeStart: CGPoint(x: 0, y: 0),

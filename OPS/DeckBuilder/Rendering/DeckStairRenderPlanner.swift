@@ -16,9 +16,82 @@ struct DeckStairRenderPlan {
     let outline: [CGPoint]
     let treadLines: [DeckStairTreadLine]
     let dimensionLabels: [DeckStairDimensionLabel]
+    let boundaryMarkers: [CGPoint]
+    let adjacentEdgeLabels: [DeckStairDimensionLabel]
 
     var framePoints: [CGPoint] {
-        outline + dimensionLabels.map(\.position)
+        outline
+            + boundaryMarkers
+            + dimensionLabels.map(\.position)
+            + adjacentEdgeLabels.map(\.position)
+    }
+
+    /// Places stair-width and adjacent-edge chips in stable screen-space lanes.
+    /// The canvas itself is zoomed, so the lane distance must be converted back
+    /// into world coordinates to keep labels readable and collision-free.
+    func edgeLabelPosition(
+        for label: DeckStairDimensionLabel,
+        zoomScale: CGFloat
+    ) -> CGPoint {
+        guard label.kind == .width || label.kind == .adjacentEdge,
+              let edgeUnit,
+              let stairNormal else { return label.position }
+
+        let fromBase = CGVector(
+            dx: label.position.x - baseStart.x,
+            dy: label.position.y - baseStart.y
+        )
+        let projectedDistance = fromBase.dx * edgeUnit.dx + fromBase.dy * edgeUnit.dy
+        let anchor = baseStart.offset(by: edgeUnit, distance: projectedDistance)
+        let safeZoom = max(abs(zoomScale), CGFloat.ulpOfOne.squareRoot())
+        let screenDistance = CGFloat(OPSStyle.Layout.spacing3)
+            + CGFloat(OPSStyle.Layout.spacing4) * CGFloat(label.lane)
+        return anchor.offset(by: stairNormal, distance: screenDistance / safeZoom)
+    }
+
+    /// Places the builder's tread/rail summary beyond both the stair run and
+    /// every segment-label lane, regardless of the current zoom level.
+    func summaryLabelPosition(zoomScale: CGFloat) -> CGPoint {
+        guard let stairNormal else {
+            return CGPoint(
+                x: (baseStart.x + farEnd.x) / 2,
+                y: (baseStart.y + farEnd.y) / 2
+            )
+        }
+
+        let safeZoom = max(abs(zoomScale), CGFloat.ulpOfOne.squareRoot())
+        let runLength = hypot(farStart.x - baseStart.x, farStart.y - baseStart.y)
+        let maxLane = max(
+            dimensionLabels.filter { $0.kind == .width }.map(\.lane).max() ?? 0,
+            adjacentEdgeLabels.map(\.lane).max() ?? 0
+        )
+        let beyondStair = runLength + CGFloat(OPSStyle.Layout.spacing2) / safeZoom
+        let beyondLanes = (
+            CGFloat(OPSStyle.Layout.spacing3)
+                + CGFloat(OPSStyle.Layout.spacing4) * CGFloat(maxLane + 1)
+        ) / safeZoom
+        let distance = max(beyondStair, beyondLanes)
+        let baseMidpoint = CGPoint(
+            x: (baseStart.x + baseEnd.x) / 2,
+            y: (baseStart.y + baseEnd.y) / 2
+        )
+        return baseMidpoint.offset(by: stairNormal, distance: distance)
+    }
+
+    var stairNormal: CGVector? {
+        normalizedVector(from: baseStart, to: farStart)
+    }
+
+    private var edgeUnit: CGVector? {
+        normalizedVector(from: baseStart, to: baseEnd)
+    }
+
+    private func normalizedVector(from start: CGPoint, to end: CGPoint) -> CGVector? {
+        let dx = end.x - start.x
+        let dy = end.y - start.y
+        let length = hypot(dx, dy)
+        guard length > CGFloat.ulpOfOne.squareRoot() else { return nil }
+        return CGVector(dx: dx / length, dy: dy / length)
     }
 }
 
@@ -32,11 +105,20 @@ struct DeckStairDimensionLabel: Equatable {
         case width
         case run
         case rail
+        case adjacentEdge
     }
 
     let kind: Kind
     let text: String
     let position: CGPoint
+    let lane: Int
+
+    init(kind: Kind, text: String, position: CGPoint, lane: Int = 0) {
+        self.kind = kind
+        self.text = text
+        self.position = position
+        self.lane = lane
+    }
 }
 
 /// Tread count + sloped rail run for one stair — the shared source for every
@@ -196,6 +278,7 @@ enum DeckStairRenderPlanner {
         treadCount: Int,
         scaleFactor: Double,
         measurementSystem: MeasurementSystem,
+        edgeDimensionInches: Double? = nil,
         totalRiseInches: Double? = nil
     ) -> DeckStairRenderPlan? {
         let dx = end.x - start.x
@@ -268,7 +351,23 @@ enum DeckStairRenderPlanner {
             return DeckStairTreadLine(start: lineStart, end: lineEnd)
         }
 
-        let widthInches = Double(stairWidthCanvas / scale)
+        let resolvedEdgeInches = max(
+            0,
+            edgeDimensionInches ?? Double(edgeLength / scale)
+        )
+        let widthInches = min(max(0, config.width), resolvedEdgeInches)
+        let availableGapInches = max(0, resolvedEdgeInches - widthInches)
+        let rawLeadingGapInches: Double
+        switch config.alignment {
+        case .left:
+            rawLeadingGapInches = config.offset
+        case .center:
+            rawLeadingGapInches = (availableGapInches / 2) + config.offset
+        case .right:
+            rawLeadingGapInches = availableGapInches - config.offset
+        }
+        let leadingGapInches = min(max(0, rawLeadingGapInches), availableGapInches)
+        let trailingGapInches = max(0, availableGapInches - leadingGapInches)
         let labelInset = min(
             CGFloat(OPSStyle.Layout.spacing3),
             max(CGFloat(OPSStyle.Layout.spacing2), stairDepthCanvas * 0.25)
@@ -282,6 +381,51 @@ enum DeckStairRenderPlanner {
             .offset(by: stairNormal, distance: labelInset)
         let runLabelPoint = midpoint(baseStart, farStart)
             .offset(by: CGVector(dx: -edgeUnit.dx, dy: -edgeUnit.dy), distance: lateralLabelInset)
+
+        // A stair can occupy only part of its host edge. Those internal stair
+        // corners are real measurement boundaries even though they are not
+        // persisted topology vertices: splitting the stored edge would break
+        // the stair attachment and every item already assigned to that edge.
+        // Emit presentation-only markers and the remaining edge spans instead.
+        let boundaryTolerance = edgeLength * CGFloat.ulpOfOne.squareRoot()
+        let leadingGap = startDistance
+        let trailingGap = max(0, edgeLength - startDistance - stairWidthCanvas)
+        var boundaryMarkers: [CGPoint] = []
+        var adjacentEdgeLabels: [DeckStairDimensionLabel] = []
+        let edgeLabelNormal = stairNormal
+        let edgeLabelLaneSpacing = CGFloat(OPSStyle.Layout.spacing4)
+        let hasLeadingGap = leadingGap > boundaryTolerance
+        let hasTrailingGap = trailingGap > boundaryTolerance
+
+        if hasLeadingGap {
+            boundaryMarkers.append(baseStart)
+            adjacentEdgeLabels.append(
+                DeckStairDimensionLabel(
+                    kind: .adjacentEdge,
+                    text: DimensionEngine.format(leadingGapInches, system: measurementSystem),
+                    position: midpoint(start, baseStart)
+                        .offset(by: edgeLabelNormal, distance: labelInset + edgeLabelLaneSpacing),
+                    lane: 1
+                )
+            )
+        }
+
+        if hasTrailingGap {
+            let lane = hasLeadingGap ? 2 : 1
+            boundaryMarkers.append(baseEnd)
+            adjacentEdgeLabels.append(
+                DeckStairDimensionLabel(
+                    kind: .adjacentEdge,
+                    text: DimensionEngine.format(trailingGapInches, system: measurementSystem),
+                    position: midpoint(baseEnd, end)
+                        .offset(
+                            by: edgeLabelNormal,
+                            distance: labelInset + edgeLabelLaneSpacing * CGFloat(lane)
+                        ),
+                    lane: lane
+                )
+            )
+        }
 
         var labels = [
             DeckStairDimensionLabel(
@@ -323,7 +467,9 @@ enum DeckStairRenderPlanner {
             farEnd: farEnd,
             outline: [baseStart, baseEnd, farEnd, farStart],
             treadLines: treadLines,
-            dimensionLabels: labels
+            dimensionLabels: labels,
+            boundaryMarkers: boundaryMarkers,
+            adjacentEdgeLabels: adjacentEdgeLabels
         )
     }
 

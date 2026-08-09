@@ -447,12 +447,10 @@ struct DeckTab2DView: View {
         // project viewer (previously a tiny dot at midpoint, easy to miss).
         // Mirror the builder canvas: outline rectangle + tread lines on the
         // outward perpendicular.
-        if let config = edge.stairConfig, let tc = config.treadCount, tc > 0 {
+        if let treadCount = edge.stairConfig?.treadCount, treadCount > 0 {
             drawStairsOnEdge(
                 context: context,
                 edge: edge,
-                config: config,
-                treadCount: tc,
                 start: start.position,
                 end: end.position
             )
@@ -465,26 +463,10 @@ struct DeckTab2DView: View {
     private func drawStairsOnEdge(
         context: GraphicsContext,
         edge: DeckEdge,
-        config: StairConfig,
-        treadCount: Int,
         start: CGPoint,
         end: CGPoint
     ) {
-        // The face that owns this edge — stairs face away from the deck
-        // surface itself, resolved per-edge (a level-wide ring degenerates on
-        // multi-shape drawings and flips the stair to the wrong side).
-        let polygon = drawingData.stairFacePolygon(forEdgeId: edge.id)
-
-        guard let plan = DeckStairRenderPlanner.plan(
-            edgeStart: start,
-            edgeEnd: end,
-            polygonVertices: polygon,
-            config: config,
-            treadCount: treadCount,
-            scaleFactor: drawingData.effectiveScaleFactor,
-            measurementSystem: drawingData.config.measurementSystem,
-            totalRiseInches: drawingData.stairTotalRiseInches(for: edge)
-        ) else { return }
+        guard let plan = stairRenderPlan(edge: edge, start: start, end: end) else { return }
 
         var rectPath = Path()
         rectPath.move(to: plan.baseStart)
@@ -504,38 +486,102 @@ struct DeckTab2DView: View {
             context.stroke(tp, with: .color(OPSStyle.Colors.tanLine.opacity(0.75)), lineWidth: OPSStyle.Layout.Border.standard)
         }
 
+        for marker in plan.boundaryMarkers {
+            drawStairBoundaryMarker(context: context, at: marker)
+        }
+
         for label in plan.dimensionLabels {
-            drawStairDimensionLabel(context: context, label: label)
+            drawStairDimensionLabel(context: context, label: label, plan: plan)
+        }
+        for label in plan.adjacentEdgeLabels {
+            drawStairDimensionLabel(context: context, label: label, plan: plan)
+        }
+    }
+
+    private func stairRenderPlan(
+        edge: DeckEdge,
+        start: CGPoint,
+        end: CGPoint
+    ) -> DeckStairRenderPlan? {
+        guard let config = edge.stairConfig,
+              let treadCount = config.treadCount,
+              treadCount > 0 else { return nil }
+
+        return DeckStairRenderPlanner.plan(
+            edgeStart: start,
+            edgeEnd: end,
+            polygonVertices: drawingData.stairFacePolygon(forEdgeId: edge.id),
+            config: config,
+            treadCount: treadCount,
+            scaleFactor: drawingData.effectiveScaleFactor,
+            measurementSystem: drawingData.config.measurementSystem,
+            edgeDimensionInches: edge.dimension,
+            totalRiseInches: drawingData.stairTotalRiseInches(for: edge)
+        )
+    }
+
+    private func drawStairBoundaryMarker(context: GraphicsContext, at point: CGPoint) {
+        let radius = CGFloat(OPSStyle.Layout.spacing1) + OPSStyle.Layout.Border.standard
+        let inverseScale = 1 / max(abs(canvasScale), CGFloat.ulpOfOne.squareRoot())
+        context.drawLayer { layer in
+            layer.translateBy(x: point.x, y: point.y)
+            layer.scaleBy(x: inverseScale, y: inverseScale)
+            let marker = CGRect(
+                x: -radius,
+                y: -radius,
+                width: radius * 2,
+                height: radius * 2
+            )
+            let markerPath = Path(ellipseIn: marker)
+            layer.fill(markerPath, with: .color(OPSStyle.Colors.cardBackground))
+            layer.stroke(
+                markerPath,
+                with: .color(OPSStyle.Colors.text),
+                lineWidth: OPSStyle.Layout.Border.standard
+            )
         }
     }
 
     private func drawStairDimensionLabel(
         context: GraphicsContext,
-        label: DeckStairDimensionLabel
+        label: DeckStairDimensionLabel,
+        plan: DeckStairRenderPlan
     ) {
-        let resolved = context.resolve(Text(label.text)
-            .font(OPSStyle.Typography.microLabel)
-            .foregroundColor(OPSStyle.Colors.text))
+        let position = plan.edgeLabelPosition(for: label, zoomScale: canvasScale)
+        let inverseScale = 1 / max(abs(canvasScale), CGFloat.ulpOfOne.squareRoot())
+        context.drawLayer { layer in
+            layer.translateBy(x: position.x, y: position.y)
+            layer.scaleBy(x: inverseScale, y: inverseScale)
+            let resolved = layer.resolve(Text(label.text)
+                .font(OPSStyle.Typography.microLabel)
+                .foregroundColor(OPSStyle.Colors.text))
 
-        let textSize = resolved.measure(in: CGSize(width: 220, height: 50))
-        let padH = CGFloat(OPSStyle.Layout.spacing1)
-        let padV = CGFloat(OPSStyle.Layout.spacing1) / 2
-        let bgRect = CGRect(
-            x: label.position.x - textSize.width / 2 - padH,
-            y: label.position.y - textSize.height / 2 - padV,
-            width: textSize.width + padH * 2,
-            height: textSize.height + padV * 2
-        )
-        context.fill(
-            Path(roundedRect: bgRect, cornerRadius: CGFloat(OPSStyle.Layout.chipRadius)),
-            with: .color(OPSStyle.Colors.glassDenseApprox)
-        )
-        context.stroke(
-            Path(roundedRect: bgRect, cornerRadius: CGFloat(OPSStyle.Layout.chipRadius)),
-            with: .color(OPSStyle.Colors.line),
-            lineWidth: OPSStyle.Layout.Border.standard
-        )
-        context.draw(resolved, at: label.position, anchor: .center)
+            let textSize = resolved.measure(
+                in: CGSize(
+                    width: CGFloat.greatestFiniteMagnitude,
+                    height: CGFloat.greatestFiniteMagnitude
+                )
+            )
+            let padH = CGFloat(OPSStyle.Layout.spacing1)
+            let padV = CGFloat(OPSStyle.Layout.spacing1) / 2
+            let bgRect = CGRect(
+                x: -textSize.width / 2 - padH,
+                y: -textSize.height / 2 - padV,
+                width: textSize.width + padH * 2,
+                height: textSize.height + padV * 2
+            )
+            let path = Path(
+                roundedRect: bgRect,
+                cornerRadius: CGFloat(OPSStyle.Layout.chipRadius)
+            )
+            layer.fill(path, with: .color(OPSStyle.Colors.glassDenseApprox))
+            layer.stroke(
+                path,
+                with: .color(OPSStyle.Colors.line),
+                lineWidth: OPSStyle.Layout.Border.standard
+            )
+            layer.draw(resolved, at: .zero, anchor: .center)
+        }
     }
 
     private func drawVertex(context: GraphicsContext, vertex: DeckVertex) {
@@ -555,31 +601,54 @@ struct DeckTab2DView: View {
               let start = vertexLookup(edge.startVertexId),
               let end = vertexLookup(edge.endVertexId) else { return }
 
-        let midX = (start.position.x + end.position.x) / 2
-        let midY = (start.position.y + end.position.y) / 2
-
-        let feet = Int(dim) / 12
-        let inches = Int(dim) % 12
-        let text = feet > 0 ? "\(feet)' \(inches)\"" : "\(inches)\""
-
-        let resolved = context.resolve(Text(text)
-            .font(.system(size: 10, weight: .medium, design: .monospaced))
-            .foregroundColor(.white))
-
-        let textSize = resolved.measure(in: CGSize(width: 200, height: 50))
-        let padH: CGFloat = 6
-        let padV: CGFloat = 3
-        let bgRect = CGRect(
-            x: midX - textSize.width / 2 - padH,
-            y: midY - textSize.height / 2 - padV,
-            width: textSize.width + padH * 2,
-            height: textSize.height + padV * 2
+        var position = CGPoint(
+            x: (start.position.x + end.position.x) / 2,
+            y: (start.position.y + end.position.y) / 2
         )
-        context.fill(
-            Path(roundedRect: bgRect, cornerRadius: 3),
-            with: .color(Color.black.opacity(0.7))
-        )
-        context.draw(resolved, at: CGPoint(x: midX, y: midY), anchor: .center)
+        if let plan = stairRenderPlan(edge: edge, start: start.position, end: end.position),
+           !plan.boundaryMarkers.isEmpty,
+           let stairNormal = plan.stairNormal {
+            let safeZoom = max(abs(canvasScale), CGFloat.ulpOfOne.squareRoot())
+            let offset = CGFloat(OPSStyle.Layout.spacing3_5) / safeZoom
+            position.x -= stairNormal.dx * offset
+            position.y -= stairNormal.dy * offset
+        }
+
+        let text = DimensionEngine.format(dim, system: drawingData.config.measurementSystem)
+        let inverseScale = 1 / max(abs(canvasScale), CGFloat.ulpOfOne.squareRoot())
+        context.drawLayer { layer in
+            layer.translateBy(x: position.x, y: position.y)
+            layer.scaleBy(x: inverseScale, y: inverseScale)
+            let resolved = layer.resolve(Text(text)
+                .font(OPSStyle.Typography.microLabel)
+                .foregroundColor(OPSStyle.Colors.text))
+
+            let textSize = resolved.measure(
+                in: CGSize(
+                    width: CGFloat.greatestFiniteMagnitude,
+                    height: CGFloat.greatestFiniteMagnitude
+                )
+            )
+            let padH = CGFloat(OPSStyle.Layout.spacing1)
+            let padV = CGFloat(OPSStyle.Layout.spacing1) / 2
+            let bgRect = CGRect(
+                x: -textSize.width / 2 - padH,
+                y: -textSize.height / 2 - padV,
+                width: textSize.width + padH * 2,
+                height: textSize.height + padV * 2
+            )
+            let path = Path(
+                roundedRect: bgRect,
+                cornerRadius: CGFloat(OPSStyle.Layout.chipRadius)
+            )
+            layer.fill(path, with: .color(OPSStyle.Colors.glassDenseApprox))
+            layer.stroke(
+                path,
+                with: .color(OPSStyle.Colors.line),
+                lineWidth: OPSStyle.Layout.Border.standard
+            )
+            layer.draw(resolved, at: .zero, anchor: .center)
+        }
     }
 
     private func drawLevelFootprint(context: GraphicsContext, level: DeckLevel) {
@@ -690,7 +759,7 @@ struct DeckTab2DView: View {
         }
 
         for label in plan.dimensionLabels {
-            drawStairDimensionLabel(context: context, label: label)
+            drawStairDimensionLabel(context: context, label: label, plan: plan)
         }
     }
 

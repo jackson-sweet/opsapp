@@ -102,29 +102,26 @@ struct DeckRenderer {
                         }
 
                         // Render edge-attached stairs (bug 3d72ce0b)
-                        if let config = edge.stairConfig, let tc = config.treadCount, tc > 0 {
-                            renderEdgeStairs(
+                        let stairPlan = renderEdgeStairs(
                                 gc: gc,
-                                p1: p1, p2: p2,
-                                config: config,
-                                treadCount: tc,
+                                p1: p1,
+                                p2: p2,
+                                edge: edge,
                                 polygonInTransformed: drawingData.stairFacePolygon(forEdgeId: edge.id).map(transform),
-                                scaleFactor: drawingData.scaleFactor.map { $0 * Double(fitScale) }
-                            )
-                        }
+                                scaleFactor: drawingData.effectiveScaleFactor * Double(fitScale),
+                                measurementSystem: drawingData.config.measurementSystem,
+                                markerColor: UIColor(red: c.r, green: c.g, blue: c.b, alpha: 1)
+                        )
 
                         if let dim = edge.dimension {
-                            let midX = (p1.x + p2.x) / 2
-                            let midY = (p1.y + p2.y) / 2
-                            let label = DimensionEngine.format(dim, system: drawingData.config.measurementSystem)
-                            let attrs: [NSAttributedString.Key: Any] = [
-                                .font: UIFont.systemFont(ofSize: 12, weight: .medium),
-                                .foregroundColor: UIColor(red: c.r, green: c.g, blue: c.b, alpha: 1)
-                            ]
-                            (label as NSString).draw(
-                                at: CGPoint(x: midX - (label as NSString).size(withAttributes: attrs).width / 2,
-                                            y: midY - (label as NSString).size(withAttributes: attrs).height - 4),
-                                withAttributes: attrs
+                            drawExportEdgeDimension(
+                                gc: gc,
+                                dimensionInches: dim,
+                                measurementSystem: drawingData.config.measurementSystem,
+                                color: UIColor(red: c.r, green: c.g, blue: c.b, alpha: 1),
+                                p1: p1,
+                                p2: p2,
+                                stairPlan: stairPlan
                             )
                         }
                     }
@@ -205,29 +202,27 @@ struct DeckRenderer {
 
                     // Bug 3d72ce0b — render stairs on edges (not just level
                     // connections). Mirror the builder logic so shares match.
-                    if let config = edge.stairConfig, let tc = config.treadCount, tc > 0 {
-                        renderEdgeStairs(
+                    let stairPlan = renderEdgeStairs(
                             gc: gc,
                             p1: p1,
                             p2: p2,
-                            config: config,
-                            treadCount: tc,
+                            edge: edge,
                             polygonInTransformed: drawingData.stairFacePolygon(forEdgeId: edge.id).map(transform),
-                            scaleFactor: drawingData.scaleFactor.map { $0 * Double(fitScale) }
-                        )
-                    }
+                            scaleFactor: drawingData.effectiveScaleFactor * Double(fitScale),
+                            measurementSystem: drawingData.config.measurementSystem,
+                            markerColor: edgeColor
+                    )
 
                     if let dim = edge.dimension {
-                        let midX = (p1.x + p2.x) / 2
-                        let midY = (p1.y + p2.y) / 2
-                        let label = DimensionEngine.format(dim, system: drawingData.config.measurementSystem)
-                        let attrs: [NSAttributedString.Key: Any] = [
-                            .font: UIFont.systemFont(ofSize: 12, weight: .medium),
-                            .foregroundColor: singleLevelColor
-                        ]
-                        let nsLabel = label as NSString
-                        let labelSize = nsLabel.size(withAttributes: attrs)
-                        nsLabel.draw(at: CGPoint(x: midX - labelSize.width / 2, y: midY - labelSize.height - 4), withAttributes: attrs)
+                        drawExportEdgeDimension(
+                            gc: gc,
+                            dimensionInches: dim,
+                            measurementSystem: drawingData.config.measurementSystem,
+                            color: singleLevelColor,
+                            p1: p1,
+                            p2: p2,
+                            stairPlan: stairPlan
+                        )
                     }
 
                     if edge.railingConfig != nil {
@@ -281,109 +276,190 @@ struct DeckRenderer {
     /// the exported PNG matches what the user sees in the builder.
     /// `polygonInTransformed` is the surrounding polygon in TRANSFORMED canvas
     /// coordinates so the outward-perpendicular probe makes sense in the same
-    /// space as p1/p2. `scaleFactor` here is canvas-points-per-inch in the
-    /// transformed (share-image) space — pass nil if the drawing has no scale,
-    /// in which case stairs will be sized using a sane default.
+    /// space as p1/p2. `scaleFactor` is canvas-points-per-inch in that same
+    /// transformed share-image space.
+    @discardableResult
     private static func renderEdgeStairs(
         gc: CGContext,
         p1: CGPoint,
         p2: CGPoint,
-        config: StairConfig,
-        treadCount: Int,
+        edge: DeckEdge,
         polygonInTransformed: [CGPoint],
-        scaleFactor: Double?
-    ) {
-        let dx = p2.x - p1.x, dy = p2.y - p1.y
-        let edgeLen = sqrt(dx * dx + dy * dy)
-        guard edgeLen > 0 else { return }
-        let edgeNx = dx / edgeLen, edgeNy = dy / edgeLen
+        scaleFactor: Double,
+        measurementSystem: MeasurementSystem,
+        markerColor: UIColor
+    ) -> DeckStairRenderPlan? {
+        guard let config = edge.stairConfig,
+              let treadCount = config.treadCount,
+              treadCount > 0,
+              let plan = DeckStairRenderPlanner.plan(
+                edgeStart: p1,
+                edgeEnd: p2,
+                polygonVertices: polygonInTransformed,
+                config: config,
+                treadCount: treadCount,
+                scaleFactor: scaleFactor,
+                measurementSystem: measurementSystem,
+                edgeDimensionInches: edge.dimension
+              ) else { return nil }
 
-        let outward = PolygonMath.outwardPerpendicular(
-            edgeStart: p1,
-            edgeEnd: p2,
-            polygonVertices: polygonInTransformed
-        )
-        let perpX = config.flipDirection ? -outward.x : outward.x
-        let perpY = config.flipDirection ? -outward.y : outward.y
-
-        // Convert real-world dimensions to render-canvas points. Without a
-        // scale we fall back to "stair width spans 60% of edge, depth = width".
-        let stairWidthPts: CGFloat
-        let stairDepthPts: CGFloat
-        if let scale = scaleFactor, scale > 0 {
-            stairWidthPts = min(CGFloat(config.width * scale), edgeLen)
-            let totalRunInches = Double(treadCount) * config.runPerTread
-            stairDepthPts = CGFloat(totalRunInches * scale)
-        } else {
-            stairWidthPts = edgeLen * 0.6
-            stairDepthPts = stairWidthPts * 0.5
-        }
-
-        let offsetCanvas: CGFloat = scaleFactor.map { CGFloat(config.offset * $0) } ?? 0
-        let gapTotal = edgeLen - stairWidthPts
-        let stairStartT: CGFloat
-        switch config.alignment {
-        case .left:   stairStartT = offsetCanvas / edgeLen
-        case .center: stairStartT = (gapTotal / 2 + offsetCanvas) / edgeLen
-        case .right:  stairStartT = (gapTotal - offsetCanvas) / edgeLen
-        }
-
-        let perpCGX = CGFloat(perpX), perpCGY = CGFloat(perpY)
-        let baseStart = CGPoint(
-            x: p1.x + edgeNx * edgeLen * stairStartT,
-            y: p1.y + edgeNy * edgeLen * stairStartT
-        )
-        let baseEnd = CGPoint(
-            x: baseStart.x + edgeNx * stairWidthPts,
-            y: baseStart.y + edgeNy * stairWidthPts
-        )
-        let farStart = CGPoint(
-            x: baseStart.x + perpCGX * stairDepthPts,
-            y: baseStart.y + perpCGY * stairDepthPts
-        )
-        let farEnd = CGPoint(
-            x: baseEnd.x + perpCGX * stairDepthPts,
-            y: baseEnd.y + perpCGY * stairDepthPts
-        )
-
-        let amber = UIColor(red: 196/255, green: 168/255, blue: 104/255, alpha: 1)
+        let amber = UIColor(OPSStyle.Colors.tan)
 
         // Outline rect
         gc.setFillColor(amber.withAlphaComponent(0.12).cgColor)
         gc.beginPath()
-        gc.move(to: baseStart)
-        gc.addLine(to: baseEnd)
-        gc.addLine(to: farEnd)
-        gc.addLine(to: farStart)
+        gc.move(to: plan.baseStart)
+        gc.addLine(to: plan.baseEnd)
+        gc.addLine(to: plan.farEnd)
+        gc.addLine(to: plan.farStart)
         gc.closePath()
         gc.fillPath()
         gc.setStrokeColor(amber.withAlphaComponent(0.6).cgColor)
         gc.setLineWidth(1.5)
         gc.beginPath()
-        gc.move(to: baseStart)
-        gc.addLine(to: baseEnd)
-        gc.addLine(to: farEnd)
-        gc.addLine(to: farStart)
+        gc.move(to: plan.baseStart)
+        gc.addLine(to: plan.baseEnd)
+        gc.addLine(to: plan.farEnd)
+        gc.addLine(to: plan.farStart)
         gc.closePath()
         gc.strokePath()
 
         // Tread lines
         gc.setStrokeColor(amber.withAlphaComponent(0.4).cgColor)
         gc.setLineWidth(1.0)
-        for i in 1..<min(treadCount, 30) {
-            let t = CGFloat(i) / CGFloat(treadCount)
-            let tb = CGPoint(
-                x: baseStart.x + perpCGX * stairDepthPts * t,
-                y: baseStart.y + perpCGY * stairDepthPts * t
-            )
-            let te = CGPoint(
-                x: baseEnd.x + perpCGX * stairDepthPts * t,
-                y: baseEnd.y + perpCGY * stairDepthPts * t
-            )
-            gc.beginPath(); gc.move(to: tb); gc.addLine(to: te); gc.strokePath()
+        for tread in plan.treadLines {
+            gc.beginPath()
+            gc.move(to: tread.start)
+            gc.addLine(to: tread.end)
+            gc.strokePath()
+        }
+
+        let isPartial = !plan.boundaryMarkers.isEmpty
+        if isPartial {
+            for marker in plan.boundaryMarkers {
+                drawExportStairBoundaryMarker(gc: gc, at: marker, color: markerColor)
+            }
+            for label in plan.dimensionLabels where label.kind == .width {
+                drawExportStairDimensionChip(
+                    gc: gc,
+                    label: label,
+                    at: plan.edgeLabelPosition(for: label, zoomScale: 1)
+                )
+            }
+            for label in plan.adjacentEdgeLabels {
+                drawExportStairDimensionChip(
+                    gc: gc,
+                    label: label,
+                    at: plan.edgeLabelPosition(for: label, zoomScale: 1)
+                )
+            }
         }
 
         gc.setLineWidth(2.0)
+        return plan
+    }
+
+    private static func drawExportEdgeDimension(
+        gc: CGContext,
+        dimensionInches: Double,
+        measurementSystem: MeasurementSystem,
+        color: UIColor,
+        p1: CGPoint,
+        p2: CGPoint,
+        stairPlan: DeckStairRenderPlan?
+    ) {
+        let label = DimensionEngine.format(dimensionInches, system: measurementSystem) as NSString
+        let attributes: [NSAttributedString.Key: Any] = [
+            .font: OPSStyle.Typography.uiDataValueMedium(),
+            .foregroundColor: color,
+        ]
+        let labelSize = label.size(withAttributes: attributes)
+        let midpoint = CGPoint(x: (p1.x + p2.x) / 2, y: (p1.y + p2.y) / 2)
+        let origin: CGPoint
+
+        if let stairPlan,
+           !stairPlan.boundaryMarkers.isEmpty,
+           let stairNormal = stairPlan.stairNormal {
+            let offset = CGFloat(OPSStyle.Layout.spacing3_5)
+            let center = CGPoint(
+                x: midpoint.x - stairNormal.dx * offset,
+                y: midpoint.y - stairNormal.dy * offset
+            )
+            origin = CGPoint(
+                x: center.x - labelSize.width / 2,
+                y: center.y - labelSize.height / 2
+            )
+        } else {
+            origin = CGPoint(
+                x: midpoint.x - labelSize.width / 2,
+                y: midpoint.y - labelSize.height - CGFloat(OPSStyle.Layout.spacing1)
+            )
+        }
+
+        label.draw(at: origin, withAttributes: attributes)
+    }
+
+    private static func drawExportStairBoundaryMarker(
+        gc: CGContext,
+        at point: CGPoint,
+        color: UIColor
+    ) {
+        let radius = CGFloat(OPSStyle.Layout.spacing1) + OPSStyle.Layout.Border.standard
+        gc.saveGState()
+        let marker = CGRect(
+            x: point.x - radius,
+            y: point.y - radius,
+            width: radius * 2,
+            height: radius * 2
+        )
+        gc.setFillColor(UIColor(OPSStyle.Colors.Light.background).cgColor)
+        gc.fillEllipse(in: marker)
+        gc.setStrokeColor(color.cgColor)
+        gc.setLineWidth(OPSStyle.Layout.Border.standard)
+        gc.strokeEllipse(in: marker)
+        gc.restoreGState()
+    }
+
+    private static func drawExportStairDimensionChip(
+        gc: CGContext,
+        label: DeckStairDimensionLabel,
+        at position: CGPoint
+    ) {
+        let text = label.text as NSString
+        let attributes: [NSAttributedString.Key: Any] = [
+            .font: OPSStyle.Typography.uiDataValueMedium(),
+            .foregroundColor: UIColor(OPSStyle.Colors.text),
+        ]
+        let textSize = text.size(withAttributes: attributes)
+        let horizontalPadding = CGFloat(OPSStyle.Layout.spacing1)
+        let verticalPadding = CGFloat(OPSStyle.Layout.spacing1) / 2
+        let background = CGRect(
+            x: position.x - textSize.width / 2 - horizontalPadding,
+            y: position.y - textSize.height / 2 - verticalPadding,
+            width: textSize.width + horizontalPadding * 2,
+            height: textSize.height + verticalPadding * 2
+        )
+        let path = UIBezierPath(
+            roundedRect: background,
+            cornerRadius: CGFloat(OPSStyle.Layout.chipRadius)
+        ).cgPath
+
+        gc.saveGState()
+        gc.addPath(path)
+        gc.setFillColor(UIColor(OPSStyle.Colors.glassDenseApprox).cgColor)
+        gc.fillPath()
+        gc.addPath(path)
+        gc.setStrokeColor(UIColor(OPSStyle.Colors.line).cgColor)
+        gc.setLineWidth(OPSStyle.Layout.Border.standard)
+        gc.strokePath()
+        text.draw(
+            at: CGPoint(
+                x: position.x - textSize.width / 2,
+                y: position.y - textSize.height / 2
+            ),
+            withAttributes: attributes
+        )
+        gc.restoreGState()
     }
 
     // MARK: - Connection Stair Rendering

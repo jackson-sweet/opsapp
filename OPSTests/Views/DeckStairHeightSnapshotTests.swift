@@ -268,6 +268,52 @@ final class DeckStairHeightSnapshotTests: XCTestCase {
         )
     }
 
+    /// The reported field geometry: a 4' stair aligned to the right side of
+    /// an 18' 6" host edge. The builder must show the internal boundary dot,
+    /// the 4' stair width, and the remaining 14' 6" edge span.
+    func testRenderBuilderStairBoundaryReadouts() {
+        var data = DeckDrawingData()
+        data.scaleFactor = 1.0
+        data.overallElevation = 2.5
+        data.vertices = [
+            DeckVertex(id: "v1", position: CGPoint(x: 0, y: 0)),
+            DeckVertex(id: "v2", position: CGPoint(x: 222, y: 0)),
+            DeckVertex(id: "v3", position: CGPoint(x: 222, y: 96)),
+            DeckVertex(id: "v4", position: CGPoint(x: 0, y: 96)),
+        ]
+        var stairEdge = DeckEdge(
+            id: "e1",
+            startVertexId: "v1",
+            endVertexId: "v2",
+            dimension: 222
+        )
+        stairEdge.stairConfig = StairConfig(
+            width: 48,
+            runPerTread: 10,
+            treadCount: 4,
+            alignment: .right,
+            totalRiseInches: 30
+        )
+        data.edges = [
+            stairEdge,
+            DeckEdge(id: "e2", startVertexId: "v2", endVertexId: "v3", dimension: 96),
+            DeckEdge(id: "e3", startVertexId: "v3", endVertexId: "v4", dimension: 222),
+            DeckEdge(id: "e4", startVertexId: "v4", endVertexId: "v1", dimension: 96),
+        ]
+
+        let viewModel = DeckBuilderViewModel(deckDesign: DeckDesign(
+            companyId: "company-1",
+            title: "Stair boundary proof deck",
+            drawingDataJSON: DeckDrawingData().toJSON()
+        ))
+        viewModel.drawingData = data
+
+        snapshot(
+            "12-builder-stair-boundary-readouts",
+            view: DeckCanvasView(viewModel: viewModel)
+        )
+    }
+
     /// 9. The field failure, rendered: a two-shape drawing with stairs on
     ///    each shape. Both must run AWAY from their own deck (up from the
     ///    top edges), and each stair is narrower than its edge so its

@@ -963,7 +963,7 @@ struct DeckCanvasView: View {
         let labelFont = scaledSize(9, min: 7, max: 14)
         let labelText: String
         if let railInfo {
-            labelText = "\(railInfo.treadCount) treads · \(DimensionEngine.formatImperial(railInfo.railRunInches)) rail"
+            labelText = "\(railInfo.treadCount) treads · \(DimensionEngine.format(railInfo.railRunInches, system: viewModel.drawingData.config.measurementSystem)) rail"
         } else {
             labelText = "\(tc) treads"
         }
@@ -1085,27 +1085,8 @@ struct DeckCanvasView: View {
     private func drawStairIndicator(context: GraphicsContext, start: CGPoint, end: CGPoint, edge: DeckEdge) {
         guard let config = edge.stairConfig,
               let treadCount = config.treadCount,
-              treadCount > 0 else { return }
-
-        // Face away from the SURFACE that owns this edge, resolved per-edge.
-        // The level-wide ring this used to pass degenerates to an unordered
-        // vertex dump on any drawing with two shapes or a detail line, which
-        // is what sent stairs to the wrong side of the deck.
-        let activePolygon = viewModel.drawingData.stairFacePolygon(forEdgeId: edge.id)
-
-        // The editor and workspace envelope deliberately share this planner.
-        // Alignment offsets are resolved once, so rendered stairs can never
-        // project beyond the bounds that the workspace derived for them.
-        guard let plan = DeckStairRenderPlanner.plan(
-            edgeStart: start,
-            edgeEnd: end,
-            polygonVertices: activePolygon,
-            config: config,
-            treadCount: treadCount,
-            scaleFactor: viewModel.drawingData.effectiveScaleFactor,
-            measurementSystem: viewModel.drawingData.config.measurementSystem,
-            totalRiseInches: viewModel.drawingData.stairTotalRiseInches(for: edge)
-        ) else { return }
+              treadCount > 0,
+              let plan = stairRenderPlan(start: start, end: end, edge: edge) else { return }
 
         // Stair outline rectangle
         var rectPath = Path()
@@ -1130,19 +1111,43 @@ struct DeckCanvasView: View {
             context.stroke(treadPath, with: .color(OPSStyle.Colors.warningStatus.opacity(0.25)), lineWidth: treadStroke)
         }
 
+        // Partial-width stairs create measurement boundaries along the host
+        // edge. Keep those markers presentation-only: mutating the graph here
+        // would detach the stair and any materials already assigned to it.
+        if !plan.boundaryMarkers.isEmpty {
+            for marker in plan.boundaryMarkers {
+                drawStairBoundaryMarker(context: context, at: marker)
+            }
+            for label in plan.dimensionLabels where label.kind == .width {
+                drawStairEdgeDimensionLabel(context: context, label: label, plan: plan)
+            }
+            for label in plan.adjacentEdgeLabels {
+                drawStairEdgeDimensionLabel(context: context, label: label, plan: plan)
+            }
+        }
+
         // Label: tread count + rail run. The rail figure is the stair
         // triangle's hypotenuse (rise over horizontal run) — the length a
         // stair railing follows — via the shared DeckStairRailInfo source so
         // every 2D surface prints the same number. Falls back to the
         // horizontal run only if rail info can't resolve (no rise anywhere).
-        let labelX = (plan.baseStart.x + plan.farEnd.x) / 2
-        let labelY = (plan.baseStart.y + plan.farEnd.y) / 2
+        let labelX: CGFloat
+        let labelY: CGFloat
+        if !plan.boundaryMarkers.isEmpty {
+            let summaryPosition = plan.summaryLabelPosition(zoomScale: canvasScale)
+            labelX = summaryPosition.x
+            labelY = summaryPosition.y
+        } else {
+            labelX = (plan.baseStart.x + plan.farEnd.x) / 2
+            labelY = (plan.baseStart.y + plan.farEnd.y) / 2
+        }
+        let measurementSystem = viewModel.drawingData.config.measurementSystem
         let labelText: String
         if let railInfo = viewModel.drawingData.stairRailInfo(for: edge) {
-            labelText = "\(railInfo.treadCount) treads · \(DimensionEngine.formatImperial(railInfo.railRunInches)) rail"
+            labelText = "\(railInfo.treadCount) treads · \(DimensionEngine.format(railInfo.railRunInches, system: measurementSystem)) rail"
         } else {
             let totalRunInches = Double(treadCount) * config.runPerTread
-            labelText = "\(treadCount) treads · \(DimensionEngine.formatImperial(totalRunInches))"
+            labelText = "\(treadCount) treads · \(DimensionEngine.format(totalRunInches, system: measurementSystem))"
         }
         let labelFont = scaledSize(9, min: 7, max: 15)
         context.draw(
@@ -1151,6 +1156,96 @@ struct DeckCanvasView: View {
                 .foregroundColor(OPSStyle.Colors.warningStatus.opacity(0.7)),
             at: CGPoint(x: labelX, y: labelY)
         )
+    }
+
+    /// The editor, its workspace envelope, and the whole-edge dimension label
+    /// all resolve the same stair plan so alignment and outward direction can
+    /// never disagree between drawing passes.
+    private func stairRenderPlan(
+        start: CGPoint,
+        end: CGPoint,
+        edge: DeckEdge
+    ) -> DeckStairRenderPlan? {
+        guard let config = edge.stairConfig,
+              let treadCount = config.treadCount,
+              treadCount > 0 else { return nil }
+
+        return DeckStairRenderPlanner.plan(
+            edgeStart: start,
+            edgeEnd: end,
+            polygonVertices: viewModel.drawingData.stairFacePolygon(forEdgeId: edge.id),
+            config: config,
+            treadCount: treadCount,
+            scaleFactor: viewModel.drawingData.effectiveScaleFactor,
+            measurementSystem: viewModel.drawingData.config.measurementSystem,
+            edgeDimensionInches: edge.dimension,
+            totalRiseInches: viewModel.drawingData.stairTotalRiseInches(for: edge)
+        )
+    }
+
+    private func drawStairBoundaryMarker(context: GraphicsContext, at point: CGPoint) {
+        let baseRadius = CGFloat(OPSStyle.Layout.spacing1) + OPSStyle.Layout.Border.standard
+        let inverseScale = 1 / max(abs(canvasScale), CGFloat.ulpOfOne.squareRoot())
+        context.drawLayer { layer in
+            layer.translateBy(x: point.x, y: point.y)
+            layer.scaleBy(x: inverseScale, y: inverseScale)
+            let marker = CGRect(
+                x: -baseRadius,
+                y: -baseRadius,
+                width: baseRadius * 2,
+                height: baseRadius * 2
+            )
+            let markerPath = Path(ellipseIn: marker)
+            layer.fill(markerPath, with: .color(OPSStyle.Colors.cardBackground))
+            layer.stroke(
+                markerPath,
+                with: .color(OPSStyle.Colors.text),
+                lineWidth: OPSStyle.Layout.Border.standard
+            )
+        }
+    }
+
+    private func drawStairEdgeDimensionLabel(
+        context: GraphicsContext,
+        label: DeckStairDimensionLabel,
+        plan: DeckStairRenderPlan
+    ) {
+        let position = plan.edgeLabelPosition(for: label, zoomScale: canvasScale)
+        let inverseScale = 1 / max(abs(canvasScale), CGFloat.ulpOfOne.squareRoot())
+        context.drawLayer { layer in
+            layer.translateBy(x: position.x, y: position.y)
+            layer.scaleBy(x: inverseScale, y: inverseScale)
+            let resolved = layer.resolve(
+                Text(label.text)
+                    .font(OPSStyle.Typography.microLabel)
+                    .foregroundColor(OPSStyle.Colors.text)
+            )
+            let textSize = resolved.measure(
+                in: CGSize(
+                    width: CGFloat.greatestFiniteMagnitude,
+                    height: CGFloat.greatestFiniteMagnitude
+                )
+            )
+            let horizontalPadding = CGFloat(OPSStyle.Layout.spacing1)
+            let verticalPadding = CGFloat(OPSStyle.Layout.spacing1) / 2
+            let background = CGRect(
+                x: -textSize.width / 2 - horizontalPadding,
+                y: -textSize.height / 2 - verticalPadding,
+                width: textSize.width + horizontalPadding * 2,
+                height: textSize.height + verticalPadding * 2
+            )
+            let path = Path(
+                roundedRect: background,
+                cornerRadius: CGFloat(OPSStyle.Layout.chipRadius)
+            )
+            layer.fill(path, with: .color(OPSStyle.Colors.glassDenseApprox))
+            layer.stroke(
+                path,
+                with: .color(OPSStyle.Colors.line),
+                lineWidth: OPSStyle.Layout.Border.standard
+            )
+            layer.draw(resolved, at: .zero, anchor: .center)
+        }
     }
 
     // MARK: - Active Drawing Line
@@ -1443,8 +1538,14 @@ struct DeckCanvasView: View {
         let dy = end.position.y - start.position.y
         let len = sqrt(dx * dx + dy * dy)
         let offsetDist = scaledSize(18, min: 12, max: 30)
-        let perpX = len > 0 ? (-dy / len) * offsetDist : 0
-        let perpY = len > 0 ? (dx / len) * offsetDist : -offsetDist
+        let stairPlan = stairRenderPlan(start: start.position, end: end.position, edge: edge)
+        let stairNormal = stairPlan?.boundaryMarkers.isEmpty == false
+            ? stairPlan?.stairNormal
+            : nil
+        let perpX = stairNormal.map { -$0.dx * offsetDist }
+            ?? (len > 0 ? (-dy / len) * offsetDist : 0)
+        let perpY = stairNormal.map { -$0.dy * offsetDist }
+            ?? (len > 0 ? (dx / len) * offsetDist : -offsetDist)
         let rawLabelX = midX + perpX
         let labelY = midY + perpY
 

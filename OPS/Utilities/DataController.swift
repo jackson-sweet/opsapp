@@ -3353,6 +3353,9 @@ class DataController: ObservableObject {
         project.deletedAt = deletionDate
         project.needsSync = true
 
+        let tombstoneFields = ["deleted_at": formatter.string(from: deletionDate)]
+        var specs: [SyncEngine.BulkOperationSpec] = []
+
         // Cascade soft delete to all tasks
         var cascadedTaskIds: [String] = []
         for task in project.tasks where task.deletedAt == nil {
@@ -3360,14 +3363,21 @@ class DataController: ObservableObject {
             task.needsSync = true
             cascadedTaskIds.append(task.id)
 
-            // Record delete for each cascaded task
-            syncEngine.recordOperation(
+            specs.append(.init(
                 entityType: .projectTask,
                 entityId: task.id,
                 operationType: "delete",
-                changedFields: ["deleted_at": formatter.string(from: deletionDate)]
-            )
+                changedFields: tombstoneFields
+            ))
         }
+
+        // The project's own delete rides in the same batch — one cascade, one commit.
+        specs.append(.init(
+            entityType: .project,
+            entityId: project.id,
+            operationType: "delete",
+            changedFields: tombstoneFields
+        ))
 
         // Unmirror cascaded tasks from iPhone Calendar
         Task { @MainActor in
@@ -3376,17 +3386,21 @@ class DataController: ObservableObject {
             }
         }
 
-        // Save changes locally
-        try modelContext.save()
+        // ONE save commits the tombstones AND every queue record. Recording per
+        // task cost a main-thread save and a push per task, so deleting an
+        // N-task project stalled the UI for N+1 saves and opened N pushes.
+        if syncEngine.recordOperations(specs) < specs.count {
+            // The batch never landed (sync engine unconfigured, or its save
+            // failed). The local soft-delete still has to persist, and still
+            // throws the way this method always has when persistence fails.
+            try modelContext.save()
+        }
         print("[DELETE_PROJECT] ✅ Project '\(projectTitle)' soft deleted locally")
 
-        // Record for async sync
-        syncEngine.recordOperation(
-            entityType: .project,
-            entityId: project.id,
-            operationType: "delete",
-            changedFields: ["deleted_at": formatter.string(from: deletionDate)]
-        )
+        // ONE push for the whole cascade.
+        if connectivity?.shouldAttemptSync == true {
+            Task { await syncEngine.pushPending() }
+        }
     }
 
     /// Delete a task from both Supabase and local storage
@@ -4800,22 +4814,32 @@ class DataController: ObservableObject {
 
         print("[TASK_INDEX] ✅ Updated \(allTasks.count) task indices")
 
-        // Save changes locally
-        try modelContext?.save()
-
         // Record task index updates for async sync (use display_order — the actual Supabase column)
         print("[TASK_INDEX] 🔄 Recording \(tasksToSync.count) task index updates for sync...")
+        var specs: [SyncEngine.BulkOperationSpec] = []
         for (task, index) in tasksToSync {
-            syncEngine.recordOperation(
+            specs.append(.init(
                 entityType: .projectTask,
                 entityId: task.id,
                 operationType: "update",
-                changedFields: ["display_order": index],
-                deferPush: deferPush
-            )
+                changedFields: ["display_order": index]
+            ))
             print("[TASK_INDEX]   ✅ Recorded displayOrder=\(index) for task '\(task.displayTitle)'")
         }
+
+        // ONE save commits the new indices AND their queue records. Recording
+        // per task cost a main-thread save each, and every schedule commit lands
+        // here — the per-op loop was the reorder half of the scheduling stall.
+        if syncEngine.recordOperations(specs) < specs.count {
+            // The batch never landed; the new indices still have to persist.
+            try modelContext?.save()
+        }
         print("[TASK_INDEX] ✅ Task index updates recorded for sync")
+
+        // ONE push for the whole reorder, honoring the caller's defer contract.
+        if !deferPush, connectivity?.shouldAttemptSync == true {
+            Task { await syncEngine.pushPending() }
+        }
     }
 
     // MARK: - Team Member Operations

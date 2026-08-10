@@ -394,13 +394,14 @@ final class SiteVisitServerMergeTests: XCTestCase {
             )
         )
 
-        XCTAssertTrue(
-            try await sync.executeIfHandled(
-                operation: operation,
-                context: context,
-                activeCompanyId: companyId
-            )
+        // The await has to resolve before the assertion: XCTAssertTrue takes an
+        // autoclosure, which cannot host a concurrency suspension point.
+        let handled = try await sync.executeIfHandled(
+            operation: operation,
+            context: context,
+            activeCompanyId: companyId
         )
+        XCTAssertTrue(handled)
         let payload = try XCTUnwrap(remote.checklistPayloads.first)
         XCTAssertEqual(payload.id, serverAnswer.id)
         XCTAssertEqual(payload.answerValue.text, "Local retry value")

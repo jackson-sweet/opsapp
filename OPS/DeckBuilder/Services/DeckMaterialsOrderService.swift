@@ -271,10 +271,9 @@ struct DeckMaterialsOrderService {
             try await updateProjectFields(projectId, [
                 ProjectVinylOrderFields.status: .string(ProjectVinylOrderStatus.ordered.rawValue),
                 ProjectVinylOrderFields.orderedAt: .string(SupabaseDate.format(now)),
-                // `projects.vinyl_ordered_by` FKs to auth.users(id), while the app
-                // carries public.users.id / Firebase ids. The snapshot keeps
-                // attribution locally; the synced project marker stays valid.
-                ProjectVinylOrderFields.orderedBy: .null,
+                // The FK targets public.users(id). Outbound sanitization still
+                // nulls any legacy non-UUID identity before it reaches Postgres.
+                ProjectVinylOrderFields.orderedBy: .string(userId),
                 ProjectVinylOrderFields.color: color.map { .string($0) } ?? .null,
                 ProjectVinylOrderFields.po: normalizedPO.map { .string($0) } ?? .null
             ])

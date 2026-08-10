@@ -183,9 +183,10 @@ final class DeckMaterialsOrderServiceTests: XCTestCase {
     }
 
     func testMarkOrderedWritesSnapshotAndTrio() async throws {
+        let operatorID = "283d49df-90a1-4abb-b94c-3e9f17f02c0d"
         let design = DeckDesign(companyId: "co-1")
         var captured: [String: AnyJSON]?
-        let service = DeckMaterialsOrderService(userId: "user-1") { _, fields in captured = fields }
+        let service = DeckMaterialsOrderService(userId: operatorID) { _, fields in captured = fields }
 
         try await service.markOrdered(
             projectId: "proj-1",
@@ -197,12 +198,12 @@ final class DeckMaterialsOrderServiceTests: XCTestCase {
 
         let snapshot = design.drawingData.orderedMaterials
         XCTAssertNotNil(snapshot)
-        XCTAssertEqual(snapshot?.orderedBy, "user-1")
+        XCTAssertEqual(snapshot?.orderedBy, operatorID)
         XCTAssertFalse(snapshot?.cutGroups.isEmpty ?? true)
         XCTAssertTrue(design.needsSync)
 
         XCTAssertEqual(captured?[ProjectVinylOrderFields.status], .string("ordered"))
-        XCTAssertEqual(captured?[ProjectVinylOrderFields.orderedBy], .null)
+        XCTAssertEqual(captured?[ProjectVinylOrderFields.orderedBy], .string(operatorID))
         XCTAssertNotNil(captured?[ProjectVinylOrderFields.orderedAt])
     }
 

@@ -66,9 +66,10 @@ final class VinylBulkMarkServiceTests: XCTestCase {
     /// Design + materials ⇒ snapshot freeze; no design ⇒ marker-only. Both
     /// carry color/PO in the same payload as the trio.
     func testSnapshotVsMarkerOnlyPathSelection() async throws {
+        let operatorID = "283d49df-90a1-4abb-b94c-3e9f17f02c0d"
         let design = DeckDesign(companyId: "co-1")
         var payloads: [String: [String: AnyJSON]] = [:]
-        let service = VinylBulkMarkService(userId: "user-1") { pid, fields in
+        let service = VinylBulkMarkService(userId: operatorID) { pid, fields in
             payloads[pid] = fields
         }
 
@@ -87,13 +88,14 @@ final class VinylBulkMarkServiceTests: XCTestCase {
         // Both payloads carry the five marker fields atomically.
         let designPayload = try XCTUnwrap(payloads["p-design"])
         XCTAssertEqual(designPayload[ProjectVinylOrderFields.status], .string("ordered"))
+        XCTAssertEqual(designPayload[ProjectVinylOrderFields.orderedBy], .string(operatorID))
         XCTAssertEqual(designPayload[ProjectVinylOrderFields.color], .string("68mil Cobblestone"))
         XCTAssertEqual(designPayload[ProjectVinylOrderFields.po], .string("PO 6836 Mark Ln"))
 
         let plainPayload = try XCTUnwrap(payloads["p-plain"])
         XCTAssertEqual(plainPayload[ProjectVinylOrderFields.status], .string("ordered"))
         XCTAssertNotNil(plainPayload[ProjectVinylOrderFields.orderedAt])
-        XCTAssertEqual(plainPayload[ProjectVinylOrderFields.orderedBy], .null)
+        XCTAssertEqual(plainPayload[ProjectVinylOrderFields.orderedBy], .string(operatorID))
         XCTAssertEqual(plainPayload[ProjectVinylOrderFields.color], .string("68mil Slate"))
         XCTAssertEqual(plainPayload[ProjectVinylOrderFields.po], .null)
     }

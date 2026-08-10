@@ -1257,7 +1257,7 @@ struct VinylOrderSheet: View {
             )
         } else {
             // No vinyl set / unresolved scale — plain marker toggle, no snapshot.
-            markProjectVinylOrderedPlain(projectId: projectId)
+            markProjectVinylOrderedPlain(projectId: projectId, userId: userId)
         }
     }
 
@@ -1317,7 +1317,7 @@ struct VinylOrderSheet: View {
     }
 
     /// No materials list resolved — mark the project ordered without a snapshot.
-    private func markProjectVinylOrderedPlain(projectId: String) {
+    private func markProjectVinylOrderedPlain(projectId: String, userId: String) {
         isUpdatingProjectMarker = true
         Task { @MainActor in
             do {
@@ -1337,9 +1337,7 @@ struct VinylOrderSheet: View {
                     fields: [
                         ProjectVinylOrderFields.status: .string(ProjectVinylOrderStatus.ordered.rawValue),
                         ProjectVinylOrderFields.orderedAt: .string(SupabaseDate.format(Date())),
-                        // `projects.vinyl_ordered_by` FKs to auth.users(id), not public.users(id).
-                        // The app does not surface this attribution, so keep the marker write valid.
-                        ProjectVinylOrderFields.orderedBy: .null
+                        ProjectVinylOrderFields.orderedBy: .string(userId)
                     ]
                 )
                 isUpdatingProjectMarker = false

@@ -628,7 +628,7 @@ class ProjectDetailsViewModel: ObservableObject {
                         fields: [
                             ProjectVinylOrderFields.status: .string(ProjectVinylOrderStatus.ordered.rawValue),
                             ProjectVinylOrderFields.orderedAt: .string(SupabaseDate.format(Date())),
-                            ProjectVinylOrderFields.orderedBy: .null
+                            ProjectVinylOrderFields.orderedBy: .string(userId)
                         ]
                     )
                 } else {

@@ -198,6 +198,70 @@ final class CatalogMergeDiffGateTests: XCTestCase {
         XCTAssertEqual(try count(CatalogOptionValue.self, in: container), 2)
     }
 
+    func test_catalogOptionValues_changedValue_updatesOnlyThatRow() async throws {
+        let container = try makeContainer()
+        let seed = ModelContext(container)
+        seed.insert(CatalogOption(id: "opt-1", catalogItemId: "item-1", name: "Color", sortOrder: 0))
+        try seed.save()
+
+        let actor = DataActor(modelContainer: container)
+        await actor.configure()
+
+        try await actor.mergeCatalogOptionValues(dtos: [
+            CatalogOptionValueDTO(id: "val-1", optionId: "opt-1", value: "Black", sortOrder: 0),
+            CatalogOptionValueDTO(id: "val-2", optionId: "opt-1", value: "White", sortOrder: 1)
+        ])
+
+        let recorder = StoreWriteRecorder()
+        defer { recorder.stop() }
+
+        try await actor.mergeCatalogOptionValues(dtos: [
+            CatalogOptionValueDTO(id: "val-1", optionId: "opt-1", value: "Matte black", sortOrder: 0),
+            CatalogOptionValueDTO(id: "val-2", optionId: "opt-1", value: "White", sortOrder: 1)
+        ])
+
+        XCTAssertEqual(recorder.totalUpdated, 1, "only the changed value may be rewritten — observed \(recorder.describe())")
+        XCTAssertEqual(recorder.totalInserted, 0)
+        XCTAssertEqual(recorder.totalDeleted, 0)
+
+        let context = ModelContext(container)
+        let changed = try XCTUnwrap(context.fetch(FetchDescriptor<CatalogOptionValue>()).first { $0.id == "val-1" })
+        XCTAssertEqual(changed.value, "Matte black")
+    }
+
+    func test_catalogOptionValues_membershipChange_touchesOnlyTheChangedRows() async throws {
+        let container = try makeContainer()
+        let seed = ModelContext(container)
+        seed.insert(CatalogOption(id: "opt-1", catalogItemId: "item-1", name: "Color", sortOrder: 0))
+        // Value whose option is not resident locally — outside the prune scope.
+        seed.insert(CatalogOptionValue(id: "val-orphan", optionId: "opt-unknown", value: "Orphan", sortOrder: 0))
+        try seed.save()
+
+        let actor = DataActor(modelContainer: container)
+        await actor.configure()
+
+        try await actor.mergeCatalogOptionValues(dtos: [
+            CatalogOptionValueDTO(id: "val-1", optionId: "opt-1", value: "Black", sortOrder: 0),
+            CatalogOptionValueDTO(id: "val-2", optionId: "opt-1", value: "White", sortOrder: 1)
+        ])
+
+        let recorder = StoreWriteRecorder()
+        defer { recorder.stop() }
+
+        try await actor.mergeCatalogOptionValues(dtos: [
+            CatalogOptionValueDTO(id: "val-1", optionId: "opt-1", value: "Black", sortOrder: 0),
+            CatalogOptionValueDTO(id: "val-3", optionId: "opt-1", value: "Bronze", sortOrder: 1)
+        ])
+
+        XCTAssertEqual(recorder.totalInserted, 1, "observed \(recorder.describe())")
+        XCTAssertEqual(recorder.totalDeleted, 1, "observed \(recorder.describe())")
+        XCTAssertEqual(recorder.totalUpdated, 0, "the unchanged value must not be rewritten — observed \(recorder.describe())")
+
+        let context = ModelContext(container)
+        let ids = Set(try context.fetch(FetchDescriptor<CatalogOptionValue>()).map(\.id))
+        XCTAssertEqual(ids, ["val-1", "val-3", "val-orphan"], "the out-of-scope value must survive the prune")
+    }
+
     // MARK: - Variant ↔ option-value junction (was wipe + reinsert)
 
     func test_variantOptionValues_secondIdenticalPass_writesNothing() async throws {
@@ -369,6 +433,50 @@ final class CatalogMergeDiffGateTests: XCTestCase {
         XCTAssertEqual(recorder.totalDeleted, 0)
     }
 
+    func test_catalogItemTags_membershipChange_touchesOnlyTheChangedRows() async throws {
+        let container = try makeContainer()
+        try seedCatalogItem(id: "item-1", in: container)
+        try seedCatalogItem(id: "foreign-item", companyId: otherCompanyId, in: container)
+
+        // Join on another company's item — outside the prune scope.
+        let seed = ModelContext(container)
+        seed.insert(CatalogItemTag(id: "tag-join-foreign", catalogItemId: "foreign-item", tagId: "tag-9"))
+        try seed.save()
+
+        let actor = DataActor(modelContainer: container)
+        await actor.configure()
+
+        try await actor.mergeCatalogItemTags(
+            dtos: [
+                CatalogItemTagDTO(id: "tag-join-1", catalogItemId: "item-1", tagId: "tag-1"),
+                CatalogItemTagDTO(id: "tag-join-2", catalogItemId: "item-1", tagId: "tag-2")
+            ],
+            companyId: companyId
+        )
+
+        let recorder = StoreWriteRecorder()
+        defer { recorder.stop() }
+
+        try await actor.mergeCatalogItemTags(
+            dtos: [
+                CatalogItemTagDTO(id: "tag-join-1", catalogItemId: "item-1", tagId: "tag-1"),
+                CatalogItemTagDTO(id: "tag-join-3", catalogItemId: "item-1", tagId: "tag-3")
+            ],
+            companyId: companyId
+        )
+
+        XCTAssertEqual(recorder.totalInserted, 1, "observed \(recorder.describe())")
+        XCTAssertEqual(recorder.totalDeleted, 1, "observed \(recorder.describe())")
+        XCTAssertEqual(recorder.totalUpdated, 0, "the unchanged join must not be rewritten — observed \(recorder.describe())")
+
+        let context = ModelContext(container)
+        let ids = Set(try context.fetch(FetchDescriptor<CatalogItemTag>()).map(\.id))
+        XCTAssertEqual(
+            ids, ["tag-join-1", "tag-join-3", "tag-join-foreign"],
+            "another company's join must survive the prune"
+        )
+    }
+
     // MARK: - Product materials
 
     func test_productMaterials_secondIdenticalPass_writesNothing() async throws {
@@ -446,6 +554,40 @@ final class CatalogMergeDiffGateTests: XCTestCase {
         XCTAssertEqual(stored.variantSelectorJSON, #"{"color":"white"}"#)
     }
 
+    func test_productMaterials_membershipChange_touchesOnlyTheChangedRows() async throws {
+        let container = try makeContainer()
+        try seedProduct(id: "prod-1", in: container)
+
+        // Recipe row on a product this company does not own — outside the prune scope.
+        let seed = ModelContext(container)
+        seed.insert(ProductMaterial(id: "mat-orphan", productId: "prod-foreign", quantityPerUnit: 1))
+        try seed.save()
+
+        let actor = DataActor(modelContainer: container)
+        await actor.configure()
+
+        try await actor.mergeProductMaterials(
+            dtos: [materialDTO(id: "mat-1", quantityPerUnit: 2.5), materialDTO(id: "mat-2", quantityPerUnit: 1)],
+            companyId: companyId
+        )
+
+        let recorder = StoreWriteRecorder()
+        defer { recorder.stop() }
+
+        try await actor.mergeProductMaterials(
+            dtos: [materialDTO(id: "mat-1", quantityPerUnit: 2.5), materialDTO(id: "mat-3", quantityPerUnit: 4)],
+            companyId: companyId
+        )
+
+        XCTAssertEqual(recorder.totalInserted, 1, "observed \(recorder.describe())")
+        XCTAssertEqual(recorder.totalDeleted, 1, "observed \(recorder.describe())")
+        XCTAssertEqual(recorder.totalUpdated, 0, "the unchanged material must not be rewritten — observed \(recorder.describe())")
+
+        let context = ModelContext(container)
+        let ids = Set(try context.fetch(FetchDescriptor<ProductMaterial>()).map(\.id))
+        XCTAssertEqual(ids, ["mat-1", "mat-3", "mat-orphan"], "the out-of-scope recipe row must survive the prune")
+    }
+
     // MARK: - Product bundle items
 
     func test_productBundleItems_secondIdenticalPass_writesNothing() async throws {
@@ -521,6 +663,47 @@ final class CatalogMergeDiffGateTests: XCTestCase {
         let stored = try XCTUnwrap(context.fetch(FetchDescriptor<ProductBundleItem>()).first)
         XCTAssertEqual(stored.quantity, 99, accuracy: 0.0001, "an in-flight local edit must not be clobbered")
         XCTAssertTrue(stored.needsSync)
+    }
+
+    func test_productBundleItems_membershipChange_touchesOnlyTheChangedRows() async throws {
+        let container = try makeContainer()
+        try seedProduct(id: "prod-1", in: container)
+
+        // Child row under a bundle this company does not own — outside the prune scope.
+        let seed = ModelContext(container)
+        seed.insert(
+            ProductBundleItem(
+                id: "bundle-orphan",
+                companyId: otherCompanyId,
+                bundleProductId: "prod-foreign",
+                childProductId: "child-foreign"
+            )
+        )
+        try seed.save()
+
+        let actor = DataActor(modelContainer: container)
+        await actor.configure()
+
+        try await actor.mergeProductBundleItems(
+            dtos: [bundleItemDTO(id: "bundle-1", quantity: 2), bundleItemDTO(id: "bundle-2", quantity: 1)],
+            companyId: companyId
+        )
+
+        let recorder = StoreWriteRecorder()
+        defer { recorder.stop() }
+
+        try await actor.mergeProductBundleItems(
+            dtos: [bundleItemDTO(id: "bundle-1", quantity: 2), bundleItemDTO(id: "bundle-3", quantity: 5)],
+            companyId: companyId
+        )
+
+        XCTAssertEqual(recorder.totalInserted, 1, "observed \(recorder.describe())")
+        XCTAssertEqual(recorder.totalDeleted, 1, "observed \(recorder.describe())")
+        XCTAssertEqual(recorder.totalUpdated, 0, "the unchanged child must not be rewritten — observed \(recorder.describe())")
+
+        let context = ModelContext(container)
+        let ids = Set(try context.fetch(FetchDescriptor<ProductBundleItem>()).map(\.id))
+        XCTAssertEqual(ids, ["bundle-1", "bundle-3", "bundle-orphan"], "the out-of-scope child must survive the prune")
     }
 
     // MARK: - SwiftData write semantics
@@ -659,6 +842,11 @@ final class CatalogMergeDiffGateTests: XCTestCase {
         try await actor.mergeCatalogOrders(
             dtos: [orderDTO(id: "order-1", status: "draft", title: "Server title")],
             companyId: companyId
+        )
+
+        XCTAssertEqual(
+            recorder.eventCount, 0,
+            "the only field the server changed is protected, so the pass must not save at all — observed \(recorder.describe())"
         )
 
         let context = ModelContext(container)

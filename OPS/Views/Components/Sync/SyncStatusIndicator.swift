@@ -15,6 +15,7 @@
 //  disc on top of the pill and swallowed taps. See `SyncPillHeaderLayoutTests`.
 //
 
+import Combine
 import SwiftUI
 import SwiftData
 
@@ -86,7 +87,14 @@ struct SyncStatusIndicator: View {
     @State private var anyParked = false
     @State private var showPendingWork = false
 
-    private let refreshTimer = Timer.publish(every: 2, on: .main, in: .common).autoconnect()
+    /// Store changes drive the count, plus a slow self-heal tick for inventory
+    /// inputs that reach no save notification (recovery-vault quarantine
+    /// entries); see `RecoveryRefreshMonitor`. It has to be a `@StateObject` and
+    /// not a stored publisher: this view re-renders on every `DataController`
+    /// publish, which is exactly when a sync pass is saving, and a re-rendered
+    /// pipeline would drop the debounced save it is waiting on.
+    @StateObject private var refreshMonitor = RecoveryRefreshMonitor()
+
     private var queue: ClientLeadAutocreateQueue { ClientLeadAutocreateQueue.shared }
 
     private var showsPending: Bool { dataController.hasPendingSyncs && !dataController.isConnected }
@@ -104,9 +112,10 @@ struct SyncStatusIndicator: View {
                 .frame(minWidth: OPSStyle.Layout.touchTargetMin, minHeight: OPSStyle.Layout.touchTargetMin)
             }
         }
+        // The subscription rides the always-present `Group` rather than the
+        // pill, because the count going 0 → n is what makes the pill appear.
         .onAppear(perform: refreshAttention)
-        .onReceive(refreshTimer) { _ in refreshAttention() }
-        .onReceive(NotificationCenter.default.publisher(for: .opsLeadsDidChange)) { _ in refreshAttention() }
+        .onReceive(refreshMonitor.output) { _ in refreshAttention() }
         .fullScreenCover(isPresented: $showPendingWork) {
             PendingWorkScreen(leading: .close)
                 .environmentObject(dataController)

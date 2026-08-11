@@ -1018,8 +1018,11 @@ extension RecoveryInventory {
 extension RecoveryInventory {
 
     /// Fetches the live models the recovery screen cares about and maps them into
-    /// the pure builder. Fetches are kept narrow via predicates; the one in-memory
-    /// filter (deck artifacts → the drafts' visit ids) is documented inline.
+    /// the pure builder. Most fetches are narrowed by predicate; the capture
+    /// tables (artifacts + checklist answers) cannot be — their id match is an
+    /// in-memory lowercased `contains` — so they are guarded instead: no draft
+    /// and no site-visit operation means no visit ids, and neither table is
+    /// touched. See `captureSnapshots`.
     @MainActor
     static func load(
         from modelContext: ModelContext,
@@ -1073,27 +1076,26 @@ extension RecoveryInventory {
         // count; deck artifacts additionally resolve legacy deck-operation joins.
         let visitIds = Set(scopedDraftModels.map { $0.siteVisitId.lowercased() })
             .union(ops.compactMap(\.siteVisitId))
-        let artifactDescriptor = FetchDescriptor<SiteVisitCaptureArtifact>(
-            predicate: #Predicate<SiteVisitCaptureArtifact> {
-                $0.deletedAt == nil
+        let captures = captureSnapshots(
+            visitIds: visitIds,
+            activeCompanyId: activeCompanyId,
+            fetchArtifacts: {
+                let descriptor = FetchDescriptor<SiteVisitCaptureArtifact>(
+                    predicate: #Predicate<SiteVisitCaptureArtifact> {
+                        $0.deletedAt == nil
+                    }
+                )
+                return (try? modelContext.fetch(descriptor)) ?? []
+            },
+            fetchAnswers: {
+                let descriptor = FetchDescriptor<SiteVisitChecklistAnswer>(
+                    predicate: #Predicate<SiteVisitChecklistAnswer> { $0.deletedAt == nil }
+                )
+                return (try? modelContext.fetch(descriptor)) ?? []
             }
         )
-        let artifacts = ((try? modelContext.fetch(artifactDescriptor)) ?? [])
-            .filter {
-                $0.companyId.lowercased() == activeCompanyId
-                    && visitIds.contains($0.siteVisitId.lowercased())
-            }
-            .map(ArtifactSnapshot.init(from:))
-
-        let answerDescriptor = FetchDescriptor<SiteVisitChecklistAnswer>(
-            predicate: #Predicate<SiteVisitChecklistAnswer> { $0.deletedAt == nil }
-        )
-        let answers = ((try? modelContext.fetch(answerDescriptor)) ?? [])
-            .filter {
-                $0.companyId.lowercased() == activeCompanyId
-                    && visitIds.contains($0.siteVisitId.lowercased())
-            }
-            .map(ChecklistAnswerSnapshot.init(from:))
+        let artifacts = captures.artifacts
+        let answers = captures.answers
 
         let quarantines = SiteVisitRecoveryVault.shared.summaries(
             userId: activeUserId,
@@ -1145,5 +1147,40 @@ extension RecoveryInventory {
             quarantines: quarantines,
             now: now
         )
+    }
+
+    /// Capture snapshots for the visit ids a draft or a durable packet operation
+    /// references — the source of a row's captured-item count.
+    ///
+    /// Both fetches are whole-live-table scans: the visit-id match cannot ride in
+    /// a `#Predicate` because stored casing varies, so it stays an in-memory
+    /// lowercased `contains`. Both tables also grow without bound — server
+    /// artifacts merge in and are never pruned — so an empty visit-id set must
+    /// short-circuit before either fetch runs, not filter to empty after.
+    /// The fetches are injected so that skip is directly assertable.
+    @MainActor
+    static func captureSnapshots(
+        visitIds: Set<String>,
+        activeCompanyId: String,
+        fetchArtifacts: () -> [SiteVisitCaptureArtifact],
+        fetchAnswers: () -> [SiteVisitChecklistAnswer]
+    ) -> (artifacts: [ArtifactSnapshot], answers: [ChecklistAnswerSnapshot]) {
+        guard !visitIds.isEmpty else { return ([], []) }
+
+        let artifacts = fetchArtifacts()
+            .filter {
+                $0.companyId.lowercased() == activeCompanyId
+                    && visitIds.contains($0.siteVisitId.lowercased())
+            }
+            .map(ArtifactSnapshot.init(from:))
+
+        let answers = fetchAnswers()
+            .filter {
+                $0.companyId.lowercased() == activeCompanyId
+                    && visitIds.contains($0.siteVisitId.lowercased())
+            }
+            .map(ChecklistAnswerSnapshot.init(from:))
+
+        return (artifacts, answers)
     }
 }

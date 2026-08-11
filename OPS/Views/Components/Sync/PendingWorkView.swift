@@ -18,6 +18,7 @@
 //  string to `SyncStatusCopy.PendingWork`.
 //
 
+import Combine
 import SwiftUI
 import SwiftData
 
@@ -379,7 +380,17 @@ struct PendingWorkScreen: View {
     @State private var resumingDraft = false
     @State private var openingDesign: DeckDesign?
 
-    private let refreshTimer = Timer.publish(every: 2, on: .main, in: .common).autoconnect()
+    /// Store changes drive the inventory; see `RecoveryRefreshMonitor`. Owned by
+    /// the view's identity, not its render, so a debounced change cannot be lost
+    /// to a re-render.
+    @StateObject private var refreshMonitor = RecoveryRefreshMonitor()
+
+    /// The clock, not a poll: rows render a per-second backoff countdown
+    /// ("Retrying — next in 12s") off `now`, so the 2s cadence stays as shipped.
+    /// It runs only while this screen is up, and `.default` mode keeps it off the
+    /// runloop while a scroll gesture is being tracked.
+    private let clockTimer = Timer.publish(every: 2, on: .main, in: .default).autoconnect()
+
     private var queue: ClientLeadAutocreateQueue { ClientLeadAutocreateQueue.shared }
 
     var body: some View {
@@ -398,10 +409,10 @@ struct PendingWorkScreen: View {
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
             refresh()
         }
-        .onReceive(refreshTimer) { _ in
+        .onReceive(clockTimer) { _ in
             refresh()
         }
-        .onReceive(NotificationCenter.default.publisher(for: .opsLeadsDidChange)) { _ in
+        .onReceive(refreshMonitor.output) { _ in
             refresh()
         }
         .sheet(item: $exportPayload) { payload in

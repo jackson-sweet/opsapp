@@ -89,15 +89,22 @@ struct CalendarSiteVisitCard: View {
         .accessibilityAddTraits(.isButton)
     }
 
+    // CalendarUserEventCard's iconTile anatomy exactly — the three sources
+    // must read as siblings on the day canvas.
     private var iconTile: some View {
         ZStack {
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cardRadius, style: .continuous)
-                .fill(OPSStyle.Colors.surfaceInput)
+            RoundedRectangle(cornerRadius: OPSStyle.Layout.progressBarRadius)
+                .fill(OPSStyle.Colors.tanFillM)
+                .overlay(
+                    RoundedRectangle(cornerRadius: OPSStyle.Layout.progressBarRadius)
+                        .stroke(OPSStyle.Colors.tanLineM, lineWidth: OPSStyle.Layout.Border.standard)
+                )
+
             Image(systemName: OPSStyle.Icons.camera)
-                .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .regular))
+                .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .semibold))
                 .foregroundColor(OPSStyle.Colors.tanTextM)
         }
-        .frame(width: 36, height: 36)
+        .frame(width: 34, height: 34)
     }
 
     private var statusTag: some View {

@@ -11,6 +11,14 @@
 //  The inventory only changes when the store changes, so the surfaces listen for
 //  that instead, debounced so a sync pass's save storm costs one load.
 //
+//  Everything here schedules in `.default` runloop mode, never `.common`, and
+//  that applies to the debounce as much as to the fallback timer. A main-QUEUE
+//  debounce is not equivalent: main-queue blocks drain during scroll tracking
+//  too, so a save landing mid-gesture would deliver mid-gesture and run the
+//  six-fetch load with the finger down — the exact hitch this file removes.
+//  On `RunLoop.main` in `.default` mode, delivery defers to gesture end instead.
+//  Nothing is dropped; it arrives when it can be paid for.
+//
 
 import Combine
 import Foundation
@@ -20,7 +28,17 @@ enum RecoveryRefreshSignal {
 
     /// Long enough that a sync pass's save storm collapses into one load, short
     /// enough that a single local edit still reads as immediate.
-    static let debounceWindow: DispatchQueue.SchedulerTimeType.Stride = .milliseconds(500)
+    ///
+    /// Trailing-edge with no max-latency bound — a deliberate divergence from
+    /// `InboundChangeSignal`'s router, which forces a flush after 1s of
+    /// continuous arrivals. Starvation is already bounded twice over here: the
+    /// `fallbackInterval` tick refreshes regardless of store traffic, and a
+    /// storm long enough to matter is a sync pass, which the pill is displaying
+    /// as SYNCING off `DataController` state for its whole duration.
+    ///
+    /// Expressed in milliseconds rather than a concrete `Stride` because the
+    /// scheduler — and therefore the stride type — is injectable below.
+    static let debounceMilliseconds = 500
 
     /// Slow self-heal for inventory inputs that reach no save notification —
     /// notably the recovery vault's quarantine entries, which live outside
@@ -35,8 +53,13 @@ enum RecoveryRefreshSignal {
     ///
     /// `ModelContext.didSave` is subscribed name-wide, so DataActor's own saves
     /// arrive twice; the debounce collapses the overlap into a single refresh.
-    static func publisher(
-        center: NotificationCenter = .default
+    ///
+    /// The scheduler is injectable for the reason `InboundChangeRouter`'s is:
+    /// wall-clock debounce tests were outrun by parallel-build load, so timing
+    /// belongs under test control. Production always passes `RunLoop.main`.
+    static func publisher<S: Scheduler>(
+        center: NotificationCenter = .default,
+        scheduler: S
     ) -> AnyPublisher<Void, Never> {
         Publishers.MergeMany(
             center.publisher(for: .dataActorDidSave),
@@ -44,8 +67,16 @@ enum RecoveryRefreshSignal {
             center.publisher(for: .opsLeadsDidChange)
         )
         .map { _ in () }
-        .debounce(for: debounceWindow, scheduler: DispatchQueue.main)
+        .debounce(for: .milliseconds(debounceMilliseconds), scheduler: scheduler)
         .eraseToAnyPublisher()
+    }
+
+    /// Production shape: `RunLoop.main` schedules in `.default` mode, so a
+    /// refresh never lands mid-scroll. See the file header.
+    static func publisher(
+        center: NotificationCenter = .default
+    ) -> AnyPublisher<Void, Never> {
+        publisher(center: center, scheduler: RunLoop.main)
     }
 }
 
@@ -76,14 +107,19 @@ final class RecoveryRefreshMonitor: ObservableObject {
     /// It is merged *after* `publisher(center:)`, never into it — the self-heal
     /// tick has to fire on its own schedule, and feeding it through the debounce
     /// would let continuous store activity postpone it indefinitely.
-    init(center: NotificationCenter = .default) {
+    init<S: Scheduler>(center: NotificationCenter = .default, scheduler: S) {
         let fallback = Timer
             .publish(every: RecoveryRefreshSignal.fallbackInterval, on: .main, in: .default)
             .autoconnect()
             .map { _ in () }
 
-        subscription = RecoveryRefreshSignal.publisher(center: center)
+        subscription = RecoveryRefreshSignal.publisher(center: center, scheduler: scheduler)
             .merge(with: fallback)
             .sink { [output] _ in output.send(()) }
+    }
+
+    /// Production shape — see `RecoveryRefreshSignal.publisher(center:)`.
+    convenience init(center: NotificationCenter = .default) {
+        self.init(center: center, scheduler: RunLoop.main)
     }
 }

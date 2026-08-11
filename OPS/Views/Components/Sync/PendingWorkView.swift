@@ -385,10 +385,11 @@ struct PendingWorkScreen: View {
     /// to a re-render.
     @StateObject private var refreshMonitor = RecoveryRefreshMonitor()
 
-    /// The clock, not a poll: rows render a per-second backoff countdown
-    /// ("Retrying — next in 12s") off `now`, so the 2s cadence stays as shipped.
-    /// It runs only while this screen is up, and `.default` mode keeps it off the
-    /// runloop while a scroll gesture is being tracked.
+    /// This screen's own cadence, kept as shipped: rows render a retry backoff
+    /// countdown in whole seconds ("Retrying — next in 12s") off `now`, which
+    /// advances — and reloads the inventory — every 2s, so the displayed value
+    /// steps in twos. It runs only while this screen is up, and `.default` mode
+    /// keeps it off the runloop while a scroll gesture is being tracked.
     private let clockTimer = Timer.publish(every: 2, on: .main, in: .default).autoconnect()
 
     private var queue: ClientLeadAutocreateQueue { ClientLeadAutocreateQueue.shared }

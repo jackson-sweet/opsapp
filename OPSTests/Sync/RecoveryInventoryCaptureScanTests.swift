@@ -100,6 +100,30 @@ final class RecoveryInventoryCaptureScanTests: XCTestCase {
         XCTAssertEqual(captures.answers.map(\.id), ["answer-mine"])
     }
 
+    // MARK: - Casing
+
+    /// `UUID().uuidString` is uppercase; Postgres `uuid` columns are lowercase.
+    /// `load` happens to lowercase before calling in, but the match must not
+    /// depend on every future call site remembering to — the failure mode is
+    /// silent (zero captured items on a row that has them), which is exactly how
+    /// this class of bug has escaped here before.
+    func test_captureFetchesMatchWhateverCaseTheCallerPassesIn() throws {
+        let context = try makeContext()
+        context.insert(makeArtifact(id: "artifact-mine"))
+        context.insert(makeAnswer(id: "answer-mine"))
+        try context.save()
+
+        let captures = RecoveryInventory.captureSnapshots(
+            visitIds: [visitId.uppercased()],
+            activeCompanyId: companyId.uppercased(),
+            fetchArtifacts: { Self.artifacts(in: context) },
+            fetchAnswers: { Self.answers(in: context) }
+        )
+
+        XCTAssertEqual(captures.artifacts.map(\.id), ["artifact-mine"])
+        XCTAssertEqual(captures.answers.map(\.id), ["answer-mine"])
+    }
+
     // MARK: - Fixtures
 
     private func makeContext() throws -> ModelContext {

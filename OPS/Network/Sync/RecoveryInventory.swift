@@ -1158,6 +1158,16 @@ extension RecoveryInventory {
     /// artifacts merge in and are never pruned — so an empty visit-id set must
     /// short-circuit before either fetch runs, not filter to empty after.
     /// The fetches are injected so that skip is directly assertable.
+    ///
+    /// - Parameters:
+    ///   - visitIds: Site-visit ids to match, compared case-insensitively.
+    ///   - activeCompanyId: Company id to scope to, compared case-insensitively.
+    ///
+    /// Both are normalized here rather than trusted from the call site.
+    /// `UUID().uuidString` is uppercase while Postgres `uuid` columns are
+    /// lowercase, so stored casing varies with which side wrote the row — a
+    /// caller passing raw ids would otherwise match nothing and silently report
+    /// zero captured items.
     @MainActor
     static func captureSnapshots(
         visitIds: Set<String>,
@@ -1166,6 +1176,10 @@ extension RecoveryInventory {
         fetchAnswers: () -> [SiteVisitChecklistAnswer]
     ) -> (artifacts: [ArtifactSnapshot], answers: [ChecklistAnswerSnapshot]) {
         guard !visitIds.isEmpty else { return ([], []) }
+
+        // Both sets are small — this costs nothing next to the table scans below.
+        let activeCompanyId = activeCompanyId.lowercased()
+        let visitIds = Set(visitIds.map { $0.lowercased() })
 
         let artifacts = fetchArtifacts()
             .filter {

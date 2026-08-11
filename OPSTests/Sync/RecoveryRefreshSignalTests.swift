@@ -8,11 +8,110 @@
 //  costs one refresh rather than one per save, and the pipeline keeps firing
 //  after the first burst (a one-shot signal would freeze both surfaces).
 //
+//  Harness: the debounce runs on an injected virtual scheduler, so these tests
+//  close the window explicitly instead of waiting out a real one. This mirrors
+//  `InboundChangeRouterTests`, which moved to virtual time after a 2026-07-27
+//  full-suite run under parallel-build load outran its wall-clock waits. One
+//  test deliberately stays on the production scheduler — see below.
+//
 
 import Combine
 import SwiftData
 import XCTest
 @testable import OPS
+
+/// Virtual clock for the debounce. Combine's `debounce` takes a `Scheduler`
+/// rather than a work item, so this is a `Scheduler` conformance where
+/// `InboundChangeRouterTests` uses a captured-work-item harness; the guarantee
+/// is the same one — time only moves when a test says so, so machine load
+/// cannot race a deadline.
+private final class VirtualScheduler: Scheduler {
+
+    typealias SchedulerTimeType = DispatchQueue.SchedulerTimeType
+    typealias SchedulerOptions = Never
+
+    private struct Scheduled {
+        let deadline: SchedulerTimeType
+        /// Non-nil for the repeating overload, which is the one Combine's
+        /// `debounce` actually arms (it cancels and re-arms per element).
+        let interval: SchedulerTimeType.Stride?
+        let action: () -> Void
+    }
+
+    private(set) var now: SchedulerTimeType = .init(.now())
+    var minimumTolerance: SchedulerTimeType.Stride { .zero }
+
+    private var scheduled: [Int: Scheduled] = [:]
+    private var nextID = 0
+
+    func schedule(options: SchedulerOptions?, _ action: @escaping () -> Void) {
+        action()
+    }
+
+    func schedule(
+        after date: SchedulerTimeType,
+        tolerance: SchedulerTimeType.Stride,
+        options: SchedulerOptions?,
+        _ action: @escaping () -> Void
+    ) {
+        insert(Scheduled(deadline: date, interval: nil, action: action))
+    }
+
+    func schedule(
+        after date: SchedulerTimeType,
+        interval: SchedulerTimeType.Stride,
+        tolerance: SchedulerTimeType.Stride,
+        options: SchedulerOptions?,
+        _ action: @escaping () -> Void
+    ) -> Cancellable {
+        let id = insert(Scheduled(deadline: date, interval: interval, action: action))
+        return AnyCancellable { [weak self] in self?.scheduled[id] = nil }
+    }
+
+    @discardableResult
+    private func insert(_ item: Scheduled) -> Int {
+        defer { nextID += 1 }
+        scheduled[nextID] = item
+        return nextID
+    }
+
+    /// Moves virtual time forward and runs what has come due, earliest first.
+    /// Never sleeps.
+    ///
+    /// Each entry fires at most once per call — a repeating entry re-arms one
+    /// interval on, a one-shot is dropped — so no amount of advancing can spin
+    /// here. Cancellation is re-checked per entry because an earlier action may
+    /// cancel a later one, which is exactly what debounce does when it supersedes
+    /// a pending deadline.
+    func advance(by stride: SchedulerTimeType.Stride) {
+        now = now.advanced(by: stride)
+
+        let due = scheduled
+            .filter { $0.value.deadline <= now }
+            .sorted { $0.value.deadline < $1.value.deadline }
+
+        for (id, item) in due {
+            guard scheduled[id] != nil else { continue }
+
+            if let interval = item.interval {
+                scheduled[id] = Scheduled(
+                    deadline: item.deadline.advanced(by: interval),
+                    interval: interval,
+                    action: item.action
+                )
+            } else {
+                scheduled[id] = nil
+            }
+
+            item.action()
+        }
+    }
+
+    /// Exactly the production debounce window.
+    func closeDebounceWindow() {
+        advance(by: .milliseconds(RecoveryRefreshSignal.debounceMilliseconds))
+    }
+}
 
 @MainActor
 final class RecoveryRefreshSignalTests: XCTestCase {
@@ -24,9 +123,6 @@ final class RecoveryRefreshSignalTests: XCTestCase {
         super.tearDown()
     }
 
-    /// Comfortably past the 500ms debounce without being slow enough to matter.
-    private let settleWindow: TimeInterval = 1.2
-
     func test_everySourceNotificationDrivesARefresh() {
         let sources: [Notification.Name] = [
             .dataActorDidSave,      // background sync saves
@@ -36,23 +132,26 @@ final class RecoveryRefreshSignalTests: XCTestCase {
 
         for name in sources {
             let center = NotificationCenter()
-            let refreshed = expectation(description: "refresh for \(name.rawValue)")
-            let cancellable = RecoveryRefreshSignal.publisher(center: center).sink { _ in
-                XCTAssertTrue(Thread.isMainThread, "Refreshes read the main context — they must land on main")
-                refreshed.fulfill()
-            }
+            let scheduler = VirtualScheduler()
+            var refreshes = 0
+            let cancellable = RecoveryRefreshSignal.publisher(center: center, scheduler: scheduler)
+                .sink { _ in refreshes += 1 }
 
             center.post(name: name, object: nil)
+            XCTAssertEqual(refreshes, 0, "\(name.rawValue) must wait out the debounce window")
 
-            wait(for: [refreshed], timeout: 2)
+            scheduler.closeDebounceWindow()
+            XCTAssertEqual(refreshes, 1, "\(name.rawValue) must reach the surfaces")
+
             cancellable.cancel()
         }
     }
 
     func test_aSaveStormCostsASingleRefresh() {
         let center = NotificationCenter()
+        let scheduler = VirtualScheduler()
         var refreshes = 0
-        RecoveryRefreshSignal.publisher(center: center)
+        RecoveryRefreshSignal.publisher(center: center, scheduler: scheduler)
             .sink { _ in refreshes += 1 }
             .store(in: &cancellables)
 
@@ -63,34 +162,47 @@ final class RecoveryRefreshSignalTests: XCTestCase {
             center.post(name: .dataActorDidSave, object: nil)
         }
 
-        settle()
+        scheduler.closeDebounceWindow()
 
         XCTAssertEqual(refreshes, 1, "40 notifications inside one window must cost one inventory load")
     }
 
     func test_changesAfterTheWindowKeepRefreshing() {
         let center = NotificationCenter()
+        let scheduler = VirtualScheduler()
         var refreshes = 0
-        RecoveryRefreshSignal.publisher(center: center)
+        RecoveryRefreshSignal.publisher(center: center, scheduler: scheduler)
             .sink { _ in refreshes += 1 }
             .store(in: &cancellables)
 
         center.post(name: .opsLeadsDidChange, object: nil)
-        settle()
+        scheduler.closeDebounceWindow()
         XCTAssertEqual(refreshes, 1)
 
         center.post(name: .dataActorDidSave, object: nil)
-        settle()
+        scheduler.closeDebounceWindow()
         XCTAssertEqual(refreshes, 2, "The subscription must survive its first burst")
     }
 
-    // MARK: - Helpers
+    /// The one test on the real scheduler. The virtual seam proves the
+    /// coalescing rules; this proves the production pipeline is wired to a
+    /// scheduler that actually delivers, on the main thread, where the refresh
+    /// is allowed to touch the main context. It waits on the delivery itself,
+    /// not on a fixed window.
+    func test_theProductionSchedulerDeliversOnTheMainThread() {
+        let center = NotificationCenter()
+        let delivered = expectation(description: "refresh delivered by the production scheduler")
 
-    /// Runs the main runloop until the debounce window has certainly elapsed.
-    private func settle() {
-        let settled = expectation(description: "debounce window elapsed")
-        DispatchQueue.main.asyncAfter(deadline: .now() + settleWindow) { settled.fulfill() }
-        wait(for: [settled], timeout: settleWindow + 2)
+        RecoveryRefreshSignal.publisher(center: center)
+            .sink { _ in
+                XCTAssertTrue(Thread.isMainThread, "Refreshes read the main context — they must land on main")
+                delivered.fulfill()
+            }
+            .store(in: &cancellables)
+
+        center.post(name: .dataActorDidSave, object: nil)
+
+        wait(for: [delivered], timeout: 5)
     }
 }
 
@@ -111,7 +223,8 @@ final class RecoveryRefreshMonitorTests: XCTestCase {
 
     func test_aChangeInFlightWhenTheViewResubscribesIsStillDelivered() {
         let center = NotificationCenter()
-        let monitor = RecoveryRefreshMonitor(center: center)
+        let scheduler = VirtualScheduler()
+        let monitor = RecoveryRefreshMonitor(center: center, scheduler: scheduler)
 
         var receiptsBeforeResubscribe = 0
         let beforeResubscribe = monitor.output.sink { _ in receiptsBeforeResubscribe += 1 }
@@ -120,32 +233,36 @@ final class RecoveryRefreshMonitorTests: XCTestCase {
         center.post(name: .dataActorDidSave, object: nil)
         beforeResubscribe.cancel()
 
-        let delivered = expectation(description: "in-flight change survives the resubscribe")
+        var receiptsAfterResubscribe = 0
         monitor.output
-            .sink { _ in delivered.fulfill() }
+            .sink { _ in receiptsAfterResubscribe += 1 }
             .store(in: &cancellables)
 
-        wait(for: [delivered], timeout: 2)
+        scheduler.closeDebounceWindow()
+
         XCTAssertEqual(
             receiptsBeforeResubscribe,
             0,
             "Precondition: the change was still inside the debounce window when the view resubscribed"
         )
+        XCTAssertEqual(receiptsAfterResubscribe, 1, "The in-flight change must survive the resubscribe")
     }
 
     func test_theMonitorKeepsDeliveringAfterASubscriberIsReplaced() {
         let center = NotificationCenter()
-        let monitor = RecoveryRefreshMonitor(center: center)
+        let scheduler = VirtualScheduler()
+        let monitor = RecoveryRefreshMonitor(center: center, scheduler: scheduler)
 
         monitor.output.sink { _ in }.cancel()
 
-        let delivered = expectation(description: "later change reaches the replacement subscriber")
+        var refreshes = 0
         monitor.output
-            .sink { _ in delivered.fulfill() }
+            .sink { _ in refreshes += 1 }
             .store(in: &cancellables)
 
         center.post(name: ModelContext.didSave, object: nil)
+        scheduler.closeDebounceWindow()
 
-        wait(for: [delivered], timeout: 2)
+        XCTAssertEqual(refreshes, 1, "A later change must reach the replacement subscriber")
     }
 }

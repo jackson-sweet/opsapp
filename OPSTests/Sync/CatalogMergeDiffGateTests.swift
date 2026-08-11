@@ -2,13 +2,21 @@
 //  CatalogMergeDiffGateTests.swift
 //  OPSTests
 //
-//  Seven catalog-family syncs run on EVERY delta pass (pullDelta seeds epoch
-//  cursors for all entity types, so they never skip). Un-gated they rewrote
-//  `lastSyncedAt` on every local row — and the variant↔option-value junction
-//  wiped and reinserted its whole company scope — which saved the DataActor
-//  context and broadcast `.dataActorDidSave` even when the server returned
-//  byte-identical data. Every such save wakes the main-context merge, @Query
-//  invalidation, and the sync-pill inventory refresh.
+//  Thirteen catalog-family merges run on EVERY delta pass (pullDelta seeds
+//  epoch cursors for all entity types, so they never skip). Un-gated they
+//  rewrote `lastSyncedAt` on every local row — and the variant↔option-value
+//  junction wiped and reinserted its whole company scope — which saved the
+//  DataActor context and broadcast `.dataActorDidSave` even when the server
+//  returned byte-identical data. Every such save wakes the main-context merge,
+//  @Query invalidation, and the sync-pill inventory refresh.
+//
+//  Gated in two waves. First: catalog options, option values, the variant
+//  junction, item tags, product materials, product bundle items. Second: the
+//  rest of the family — catalog orders and order items, company default
+//  products, product options, product option values, pricing modifiers, and
+//  products themselves. Products were the quiet one: they carry no
+//  `lastSyncedAt`, so their cost was pure same-value reassignment, which
+//  SwiftData dirties anyway (pinned by the write-semantics test below).
 //
 //  The contract pinned here: a merge whose payload matches the store opens no
 //  transaction at all, so there is no save and no notification. A merge that
@@ -878,6 +886,19 @@ final class CatalogMergeDiffGateTests: XCTestCase {
 
     func test_catalogOrderItems_membershipChange_touchesOnlyTheChangedRows() async throws {
         let container = try makeContainer()
+
+        // Child of a different order — the prune is scoped to one order.
+        let seed = ModelContext(container)
+        seed.insert(
+            CatalogOrderItem(
+                id: "item-other-order",
+                orderId: "order-2",
+                catalogVariantId: "var-9",
+                quantityRequested: 1
+            )
+        )
+        try seed.save()
+
         let actor = DataActor(modelContainer: container)
         await actor.configure()
 
@@ -897,6 +918,13 @@ final class CatalogMergeDiffGateTests: XCTestCase {
         XCTAssertEqual(recorder.totalInserted, 1, "observed \(recorder.describe())")
         XCTAssertEqual(recorder.totalDeleted, 1, "observed \(recorder.describe())")
         XCTAssertEqual(recorder.totalUpdated, 0, "the unchanged item must not be rewritten — observed \(recorder.describe())")
+
+        let context = ModelContext(container)
+        let ids = Set(try context.fetch(FetchDescriptor<CatalogOrderItem>()).map(\.id))
+        XCTAssertEqual(
+            ids, ["item-1", "item-3", "item-other-order"],
+            "another order's child must survive a prune scoped to this order"
+        )
     }
 
     func test_catalogOrderItems_quantityChange_updatesOnlyThatRow() async throws {
@@ -1165,6 +1193,12 @@ final class CatalogMergeDiffGateTests: XCTestCase {
     func test_productOptions_membershipChange_touchesOnlyTheChangedRows() async throws {
         let container = try makeContainer()
         try seedProduct(id: "prod-1", in: container)
+
+        // Option on a product this company does not own — outside the prune scope.
+        let seed = ModelContext(container)
+        seed.insert(ProductOption(id: "popt-orphan", productId: "prod-foreign", name: "Theirs", kind: .select))
+        try seed.save()
+
         let actor = DataActor(modelContainer: container)
         await actor.configure()
 
@@ -1184,6 +1218,10 @@ final class CatalogMergeDiffGateTests: XCTestCase {
         XCTAssertEqual(recorder.totalInserted, 1, "observed \(recorder.describe())")
         XCTAssertEqual(recorder.totalDeleted, 1, "observed \(recorder.describe())")
         XCTAssertEqual(recorder.totalUpdated, 0, "observed \(recorder.describe())")
+
+        let context = ModelContext(container)
+        let ids = Set(try context.fetch(FetchDescriptor<ProductOption>()).map(\.id))
+        XCTAssertEqual(ids, ["popt-1", "popt-3", "popt-orphan"], "the out-of-scope option must survive the prune")
     }
 
     // MARK: - Product option values
@@ -1242,6 +1280,8 @@ final class CatalogMergeDiffGateTests: XCTestCase {
         let container = try makeContainer()
         let seed = ModelContext(container)
         seed.insert(ProductOption(id: "popt-1", productId: "prod-1", name: "Color", kind: .select))
+        // Value whose option is not resident locally — outside the prune scope.
+        seed.insert(ProductOptionValue(id: "pval-orphan", optionId: "popt-unknown", value: "Orphan", sortOrder: 0))
         try seed.save()
 
         let actor = DataActor(modelContainer: container)
@@ -1263,6 +1303,10 @@ final class CatalogMergeDiffGateTests: XCTestCase {
         XCTAssertEqual(recorder.totalInserted, 1, "observed \(recorder.describe())")
         XCTAssertEqual(recorder.totalDeleted, 1, "observed \(recorder.describe())")
         XCTAssertEqual(recorder.totalUpdated, 0, "observed \(recorder.describe())")
+
+        let context = ModelContext(container)
+        let ids = Set(try context.fetch(FetchDescriptor<ProductOptionValue>()).map(\.id))
+        XCTAssertEqual(ids, ["pval-1", "pval-3", "pval-orphan"], "the out-of-scope value must survive the prune")
     }
 
     // MARK: - Product pricing modifiers
@@ -1319,6 +1363,20 @@ final class CatalogMergeDiffGateTests: XCTestCase {
     func test_productPricingModifiers_membershipChange_touchesOnlyTheChangedRows() async throws {
         let container = try makeContainer()
         try seedProduct(id: "prod-1", in: container)
+
+        // Modifier on a product this company does not own — outside the prune scope.
+        let seed = ModelContext(container)
+        seed.insert(
+            ProductPricingModifier(
+                id: "pmod-orphan",
+                productId: "prod-foreign",
+                optionId: "popt-foreign",
+                modifierKind: .addFlat,
+                amount: 1
+            )
+        )
+        try seed.save()
+
         let actor = DataActor(modelContainer: container)
         await actor.configure()
 
@@ -1338,6 +1396,410 @@ final class CatalogMergeDiffGateTests: XCTestCase {
         XCTAssertEqual(recorder.totalInserted, 1, "observed \(recorder.describe())")
         XCTAssertEqual(recorder.totalDeleted, 1, "observed \(recorder.describe())")
         XCTAssertEqual(recorder.totalUpdated, 0, "observed \(recorder.describe())")
+
+        let context = ModelContext(container)
+        let ids = Set(try context.fetch(FetchDescriptor<ProductPricingModifier>()).map(\.id))
+        XCTAssertEqual(ids, ["pmod-1", "pmod-3", "pmod-orphan"], "the out-of-scope modifier must survive the prune")
+    }
+
+    // MARK: - Field-level drift guards
+
+    // Two merges were big enough to need their differ and their writer split
+    // into separate functions: catalog orders (`catalogOrderDiffers` /
+    // `applyCatalogOrder`) and products (`ProductSyncLocalStore.differs` /
+    // `.merge`). Split code drifts. A field the writer sets but the differ
+    // never inspects goes silently stale — the server changes it, the gate says
+    // "nothing to do", and the device keeps showing the old value until some
+    // other field on the same row happens to change. A field the differ reports
+    // but the writer never sets is the opposite failure: the gate opens on every
+    // single pass, the row is rewritten, and the store saves forever — exactly
+    // the lag this whole change set exists to kill.
+    //
+    // Both directions are the same assertion run one field at a time: change
+    // that field alone, the gate must open, the value must land, and the very
+    // next identical pass must be silent. The tests walk the production field
+    // lists, so a field added to a merge without a case here fails outright
+    // rather than shipping uncovered.
+
+    func test_catalogOrders_everyMergeFieldOpensTheGateThenConverges() async throws {
+        let cases = orderDriftCases
+
+        for field in DataActor.catalogOrderMergeFields {
+            guard let drift = cases[field] else {
+                XCTFail("no drift case registered for catalog-order merge field `\(field)`")
+                continue
+            }
+
+            let container = try makeContainer()
+            let actor = DataActor(modelContainer: container)
+            await actor.configure()
+
+            let base = OrderSpec(companyId: companyId)
+            try await actor.mergeCatalogOrders(dtos: [base.dto()], companyId: companyId)
+
+            var changed = base
+            drift.mutate(&changed)
+            let dtos = [changed.dto()]
+
+            let opening = StoreWriteRecorder()
+            try await actor.mergeCatalogOrders(dtos: dtos, companyId: companyId)
+            opening.stop()
+            XCTAssertEqual(
+                opening.totalUpdated, 1,
+                "`\(field)` changed on the server but the differ never reported it — the row goes stale — observed \(opening.describe())"
+            )
+
+            let context = ModelContext(container)
+            let row = try XCTUnwrap(
+                context.fetch(FetchDescriptor<CatalogOrder>()).first { $0.id == base.id }
+            )
+            XCTAssertTrue(
+                drift.landed(row),
+                "`\(field)` opened the gate but the apply never wrote it to the row"
+            )
+
+            let settled = StoreWriteRecorder()
+            try await actor.mergeCatalogOrders(dtos: dtos, companyId: companyId)
+            settled.stop()
+            XCTAssertEqual(
+                settled.eventCount, 0,
+                "`\(field)` still differs after the merge wrote it — every later pass saves for nothing — observed \(settled.describe())"
+            )
+        }
+    }
+
+    /// Products are checked against the differ/writer pair directly. No pending
+    /// operations exist on these rows, so the accept set is the whole field
+    /// list — precisely what `acceptableFields` resolves to on a clean row.
+    func test_products_everyMergeFieldOpensTheGateThenConverges() throws {
+        let accept = Set(ProductSyncLocalStore.mergeFields)
+        let cases = productDriftCases
+
+        for field in ProductSyncLocalStore.mergeFields {
+            guard let drift = cases[field] else {
+                XCTFail("no drift case registered for product merge field `\(field)`")
+                continue
+            }
+
+            let container = try makeContainer()
+            let context = ModelContext(container)
+
+            let base = ProductSpec(companyId: companyId)
+            try ProductSyncLocalStore.merge(dto: base.dto(), context: context, accepting: accept)
+            try context.save()
+
+            let row = try XCTUnwrap(
+                context.fetch(FetchDescriptor<Product>()).first { $0.id == base.id }
+            )
+            XCTAssertFalse(
+                ProductSyncLocalStore.differs(dto: base.dto(), from: row, accepting: accept),
+                "the freshly inserted row already differs from the payload that made it — `toModel` and `differs` disagree on `\(field)`'s neighbourhood"
+            )
+
+            var changed = base
+            drift.mutate(&changed)
+            let dto = changed.dto()
+
+            XCTAssertTrue(
+                ProductSyncLocalStore.differs(dto: dto, from: row, accepting: accept),
+                "`\(field)` changed on the server but the differ never reported it — the row goes stale"
+            )
+
+            try ProductSyncLocalStore.merge(dto: dto, context: context, accepting: accept)
+            try context.save()
+
+            XCTAssertTrue(
+                drift.landed(row),
+                "`\(field)` opened the gate but the merge never wrote it to the row"
+            )
+            XCTAssertFalse(
+                ProductSyncLocalStore.differs(dto: dto, from: row, accepting: accept),
+                "`\(field)` still differs after the merge wrote it — every later pass saves for nothing"
+            )
+        }
+    }
+
+    // MARK: - Drift-guard tables
+
+    /// One case per writable field: how the server changes it, and how to tell
+    /// the change reached the row. Values are distinct per field so a write
+    /// landing in the wrong property fails rather than passing by coincidence.
+    private struct Drift<Spec, Row> {
+        let mutate: (inout Spec) -> Void
+        let landed: (Row) -> Bool
+    }
+
+    private var orderDriftCases: [String: Drift<OrderSpec, CatalogOrder>] {
+        [
+            "companyId": Drift(
+                mutate: { [otherCompanyId] in $0.companyId = otherCompanyId },
+                landed: { [otherCompanyId] in $0.companyId == otherCompanyId }
+            ),
+            "status": Drift(
+                mutate: { $0.status = "fulfilled" },
+                landed: { $0.status == .fulfilled }
+            ),
+            "title": Drift(
+                mutate: { $0.title = "Cedar restock" },
+                landed: { $0.title == "Cedar restock" }
+            ),
+            "supplierName": Drift(
+                mutate: { $0.supplierName = "Northland Lumber" },
+                landed: { $0.supplierName == "Northland Lumber" }
+            ),
+            "supplierContact": Drift(
+                mutate: { $0.supplierContact = "dispatch@northland.test" },
+                landed: { $0.supplierContact == "dispatch@northland.test" }
+            ),
+            "expectedDeliveryDate": Drift(
+                mutate: { $0.expectedDeliveryDate = "2026-09-15" },
+                landed: { $0.expectedDeliveryDate == SupabaseDate.parseDateOnly("2026-09-15") }
+            ),
+            "notes": Drift(
+                mutate: { $0.notes = "Tailgate delivery only" },
+                landed: { $0.notes == "Tailgate delivery only" }
+            ),
+            "createdById": Drift(
+                mutate: { $0.createdById = "22222222-2222-4222-8222-222222222222" },
+                landed: { $0.createdById == "22222222-2222-4222-8222-222222222222" }
+            ),
+            "sentAt": Drift(
+                mutate: { $0.sentAt = "2026-08-04T09:30:00+00:00" },
+                landed: { $0.sentAt == SupabaseDate.parse("2026-08-04T09:30:00+00:00") }
+            ),
+            "fulfilledAt": Drift(
+                mutate: { $0.fulfilledAt = "2026-08-05T10:31:00+00:00" },
+                landed: { $0.fulfilledAt == SupabaseDate.parse("2026-08-05T10:31:00+00:00") }
+            ),
+            "cancelledAt": Drift(
+                mutate: { $0.cancelledAt = "2026-08-06T11:32:00+00:00" },
+                landed: { $0.cancelledAt == SupabaseDate.parse("2026-08-06T11:32:00+00:00") }
+            ),
+            "deletedAt": Drift(
+                mutate: { $0.deletedAt = "2026-08-07T12:33:00+00:00" },
+                landed: { $0.deletedAt == SupabaseDate.parse("2026-08-07T12:33:00+00:00") }
+            )
+        ]
+    }
+
+    private var productDriftCases: [String: Drift<ProductSpec, Product>] {
+        [
+            "companyId": Drift(
+                mutate: { [otherCompanyId] in $0.companyId = otherCompanyId },
+                landed: { [otherCompanyId] in $0.companyId == otherCompanyId }
+            ),
+            "name": Drift(
+                mutate: { $0.name = "Cedar decking" },
+                landed: { $0.name == "Cedar decking" }
+            ),
+            "productDescription": Drift(
+                mutate: { $0.productDescription = "Kiln-dried, S4S" },
+                landed: { $0.productDescription == "Kiln-dried, S4S" }
+            ),
+            "type": Drift(
+                mutate: { $0.type = "LABOR" },
+                landed: { $0.type == .labor }
+            ),
+            "kind": Drift(
+                mutate: { $0.kind = "package" },
+                landed: { $0.kind == .package }
+            ),
+            "basePrice": Drift(
+                mutate: { $0.basePrice = 43.75 },
+                landed: { $0.basePrice == 43.75 }
+            ),
+            "unitCost": Drift(
+                mutate: { $0.unitCost = 21.5 },
+                landed: { $0.unitCost == 21.5 }
+            ),
+            "pricingUnit": Drift(
+                mutate: { $0.pricingUnit = "linear_foot" },
+                landed: { $0.pricingUnit == .linearFoot }
+            ),
+            "unit": Drift(
+                mutate: { $0.unit = "board foot" },
+                landed: { $0.unit == "board foot" }
+            ),
+            "category": Drift(
+                mutate: { $0.category = "Decking" },
+                landed: { $0.category == "Decking" }
+            ),
+            "categoryId": Drift(
+                mutate: { $0.categoryId = "cat-7" },
+                landed: { $0.categoryId == "cat-7" }
+            ),
+            "sku": Drift(
+                mutate: { $0.sku = "CDR-2X6-16" },
+                landed: { $0.sku == "CDR-2X6-16" }
+            ),
+            "thumbnailUrl": Drift(
+                mutate: { $0.thumbnailUrl = "https://cdn.test/cedar.png" },
+                landed: { $0.thumbnailUrl == "https://cdn.test/cedar.png" }
+            ),
+            "taxable": Drift(
+                mutate: { $0.isTaxable = false },
+                landed: { $0.taxable == false }
+            ),
+            "isActive": Drift(
+                mutate: { $0.isActive = false },
+                landed: { $0.isActive == false }
+            ),
+            "isFavorite": Drift(
+                mutate: { $0.isFavorite = true },
+                landed: { $0.isFavorite == true }
+            ),
+            "minimumCharge": Drift(
+                mutate: { $0.minimumCharge = 125 },
+                landed: { $0.minimumCharge == 125 }
+            ),
+            "minimumQuantity": Drift(
+                mutate: { $0.minimumQuantity = 3 },
+                landed: { $0.minimumQuantity == 3 }
+            ),
+            "showBomOnEstimate": Drift(
+                mutate: { $0.showBomOnEstimate = true },
+                landed: { $0.showBomOnEstimate == true }
+            ),
+            "showInStorefront": Drift(
+                mutate: { $0.showInStorefront = true },
+                landed: { $0.showInStorefront == true }
+            ),
+            "tieredPricingJSON": Drift(
+                mutate: { $0.tieredPricingJSON = #"{"tiers":[]}"# },
+                landed: { $0.tieredPricingJSON == #"{"tiers":[]}"# }
+            ),
+            "taskTypeId": Drift(
+                mutate: { $0.taskTypeId = "33333333-3333-4333-8333-333333333333" },
+                landed: { $0.taskTypeId == "33333333-3333-4333-8333-333333333333" }
+            ),
+            "taskTypeRef": Drift(
+                mutate: { $0.taskTypeRef = "framing" },
+                landed: { $0.taskTypeRef == "framing" }
+            ),
+            "unitId": Drift(
+                mutate: { $0.unitId = "44444444-4444-4444-8444-444444444444" },
+                landed: { $0.unitId == "44444444-4444-4444-8444-444444444444" }
+            ),
+            "linkedCatalogItemId": Drift(
+                mutate: { $0.linkedCatalogItemId = "55555555-5555-4555-8555-555555555555" },
+                landed: { $0.linkedCatalogItemId == "55555555-5555-4555-8555-555555555555" }
+            ),
+            "bundlePricingMode": Drift(
+                mutate: { $0.bundlePricingMode = "override" },
+                landed: { $0.bundlePricingMode == "override" }
+            ),
+            "createdAt": Drift(
+                mutate: { $0.createdAt = "2026-07-04T00:00:00+00:00" },
+                landed: { $0.createdAt == SupabaseDate.parse("2026-07-04T00:00:00+00:00") }
+            )
+        ]
+    }
+
+    /// Mutable mirrors of the two DTOs, which are immutable by design. Baseline
+    /// values match the `orderDTO` / `productDTO` fixtures above; each drift
+    /// case changes exactly one of them.
+    private struct OrderSpec {
+        var id = "order-1"
+        var companyId: String
+        var status = "draft"
+        var title: String? = nil
+        var supplierName: String? = nil
+        var supplierContact: String? = nil
+        var expectedDeliveryDate: String? = nil
+        var notes: String? = nil
+        var createdById: String? = nil
+        var createdAt = "2026-08-01T00:00:00+00:00"
+        var updatedAt = "2026-08-02T00:00:00+00:00"
+        var sentAt: String? = nil
+        var fulfilledAt: String? = nil
+        var cancelledAt: String? = nil
+        var deletedAt: String? = nil
+
+        func dto() -> CatalogOrderDTO {
+            CatalogOrderDTO(
+                id: id,
+                companyId: companyId,
+                status: status,
+                title: title,
+                supplierName: supplierName,
+                supplierContact: supplierContact,
+                expectedDeliveryDate: expectedDeliveryDate,
+                notes: notes,
+                createdById: createdById,
+                createdAt: createdAt,
+                updatedAt: updatedAt,
+                sentAt: sentAt,
+                fulfilledAt: fulfilledAt,
+                cancelledAt: cancelledAt,
+                deletedAt: deletedAt
+            )
+        }
+    }
+
+    private struct ProductSpec {
+        var id = "prod-1"
+        var companyId: String
+        var name = "Cedar board"
+        var productDescription: String? = nil
+        var basePrice: Double = 42
+        var unitCost: Double? = 20
+        var unit: String? = nil
+        var category: String? = nil
+        var categoryId: String? = nil
+        var sku: String? = nil
+        var thumbnailUrl: String? = nil
+        var kind: String? = "good"
+        var pricingUnit: String? = "each"
+        var type: String? = "MATERIAL"
+        var isTaxable: Bool? = true
+        var isActive = true
+        var isFavorite = false
+        var minimumCharge: Double? = nil
+        var minimumQuantity: Double? = nil
+        var showBomOnEstimate = false
+        var showInStorefront = false
+        var tieredPricingJSON: String? = nil
+        var taskTypeId: String? = nil
+        var taskTypeRef: String? = nil
+        var unitId: String? = nil
+        var linkedCatalogItemId: String? = nil
+        var bundlePricingMode: String? = nil
+        var createdAt = "2026-08-01T00:00:00+00:00"
+        var updatedAt = "2026-08-02T00:00:00+00:00"
+
+        func dto() -> ProductDTO {
+            ProductDTO(
+                id: id,
+                companyId: companyId,
+                name: name,
+                description: productDescription,
+                basePrice: basePrice,
+                unitCost: unitCost,
+                unit: unit,
+                category: category,
+                categoryId: categoryId,
+                sku: sku,
+                thumbnailUrl: thumbnailUrl,
+                kind: kind,
+                pricingUnit: pricingUnit,
+                type: type,
+                isTaxable: isTaxable,
+                isActive: isActive,
+                isFavorite: isFavorite,
+                minimumCharge: minimumCharge,
+                minimumQuantity: minimumQuantity,
+                showBomOnEstimate: showBomOnEstimate,
+                showInStorefront: showInStorefront,
+                tieredPricing: tieredPricingJSON.map { RawJSONColumn(rawJSONString: $0) },
+                taskTypeId: taskTypeId,
+                taskTypeRef: taskTypeRef,
+                unitId: unitId,
+                linkedCatalogItemId: linkedCatalogItemId,
+                bundlePricingMode: bundlePricingMode,
+                createdAt: createdAt,
+                updatedAt: updatedAt
+            )
+        }
     }
 
     // MARK: - Fixtures

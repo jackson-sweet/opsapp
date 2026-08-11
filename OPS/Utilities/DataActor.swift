@@ -2710,6 +2710,9 @@ actor DataActor {
         var tombstones: [CatalogOrder] = []
         for order in localById.values where order.companyId == companyId && !serverIds.contains(order.id) {
             if hasPendingOperations(entityType: .catalogOrder, entityId: order.id) { continue }
+            // The needsSync arm exists to converge that flag to false; it accepts
+            // one deletedAt re-stamp in the tombstoned-but-still-flagged state,
+            // after which the row is clean and every later pass skips it.
             guard order.deletedAt == nil || order.needsSync else { continue }
             tombstones.append(order)
         }
@@ -2733,7 +2736,9 @@ actor DataActor {
         }
     }
 
-    private static let catalogOrderMergeFields = [
+    /// Internal rather than private so the drift-guard test can walk the real
+    /// list — a field added here without a matching case fails the suite.
+    static let catalogOrderMergeFields = [
         "companyId", "status", "title", "supplierName", "supplierContact",
         "expectedDeliveryDate", "notes", "createdById",
         "sentAt", "fulfilledAt", "cancelledAt", "deletedAt"

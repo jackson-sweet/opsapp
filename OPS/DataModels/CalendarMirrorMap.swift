@@ -13,7 +13,7 @@ import SwiftData
 enum MirrorSource: String, Codable {
     case calendarUserEvent
     case projectTask
-    // siteVisit reserved for future addition once iOS SiteVisit sync ships
+    case siteVisit
 }
 
 @Model

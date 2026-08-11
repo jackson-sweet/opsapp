@@ -42,4 +42,19 @@ enum CalendarMirrorEligibility {
         guard isInWindow(start: start, end: end, now: now) else { return false }
         return task.schedulingTeamMemberIds.contains(currentUserId)
     }
+
+    // MARK: - SiteVisit
+
+    /// Booked, not cancelled, assigned to this operator, inside the window.
+    /// Completed visits stay — the appointment happened and belongs on the
+    /// personal record; cancellation and tombstones remove it.
+    static func isEligible(visit: SiteVisit, currentUserId: String, now: Date = Date()) -> Bool {
+        guard visit.deletedAt == nil,
+              visit.isBookedAppointment,
+              visit.status != .cancelled,
+              let start = visit.scheduledAt else { return false }
+        let end = start.addingTimeInterval(TimeInterval(visit.durationMinutes * 60))
+        guard isInWindow(start: start, end: end, now: now) else { return false }
+        return visit.assigneeIds.contains(currentUserId.lowercased())
+    }
 }

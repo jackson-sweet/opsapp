@@ -83,4 +83,86 @@ final class CalendarMirrorEligibilityTests: XCTestCase {
         e.deletedAt = deletedAt
         return e
     }
+
+    // MARK: - Site visits
+
+    private let visitAssignee = "dddddddd-dddd-4ddd-8ddd-dddddddddddd"
+
+    private func makeEligibilityVisit(
+        scheduledAt: Date = Date().addingTimeInterval(3_600)
+    ) -> SiteVisit {
+        let visit = SiteVisit(
+            id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+            opportunityId: "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+            companyId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+            status: .scheduled,
+            scheduledAt: scheduledAt,
+            durationMinutes: 60,
+            assigneeIds: [visitAssignee],
+            createdBy: visitAssignee
+        )
+        visit.bookedAt = Date().addingTimeInterval(-3_600)
+        return visit
+    }
+
+    func test_siteVisit_bookedAssignedInWindow_isEligible() {
+        XCTAssertTrue(
+            CalendarMirrorEligibility.isEligible(
+                visit: makeEligibilityVisit(),
+                currentUserId: visitAssignee
+            )
+        )
+    }
+
+    func test_siteVisit_walkUp_isNotEligible() {
+        let visit = makeEligibilityVisit()
+        visit.bookedAt = nil
+        XCTAssertFalse(
+            CalendarMirrorEligibility.isEligible(visit: visit, currentUserId: visitAssignee)
+        )
+    }
+
+    func test_siteVisit_cancelled_isNotEligible() {
+        let visit = makeEligibilityVisit()
+        visit.status = .cancelled
+        XCTAssertFalse(
+            CalendarMirrorEligibility.isEligible(visit: visit, currentUserId: visitAssignee)
+        )
+    }
+
+    func test_siteVisit_unassignedOperator_isNotEligible() {
+        XCTAssertFalse(
+            CalendarMirrorEligibility.isEligible(
+                visit: makeEligibilityVisit(),
+                currentUserId: "99999999-9999-4999-8999-999999999999"
+            )
+        )
+    }
+
+    func test_siteVisit_tombstone_isNotEligible() {
+        let visit = makeEligibilityVisit()
+        visit.deletedAt = Date()
+        XCTAssertFalse(
+            CalendarMirrorEligibility.isEligible(visit: visit, currentUserId: visitAssignee)
+        )
+    }
+
+    func test_siteVisit_outsideWindow_isNotEligible() {
+        let farFuture = Date().addingTimeInterval(400 * 24 * 3_600)
+        XCTAssertFalse(
+            CalendarMirrorEligibility.isEligible(
+                visit: makeEligibilityVisit(scheduledAt: farFuture),
+                currentUserId: visitAssignee
+            )
+        )
+    }
+
+    func test_siteVisit_assigneeMatchIsCaseInsensitive() {
+        XCTAssertTrue(
+            CalendarMirrorEligibility.isEligible(
+                visit: makeEligibilityVisit(),
+                currentUserId: visitAssignee.uppercased()
+            )
+        )
+    }
 }

@@ -117,6 +117,33 @@ enum CalendarMirrorContent {
         return (cal.date(from: combinedStart) ?? start, cal.date(from: combinedEnd) ?? end)
     }
 
+    // MARK: - SiteVisit
+
+    /// A booked appointment on the personal calendar. Lead name and address
+    /// are resolved by the caller (a booking is always lead-attached; the
+    /// visit row itself carries no address). Walk-ups resolve nil — their
+    /// scheduledAt is junk by definition.
+    static func payload(
+        for visit: SiteVisit,
+        leadName: String,
+        address: String?
+    ) -> MirroredEventPayload? {
+        guard visit.isBookedAppointment,
+              let start = visit.scheduledAt,
+              let opportunityId = visit.opportunityId else { return nil }
+
+        return MirroredEventPayload(
+            opsId: visit.id,
+            source: .siteVisit,
+            title: "Site visit — \(leadName)",
+            body: body(address: address, notes: nil),
+            url: URL(string: "ops://leads/\(opportunityId)")!,
+            isAllDay: false,
+            startDate: start,
+            endDate: start.addingTimeInterval(TimeInterval(visit.durationMinutes * 60))
+        )
+    }
+
     // MARK: - Body
 
     private static func body(address: String?, notes: String?) -> String {

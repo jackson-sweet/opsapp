@@ -1069,6 +1069,12 @@ final class RealtimeProcessor: ObservableObject {
                     into: context
                 )
                 InboundChangeSignal.post(entityNames: ["SiteVisit"])
+                // Keep the personal-calendar mirror live for remote booking
+                // changes - mirrorEvent is self-healing (ineligible rows,
+                // including cancellations and walk-ups, resolve to unmirror).
+                Task { @MainActor in
+                    await CalendarMirrorService.shared.mirrorEvent(opsId: dto.id, source: .siteVisit)
+                }
 
             case "site_visit_artifacts":
                 let dto = try record.decodeRecord(as: SiteVisitArtifactDTO.self, decoder: decoder)

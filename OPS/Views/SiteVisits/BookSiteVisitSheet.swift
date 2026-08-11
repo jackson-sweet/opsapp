@@ -300,6 +300,7 @@ struct BookSiteVisitSheet: View {
         visit.lastSyncedAt = nil
         context.insert(visit)
         try? context.save()
+        mirrorBookingChange(visitId: visit.id)
     }
 
     @MainActor
@@ -315,6 +316,7 @@ struct BookSiteVisitSheet: View {
         if case .set(let lead) = intent.reminderOverride { visit.reminderLeadMinutes = lead }
         if case .clear = intent.reminderOverride { visit.reminderLeadMinutes = nil }
         try? context.save()
+        mirrorBookingChange(visitId: visit.id)
     }
 
     @MainActor
@@ -323,6 +325,17 @@ struct BookSiteVisitSheet: View {
               let visit = fetchLocalVisit(id: visitId, in: context) else { return }
         visit.status = .cancelled
         try? context.save()
+        mirrorBookingChange(visitId: visitId)
+    }
+
+    /// Keep the personal-calendar mirror in lockstep with the booking —
+    /// mirrorEvent is self-healing, so book, reschedule, and cancel all
+    /// resolve through the same call (cancel unmirrors via eligibility).
+    @MainActor
+    private func mirrorBookingChange(visitId: String) {
+        Task {
+            await CalendarMirrorService.shared.mirrorEvent(opsId: visitId, source: .siteVisit)
+        }
     }
 
     @MainActor

@@ -94,6 +94,11 @@ class AppState: ObservableObject {
     /// being on-screen at tap time (push cold-launch, rail tap from any tab).
     @Published var pendingLeadDeepLinkId: String? = nil
 
+    /// A START-visit intent headed for the leads tab's ONE capture cover —
+    /// set by the site_visit_start push tap and the calendar's START NOW.
+    /// LeadsTabView drains it exactly like the lead deep link.
+    @Published var pendingSiteVisitStartLeadId: String? = nil
+
     /// Refresh unread notification count from Supabase
     func refreshUnreadCount() {
         guard let userId = UserDefaults.standard.string(forKey: "user_id"), !userId.isEmpty else { return }

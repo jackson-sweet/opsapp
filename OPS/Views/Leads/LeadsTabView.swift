@@ -317,11 +317,16 @@ struct LeadsTabView: View {
                 finishDaySheetLoadIfNeeded(companyId: companyId)
             }
             await resolvePendingLeadDeepLinkIfNeeded()
+            await resolvePendingSiteVisitStartIfNeeded()
         }
         .modifier(LeadsRefreshListeners(viewModel: viewModel))
         .onChange(of: appState.pendingLeadDeepLinkId) { _, newValue in
             guard newValue != nil else { return }
             Task { await resolvePendingLeadDeepLinkIfNeeded() }
+        }
+        .onChange(of: appState.pendingSiteVisitStartLeadId) { _, newValue in
+            guard newValue != nil else { return }
+            Task { await resolvePendingSiteVisitStartIfNeeded() }
         }
         .onChange(of: showsDaySheet) { _, isDaySheet in
             // Permissions can hydrate after the tab's first `.task` — a store
@@ -789,6 +794,30 @@ struct LeadsTabView: View {
     // MARK: - Deep link
 
     @MainActor
+    /// Drain a START-visit intent into the tab's ONE capture cover. Same
+    /// resolve-local-then-fetch shape as the lead deep link; the branch dialog
+    /// is skipped because the intent (start now) was already chosen at the
+    /// push or calendar tap.
+    private func resolvePendingSiteVisitStartIfNeeded() async {
+        guard let leadId = appState.pendingSiteVisitStartLeadId, !leadId.isEmpty else { return }
+        appState.pendingSiteVisitStartLeadId = nil
+
+        if let lead = viewModel.allOpportunities.first(where: { $0.id == leadId }) {
+            activeSiteVisitLead = lead
+            return
+        }
+        guard let companyId = dataController.currentUser?.companyId else { return }
+        let repo = OpportunityRepository(companyId: companyId)
+        do {
+            let dto = try await repo.fetchOne(leadId)
+            let lead = dto.toModel()
+            guard !lead.isDeleted else { return }
+            activeSiteVisitLead = lead
+        } catch {
+            print("[Pipeline] START-visit lead \(leadId) not resolvable: \(error)")
+        }
+    }
+
     private func resolvePendingLeadDeepLinkIfNeeded() async {
         guard let leadId = appState.pendingLeadDeepLinkId, !leadId.isEmpty else { return }
         guard !isResolvingDeepLink else { return }

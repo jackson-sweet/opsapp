@@ -128,6 +128,8 @@ struct OPSScreenHeader<Leading: View, Trailing: View>: View {
     private let leading: Leading
     private let trailing: Trailing
 
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
     init(
         _ title: String,
         @ViewBuilder leading: () -> Leading = { EmptyView() },
@@ -142,11 +144,22 @@ struct OPSScreenHeader<Leading: View, Trailing: View>: View {
         HStack(alignment: .center, spacing: OPSStyle.Layout.spacing2_5) {
             leadingSlot
 
+            // At nominal type the 52pt band is a guarantee, so the title holds
+            // one line: when the slots squeeze it, it compresses down to the
+            // long-title size (22/28) and then truncates rather than wrapping
+            // the band taller. Accessibility sizes keep the opposite promise —
+            // the title wraps and the band grows instead of clipping.
             Text(title)
                 .font(OPSStyle.Typography.screenTitle(for: title))
                 .textCase(.uppercase)
                 .foregroundColor(OPSStyle.Colors.text)
                 .multilineTextAlignment(.leading)
+                .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 1)
+                .minimumScaleFactor(
+                    dynamicTypeSize.isAccessibilitySize
+                        ? 1
+                        : Font.screenTitleLongSize / Font.screenTitleSize
+                )
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .fixedSize(horizontal: false, vertical: true)
                 .layoutPriority(1)

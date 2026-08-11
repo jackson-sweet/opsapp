@@ -67,17 +67,27 @@ struct SiteVisitTypeFieldDefinition: Codable, Equatable, Identifiable, Sendable 
 }
 
 enum SiteVisitTypeTemplateReconciler {
+    /// Field ids the product shipped in an earlier canonical template and has
+    /// since retired. By id alone these are indistinguishable from a company's
+    /// own additions (which use UUID ids), so reconciliation needs this ledger
+    /// to drop them from stored company copies — otherwise every company
+    /// seeded before the retirement keeps the dead row forever.
+    /// "field-measurements" left the deck checklist on 2026-07-29 (e97e7209).
+    static let retiredFieldIds: Set<String> = ["field-measurements"]
+
     /// Refreshes product-owned field metadata without undoing a company's
     /// visibility, required, or ordering choices. Company-added fields remain
-    /// in place and newly shipped canonical fields are appended.
+    /// in place, retired product fields are dropped, and newly shipped
+    /// canonical fields are appended.
     static func reconciledFields(
         existing: [SiteVisitTypeFieldDefinition],
         canonical: [SiteVisitTypeFieldDefinition]
     ) -> [SiteVisitTypeFieldDefinition] {
         let canonicalById = Dictionary(uniqueKeysWithValues: canonical.map { ($0.id, $0) })
-        let existingIds = Set(existing.map(\.id))
+        let kept = existing.filter { !retiredFieldIds.contains($0.id) }
+        let keptIds = Set(kept.map(\.id))
 
-        var result = existing.map { field in
+        var result = kept.map { field in
             guard let productField = canonicalById[field.id] else { return field }
             var merged = field
             merged.label = productField.label
@@ -86,7 +96,7 @@ enum SiteVisitTypeTemplateReconciler {
             return merged
         }
 
-        result.append(contentsOf: canonical.filter { !existingIds.contains($0.id) })
+        result.append(contentsOf: canonical.filter { !keptIds.contains($0.id) })
         return result.sorted { lhs, rhs in
             if lhs.sortOrder == rhs.sortOrder { return lhs.id < rhs.id }
             return lhs.sortOrder < rhs.sortOrder

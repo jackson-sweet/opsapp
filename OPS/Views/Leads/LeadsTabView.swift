@@ -88,6 +88,13 @@ struct LeadsTabView: View {
     @State private var activeSheet: LeadsSheet?
     @State private var footerStage: PipelineStage?
     @State private var activeSiteVisitLead: Opportunity?
+
+    /// The NOW/BOOK branch (spec §4.1). Every visit affordance on this tab
+    /// funnels here instead of straight into the capture cover: START NOW
+    /// keeps the walk-up path unchanged; the second option is state-aware —
+    /// BOOK A VISIT, or the lead's existing booking in reschedule mode.
+    @State private var visitBranchLead: Opportunity?
+    @State private var bookingRequest: BookSiteVisitRequest?
     @State private var discardTarget: Opportunity?
     /// Lead whose comeback date is being adjusted (ComebackChooserSheet).
     @State private var comebackTarget: Opportunity?
@@ -249,13 +256,38 @@ struct LeadsTabView: View {
                     assigneeIndex: assigneeIndex,
                     // One site-visit cover for the whole tab — the browser
                     // raises the same one the queue does.
-                    onStartSiteVisit: { activeSiteVisitLead = $0 }
+                    onStartSiteVisit: { visitBranchLead = $0 }
                 )
                 .environmentObject(dataController)
                 .environmentObject(permissionStore)
             }
             .sheet(item: $activeSheet) { sheet in
                 sheetView(for: sheet)
+            }
+            .sheet(item: $bookingRequest) { request in
+                BookSiteVisitSheet(request: request)
+                    .environmentObject(dataController)
+            }
+            .confirmationDialog(
+                "SITE VISIT",
+                isPresented: Binding(
+                    get: { visitBranchLead != nil },
+                    set: { if !$0 { visitBranchLead = nil } }
+                ),
+                titleVisibility: .visible,
+                presenting: visitBranchLead
+            ) { lead in
+                Button("START NOW") { activeSiteVisitLead = lead }
+                if let booking = openBookingSnapshot(for: lead) {
+                    Button("RESCHEDULE — \(bookedDialogToken(booking))") {
+                        bookingRequest = BookSiteVisitRequest(lead: lead, existing: booking)
+                    }
+                } else {
+                    Button("BOOK A VISIT") {
+                        bookingRequest = BookSiteVisitRequest(lead: lead, existing: nil)
+                    }
+                }
+                Button("CANCEL", role: .cancel) {}
             }
             .sheet(item: $comebackTarget) { lead in
                 ComebackChooserSheet(lead: lead, viewModel: viewModel)
@@ -357,7 +389,7 @@ struct LeadsTabView: View {
                 // capture flow — `SiteVisitCaptureViewModel.loadOrCreateVisit`
                 // resumes this lead's open visit or starts one, so a runner who
                 // opened a card mid-visit lands back where he left off.
-                onStartSiteVisit: { activeSiteVisitLead = $0 },
+                onStartSiteVisit: { visitBranchLead = $0 },
                 onAddLead: canCreate ? { activeSheet = .add } : nil
             )
         } else {
@@ -671,7 +703,7 @@ struct LeadsTabView: View {
             // The card gates its own chip on `canConvert && !isTerminal`
             // (verbatim LeadDetailView's), and `canConvert` above is already
             // entity-relative, so no second gate belongs here.
-            onStartSiteVisit: { activeSiteVisitLead = lead },
+            onStartSiteVisit: { visitBranchLead = lead },
             onTap:     { detailLead = lead },
             onLog:     { activeSheet = .log(lead) },
             onHandled: { markHandled(lead) },
@@ -694,6 +726,23 @@ struct LeadsTabView: View {
         }
     }
 
+    // MARK: - Visit branch
+
+    /// The lead's open booking as a sheet snapshot, resolved at press time so
+    /// the dialog's second option always states the current reality.
+    private func openBookingSnapshot(for lead: Opportunity) -> BookSiteVisitForm.BookingSnapshot? {
+        guard let context = dataController.modelContext,
+              let booking = SiteVisitBookingLookup.openBooking(
+                forOpportunityId: lead.id,
+                in: context
+              ) else { return nil }
+        return SiteVisitBookingLookup.snapshot(of: booking)
+    }
+
+    private func bookedDialogToken(_ booking: BookSiteVisitForm.BookingSnapshot) -> String {
+        SiteVisitBookingLookup.bookedToken(for: booking.scheduledAt)
+    }
+
     // MARK: - Sheet routing
 
     @ViewBuilder
@@ -703,7 +752,7 @@ struct LeadsTabView: View {
             AddLeadSheet(
                 onSaved: { _ in },
                 onStartSiteVisit: canConvertAny
-                    ? { lead in activeSiteVisitLead = lead }
+                    ? { lead in visitBranchLead = lead }
                     : nil
             )
         case .edit(let opp):

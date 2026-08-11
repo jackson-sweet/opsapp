@@ -523,6 +523,597 @@ final class CatalogMergeDiffGateTests: XCTestCase {
         XCTAssertTrue(stored.needsSync)
     }
 
+    // MARK: - SwiftData write semantics
+
+    /// Decides whether a merge that assigns identical values is silent or not.
+    /// `ProductSyncLocalStore.merge` writes no `lastSyncedAt`, so its per-pass
+    /// cost rests entirely on this behaviour — the exclusion rationale in the
+    /// review notes is only valid while this holds.
+    func test_reassigningIdenticalValuesStillDirtiesTheRow() throws {
+        let container = try makeContainer()
+        let seed = ModelContext(container)
+        seed.insert(Product(id: "prod-probe", companyId: companyId, name: "Deck board"))
+        try seed.save()
+
+        let context = ModelContext(container)
+        context.autosaveEnabled = false
+        let row = try XCTUnwrap(context.fetch(FetchDescriptor<Product>()).first)
+
+        row.name = row.name
+        row.basePrice = row.basePrice
+
+        XCTAssertTrue(
+            context.hasChanges,
+            "SwiftData no longer dirties a row on identical reassignment — ProductSyncLocalStore can be left un-gated, and this test should flip"
+        )
+    }
+
+    // MARK: - Catalog orders
+
+    func test_catalogOrders_secondIdenticalPass_writesNothing() async throws {
+        let container = try makeContainer()
+        let actor = DataActor(modelContainer: container)
+        await actor.configure()
+
+        let dtos = [orderDTO(id: "order-1", status: "draft"), orderDTO(id: "order-2", status: "sent")]
+        try await actor.mergeCatalogOrders(dtos: dtos, companyId: companyId)
+        XCTAssertEqual(try count(CatalogOrder.self, in: container), 2)
+
+        let recorder = StoreWriteRecorder()
+        defer { recorder.stop() }
+
+        try await actor.mergeCatalogOrders(dtos: dtos, companyId: companyId)
+
+        XCTAssertEqual(
+            recorder.eventCount, 0,
+            "an unchanged catalog-orders pass must not save — observed \(recorder.describe())"
+        )
+    }
+
+    func test_catalogOrders_statusChange_updatesOnlyThatRow() async throws {
+        let container = try makeContainer()
+        let actor = DataActor(modelContainer: container)
+        await actor.configure()
+
+        try await actor.mergeCatalogOrders(
+            dtos: [orderDTO(id: "order-1", status: "draft"), orderDTO(id: "order-2", status: "sent")],
+            companyId: companyId
+        )
+
+        let recorder = StoreWriteRecorder()
+        defer { recorder.stop() }
+
+        try await actor.mergeCatalogOrders(
+            dtos: [orderDTO(id: "order-1", status: "fulfilled"), orderDTO(id: "order-2", status: "sent")],
+            companyId: companyId
+        )
+
+        XCTAssertEqual(recorder.totalUpdated, 1, "observed \(recorder.describe())")
+
+        let context = ModelContext(container)
+        let changed = try XCTUnwrap(context.fetch(FetchDescriptor<CatalogOrder>()).first { $0.id == "order-1" })
+        XCTAssertEqual(changed.status, .fulfilled)
+    }
+
+    /// An order the server stops reporting is tombstoned exactly once — the
+    /// pre-gate code re-stamped `deletedAt` on every subsequent pass.
+    func test_catalogOrders_droppedOrder_isTombstonedOnceThenSilent() async throws {
+        let container = try makeContainer()
+        let actor = DataActor(modelContainer: container)
+        await actor.configure()
+
+        try await actor.mergeCatalogOrders(
+            dtos: [orderDTO(id: "order-1", status: "draft"), orderDTO(id: "order-2", status: "sent")],
+            companyId: companyId
+        )
+
+        let firstRecorder = StoreWriteRecorder()
+        try await actor.mergeCatalogOrders(dtos: [orderDTO(id: "order-1", status: "draft")], companyId: companyId)
+        firstRecorder.stop()
+        XCTAssertEqual(firstRecorder.totalUpdated, 1, "the dropped order must be tombstoned — observed \(firstRecorder.describe())")
+
+        let context = ModelContext(container)
+        let dropped = try XCTUnwrap(context.fetch(FetchDescriptor<CatalogOrder>()).first { $0.id == "order-2" })
+        let tombstonedAt = try XCTUnwrap(dropped.deletedAt)
+
+        let secondRecorder = StoreWriteRecorder()
+        defer { secondRecorder.stop() }
+
+        try await actor.mergeCatalogOrders(dtos: [orderDTO(id: "order-1", status: "draft")], companyId: companyId)
+
+        XCTAssertEqual(
+            secondRecorder.eventCount, 0,
+            "an already-tombstoned order must not be re-stamped — observed \(secondRecorder.describe())"
+        )
+
+        let after = ModelContext(container)
+        let stillDropped = try XCTUnwrap(after.fetch(FetchDescriptor<CatalogOrder>()).first { $0.id == "order-2" })
+        XCTAssertEqual(stillDropped.deletedAt, tombstonedAt, "the deletion time must not drift forward")
+    }
+
+    /// A field held back by a pending local write can never justify a save.
+    func test_catalogOrders_pendingFieldWriteDoesNotForceASave() async throws {
+        let container = try makeContainer()
+        let actor = DataActor(modelContainer: container)
+        await actor.configure()
+
+        try await actor.mergeCatalogOrders(dtos: [orderDTO(id: "order-1", status: "draft")], companyId: companyId)
+
+        // Local edit in flight: the operation ledger protects `title`.
+        let seed = ModelContext(container)
+        let operation = SyncOperation(
+            entityType: SyncEntityType.catalogOrder.rawValue,
+            entityId: "order-1",
+            operationType: "update",
+            payload: Data(#"{"title":"Local title"}"#.utf8),
+            changedFields: ["title"]
+        )
+        seed.insert(operation)
+        let order = try XCTUnwrap(seed.fetch(FetchDescriptor<CatalogOrder>()).first)
+        order.title = "Local title"
+        try seed.save()
+
+        let recorder = StoreWriteRecorder()
+        defer { recorder.stop() }
+
+        try await actor.mergeCatalogOrders(
+            dtos: [orderDTO(id: "order-1", status: "draft", title: "Server title")],
+            companyId: companyId
+        )
+
+        let context = ModelContext(container)
+        let stored = try XCTUnwrap(context.fetch(FetchDescriptor<CatalogOrder>()).first)
+        XCTAssertEqual(stored.title, "Local title", "a protected field must never be overwritten inbound")
+    }
+
+    // MARK: - Catalog order items
+
+    func test_catalogOrderItems_secondIdenticalPass_writesNothing() async throws {
+        let container = try makeContainer()
+        let actor = DataActor(modelContainer: container)
+        await actor.configure()
+
+        let dtos = [orderItemDTO(id: "item-1", quantity: 4), orderItemDTO(id: "item-2", quantity: 1)]
+        try await actor.mergeCatalogOrderItems(dtos: dtos, orderId: "order-1")
+        XCTAssertEqual(try count(CatalogOrderItem.self, in: container), 2)
+
+        let recorder = StoreWriteRecorder()
+        defer { recorder.stop() }
+
+        try await actor.mergeCatalogOrderItems(dtos: dtos, orderId: "order-1")
+
+        XCTAssertEqual(
+            recorder.eventCount, 0,
+            "an unchanged order-items pass must not save — observed \(recorder.describe())"
+        )
+    }
+
+    func test_catalogOrderItems_membershipChange_touchesOnlyTheChangedRows() async throws {
+        let container = try makeContainer()
+        let actor = DataActor(modelContainer: container)
+        await actor.configure()
+
+        try await actor.mergeCatalogOrderItems(
+            dtos: [orderItemDTO(id: "item-1", quantity: 4), orderItemDTO(id: "item-2", quantity: 1)],
+            orderId: "order-1"
+        )
+
+        let recorder = StoreWriteRecorder()
+        defer { recorder.stop() }
+
+        try await actor.mergeCatalogOrderItems(
+            dtos: [orderItemDTO(id: "item-1", quantity: 4), orderItemDTO(id: "item-3", quantity: 2)],
+            orderId: "order-1"
+        )
+
+        XCTAssertEqual(recorder.totalInserted, 1, "observed \(recorder.describe())")
+        XCTAssertEqual(recorder.totalDeleted, 1, "observed \(recorder.describe())")
+        XCTAssertEqual(recorder.totalUpdated, 0, "the unchanged item must not be rewritten — observed \(recorder.describe())")
+    }
+
+    func test_catalogOrderItems_quantityChange_updatesOnlyThatRow() async throws {
+        let container = try makeContainer()
+        let actor = DataActor(modelContainer: container)
+        await actor.configure()
+
+        try await actor.mergeCatalogOrderItems(
+            dtos: [orderItemDTO(id: "item-1", quantity: 4), orderItemDTO(id: "item-2", quantity: 1)],
+            orderId: "order-1"
+        )
+
+        let recorder = StoreWriteRecorder()
+        defer { recorder.stop() }
+
+        try await actor.mergeCatalogOrderItems(
+            dtos: [orderItemDTO(id: "item-1", quantity: 9), orderItemDTO(id: "item-2", quantity: 1)],
+            orderId: "order-1"
+        )
+
+        XCTAssertEqual(recorder.totalUpdated, 1, "observed \(recorder.describe())")
+
+        let context = ModelContext(container)
+        let changed = try XCTUnwrap(context.fetch(FetchDescriptor<CatalogOrderItem>()).first { $0.id == "item-1" })
+        XCTAssertEqual(changed.quantityRequested, 9, accuracy: 0.0001)
+    }
+
+    // MARK: - Company default products
+
+    func test_companyDefaultProducts_secondIdenticalPass_writesNothing() async throws {
+        let container = try makeContainer()
+        let actor = DataActor(modelContainer: container)
+        await actor.configure()
+
+        let dtos = [defaultProductDTO(componentType: "railing", productId: "prod-1"),
+                    defaultProductDTO(componentType: "gate", productId: "prod-2")]
+        try await actor.mergeCompanyDefaultProducts(dtos: dtos, companyId: companyId)
+        XCTAssertEqual(try count(CompanyDefaultProduct.self, in: container), 2)
+
+        let recorder = StoreWriteRecorder()
+        defer { recorder.stop() }
+
+        try await actor.mergeCompanyDefaultProducts(dtos: dtos, companyId: companyId)
+
+        XCTAssertEqual(
+            recorder.eventCount, 0,
+            "an unchanged default-products pass must not save — observed \(recorder.describe())"
+        )
+    }
+
+    func test_companyDefaultProducts_repointedDefault_updatesOnlyThatRow() async throws {
+        let container = try makeContainer()
+        let actor = DataActor(modelContainer: container)
+        await actor.configure()
+
+        try await actor.mergeCompanyDefaultProducts(
+            dtos: [defaultProductDTO(componentType: "railing", productId: "prod-1"),
+                   defaultProductDTO(componentType: "gate", productId: "prod-2")],
+            companyId: companyId
+        )
+
+        let recorder = StoreWriteRecorder()
+        defer { recorder.stop() }
+
+        try await actor.mergeCompanyDefaultProducts(
+            dtos: [defaultProductDTO(componentType: "railing", productId: "prod-9"),
+                   defaultProductDTO(componentType: "gate", productId: "prod-2")],
+            companyId: companyId
+        )
+
+        XCTAssertEqual(recorder.totalUpdated, 1, "observed \(recorder.describe())")
+
+        let context = ModelContext(container)
+        let changed = try XCTUnwrap(
+            context.fetch(FetchDescriptor<CompanyDefaultProduct>()).first { $0.componentType == .railing }
+        )
+        XCTAssertEqual(changed.productId, "prod-9")
+    }
+
+    func test_companyDefaultProducts_droppedDefault_isDeletedThenSilent() async throws {
+        let container = try makeContainer()
+        let actor = DataActor(modelContainer: container)
+        await actor.configure()
+
+        try await actor.mergeCompanyDefaultProducts(
+            dtos: [defaultProductDTO(componentType: "railing", productId: "prod-1"),
+                   defaultProductDTO(componentType: "gate", productId: "prod-2")],
+            companyId: companyId
+        )
+
+        let recorder = StoreWriteRecorder()
+        defer { recorder.stop() }
+
+        try await actor.mergeCompanyDefaultProducts(
+            dtos: [defaultProductDTO(componentType: "railing", productId: "prod-1")],
+            companyId: companyId
+        )
+
+        XCTAssertEqual(recorder.totalDeleted, 1, "observed \(recorder.describe())")
+        XCTAssertEqual(recorder.totalUpdated, 0, "observed \(recorder.describe())")
+        XCTAssertEqual(try count(CompanyDefaultProduct.self, in: container), 1)
+    }
+
+    // MARK: - Products (ProductSyncLocalStore)
+
+    func test_products_secondIdenticalPass_writesNothing() async throws {
+        let container = try makeContainer()
+        let actor = DataActor(modelContainer: container)
+        await actor.configure()
+
+        let dtos = [productDTO(id: "prod-1", name: "Cedar board"), productDTO(id: "prod-2", name: "Railing kit")]
+        try await actor.mergeProducts(dtos: dtos, companyId: companyId)
+        XCTAssertEqual(try count(Product.self, in: container), 2)
+
+        let recorder = StoreWriteRecorder()
+        defer { recorder.stop() }
+
+        try await actor.mergeProducts(dtos: dtos, companyId: companyId)
+
+        XCTAssertEqual(
+            recorder.eventCount, 0,
+            "an unchanged products pass must not save — observed \(recorder.describe())"
+        )
+    }
+
+    func test_products_renamed_updatesOnlyThatRow() async throws {
+        let container = try makeContainer()
+        let actor = DataActor(modelContainer: container)
+        await actor.configure()
+
+        try await actor.mergeProducts(
+            dtos: [productDTO(id: "prod-1", name: "Cedar board"), productDTO(id: "prod-2", name: "Railing kit")],
+            companyId: companyId
+        )
+
+        let recorder = StoreWriteRecorder()
+        defer { recorder.stop() }
+
+        try await actor.mergeProducts(
+            dtos: [productDTO(id: "prod-1", name: "Cedar decking"), productDTO(id: "prod-2", name: "Railing kit")],
+            companyId: companyId
+        )
+
+        XCTAssertEqual(recorder.totalUpdated, 1, "observed \(recorder.describe())")
+
+        let context = ModelContext(container)
+        let renamed = try XCTUnwrap(context.fetch(FetchDescriptor<Product>()).first { $0.id == "prod-1" })
+        XCTAssertEqual(renamed.name, "Cedar decking")
+    }
+
+    /// A product dropped by the server is deactivated once; the pre-gate code
+    /// re-assigned `isActive = false` on every later pass.
+    func test_products_droppedProduct_isDeactivatedOnceThenSilent() async throws {
+        let container = try makeContainer()
+        let actor = DataActor(modelContainer: container)
+        await actor.configure()
+
+        try await actor.mergeProducts(
+            dtos: [productDTO(id: "prod-1", name: "Cedar board"), productDTO(id: "prod-2", name: "Railing kit")],
+            companyId: companyId
+        )
+
+        let firstRecorder = StoreWriteRecorder()
+        try await actor.mergeProducts(dtos: [productDTO(id: "prod-1", name: "Cedar board")], companyId: companyId)
+        firstRecorder.stop()
+        XCTAssertEqual(firstRecorder.totalUpdated, 1, "the dropped product must be deactivated — observed \(firstRecorder.describe())")
+
+        let context = ModelContext(container)
+        let dropped = try XCTUnwrap(context.fetch(FetchDescriptor<Product>()).first { $0.id == "prod-2" })
+        XCTAssertFalse(dropped.isActive)
+
+        let secondRecorder = StoreWriteRecorder()
+        defer { secondRecorder.stop() }
+
+        try await actor.mergeProducts(dtos: [productDTO(id: "prod-1", name: "Cedar board")], companyId: companyId)
+
+        XCTAssertEqual(
+            secondRecorder.eventCount, 0,
+            "an already-deactivated product must not be rewritten — observed \(secondRecorder.describe())"
+        )
+    }
+
+    // MARK: - Product options
+
+    func test_productOptions_secondIdenticalPass_writesNothing() async throws {
+        let container = try makeContainer()
+        try seedProduct(id: "prod-1", in: container)
+        let actor = DataActor(modelContainer: container)
+        await actor.configure()
+
+        let dtos = [productOptionDTO(id: "popt-1", name: "Color"), productOptionDTO(id: "popt-2", name: "Height")]
+        try await actor.mergeProductOptions(dtos: dtos, companyId: companyId)
+
+        let recorder = StoreWriteRecorder()
+        defer { recorder.stop() }
+
+        try await actor.mergeProductOptions(dtos: dtos, companyId: companyId)
+
+        XCTAssertEqual(
+            recorder.eventCount, 0,
+            "an unchanged product-options pass must not save — observed \(recorder.describe())"
+        )
+        XCTAssertEqual(try count(ProductOption.self, in: container), 2)
+    }
+
+    func test_productOptions_renamed_updatesOnlyThatRow() async throws {
+        let container = try makeContainer()
+        try seedProduct(id: "prod-1", in: container)
+        let actor = DataActor(modelContainer: container)
+        await actor.configure()
+
+        try await actor.mergeProductOptions(
+            dtos: [productOptionDTO(id: "popt-1", name: "Color"), productOptionDTO(id: "popt-2", name: "Height")],
+            companyId: companyId
+        )
+
+        let recorder = StoreWriteRecorder()
+        defer { recorder.stop() }
+
+        try await actor.mergeProductOptions(
+            dtos: [productOptionDTO(id: "popt-1", name: "Colour"), productOptionDTO(id: "popt-2", name: "Height")],
+            companyId: companyId
+        )
+
+        XCTAssertEqual(recorder.totalUpdated, 1, "observed \(recorder.describe())")
+    }
+
+    func test_productOptions_membershipChange_touchesOnlyTheChangedRows() async throws {
+        let container = try makeContainer()
+        try seedProduct(id: "prod-1", in: container)
+        let actor = DataActor(modelContainer: container)
+        await actor.configure()
+
+        try await actor.mergeProductOptions(
+            dtos: [productOptionDTO(id: "popt-1", name: "Color"), productOptionDTO(id: "popt-2", name: "Height")],
+            companyId: companyId
+        )
+
+        let recorder = StoreWriteRecorder()
+        defer { recorder.stop() }
+
+        try await actor.mergeProductOptions(
+            dtos: [productOptionDTO(id: "popt-1", name: "Color"), productOptionDTO(id: "popt-3", name: "Finish")],
+            companyId: companyId
+        )
+
+        XCTAssertEqual(recorder.totalInserted, 1, "observed \(recorder.describe())")
+        XCTAssertEqual(recorder.totalDeleted, 1, "observed \(recorder.describe())")
+        XCTAssertEqual(recorder.totalUpdated, 0, "observed \(recorder.describe())")
+    }
+
+    // MARK: - Product option values
+
+    func test_productOptionValues_secondIdenticalPass_writesNothing() async throws {
+        let container = try makeContainer()
+        let seed = ModelContext(container)
+        seed.insert(ProductOption(id: "popt-1", productId: "prod-1", name: "Color", kind: .select))
+        try seed.save()
+
+        let actor = DataActor(modelContainer: container)
+        await actor.configure()
+
+        let dtos = [productOptionValueDTO(id: "pval-1", value: "Black"),
+                    productOptionValueDTO(id: "pval-2", value: "White")]
+        try await actor.mergeProductOptionValues(dtos: dtos)
+
+        let recorder = StoreWriteRecorder()
+        defer { recorder.stop() }
+
+        try await actor.mergeProductOptionValues(dtos: dtos)
+
+        XCTAssertEqual(
+            recorder.eventCount, 0,
+            "an unchanged product-option-values pass must not save — observed \(recorder.describe())"
+        )
+        XCTAssertEqual(try count(ProductOptionValue.self, in: container), 2)
+    }
+
+    func test_productOptionValues_changedValue_updatesOnlyThatRow() async throws {
+        let container = try makeContainer()
+        let seed = ModelContext(container)
+        seed.insert(ProductOption(id: "popt-1", productId: "prod-1", name: "Color", kind: .select))
+        try seed.save()
+
+        let actor = DataActor(modelContainer: container)
+        await actor.configure()
+
+        try await actor.mergeProductOptionValues(
+            dtos: [productOptionValueDTO(id: "pval-1", value: "Black"),
+                   productOptionValueDTO(id: "pval-2", value: "White")]
+        )
+
+        let recorder = StoreWriteRecorder()
+        defer { recorder.stop() }
+
+        try await actor.mergeProductOptionValues(
+            dtos: [productOptionValueDTO(id: "pval-1", value: "Matte black"),
+                   productOptionValueDTO(id: "pval-2", value: "White")]
+        )
+
+        XCTAssertEqual(recorder.totalUpdated, 1, "observed \(recorder.describe())")
+    }
+
+    func test_productOptionValues_membershipChange_touchesOnlyTheChangedRows() async throws {
+        let container = try makeContainer()
+        let seed = ModelContext(container)
+        seed.insert(ProductOption(id: "popt-1", productId: "prod-1", name: "Color", kind: .select))
+        try seed.save()
+
+        let actor = DataActor(modelContainer: container)
+        await actor.configure()
+
+        try await actor.mergeProductOptionValues(
+            dtos: [productOptionValueDTO(id: "pval-1", value: "Black"),
+                   productOptionValueDTO(id: "pval-2", value: "White")]
+        )
+
+        let recorder = StoreWriteRecorder()
+        defer { recorder.stop() }
+
+        try await actor.mergeProductOptionValues(
+            dtos: [productOptionValueDTO(id: "pval-1", value: "Black"),
+                   productOptionValueDTO(id: "pval-3", value: "Bronze")]
+        )
+
+        XCTAssertEqual(recorder.totalInserted, 1, "observed \(recorder.describe())")
+        XCTAssertEqual(recorder.totalDeleted, 1, "observed \(recorder.describe())")
+        XCTAssertEqual(recorder.totalUpdated, 0, "observed \(recorder.describe())")
+    }
+
+    // MARK: - Product pricing modifiers
+
+    func test_productPricingModifiers_secondIdenticalPass_writesNothing() async throws {
+        let container = try makeContainer()
+        try seedProduct(id: "prod-1", in: container)
+        let actor = DataActor(modelContainer: container)
+        await actor.configure()
+
+        let dtos = [pricingModifierDTO(id: "pmod-1", amount: 12.5), pricingModifierDTO(id: "pmod-2", amount: 3)]
+        try await actor.mergeProductPricingModifiers(dtos: dtos, companyId: companyId)
+
+        let recorder = StoreWriteRecorder()
+        defer { recorder.stop() }
+
+        try await actor.mergeProductPricingModifiers(dtos: dtos, companyId: companyId)
+
+        XCTAssertEqual(
+            recorder.eventCount, 0,
+            "an unchanged pricing-modifiers pass must not save — observed \(recorder.describe())"
+        )
+        XCTAssertEqual(try count(ProductPricingModifier.self, in: container), 2)
+    }
+
+    func test_productPricingModifiers_changedAmount_updatesOnlyThatRow() async throws {
+        let container = try makeContainer()
+        try seedProduct(id: "prod-1", in: container)
+        let actor = DataActor(modelContainer: container)
+        await actor.configure()
+
+        try await actor.mergeProductPricingModifiers(
+            dtos: [pricingModifierDTO(id: "pmod-1", amount: 12.5), pricingModifierDTO(id: "pmod-2", amount: 3)],
+            companyId: companyId
+        )
+
+        let recorder = StoreWriteRecorder()
+        defer { recorder.stop() }
+
+        try await actor.mergeProductPricingModifiers(
+            dtos: [pricingModifierDTO(id: "pmod-1", amount: 20), pricingModifierDTO(id: "pmod-2", amount: 3)],
+            companyId: companyId
+        )
+
+        XCTAssertEqual(recorder.totalUpdated, 1, "observed \(recorder.describe())")
+
+        let context = ModelContext(container)
+        let changed = try XCTUnwrap(
+            context.fetch(FetchDescriptor<ProductPricingModifier>()).first { $0.id == "pmod-1" }
+        )
+        XCTAssertEqual(changed.amount, 20, accuracy: 0.0001)
+    }
+
+    func test_productPricingModifiers_membershipChange_touchesOnlyTheChangedRows() async throws {
+        let container = try makeContainer()
+        try seedProduct(id: "prod-1", in: container)
+        let actor = DataActor(modelContainer: container)
+        await actor.configure()
+
+        try await actor.mergeProductPricingModifiers(
+            dtos: [pricingModifierDTO(id: "pmod-1", amount: 12.5), pricingModifierDTO(id: "pmod-2", amount: 3)],
+            companyId: companyId
+        )
+
+        let recorder = StoreWriteRecorder()
+        defer { recorder.stop() }
+
+        try await actor.mergeProductPricingModifiers(
+            dtos: [pricingModifierDTO(id: "pmod-1", amount: 12.5), pricingModifierDTO(id: "pmod-3", amount: 7)],
+            companyId: companyId
+        )
+
+        XCTAssertEqual(recorder.totalInserted, 1, "observed \(recorder.describe())")
+        XCTAssertEqual(recorder.totalDeleted, 1, "observed \(recorder.describe())")
+        XCTAssertEqual(recorder.totalUpdated, 0, "observed \(recorder.describe())")
+    }
+
     // MARK: - Fixtures
 
     private func makeContainer() throws -> ModelContainer {
@@ -533,16 +1124,43 @@ final class CatalogMergeDiffGateTests: XCTestCase {
             CatalogOptionValue.self,
             CatalogVariantOptionValue.self,
             CatalogItemTag.self,
+            CatalogOrder.self,
+            CatalogOrderItem.self,
+            CompanyDefaultProduct.self,
             Product.self,
             ProductMaterial.self,
-            ProductBundleItem.self
+            ProductBundleItem.self,
+            ProductOption.self,
+            ProductOptionValue.self,
+            ProductPricingModifier.self,
+            // acceptableFields / hasPendingOperations query this on the orders path.
+            SyncOperation.self
         ])
         let configuration = ModelConfiguration(
             schema: schema,
             isStoredInMemoryOnly: true,
             allowsSave: true
         )
-        return try ModelContainer(for: schema, configurations: [configuration])
+        let container = try ModelContainer(for: schema, configurations: [configuration])
+
+        // A #Predicate fetch of SyncOperation TRAPS (EXC_BREAKPOINT inside
+        // SwiftData, uncatchable) against a store whose operation table has
+        // never held a row — see the note on ProjectCacheMerge.operations. The
+        // orders path runs exactly such a fetch via acceptableFields, so
+        // materialize the table with an inert row scoped to no real entity.
+        let warmup = ModelContext(container)
+        warmup.insert(
+            SyncOperation(
+                entityType: "diffGateWarmup",
+                entityId: "diffGateWarmup",
+                operationType: "update",
+                payload: Data("{}".utf8),
+                changedFields: []
+            )
+        )
+        try warmup.save()
+
+        return container
     }
 
     private func count<T: PersistentModel>(_ type: T.Type, in container: ModelContainer) throws -> Int {
@@ -592,6 +1210,113 @@ final class CatalogMergeDiffGateTests: XCTestCase {
             scaledByOptionId: nil,
             unitId: "unit-1",
             notes: nil
+        )
+    }
+
+    private func productDTO(id: String, name: String) -> ProductDTO {
+        ProductDTO(
+            id: id,
+            companyId: companyId,
+            name: name,
+            description: nil,
+            basePrice: 42,
+            unitCost: 20,
+            unit: nil,
+            category: nil,
+            categoryId: nil,
+            sku: nil,
+            thumbnailUrl: nil,
+            kind: "good",
+            pricingUnit: "each",
+            type: "MATERIAL",
+            isTaxable: true,
+            isActive: true,
+            isFavorite: false,
+            minimumCharge: nil,
+            minimumQuantity: nil,
+            showBomOnEstimate: false,
+            showInStorefront: false,
+            tieredPricing: nil,
+            taskTypeId: nil,
+            taskTypeRef: nil,
+            unitId: nil,
+            linkedCatalogItemId: nil,
+            bundlePricingMode: nil,
+            createdAt: "2026-08-01T00:00:00+00:00",
+            updatedAt: "2026-08-02T00:00:00+00:00"
+        )
+    }
+
+    private func orderDTO(id: String, status: String, title: String? = nil) -> CatalogOrderDTO {
+        CatalogOrderDTO(
+            id: id,
+            companyId: companyId,
+            status: status,
+            title: title,
+            supplierName: nil,
+            supplierContact: nil,
+            expectedDeliveryDate: nil,
+            notes: nil,
+            createdById: nil,
+            createdAt: "2026-08-01T00:00:00+00:00",
+            updatedAt: "2026-08-02T00:00:00+00:00",
+            sentAt: nil,
+            fulfilledAt: nil,
+            cancelledAt: nil,
+            deletedAt: nil
+        )
+    }
+
+    private func orderItemDTO(id: String, quantity: Double) -> CatalogOrderItemDTO {
+        CatalogOrderItemDTO(
+            id: id,
+            orderId: "order-1",
+            catalogVariantId: "var-1",
+            quantityRequested: quantity,
+            costPerUnit: 4.25,
+            notes: nil
+        )
+    }
+
+    private func defaultProductDTO(componentType: String, productId: String) -> CompanyDefaultProductDTO {
+        CompanyDefaultProductDTO(
+            companyId: companyId,
+            componentType: componentType,
+            productId: productId,
+            createdAt: "2026-08-01T00:00:00+00:00",
+            updatedAt: "2026-08-02T00:00:00+00:00"
+        )
+    }
+
+    private func productOptionDTO(id: String, name: String) -> ProductOptionDTO {
+        ProductOptionDTO(
+            id: id,
+            productId: "prod-1",
+            name: name,
+            kind: "select",
+            affectsPrice: true,
+            affectsRecipe: false,
+            required: true,
+            defaultValue: nil,
+            optionDefaultSource: nil,
+            sortOrder: 0
+        )
+    }
+
+    private func productOptionValueDTO(id: String, value: String) -> ProductOptionValueDTO {
+        ProductOptionValueDTO(id: id, optionId: "popt-1", value: value, sortOrder: 0)
+    }
+
+    private func pricingModifierDTO(id: String, amount: Double) -> ProductPricingModifierDTO {
+        ProductPricingModifierDTO(
+            id: id,
+            productId: "prod-1",
+            optionId: "popt-1",
+            triggerValueId: "pval-1",
+            triggerIntMin: nil,
+            triggerIntMax: nil,
+            modifierKind: "add_per_unit",
+            amount: amount
         )
     }
 

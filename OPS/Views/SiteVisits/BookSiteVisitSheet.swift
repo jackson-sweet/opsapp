@@ -40,6 +40,18 @@ struct BookSiteVisitSheet: View {
     @Environment(\.dismiss) private var dismiss
 
     @State private var form: BookSiteVisitForm?
+
+    /// Snapshot/preview seam — a preseeded form renders the full field stack
+    /// without a signed-in DataController. Production callers omit it.
+    init(
+        request: BookSiteVisitRequest,
+        service: SiteVisitBookingService? = nil,
+        initialForm: BookSiteVisitForm? = nil
+    ) {
+        self.request = request
+        self.service = service
+        _form = State(initialValue: initialForm)
+    }
     @State private var isSaving = false
     @State private var errorMessage: String?
     @State private var showingCrewPicker = false

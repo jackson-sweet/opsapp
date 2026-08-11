@@ -72,8 +72,22 @@ final class BookSiteVisitSheetSnapshotTests: XCTestCase {
             contactName: "Dana Whitfield"
         )
         lead.address = "418 Larchmont Ave"
+        // Preseed the form — the harness has no signed-in DataController, and
+        // the proof must show the field stack, not the loading spinner.
+        let bookerId = "dddddddd-dddd-4ddd-8ddd-dddddddddddd"
+        let form: BookSiteVisitForm
+        if let existing {
+            form = .reschedule(existing: existing, bookerId: bookerId, defaultHeadsUpMinutes: 30)
+        } else {
+            form = .create(
+                bookerId: bookerId,
+                defaultHeadsUpMinutes: 30,
+                startingAt: Date(timeIntervalSince1970: 1_790_000_000)
+            )
+        }
         return BookSiteVisitSheet(
-            request: BookSiteVisitRequest(lead: lead, existing: existing)
+            request: BookSiteVisitRequest(lead: lead, existing: existing),
+            initialForm: form
         )
         .environmentObject(controller)
     }

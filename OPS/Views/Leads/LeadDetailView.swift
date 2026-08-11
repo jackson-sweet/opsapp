@@ -56,6 +56,9 @@ struct LeadDetailView: View {
     @StateObject private var assignmentViewModel: LeadAssignmentViewModel
     @Query private var allUsers: [User]
     @State private var showingSiteVisitCapture = false
+    /// BOOK A VISIT / RESCHEDULE from the workflow menu (spec §4.1) — the
+    /// menu itself is the NOW/BOOK branch here, so no extra dialog hop.
+    @State private var bookingRequest: BookSiteVisitRequest?
     @State private var showingAssignmentPicker = false
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var dataController: DataController
@@ -133,6 +136,16 @@ struct LeadDetailView: View {
     }
     private var canConvert: Bool {
         leadAccessPolicy.can(.convert, assignedTo: opportunity.assignedTo)
+    }
+    /// The lead's open booking, resolved when the workflow menu renders so
+    /// its second entry always states the current reality.
+    private var openBookingSnapshot: BookSiteVisitForm.BookingSnapshot? {
+        guard let context = dataController.modelContext,
+              let booking = SiteVisitBookingLookup.openBooking(
+                forOpportunityId: opportunity.id,
+                in: context
+              ) else { return nil }
+        return SiteVisitBookingLookup.snapshot(of: booking)
     }
     private var canChangeAssignee: Bool {
         guard leadAccessPolicy.can(.assign, assignedTo: opportunity.assignedTo),
@@ -427,6 +440,10 @@ struct LeadDetailView: View {
                 }
             )
         }
+        .sheet(item: $bookingRequest) { request in
+            BookSiteVisitSheet(request: request)
+                .environmentObject(dataController)
+        }
         .confirmationDialog(
             "ADD PHOTOS",
             isPresented: $showingAddPhotoDialog,
@@ -691,7 +708,23 @@ struct LeadDetailView: View {
                     Button {
                         showingSiteVisitCapture = true
                     } label: {
-                        Label("START SITE VISIT", systemImage: "camera.viewfinder")
+                        Label("START VISIT NOW", systemImage: "camera.viewfinder")
+                    }
+                    if let booking = openBookingSnapshot {
+                        Button {
+                            bookingRequest = BookSiteVisitRequest(lead: opportunity, existing: booking)
+                        } label: {
+                            Label(
+                                "RESCHEDULE — \(SiteVisitBookingLookup.bookedToken(for: booking.scheduledAt))",
+                                systemImage: "calendar"
+                            )
+                        }
+                    } else {
+                        Button {
+                            bookingRequest = BookSiteVisitRequest(lead: opportunity, existing: nil)
+                        } label: {
+                            Label("BOOK A VISIT", systemImage: "calendar.badge.plus")
+                        }
                     }
                 }
                 if canEdit {

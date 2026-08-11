@@ -2355,134 +2355,240 @@ actor DataActor {
     /// InboundProcessor.syncCatalogOptions verbatim.
     private func syncCatalogOptions(repos: InboundRepositories) async throws {
         let dtos = try await repos.catalog.fetchOptionsForCompany()
+        try mergeCatalogOptions(dtos: dtos, companyId: repos.companyId)
+        print("[DataActor] Merged \(dtos.count) catalog options")
+    }
+
+    /// Diff-gated reconcile. The diff is computed from fetches alone, so a pass
+    /// whose payload already matches the store opens no transaction — no save,
+    /// no `.dataActorDidSave`, no main-context merge.
+    func mergeCatalogOptions(dtos: [CatalogOptionDTO], companyId: String) throws {
         let serverIds = Set(dtos.map(\.id))
-        let companyId = repos.companyId
+        var localById: [String: CatalogOption] = [:]
+        for row in try modelContext.fetch(FetchDescriptor<CatalogOption>()) {
+            localById[row.id] = row
+        }
 
-        try modelContext.transaction {
-            for dto in dtos {
-                let id = dto.id
-                let descriptor = FetchDescriptor<CatalogOption>(predicate: #Predicate { $0.id == id })
-                if let existing = try modelContext.fetch(descriptor).first {
-                    existing.catalogItemId = dto.catalogItemId
-                    existing.name = dto.name
-                    existing.sortOrder = dto.sortOrder
-                    existing.lastSyncedAt = Date()
-                    existing.needsSync = false
-                } else {
-                    let model = dto.toModel()
-                    model.lastSyncedAt = Date()
-                    model.needsSync = false
-                    modelContext.insert(model)
-                }
+        var updates: [(row: CatalogOption, dto: CatalogOptionDTO)] = []
+        var inserts: [CatalogOptionDTO] = []
+        for dto in dtos {
+            guard let existing = localById[dto.id] else {
+                inserts.append(dto)
+                continue
             }
-
-            // Prune local options the server no longer reports — scoped to
-            // items owned by this company so we don't touch cross-company rows.
-            let allLocal = try modelContext.fetch(FetchDescriptor<CatalogOption>())
-            let localItemIds = Set(try modelContext.fetch(FetchDescriptor<CatalogItem>())
-                .filter { $0.companyId == companyId }
-                .map(\.id))
-            for option in allLocal where localItemIds.contains(option.catalogItemId) && !serverIds.contains(option.id) {
-                modelContext.delete(option)
+            // needsSync belongs in the diff: the merge clears it, so a row still
+            // flagged for push is a real pending write even when fields match.
+            if existing.catalogItemId != dto.catalogItemId
+                || existing.name != dto.name
+                || existing.sortOrder != dto.sortOrder
+                || existing.needsSync {
+                updates.append((existing, dto))
             }
         }
-        print("[DataActor] Merged \(dtos.count) catalog options")
+
+        // Prune local options the server no longer reports — scoped to
+        // items owned by this company so we don't touch cross-company rows.
+        let localItemIds = Set(try modelContext.fetch(FetchDescriptor<CatalogItem>())
+            .filter { $0.companyId == companyId }
+            .map(\.id))
+        let deletions = localById.values.filter {
+            localItemIds.contains($0.catalogItemId) && !serverIds.contains($0.id)
+        }
+
+        guard !updates.isEmpty || !inserts.isEmpty || !deletions.isEmpty else { return }
+
+        try modelContext.transaction {
+            for (row, dto) in updates {
+                row.catalogItemId = dto.catalogItemId
+                row.name = dto.name
+                row.sortOrder = dto.sortOrder
+                row.lastSyncedAt = Date()
+                row.needsSync = false
+            }
+            for dto in inserts {
+                let model = dto.toModel()
+                model.lastSyncedAt = Date()
+                model.needsSync = false
+                modelContext.insert(model)
+            }
+            for row in deletions {
+                modelContext.delete(row)
+            }
+        }
     }
 
     // MARK: - Sync: Catalog Option Values
 
     private func syncCatalogOptionValues(repos: InboundRepositories) async throws {
         let dtos = try await repos.catalog.fetchOptionValuesForCompany()
+        try mergeCatalogOptionValues(dtos: dtos)
+        print("[DataActor] Merged \(dtos.count) catalog option values")
+    }
+
+    func mergeCatalogOptionValues(dtos: [CatalogOptionValueDTO]) throws {
         let serverIds = Set(dtos.map(\.id))
+        var localById: [String: CatalogOptionValue] = [:]
+        for row in try modelContext.fetch(FetchDescriptor<CatalogOptionValue>()) {
+            localById[row.id] = row
+        }
 
-        try modelContext.transaction {
-            for dto in dtos {
-                let id = dto.id
-                let descriptor = FetchDescriptor<CatalogOptionValue>(predicate: #Predicate { $0.id == id })
-                if let existing = try modelContext.fetch(descriptor).first {
-                    existing.optionId = dto.optionId
-                    existing.value = dto.value
-                    existing.sortOrder = dto.sortOrder
-                    existing.lastSyncedAt = Date()
-                    existing.needsSync = false
-                } else {
-                    let model = dto.toModel()
-                    model.lastSyncedAt = Date()
-                    model.needsSync = false
-                    modelContext.insert(model)
-                }
+        var updates: [(row: CatalogOptionValue, dto: CatalogOptionValueDTO)] = []
+        var inserts: [CatalogOptionValueDTO] = []
+        for dto in dtos {
+            guard let existing = localById[dto.id] else {
+                inserts.append(dto)
+                continue
             }
-
-            // Prune values whose option still belongs to this company but whose
-            // id is no longer reported by the server.
-            let localOptionIds = Set(try modelContext.fetch(FetchDescriptor<CatalogOption>()).map(\.id))
-            let allLocal = try modelContext.fetch(FetchDescriptor<CatalogOptionValue>())
-            for value in allLocal where localOptionIds.contains(value.optionId) && !serverIds.contains(value.id) {
-                modelContext.delete(value)
+            if existing.optionId != dto.optionId
+                || existing.value != dto.value
+                || existing.sortOrder != dto.sortOrder
+                || existing.needsSync {
+                updates.append((existing, dto))
             }
         }
-        print("[DataActor] Merged \(dtos.count) catalog option values")
+
+        // Prune values whose option still belongs to this company but whose
+        // id is no longer reported by the server.
+        let localOptionIds = Set(try modelContext.fetch(FetchDescriptor<CatalogOption>()).map(\.id))
+        let deletions = localById.values.filter {
+            localOptionIds.contains($0.optionId) && !serverIds.contains($0.id)
+        }
+
+        guard !updates.isEmpty || !inserts.isEmpty || !deletions.isEmpty else { return }
+
+        try modelContext.transaction {
+            for (row, dto) in updates {
+                row.optionId = dto.optionId
+                row.value = dto.value
+                row.sortOrder = dto.sortOrder
+                row.lastSyncedAt = Date()
+                row.needsSync = false
+            }
+            for dto in inserts {
+                let model = dto.toModel()
+                model.lastSyncedAt = Date()
+                model.needsSync = false
+                modelContext.insert(model)
+            }
+            for row in deletions {
+                modelContext.delete(row)
+            }
+        }
     }
 
     // MARK: - Sync: Catalog Variant ↔ Option-Value joins
 
     /// Junction has no surrogate id from the server; uniqueness is the
-    /// (variantId, optionValueId) pair. Wipe + insert for variants this company
-    /// owns is the simplest correctness story — matches InboundProcessor.
+    /// (variantId, optionValueId) pair.
     private func syncCatalogVariantOptionValues(repos: InboundRepositories) async throws {
         let dtos = try await repos.catalog.fetchVariantOptionValuesForCompany()
-        let companyId = repos.companyId
+        try mergeCatalogVariantOptionValues(dtos: dtos, companyId: repos.companyId)
+        print("[DataActor] Merged \(dtos.count) variant option-value joins")
+    }
+
+    /// Identity of a junction row. The server sends no surrogate key, so the
+    /// pair itself is the only thing a diff can match on.
+    private struct VariantOptionValueKey: Hashable {
+        let variantId: String
+        let optionValueId: String
+    }
+
+    /// Keyed diff over the (variantId, optionValueId) pair. Supersedes a
+    /// wipe-all + reinsert-all that rewrote the company's whole junction on
+    /// every pass. That scheme also grew a duplicate per pass for any server
+    /// row whose variant was not resident locally, because the wipe was scoped
+    /// to local company variants while the reinsert was not; rows matching the
+    /// server are now left alone and stale duplicates collapse to one.
+    func mergeCatalogVariantOptionValues(dtos: [CatalogVariantOptionValueDTO], companyId: String) throws {
+        var serverByKey: [VariantOptionValueKey: CatalogVariantOptionValueDTO] = [:]
+        for dto in dtos {
+            serverByKey[VariantOptionValueKey(variantId: dto.variantId, optionValueId: dto.optionValueId)] = dto
+        }
+
+        let companyVariantIds = Set(try modelContext.fetch(FetchDescriptor<CatalogVariant>())
+            .filter { $0.companyId == companyId }
+            .map(\.id))
+
+        var seen: Set<VariantOptionValueKey> = []
+        var deletions: [CatalogVariantOptionValue] = []
+        for row in try modelContext.fetch(FetchDescriptor<CatalogVariantOptionValue>()) {
+            let key = VariantOptionValueKey(variantId: row.variantId, optionValueId: row.optionValueId)
+            if serverByKey[key] != nil {
+                if !seen.insert(key).inserted {
+                    deletions.append(row)
+                }
+            } else if companyVariantIds.contains(row.variantId) {
+                deletions.append(row)
+            }
+        }
+        let insertions = Set(serverByKey.keys).subtracting(seen)
+
+        guard !deletions.isEmpty || !insertions.isEmpty else { return }
 
         try modelContext.transaction {
-            let companyVariantIds = Set(try modelContext.fetch(FetchDescriptor<CatalogVariant>())
-                .filter { $0.companyId == companyId }
-                .map(\.id))
-
-            let allLocal = try modelContext.fetch(FetchDescriptor<CatalogVariantOptionValue>())
-            for row in allLocal where companyVariantIds.contains(row.variantId) {
+            for row in deletions {
                 modelContext.delete(row)
             }
-
-            for dto in dtos {
+            for key in insertions {
+                guard let dto = serverByKey[key] else { continue }
                 let model = dto.toModel()
                 model.lastSyncedAt = Date()
                 modelContext.insert(model)
             }
         }
-        print("[DataActor] Merged \(dtos.count) variant option-value joins")
     }
 
     // MARK: - Sync: Catalog Item Tags
 
     private func syncCatalogItemTags(repos: InboundRepositories) async throws {
         let dtos = try await repos.catalog.fetchItemTagsForCompany()
+        try mergeCatalogItemTags(dtos: dtos, companyId: repos.companyId)
+        print("[DataActor] Merged \(dtos.count) catalog item-tag joins")
+    }
+
+    func mergeCatalogItemTags(dtos: [CatalogItemTagDTO], companyId: String) throws {
         let serverIds = Set(dtos.map(\.id))
-        let companyId = repos.companyId
+        var localById: [String: CatalogItemTag] = [:]
+        for row in try modelContext.fetch(FetchDescriptor<CatalogItemTag>()) {
+            localById[row.id] = row
+        }
+
+        var updates: [(row: CatalogItemTag, dto: CatalogItemTagDTO)] = []
+        var inserts: [CatalogItemTagDTO] = []
+        for dto in dtos {
+            guard let existing = localById[dto.id] else {
+                inserts.append(dto)
+                continue
+            }
+            if existing.catalogItemId != dto.catalogItemId || existing.tagId != dto.tagId {
+                updates.append((existing, dto))
+            }
+        }
+
+        let companyItemIds = Set(try modelContext.fetch(FetchDescriptor<CatalogItem>())
+            .filter { $0.companyId == companyId }
+            .map(\.id))
+        let deletions = localById.values.filter {
+            companyItemIds.contains($0.catalogItemId) && !serverIds.contains($0.id)
+        }
+
+        guard !updates.isEmpty || !inserts.isEmpty || !deletions.isEmpty else { return }
 
         try modelContext.transaction {
-            for dto in dtos {
-                let id = dto.id
-                let descriptor = FetchDescriptor<CatalogItemTag>(predicate: #Predicate { $0.id == id })
-                if let existing = try modelContext.fetch(descriptor).first {
-                    existing.catalogItemId = dto.catalogItemId
-                    existing.tagId = dto.tagId
-                    existing.lastSyncedAt = Date()
-                } else {
-                    let model = dto.toModel()
-                    model.lastSyncedAt = Date()
-                    modelContext.insert(model)
-                }
+            for (row, dto) in updates {
+                row.catalogItemId = dto.catalogItemId
+                row.tagId = dto.tagId
+                row.lastSyncedAt = Date()
             }
-
-            let companyItemIds = Set(try modelContext.fetch(FetchDescriptor<CatalogItem>())
-                .filter { $0.companyId == companyId }
-                .map(\.id))
-            let allLocal = try modelContext.fetch(FetchDescriptor<CatalogItemTag>())
-            for row in allLocal where companyItemIds.contains(row.catalogItemId) && !serverIds.contains(row.id) {
+            for dto in inserts {
+                let model = dto.toModel()
+                model.lastSyncedAt = Date()
+                modelContext.insert(model)
+            }
+            for row in deletions {
                 modelContext.delete(row)
             }
         }
-        print("[DataActor] Merged \(dtos.count) catalog item-tag joins")
     }
 
     // MARK: - Sync: Catalog Snapshots
@@ -2936,87 +3042,165 @@ actor DataActor {
 
     private func syncProductMaterials(repos: InboundRepositories) async throws {
         let dtos = try await repos.productRichness.fetchMaterialsForCompany()
+        try mergeProductMaterials(dtos: dtos, companyId: repos.companyId)
+        print("[DataActor] Merged \(dtos.count) product materials")
+    }
+
+    func mergeProductMaterials(dtos: [ProductMaterialDTO], companyId: String) throws {
         let serverIds = Set(dtos.map(\.id))
-        let companyId = repos.companyId
+        var localById: [String: ProductMaterial] = [:]
+        for row in try modelContext.fetch(FetchDescriptor<ProductMaterial>()) {
+            localById[row.id] = row
+        }
+
+        var updates: [(row: ProductMaterial, dto: ProductMaterialDTO)] = []
+        var inserts: [ProductMaterialDTO] = []
+        for dto in dtos {
+            guard let existing = localById[dto.id] else {
+                inserts.append(dto)
+                continue
+            }
+            if existing.productId != dto.productId
+                || existing.catalogVariantId != dto.catalogVariantId
+                || existing.catalogItemId != dto.catalogItemId
+                || existing.variantSelectorJSON != dto.variantSelector?.rawJSONString
+                || existing.quantityPerUnit != dto.quantityPerUnit
+                || existing.scaledByOptionId != dto.scaledByOptionId
+                || existing.unitId != dto.unitId
+                || existing.notes != dto.notes
+                || existing.needsSync {
+                updates.append((existing, dto))
+            }
+        }
+
+        let companyProductIds = Set(try modelContext.fetch(FetchDescriptor<Product>())
+            .filter { $0.companyId == companyId }
+            .map(\.id))
+        let deletions = localById.values.filter {
+            companyProductIds.contains($0.productId) && !serverIds.contains($0.id)
+        }
+
+        guard !updates.isEmpty || !inserts.isEmpty || !deletions.isEmpty else { return }
 
         try modelContext.transaction {
-            for dto in dtos {
-                let id = dto.id
-                let descriptor = FetchDescriptor<ProductMaterial>(predicate: #Predicate { $0.id == id })
-                if let existing = try modelContext.fetch(descriptor).first {
-                    existing.productId = dto.productId
-                    existing.catalogVariantId = dto.catalogVariantId
-                    existing.catalogItemId = dto.catalogItemId
-                    existing.variantSelectorJSON = dto.variantSelector?.rawJSONString
-                    existing.quantityPerUnit = dto.quantityPerUnit
-                    existing.scaledByOptionId = dto.scaledByOptionId
-                    existing.unitId = dto.unitId
-                    existing.notes = dto.notes
-                    existing.lastSyncedAt = Date()
-                    existing.needsSync = false
-                } else {
-                    let model = dto.toModel()
-                    model.lastSyncedAt = Date()
-                    model.needsSync = false
-                    modelContext.insert(model)
-                }
+            for (row, dto) in updates {
+                row.productId = dto.productId
+                row.catalogVariantId = dto.catalogVariantId
+                row.catalogItemId = dto.catalogItemId
+                row.variantSelectorJSON = dto.variantSelector?.rawJSONString
+                row.quantityPerUnit = dto.quantityPerUnit
+                row.scaledByOptionId = dto.scaledByOptionId
+                row.unitId = dto.unitId
+                row.notes = dto.notes
+                row.lastSyncedAt = Date()
+                row.needsSync = false
             }
-
-            let companyProductIds = Set(try modelContext.fetch(FetchDescriptor<Product>())
-                .filter { $0.companyId == companyId }
-                .map(\.id))
-            let allLocal = try modelContext.fetch(FetchDescriptor<ProductMaterial>())
-            for row in allLocal where companyProductIds.contains(row.productId) && !serverIds.contains(row.id) {
+            for dto in inserts {
+                let model = dto.toModel()
+                model.lastSyncedAt = Date()
+                model.needsSync = false
+                modelContext.insert(model)
+            }
+            for row in deletions {
                 modelContext.delete(row)
             }
         }
-        print("[DataActor] Merged \(dtos.count) product materials")
     }
 
     // MARK: - Sync: Product Bundle Items
 
     private func syncProductBundleItems(repos: InboundRepositories) async throws {
         let dtos = try await repos.productBundleItem.fetchAll()
+        try mergeProductBundleItems(dtos: dtos, companyId: repos.companyId)
+        print("[DataActor] Merged \(dtos.count) product bundle items")
+    }
+
+    func mergeProductBundleItems(dtos: [ProductBundleItemDTO], companyId: String) throws {
         let serverIds = Set(dtos.map(\.id))
-        let companyId = repos.companyId
+        var localById: [String: ProductBundleItem] = [:]
+        for row in try modelContext.fetch(FetchDescriptor<ProductBundleItem>()) {
+            localById[row.id] = row
+        }
+
+        struct BundleItemUpdate {
+            let row: ProductBundleItem
+            let dto: ProductBundleItemDTO
+            let relationshipKind: ProductBundleRelationshipKind
+            let updatedAt: Date
+            let deletedAt: Date?
+        }
+
+        var updates: [BundleItemUpdate] = []
+        var inserts: [ProductBundleItemDTO] = []
+        for dto in dtos {
+            guard let existing = localById[dto.id] else {
+                inserts.append(dto)
+                continue
+            }
+            // A row with pending local changes is never touched by inbound —
+            // a stale server read must not clobber an in-flight edit.
+            if existing.needsSync {
+                print("[DataActor] Skipping bundle item \(dto.id) — pending local op")
+                continue
+            }
+            let kind = dto.relationshipKind.flatMap { ProductBundleRelationshipKind(rawValue: $0) } ?? .required
+            let updatedAt = SupabaseDate.parse(dto.updatedAt) ?? existing.updatedAt
+            let deletedAt = dto.deletedAt.flatMap { SupabaseDate.parse($0) }
+            if existing.bundleProductId != dto.bundleProductId
+                || existing.childProductId != dto.childProductId
+                || existing.quantity != dto.quantity
+                || existing.relationshipKind != kind
+                || existing.suggestionReason != dto.suggestionReason
+                || existing.compatibilitySelectorJSON != dto.compatibilitySelector?.rawJSONString
+                || existing.displayOrder != dto.displayOrder
+                || existing.updatedAt != updatedAt
+                || existing.deletedAt != deletedAt {
+                updates.append(
+                    BundleItemUpdate(
+                        row: existing,
+                        dto: dto,
+                        relationshipKind: kind,
+                        updatedAt: updatedAt,
+                        deletedAt: deletedAt
+                    )
+                )
+            }
+        }
+
+        let companyProductIds = Set(try modelContext.fetch(FetchDescriptor<Product>())
+            .filter { $0.companyId == companyId }
+            .map(\.id))
+        let deletions = localById.values.filter {
+            companyProductIds.contains($0.bundleProductId) && !serverIds.contains($0.id)
+        }
+
+        guard !updates.isEmpty || !inserts.isEmpty || !deletions.isEmpty else { return }
 
         try modelContext.transaction {
-            for dto in dtos {
-                let id = dto.id
-                let descriptor = FetchDescriptor<ProductBundleItem>(predicate: #Predicate { $0.id == id })
-                if let existing = try modelContext.fetch(descriptor).first {
-                    if existing.needsSync {
-                        print("[DataActor] Skipping bundle item \(id) — pending local op")
-                        continue
-                    }
-                    existing.bundleProductId = dto.bundleProductId
-                    existing.childProductId = dto.childProductId
-                    existing.quantity = dto.quantity
-                    existing.relationshipKind = dto.relationshipKind.flatMap { ProductBundleRelationshipKind(rawValue: $0) } ?? .required
-                    existing.suggestionReason = dto.suggestionReason
-                    existing.compatibilitySelectorJSON = dto.compatibilitySelector?.rawJSONString
-                    existing.displayOrder = dto.displayOrder
-                    existing.updatedAt = SupabaseDate.parse(dto.updatedAt) ?? existing.updatedAt
-                    existing.deletedAt = dto.deletedAt.flatMap { SupabaseDate.parse($0) }
-                    existing.lastSyncedAt = Date()
-                    existing.needsSync = false
-                } else {
-                    let model = dto.toModel()
-                    model.lastSyncedAt = Date()
-                    model.needsSync = false
-                    modelContext.insert(model)
-                }
+            for update in updates {
+                let row = update.row
+                row.bundleProductId = update.dto.bundleProductId
+                row.childProductId = update.dto.childProductId
+                row.quantity = update.dto.quantity
+                row.relationshipKind = update.relationshipKind
+                row.suggestionReason = update.dto.suggestionReason
+                row.compatibilitySelectorJSON = update.dto.compatibilitySelector?.rawJSONString
+                row.displayOrder = update.dto.displayOrder
+                row.updatedAt = update.updatedAt
+                row.deletedAt = update.deletedAt
+                row.lastSyncedAt = Date()
+                row.needsSync = false
             }
-
-            let companyProductIds = Set(try modelContext.fetch(FetchDescriptor<Product>())
-                .filter { $0.companyId == companyId }
-                .map(\.id))
-            let allLocal = try modelContext.fetch(FetchDescriptor<ProductBundleItem>())
-            for row in allLocal where companyProductIds.contains(row.bundleProductId) && !serverIds.contains(row.id) {
+            for dto in inserts {
+                let model = dto.toModel()
+                model.lastSyncedAt = Date()
+                model.needsSync = false
+                modelContext.insert(model)
+            }
+            for row in deletions {
                 modelContext.delete(row)
             }
         }
-        print("[DataActor] Merged \(dtos.count) product bundle items")
     }
 
     // MARK: - Sync: Inventory Units (legacy)

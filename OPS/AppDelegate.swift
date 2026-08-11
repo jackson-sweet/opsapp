@@ -32,10 +32,16 @@ class AppDelegate: NSObject, UIApplicationDelegate, OSNotificationLifecycleListe
         ) { task in
             Task { @MainActor in
                 await CalendarMirrorService.shared.reconcileAll()
+                // Ride the same opportunistic wake for the time-to-leave
+                // alerts — today's ETAs shift with traffic.
+                await SiteVisitDepartureAlertScheduler.shared.refreshFromStore()
                 CalendarMirrorService.shared.scheduleNextRefresh()
                 task.setTaskCompleted(success: true)
             }
         }
+
+        // Departure alerts re-arm on foreground and on any booking change.
+        SiteVisitDepartureAlertScheduler.shared.start()
 
         // Install the global navigation-bar appearance so every native
         // `.navigationTitle` renders in the OPS screen-title voice (Cake Mono
@@ -153,6 +159,29 @@ class AppDelegate: NSObject, UIApplicationDelegate, OSNotificationLifecycleListe
                         "wasSeated": wasSeated,
                         "roleAssigned": roleAssigned
                     ]
+                )
+                return
+            }
+
+            // Site-visit prompts (server cron): heads-up opens the lead, START
+            // deep-links into capture via the StartSiteVisit relay. The cron
+            // writes deep_link_type; accept the plain type key too. Must
+            // precede the bare leadId short-circuit below, which would
+            // otherwise swallow both into a plain lead open.
+            let siteVisitLink = (additionalData?["deep_link_type"] as? String) ?? notificationType
+            if siteVisitLink == "site_visit_start", let leadId = leadId {
+                NotificationCenter.default.post(
+                    name: Notification.Name("StartSiteVisit"),
+                    object: nil,
+                    userInfo: ["leadId": leadId]
+                )
+                return
+            }
+            if siteVisitLink == "site_visit_heads_up", let leadId = leadId {
+                NotificationCenter.default.post(
+                    name: Notification.Name("OpenLeadDetails"),
+                    object: nil,
+                    userInfo: ["leadId": leadId]
                 )
                 return
             }

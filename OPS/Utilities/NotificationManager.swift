@@ -1229,6 +1229,20 @@ extension NotificationManager: UNUserNotificationCenterDelegate {
              "lead_created", "lead_updated", "lead_follow_up_due",
              "opportunity_created", "opportunity_updated", "opportunity_follow_up_due":
             routeToLeadOrJobBoard(leadId: leadId)
+        case "site_visit_start":
+            // Straight into capture via the leads tab's relay — the intent
+            // was chosen at the tap.
+            if let leadId = leadId, !leadId.isEmpty {
+                NotificationCenter.default.post(
+                    name: Notification.Name("StartSiteVisit"),
+                    object: nil,
+                    userInfo: ["leadId": leadId]
+                )
+            } else {
+                routeToLeadOrJobBoard(leadId: leadId)
+            }
+        case "site_visit_heads_up", "site_visit_reminder":
+            routeToLeadOrJobBoard(leadId: leadId)
         case "assignment", "update", "completion", "projectCompletion":
             if let projectId = projectId {
                 NotificationCenter.default.post(

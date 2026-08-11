@@ -360,6 +360,20 @@ struct LeadsTabView: View {
     /// untouched.
     @ViewBuilder
     private var surface: some View {
+        VStack(spacing: 0) {
+            // Visit-day START cards — pinned above whichever surface is live,
+            // so the morning's appointment leads the tab until it's started
+            // or dismissed. START goes straight into the ONE capture cover.
+            SiteVisitStartCardsHost(
+                currentUserId: dataController.currentUser?.id,
+                onStart: { activeSiteVisitLead = $0 }
+            )
+            surfaceBody
+        }
+    }
+
+    @ViewBuilder
+    private var surfaceBody: some View {
         if showsDaySheet {
             daySheetScroll
         } else {

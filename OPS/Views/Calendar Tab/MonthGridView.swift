@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import SwiftData
 
 struct IdentifiableDate: Identifiable {
     let id = UUID()
@@ -1547,8 +1548,25 @@ struct DayDetailsSheet: View {
         viewModel.userEvents(for: date)
     }
 
+    /// Booked site visits on this date — the calendar's third source.
+    private var dayBookedVisits: [SiteVisit] {
+        viewModel.bookedVisits(for: date)
+    }
+
     private var totalEventCount: Int {
-        scheduledTasks.count + dayUserEvents.count
+        scheduledTasks.count + dayUserEvents.count + dayBookedVisits.count
+    }
+
+    /// A booking is always lead-attached; the name is the card's identity.
+    private func visitLead(_ visit: SiteVisit) -> Opportunity? {
+        guard let context = dataController.modelContext,
+              let opportunityId = visit.opportunityId else { return nil }
+        let lower = opportunityId.lowercased()
+        var descriptor = FetchDescriptor<Opportunity>(
+            predicate: #Predicate { $0.id == lower }
+        )
+        descriptor.fetchLimit = 1
+        return try? context.fetch(descriptor).first
     }
 
     // Separate new and ongoing tasks (matching week view)
@@ -1580,7 +1598,7 @@ struct DayDetailsSheet: View {
                     .foregroundColor(OPSStyle.Colors.secondaryText)
                     .padding(.horizontal)
 
-                if scheduledTasks.isEmpty && dayUserEvents.isEmpty {
+                if scheduledTasks.isEmpty && dayUserEvents.isEmpty && dayBookedVisits.isEmpty {
                     VStack(spacing: OPSStyle.Layout.spacing2_5) {
                         Image(systemName: OPSStyle.Icons.calendar)
                             .font(.system(size: OPSStyle.Layout.IconSize.xxl))
@@ -1641,6 +1659,49 @@ struct DayDetailsSheet: View {
                                 )
                                 .wizardTarget("tap_task")
                                 .padding(.horizontal)
+                            }
+                        }
+                    }
+                }
+
+                // Booked site visits — appointments, not tasks. Month view is
+                // for scanning, so tap opens the lead (the full start /
+                // reschedule branch lives on the day canvas and lead surfaces).
+                if !dayBookedVisits.isEmpty {
+                    HStack(spacing: OPSStyle.Layout.spacing2) {
+                        Text("SITE VISITS")
+                            .font(OPSStyle.Typography.captionBold)
+                            .foregroundColor(OPSStyle.Colors.secondaryText)
+
+                        Rectangle()
+                            .fill(OPSStyle.Colors.tertiaryText.opacity(0.3))
+                            .frame(height: 1)
+
+                        Text("[\(dayBookedVisits.count)]")
+                            .font(OPSStyle.Typography.captionBold)
+                            .foregroundColor(OPSStyle.Colors.secondaryText)
+                    }
+                    .padding(.vertical, OPSStyle.Layout.spacing2)
+                    .padding(.horizontal, OPSStyle.Layout.spacing4)
+
+                    VStack(spacing: OPSStyle.Layout.spacing2) {
+                        ForEach(dayBookedVisits, id: \.id) { visit in
+                            if let scheduledAt = visit.scheduledAt {
+                                CalendarSiteVisitCard(
+                                    leadName: visitLead(visit)?.displayContactName ?? "Site visit",
+                                    address: visitLead(visit)?.address,
+                                    scheduledAt: scheduledAt,
+                                    durationMinutes: visit.durationMinutes,
+                                    isInProgress: visit.status == .inProgress,
+                                    onTap: {
+                                        guard let opportunityId = visit.opportunityId else { return }
+                                        NotificationCenter.default.post(
+                                            name: Notification.Name("OpenLeadDetails"),
+                                            object: nil,
+                                            userInfo: ["leadId": opportunityId]
+                                        )
+                                    }
+                                )
                             }
                         }
                     }

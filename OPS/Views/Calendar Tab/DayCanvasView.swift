@@ -247,6 +247,12 @@ struct DayPageView: View {
     /// (Bug f7c663c7).
     @State private var contextMenuRescheduleTask: ProjectTask?
 
+    // Booked site-visit branch (calendar third source). Visits are
+    // appointments, not tasks — START NOW routes to the leads tab's ONE
+    // capture cover via the StartSiteVisit relay, never a second cover here.
+    @State private var visitBranchVisit: SiteVisit? = nil
+    @State private var visitBookingRequest: BookSiteVisitRequest? = nil
+
     private var tasksForDate: [ProjectTask] {
         viewModel.scheduledTasks(for: date)
     }
@@ -259,6 +265,65 @@ struct DayPageView: View {
 
     private var userEventsForDate: [CalendarUserEvent] {
         viewModel.userEvents(for: date)
+    }
+
+    private var bookedVisitsForDate: [SiteVisit] {
+        viewModel.bookedVisits(for: date)
+    }
+
+    // MARK: - Site-visit branch actions
+
+    /// Resolve the visit's lead. A booking is always lead-attached; a missing
+    /// local lead row means sync hasn't delivered it yet.
+    private func lead(for visit: SiteVisit) -> Opportunity? {
+        guard let context = dataController.modelContext,
+              let opportunityId = visit.opportunityId else { return nil }
+        let lower = opportunityId.lowercased()
+        var descriptor = FetchDescriptor<Opportunity>(
+            predicate: #Predicate { $0.id == lower }
+        )
+        descriptor.fetchLimit = 1
+        return try? context.fetch(descriptor).first
+    }
+
+    private func startVisitFromCalendar(_ visit: SiteVisit) {
+        guard let lead = lead(for: visit) else { return }
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        // The leads tab owns the ONE capture presentation — relay to it.
+        NotificationCenter.default.post(
+            name: Notification.Name("StartSiteVisit"),
+            object: nil,
+            userInfo: ["leadId": lead.id]
+        )
+    }
+
+    private func presentReschedule(_ visit: SiteVisit, snapshot: BookSiteVisitForm.BookingSnapshot) {
+        guard let lead = lead(for: visit) else { return }
+        visitBookingRequest = BookSiteVisitRequest(lead: lead, existing: snapshot)
+    }
+
+    private func openLeadFromCalendar(_ visit: SiteVisit) {
+        guard let opportunityId = visit.opportunityId else { return }
+        NotificationCenter.default.post(
+            name: Notification.Name("OpenLeadDetails"),
+            object: nil,
+            userInfo: ["leadId": opportunityId]
+        )
+    }
+
+    /// One booked visit on the day list.
+    @ViewBuilder
+    private func siteVisitRow(_ visit: SiteVisit) -> some View {
+        if let scheduledAt = visit.scheduledAt {
+            CalendarSiteVisitCard(
+                leadName: lead(for: visit)?.displayContactName ?? "Site visit",
+                address: lead(for: visit)?.address,
+                scheduledAt: scheduledAt,
+                durationMinutes: visit.durationMinutes,
+                isInProgress: visit.status == .inProgress,
+                onTap: { visitBranchVisit = visit }
+            )
+        }
     }
 
     /// Pull-to-refresh action for the day list. `viewModel.refreshCalendar()`
@@ -351,6 +416,13 @@ struct DayPageView: View {
                                     taskRow(task: task, isOngoing: entry.isOngoing, isFirst: index == 0)
                                         .id(entry.id)
                                 }
+                            }
+
+                            // Booked site visits — the third source.
+                            // Appointments, not tasks: no drag-reschedule,
+                            // no cascade, no unscheduled tray.
+                            ForEach(bookedVisitsForDate, id: \.id) { visit in
+                                siteVisitRow(visit)
                             }
 
                             // User events (personal + time off)
@@ -487,6 +559,39 @@ struct DayPageView: View {
                 scope: target.scope
             )
             .environmentObject(dataController)
+        }
+        .sheet(item: $visitBookingRequest) { request in
+            BookSiteVisitSheet(request: request)
+                .environmentObject(dataController)
+        }
+        .confirmationDialog(
+            "SITE VISIT",
+            isPresented: Binding(
+                get: { visitBranchVisit != nil },
+                set: { if !$0 { visitBranchVisit = nil } }
+            ),
+            titleVisibility: .visible,
+            presenting: visitBranchVisit
+        ) { visit in
+            if visit.status == .scheduled,
+               let scheduledAt = visit.scheduledAt,
+               Calendar.current.isDateInToday(scheduledAt) {
+                Button("START NOW") { startVisitFromCalendar(visit) }
+            }
+            if visit.status == .scheduled, let snapshot = SiteVisitBookingLookup.snapshot(of: visit) {
+                Button("RESCHEDULE — \(SiteVisitBookingLookup.bookedToken(for: snapshot.scheduledAt))") {
+                    presentReschedule(visit, snapshot: snapshot)
+                }
+            }
+            Button("OPEN LEAD") { openLeadFromCalendar(visit) }
+            Button("CANCEL", role: .cancel) {}
+        }
+        .onReceive(
+            NotificationCenter.default.publisher(
+                for: Notification.Name("SiteVisitBookingChanged")
+            )
+        ) { _ in
+            viewModel.loadBookedVisits()
         }
         .sheet(isPresented: $showingCascadePreview) {
             if let plan = pendingPlan, let task = pendingTask {

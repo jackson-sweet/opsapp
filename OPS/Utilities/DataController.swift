@@ -2442,12 +2442,20 @@ class DataController: ObservableObject {
     
     // MARK: - All Tasks
 
-    /// Get all non-deleted tasks in the local store
+    /// Get all non-deleted tasks in the local store.
+    ///
+    /// The soft-delete gate is a `#Predicate`, not an in-memory filter: this is
+    /// a whole-table fetch on the main context called from badge-count and
+    /// review paths, and materializing every tombstoned row only to drop it is
+    /// cost paid on the main thread per call. Same rows out either way.
     func getAllTasks() -> [ProjectTask] {
         guard let context = modelContext else { return [] }
         do {
-            let allTasks = try context.fetch(FetchDescriptor<ProjectTask>())
-            return allTasks.filter { $0.deletedAt == nil }
+            return try context.fetch(
+                FetchDescriptor<ProjectTask>(
+                    predicate: #Predicate<ProjectTask> { $0.deletedAt == nil }
+                )
+            )
         } catch {
             print("[DataController] Failed to fetch all tasks: \(error)")
             return []

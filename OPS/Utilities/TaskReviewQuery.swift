@@ -23,6 +23,14 @@
 //  Centralizing the predicates here guarantees the count the user is promised
 //  is identical to the stack they open.
 //
+//  Every queue comes in two shapes: one that fetches the task table itself, and
+//  one that takes an already-fetched `tasks:` array. The fetching shape is a
+//  one-line delegate onto the array shape, so scoping cannot diverge between
+//  them. The array shape serves callers that need several queues at once — the
+//  FAB badge derived five counts from four entry points, each re-fetching the
+//  whole task table on the main thread on every sync completion and every
+//  schedule mutation, from every tab. One fetch now feeds them all.
+//
 
 import Foundation
 
@@ -33,11 +41,19 @@ enum TaskReviewQuery {
     /// assigned to. This is the scope every review surface — and now every
     /// review COUNT — shares.
     static func scopedTasks(dataController: DataController) -> [ProjectTask] {
+        scopedTasks(tasks: dataController.getAllTasks(), dataController: dataController)
+    }
+
+    /// `scopedTasks(dataController:)` over an already-fetched task list.
+    static func scopedTasks(
+        tasks: [ProjectTask],
+        dataController: DataController
+    ) -> [ProjectTask] {
         if PermissionStore.shared.hasFullAccess("tasks.view") {
-            return dataController.getAllTasks()
+            return tasks
         }
         if let userId = dataController.currentUser?.id {
-            return dataController.getAllTasks().filter { task in
+            return tasks.filter { task in
                 task.getTeamMemberIds().contains(userId)
             }
         }
@@ -49,7 +65,14 @@ enum TaskReviewQuery {
     /// the task or its project. A view-only grant must never produce an
     /// actionable review card.
     static func editableTasks(dataController: DataController) -> [ProjectTask] {
-        let allTasks = dataController.getAllTasks()
+        editableTasks(tasks: dataController.getAllTasks(), dataController: dataController)
+    }
+
+    /// `editableTasks(dataController:)` over an already-fetched task list.
+    static func editableTasks(
+        tasks allTasks: [ProjectTask],
+        dataController: DataController
+    ) -> [ProjectTask] {
         switch PermissionStore.shared.scope(for: "tasks.edit") {
         case "all":
             return allTasks
@@ -73,11 +96,19 @@ enum TaskReviewQuery {
     /// scheduled completion (endDate, falling back to startDate) is before the
     /// end of today. Sorted oldest-first to match the review stack ordering.
     static func overdueReviewTasks(dataController: DataController) -> [ProjectTask] {
+        overdueReviewTasks(tasks: dataController.getAllTasks(), dataController: dataController)
+    }
+
+    /// `overdueReviewTasks(dataController:)` over an already-fetched task list.
+    static func overdueReviewTasks(
+        tasks: [ProjectTask],
+        dataController: DataController
+    ) -> [ProjectTask] {
         let calendar = Calendar.current
         let endOfToday = calendar.startOfDay(
             for: calendar.date(byAdding: .day, value: 1, to: Date()) ?? Date()
         )
-        return scopedTasks(dataController: dataController)
+        return scopedTasks(tasks: tasks, dataController: dataController)
             .filter { task in
                 guard task.status == .active, task.deletedAt == nil else { return false }
                 // Prefer scheduled completion (endDate), fall back to startDate.
@@ -99,6 +130,14 @@ enum TaskReviewQuery {
     /// hasn't synced locally (`?? false`) — is not schedulable work and must not
     /// be surfaced as a "loose end". Mirrors `isJobBoardTaskListVisible`.
     static func unscheduledReviewTasks(dataController: DataController) -> [ProjectTask] {
+        unscheduledReviewTasks(tasks: dataController.getAllTasks(), dataController: dataController)
+    }
+
+    /// `unscheduledReviewTasks(dataController:)` over an already-fetched task list.
+    static func unscheduledReviewTasks(
+        tasks: [ProjectTask],
+        dataController: DataController
+    ) -> [ProjectTask] {
         let policy = UnscheduledReviewAccessPolicy(
             currentUserID: dataController.currentUser?.id,
             taskEditScope: ReviewPermissionScope(
@@ -113,7 +152,7 @@ enum TaskReviewQuery {
             )
         )
 
-        return editableTasks(dataController: dataController)
+        return editableTasks(tasks: tasks, dataController: dataController)
             .filter { task in
                 let state = UnscheduledReviewTaskState(
                     taskTeamMemberIDs: task.getTeamMemberIds(),

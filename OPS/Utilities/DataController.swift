@@ -2684,17 +2684,47 @@ class DataController: ObservableObject {
     }
 
     /// Get all scheduled tasks from a given start date, filtered by current user access
+    ///
+    /// The dated gate, the from-date bound, and the soft-delete gate are all
+    /// `#Predicate`s on the fetch. This is a whole-table fetch feeding the
+    /// month grid, re-run on every inbound data change, and the permission
+    /// branch below faults `teamMembers` and `project` on each row that
+    /// survives — so every row excluded here is relationship-faulting work not
+    /// done on the main thread.
+    ///
+    /// BEHAVIOR CHANGE: tombstoned tasks no longer reach the month grid. The
+    /// in-memory filter this replaced never gated `deletedAt`, so a deleted
+    /// task kept drawing a badge until the next launch — while the same loop
+    /// in `MonthGridCache.loadEvents` was already dropping deleted USER events
+    /// beside it. Every sibling calendar fetcher (`getScheduledTasks(for:)`,
+    /// `getScheduledTasksForCompany`, `CalendarViewModel.rebuildWeekCache`)
+    /// gates soft-deletes; this one was the outlier.
     func getAllScheduledTasks(from startDate: Date) -> [ProjectTask] {
         guard let user = currentUser else { return [] }
         guard let context = modelContext else { return [] }
 
         do {
-            let allTasks = try context.fetch(FetchDescriptor<ProjectTask>())
+            // `?? .distantPast` only satisfies the optional comparison — the
+            // `!= nil` conjunct means it never decides a row.
+            let unscheduledFloor = Date.distantPast
+            let allTasks = try context.fetch(
+                FetchDescriptor<ProjectTask>(
+                    predicate: #Predicate<ProjectTask> { task in
+                        task.deletedAt == nil
+                            && task.startDate != nil
+                            && (task.startDate ?? unscheduledFloor) >= startDate
+                    }
+                )
+            )
 
+            // Residual cost, named honestly: the assignment branch below is
+            // still O(all live company tasks from the cutoff) on the main
+            // context, faulting `teamMembers`/`project` per row. It CANNOT
+            // follow the gates above into the `#Predicate` — assignment is a
+            // comma-joined string (`ProjectTask.teamMemberIdsString`, parsed by
+            // `getTeamMemberIds()`) OR'd with a to-many relationship
+            // traversal, neither expressible in a `#Predicate`. Schema work.
             let filteredTasks = allTasks.filter { task in
-                guard let taskStartDate = task.startDate else { return false }
-                if taskStartDate < startDate { return false }
-
                 if PermissionStore.shared.hasFullAccess("tasks.view") {
                     return task.companyId == user.companyId
                 } else {

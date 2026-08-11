@@ -40,6 +40,19 @@ class SiteVisit: Identifiable {
     /// The guarded completion RPC owns creation and idempotency of that row.
     var loggedActivityId: String?
 
+    /// Server-owned booking discriminator (`site_visits.booked_at`). Non-nil
+    /// means this visit is a real appointment and `scheduledAt` is meaningful.
+    /// Only the booking RPCs write it — the device converges, never authors.
+    var bookedAt: Date?
+
+    /// Per-booking heads-up override (`site_visits.reminder_lead_minutes`).
+    /// NULL = the assignee's default lead applies. Server-owned, like `bookedAt`.
+    var reminderLeadMinutes: Int?
+
+    /// Walk-up/legacy rows carry junk `scheduledAt` (defaulted to `createdAt`);
+    /// every scheduling surface must gate on this, never on `status` alone.
+    var isBookedAppointment: Bool { bookedAt != nil }
+
     init(
         id: String = UUID().uuidString.lowercased(),
         opportunityId: String? = nil,

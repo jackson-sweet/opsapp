@@ -161,6 +161,10 @@ actor DataActor {
     private var spotlightDirty: [String: Set<String>] = [:]
     private var spotlightDeleted: [String: Set<String>] = [:]
 
+    /// component_type raw values already reported as unknown. Keeps the skip
+    /// notice to one line per value per app run instead of one per sync pass.
+    private var unknownComponentTypesLogged: Set<String> = []
+
     /// Entity names merged during the current batch sync (delta or full).
     /// Flushed as ONE `.inboundDataMerged` post after linkAllRelationships so
     /// snapshot-cache consumers (calendar) rebuild exactly once per sync pass
@@ -2896,7 +2900,24 @@ actor DataActor {
     }
 
     func mergeCompanyDefaultProducts(dtos: [CompanyDefaultProductDTO], companyId: String) throws {
-        let serverKeys = Set(dtos.map { "\($0.companyId)::\($0.componentType)" })
+        // A component_type this build does not know cannot be stored: toModel()
+        // coerces the unknown raw value to .railing, so the row would never match
+        // its own server key. Left in, it inserts a duplicate railing row on every
+        // pass forever AND prunes the genuine railing row, because the server key
+        // set carries the raw string while local keys carry the parsed one. Drop
+        // such rows and key everything off the parsed value.
+        var resolved: [(dto: CompanyDefaultProductDTO, componentType: DesignComponentType)] = []
+        for dto in dtos {
+            guard let componentType = DesignComponentType(rawValue: dto.componentType) else {
+                if unknownComponentTypesLogged.insert(dto.componentType).inserted {
+                    print("[DataActor] Skipping company default product with unknown component_type '\(dto.componentType)'")
+                }
+                continue
+            }
+            resolved.append((dto, componentType))
+        }
+
+        let serverKeys = Set(resolved.map { "\($0.dto.companyId)::\($0.componentType.rawValue)" })
 
         // Composite key: (companyId, componentType) — the table has no id.
         let allLocal = try modelContext.fetch(FetchDescriptor<CompanyDefaultProduct>())
@@ -2907,13 +2928,13 @@ actor DataActor {
 
         var updates: [(row: CompanyDefaultProduct, dto: CompanyDefaultProductDTO)] = []
         var inserts: [CompanyDefaultProductDTO] = []
-        for dto in dtos {
-            guard let existing = localByKey["\(dto.companyId)::\(dto.componentType)"] else {
-                inserts.append(dto)
+        for item in resolved {
+            guard let existing = localByKey["\(item.dto.companyId)::\(item.componentType.rawValue)"] else {
+                inserts.append(item.dto)
                 continue
             }
-            if companyDefaultProductDiffers(existing, from: dto) {
-                updates.append((existing, dto))
+            if companyDefaultProductDiffers(existing, from: item.dto) {
+                updates.append((existing, item.dto))
             }
         }
 

@@ -1000,6 +1000,44 @@ final class CatalogMergeDiffGateTests: XCTestCase {
         XCTAssertEqual(try count(CompanyDefaultProduct.self, in: container), 1)
     }
 
+    /// A component_type this build cannot parse is coerced to `.railing` by
+    /// toModel(), so keying the server set by the raw string while keying local
+    /// rows by the parsed one made the row unmatchable: it inserted a duplicate
+    /// railing every pass and pruned the genuine railing at the same time.
+    func test_companyDefaultProducts_unknownComponentType_isSkippedAndStaysSilent() async throws {
+        let container = try makeContainer()
+        let actor = DataActor(modelContainer: container)
+        await actor.configure()
+
+        let dtos = [
+            defaultProductDTO(componentType: "railing", productId: "prod-1"),
+            defaultProductDTO(componentType: "holographic_canopy", productId: "prod-2")
+        ]
+
+        try await actor.mergeCompanyDefaultProducts(dtos: dtos, companyId: companyId)
+
+        let afterFirst = ModelContext(container)
+        let firstRows = try afterFirst.fetch(FetchDescriptor<CompanyDefaultProduct>())
+        XCTAssertEqual(firstRows.count, 1, "the unparseable row must not be stored at all")
+        XCTAssertEqual(firstRows.first?.componentType, .railing)
+        XCTAssertEqual(firstRows.first?.productId, "prod-1", "the genuine railing default must be the one kept")
+
+        let recorder = StoreWriteRecorder()
+        defer { recorder.stop() }
+
+        try await actor.mergeCompanyDefaultProducts(dtos: dtos, companyId: companyId)
+
+        XCTAssertEqual(
+            recorder.eventCount, 0,
+            "an unchanged pass carrying an unknown component_type must still be silent — observed \(recorder.describe())"
+        )
+
+        let context = ModelContext(container)
+        let rows = try context.fetch(FetchDescriptor<CompanyDefaultProduct>())
+        XCTAssertEqual(rows.count, 1, "the unknown type must not accumulate duplicate railing rows")
+        XCTAssertEqual(rows.first?.productId, "prod-1", "the genuine railing default must survive the prune")
+    }
+
     // MARK: - Products (ProductSyncLocalStore)
 
     func test_products_secondIdenticalPass_writesNothing() async throws {

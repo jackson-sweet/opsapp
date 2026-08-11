@@ -2358,11 +2358,18 @@ class DataController: ObservableObject {
     
     // MARK: - Project Fetching
     
-    /// Gets projects with flexible filtering options
+    /// Gets non-deleted projects with flexible filtering options
     /// - Parameters:
     ///   - date: Optional date to filter projects scheduled for that day
     ///   - user: Optional user to filter projects assigned to them (pass nil for Admin/Office to see all)
     /// - Returns: Filtered array of projects
+    ///
+    /// Tombstoned rows never leave here. Callers that need them fetch by id
+    /// (`getProject(id:)`, the trash restore path) or hold their own `@Query`
+    /// (`TrashView`) — this is the operational list, and a deleted job is not
+    /// operational. Every consumer already re-filtered `deletedAt == nil`
+    /// except the completed-work counters that gate the review stacks, which
+    /// were counting deleted jobs toward the unlock.
     func getProjects(for date: Date? = nil, assignedTo user: User? = nil) -> [Project] {
         guard let modelContext = modelContext else { return [] }
         
@@ -2373,8 +2380,13 @@ class DataController: ObservableObject {
                             UserDefaults.standard.string(forKey: "currentUserCompanyId")
             
             
-            // Get all projects (will sort in-memory since startDate is computed)
-            let descriptor = FetchDescriptor<Project>()
+            // Get all projects (will sort in-memory since startDate is computed).
+            // The soft-delete gate is a #Predicate, not an in-memory filter: this
+            // is a whole-table fetch on the main context and materializing every
+            // tombstoned row only to drop it is cost paid on the main thread.
+            let descriptor = FetchDescriptor<Project>(
+                predicate: #Predicate<Project> { $0.deletedAt == nil }
+            )
             let allProjects = try modelContext.fetch(descriptor)
             
             

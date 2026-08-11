@@ -282,6 +282,49 @@ final class TaskReviewQueryParityTests: XCTestCase {
         XCTAssertFalse(overdue.contains { $0.id == "t-deleted" })
     }
 
+    // MARK: - The project soft-delete predicate
+
+    func test_getProjectsNeverReturnsATombstonedProject() throws {
+        let fixture = try makeFixture()
+
+        let everyRow = try fixture.context.fetch(FetchDescriptor<Project>())
+        XCTAssertTrue(
+            everyRow.contains { $0.deletedAt != nil },
+            "Precondition: the store has to hold tombstoned projects for this to mean anything"
+        )
+
+        let fetched = fixture.dataController.getProjects()
+        XCTAssertFalse(fetched.isEmpty)
+        XCTAssertTrue(
+            fetched.allSatisfy { $0.deletedAt == nil },
+            "getProjects() is the operational list — a deleted job is not operational"
+        )
+        XCTAssertTrue(
+            Set(fetched.map(\.id)).isDisjoint(with: fixture.softDeletedProjectIDs),
+            "Tombstoned ids leaked into the operational list"
+        )
+    }
+
+    /// The review stacks unlock at five pieces of completed work. This is the
+    /// expression both gates read — `FloatingActionMenu.refreshReviewCounts()`
+    /// and `JobBoardView.completedProjectCount` — and before the fetch
+    /// predicate it counted deleted jobs toward the threshold.
+    func test_theReviewUnlockCountIgnoresDeletedJobs() throws {
+        let fixture = try makeFixture()
+
+        let completedOrClosed = fixture.dataController.getProjects()
+            .filter { $0.status == .completed || $0.status == .closed }
+
+        XCTAssertEqual(
+            Set(completedOrClosed.map(\.id)),
+            ["p-completed-old", "p-completed-recent", "p-closed"],
+            """
+            Deleting a job must lower the completed-work tally, not preserve it — \
+            the store also holds a deleted completed job and a deleted closed one.
+            """
+        )
+    }
+
     // MARK: - Parity assertions
 
     /// Every task queue, both shapes, same rows and same order. The `tasks:`
@@ -392,6 +435,7 @@ final class TaskReviewQueryParityTests: XCTestCase {
         /// Every task id in the store that carries no tombstone.
         let liveTaskIDs: [String]
         let softDeletedTaskIDs: [String]
+        let softDeletedProjectIDs: [String]
     }
 
     /// Two companies, seven projects across the status range, and thirteen tasks
@@ -427,6 +471,7 @@ final class TaskReviewQueryParityTests: XCTestCase {
             ("p-completed-recent", "Gate repair", .completed, alpha),
             ("p-completed-deleted", "Cancelled patio", .completed, alpha),
             ("p-closed", "Paid and filed", .closed, alpha),
+            ("p-closed-deleted", "Filed then binned", .closed, alpha),
             ("p-beta-active", "Other company's job", .inProgress, beta),
         ]
         var projectsByID: [String: Project] = [:]
@@ -443,6 +488,7 @@ final class TaskReviewQueryParityTests: XCTestCase {
         projectsByID["p-completed-recent"]?.completedAt = Date()
         projectsByID["p-completed-deleted"]?.completedAt = Date(timeIntervalSinceNow: -40 * day)
         projectsByID["p-completed-deleted"]?.deletedAt = Date(timeIntervalSinceNow: -day)
+        projectsByID["p-closed-deleted"]?.deletedAt = Date(timeIntervalSinceNow: -day)
 
         /// id, project, status, days-before-now the task is scheduled (nil =
         /// unscheduled), crew, tombstoned.
@@ -507,7 +553,10 @@ final class TaskReviewQueryParityTests: XCTestCase {
             dataController: dataController,
             operatorID: operatorID,
             liveTaskIDs: tasks.filter { !$0.5 }.map(\.0),
-            softDeletedTaskIDs: tasks.filter { $0.5 }.map(\.0)
+            softDeletedTaskIDs: tasks.filter { $0.5 }.map(\.0),
+            softDeletedProjectIDs: projectsByID.values
+                .filter { $0.deletedAt != nil }
+                .map(\.id)
         )
     }
 

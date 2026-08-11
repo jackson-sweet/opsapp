@@ -9,16 +9,24 @@
 //  `getAllTasks()` and ONE `getProjects()`, handed to `tasks:` / `projects:`
 //  overloads of the same queries.
 //
-//  These pin the only property that makes that swap safe: an overload returns
-//  the same rows in the same ORDER as the entry point it replaced — under every
-//  permission shape the scoping branches on, not just the one an admin sees.
-//  Parity over two empty arrays proves nothing, so each configuration also
-//  asserts the rows it is required to produce.
+//  Two different guarantees live here, and they are not interchangeable.
 //
-//  `getAllTasks()` itself moved from an in-memory `deletedAt == nil` filter to a
-//  `#Predicate` on the fetch. The last test pins that the predicate drops
-//  exactly the rows the filter dropped, in the same order, and that a tombstoned
-//  row which would otherwise qualify never reaches a badge count.
+//  The shape-vs-shape assertions — original entry point against `tasks:` /
+//  `projects:` overload, same rows in the same ORDER, under every permission
+//  shape the scoping branches on — prove the DELEGATE WIRING: that the two
+//  entry points cannot drift apart from here on. They say nothing about the
+//  pre-refactor code, since both shapes now run the same body.
+//
+//  What guards against behavior having changed underneath the refactor is the
+//  absolute row assertions: each permission configuration names the exact rows
+//  it is required to produce, derived from the queue rules rather than from
+//  either implementation. Those are the oracle. They also keep the parity
+//  assertions from passing over two empty arrays.
+//
+//  `getAllTasks()` moved from an in-memory `deletedAt == nil` filter to a
+//  `#Predicate` on the fetch — a real change of mechanism, so it is pinned
+//  against the old filter run verbatim over the same store, plus a case proving
+//  a tombstoned row that would otherwise qualify never reaches a badge count.
 //
 //  `PermissionStore.shared` is a process-wide singleton the queries read
 //  directly, so each test saves and restores it — the test host carries whatever

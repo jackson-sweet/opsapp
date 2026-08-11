@@ -45,6 +45,8 @@ enum TaskReviewQuery {
     }
 
     /// `scopedTasks(dataController:)` over an already-fetched task list.
+    /// Pass `getAllTasks()` output; the soft-delete gate lives there. Under
+    /// `tasks.view=all` this returns the array verbatim, tombstones included.
     static func scopedTasks(
         tasks: [ProjectTask],
         dataController: DataController
@@ -69,6 +71,8 @@ enum TaskReviewQuery {
     }
 
     /// `editableTasks(dataController:)` over an already-fetched task list.
+    /// Pass `getAllTasks()` output; the soft-delete gate lives there. Under
+    /// `tasks.edit=all` this returns the array verbatim, tombstones included.
     static func editableTasks(
         tasks allTasks: [ProjectTask],
         dataController: DataController

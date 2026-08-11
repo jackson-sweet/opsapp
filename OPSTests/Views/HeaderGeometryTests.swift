@@ -55,8 +55,11 @@ final class HeaderGeometryTests: XCTestCase {
                         }
                     }
                 )
-                .anchorPreference(key: BoundsKey.self, value: .bounds) {
-                    ["header": $0]
+                // transformAnchorPreference, NOT anchorPreference: setting the
+                // key on the header would REPLACE the control anchors bubbling
+                // up from inside its subtree (reduce only merges siblings).
+                .transformAnchorPreference(key: BoundsKey.self, value: .bounds) { value, anchor in
+                    value["header"] = anchor
                 }
 
                 Spacer(minLength: 0)

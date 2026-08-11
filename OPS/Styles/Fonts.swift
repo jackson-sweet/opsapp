@@ -38,14 +38,20 @@ extension Font {
     /// Drops to `screenTitleLong` (22pt) for long strings — prefer the
     /// `OPSStyle.Typography.screenTitle(for:)` helper which picks by length.
     public static var screenTitle: Font {
-        return Font.custom("CakeMono-Light", size: 28, relativeTo: .title)
+        return Font.custom("CakeMono-Light", size: screenTitleSize, relativeTo: .title)
     }
 
     /// Long-title variant of `screenTitle` — Cake Mono Light 22pt. Used when
     /// the title string exceeds 14 characters (MOBILE.md §2.1).
     public static var screenTitleLong: Font {
-        return Font.custom("CakeMono-Light", size: 22, relativeTo: .title2)
+        return Font.custom("CakeMono-Light", size: screenTitleLongSize, relativeTo: .title2)
     }
+
+    /// Nominal point sizes behind `screenTitle` / `screenTitleLong`. Exposed so
+    /// layout code can derive the width-compression floor (22/28) instead of
+    /// duplicating the values.
+    public static let screenTitleSize: CGFloat = 28
+    public static let screenTitleLongSize: CGFloat = 22
 
     /// Section heading — Cake Mono Light 18pt (settings subheads, admin section headers)
     public static var section: Font {

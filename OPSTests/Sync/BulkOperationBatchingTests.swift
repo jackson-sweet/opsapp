@@ -62,10 +62,10 @@ final class BulkOperationBatchingTests: XCTestCase {
             XCTAssertNotNil(payload["deleted_at"] as? String)
         }
 
-        XCTAssertLessThanOrEqual(
+        XCTAssertEqual(
             counter.count,
-            2,
-            "cascade delete must batch its ledger writes — observed \(counter.count) saves"
+            1,
+            "cascade delete must batch its ledger writes into one save — observed \(counter.count)"
         )
     }
 
@@ -142,10 +142,10 @@ final class BulkOperationBatchingTests: XCTestCase {
             XCTAssertEqual(recordedOrder[id], offset, "task \(id) must sync its new display order")
         }
 
-        XCTAssertLessThanOrEqual(
+        XCTAssertEqual(
             counter.count,
             1,
-            "reorder must batch its ledger writes — observed \(counter.count) saves"
+            "reorder must batch its ledger writes into one save — observed \(counter.count)"
         )
     }
 
@@ -232,15 +232,38 @@ final class BulkOperationBatchingTests: XCTestCase {
         return ModelContext(container)
     }
 
-    private func configuredController(context: ModelContext) -> DataController {
+    private func configuredController(
+        context: ModelContext,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) -> DataController {
         let controller = DataController()
         controller.setModelContext(context)
         controller.syncEngine.configure(
             modelContext: context,
             connectivity: controller.connectivity
         )
+
+        // Force connectivity to unusable so the push-spawn branch is dead in
+        // every test. DataController owns a real NWPathMonitor, so otherwise
+        // these flows kick off a live pushPending whose off-main save could
+        // land inside a later test's counting window. A full window of slow
+        // failures is what `shouldAttemptSync` gates on, and no health check
+        // can undo it inside a run this short.
+        for _ in 0..<connectivityFailureSamples {
+            controller.connectivity.recordRequestResult(duration: 30, success: false)
+        }
+        XCTAssertFalse(
+            controller.connectivity.shouldAttemptSync,
+            "Tests must never spawn a real push",
+            file: file,
+            line: line
+        )
         return controller
     }
+
+    /// Comfortably exceeds ConnectivityManager's rolling sample window.
+    private var connectivityFailureSamples: Int { 8 }
 
     @discardableResult
     private func makeProject(in context: ModelContext) -> Project {
@@ -294,8 +317,9 @@ final class BulkOperationBatchingTests: XCTestCase {
 
 /// Counts `ModelContext.didSave` notifications raised by one context. SwiftData
 /// posts the notification without identifying the context, so every save in the
-/// process counts — the budgets these tests assert are therefore upper bounds,
-/// never optimistic.
+/// process counts. Exact-count assertions are therefore only safe because
+/// `configuredController` kills the push-spawn branch — nothing else in these
+/// tests writes to the store.
 @MainActor
 private final class SaveCounter {
     private(set) var count = 0

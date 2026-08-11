@@ -956,6 +956,15 @@ final class SyncEngine {
         print("[SYNC_ENGINE] Persisted \(operations.count) staged operation(s) atomically")
     }
 
+    /// True when this engine writes through `context` — i.e. when the one
+    /// save inside `recordOperations` also commits pending edits made on
+    /// `context`. Callers that let the batch commit their own model changes
+    /// must confirm this, mirroring the `===` guard in
+    /// `stageOperationsForTransaction`.
+    func sharesModelContext(with context: ModelContext) -> Bool {
+        modelContext === context
+    }
+
     /// Enqueue many operations with a SINGLE context save and NO per-op push.
     /// Built for bulk applies (priority-queue / auto-schedule run) so N task
     /// writes don't trigger N saves + N pushes — the cause of the main-thread

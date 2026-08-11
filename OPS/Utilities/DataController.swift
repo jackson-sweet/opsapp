@@ -3371,7 +3371,12 @@ class DataController: ObservableObject {
             ))
         }
 
-        // The project's own delete rides in the same batch — one cascade, one commit.
+        // The project's own delete rides in the same batch — one cascade, one
+        // commit. Intra-batch ORDER is not guaranteed: recordOperations stamps a
+        // fresh Date() per op rather than the strictly-increasing createdAt that
+        // stageOperationsForTransaction assigns. These tombstones are independent
+        // row updates, so any drain order is correct; an order-sensitive flow
+        // must use stageOperationsForTransaction instead.
         specs.append(.init(
             entityType: .project,
             entityId: project.id,
@@ -3386,13 +3391,23 @@ class DataController: ObservableObject {
             }
         }
 
+        // INVARIANT: the batch's single save is what commits the tombstones set
+        // above — true only while the sync engine writes through THIS context.
+        // Mirrors the `===` guard in stageOperationsForTransaction; release
+        // builds fall back to a local save rather than drop the soft-delete.
+        let engineSharesContext = syncEngine.sharesModelContext(with: modelContext)
+        assert(engineSharesContext, "SyncEngine must write through DataController's context")
+
         // ONE save commits the tombstones AND every queue record. Recording per
         // task cost a main-thread save and a push per task, so deleting an
         // N-task project stalled the UI for N+1 saves and opened N pushes.
-        if syncEngine.recordOperations(specs) < specs.count {
-            // The batch never landed (sync engine unconfigured, or its save
-            // failed). The local soft-delete still has to persist, and still
-            // throws the way this method always has when persistence fails.
+        let recorded = syncEngine.recordOperations(specs)
+        if !engineSharesContext || recorded < specs.count {
+            // Covers all three ways the batch can fall short: the engine saved a
+            // different context, or it enqueued nothing (unavailable context /
+            // failed save), or a single spec failed to encode — that last case
+            // already committed the rest, making this save a harmless no-op.
+            // Still throws the way this method always has when persistence fails.
             try modelContext.save()
         }
         print("[DELETE_PROJECT] ✅ Project '\(projectTitle)' soft deleted locally")
@@ -4815,7 +4830,7 @@ class DataController: ObservableObject {
         print("[TASK_INDEX] ✅ Updated \(allTasks.count) task indices")
 
         // Record task index updates for async sync (use display_order — the actual Supabase column)
-        print("[TASK_INDEX] 🔄 Recording \(tasksToSync.count) task index updates for sync...")
+        print("[TASK_INDEX] 🔄 Queuing \(tasksToSync.count) task index updates for sync...")
         var specs: [SyncEngine.BulkOperationSpec] = []
         for (task, index) in tasksToSync {
             specs.append(.init(
@@ -4824,17 +4839,34 @@ class DataController: ObservableObject {
                 operationType: "update",
                 changedFields: ["display_order": index]
             ))
-            print("[TASK_INDEX]   ✅ Recorded displayOrder=\(index) for task '\(task.displayTitle)'")
+            print("[TASK_INDEX]   • Queued displayOrder=\(index) for task '\(task.displayTitle)'")
         }
+
+        // INVARIANT: the batch's single save is what commits the new indices set
+        // above — true only while the sync engine writes through THIS context.
+        // Mirrors the `===` guard in stageOperationsForTransaction; release
+        // builds fall back to a local save rather than drop the reorder.
+        let engineSharesContext = modelContext.map { syncEngine.sharesModelContext(with: $0) } ?? false
+        assert(
+            modelContext == nil || engineSharesContext,
+            "SyncEngine must write through DataController's context"
+        )
 
         // ONE save commits the new indices AND their queue records. Recording
         // per task cost a main-thread save each, and every schedule commit lands
         // here — the per-op loop was the reorder half of the scheduling stall.
-        if syncEngine.recordOperations(specs) < specs.count {
-            // The batch never landed; the new indices still have to persist.
+        let recorded = syncEngine.recordOperations(specs)
+        if !engineSharesContext || recorded < specs.count {
+            // The engine saved a different context, enqueued nothing, or dropped
+            // a spec that failed to encode — persist the indices locally either
+            // way. Harmless no-op when the engine's save already covered them.
             try modelContext?.save()
         }
-        print("[TASK_INDEX] ✅ Task index updates recorded for sync")
+        if recorded == specs.count {
+            print("[TASK_INDEX] ✅ \(recorded) task index update(s) recorded for sync")
+        } else {
+            print("[TASK_INDEX] ⚠️ Recorded \(recorded)/\(specs.count) index updates — indices saved locally")
+        }
 
         // ONE push for the whole reorder, honoring the caller's defer contract.
         if !deferPush, connectivity?.shouldAttemptSync == true {

@@ -157,16 +157,19 @@ final class ProjectLeadRowTests: XCTestCase {
     }
 
     /// Address equality is normalized the same way the create-address
-    /// fingerprint is — casing and punctuation must not split a match.
+    /// fingerprint is — casing and punctuation must not split a match. Under
+    /// the advisory rule the normalized match RANKS first rather than filtering
+    /// the rest; listing it second in source order proves the promotion is the
+    /// normalizer's work, not stable-order luck.
     func testAddressMatchIsNormalized() {
         let candidates = ProjectLeadRow.matchableLeads(
             project: project,
             leads: [
-                lead(id: "same", clientId: nil, address: "3998 holland ave, victoria bc"),
                 lead(id: "different", clientId: nil, address: "4000 Holland Ave, Victoria BC"),
+                lead(id: "same", clientId: nil, address: "3998 holland ave, victoria bc"),
             ]
         )
-        XCTAssertEqual(candidates.map(\.id), ["same"])
+        XCTAssertEqual(candidates.map(\.id), ["same", "different"])
     }
 
     /// Address is a suggestion, never a manual-link gate.

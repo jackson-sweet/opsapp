@@ -229,8 +229,9 @@ struct CustomTabBar: View {
 /// and `PeekSnapBehavior`'s snap — behave exactly as before. Only the moment
 /// of acknowledgment moves earlier.
 ///
-/// Zero-size, non-interactive, and idempotent; harmless when the lane is
-/// hosted without an enclosing scroll view (previews, tests).
+/// Sized by the lane background it rides on but non-interactive at both
+/// layers, and idempotent; harmless when the lane is hosted without an
+/// enclosing scroll view (previews, tests).
 private struct ImmediateTouchDown: UIViewRepresentable {
     func makeUIView(context: Context) -> UIView { TouchDelayRelease() }
 

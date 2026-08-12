@@ -92,9 +92,9 @@ final class TabBarHitTargetTests: XCTestCase {
         if count != NSNotFound, count > 0 {
             for index in 0..<count {
                 guard let element = view.accessibilityElement(at: index) as? NSObject,
-                      let label = element.accessibilityLabel,
-                      let frame = element.value(forKey: "accessibilityFrame") as? CGRect
+                      let label = element.accessibilityLabel
                 else { continue }
+                let frame = element.accessibilityFrame
                 found[label] = frame
             }
         }

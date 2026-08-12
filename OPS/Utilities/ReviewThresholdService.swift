@@ -8,17 +8,24 @@
 //  the matching unread notifications are marked as read so the rail clears
 //  automatically without user action.
 //
-//  The threshold mirrors the FAB review-queue lock: 5 items. Below 5, the
-//  review is manageable; at 5+, it's worth calling out.
+//  Below 5 outstanding items a stack is manageable and stays silent; at 5+ it
+//  is worth interrupting the operator for.
+//
+//  This value happens to equal the FAB review-queue UNLOCK gate
+//  (`ReviewUnlockThresholds`), but the two are deliberately separate knobs
+//  answering different questions — "should I be told about this backlog?" here
+//  versus "have I done enough work to open this feature?" there. Their
+//  coincidence today is a design choice, not a dependency: retuning rail
+//  loudness must never move the unlock gate, or vice versa.
 //
 
 import Foundation
 
 enum ReviewThresholdService {
 
-    /// Stacks below this count are considered manageable and do not surface
-    /// a rail notification. Matches the FAB lock threshold in
-    /// FloatingActionMenu.refreshReviewCounts().
+    /// Stacks below this count are considered manageable and do not surface a
+    /// rail notification. Independent of `ReviewUnlockThresholds` — same number
+    /// today, different question (see the file header).
     static let threshold: Int = 5
 
     /// Notification types written into the `notifications` table. These are

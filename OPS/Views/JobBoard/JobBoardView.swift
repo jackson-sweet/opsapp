@@ -55,9 +55,10 @@ struct JobBoardView: View {
     @State private var unscheduledTasks: [ProjectTask] = []
     @State private var unscheduledTaskCount: Int = 0
 
-    // Review unlock thresholds
-    private static let paymentReviewThreshold = 5
-    private static let taskReviewThreshold = 5
+    // Review unlock thresholds. Shared with the FAB review menu — see
+    // ReviewUnlockThresholds for why the value lives outside both views.
+    private static let paymentReviewThreshold = ReviewUnlockThresholds.paymentReview
+    private static let taskReviewThreshold = ReviewUnlockThresholds.taskReview
 
     // First-open dialogue keys
     @State private var showPaymentReviewIntro: Bool = false

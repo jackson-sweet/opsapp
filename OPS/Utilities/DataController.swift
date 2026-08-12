@@ -2830,51 +2830,6 @@ class DataController: ObservableObject {
         }
     }
     
-    
-    
-    @MainActor
-    func getProjectsForToday(user: User? = nil) async throws -> [Project] {
-        let today = Calendar.current.startOfDay(for: Date())
-        let _ = Calendar.current.date(byAdding: .day, value: 1, to: today)!
-        
-        // Use the user ID if provided, otherwise use current user
-        let userId = user?.id ?? currentUser?.id
-        
-        guard let userId = userId else {
-            throw NSError(domain: "DataController", code: 3,
-                         userInfo: [NSLocalizedDescriptionKey: "No current user"])
-        }
-        
-        // First check local data
-        let localProjects = getProjects(for: today, assignedTo: user ?? currentUser)
-        
-        // If we're offline or have recent data, use local data
-        if !isConnected || (lastSyncTime != nil &&
-            Date().timeIntervalSince(lastSyncTime!) < AppConfiguration.Sync.minimumSyncInterval) {
-            
-            // Ensure team member relationships are synchronized for each project
-            for project in localProjects {
-                await syncProjectTeamMembers(project)
-            }
-            
-            return localProjects
-        }
-        
-        // Trigger a sync to get fresh data, then use local SwiftData
-        await syncEngine.triggerSync()
-
-        // Re-fetch from local after sync
-        let refreshedProjects = getProjects(for: today, assignedTo: user ?? currentUser)
-
-        // Sync team member relationships for each project
-        for project in refreshedProjects {
-            await syncProjectTeamMembers(project)
-        }
-
-        return refreshedProjects
-    }
-    
-    
     func getProjectsForMap() throws -> [Project] {
         guard let context = modelContext else {
             throw NSError(domain: "DataController", code: 2,

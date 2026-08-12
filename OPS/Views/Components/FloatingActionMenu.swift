@@ -542,8 +542,10 @@ struct FloatingActionMenu: View {
         // Use cached review counts (refreshed on appear / data change, not every render)
         let completedTaskCount = cachedCompletedTaskCount
         let completedProjectCount = cachedCompletedProjectCount
-        let taskReviewThreshold = 5
-        let paymentReviewThreshold = 5
+        // Rendered into the locked copy below; the verdict itself was computed
+        // against the same constants in refreshReviewCounts().
+        let taskReviewThreshold = ReviewUnlockThresholds.taskReview
+        let paymentReviewThreshold = ReviewUnlockThresholds.paymentReview
         let isTaskReviewLocked = cachedIsTaskReviewLocked
         let isPaymentReviewLocked = cachedIsPaymentReviewLocked
 
@@ -960,8 +962,8 @@ struct FloatingActionMenu: View {
     }
 
     private func refreshReviewCounts() {
-        let taskReviewThreshold = 5
-        let paymentReviewThreshold = 5
+        let taskReviewThreshold = ReviewUnlockThresholds.taskReview
+        let paymentReviewThreshold = ReviewUnlockThresholds.paymentReview
 
         // One pass over each table for all five cached values. Every count below
         // derives from these two arrays — the review queries take them as input

@@ -438,7 +438,7 @@ final class TaskReviewQueryParityTests: XCTestCase {
         let softDeletedProjectIDs: [String]
     }
 
-    /// Two companies, seven projects across the status range, and thirteen tasks
+    /// Two companies, nine projects across the status range, and thirteen tasks
     /// covering every branch the queues read: deleted, completed, active, dated,
     /// undated, crewed, crewless, on an active project and on an inactive one —
     /// plus a pair sharing an endDate, so a tie in the overdue sort is exercised

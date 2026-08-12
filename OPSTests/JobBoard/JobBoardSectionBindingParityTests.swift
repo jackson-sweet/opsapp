@@ -226,10 +226,19 @@ final class JobBoardSectionBindingParityTests: XCTestCase {
     func test_duplicateTaskRowsAreStillDedupedIntoTheVisibleSet() throws {
         let fixture = try makeFixture()
 
+        // The real sync-anomaly shape the guard exists for: one task row
+        // reachable through TWO projects' task arrays. Without the dedup,
+        // visibleTasks(from:) yields the row once per parent.
+        let duplicated = try XCTUnwrap(
+            fixture.projectsByID["p-a"]?.tasks.first { $0.id == "t-a1" }
+        )
+        fixture.projectsByID["p-b"]?.tasks.append(duplicated)
+
+        let visible = JobBoardTaskFiltering.visibleTasks(from: fixture.projects)
         XCTAssertEqual(
-            fixture.visibleTasks.filter { $0.id == "t-a1" }.count,
+            visible.filter { $0.id == "t-a1" }.count,
             1,
-            "The dedup guard survives the DEBUG-gating of its log line"
+            "A task reachable through two parents must surface exactly once"
         )
     }
 

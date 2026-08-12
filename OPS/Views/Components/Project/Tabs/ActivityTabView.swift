@@ -25,7 +25,10 @@ struct ActivityTabView: View {
     @Environment(\.tutorialMode) private var tutorialMode
     @Environment(\.modelContext) private var modelContext
     @EnvironmentObject private var dataController: DataController
-    @FocusState private var isTextFieldFocused: Bool
+    /// UIKit owns the actual first-responder lifecycle. This state observes it
+    /// and can request focus, but is deliberately not a SwiftUI FocusState:
+    /// there is no `.focused` SwiftUI control in this custom UITextView bridge.
+    @State private var isTextFieldFocused = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {

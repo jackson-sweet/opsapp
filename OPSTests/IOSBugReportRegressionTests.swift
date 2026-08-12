@@ -172,7 +172,7 @@ final class IOSBugReportRegressionTests: XCTestCase {
     }
 
     @MainActor
-    func testGlobalKeyboardDoneAccessoryLeavesTokenizedSpaceBelowAction() throws {
+    func testGlobalKeyboardDoneAccessoryKeepsCompactBandAndSpaceBelowLabel() throws {
         let textField = UITextField()
         let accessory = OPSKeyboardDoneAccessoryView(editingResponder: textField)
         accessory.frame = CGRect(
@@ -197,22 +197,26 @@ final class IOSBugReportRegressionTests: XCTestCase {
             accessory.doneButton.bounds,
             to: accessory
         )
-        let bottomSeparation = accessory.bounds.maxY - doneFrame.maxY
+        let labelFrame = accessory.doneLabel.convert(
+            accessory.doneLabel.bounds,
+            to: accessory
+        )
+        let labelToKeyboardSeparation = accessory.bounds.maxY - labelFrame.maxY
 
         XCTAssertEqual(
             OPSStyle.Layout.keyboardAccessoryHeight,
-            OPSStyle.Layout.touchTargetMin + OPSStyle.Layout.spacing2
+            OPSStyle.Layout.touchTargetMin
         )
         XCTAssertEqual(
             accessory.intrinsicContentSize.height,
             OPSStyle.Layout.keyboardAccessoryHeight
         )
-        XCTAssertGreaterThan(
-            accessory.intrinsicContentSize.height,
-            OPSStyle.Layout.touchTargetMin
-        )
         XCTAssertGreaterThanOrEqual(doneFrame.height, OPSStyle.Layout.touchTargetMin)
-        XCTAssertGreaterThan(bottomSeparation, .zero)
+        XCTAssertLessThan(labelFrame.height, doneFrame.height)
+        XCTAssertGreaterThanOrEqual(
+            labelToKeyboardSeparation,
+            OPSStyle.Layout.spacing2
+        )
         XCTAssertEqual(accessory.doneButton.accessibilityIdentifier, "ops.keyboard.done")
         XCTAssertTrue(accessory.doneButton.isUserInteractionEnabled)
     }

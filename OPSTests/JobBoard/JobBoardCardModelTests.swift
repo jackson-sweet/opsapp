@@ -164,7 +164,7 @@ final class JobBoardCardModelTests: XCTestCase {
             if let start = task.startDate {
                 XCTAssertEqual(model.dateText, DateHelper.simpleDateString(from: start), task.id)
             } else {
-                XCTAssertEqual(model.dateText, "-", "Empty state is an em dash placeholder, never N/A")
+                XCTAssertEqual(model.dateText, "—", "Empty state is an em dash placeholder, never N/A")
             }
         }
     }

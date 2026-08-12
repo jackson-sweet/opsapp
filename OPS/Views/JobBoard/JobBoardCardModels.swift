@@ -33,9 +33,11 @@ enum JobBoardCardText {
         return address.formatAsSimpleAddress()
     }
 
-    /// The metadata row's date cell. `-` is the empty state, per DESIGN.md.
+    /// The metadata row's date cell. `—` is the empty state, per DESIGN.md's
+    /// Numbers rule (the old card rendered `-`; centralizing the cell here is
+    /// what made the spec-compliance fix a one-token change).
     static func dateText(_ date: Date?) -> String {
-        guard let date else { return "-" }
+        guard let date else { return "—" }
         return DateHelper.simpleDateString(from: date)
     }
 

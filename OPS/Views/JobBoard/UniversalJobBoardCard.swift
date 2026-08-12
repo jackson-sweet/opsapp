@@ -28,29 +28,25 @@ struct UniversalJobBoardCard: View {
     @Environment(\.tutorialPhase) private var tutorialPhase
     @State private var tutorialShimmerOffset: CGFloat = -200
     @State private var showingMoreActions = false
-    @State private var showingDetails = false
-    @State private var showingTaskForm = false
-    @State private var showingProjectForm = false
-    @State private var showingScheduler = false
-    @State private var showingStatusPicker = false
-    @State private var showingTeamPicker = false
-    @State private var showingTaskPicker = false
+    /// The one modal this card can have open. Was ten independent
+    /// `.sheet(isPresented:)` / `.sheet(item:)` modifiers stacked on every card
+    /// — each one a presentation the framework installs and tracks for every
+    /// visible row, all of them rebuilt on every render of a list that keeps 8+
+    /// rows alive. A card can only ever show one, so it holds one route.
+    @State private var activeSheet: CardSheetRoute?
     @State private var selectedTaskForScheduling: ProjectTask? = nil
     @State private var isLongPressing = false
     @State private var hasTriggeredLongPressHaptic = false
-    @State private var showingProjectDetails = false
     @State private var swipeOffset: CGFloat = 0
     @State private var isChangingStatus = false
     @State private var hasTriggeredHaptic = false
     @State private var confirmingStatus: Any? = nil
     @State private var confirmingDirection: CardSwipeDirection? = nil
     @State private var showingDeleteConfirmation = false
-    @State private var showingClientDeletionSheet = false
     @State private var showingWrongSwipeHint = false
     // Item 435cf11f — Share action on the project card's long-press menu.
-    // `.sheet(item:)` (not isPresented) avoids the blank-first-tap race where
-    // the activity sheet snapshots an empty items array.
-    @State private var shareSource: ProjectShareItemSource?
+    // The route carries the built item source (not a bool) so the activity
+    // sheet can never snapshot an empty items array on first tap.
     @State private var isPreparingShare = false
     private let menuLongPressDuration: Double = 0.55
     private let menuLongPressMaximumDistance: CGFloat = 12
@@ -72,6 +68,25 @@ struct UniversalJobBoardCard: View {
     }
 
     var body: some View {
+        cardBody
+            // One dialog, one sheet, one delete confirmation for all three card
+            // kinds — the card renders exactly one of them, so the presentation
+            // modifiers belong here rather than duplicated per kind.
+            .confirmationDialog("Actions", isPresented: $showingMoreActions, titleVisibility: .hidden) {
+                moreActionsContent
+            }
+            .sheet(item: $activeSheet) { route in
+                sheetContent(for: route)
+            }
+            .deleteConfirmation(
+                isPresented: $showingDeleteConfirmation,
+                itemName: deleteItemName,
+                onConfirm: deleteItem
+            )
+    }
+
+    @ViewBuilder
+    private var cardBody: some View {
         if case .client = cardType {
             clientCard
         } else if case .project = cardType {
@@ -80,6 +95,134 @@ struct UniversalJobBoardCard: View {
         } else {
             taskCard
                 .padding(.vertical, OPSStyle.Layout.spacing2)
+        }
+    }
+
+    // MARK: - Modal routing
+
+    /// Every modal a job-board card can raise, as one route.
+    private enum CardSheetRoute: Identifiable {
+        case details              // project / client / task detail
+        case parentProjectDetails // task card → its project
+        case taskForm
+        case projectForm
+        case scheduler
+        case taskPicker           // project reschedule with >1 schedulable task
+        case statusPicker
+        case teamPicker
+        case clientDeletion
+        case share(ProjectShareItemSource)
+
+        var id: String {
+            switch self {
+            case .details:              return "details"
+            case .parentProjectDetails: return "parentProjectDetails"
+            case .taskForm:             return "taskForm"
+            case .projectForm:          return "projectForm"
+            case .scheduler:            return "scheduler"
+            case .taskPicker:           return "taskPicker"
+            case .statusPicker:         return "statusPicker"
+            case .teamPicker:           return "teamPicker"
+            case .clientDeletion:       return "clientDeletion"
+            case .share:                return "share"
+            }
+        }
+    }
+
+    /// `Binding<Bool>` onto a single route, for sheets that dismiss themselves
+    /// through an `isPresented` binding (CalendarSchedulerSheet).
+    private func presented(_ route: CardSheetRoute) -> Binding<Bool> {
+        Binding(
+            get: { activeSheet?.id == route.id },
+            set: { isPresented in
+                if isPresented {
+                    activeSheet = route
+                } else if activeSheet?.id == route.id {
+                    activeSheet = nil
+                }
+            }
+        )
+    }
+
+    @ViewBuilder
+    private func sheetContent(for route: CardSheetRoute) -> some View {
+        switch route {
+        case .details:
+            detailsSheet
+                .interactiveDismissDisabled(true)
+
+        case .parentProjectDetails:
+            if case .task(let task) = cardType,
+               let project = JobBoardCardText.liveProject(of: task) {
+                NavigationView {
+                    ProjectDetailsView(project: project)
+                }
+                .interactiveDismissDisabled(true)
+                .wizardBannerIfAvailable(stateManager: wizardStateManager)
+                .wizardOverlayIfAvailable(stateManager: wizardStateManager)
+            }
+
+        case .taskForm:
+            switch cardType {
+            case .project(let project):
+                TaskFormSheet(mode: .create, preselectedProjectId: project.id) { _ in }
+            case .task(let task):
+                if let project = JobBoardCardText.liveProject(of: task) {
+                    TaskFormSheet(mode: .create, preselectedProjectId: project.id) { _ in }
+                } else {
+                    TaskFormSheet(mode: .create) { _ in }
+                }
+            case .client:
+                TaskFormSheet(mode: .create) { _ in }
+            }
+
+        case .projectForm:
+            if case .client(let client) = cardType {
+                ProjectFormSheet(mode: .create, preselectedClient: client) { _ in }
+                    .environmentObject(dataController)
+            } else {
+                ProjectFormSheet(mode: .create) { _ in }
+                    .environmentObject(dataController)
+            }
+
+        case .scheduler:
+            schedulerSheet
+
+        case .taskPicker:
+            taskPickerSheet
+
+        case .statusPicker:
+            switch cardType {
+            case .project(let project):
+                ProjectStatusChangeSheet(project: project)
+                    .environmentObject(dataController)
+            case .task(let task):
+                TaskStatusChangeSheet(task: task)
+                    .environmentObject(dataController)
+            case .client:
+                EmptyView()
+            }
+
+        case .teamPicker:
+            switch cardType {
+            case .project(let project):
+                ProjectTeamChangeSheet(project: project)
+                    .environmentObject(dataController)
+            case .task(let task):
+                TaskTeamChangeSheet(task: task)
+                    .environmentObject(dataController)
+            case .client:
+                EmptyView()
+            }
+
+        case .clientDeletion:
+            if case .client(let client) = cardType {
+                ClientDeletionSheet(client: client)
+                    .environmentObject(dataController)
+            }
+
+        case .share(let source):
+            ActivityView(items: [source])
         }
     }
 
@@ -106,7 +249,7 @@ struct UniversalJobBoardCard: View {
                 NotificationCenter.default.post(name: Notification.Name("TutorialSwipeGestureBlocked"), object: nil)
                 return
             }
-            showingDetails = true
+            activeSheet = .details
         }
         .onLongPressGesture(minimumDuration: menuLongPressDuration, maximumDistance: menuLongPressMaximumDistance) {
             // Block long press during projectListSwipe tutorial phase
@@ -129,28 +272,6 @@ struct UniversalJobBoardCard: View {
             } else {
                 isLongPressing = false
                 hasTriggeredLongPressHaptic = false
-            }
-        }
-        .confirmationDialog("Actions", isPresented: $showingMoreActions, titleVisibility: .hidden) {
-            moreActionsContent
-        }
-        .sheet(isPresented: $showingDetails) {
-            detailsSheet
-                .interactiveDismissDisabled(true)
-        }
-        .sheet(isPresented: $showingProjectForm) {
-            if case .client(let client) = cardType {
-                ProjectFormSheet(mode: .create, preselectedClient: client) { _ in }
-                    .environmentObject(dataController)
-            } else {
-                ProjectFormSheet(mode: .create) { _ in }
-                    .environmentObject(dataController)
-            }
-        }
-        .sheet(isPresented: $showingClientDeletionSheet) {
-            if case .client(let client) = cardType {
-                ClientDeletionSheet(client: client)
-                .environmentObject(dataController)
             }
         }
     }
@@ -215,7 +336,7 @@ struct UniversalJobBoardCard: View {
                 NotificationCenter.default.post(name: Notification.Name("TutorialSwipeGestureBlocked"), object: nil)
                 return
             }
-            showingDetails = true
+            activeSheet = .details
         }
         .onLongPressGesture(minimumDuration: menuLongPressDuration, maximumDistance: menuLongPressMaximumDistance) {
             // Block long press during projectListSwipe tutorial phase
@@ -240,55 +361,6 @@ struct UniversalJobBoardCard: View {
                 hasTriggeredLongPressHaptic = false
             }
         }
-        .confirmationDialog("Actions", isPresented: $showingMoreActions, titleVisibility: .hidden) {
-            moreActionsContent
-        }
-        .sheet(isPresented: $showingDetails) {
-            detailsSheet
-                .interactiveDismissDisabled(true)
-        }
-        .sheet(isPresented: $showingTaskForm) {
-            if case .project(let project) = cardType {
-                TaskFormSheet(mode: .create, preselectedProjectId: project.id) { _ in }
-            } else {
-                TaskFormSheet(mode: .create) { _ in }
-            }
-        }
-        .sheet(isPresented: $showingProjectForm) {
-            if case .client(let client) = cardType {
-                ProjectFormSheet(mode: .create, preselectedClient: client) { _ in }
-                    .environmentObject(dataController)
-            } else {
-                ProjectFormSheet(mode: .create) { _ in }
-                    .environmentObject(dataController)
-            }
-        }
-        .sheet(isPresented: $showingScheduler) {
-            schedulerSheet
-        }
-        .sheet(isPresented: $showingTaskPicker) {
-            taskPickerSheet
-        }
-        .sheet(isPresented: $showingStatusPicker) {
-            if case .project(let project) = cardType {
-                ProjectStatusChangeSheet(project: project)
-                    .environmentObject(dataController)
-            }
-        }
-        .sheet(isPresented: $showingTeamPicker) {
-            if case .project(let project) = cardType {
-                ProjectTeamChangeSheet(project: project)
-                    .environmentObject(dataController)
-            }
-        }
-        .deleteConfirmation(
-            isPresented: $showingDeleteConfirmation,
-            itemName: deleteItemName,
-            onConfirm: deleteItem
-        )
-        .sheet(item: $shareSource) { source in
-            ActivityView(items: [source])
-        }
     }
 
     /// Builds the project's deep link + a thumbnail and presents the system
@@ -298,7 +370,7 @@ struct UniversalJobBoardCard: View {
     /// share still works without one.
     private func shareProjectFromCard() {
         guard case .project(let project) = cardType else { return }
-        guard !isPreparingShare, shareSource == nil else { return }
+        guard !isPreparingShare, activeSheet == nil else { return }
         guard let url = ProjectShareLinkBuilder.url(for: project) else { return }
 
         let title = project.title
@@ -309,11 +381,13 @@ struct UniversalJobBoardCard: View {
 
         Task { @MainActor in
             let thumbnail = await ProjectShareImageLoader.loadFirstImage(for: project)
-            shareSource = ProjectShareItemSource(
-                url: url,
-                title: title,
-                subtitle: subtitle,
-                image: thumbnail
+            activeSheet = .share(
+                ProjectShareItemSource(
+                    url: url,
+                    title: title,
+                    subtitle: subtitle,
+                    image: thumbnail
+                )
             )
             isPreparingShare = false
 
@@ -371,7 +445,7 @@ struct UniversalJobBoardCard: View {
                     Text("-")
                         .font(OPSStyle.Typography.caption)
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
-                    Text(formatAddressStreetOnly(address))
+                    Text(JobBoardCardText.streetOnly(address))
                         .font(OPSStyle.Typography.caption)
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
                         .lineLimit(1)
@@ -421,9 +495,10 @@ struct UniversalJobBoardCard: View {
 
     @ViewBuilder
     private func compactTaskProgress(project: Project) -> some View {
-        let tasks = project.tasks.filter { $0.deletedAt == nil && $0.status != .cancelled }
-        let completed = tasks.filter { $0.status == .completed }.count
-        let total = tasks.count
+        // One pass over project.tasks — was two filters allocating two arrays.
+        let progress = JobBoardCompactProgress.make(project: project)
+        let completed = progress.completed
+        let total = progress.total
 
         if total > 0 {
             HStack(spacing: 6) {
@@ -453,17 +528,37 @@ struct UniversalJobBoardCard: View {
 
     @ViewBuilder
     private var standardProjectCardContent: some View {
+        if case .project(let project) = cardType {
+            // Every value the row needs from the project, derived ONCE per
+            // render — crew count, address, dates, assignment, progress bars,
+            // and the UNSCHEDULED rule, in a single pass over project.tasks.
+            standardProjectCard(
+                project: project,
+                model: JobBoardProjectCardModel.make(
+                    project: project,
+                    currentUserId: dataController.currentUser?.id,
+                    hasFullProjectView: permissionStore.hasFullAccess("projects.view")
+                )
+            )
+        }
+    }
+
+    private func standardProjectCard(project: Project, model: JobBoardProjectCardModel) -> some View {
         HStack(spacing: 0) {
             VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
                 VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
-                    titleText
-                    subtitleText
+                    titleText(project.title.uppercased(), terminalStatus: project.status)
+                    subtitleText(project.effectiveClientName)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 // Title flows full-width; the frosted overlay badges (top-right)
                 // blur it where they sit, so no trailing reservation/truncation.
 
-                metadataRow
+                metadataRow([
+                    (OPSStyle.Icons.location, model.addressText),
+                    (OPSStyle.Icons.calendar, model.dateText),
+                    (OPSStyle.Icons.personTwo, "\(model.teamCount)")
+                ])
             }
             .frame(maxHeight: .infinity, alignment: .bottom)
             .padding(OPSStyle.Layout.spacing3)
@@ -512,61 +607,56 @@ struct UniversalJobBoardCard: View {
         )
         .overlay(
             Group {
-                if case .project(let project) = cardType {
-                    // Status badge + assigned-to-me badge — top right
-                    HStack(spacing: 6) {
-                        if permissionStore.hasFullAccess("projects.view"),
-                           let userId = dataController.currentUser?.id,
-                           project.getTeamMemberIds().contains(userId) {
-                            Text("ASSIGNED TO ME")
-                                .font(OPSStyle.Typography.smallCaption)
-                                .foregroundColor(OPSStyle.Colors.primaryAccent)
-                                .padding(.horizontal, OPSStyle.Layout.spacing2)
-                                .padding(.vertical, OPSStyle.Layout.spacing1)
-                                .background(
-                                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                                        .fill(.ultraThinMaterial)
-                                )
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                                        .stroke(OPSStyle.Colors.primaryAccent.opacity(0.4), lineWidth: OPSStyle.Layout.Border.standard)
-                                )
-                        }
-
-                        Text(project.status.displayName.uppercased())
+                // Status badge + assigned-to-me badge — top right
+                HStack(spacing: 6) {
+                    if model.isAssignedToMe {
+                        Text("ASSIGNED TO ME")
                             .font(OPSStyle.Typography.smallCaption)
-                            .foregroundColor(project.status.color)
+                            .foregroundColor(OPSStyle.Colors.primaryAccent)
                             .padding(.horizontal, OPSStyle.Layout.spacing2)
                             .padding(.vertical, OPSStyle.Layout.spacing1)
-                            .frostedBadgeFill(project.status.color, cornerRadius: OPSStyle.Layout.cardCornerRadius)
+                            .background(
+                                RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
+                                    .fill(.ultraThinMaterial)
+                            )
+                            .overlay(
+                                RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
+                                    .stroke(OPSStyle.Colors.primaryAccent.opacity(0.4), lineWidth: OPSStyle.Layout.Border.standard)
+                            )
                     }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
-                    .padding(OPSStyle.Layout.spacing2)
 
-                    // Task progress bars — always vertically centered, right side
-                    if project.status == .inProgress {
-                        VStack {
-                            taskProgressBars(project: project)
-                                .frame(width: 60)
-                        }
-                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .trailing)
+                    Text(project.status.displayName.uppercased())
+                        .font(OPSStyle.Typography.smallCaption)
+                        .foregroundColor(project.status.color)
                         .padding(.horizontal, OPSStyle.Layout.spacing2)
-                    }
+                        .padding(.vertical, OPSStyle.Layout.spacing1)
+                        .frostedBadgeFill(project.status.color, cornerRadius: OPSStyle.Layout.cardCornerRadius)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+                .padding(OPSStyle.Layout.spacing2)
 
-                    // Unscheduled badge — bottom right
-                    if shouldShowUnscheduledBadge(for: project) {
-                        VStack {
-                            Text("UNSCHEDULED")
-                                .font(OPSStyle.Typography.smallCaption)
-                                .foregroundColor(OPSStyle.Colors.warningStatus)
-                                .padding(.horizontal, OPSStyle.Layout.spacing2)
-                                .padding(.vertical, OPSStyle.Layout.spacing1)
-                                .frostedBadgeFill(OPSStyle.Colors.warningStatus, cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                        }
-                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
-                        .padding(OPSStyle.Layout.spacing2)
+                // Task progress bars — always vertically centered, right side
+                if project.status == .inProgress {
+                    VStack {
+                        taskProgressBars(model.progress)
+                            .frame(width: 60)
                     }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .trailing)
+                    .padding(.horizontal, OPSStyle.Layout.spacing2)
+                }
 
+                // Unscheduled badge — bottom right
+                if model.showsUnscheduledBadge {
+                    VStack {
+                        Text("UNSCHEDULED")
+                            .font(OPSStyle.Typography.smallCaption)
+                            .foregroundColor(OPSStyle.Colors.warningStatus)
+                            .padding(.horizontal, OPSStyle.Layout.spacing2)
+                            .padding(.vertical, OPSStyle.Layout.spacing1)
+                            .frostedBadgeFill(OPSStyle.Colors.warningStatus, cornerRadius: OPSStyle.Layout.cardCornerRadius)
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
+                    .padding(OPSStyle.Layout.spacing2)
                 }
             }
         )
@@ -619,74 +709,94 @@ struct UniversalJobBoardCard: View {
 
     @ViewBuilder
     private var taskCardContent: some View {
-        HStack(spacing: 0) {
+        if case .task(let task) = cardType {
+            // One derivation per render replaces two whole-table Project
+            // fetches, three whole-table TaskType fetches, and two assignee
+            // CSV splits that the title, subtitle, stripe, metadata row, and
+            // badges each used to pay for on their own.
+            taskCard(
+                task: task,
+                model: JobBoardTaskCardModel.make(
+                    task: task,
+                    currentUserId: dataController.currentUser?.id,
+                    hasFullTaskView: permissionStore.hasFullAccess("tasks.view")
+                )
+            )
+        }
+    }
+
+    private func taskCard(task: ProjectTask, model: JobBoardTaskCardModel) -> some View {
+        var metadata: [(icon: String, text: String)] = []
+        if let addressText = model.addressText {
+            metadata.append((OPSStyle.Icons.location, addressText))
+        }
+        metadata.append((OPSStyle.Icons.calendar, model.dateText))
+        metadata.append((OPSStyle.Icons.personTwo, "\(model.teamCount)"))
+
+        let stripeColor = model.typeColorHex.flatMap { Color(hex: $0) } ?? OPSStyle.Colors.tertiaryText
+
+        return HStack(spacing: 0) {
             Rectangle()
-                .fill(taskTypeColor)
+                .fill(stripeColor)
                 .frame(width: 4)
 
             VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
                 VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
-                    titleText
-                    subtitleText
+                    titleText(model.title, terminalStatus: nil)
+                    subtitleText(model.subtitle)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
 
-                metadataRow
+                metadataRow(metadata)
             }
             .frame(maxHeight: .infinity, alignment: .bottom)
             .padding(OPSStyle.Layout.spacing3)
         }
         .glassSurface()
         .overlay(
-            Group {
-                if case .task(let task) = cardType {
-                    ZStack {
-                        // Status badge + assigned-to-me badge — top right
-                        HStack(spacing: 6) {
-                            // READY — predecessors all complete, this task can start.
-                            if task.isReadyToStart {
-                                TaskReadyBadge()
-                            }
-
-                            if permissionStore.hasFullAccess("tasks.view"),
-                               let userId = dataController.currentUser?.id,
-                               task.getTeamMemberIds().contains(userId) {
-                                Text("ASSIGNED TO ME")
-                                    .font(OPSStyle.Typography.smallCaption)
-                                    .foregroundColor(OPSStyle.Colors.primaryAccent)
-                                    .padding(.horizontal, OPSStyle.Layout.spacing2)
-                                    .padding(.vertical, OPSStyle.Layout.spacing1)
-                                    .background(
-                                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                                            .fill(.ultraThinMaterial)
-                                    )
-                                    .overlay(
-                                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                                            .stroke(OPSStyle.Colors.primaryAccent.opacity(0.4), lineWidth: OPSStyle.Layout.Border.standard)
-                                    )
-                            }
-
-                            Text(task.status.displayName.uppercased())
-                                .font(OPSStyle.Typography.smallCaption)
-                                .foregroundColor(task.status.color)
-                                .padding(.horizontal, OPSStyle.Layout.spacing2)
-                                .padding(.vertical, OPSStyle.Layout.spacing1)
-                                .frostedBadgeFill(task.status.color, cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                        }
-                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
-                        .padding(OPSStyle.Layout.spacing2)
-
-                        if task.startDate == nil {
-                            Text("UNSCHEDULED")
-                                .font(OPSStyle.Typography.smallCaption)
-                                .foregroundColor(OPSStyle.Colors.warningStatus)
-                                .padding(.horizontal, OPSStyle.Layout.spacing2)
-                                .padding(.vertical, OPSStyle.Layout.spacing1)
-                                .frostedBadgeFill(OPSStyle.Colors.warningStatus, cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
-                                .padding(OPSStyle.Layout.spacing2)
-                        }
+            ZStack {
+                // Status badge + assigned-to-me badge — top right
+                HStack(spacing: 6) {
+                    // READY — predecessors all complete, this task can start.
+                    if model.isReadyToStart {
+                        TaskReadyBadge()
                     }
+
+                    if model.isAssignedToMe {
+                        Text("ASSIGNED TO ME")
+                            .font(OPSStyle.Typography.smallCaption)
+                            .foregroundColor(OPSStyle.Colors.primaryAccent)
+                            .padding(.horizontal, OPSStyle.Layout.spacing2)
+                            .padding(.vertical, OPSStyle.Layout.spacing1)
+                            .background(
+                                RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
+                                    .fill(.ultraThinMaterial)
+                            )
+                            .overlay(
+                                RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
+                                    .stroke(OPSStyle.Colors.primaryAccent.opacity(0.4), lineWidth: OPSStyle.Layout.Border.standard)
+                            )
+                    }
+
+                    Text(task.status.displayName.uppercased())
+                        .font(OPSStyle.Typography.smallCaption)
+                        .foregroundColor(task.status.color)
+                        .padding(.horizontal, OPSStyle.Layout.spacing2)
+                        .padding(.vertical, OPSStyle.Layout.spacing1)
+                        .frostedBadgeFill(task.status.color, cornerRadius: OPSStyle.Layout.cardCornerRadius)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+                .padding(OPSStyle.Layout.spacing2)
+
+                if model.isUnscheduled {
+                    Text("UNSCHEDULED")
+                        .font(OPSStyle.Typography.smallCaption)
+                        .foregroundColor(OPSStyle.Colors.warningStatus)
+                        .padding(.horizontal, OPSStyle.Layout.spacing2)
+                        .padding(.vertical, OPSStyle.Layout.spacing1)
+                        .frostedBadgeFill(OPSStyle.Colors.warningStatus, cornerRadius: OPSStyle.Layout.cardCornerRadius)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
+                        .padding(OPSStyle.Layout.spacing2)
                 }
             }
         )
@@ -699,7 +809,7 @@ struct UniversalJobBoardCard: View {
                 NotificationCenter.default.post(name: Notification.Name("TutorialSwipeGestureBlocked"), object: nil)
                 return
             }
-            showingDetails = true
+            activeSheet = .details
         }
         .onLongPressGesture(minimumDuration: menuLongPressDuration, maximumDistance: menuLongPressMaximumDistance) {
             // Block long press during projectListSwipe tutorial phase
@@ -724,104 +834,36 @@ struct UniversalJobBoardCard: View {
                 hasTriggeredLongPressHaptic = false
             }
         }
-        .confirmationDialog("Actions", isPresented: $showingMoreActions, titleVisibility: .hidden) {
-            moreActionsContent
-        }
-        .sheet(isPresented: $showingDetails) {
-            detailsSheet
-                .interactiveDismissDisabled(true)
-        }
-        .sheet(isPresented: $showingTaskForm) {
-            if case .task(let task) = cardType {
-                if let project = dataController.getAllProjects().first(where: { $0.id == task.projectId }) {
-                    TaskFormSheet(mode: .create, preselectedProjectId: project.id) { _ in }
-                } else {
-                    TaskFormSheet(mode: .create) { _ in }
-                }
-            } else {
-                TaskFormSheet(mode: .create) { _ in }
-            }
-        }
-        .sheet(isPresented: $showingProjectForm) {
-            if case .client(let client) = cardType {
-                ProjectFormSheet(mode: .create, preselectedClient: client) { _ in }
-                    .environmentObject(dataController)
-            } else {
-                ProjectFormSheet(mode: .create) { _ in }
-                    .environmentObject(dataController)
-            }
-        }
-        .sheet(isPresented: $showingScheduler) {
-            schedulerSheet
-        }
-        .sheet(isPresented: $showingStatusPicker) {
-            if case .task(let task) = cardType {
-                TaskStatusChangeSheet(task: task)
-                    .environmentObject(dataController)
-            }
-        }
-        .sheet(isPresented: $showingTeamPicker) {
-            if case .task(let task) = cardType {
-                TaskTeamChangeSheet(task: task)
-                    .environmentObject(dataController)
-            }
-        }
-        .sheet(isPresented: $showingProjectDetails) {
-            if case .task(let task) = cardType {
-                if let project = dataController.getAllProjects().first(where: { $0.id == task.projectId }) {
-                    NavigationView {
-                        ProjectDetailsView(project: project)
-                    }
-                    .interactiveDismissDisabled(true)
-                    .wizardBannerIfAvailable(stateManager: wizardStateManager)
-                    .wizardOverlayIfAvailable(stateManager: wizardStateManager)
-                }
-            }
-        }
-        .deleteConfirmation(
-            isPresented: $showingDeleteConfirmation,
-            itemName: deleteItemName,
-            onConfirm: deleteItem
-        )
     }
 
+    /// Progress segments, already ordered and single-passed by
+    /// `JobBoardProjectCardModel` — the bar only paints them.
     @ViewBuilder
-    private func taskProgressBars(project: Project) -> some View {
-        let tasks = project.tasks.filter { $0.deletedAt == nil }
-        let completedTasks = tasks.filter { $0.status == .completed }
-        let cancelledTasks = tasks.filter { $0.status == .cancelled }
-        let activeTasks = tasks.filter { $0.status != .completed && $0.status != .cancelled }
-
-        // Order: completed first, then active, then cancelled
-        let ordered = completedTasks + activeTasks + cancelledTasks
-        let total = ordered.count
-
-        return Group {
-            if total > 0 {
-                HStack(spacing: 2) {
-                    ForEach(0..<total, id: \.self) { i in
-                        let task = ordered[i]
-                        RoundedRectangle(cornerRadius: 1)
-                            .fill(
-                                task.status == .completed ? OPSStyle.Colors.successStatus :
-                                task.status == .cancelled ? OPSStyle.Colors.errorStatus.opacity(0.5) :
-                                OPSStyle.Colors.cardBorder
-                            )
-                            .frame(height: 3)
-                    }
+    private func taskProgressBars(_ segments: [JobBoardTaskProgressState]) -> some View {
+        if !segments.isEmpty {
+            HStack(spacing: 2) {
+                ForEach(Array(segments.enumerated()), id: \.offset) { _, segment in
+                    RoundedRectangle(cornerRadius: 1)
+                        .fill(
+                            segment == .completed ? OPSStyle.Colors.successStatus :
+                            segment == .cancelled ? OPSStyle.Colors.errorStatus.opacity(0.5) :
+                            OPSStyle.Colors.cardBorder
+                        )
+                        .frame(height: 3)
                 }
             }
         }
     }
 
+    /// - Parameter terminalStatus: the project's status, or nil for a task row.
+    ///   For projects in a terminal state (completed / closed / archived) we
+    ///   surface an inline title-adjacent badge so the finished status is
+    ///   impossible to miss. The corner status chip still renders for every
+    ///   project — this badge augments it, it does not replace it.
     @ViewBuilder
-    private var titleText: some View {
-        // For projects in a terminal state (completed / closed / archived) we
-        // surface an inline title-adjacent badge so the finished status is
-        // impossible to miss. The corner status chip still renders for every
-        // project — this badge augments it, it does not replace it.
+    private func titleText(_ text: String, terminalStatus: Status?) -> some View {
         HStack(spacing: 6) {
-            Text(title)
+            Text(text)
                 .font(OPSStyle.Typography.bodyBold)
                 .foregroundColor(OPSStyle.Colors.primaryText)
                 .lineLimit(1)
@@ -829,8 +871,7 @@ struct UniversalJobBoardCard: View {
                 .baselineOffset(0)
                 .layoutPriority(1)
 
-            if case .project(let project) = cardType,
-               let terminalBadge = terminalStatusBadge(for: project.status) {
+            if let terminalStatus, let terminalBadge = terminalStatusBadge(for: terminalStatus) {
                 terminalBadge
                     .fixedSize(horizontal: true, vertical: false)
                     .layoutPriority(2)
@@ -891,8 +932,8 @@ struct UniversalJobBoardCard: View {
     }
 
     @ViewBuilder
-    private var subtitleText: some View {
-        Text(subtitle)
+    private func subtitleText(_ text: String) -> some View {
+        Text(text)
             .font(OPSStyle.Typography.caption)
             .foregroundColor(OPSStyle.Colors.secondaryText)
             .lineLimit(1)
@@ -902,10 +943,10 @@ struct UniversalJobBoardCard: View {
 
 
     @ViewBuilder
-    private var metadataRow: some View {
+    private func metadataRow(_ items: [(icon: String, text: String)]) -> some View {
         GeometryReader { geometry in
             HStack(spacing: OPSStyle.Layout.spacing2_5) {
-                ForEach(Array(metadataItems.enumerated()), id: \.offset) { index, item in
+                ForEach(Array(items.enumerated()), id: \.offset) { index, item in
                     HStack(spacing: OPSStyle.Layout.spacing1) {
                         Image(systemName: item.icon)
                             .font(.system(size: OPSStyle.Layout.IconSize.xs))
@@ -951,7 +992,7 @@ struct UniversalJobBoardCard: View {
     private var projectActions: some View {
         Group {
             Button("View Project") {
-                showingDetails = true
+                activeSheet = .details
             }
 
             Button("Share") {
@@ -960,7 +1001,7 @@ struct UniversalJobBoardCard: View {
 
             if canModify {
                 Button("Add Task") {
-                    showingTaskForm = true
+                    activeSheet = .taskForm
                 }
             }
 
@@ -975,12 +1016,12 @@ struct UniversalJobBoardCard: View {
             }
 
             Button("Change Status") {
-                showingStatusPicker = true
+                activeSheet = .statusPicker
             }
 
             if canModify {
                 Button("Change Team") {
-                    showingTeamPicker = true
+                    activeSheet = .teamPicker
                 }
 
                 Button("Delete", role: .destructive) {
@@ -996,18 +1037,18 @@ struct UniversalJobBoardCard: View {
     private var clientActions: some View {
         Group {
             Button("View Client") {
-                showingDetails = true
+                activeSheet = .details
             }
 
             if canCreateProjects {
                 Button("Add Project") {
-                    showingProjectForm = true
+                    activeSheet = .projectForm
                 }
             }
 
             if canDeleteClients {
                 Button("Delete", role: .destructive) {
-                    showingClientDeletionSheet = true
+                    activeSheet = .clientDeletion
                 }
             }
 
@@ -1019,28 +1060,28 @@ struct UniversalJobBoardCard: View {
     private var taskActions: some View {
         Group {
             Button("View Task") {
-                showingDetails = true
+                activeSheet = .details
             }
 
             Button("View Project") {
-                showingProjectDetails = true
+                activeSheet = .parentProjectDetails
             }
 
             // Reschedule is gated on calendar.edit (scope-aware on the task),
             // not projects.edit — a user may edit the task but not move it.
             if case .task(let task) = cardType, task.canEditSchedule {
                 Button("Reschedule") {
-                    showingScheduler = true
+                    activeSheet = .scheduler
                 }
             }
 
             Button("Change Status") {
-                showingStatusPicker = true
+                activeSheet = .statusPicker
             }
 
             if canModify {
                 Button("Change Team") {
-                    showingTeamPicker = true
+                    activeSheet = .teamPicker
                 }
 
                 Button("Delete", role: .destructive) {
@@ -1063,7 +1104,7 @@ struct UniversalJobBoardCard: View {
             ContactDetailView(client: client, project: nil)
                 .environmentObject(dataController)
         case .task(let task):
-            if let project = dataController.getAllProjects().first(where: { $0.id == task.projectId }) {
+            if let project = JobBoardCardText.liveProject(of: task) {
                 NavigationView {
                     ProjectDetailsView(project: project, initialSelectedTask: task)
                         .environmentObject(dataController)
@@ -1079,7 +1120,7 @@ struct UniversalJobBoardCard: View {
             // If a specific task was selected, schedule it instead of the project
             if let selectedTask = selectedTaskForScheduling {
                 CalendarSchedulerSheet(
-                    isPresented: $showingScheduler,
+                    isPresented: presented(.scheduler),
                     itemType: .task(selectedTask),
                     currentStartDate: selectedTask.startDate,
                     currentEndDate: selectedTask.endDate,
@@ -1163,11 +1204,11 @@ struct UniversalJobBoardCard: View {
                 }
             } else {
                 Color.clear
-                    .onAppear { showingScheduler = false }
+                    .onAppear { activeSheet = nil }
             }
         case .task(let task):
             CalendarSchedulerSheet(
-                isPresented: $showingScheduler,
+                isPresented: presented(.scheduler),
                 itemType: .task(task),
                 currentStartDate: task.startDate,
                 currentEndDate: task.endDate,
@@ -1265,14 +1306,14 @@ struct UniversalJobBoardCard: View {
 
         if activeTasks.isEmpty {
             // No tasks - present toast with action to create one
-            ToastCenter.shared.present(Feedback.JobBoard.noTasksToReschedule(createTask: { showingTaskForm = true }))
+            ToastCenter.shared.present(Feedback.JobBoard.noTasksToReschedule(createTask: { activeSheet = .taskForm }))
         } else if activeTasks.count == 1 {
             // Exactly one task - reschedule it automatically
             selectedTaskForScheduling = activeTasks.first
-            showingScheduler = true
+            activeSheet = .scheduler
         } else {
             // Multiple tasks - show task picker
-            showingTaskPicker = true
+            activeSheet = .taskPicker
         }
     }
 
@@ -1291,8 +1332,7 @@ struct UniversalJobBoardCard: View {
                             ForEach(activeTasks, id: \.id) { task in
                                 Button(action: {
                                     selectedTaskForScheduling = task
-                                    showingTaskPicker = false
-                                    showingScheduler = true
+                                    activeSheet = .scheduler
                                 }) {
                                     HStack {
                                         Circle()
@@ -1346,7 +1386,7 @@ struct UniversalJobBoardCard: View {
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button("CANCEL") {
-                        showingTaskPicker = false
+                        activeSheet = nil
                     }
                     .foregroundColor(OPSStyle.Colors.primaryText)
                 }
@@ -1363,10 +1403,10 @@ struct UniversalJobBoardCard: View {
         case .client(let client):
             return client.name.uppercased()
         case .task(let task):
-            if let taskType = dataController.getAllTaskTypes(for: task.companyId).first(where: { $0.id == task.taskTypeId }) {
-                return taskType.display.uppercased()
-            }
-            return "TASK"
+            // Relationship read — SwiftData already holds the row the old
+            // whole-table `getAllTaskTypes(for:).first(where:)` was matching by
+            // id (wired in `InboundProcessor.linkAllRelationships`).
+            return task.taskType?.display.uppercased() ?? "TASK"
         }
     }
 
@@ -1378,142 +1418,12 @@ struct UniversalJobBoardCard: View {
             let projectCount = client.activeProjects.count
             return "\(projectCount) \(projectCount == 1 ? "project" : "projects")"
         case .task(let task):
-            if let project = dataController.getAllProjects().first(where: { $0.id == task.projectId }) {
+            // Relationship read, tombstone-gated — see `JobBoardCardText.liveProject`.
+            if let project = JobBoardCardText.liveProject(of: task) {
                 let clientName = project.effectiveClientName
                 return "\(project.title) - \(clientName)"
             }
             return "No project"
-        }
-    }
-
-    private var iconName: String {
-        switch cardType {
-        case .project:
-            return OPSStyle.Icons.folderFill
-        case .client:
-            return OPSStyle.Icons.personTwoFill
-        case .task(let task):
-            if let taskType = dataController.getAllTaskTypes(for: task.companyId).first(where: { $0.id == task.taskTypeId }) {
-                return taskType.icon ?? OPSStyle.Icons.checkmarkSquareFill
-            }
-            return OPSStyle.Icons.checkmarkSquareFill
-        }
-    }
-
-    private var statusColor: Color {
-        switch cardType {
-        case .project(let project):
-            return project.status.color
-        case .client:
-            return OPSStyle.Colors.primaryAccent
-        case .task(let task):
-            switch task.status {
-            case .active:
-                return OPSStyle.Colors.primaryAccent
-            case .completed:
-                return OPSStyle.Colors.successStatus
-            case .cancelled:
-                return OPSStyle.Colors.inactiveStatus
-            }
-        }
-    }
-
-    private var schedulingBadgeColor: Color {
-        // Task-only scheduling migration: Always use secondaryText for task count badge
-        return OPSStyle.Colors.secondaryText
-    }
-
-    private var taskTypeColor: Color {
-        if case .task(let task) = cardType {
-            if let taskType = dataController.getAllTaskTypes(for: task.companyId).first(where: { $0.id == task.taskTypeId }) {
-                if let color = Color(hex: taskType.color) {
-                    return color
-                }
-            }
-        }
-        return OPSStyle.Colors.tertiaryText
-    }
-
-    private var statusText: String {
-        switch cardType {
-        case .project(let project):
-            return project.status.displayName
-        case .client(let client):
-            return client.email != nil ? "Contact" : "No Contact"
-        case .task(let task):
-            return task.status.displayName
-        }
-    }
-
-    /// Format address to show only street number and street name (no city)
-    private func formatAddressStreetOnly(_ address: String) -> String {
-        let components = address.components(separatedBy: ",")
-        if let streetAddress = components.first?.trimmingCharacters(in: .whitespaces), !streetAddress.isEmpty {
-            return streetAddress
-        }
-        return address.formatAsSimpleAddress()
-    }
-
-    private var metadataItems: [(icon: String, text: String)] {
-        switch cardType {
-        case .project(let project):
-            var items: [(icon: String, text: String)] = []
-
-            if let address = project.address, !address.isEmpty {
-                items.append((OPSStyle.Icons.location, formatAddressStreetOnly(address)))
-            } else {
-                items.append((OPSStyle.Icons.location, "NO ADDRESS"))
-            }
-
-            // Always show calendar icon
-            if let startDate = project.startDate {
-                items.append((OPSStyle.Icons.calendar, DateHelper.simpleDateString(from: startDate)))
-            } else {
-                items.append((OPSStyle.Icons.calendar, "-"))
-            }
-
-            // Always show team member icon
-            let teamCount = project.teamMembers.count
-            items.append((OPSStyle.Icons.personTwo, "\(teamCount)"))
-
-            return items
-
-        case .client(let client):
-            var items: [(icon: String, text: String)] = []
-
-            if client.phoneNumber != nil {
-                items.append((OPSStyle.Icons.phone, "Phone"))
-            }
-
-            if client.email != nil {
-                items.append((OPSStyle.Icons.envelope, "Email"))
-            }
-
-            return items
-
-        case .task(let task):
-            var items: [(icon: String, text: String)] = []
-
-            if let project = dataController.getAllProjects().first(where: { $0.id == task.projectId }) {
-                if let address = project.address, !address.isEmpty {
-                    items.append((OPSStyle.Icons.location, formatAddressStreetOnly(address)))
-                } else {
-                    items.append((OPSStyle.Icons.location, "NO ADDRESS"))
-                }
-            }
-
-            // Always show calendar icon
-            if let startDate = task.startDate {
-                items.append((OPSStyle.Icons.calendar, DateHelper.simpleDateString(from: startDate)))
-            } else {
-                items.append((OPSStyle.Icons.calendar, "-"))
-            }
-
-            // Always show team member icon
-            let teamMemberCount = task.getTeamMemberIds().count
-            items.append((OPSStyle.Icons.personTwo, "\(teamMemberCount)"))
-
-            return items
         }
     }
 
@@ -1847,30 +1757,6 @@ struct UniversalJobBoardCard: View {
     }
 
     // REMOVED: scheduleDeletionNotification - now using in-app popup only
-
-    // Helper function to determine if UNSCHEDULED badge should be shown
-    private func shouldShowUnscheduledBadge(for project: Project) -> Bool {
-        // If project has no tasks, show unscheduled badge
-        if project.tasks.isEmpty {
-            return true
-        }
-
-        // Filter out completed and cancelled tasks from unscheduled calculation
-        let relevantTasks = project.tasks.filter { task in
-            task.status != .completed && task.status != .cancelled
-        }
-
-        // If all tasks are completed/cancelled, don't show badge
-        if relevantTasks.isEmpty {
-            return false
-        }
-
-        // Check if any relevant tasks are unscheduled
-        let unscheduledTasks = relevantTasks.filter { task in
-            task.startDate == nil
-        }
-        return !unscheduledTasks.isEmpty
-    }
 
     // MARK: - Tutorial Shimmer Animation
 

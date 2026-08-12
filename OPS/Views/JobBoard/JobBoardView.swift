@@ -893,100 +893,45 @@ struct JobBoardTasksView: View {
         return dataController.getTeamMembers(companyId: companyId)
     }
 
-    private var filteredTasks: [ProjectTask] {
+    /// Every section the list renders, from ONE filter + sort pass.
+    ///
+    /// The body used to read `activeTasks`, `completedTasks`, `cancelledTasks`,
+    /// and `allTasks` separately — each one re-derived `filteredTasks`, and each
+    /// of those re-fetched every project and task type, walked every project's
+    /// tasks, ran five filters, and sorted. Roughly six full passes per render.
+    /// Bound once at the top of `body` now.
+    private var taskSections: JobBoardTaskSections {
+        let visible = allTasks
+
         // PERFORMANCE FIX: Cache lookups to avoid O(n*m) complexity
         let allProjects = dataController.getAllProjects()
-        let projectsById = Dictionary(uniqueKeysWithValues: allProjects.map { ($0.id, $0) })
+        let projectsById = Dictionary(allProjects.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
 
-        guard let companyId = dataController.currentUser?.companyId else { return [] }
-        let allTaskTypes = dataController.getAllTaskTypes(for: companyId)
-        let taskTypesById = Dictionary(uniqueKeysWithValues: allTaskTypes.map { ($0.id, $0) })
-
-        var filtered = allTasks
-
-        // Task-only scheduling migration: eventType filter removed (all projects use tasks)
-        filtered = filtered.filter { task in
-            projectsById[task.projectId] != nil
+        // No company → no rows, exactly as the old `guard let companyId` did.
+        let taskTypesById: [String: TaskType]? = dataController.currentUser?.companyId.map { companyId in
+            Dictionary(
+                dataController.getAllTaskTypes(for: companyId).map { ($0.id, $0) },
+                uniquingKeysWith: { first, _ in first }
+            )
         }
 
-        // Quick filter: assigned to me
-        if assignedToMe, let userId = dataController.currentUser?.id {
-            filtered = filtered.filter { task in
-                task.getTeamMemberIds().contains(userId)
-            }
-        }
-
-        // Filter by status
-        if !selectedStatuses.isEmpty {
-            filtered = filtered.filter { selectedStatuses.contains($0.status) }
-        }
-
-        // Filter by task type
-        if !selectedTaskTypeIds.isEmpty {
-            filtered = filtered.filter { selectedTaskTypeIds.contains($0.taskTypeId) }
-        }
-
-        // Filter by team members
-        if !selectedTeamMemberIds.isEmpty {
-            filtered = filtered.filter { task in
-                let taskTeamMemberIds = Set(task.getTeamMemberIds())
-                return !taskTeamMemberIds.intersection(selectedTeamMemberIds).isEmpty
-            }
-        }
-
-        // Filter by search text
-        if !searchText.isEmpty {
-            filtered = filtered.filter { task in
-                let taskTypeName = taskTypesById[task.taskTypeId]?.display ?? ""
-                let projectName = projectsById[task.projectId]?.title ?? ""
-
-                return taskTypeName.localizedCaseInsensitiveContains(searchText) ||
-                       projectName.localizedCaseInsensitiveContains(searchText) ||
-                       (task.taskNotes?.localizedCaseInsensitiveContains(searchText) ?? false)
-            }
-        }
-
-        // Sort
-        switch sortOption.wrappedValue {
-        case .latestEdited:
-            // Mirror the project-list "latestEdited" rule: most recent of
-            // lastSyncedAt or scheduledDate. lastSyncedAt is updated on every
-            // outbound sync, so it tracks "user just touched this".
-            return filtered.sorted(by: { t1, t2 in
-                let s1 = t1.lastSyncedAt ?? t1.scheduledDate ?? Date.distantPast
-                let s2 = t2.lastSyncedAt ?? t2.scheduledDate ?? Date.distantPast
-                return s1 > s2
-            })
-        case .earliestEdited:
-            return filtered.sorted(by: { t1, t2 in
-                let s1 = t1.lastSyncedAt ?? t1.scheduledDate ?? Date.distantFuture
-                let s2 = t2.lastSyncedAt ?? t2.scheduledDate ?? Date.distantFuture
-                return s1 < s2
-            })
-        case .scheduledDateDescending:
-            return filtered.sorted(by: { ($0.scheduledDate ?? Date.distantPast) > ($1.scheduledDate ?? Date.distantPast) })
-        case .scheduledDateAscending:
-            return filtered.sorted(by: { ($0.scheduledDate ?? Date.distantPast) < ($1.scheduledDate ?? Date.distantPast) })
-        case .statusAscending:
-            return filtered.sorted(by: { $0.status.sortOrder < $1.status.sortOrder })
-        case .statusDescending:
-            return filtered.sorted(by: { $0.status.sortOrder > $1.status.sortOrder })
-        }
-    }
-
-    private var activeTasks: [ProjectTask] {
-        filteredTasks.filter { $0.status != .cancelled && $0.status != .completed }
-    }
-
-    private var completedTasks: [ProjectTask] {
-        filteredTasks.filter { $0.status == .completed }
-    }
-
-    private var cancelledTasks: [ProjectTask] {
-        filteredTasks.filter { $0.status == .cancelled }
+        return JobBoardTaskFiltering.sections(
+            visibleTasks: visible,
+            projectsById: projectsById,
+            taskTypesById: taskTypesById,
+            assignedToUserId: assignedToMe ? dataController.currentUser?.id : nil,
+            selectedStatuses: selectedStatuses,
+            selectedTaskTypeIds: selectedTaskTypeIds,
+            selectedTeamMemberIds: selectedTeamMemberIds,
+            searchText: searchText,
+            sortOption: sortOption.wrappedValue
+        )
     }
 
     var body: some View {
+        // ONE derivation per render, read by every branch below.
+        let sections = taskSections
+
         VStack(spacing: 0) {
             if showingFilters && hasActiveFilters {
                 activeFilterBadges
@@ -994,7 +939,7 @@ struct JobBoardTasksView: View {
                     .padding(.bottom, OPSStyle.Layout.spacing2_5)
             }
 
-            if allTasks.isEmpty {
+            if sections.visible.isEmpty {
                 JobBoardEmptyState(
                     icon: OPSStyle.Icons.task,
                     title: "No Tasks Yet",
@@ -1004,29 +949,29 @@ struct JobBoardTasksView: View {
             } else {
                 ScrollView {
                     LazyVStack(spacing: OPSStyle.Layout.spacing2_5) {
-                        ForEach(activeTasks) { task in
+                        ForEach(sections.active) { task in
                             UniversalJobBoardCard(cardType: .task(task))
                                 .environmentObject(dataController)
                                 .environment(\.modelContext, dataController.modelContext!)
                         }
 
                         // Completed and Cancelled section buttons
-                        if !completedTasks.isEmpty || !cancelledTasks.isEmpty {
+                        if !sections.completed.isEmpty || !sections.cancelled.isEmpty {
                             HStack(spacing: OPSStyle.Layout.spacing2_5) {
-                                if !completedTasks.isEmpty {
+                                if !sections.completed.isEmpty {
                                     SectionButton(
                                         title: "COMPLETED",
-                                        count: completedTasks.count,
+                                        count: sections.completed.count,
                                         color: TaskStatus.completed.color
                                     ) {
                                         showingCompletedSheet = true
                                     }
                                 }
 
-                                if !cancelledTasks.isEmpty {
+                                if !sections.cancelled.isEmpty {
                                     SectionButton(
                                         title: "CANCELLED",
-                                        count: cancelledTasks.count,
+                                        count: sections.cancelled.count,
                                         color: TaskStatus.cancelled.color
                                     ) {
                                         showingCancelledSheet = true
@@ -1063,14 +1008,14 @@ struct JobBoardTasksView: View {
         .sheet(isPresented: $showingCompletedSheet) {
             TaskListSheet(
                 title: "Completed Tasks",
-                tasks: completedTasks,
+                tasks: taskSections.completed,
                 dataController: dataController
             )
         }
         .sheet(isPresented: $showingCancelledSheet) {
             TaskListSheet(
                 title: "Cancelled Tasks",
-                tasks: cancelledTasks,
+                tasks: taskSections.cancelled,
                 dataController: dataController
             )
         }

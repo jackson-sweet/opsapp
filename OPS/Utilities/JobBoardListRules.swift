@@ -36,7 +36,13 @@ struct JobBoardTaskFiltering {
         for project in projects where project.isJobBoardTaskListVisible {
             for task in project.tasks where task.deletedAt == nil {
                 guard seenTaskIds.insert(task.id).inserted else {
+                    // Duplicate rows are a sync-layer bug worth seeing while
+                    // debugging, but this runs inside the dedup loop of a list
+                    // build — in a release build it is per-duplicate logging on
+                    // the main thread, every pass.
+                    #if DEBUG
                     print("[JOB_BOARD] Duplicate task hidden from active list: \(task.id)")
+                    #endif
                     continue
                 }
                 visibleTasks.append(task)
@@ -45,6 +51,119 @@ struct JobBoardTaskFiltering {
 
         return visibleTasks
     }
+
+    /// The task list's three sections, built ONCE from one filter+sort pass.
+    ///
+    /// The list used to derive `filteredTasks` separately for the active,
+    /// completed, and cancelled partitions and for each `isEmpty` check in the
+    /// body — six full passes per render, each one re-fetching every project
+    /// and task type and re-running five filters and a sort.
+    ///
+    /// `taskTypesById` is nil when there is no signed-in company, which is the
+    /// old `guard let companyId … else { return [] }`: no rows in any section.
+    static func sections(
+        visibleTasks: [ProjectTask],
+        projectsById: [String: Project],
+        taskTypesById: [String: TaskType]?,
+        assignedToUserId: String?,
+        selectedStatuses: Set<TaskStatus>,
+        selectedTaskTypeIds: Set<String>,
+        selectedTeamMemberIds: Set<String>,
+        searchText: String,
+        sortOption: TaskSortOption
+    ) -> JobBoardTaskSections {
+        guard let taskTypesById else {
+            return JobBoardTaskSections(visible: visibleTasks, active: [], completed: [], cancelled: [])
+        }
+
+        var filtered = visibleTasks.filter { projectsById[$0.projectId] != nil }
+
+        if let assignedToUserId {
+            filtered = filtered.filter { $0.getTeamMemberIds().contains(assignedToUserId) }
+        }
+
+        if !selectedStatuses.isEmpty {
+            filtered = filtered.filter { selectedStatuses.contains($0.status) }
+        }
+
+        if !selectedTaskTypeIds.isEmpty {
+            filtered = filtered.filter { selectedTaskTypeIds.contains($0.taskTypeId) }
+        }
+
+        if !selectedTeamMemberIds.isEmpty {
+            filtered = filtered.filter { task in
+                !Set(task.getTeamMemberIds()).intersection(selectedTeamMemberIds).isEmpty
+            }
+        }
+
+        if !searchText.isEmpty {
+            filtered = filtered.filter { task in
+                let taskTypeName = taskTypesById[task.taskTypeId]?.display ?? ""
+                let projectName = projectsById[task.projectId]?.title ?? ""
+
+                return taskTypeName.localizedCaseInsensitiveContains(searchText) ||
+                       projectName.localizedCaseInsensitiveContains(searchText) ||
+                       (task.taskNotes?.localizedCaseInsensitiveContains(searchText) ?? false)
+            }
+        }
+
+        let sorted = sortedTasks(filtered, sortOption: sortOption)
+
+        var active: [ProjectTask] = []
+        var completed: [ProjectTask] = []
+        var cancelled: [ProjectTask] = []
+        for task in sorted {
+            switch task.status {
+            case .completed: completed.append(task)
+            case .cancelled: cancelled.append(task)
+            case .active:    active.append(task)
+            }
+        }
+
+        return JobBoardTaskSections(
+            visible: visibleTasks,
+            active: active,
+            completed: completed,
+            cancelled: cancelled
+        )
+    }
+
+    static func sortedTasks(_ tasks: [ProjectTask], sortOption: TaskSortOption) -> [ProjectTask] {
+        switch sortOption {
+        case .latestEdited:
+            // Mirror the project-list "latestEdited" rule: most recent of
+            // lastSyncedAt or scheduledDate. lastSyncedAt is updated on every
+            // outbound sync, so it tracks "user just touched this".
+            return tasks.sorted(by: { t1, t2 in
+                let s1 = t1.lastSyncedAt ?? t1.scheduledDate ?? Date.distantPast
+                let s2 = t2.lastSyncedAt ?? t2.scheduledDate ?? Date.distantPast
+                return s1 > s2
+            })
+        case .earliestEdited:
+            return tasks.sorted(by: { t1, t2 in
+                let s1 = t1.lastSyncedAt ?? t1.scheduledDate ?? Date.distantFuture
+                let s2 = t2.lastSyncedAt ?? t2.scheduledDate ?? Date.distantFuture
+                return s1 < s2
+            })
+        case .scheduledDateDescending:
+            return tasks.sorted(by: { ($0.scheduledDate ?? Date.distantPast) > ($1.scheduledDate ?? Date.distantPast) })
+        case .scheduledDateAscending:
+            return tasks.sorted(by: { ($0.scheduledDate ?? Date.distantPast) < ($1.scheduledDate ?? Date.distantPast) })
+        case .statusAscending:
+            return tasks.sorted(by: { $0.status.sortOrder < $1.status.sortOrder })
+        case .statusDescending:
+            return tasks.sorted(by: { $0.status.sortOrder > $1.status.sortOrder })
+        }
+    }
+}
+
+/// The task list's sections, plus the unfiltered visible set the empty state
+/// keys off — so a render reads one value instead of rebuilding four.
+struct JobBoardTaskSections {
+    let visible: [ProjectTask]
+    let active: [ProjectTask]
+    let completed: [ProjectTask]
+    let cancelled: [ProjectTask]
 }
 
 struct JobBoardProjectFiltering {

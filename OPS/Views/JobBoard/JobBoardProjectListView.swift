@@ -348,7 +348,10 @@ struct JobBoardProjectListView: View {
         }
         // Wizard: re-evaluate step prerequisites when the wizard transitions to a new step.
         // Ensures view_closed auto-skip fires immediately, not only on next onAppear.
-        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("WizardEvaluatePrerequisites"))) { _ in
+        // ScheduleView answers this broadcast too, with a different set of
+        // counts — and both tabs stay mounted now, so only the tab on screen may
+        // satisfy a prerequisite.
+        .onReceiveWhileActive(NotificationCenter.default.publisher(for: Notification.Name("WizardEvaluatePrerequisites"))) { _ in
             if let mgr = wizardStateManager, mgr.isActive {
                 let swipeable = activeProjects.filter { project in
                     guard project.status.canSwipeForward else { return false }

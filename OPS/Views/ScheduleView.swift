@@ -43,7 +43,15 @@ struct ScheduleView: View {
     @Environment(\.wizardTriggerService) private var wizardTriggerService
     @Environment(\.wizardActive) private var wizardActive
     @Environment(\.wizardStateManager) private var wizardStateManager
+    /// SCHEDULE stays mounted for the session (MainTabView's keep-alive
+    /// container), so per-visit work keys off this and every reload trigger
+    /// defers while the calendar is off screen.
+    @Environment(\.isActiveTab) private var isActiveTab
     @StateObject private var viewModel = CalendarViewModel()
+    /// A task/event change landed while SCHEDULE was hidden. `reloadCalendarData`
+    /// deliberately drops the week cache and rebuilds it, which is far too much
+    /// work to do for a calendar nobody is looking at — the trigger waits here.
+    @State private var needsCalendarReload = false
     @State private var hasPostedWeekScrollNotification = false
     @State private var hasPostedMonthExploredNotification = false
     @State private var hasPostedWizardWeekScroll = false
@@ -191,23 +199,25 @@ struct ScheduleView: View {
         }
         // Initialize on appear
         .onAppear {
-            // Track screen view for analytics
-            AnalyticsManager.shared.trackScreenView(screenName: .schedule, screenClass: "ScheduleView")
-            AnalyticsService.shared.trackScreenView(screenName: "schedule")
-
-            // Initialize with proper data controller
+            // First visit only — mount and activation coincide, so the
+            // per-visit work runs here once and `isActiveTab` carries the rest.
             viewModel.setDataController(dataController)
-
-            // Phase-C suggested events (item 63144953) — dormant on empty/error.
-            Task { await viewModel.loadSuggestedEvents() }
-
-            // Wizard system: evaluate scheduling/calendar wizard trigger
-            if let wizard = WizardRegistry.contextualWizard(for: "scheduling_calendar") {
-                wizardTriggerService?.evaluateTrigger(for: wizard, context: "calendar_tab_visit")
-            }
+            beginVisit()
         }
         .onDisappear {
-            AnalyticsService.shared.endScreenView(screenName: "schedule")
+            endVisit()
+        }
+        .onChange(of: isActiveTab) { _, active in
+            if active {
+                beginVisit()
+                // Spend anything that changed while the calendar was hidden.
+                if needsCalendarReload {
+                    needsCalendarReload = false
+                    viewModel.reloadCalendarData()
+                }
+            } else {
+                endVisit()
+            }
         }
         // Wizard: collapse to week view when the wizard navigates here for a week-mode step.
         // Without this, steps 1-2 (scroll_week, tap_day) are unreachable if the user was
@@ -222,8 +232,14 @@ struct ScheduleView: View {
                 viewModel.toggleMonthExpanded()
             }
         }
-        // Watch for calendar event changes and reload data
+        // Watch for calendar event changes and reload data. Every inbound
+        // change toggles this flag, so a hidden calendar would otherwise
+        // rebuild its whole week cache on each one.
         .onChange(of: dataController.scheduledTasksDidChange) { _, _ in
+            guard isActiveTab else {
+                needsCalendarReload = true
+                return
+            }
             viewModel.reloadCalendarData()
         }
         // Universal search sheet
@@ -262,7 +278,9 @@ struct ScheduleView: View {
             }
         }
         // Handle direct task selection from the calendar
-        .onReceive(taskSelectionObserver) { notification in
+        // HomeView answers `ShowCalendarTaskDetails` too — only the tab on
+        // screen may present the task.
+        .onReceiveWhileActive(taskSelectionObserver) { notification in
             if let taskID = notification.userInfo?["taskID"] as? String,
                let projectID = notification.userInfo?["projectID"] as? String {
                 
@@ -477,12 +495,34 @@ struct ScheduleView: View {
             }
         }
         // Wizard: evaluate prerequisites when a new step activates (auto-skip steps with missing data)
-        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("WizardEvaluatePrerequisites"))) { notification in
+        // JobBoard's project list answers this too, with a different set of
+        // counts — only the tab on screen may satisfy a wizard prerequisite.
+        .onReceiveWhileActive(NotificationCenter.default.publisher(for: Notification.Name("WizardEvaluatePrerequisites"))) { notification in
             guard let stepId = notification.userInfo?["stepId"] as? String,
                   stepId == "tap_month_day" || stepId == "tap_task" else { return }
             let taskCount = viewModel.scheduledTasks(for: viewModel.selectedDate).count
             wizardStateManager?.evaluateStepPrerequisites(scheduledTaskCount: taskCount)
         }
+    }
+
+    /// Screen-view analytics, the suggested-events probe, and the calendar
+    /// wizard trigger are all per-visit: they ran on every mount back when a tab
+    /// switch rebuilt this view, and they still run on every visit now.
+    private func beginVisit() {
+        AnalyticsManager.shared.trackScreenView(screenName: .schedule, screenClass: "ScheduleView")
+        AnalyticsService.shared.trackScreenView(screenName: "schedule")
+
+        // Phase-C suggested events (item 63144953) — dormant on empty/error.
+        Task { await viewModel.loadSuggestedEvents() }
+
+        // Wizard system: evaluate scheduling/calendar wizard trigger
+        if let wizard = WizardRegistry.contextualWizard(for: "scheduling_calendar") {
+            wizardTriggerService?.evaluateTrigger(for: wizard, context: "calendar_tab_visit")
+        }
+    }
+
+    private func endVisit() {
+        AnalyticsService.shared.endScreenView(screenName: "schedule")
     }
 
     // MARK: - Empty State

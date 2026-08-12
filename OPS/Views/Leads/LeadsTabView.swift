@@ -73,16 +73,20 @@ struct LeadsTabView: View {
     @EnvironmentObject private var permissionStore: PermissionStore
     @EnvironmentObject private var appState: AppState
     @ObservedObject private var conversionVisibilityStore = LeadConversionVisibilityStore.shared
+    /// LEADS stays mounted for the session (MainTabView's keep-alive container),
+    /// so per-visit behavior keys off this rather than a remount.
+    @Environment(\.isActiveTab) private var isActiveTab
 
     /// Every company user on device — the raw material for the crew roster.
     /// Same `@Query` the dossier uses; the engine does the filtering.
     @Query private var allUsers: [User]
 
     @State private var selectedBucket: PipelineViewModel.TriageBucket?
-    /// Search / sort / crew. Plain `@State`, so a tab remount resets them:
-    /// opening LEADS always answers "what needs me" first, never whatever
-    /// slice the operator left behind yesterday (spec §5.2). MainTabView
-    /// remounts the tab content on selection change (`.id(selectedTab)`).
+    /// Search / sort / crew. Reset every time the tab comes on screen: opening
+    /// LEADS always answers "what needs me" first, never whatever slice the
+    /// operator left behind yesterday (spec §5.2). MainTabView no longer
+    /// remounts the tab on selection, so the reset is explicit — see the
+    /// `isActiveTab` handler.
     @State private var controls: LeadsListControls
     @State private var detailLead: Opportunity?
     @State private var activeSheet: LeadsSheet?
@@ -287,6 +291,16 @@ struct LeadsTabView: View {
             await resolvePendingLeadDeepLinkIfNeeded()
         }
         .modifier(LeadsRefreshListeners(viewModel: viewModel))
+        .onChange(of: isActiveTab) { _, active in
+            guard active else { return }
+            // Every visit reopens the console clean (spec §5.2) and re-reads
+            // the board silently — the merge is identity-preserving, so rows
+            // update in place with no skeleton over data already on screen.
+            // This refresh is also what spends any change that landed while the
+            // tab was hidden, which is why the listeners below can drop those.
+            controls = LeadsListControls()
+            viewModel.scheduleRefresh(debounce: .milliseconds(150))
+        }
         .onChange(of: appState.pendingLeadDeepLinkId) { _, newValue in
             guard newValue != nil else { return }
             Task { await resolvePendingLeadDeepLinkIfNeeded() }
@@ -994,42 +1008,59 @@ struct LeadsTabView: View {
 private struct LeadsRefreshListeners: ViewModifier {
 
     @ObservedObject var viewModel: PipelineViewModel
+    @Environment(\.isActiveTab) private var isActiveTab
+
+    /// Every trigger below funnels through here. A hidden LEADS drops the
+    /// trigger rather than issuing a network fetch behind the operator's back —
+    /// the tab's activation refresh re-reads the board on the next visit, so
+    /// nothing is lost. (These fire from anywhere: the global FAB creates leads,
+    /// realtime pushes them, foreground re-entry catches up.)
+    private func reload(silent: Bool, debounce: Duration? = nil) {
+        guard isActiveTab else { return }
+        if let debounce {
+            viewModel.scheduleRefresh(debounce: debounce)
+        } else if silent {
+            viewModel.scheduleRefresh()
+        } else {
+            Task { await viewModel.loadData() }
+        }
+    }
 
     func body(content: Content) -> some View {
         content
             .onReceive(NotificationCenter.default.publisher(for: Notification.Name("LeadCreatedSuccess"))) { _ in
-                Task { await viewModel.loadData() }
+                reload(silent: false)
             }
             .onReceive(NotificationCenter.default.publisher(for: Notification.Name("LeadUpdatedSuccess"))) { _ in
-                Task { await viewModel.loadData() }
+                reload(silent: false)
             }
             .onReceive(NotificationCenter.default.publisher(for: Notification.Name("LeadActivityLoggedSuccess"))) { _ in
-                Task { await viewModel.loadData() }
+                reload(silent: false)
             }
             .onReceive(NotificationCenter.default.publisher(for: Notification.Name("LeadMarkedLostSuccess"))) { _ in
-                Task { await viewModel.loadData() }
+                reload(silent: false)
             }
             .onReceive(NotificationCenter.default.publisher(for: Notification.Name("LeadMarkedWonSuccess"))) { _ in
-                Task { await viewModel.loadData() }
+                reload(silent: false)
             }
             .onReceive(NotificationCenter.default.publisher(for: Notification.Name("LeadConvertedSuccess"))) { _ in
-                Task { await viewModel.loadData() }
+                reload(silent: false)
             }
             .onReceive(NotificationCenter.default.publisher(for: Notification.Name("LeadLinkedProjectSuccess"))) { _ in
-                Task { await viewModel.loadData() }
+                reload(silent: false)
             }
             .onReceive(NotificationCenter.default.publisher(for: Notification.Name("LeadArchivedSuccess"))) { _ in
-                Task { await viewModel.loadData() }
+                reload(silent: false)
             }
             .onReceive(NotificationCenter.default.publisher(for: Notification.Name("LeadDeletedSuccess"))) { _ in
-                Task { await viewModel.loadData() }
+                reload(silent: false)
             }
             .onReceive(NotificationCenter.default.publisher(for: .opsLeadsDidChange)) { _ in
                 // Remote change (RealtimeProcessor: opportunities / activities /
                 // follow_ups). Funnel through the debounced, coalesced reload — an
                 // event storm collapses to one silent merge fetch; leads are
                 // deliberately outside the SwiftData sync engine.
-                viewModel.scheduleRefresh()
+                reload(silent: true)
             }
             .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
                 // Catch-up on resume: realtime tears down ~30s after backgrounding
@@ -1037,7 +1068,7 @@ private struct LeadsRefreshListeners: ViewModifier {
                 // this re-fetch is the recovery path. Short debounce; the coalescer
                 // + hasLoadedOnce guard make it a no-op on cold launch where .task
                 // owns the first load.
-                viewModel.scheduleRefresh(debounce: .milliseconds(300))
+                reload(silent: true, debounce: .milliseconds(300))
             }
     }
 }

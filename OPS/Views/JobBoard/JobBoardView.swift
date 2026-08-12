@@ -18,6 +18,11 @@ struct JobBoardView: View {
     @Environment(\.wizardStateManager) private var wizardStateManager
     @State private var selectedSection: JobBoardSection = .projects
     @State private var previousSection: JobBoardSection = .projects
+    /// JOB BOARD stays mounted for the session (MainTabView's keep-alive
+    /// container), so per-visit work keys off this and the badge recompute
+    /// stands down while the board is off screen.
+    @Environment(\.isActiveTab) private var isActiveTab
+
     @State private var searchText = ""
     @State private var showingFilters = false
     @State private var showingProjectFilterSheet = false
@@ -217,16 +222,16 @@ struct JobBoardView: View {
         } message: {
             Text("Tasks with end dates in the past will show up here so you can complete, reschedule, or cancel them.")
         }
-        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("OpenPaymentReview"))) { _ in
+        .onReceiveWhileActive(NotificationCenter.default.publisher(for: Notification.Name("OpenPaymentReview"))) { _ in
             guard paymentReviewAccessAvailable else { return }
             computeReviewProjects()
             showPaymentReview = true
         }
-        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("OpenTaskReview"))) { _ in
+        .onReceiveWhileActive(NotificationCenter.default.publisher(for: Notification.Name("OpenTaskReview"))) { _ in
             computeReviewableTasks()
             showTaskReview = true
         }
-        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("OpenUnscheduledReview"))) { _ in
+        .onReceiveWhileActive(NotificationCenter.default.publisher(for: Notification.Name("OpenUnscheduledReview"))) { _ in
             guard unscheduledReviewAccessAvailable else { return }
             computeUnscheduledTasks()
             showUnscheduledReview = true
@@ -237,9 +242,10 @@ struct JobBoardView: View {
         // current after a task is handled inside a review sheet, without waiting
         // for the view to reappear or the app to relaunch.
         .onChange(of: dataController.scheduledTasksDidChange) { _, _ in
-            computeReviewProjects()
-            computeReviewableTasks()
-            computeUnscheduledTasks()
+            // Each badge pass walks the company's projects and tasks; a board
+            // nobody is looking at picks the new counts up on its next visit.
+            guard isActiveTab else { return }
+            recomputeReviewBadges()
         }
         .onChange(of: selectedProjectStatuses) { _, _ in
             showingFilters = hasActiveProjectFilters
@@ -508,34 +514,23 @@ struct JobBoardView: View {
                 AnalyticsManager.shared.trackScreenView(screenName: screenName, screenClass: "JobBoardView")
             }
         }
-        .task {
-            // Wizard system: evaluate job board wizard trigger (requires ≥1 project)
-            if let wizard = WizardRegistry.contextualWizard(for: "job_board") {
-                let projectCount = await MainActor.run { dataController.getProjects().count }
-                await MainActor.run {
-                    wizardTriggerService?.evaluateTrigger(for: wizard, context: "job_board_tab_visit", projectCount: projectCount)
-                }
-            }
-        }
-        .task {
-            // Compute overdue count for badge
-            computeReviewProjects()
-        }
-        .task {
-            // Compute reviewable task count for badge
-            computeReviewableTasks()
-        }
-        .task {
-            // Compute unscheduled/unassigned task count for badge
-            computeUnscheduledTasks()
-        }
         .onAppear {
+            // Mount-once: the role-appropriate default section can only be
+            // picked once `currentUser` exists, and the operator's own section
+            // choice survives every visit after that.
             selectedSection = defaultSection(for: dataController.currentUser)
-            AnalyticsManager.shared.trackScreenView(screenName: .jobBoard, screenClass: "JobBoardView")
-            AnalyticsService.shared.trackScreenView(screenName: "job_board")
+            // First visit only — mount and activation coincide here.
+            beginVisit()
         }
         .onDisappear {
-            AnalyticsService.shared.endScreenView(screenName: "job_board")
+            endVisit()
+        }
+        .onChange(of: isActiveTab) { _, active in
+            if active {
+                beginVisit()
+            } else {
+                endVisit()
+            }
         }
         // Wizard: listen for section-level navigation requests
         .onReceive(NotificationCenter.default.publisher(for: Notification.Name("WizardNavigateToSection"))) { notification in
@@ -546,6 +541,37 @@ struct JobBoardView: View {
                 selectedSection = target
             }
         }
+    }
+
+    /// Screen-view analytics, the job-board wizard trigger, and the three badge
+    /// counts are per-visit: they ran on every mount back when a tab switch
+    /// rebuilt this view, and they still run on every visit now.
+    private func beginVisit() {
+        AnalyticsManager.shared.trackScreenView(screenName: .jobBoard, screenClass: "JobBoardView")
+        AnalyticsService.shared.trackScreenView(screenName: "job_board")
+
+        recomputeReviewBadges()
+
+        // Wizard system: evaluate job board wizard trigger (requires ≥1 project)
+        Task {
+            guard let wizard = WizardRegistry.contextualWizard(for: "job_board") else { return }
+            let projectCount = await MainActor.run { dataController.getProjects().count }
+            await MainActor.run {
+                wizardTriggerService?.evaluateTrigger(for: wizard, context: "job_board_tab_visit", projectCount: projectCount)
+            }
+        }
+    }
+
+    private func endVisit() {
+        AnalyticsService.shared.endScreenView(screenName: "job_board")
+    }
+
+    /// The three header badges, always recomputed together — they read the same
+    /// project and task snapshots.
+    private func recomputeReviewBadges() {
+        computeReviewProjects()
+        computeReviewableTasks()
+        computeUnscheduledTasks()
     }
 
     // MARK: - Payment Review

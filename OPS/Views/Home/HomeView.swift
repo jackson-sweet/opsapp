@@ -18,6 +18,11 @@ struct HomeView: View {
     @EnvironmentObject private var appState: AppState
     @EnvironmentObject private var permissionStore: PermissionStore
     @Environment(\.tutorialMode) private var tutorialMode
+    /// Home stays mounted for the whole session (MainTabView's keep-alive tab
+    /// container), so every per-visit side effect keys off this instead of
+    /// `onAppear`, and every hidden-tab trigger bails rather than burning a
+    /// full-table fetch nobody can see.
+    @Environment(\.isActiveTab) private var isActiveTab
     @StateObject private var inProgressManager = InProgressManager.shared
     @EnvironmentObject private var locationManager: LocationManager
     
@@ -70,7 +75,9 @@ struct HomeView: View {
         // work: recompute when the review sheet dismisses (tasks were just
         // created into the local store, no sync round-trip needed).
         .onChange(of: appState.showProjectsNeedingTasksReview) { _, showing in
-            guard !showing else { return }
+            // Sheet is hosted at the app root, so it can close over any tab.
+            // A hidden Home picks the new count up from its activation refresh.
+            guard !showing, isActiveTab else { return }
             projectsNeedingTasksCount = ProjectsWithoutTasksDetector
                 .projectsWithoutTasks(from: dataController.getProjectsForCurrentUser(for: nil))
                 .count
@@ -80,7 +87,9 @@ struct HomeView: View {
         .environmentObject(dataController)
         .preferredColorScheme(.dark) // Enforce dark mode for the entire view
         // Listen for task navigation from event carousel
-        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("ShowCalendarTaskDetails"))) { notification in
+        // Schedule's day/month grids post this too and ScheduleView answers it
+        // as well — only the tab on screen may present the task.
+        .onReceiveWhileActive(NotificationCenter.default.publisher(for: Notification.Name("ShowCalendarTaskDetails"))) { notification in
             if let userInfo = notification.userInfo,
                let taskID = userInfo["taskID"] as? String,
                let projectID = userInfo["projectID"] as? String {
@@ -139,28 +148,27 @@ struct HomeView: View {
             userStoppedRouting = true
         }
         .onAppear {
-            // Track screen view for analytics
-            AnalyticsManager.shared.trackScreenView(screenName: .home, screenClass: "HomeView")
-            AnalyticsService.shared.trackScreenView(screenName: "home")
-
-            // Initialize location status
+            // First visit only. Mount and activation coincide here, so the
+            // per-visit work runs once from this handler and `isActiveTab`
+            // carries every visit after it — no double-fire.
             locationStatus = locationManager.authorizationStatus
-
-            // Load projects
+            beginVisit()
             loadTodaysProjects()
-
-            // Debug log
-
-            // Set up periodic route refreshes for navigation
-            if appState.isInProjectMode {
-                // Schedule route refresh every 30 seconds while in project mode
-                startRouteRefreshTimer()
-            }
         }
         .onDisappear {
-            // Clean up any timers
-            stopRouteRefreshTimer()
-            AnalyticsService.shared.endScreenView(screenName: "home")
+            endVisit()
+        }
+        // Every return to Home. The refresh is silent: the data is already on
+        // screen from the last visit, so re-showing the loading state would
+        // both flash the carousel and, through `appState.isLoadingProjects`,
+        // blink the tab bar and FAB out on every single visit.
+        .onChange(of: isActiveTab) { _, active in
+            if active {
+                beginVisit()
+                loadTodaysProjects(silent: true)
+            } else {
+                endVisit()
+            }
         }
         // Watch for changes to locationManager's denied state
         .onChange(of: locationManager.isLocationDenied) { _, isDenied in
@@ -170,6 +178,8 @@ struct HomeView: View {
         }
         // Watch for initial sync completion to refresh projects
         .onChange(of: dataController.isPerformingInitialSync) { oldValue, newValue in
+            // A hidden Home picks this up from its activation refresh instead.
+            guard isActiveTab else { return }
             if oldValue == true && newValue == false {
                 // Sync just completed, reload today's projects
                 print("[HOME] 🔄 Initial sync completed, reloading today's projects")
@@ -181,7 +191,7 @@ struct HomeView: View {
             appState.isLoadingProjects = newValue
         }
         // Use onReceive with NotificationCenter for location changes
-        .onReceive(NotificationCenter.default.publisher(for: .locationDidChange)) { _ in
+        .onReceiveWhileActive(NotificationCenter.default.publisher(for: .locationDidChange)) { _ in
             if inProgressManager.isRouting, 
                appState.isInProjectMode, 
                let location = locationManager.userLocation {
@@ -237,7 +247,10 @@ struct HomeView: View {
             stopRouteRefreshTimer()
             showFullDirectionsView = false
         }
-        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("StartRouteRefreshTimer"))) { _ in
+        // Posted by ProjectActionBar, which lives in a root-level sheet that
+        // opens over any tab. `beginVisit` restarts the timer when Home comes
+        // back on screen, so a hidden Home never runs one.
+        .onReceiveWhileActive(NotificationCenter.default.publisher(for: Notification.Name("StartRouteRefreshTimer"))) { _ in
             startRouteRefreshTimer()
         }
         .onReceive(NotificationCenter.default.publisher(for: Notification.Name("StopRouteRefreshTimer"))) { _ in
@@ -254,16 +267,36 @@ struct HomeView: View {
                 }
             }
         }
-        .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
-            // Reload projects when app returns to foreground
+        .onReceiveWhileActive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
+            // Reload projects when app returns to foreground. A backgrounded
+            // Home that is not the visible tab refreshes on its next visit.
             loadTodaysProjects()
         }
     }
     
     // MARK: - Helper Methods
     
-    private func loadTodaysProjects() {
-        isLoading = true
+    /// Screen-view analytics + live-navigation refresh are while-you-are-looking
+    /// concerns: they start when Home comes on screen and stop when it leaves,
+    /// exactly as they did when a tab switch tore the view down.
+    private func beginVisit() {
+        AnalyticsManager.shared.trackScreenView(screenName: .home, screenClass: "HomeView")
+        AnalyticsService.shared.trackScreenView(screenName: "home")
+        if appState.isInProjectMode {
+            startRouteRefreshTimer()
+        }
+    }
+
+    private func endVisit() {
+        stopRouteRefreshTimer()
+        AnalyticsService.shared.endScreenView(screenName: "home")
+    }
+
+    /// `silent` skips the loading state so a refresh over data already on
+    /// screen never flashes the carousel or, via `appState.isLoadingProjects`,
+    /// the tab bar and FAB.
+    private func loadTodaysProjects(silent: Bool = false) {
+        if !silent { isLoading = true }
 
         Task {
             let today = Calendar.current.startOfDay(for: Date())
@@ -340,7 +373,7 @@ struct HomeView: View {
                     self.selectedEventIndex = index
                 }
 
-                self.isLoading = false
+                if !silent { self.isLoading = false }
             }
         }
     }
@@ -349,16 +382,32 @@ struct HomeView: View {
         guard let context = dataController.modelContext else { return .empty }
         let companyId = dataController.currentUser?.companyId
 
-        let invoices = ((try? context.fetch(FetchDescriptor<Invoice>())) ?? [])
-            .filter { invoice in
-                guard let companyId else { return true }
-                return invoice.companyId == companyId
+        // Both gates ride the fetch rather than a Swift filter. This runs on
+        // every Home load — mount, foreground, sync completion, and now every
+        // return to the tab — and it used to materialize every invoice and
+        // every estimate the device has ever stored, including other companies'
+        // rows and tombstones, only to drop most of them.
+        //
+        // The soft-delete gate is not new behavior: `HomeBillableThisWeekRollupEngine`
+        // already dropped `deletedAt != nil` rows before grouping. It moves here
+        // so those rows are never materialized in the first place. The company
+        // gate keeps its old "no company id means no filter" reading.
+        var invoiceDescriptor = FetchDescriptor<Invoice>(
+            predicate: #Predicate<Invoice> { $0.deletedAt == nil }
+        )
+        var estimateDescriptor = FetchDescriptor<Estimate>(
+            predicate: #Predicate<Estimate> { $0.deletedAt == nil }
+        )
+        if let companyId {
+            invoiceDescriptor.predicate = #Predicate<Invoice> {
+                $0.deletedAt == nil && $0.companyId == companyId
             }
-        let estimates = ((try? context.fetch(FetchDescriptor<Estimate>())) ?? [])
-            .filter { estimate in
-                guard let companyId else { return true }
-                return estimate.companyId == companyId
+            estimateDescriptor.predicate = #Predicate<Estimate> {
+                $0.deletedAt == nil && $0.companyId == companyId
             }
+        }
+        let invoices = (try? context.fetch(invoiceDescriptor)) ?? []
+        let estimates = (try? context.fetch(estimateDescriptor)) ?? []
 
         return HomeBillableThisWeekRollupEngine.compute(
             projects: projects,

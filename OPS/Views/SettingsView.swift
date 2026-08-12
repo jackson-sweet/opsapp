@@ -14,6 +14,10 @@ struct SettingsView: View {
     @EnvironmentObject private var appState: AppState
     @EnvironmentObject private var permissionStore: PermissionStore
     @Environment(\.wizardStateManager) private var wizardStateManager
+    /// SETTINGS stays mounted for the session (MainTabView's keep-alive
+    /// container), so screen-view analytics and the pending-work count key off
+    /// this rather than a remount.
+    @Environment(\.isActiveTab) private var isActiveTab
     @State private var showLogoutConfirmation = false
     @State private var showUnsentSiteVisitLogoutWarning = false
     @State private var isPreparingLogout = false
@@ -332,7 +336,7 @@ struct SettingsView: View {
                             settingsSection(title: "DATA") {
                                 pendingWorkRow
                                     .onAppear(perform: refreshPendingWorkCount)
-                                    .onReceive(NotificationCenter.default.publisher(for: .opsLeadsDidChange)) { _ in
+                                    .onReceiveWhileActive(NotificationCenter.default.publisher(for: .opsLeadsDidChange)) { _ in
                                         refreshPendingWorkCount()
                                     }
 
@@ -440,17 +444,26 @@ struct SettingsView: View {
         }
         .trackScreen("Settings")
         .onAppear {
-            AnalyticsManager.shared.trackScreenView(screenName: .settings, screenClass: "SettingsView")
-            AnalyticsService.shared.trackScreenView(screenName: "settings")
+            // First visit only — mount and activation coincide here, so the
+            // per-visit work runs once from this handler and `isActiveTab`
+            // carries every visit after it.
             developerModeEnabled = UserDefaults.standard.bool(forKey: "developerModeEnabled")
             #if DEBUG
             if !developerModeEnabled && UserDefaults.standard.object(forKey: "developerModeEnabled") != nil {
                 developerModeExplicitlyDisabled = true
             }
             #endif
+            beginVisit()
         }
         .onDisappear {
-            AnalyticsService.shared.endScreenView(screenName: "settings")
+            endVisit()
+        }
+        .onChange(of: isActiveTab) { _, active in
+            if active {
+                beginVisit()
+            } else {
+                endVisit()
+            }
         }
         // Bug G5 — reset the header search when Settings disappears so a return
         // trip starts clean instead of lingering in a half-focused state.
@@ -1079,6 +1092,19 @@ struct SettingsView: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(PlainButtonStyle())
+    }
+
+    /// Screen-view analytics and the DATA section's pending-work count are
+    /// per-visit: they ran on every mount back when a tab switch rebuilt this
+    /// view, and they still run on every visit now.
+    private func beginVisit() {
+        AnalyticsManager.shared.trackScreenView(screenName: .settings, screenClass: "SettingsView")
+        AnalyticsService.shared.trackScreenView(screenName: "settings")
+        refreshPendingWorkCount()
+    }
+
+    private func endVisit() {
+        AnalyticsService.shared.endScreenView(screenName: "settings")
     }
 
     private func refreshPendingWorkCount() {

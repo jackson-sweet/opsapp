@@ -32,8 +32,10 @@ struct ExpensesListView: View {
     /// Inherited from the BOOKS slot — this console is either that slot's root
     /// (booksAutoSkipDestination) or pushed inside it.
     @Environment(\.isActiveTab) private var isActiveTab
-    /// An expense changed while BOOKS was off screen; the reload waits.
-    @State private var needsRealtimeRefresh = false
+    /// An expense changed while BOOKS was off screen; the reload waits. Named
+    /// for its content, matching MyExpensesView and the `needs…Reload` deferral
+    /// family across the tab roots.
+    @State private var needsExpensesReload = false
     @StateObject private var viewModel = ExpenseViewModel()
     @EnvironmentObject private var dataController: DataController
     @EnvironmentObject private var permissionStore: PermissionStore
@@ -161,8 +163,8 @@ struct ExpensesListView: View {
             refreshOrDefer()
         }
         .onChange(of: isActiveTab) { _, active in
-            guard active, needsRealtimeRefresh else { return }
-            needsRealtimeRefresh = false
+            guard active, needsExpensesReload else { return }
+            needsExpensesReload = false
             viewModel.scheduleRealtimeRefresh()
         }
         .onChange(of: deepLinkBatchId) { _, _ in
@@ -328,7 +330,7 @@ struct ExpensesListView: View {
     /// handler spends it.
     private func refreshOrDefer() {
         guard isActiveTab else {
-            needsRealtimeRefresh = true
+            needsExpensesReload = true
             return
         }
         viewModel.scheduleRealtimeRefresh()

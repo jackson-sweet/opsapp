@@ -12,17 +12,6 @@ import SwiftData
 import Combine
 import MapKit
 
-/// Measured width of the keep-alive tab container. Inactive tabs park exactly
-/// one container width to the side, so the slide covers the whole screen and
-/// never a fraction of it.
-private struct TabContainerWidthKey: PreferenceKey {
-    static let defaultValue: CGFloat = 0
-
-    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
-        value = max(value, nextValue())
-    }
-}
-
 struct MainTabView: View {
     @EnvironmentObject private var dataController: DataController
     @EnvironmentObject private var appState: AppState
@@ -30,8 +19,9 @@ struct MainTabView: View {
     @EnvironmentObject private var permissionStore: PermissionStore
     @Environment(\.wizardTriggerService) private var wizardTriggerService
     @Environment(\.wizardStateManager) private var wizardStateManager
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
+    /// Never assign directly — route through `tabSelection` / `selectTab`, which
+    /// hold the same-transaction contract the container's slide depends on.
     @State private var selectedTab = 0
     @State private var hasEvaluatedWizards = false
     @State private var needsWizardRetry = false
@@ -42,9 +32,6 @@ struct MainTabView: View {
     /// RAM-for-responsiveness trade — there is no eviction policy. The set is
     /// reset only when a permission or role change rewrites the index→tab map.
     @State private var mountedTabs: Set<Int> = [0]
-    /// Reported by the container itself; `slideWidth` covers the frame before
-    /// the first layout lands.
-    @State private var containerWidth: CGFloat = 0
     @State private var keyboardIsShowing = false
     /// Height of the current tab's `AppHeader`, reported by the header itself.
     /// The status band below is offset by this so it starts where the header
@@ -318,7 +305,7 @@ struct MainTabView: View {
         return false
     }
 
-    // MARK: - Keep-alive tab container geometry
+    // MARK: - Tab selection policy
 
     /// Mounted slots, filtered to the tab set the operator currently has. A
     /// permission or role change rewrites the index→tab mapping and resets
@@ -328,69 +315,23 @@ struct MainTabView: View {
         return mountedTabs.filter { $0 >= 0 && $0 < count }.sorted()
     }
 
-    /// Off-screen parking distance. The screen-width fallback covers the single
-    /// frame before the container reports its own measured width.
-    private var slideWidth: CGFloat {
-        containerWidth > 0 ? containerWidth : UIScreen.main.bounds.width
-    }
-
-    /// Where a mounted tab sits. The selected tab owns the screen; every other
-    /// tab parks a full width to the side its index lives on, so the direction
-    /// of travel is a straight index comparison — a forward move brings the new
-    /// tab in from the trailing edge and pushes the old one off the leading
-    /// edge, a back move does the reverse.
-    ///
-    /// Reduce Motion pins every slot to zero: the switch becomes a crossfade
-    /// with no lateral travel, carried entirely by `slotOpacity`.
-    private func slotOffset(for index: Int) -> CGFloat {
-        guard !reduceMotion else { return 0 }
-        if index == selectedTab { return 0 }
-        return index < selectedTab ? -slideWidth : slideWidth
-    }
-
-    private func slotOpacity(for index: Int) -> Double {
-        guard reduceMotion else { return 1 }
-        return index == selectedTab ? 1 : 0
-    }
-
-    /// Only the arriving and departing tabs animate. Every other mounted tab
-    /// merely flips which side it is parked on — animating that would drag
-    /// whole screens across the display on any non-adjacent jump.
-    private func slotAnimation(for index: Int) -> SwiftUI.Animation? {
-        (index == selectedTab || index == previousTab) ? OPSStyle.Animation.standard : nil
-    }
-
-    /// First visit to a tab: the slot does not exist yet, so there is no offset
-    /// to animate away from — the insertion transition supplies the identical
-    /// slide. Removal is never used; slots are never unmounted.
-    private var slotInsertionTransition: AnyTransition {
-        if reduceMotion { return .opacity }
-        return .asymmetric(
-            insertion: .move(edge: selectedTab > previousTab ? .trailing : .leading),
-            removal: .identity
-        )
-    }
-
     /// Tab selection funnels through here so `previousTab` and the mounted-slot
     /// set land in the SAME transaction as `selectedTab`. Updating them in a
     /// later `onChange` pass would teleport the outgoing tab off-screen instead
     /// of sliding it, and would mount an arriving tab a frame too late to
     /// animate in.
+    /// `nil` animation on purpose: CustomTabBar already wraps its write in its
+    /// own `withAnimation`, and adding a second one here would nest transactions
+    /// and change the tab bar's own timing.
     private var tabSelection: Binding<Int> {
         Binding(
             get: { selectedTab },
-            set: { newValue in
-                guard newValue != selectedTab else { return }
-                previousTab = selectedTab
-                mountedTabs.insert(newValue)
-                selectedTab = newValue
-            }
+            set: { selectTab($0, with: nil) }
         )
     }
 
-    /// Programmatic tab changes (deep links, wizards, push routing). Same
-    /// same-transaction contract as `tabSelection`; pass `nil` to switch
-    /// without animation.
+    /// The one implementation of the same-transaction contract, shared with
+    /// `tabSelection`. Pass `nil` to switch without adding an animation.
     private func selectTab(_ index: Int, with animation: SwiftUI.Animation?) {
         guard index != selectedTab else { return }
         previousTab = selectedTab
@@ -511,56 +452,22 @@ struct MainTabView: View {
         }
     }
 
-    /// One mounted tab. Hidden slots keep their whole subtree — and therefore
-    /// their state — but take no touches, stay out of the accessibility tree,
-    /// and tell everything inside them that they are not on screen.
-    private func tabSlot(_ index: Int) -> some View {
-        tabRoot(for: index)
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .environment(\.isActiveTab, index == selectedTab)
-            .offset(x: slotOffset(for: index))
-            .opacity(slotOpacity(for: index))
-            .allowsHitTesting(index == selectedTab)
-            .accessibilityHidden(index != selectedTab)
-            .animation(slotAnimation(for: index), value: selectedTab)
-            .transition(slotInsertionTransition)
-    }
-
     var body: some View {
         ZStack {
             // Main content structure with sliding transitions
             // Dynamic content based on tabs array
             let tabCount = tabs.count
 
-            // Keep-alive tab container. Every visited tab stays mounted and
-            // parks a full screen off to the side its index lives on; a switch
-            // slides the outgoing and incoming slots past each other, so each
-            // complete view still moves as a single unit.
-            //
-            // The previous router destroyed and cold-rebuilt a whole tab on
-            // every switch (`Group { tabContent }.id(selectedTab)`): Home
-            // reconstructed the entire Mapbox stack, Leads and Books threw away
-            // their view models and refetched behind a spinner, scroll
-            // positions died. Tab switching is the app's primary navigation, so
-            // that teardown was the single biggest source of navigation lag.
-            ZStack {
-                ForEach(mountedTabIndices, id: \.self) { index in
-                    tabSlot(index)
-                }
+            // Keep-alive tab container — every visited tab stays mounted and
+            // slides rather than being rebuilt. Geometry lives in the container;
+            // what the indices mean and how one is chosen stays here.
+            KeepAliveTabContainer(
+                selected: selectedTab,
+                previous: previousTab,
+                mounted: mountedTabIndices
+            ) { index in
+                tabRoot(for: index)
             }
-            // Drives the insertion transition on a tab's first visit. Per-slot
-            // `.animation` sits closer to the offsets and governs those.
-            .animation(OPSStyle.Animation.standard, value: selectedTab)
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(
-                GeometryReader { proxy in
-                    Color.clear.preference(
-                        key: TabContainerWidthKey.self,
-                        value: proxy.size.width
-                    )
-                }
-            )
-            .onPreferenceChange(TabContainerWidthKey.self) { containerWidth = $0 }
             .ignoresSafeArea(.all, edges: .bottom)
             // Each tab's AppHeader (search + tab-specific action buttons) lives
             // inside this sliding container, so the whole header slides as one
@@ -1086,9 +993,12 @@ struct MainTabView: View {
 
         // Track tab changes for slide transitions and analytics
         .onChange(of: selectedTab) { oldValue, newValue in
-            // Net for any selection that bypassed `tabSelection` / `selectTab`.
-            // A no-op when they were used — the values already match — so it
-            // costs no extra render on the normal path.
+            // Net, not an alternative: a write that bypassed `tabSelection` /
+            // `selectTab` has already rendered one frame with a stale
+            // `previousTab`, so the outgoing tab teleported instead of sliding
+            // and no later fix-up can recover that frame. This only restores
+            // CONSISTENCY for everything after it. A no-op on the normal path —
+            // the values already match — so it costs no extra render.
             if previousTab != oldValue { previousTab = oldValue }
             if !mountedTabs.contains(newValue) { mountedTabs.insert(newValue) }
             let tabName = analyticsTabName(for: newValue)

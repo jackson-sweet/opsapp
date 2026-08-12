@@ -86,8 +86,7 @@ struct VinylBulkMarkService {
             try await updateProjectFields(item.projectId, [
                 ProjectVinylOrderFields.status: .string(ProjectVinylOrderStatus.ordered.rawValue),
                 ProjectVinylOrderFields.orderedAt: .string(SupabaseDate.format(Date())),
-                // `projects.vinyl_ordered_by` FKs auth.users — stays NULL.
-                ProjectVinylOrderFields.orderedBy: .null,
+                ProjectVinylOrderFields.orderedBy: .string(userId),
                 ProjectVinylOrderFields.color: color.map { .string($0) } ?? .null,
                 ProjectVinylOrderFields.po: po.map { .string($0) } ?? .null
             ])

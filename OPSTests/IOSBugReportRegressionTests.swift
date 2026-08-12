@@ -172,7 +172,7 @@ final class IOSBugReportRegressionTests: XCTestCase {
     }
 
     @MainActor
-    func testGlobalKeyboardDoneAccessoryLeavesTokenizedSpaceBelowAction() {
+    func testGlobalKeyboardDoneAccessoryLeavesTokenizedSpaceBelowAction() throws {
         let textField = UITextField()
         let accessory = OPSKeyboardDoneAccessoryView(editingResponder: textField)
         accessory.frame = CGRect(
@@ -182,8 +182,14 @@ final class IOSBugReportRegressionTests: XCTestCase {
             height: OPSStyle.Layout.keyboardAccessoryHeight
         )
 
+        // iOS 26.5: UIToolbar only mounts bar-item custom views once it joins
+        // a window — a detached host leaves the done button at a 0pt frame, so
+        // the geometry must be proven inside the app host's real window.
+        let window = try AppHostWindow.acquire()
         let host = UIView(frame: accessory.bounds)
         host.addSubview(accessory)
+        window.addSubview(host)
+        defer { host.removeFromSuperview() }
         host.layoutIfNeeded()
         accessory.layoutIfNeeded()
 

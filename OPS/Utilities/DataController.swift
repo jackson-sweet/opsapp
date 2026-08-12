@@ -5953,9 +5953,15 @@ class DataController: ObservableObject {
             }
         } catch {
             // The preflight save above established a clean baseline, so this
-            // discards every partial insert and restores every mutated model to
-            // its exact committed tombstone/needsSync state.
+            // discards every partial insert and restores the store to its
+            // exact committed tombstone/needsSync state.
             context.rollback()
+            // SwiftData (iOS 26.5) leaves already-held instances serving their
+            // pre-rollback snapshot until the row is next fetched, and live
+            // callers (TrashView rows mid-restore) keep reading those exact
+            // references — so rebind every entity this transaction mutated
+            // before the error surfaces.
+            rematerializeAfterRollback(restored, context: context)
             if error is TrashRecoveryTransactionFailure {
                 throw TrashRestoreError.syncQueueFailed
             }
@@ -5971,6 +5977,28 @@ class DataController: ObservableObject {
             Task { await syncEngine.pushPending() }
         }
         return TrashRestoreResult(restored: restored)
+    }
+
+    /// Rebinds held model instances to their committed rows after a rollback.
+    /// SwiftData's rollback() does not refresh instances already in hand — the
+    /// stale snapshot persists until an id-scoped fetch touches the row, which
+    /// rebinds the same instance (identity preserved). Best-effort: a row that
+    /// cannot be fetched has no committed state left to surface.
+    @MainActor
+    private func rematerializeAfterRollback(
+        _ entities: [TrashRecoveryEntityRef],
+        context: ModelContext
+    ) {
+        for entity in entities {
+            switch entity.kind {
+            case .project:
+                _ = try? trashProjectIfPresent(id: entity.id, context: context)
+            case .client:
+                _ = try? trashClient(id: entity.id, context: context)
+            case .task:
+                _ = try? trashTask(id: entity.id, context: context)
+            }
+        }
     }
 
     private func stagedTrashOperationMatches(

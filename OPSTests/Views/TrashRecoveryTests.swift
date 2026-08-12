@@ -138,7 +138,7 @@ final class TrashRecoveryTests: XCTestCase {
 
     func testRestoreSavesProjectBeforeQueueingExactNullTombstone() async throws {
         UserDefaults.standard.set(false, forKey: "feature.useDataActor")
-        let container = try makeContainer(allowsSave: true)
+        let container = try makeContainer()
         let context = ModelContext(container)
         let project = makeProject(id: "project-1", title: "Cedar deck")
         context.insert(project)
@@ -164,7 +164,7 @@ final class TrashRecoveryTests: XCTestCase {
 
     func testCombinedRestorePersistsParentAndTaskAndQueuesBoth() async throws {
         UserDefaults.standard.set(false, forKey: "feature.useDataActor")
-        let container = try makeContainer(allowsSave: true)
+        let container = try makeContainer()
         let context = ModelContext(container)
         let project = makeProject(id: "project-1", title: "Cedar deck")
         let task = makeTask(id: "task-1", project: project)
@@ -201,7 +201,7 @@ final class TrashRecoveryTests: XCTestCase {
 
     func testZeroOperationStagingRollsBackProjectMutationBeforeCommit() async throws {
         UserDefaults.standard.set(false, forKey: "feature.useDataActor")
-        let container = try makeContainer(allowsSave: true)
+        let container = try makeContainer()
         let context = ModelContext(container)
         let project = makeProject(id: "project-1", title: "Cedar deck")
         let originalDeletedAt = try XCTUnwrap(project.deletedAt)
@@ -235,7 +235,7 @@ final class TrashRecoveryTests: XCTestCase {
 
     func testPartialOperationStagingRollsBackParentTaskAndPartialLedger() async throws {
         UserDefaults.standard.set(false, forKey: "feature.useDataActor")
-        let container = try makeContainer(allowsSave: true)
+        let container = try makeContainer()
         let context = ModelContext(container)
         let project = makeProject(id: "project-1", title: "Cedar deck")
         let task = makeTask(id: "task-1", project: project)
@@ -282,7 +282,7 @@ final class TrashRecoveryTests: XCTestCase {
 
     func testFailedLocalSaveRollsBackTombstoneAndNeverQueuesSuccess() async throws {
         UserDefaults.standard.set(false, forKey: "feature.useDataActor")
-        let container = try makeContainer(allowsSave: false)
+        let container = try makeSaveRejectingContainer()
         let context = ModelContext(container)
         let project = makeProject(id: "project-1", title: "Cedar deck")
         let originalDeletedAt = try XCTUnwrap(project.deletedAt)
@@ -305,7 +305,7 @@ final class TrashRecoveryTests: XCTestCase {
 
     func testMissingRecordDuringCombinedRecoveryRollsBackEarlierMutations() async throws {
         UserDefaults.standard.set(false, forKey: "feature.useDataActor")
-        let container = try makeContainer(allowsSave: true)
+        let container = try makeContainer()
         let context = ModelContext(container)
         let project = makeProject(id: "project-1", title: "Cedar deck")
         let originalDeletedAt = try XCTUnwrap(project.deletedAt)
@@ -398,8 +398,8 @@ final class TrashRecoveryTests: XCTestCase {
         )
     }
 
-    private func makeContainer(allowsSave: Bool) throws -> ModelContainer {
-        let schema = Schema([
+    private func makeSchema() -> Schema {
+        Schema([
             Project.self,
             ProjectTask.self,
             TaskType.self,
@@ -411,11 +411,45 @@ final class TrashRecoveryTests: XCTestCase {
             ProjectPhoto.self,
             SyncOperation.self,
         ])
+    }
+
+    private func makeContainer() throws -> ModelContainer {
+        let schema = makeSchema()
         let configuration = ModelConfiguration(
             schema: schema,
             isStoredInMemoryOnly: true,
-            allowsSave: allowsSave
+            allowsSave: true
         )
         return try ModelContainer(for: schema, configurations: [configuration])
+    }
+
+    /// A container whose store rejects every save. iOS 26.5 cannot load an
+    /// in-memory `allowsSave: false` configuration — the /dev/null-backed
+    /// SQLite store fails to open read-only (NSCocoaErrorDomain 257) — so the
+    /// store is created writable on disk first, then reopened read-only.
+    /// save() then fails at the persistence layer exactly like the old
+    /// in-memory fixture did.
+    private func makeSaveRejectingContainer() throws -> ModelContainer {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(
+                "trash-recovery-readonly-\(UUID().uuidString)",
+                isDirectory: true
+            )
+        try FileManager.default.createDirectory(
+            at: directory,
+            withIntermediateDirectories: true
+        )
+        addTeardownBlock {
+            try? FileManager.default.removeItem(at: directory)
+        }
+        let url = directory.appendingPathComponent("store.sqlite")
+        let schema = makeSchema()
+        do {
+            // Loading a writable container materializes the store file.
+            let writable = ModelConfiguration(schema: schema, url: url, allowsSave: true)
+            _ = try ModelContainer(for: schema, configurations: [writable])
+        }
+        let readOnly = ModelConfiguration(schema: schema, url: url, allowsSave: false)
+        return try ModelContainer(for: schema, configurations: [readOnly])
     }
 }

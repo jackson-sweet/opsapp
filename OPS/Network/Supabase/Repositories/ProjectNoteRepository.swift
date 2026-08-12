@@ -9,7 +9,14 @@
 import Foundation
 import Supabase
 
-class ProjectNoteRepository {
+/// The read half of the note repository, as the activity feed needs it. Named
+/// so the feed's load order — local rows painted first, server merge second —
+/// can be exercised against a fetch that has not resolved.
+protocol ProjectNoteFetching {
+    func fetchForProject(_ projectId: String) async throws -> [ProjectNoteDTO]
+}
+
+class ProjectNoteRepository: ProjectNoteFetching {
     private let client: SupabaseClient
     private let companyId: String
 

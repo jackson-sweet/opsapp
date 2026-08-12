@@ -486,73 +486,57 @@ class PhotoAnnotationSyncManager {
             activeCompositeKeys.insert(cacheKey)
 
             // Freshness short-circuit: a durable composite newer than the
-            // annotation's last change is still valid. Re-rendering a full-
-            // resolution composite is expensive (≈48 MB) and would thrash the
-            // budget evictor on every gallery open, so skip it — just make sure
-            // the in-memory display cache is warm and nudge any mounted
-            // thumbnail to re-read. Local edits delete the composite up front
-            // (see saveAnnotation) and remote edits bump `updatedAt`, so a stale
-            // composite never survives this check.
+            // annotation's last change is still valid, so skip the re-render —
+            // just make sure the in-memory display cache is warm and nudge any
+            // mounted thumbnail to re-read (see PhotoCompositeRenderer for why
+            // a stale composite never survives the check). The probe itself is
+            // a file-attributes read plus, on a lost cache entry, a JPEG decode;
+            // both run on the renderer, off the main actor, because this loop is
+            // driven from onAppear.
             let lastChange = annotation.updatedAt ?? annotation.createdAt
-            if let compositeMTime = ImageFileManager.shared.compositedImageModificationDate(forURL: cacheKey),
-               compositeMTime >= lastChange {
-                if ImageCache.shared.get(forKey: cacheKey) == nil,
-                   let durable = ImageFileManager.shared.loadCompositedImage(forURL: cacheKey) {
-                    ImageCache.shared.set(durable, forKey: cacheKey)
+            switch await PhotoCompositeRenderer.shared.durableComposite(
+                cacheKey: cacheKey, notOlderThan: lastChange
+            ) {
+            case .fresh(let warm):
+                if let warm {
+                    ImageCache.shared.set(warm, forKey: cacheKey)
                 }
                 NotificationCenter.default.post(name: .annotationsComposited, object: nil)
                 continue
+            case .stale:
+                break
             }
-
-            // Load the original, un-composited image. A remote device may
-            // receive the annotation row before it has ever opened the source
-            // image, so cache misses must fall through to the source URL.
-            guard let baseImage = await loadBaseImage(for: plan) else { continue }
 
             // Composite the photo + EVERY active layer's overlay (collaborative
             // markup) so a thumbnail shows all authors' marks — not just the legacy
             // single overlay. effectiveMarkupLayers() also covers pre-collab rows
             // (one synthesized layer from annotation_url), so this one path serves
             // both. Cached per-overlay by URL via the shared compositor.
+            //
+            // Read the layers here (SwiftData, main context) and hand VALUES to
+            // the renderer — the base-image load, the flatten, the JPEG encode
+            // and the durable write all happen off the main actor.
             let activeLayers = annotation.effectiveMarkupLayers()
                 .filter { $0.isActive }
                 .sorted { $0.zIndex < $1.zIndex }
-            var overlays: [UIImage] = []
-            for layer in activeLayers {
-                if let image = await MarkupOverlayCompositor.loadOverlay(for: layer) {
-                    overlays.append(image)
-                }
-            }
-            guard !overlays.isEmpty else { continue }
 
-            let originalSize = baseImage.size
-            guard let composited = MarkupOverlayCompositor.composite(
-                base: baseImage, overlays: overlays, size: originalSize
+            guard let composited = await PhotoCompositeRenderer.shared.render(
+                plan: plan, layers: activeLayers
             ) else { continue }
 
             ImageCache.shared.set(composited, forKey: cacheKey)
 
-            // Persist the composite so ANY thumbnail can resolve markup the
-            // instant it mounts — independent of NSCache eviction or mount
-            // timing. This is the durability tier: the in-memory cache holds
-            // barely one full-resolution composite, so a thumbnail scrolled into
-            // view long after the post fired would otherwise fall back to the
-            // raw photo. JPEG (opaque, quality 0.9) keeps the file ~5-6× smaller
-            // than a lossless PNG of the same 12 MP frame, which matters because
-            // every composite counts against the photo storage budget.
-            if let jpeg = composited.jpegData(compressionQuality: 0.9) {
-                _ = ImageFileManager.shared.saveCompositedImage(jpeg, forURL: cacheKey)
-            }
-
-            // Notify per photo, not once after the loop. Composites are full
-            // source resolution (a 12MP photo ≈ 48 MB) and ImageCache is an
-            // NSCache with a 50 MB cost limit, so inserting the next composite
-            // can evict this one right away. Posting now — synchronously, while
-            // this composite is the freshest cache entry — lets each mounted
-            // PhotoThumbnail capture its own image into @State (via
-            // reloadFromCache) before the next iteration can evict it. A single
-            // post after the loop would arrive once most composites had already
-            // been evicted, leaving thumbnails showing the raw photo.
+            // Notify per photo, not once after the loop, and synchronously on
+            // the line after the cache insert. Composites are full source
+            // resolution (a 12MP photo ≈ 48 MB) and ImageCache is an NSCache
+            // with a 50 MB cost limit, so inserting the next composite can evict
+            // this one right away. Posting while this composite is the freshest
+            // cache entry lets each mounted PhotoThumbnail capture its own image
+            // into @State (via reloadFromCache) before the next iteration can
+            // evict it. A single post after the loop would arrive once most
+            // composites had already been evicted, leaving thumbnails showing
+            // the raw photo. Nothing may be inserted into ImageCache between the
+            // set and the post — that is what this ordering buys.
             NotificationCenter.default.post(name: .annotationsComposited, object: nil)
         }
 
@@ -604,28 +588,6 @@ class PhotoAnnotationSyncManager {
         if invalidated {
             NotificationCenter.default.post(name: .annotationsComposited, object: nil)
         }
-    }
-
-    /// Resolve the RAW, un-composited base for `plan`. Sources are raw-only: the
-    /// url-keyed disk original, else a fresh download saved under that same key.
-    /// The in-memory `ImageCache[cacheKey]` is deliberately NOT consulted — that
-    /// slot holds the flattened composite for display, and reusing it as a base
-    /// would draw the new overlay over already-composited pixels (doubled
-    /// markup). Durable composites make raw eviction (composite surviving) more
-    /// likely, so this raw-only guarantee matters.
-    private func loadBaseImage(for plan: PhotoAnnotationCompositePlan) async -> UIImage? {
-        for localID in plan.baseLocalIDs {
-            if let image = ImageFileManager.shared.loadImage(localID: localID) {
-                return image
-            }
-        }
-
-        guard let baseURL = plan.baseRemoteURL,
-              let (data, _) = try? await URLSession.shared.data(from: baseURL),
-              let downloaded = UIImage(data: data) else { return nil }
-
-        _ = ImageFileManager.shared.saveImage(data: data, localID: plan.cacheKey)
-        return downloaded
     }
 
     // MARK: - Sync Pending
@@ -887,5 +849,104 @@ enum AnnotationClearPlanner {
         if !ownActive { return .ignore }
         let othersActive = layers.contains { $0.authorId != currentUserId && $0.isActive }
         return othersActive ? .clearOwnLayer : .softDelete
+    }
+}
+
+// MARK: - Composite Renderer
+
+/// The off-main half of annotation compositing: base-image resolve, overlay
+/// resolve, flatten, JPEG encode and the durable write.
+///
+/// Why an actor and not a detached task. Two constraints have to hold at once:
+///
+///  1. None of this may run on the main actor. A full-resolution flatten plus a
+///     12 MP JPEG encode is tens of milliseconds each, and `preCompositeAnnotations`
+///     runs from `onAppear` for every annotated photo on the project.
+///  2. The durable write must stay serialized. Several mounted photo surfaces
+///     call `preCompositeAnnotations` concurrently (details screen, photo grid,
+///     comment viewer); before this move, main-actor isolation was what kept two
+///     of them from writing the same composite file at the same time. An actor
+///     preserves exactly that: every synchronous stretch — including each
+///     `saveCompositedImage` — runs in isolation.
+private actor PhotoCompositeRenderer {
+    static let shared = PhotoCompositeRenderer()
+
+    /// State of a photo's durable composite relative to its annotation.
+    enum DurableComposite {
+        /// A composite newer than the annotation's last change is on disk.
+        /// `warm` carries the decoded image ONLY when the in-memory display
+        /// cache had lost it — otherwise the cache entry already stands.
+        case fresh(warm: UIImage?)
+        /// No composite, or one older than the last annotation change.
+        case stale
+    }
+
+    /// Freshness short-circuit. Re-rendering a full-resolution composite is
+    /// expensive (≈48 MB) and would thrash the budget evictor on every gallery
+    /// open, so a durable composite newer than the annotation's last change is
+    /// reused as-is. Local edits delete the composite up front (see
+    /// `saveAnnotation`) and remote edits bump `updatedAt`, so a stale composite
+    /// never survives this check.
+    func durableComposite(cacheKey: String, notOlderThan lastChange: Date) -> DurableComposite {
+        guard let modified = ImageFileManager.shared.compositedImageModificationDate(forURL: cacheKey),
+              modified >= lastChange else { return .stale }
+        guard ImageCache.shared.get(forKey: cacheKey) == nil else { return .fresh(warm: nil) }
+        return .fresh(warm: ImageFileManager.shared.loadCompositedImage(forURL: cacheKey))
+    }
+
+    /// Flatten the photo + every supplied overlay, persist the result, and hand
+    /// the image back for the caller to publish into the display cache. The
+    /// caller owns the `ImageCache` insert so it can post `.annotationsComposited`
+    /// on the very next line (see `preCompositeAnnotations`).
+    func render(plan: PhotoAnnotationCompositePlan, layers: [MarkupLayer]) async -> UIImage? {
+        guard let baseImage = await loadBaseImage(for: plan) else { return nil }
+
+        var overlays: [UIImage] = []
+        for layer in layers {
+            if let image = await MarkupOverlayCompositor.loadOverlay(for: layer) {
+                overlays.append(image)
+            }
+        }
+        guard !overlays.isEmpty else { return nil }
+
+        guard let composited = MarkupOverlayCompositor.composite(
+            base: baseImage, overlays: overlays, size: baseImage.size
+        ) else { return nil }
+
+        // Persist the composite so ANY thumbnail can resolve markup the instant
+        // it mounts — independent of NSCache eviction or mount timing. This is
+        // the durability tier: the in-memory cache holds barely one
+        // full-resolution composite, so a thumbnail scrolled into view long
+        // after the post fired would otherwise fall back to the raw photo. JPEG
+        // (opaque, quality 0.9) keeps the file ~5-6× smaller than a lossless PNG
+        // of the same 12 MP frame, which matters because every composite counts
+        // against the photo storage budget.
+        if let jpeg = composited.jpegData(compressionQuality: 0.9) {
+            _ = ImageFileManager.shared.saveCompositedImage(jpeg, forURL: plan.cacheKey)
+        }
+
+        return composited
+    }
+
+    /// Resolve the RAW, un-composited base for `plan`. Sources are raw-only: the
+    /// url-keyed disk original, else a fresh download saved under that same key.
+    /// The in-memory `ImageCache[cacheKey]` is deliberately NOT consulted — that
+    /// slot holds the flattened composite for display, and reusing it as a base
+    /// would draw the new overlay over already-composited pixels (doubled
+    /// markup). Durable composites make raw eviction (composite surviving) more
+    /// likely, so this raw-only guarantee matters.
+    private func loadBaseImage(for plan: PhotoAnnotationCompositePlan) async -> UIImage? {
+        for localID in plan.baseLocalIDs {
+            if let image = ImageFileManager.shared.loadImage(localID: localID) {
+                return image
+            }
+        }
+
+        guard let baseURL = plan.baseRemoteURL,
+              let (data, _) = try? await URLSession.shared.data(from: baseURL),
+              let downloaded = UIImage(data: data) else { return nil }
+
+        _ = ImageFileManager.shared.saveImage(data: data, localID: plan.cacheKey)
+        return downloaded
     }
 }

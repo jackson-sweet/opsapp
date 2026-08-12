@@ -223,6 +223,40 @@ actor DataActor {
         try await syncCompany(repos: repos)
     }
 
+    // MARK: - Single-Client Sync
+
+    /// Public entry point for SyncEngine.syncClientNow — fetches and merges ONE
+    /// client row by id. Opening a project's details needs that row current and
+    /// nothing else; the previous implementation ran a whole-app push+pull over
+    /// every entity type on each open, which is why the sheet stuttered.
+    ///
+    /// Freshness for the rest of the store is unaffected: realtime carries
+    /// `clients` (RealtimeProcessor.companyFilteredTables), and foreground
+    /// return / connectivity restore still trigger a full pass.
+    func syncClientOnly(clientId: String, companyId: String) async throws {
+        guard !clientId.isEmpty, !companyId.isEmpty else {
+            print("[DataActor] syncClientOnly aborted — missing clientId or companyId")
+            return
+        }
+        let repos = repositories(companyId: companyId)
+        let dto = try await repos.client.fetchOne(clientId)
+        try mergeClientSnapshot(dto)
+    }
+
+    /// Merge half of `syncClientOnly`, split out so the merge contract is
+    /// exercisable against a DTO without a network round-trip. Routes through
+    /// the SAME `mergeClient` the pull and realtime paths use — origin
+    /// suppression, field-level conflict acceptance and Spotlight marking all
+    /// apply unchanged.
+    func mergeClientSnapshot(_ dto: SupabaseClientDTO) throws {
+        try modelContext.transaction {
+            try mergeClient(dto: dto)
+        }
+        // Snapshot-cache consumers repaint off this, exactly as they do after a
+        // realtime client event.
+        InboundChangeSignal.post(entityNames: ["Client"])
+    }
+
     // MARK: - Full Sync
 
     /// Pull ALL entities from Supabase in dependency order and merge into local SwiftData.

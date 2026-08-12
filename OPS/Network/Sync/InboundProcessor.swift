@@ -646,6 +646,22 @@ final class InboundProcessor {
         await SubscriptionManager.shared.checkSubscriptionStatus()
     }
 
+    // MARK: - Single Client Sync
+
+    /// Fetch and merge ONE client row by id — the legacy (non-DataActor) half of
+    /// SyncEngine.syncClientNow. Opening a project's details needs that row
+    /// current and nothing else; it used to run a whole-app push+pull per open.
+    func syncClient(clientId: String, context: ModelContext) async throws {
+        guard !clientId.isEmpty else {
+            print("[InboundProcessor] No clientId — skipping client refresh")
+            return
+        }
+
+        let dto = try await clientRepo.fetchOne(clientId)
+        try mergeClient(dto: dto, context: context)
+        InboundChangeSignal.post(entityNames: ["Client"])
+    }
+
     private func mergeCompany(dto: SupabaseCompanyDTO, context: ModelContext) throws {
         let id = dto.id
         let descriptor = FetchDescriptor<Company>(

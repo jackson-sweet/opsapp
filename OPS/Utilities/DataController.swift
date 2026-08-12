@@ -2846,10 +2846,20 @@ class DataController: ObservableObject {
         guard let context = modelContext else {
             return []
         }
-        
+
         do {
-            // Fetch all projects (sorting by computed startDate must be done in-memory)
-            let descriptor = FetchDescriptor<Project>()
+            // Fetch all projects (sorting by computed startDate must be done
+            // in-memory). The soft-delete gate is a #Predicate, not an in-memory
+            // filter: this is a whole-table fetch on the main context — the job
+            // board runs it several times per render pass — and materializing
+            // every tombstoned row only to drop it is cost paid on the main
+            // thread. No caller wants tombstones: every one either counts
+            // operational jobs, resolves a task's project by id, or already
+            // re-filtered `deletedAt == nil` itself. Trash surfaces use their
+            // own @Query and do not come through here.
+            let descriptor = FetchDescriptor<Project>(
+                predicate: #Predicate<Project> { $0.deletedAt == nil }
+            )
 
             return try context.fetch(descriptor)
         } catch {
@@ -7513,15 +7523,27 @@ class DataController: ObservableObject {
     }
 
     /// Trigger project tasks sync - replaces syncManager.syncProjectTasks(projectId:)
+    ///
+    /// Still a full pass: the only caller is the debug-only TaskTestView, and a
+    /// scoped project-task pull has no inbound entry point today (the task
+    /// repository fetches by company + cursor, not by project). Left whole
+    /// rather than half-scoped — no shipping screen pays for it.
     @MainActor
     func triggerProjectTasksSync(projectId: String) async {
         await syncEngine.triggerSync()
     }
 
-    /// Refresh a single client's data - replaces syncManager.refreshSingleClient(clientId:)
+    /// Refresh a single client's data — a targeted one-row pull, NOT a sync pass.
+    ///
+    /// The project details screen calls this on every open. It used to be
+    /// `syncEngine.triggerSync()`: push + pull across all 40 entity types with
+    /// main-actor orphan sweeps and a photo-prefetch kickoff, on every open of
+    /// every project. `syncClientNow` fetches just this client's row, merges it
+    /// through the normal client-merge path, and is gated on connectivity so an
+    /// offline open still fails fast and renders from local data.
     @MainActor
     func refreshSingleClient(clientId: String) async throws {
-        await syncEngine.triggerSync()
+        await syncEngine.syncClientNow(clientId: clientId)
     }
 
     // MARK: - AnyJSON Conversion Helper

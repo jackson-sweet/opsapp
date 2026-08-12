@@ -115,29 +115,47 @@ class PhotoDownloadManager: ObservableObject {
             }
             let (data, response) = try await URLSession.shared.data(for: request)
             guard let httpResponse = response as? HTTPURLResponse,
-                  (200...299).contains(httpResponse.statusCode),
-                  UIImage(data: data) != nil else {
+                  (200...299).contains(httpResponse.statusCode) else {
                 return false
             }
 
             activeDownloads[url] = 1.0
-            let saved = ImageFileManager.shared.saveImage(data: data, localID: cacheKey)
-            if saved {
-                // Keep the in-memory display slot consistent with the reader
-                // ladder (composite-first). If this photo already has a durable
-                // markup composite — e.g. the raw was budget-evicted while the
-                // composite survived and we're re-fetching the raw now — don't
-                // shadow it with the unmarked photo; otherwise cache the raw.
-                if let composite = ImageFileManager.shared.loadCompositedImage(forURL: url) {
-                    ImageCache.shared.set(composite, forKey: cacheKey)
-                } else if let image = UIImage(data: data) {
-                    ImageCache.shared.set(image, forKey: cacheKey)
-                }
-            }
-            return saved
+            return await Self.decodeAndStore(data: data, url: url, cacheKey: cacheKey)
         } catch {
             return false
         }
+    }
+
+    /// Decode-validate the payload, write it to the disk cache and warm the
+    /// in-memory display slot.
+    ///
+    /// `nonisolated` on purpose, and `async` so it actually leaves the main
+    /// actor: decoding a 12 MP JPEG and writing it to disk is tens of
+    /// milliseconds, and this used to run on the main actor for every photo the
+    /// prefetch pulled — which a project-details open kicks off. Neither
+    /// dependency needs main isolation: ImageFileManager holds no mutable state
+    /// (its budget sweep is already invoked off-main elsewhere) and ImageCache
+    /// is an NSCache. The @Published progress/version bookkeeping stays on the
+    /// main actor in the caller.
+    private nonisolated static func decodeAndStore(
+        data: Data,
+        url: String,
+        cacheKey: String
+    ) async -> Bool {
+        guard let decoded = UIImage(data: data) else { return false }
+        guard ImageFileManager.shared.saveImage(data: data, localID: cacheKey) else { return false }
+
+        // Keep the in-memory display slot consistent with the reader ladder
+        // (composite-first). If this photo already has a durable markup
+        // composite — e.g. the raw was budget-evicted while the composite
+        // survived and we're re-fetching the raw now — don't shadow it with the
+        // unmarked photo; otherwise cache the raw.
+        if let composite = ImageFileManager.shared.loadCompositedImage(forURL: url) {
+            ImageCache.shared.set(composite, forKey: cacheKey)
+        } else {
+            ImageCache.shared.set(decoded, forKey: cacheKey)
+        }
+        return true
     }
 
     /// Download all photos for a project

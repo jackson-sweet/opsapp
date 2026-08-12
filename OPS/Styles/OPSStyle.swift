@@ -736,6 +736,12 @@ enum OPSStyle {
         // Tab bar icon size
         static let tabBarIconSize: CGFloat = 28.0
 
+        /// Height of a tab-bar cell — the tappable row the icon sits inside,
+        /// and the height the lane's divider matches. Clears the 44pt field
+        /// minimum on its own; the cell's width comes from the lane's even
+        /// spacing.
+        static let tabBarItemHeight: CGFloat = 50.0
+
         // Border widths
         enum Border {
             static let standard: CGFloat = 1.0

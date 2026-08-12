@@ -136,4 +136,26 @@ extension View {
                     .stroke(tint, lineWidth: lineWidth)
             )
     }
+
+    /// Badge fill for a badge riding on a `.listRow` L1 surface. Same tint wash
+    /// and hairline as `frostedBadgeFill`, with `surfaceRaised` — the list row's
+    /// own opaque fill — standing in for the material. It occludes the card
+    /// title behind it exactly as the frost did (fully, in fact: the material
+    /// only ever dimmed it), and costs a solid fill instead of a blur pass on
+    /// every badge of every visible row. See `GlassSurfaceFill.listRow`.
+    func listRowBadgeFill(_ tint: Color, cornerRadius: CGFloat, lineWidth: CGFloat = OPSStyle.Layout.Border.standard) -> some View {
+        self
+            .background(
+                RoundedRectangle(cornerRadius: cornerRadius)
+                    .fill(tint.opacity(0.12))
+            )
+            .background(
+                RoundedRectangle(cornerRadius: cornerRadius)
+                    .fill(OPSStyle.Colors.surfaceRaised)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: cornerRadius)
+                    .stroke(tint, lineWidth: lineWidth)
+            )
+    }
 }

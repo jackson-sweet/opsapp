@@ -15,6 +15,8 @@ struct JobBoardProjectListView: View {
     @Environment(\.tutorialMode) private var tutorialMode
     @Environment(\.tutorialPhase) private var tutorialPhase
     @Environment(\.wizardStateManager) private var wizardStateManager
+    /// Live gate for the wizard-only scroll tracker — see the scroll GeometryReader.
+    @Environment(\.wizardActive) private var wizardActive
     @Query private var allProjects: [Project]
     @Query private var taskTypes: [TaskType]
     let searchText: String
@@ -113,6 +115,15 @@ struct JobBoardProjectListView: View {
         return filtered
     }
 
+    /// Filter + sort + partition, in one pass.
+    ///
+    /// The body used to read `activeProjects`, `closedProjects`, and
+    /// `archivedProjects` seven times per render; each read re-filtered every
+    /// project and re-ran a comparator that touches four or five `Date`
+    /// properties per side. Bound ONCE at the top of `body` now. The event
+    /// closures below (wizard prerequisites, section sheets) still call these
+    /// properties directly — they fire on user action, not on render, and must
+    /// read live data rather than a snapshot captured at render time.
     private var projectSections: JobBoardProjectSections {
         JobBoardProjectFiltering.projectSections(
             from: filteredProjects,
@@ -133,7 +144,9 @@ struct JobBoardProjectListView: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
+        let sections = projectSections
+
+        return VStack(spacing: 0) {
             if showingFilters && hasActiveFilters {
                 activeFilterBadges
                     .padding(.top, OPSStyle.Layout.spacing1)
@@ -155,13 +168,19 @@ struct JobBoardProjectListView: View {
                 ScrollViewReader { scrollProxy in
                     ScrollView {
                         LazyVStack(spacing: OPSStyle.Layout.spacing2_5) {
-                            ForEach(Array(activeProjects.enumerated()), id: \.element.id) { index, project in
+                            ForEach(Array(sections.active.enumerated()), id: \.element.id) { index, project in
                             let isFocusedProject = !shouldGreyOutProject(project)
 
                             VStack(spacing: OPSStyle.Layout.spacing1) {
                                 UniversalJobBoardCard(cardType: .project(project))
                                     .environmentObject(dataController)
-                                    .id("\(project.id)-\(project.teamMemberIdsString)")
+                                    // Identity is the project, not the project +
+                                    // its crew CSV: folding a mutable field into
+                                    // the id made every crew change a NEW view —
+                                    // fresh @State, lost swipe/press state, full
+                                    // rebuild. The card observes the @Model, so a
+                                    // crew edit already redraws it.
+                                    .id(project.id)
                                     .if(index == 0) { view in
                                         view
                                             .wizardTarget("browse_projects")
@@ -196,12 +215,12 @@ struct JobBoardProjectListView: View {
                         }
 
                         // Closed and Archived section buttons
-                        if !closedProjects.isEmpty || !archivedProjects.isEmpty {
+                        if !sections.closed.isEmpty || !sections.archived.isEmpty {
                             HStack(spacing: OPSStyle.Layout.spacing2_5) {
-                                if !closedProjects.isEmpty {
+                                if !sections.closed.isEmpty {
                                     SectionButton(
                                         title: "CLOSED",
-                                        count: closedProjects.count,
+                                        count: sections.closed.count,
                                         color: Status.closed.color
                                     ) {
                                         // Wizard completion fires on sheet dismiss — see
@@ -214,10 +233,10 @@ struct JobBoardProjectListView: View {
                                     .wizardTarget("view_closed")
                                 }
 
-                                if !archivedProjects.isEmpty {
+                                if !sections.archived.isEmpty {
                                     SectionButton(
                                         title: "ARCHIVED",
-                                        count: archivedProjects.count,
+                                        count: sections.archived.count,
                                         color: Status.archived.color
                                     ) {
                                         showingArchivedSheet = true
@@ -245,15 +264,27 @@ struct JobBoardProjectListView: View {
                         // A GeometryReader anchored at the top of the scroll content tracks its
                         // position in the named coordinate space. When the content moves up by 50pt,
                         // the notification fires once.
-                        GeometryReader { scrollGeo in
-                            Color.clear
-                                .onChange(of: scrollGeo.frame(in: .named("jobBoardScroll")).minY) { _, newMinY in
-                                    // newMinY starts at ~0 and goes negative as user scrolls down
-                                    if !hasPostedScrollNotification && newMinY < -50 && !activeProjects.isEmpty {
-                                        hasPostedScrollNotification = true
-                                        NotificationCenter.default.post(name: Notification.Name("WizardJobBoardScrolled"), object: nil)
-                                    }
+                        //
+                        // Only mounted while a wizard is actually running and the
+                        // notification is still owed. Unconditionally, this reader
+                        // re-measured and re-ran its onChange on EVERY scroll frame
+                        // of the job board, for every user, forever — to serve a
+                        // one-shot wizard step. `wizardActive` is a real Environment
+                        // value pushed from ContentView's observed state manager, so
+                        // the reader mounts the moment a wizard starts.
+                        Group {
+                            if wizardActive && !hasPostedScrollNotification {
+                                GeometryReader { scrollGeo in
+                                    Color.clear
+                                        .onChange(of: scrollGeo.frame(in: .named("jobBoardScroll")).minY) { _, newMinY in
+                                            // newMinY starts at ~0 and goes negative as user scrolls down
+                                            if !hasPostedScrollNotification && newMinY < -50 && !sections.active.isEmpty {
+                                                hasPostedScrollNotification = true
+                                                NotificationCenter.default.post(name: Notification.Name("WizardJobBoardScrolled"), object: nil)
+                                            }
+                                        }
                                 }
+                            }
                         }
                     )
                     // Tutorial: Scroll to closed section and auto-advance
@@ -908,7 +939,11 @@ struct ProjectListSheet: View {
                                 ForEach(filteredProjects) { project in
                                     UniversalJobBoardCard(cardType: .project(project), disableSwipe: true)
                                         .environmentObject(dataController)
-                                        .id("\(project.id)-\(project.teamMemberIdsString)")
+                                        // Identity is the project, not the project +
+                                        // its crew CSV — same rule as the active list:
+                                        // the card observes the @Model, so a crew edit
+                                        // redraws it without destroying its @State.
+                                        .id(project.id)
                                 }
                             }
                             .padding(.horizontal, OPSStyle.Layout.spacing3)

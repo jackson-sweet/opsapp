@@ -25,6 +25,10 @@ class ProjectNotesViewModel: ObservableObject {
 
     let projectId: String
     private var repository: ProjectNoteRepository?
+    /// The read half of the note repository. Defaults to `repository`;
+    /// injectable so the local-first paint order can be asserted against a fetch
+    /// that has deliberately not resolved yet.
+    private var noteFetcher: ProjectNoteFetching?
     private var companyId: String?
     private var currentUserId: String?
     private(set) var allTeamMembers: [TeamMember] = []
@@ -45,13 +49,22 @@ class ProjectNotesViewModel: ObservableObject {
         }
     }
 
-    func setup(companyId: String, currentUserId: String, teamMembers: [TeamMember], modelContext: ModelContext, dataController: DataController? = nil) {
+    func setup(
+        companyId: String,
+        currentUserId: String,
+        teamMembers: [TeamMember],
+        modelContext: ModelContext,
+        dataController: DataController? = nil,
+        noteFetcher: ProjectNoteFetching? = nil
+    ) {
         self.companyId = companyId
         self.currentUserId = currentUserId
         self.allTeamMembers = teamMembers
         self.modelContext = modelContext
         self.dataController = dataController
-        self.repository = ProjectNoteRepository(companyId: companyId)
+        let repository = ProjectNoteRepository(companyId: companyId)
+        self.repository = repository
+        self.noteFetcher = noteFetcher ?? repository
 
         // Listen for realtime note updates
         notificationObserver = NotificationCenter.default.addObserver(
@@ -72,11 +85,21 @@ class ProjectNotesViewModel: ObservableObject {
 
     func loadNotes() async {
         error = nil
-        guard let repo = repository else { return }
+
+        // Local first, synchronously, before anything touches the network. The
+        // activity feed is already on disk; making the operator watch a spinner
+        // while a round-trip decides whether anything changed is the screen
+        // feeling slow for no reason. The network merge below repaints over
+        // this. ActivityTabView's spinner condition is
+        // `isLoading && notes.isEmpty && annotations.isEmpty`, so a painted
+        // local feed suppresses it without any UI change.
+        loadNotesFromLocal()
+
+        guard let fetcher = noteFetcher else { return }
         isLoading = true
         defer { isLoading = false }
         do {
-            let dtos = try await repo.fetchForProject(projectId)
+            let dtos = try await fetcher.fetchForProject(projectId)
             // Upsert into SwiftData
             if let context = modelContext {
                 Self.mergeFetchedNotes(dtos, projectId: projectId, context: context)

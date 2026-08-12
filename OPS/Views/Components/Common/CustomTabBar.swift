@@ -125,7 +125,7 @@ struct CustomTabBar: View {
                         // Primary tabs — evenly spaced, filling the lane width.
                         HStack(spacing: 0) {
                             ForEach(Array(tabs.enumerated().prefix(primaryCount)), id: \.element.id) { index, tab in
-                                tabButton(tab: tab, index: index)
+                                tabButton(tab: tab, index: index, cellWidth: cell)
                                     .frame(width: cell)
                                     .id(index)
                             }
@@ -139,14 +139,14 @@ struct CustomTabBar: View {
                             RoundedRectangle(cornerRadius: dividerWidth / 2)
                                 .fill(OPSStyle.Colors.tertiaryText)
                                 .frame(width: dividerWidth, height: iconSize * 0.85)
-                                .frame(height: 50)
+                                .frame(height: OPSStyle.Layout.tabBarItemHeight)
 
                             // Gap between divider and Settings, matching the
                             // inter-icon spacing so the divider sits in the rhythm
                             // (a full gap on each side, not gap/2).
                             Color.clear.frame(width: gap / 2)
 
-                            tabButton(tab: tabs[lastIndex], index: lastIndex)
+                            tabButton(tab: tabs[lastIndex], index: lastIndex, cellWidth: cell)
                                 .frame(width: cell)
                                 .id(lastIndex)
 
@@ -168,6 +168,7 @@ struct CustomTabBar: View {
                 }
                 .padding(.top, OPSStyle.Layout.spacing3)
                 .padding(.bottom, OPSStyle.Layout.spacing3)
+                .background(ImmediateTouchDown().allowsHitTesting(false))
             }
             .scrollDisabled(revealDistance <= 0)
             .scrollTargetBehavior(PeekSnapBehavior(revealDistance: revealDistance))
@@ -181,10 +182,11 @@ struct CustomTabBar: View {
         }
     }
 
-    private func tabButton(tab: TabItem, index: Int) -> some View {
+    private func tabButton(tab: TabItem, index: Int, cellWidth: CGFloat) -> some View {
         TabBarItem(
             tab: tab,
             isSelected: selectedTab == index,
+            cellWidth: cellWidth,
             action: {
                 withAnimation(reduceMotion ? nil : OPSStyle.Animation.panel) {
                     selectedTab = index
@@ -208,6 +210,64 @@ struct CustomTabBar: View {
                 // lane with its edge padding scrolled off and the trailing
                 // divider showing.
                 proxy.scrollTo(Self.leadingEdgeID, anchor: .leading)
+            }
+        }
+    }
+}
+
+/// Hands touch-down to the tab buttons the instant a finger lands.
+///
+/// A `UIScrollView` withholds touches from its content for ~150ms
+/// (`delaysContentTouches`) while it decides whether the gesture is a scroll.
+/// The tab lane is a scroll view, so every quick tap spent that window with
+/// nothing happening — the pressed-state dim never appeared, and the tab
+/// switch read as lag even though the action always fired on lift. Clearing
+/// the flag removes the wait; the acknowledgment lands with the finger.
+///
+/// `canCancelContentTouches` is deliberately left ON: a touch that becomes a
+/// drag still cancels the press, so the swipe that reveals the Settings peek —
+/// and `PeekSnapBehavior`'s snap — behave exactly as before. Only the moment
+/// of acknowledgment moves earlier.
+///
+/// Sized by the lane background it rides on but non-interactive at both
+/// layers, and idempotent; harmless when the lane is hosted without an
+/// enclosing scroll view (previews, tests).
+private struct ImmediateTouchDown: UIViewRepresentable {
+    func makeUIView(context: Context) -> UIView { TouchDelayRelease() }
+
+    func updateUIView(_ uiView: UIView, context: Context) {}
+
+    private final class TouchDelayRelease: UIView {
+        override init(frame: CGRect) {
+            super.init(frame: frame)
+            isUserInteractionEnabled = false
+            backgroundColor = .clear
+        }
+
+        @available(*, unavailable)
+        required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+        override func didMoveToSuperview() {
+            super.didMoveToSuperview()
+            releaseEnclosingScrollView()
+        }
+
+        override func didMoveToWindow() {
+            super.didMoveToWindow()
+            // Re-run once the view is in a window: SwiftUI can attach the
+            // representable before the scroll view is its ancestor, and the
+            // walk is cheap enough to simply repeat.
+            releaseEnclosingScrollView()
+        }
+
+        private func releaseEnclosingScrollView() {
+            var ancestor = superview
+            while let view = ancestor {
+                if let scrollView = view as? UIScrollView {
+                    scrollView.delaysContentTouches = false
+                    return
+                }
+                ancestor = view.superview
             }
         }
     }
@@ -237,6 +297,9 @@ private struct PeekSnapBehavior: ScrollTargetBehavior {
 struct TabBarItem: View {
     let tab: TabItem
     let isSelected: Bool
+    /// Width of the lane cell this tab owns — the tappable span, supplied by
+    /// the lane so the label can fill it exactly.
+    let cellWidth: CGFloat
     let action: () -> Void
     @Environment(\.wizardStateManager) private var wizardStateManager
 
@@ -250,6 +313,14 @@ struct TabBarItem: View {
     }
 
     var body: some View {
+        // The hit target lives INSIDE the Button's label, and it must: a
+        // SwiftUI Button responds to touch across its LABEL's bounds only.
+        // Sizing the Button from outside — `.frame(...)` / `.contentShape(...)`
+        // applied to the Button itself — positions the same small label in a
+        // bigger box and leaves the tappable strip the width of the glyph
+        // (measured: 28pt, below the 44pt field minimum, with a 32pt dead gap
+        // between neighbours). Growing the label to the full cell is what
+        // makes the whole column tappable.
         Button(action: action) {
             VStack(spacing: OPSStyle.Layout.spacing1) {
                 Image(tab.iconName)
@@ -267,9 +338,9 @@ struct TabBarItem: View {
                         .opacity(isSelected ? 1.0 : 0.8)
                 }
             }
+            .frame(width: cellWidth, height: OPSStyle.Layout.tabBarItemHeight)
+            .contentShape(Rectangle())
         }
-        .frame(height: 50)
-        .contentShape(Rectangle()) // Make entire area tappable for field use
     }
 }
 

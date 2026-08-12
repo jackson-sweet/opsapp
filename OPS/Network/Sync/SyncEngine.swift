@@ -1061,6 +1061,45 @@ final class SyncEngine {
         }
     }
 
+    /// Fetches ONE client row by id and merges it into SwiftData.
+    ///
+    /// Opening a project's details needs that client row current and nothing
+    /// else. It used to call `triggerSync()` — a whole-app push + pull over
+    /// every SyncEntityType, plus orphan sweeps and a photo-prefetch kickoff —
+    /// on EVERY open, which is what made the sheet stutter.
+    ///
+    /// Offline parity with the path it replaces: gated on `shouldAttemptSync`,
+    /// so a degraded or airplane-mode open fails fast here instead of riding a
+    /// URLSession timeout, and the screen renders from local data exactly as
+    /// before.
+    ///
+    /// Intentionally does NOT acquire the `syncInProgress` lock and never
+    /// touches `statusText` / `isSyncing` — it is a single-row read, not a sync
+    /// pass, and must not present itself to the operator as one.
+    func syncClientNow(clientId: String) async {
+        guard !clientId.isEmpty else { return }
+
+        guard connectivity?.shouldAttemptSync == true else {
+            print("[SYNC_ENGINE] syncClientNow: network unavailable — skipping")
+            return
+        }
+
+        do {
+            if FeatureFlags.useDataActor, let actor = dataActor {
+                let companyId = UserDefaults.standard.string(forKey: "currentUserCompanyId") ?? ""
+                try await actor.syncClientOnly(clientId: clientId, companyId: companyId)
+            } else {
+                guard let modelContext, let inboundProcessor else {
+                    print("[SYNC_ENGINE] syncClientNow: not configured")
+                    return
+                }
+                try await inboundProcessor.syncClient(clientId: clientId, context: modelContext)
+            }
+        } catch {
+            print("[SYNC_ENGINE] syncClientNow error: \(error)")
+        }
+    }
+
     /// Triggers a full push-then-pull cycle, guarding against concurrent syncs.
     func triggerSync() async {
         guard !syncInProgress else {

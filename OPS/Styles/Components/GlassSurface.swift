@@ -19,6 +19,29 @@
 
 import SwiftUI
 
+// MARK: - L1 fill variants
+
+/// Which fill an L1 section card paints behind its hairline + top-edge gradient.
+///
+/// `.translucent` is the canonical L1 glass — `.ultraThinMaterial` under the
+/// `glassApprox` tint (DESIGN.md § SURFACES & DEPTH, MOBILE.md §3). Use it
+/// everywhere a card sits over content worth blurring: full-screen surfaces,
+/// overlays, sheets, detail panels.
+///
+/// `.listRow` is the OPAQUE L1 for long scrolling lists. Same hairline, same
+/// radius, same top-edge gradient — `surfaceRaised` (#141416, the design
+/// system's solid raised L1, also behind `.commandCard()`) replaces the
+/// material. Two reasons it is the right fill for a list: over the pure-black
+/// canvas there is nothing behind a row worth blurring, and a scrolling board
+/// keeps 8–10 rows plus their badges on screen, each material being its own
+/// blur pass recomposited every frame. MOBILE.md §3 already sanctions the
+/// solid panel for exactly this ("reads crisper in outdoor glare and avoids
+/// stacking blur passes").
+enum GlassSurfaceFill {
+    case translucent
+    case listRow
+}
+
 // MARK: - L1 Section card (.glassSurface)
 
 /// L1 surface — the primary card / panel / widget container. Inherits depth from
@@ -30,6 +53,7 @@ import SwiftUI
 /// `borderColor` only for the rare singular-emphasis card that needs a hued
 /// edge (the `OPSCardStyle.Accent` lineage) — default is the 9% glass hairline.
 struct GlassSurfaceModifier: ViewModifier {
+    var fill: GlassSurfaceFill = .translucent
     var cornerRadius: CGFloat = OPSStyle.Layout.panelRadius
     var borderColor: Color = OPSStyle.Colors.glassBorder
 
@@ -37,10 +61,16 @@ struct GlassSurfaceModifier: ViewModifier {
         content
             .background(
                 ZStack {
-                    RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                        .fill(.ultraThinMaterial)
-                    RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                        .fill(OPSStyle.Colors.glassApprox)
+                    switch fill {
+                    case .translucent:
+                        RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                            .fill(.ultraThinMaterial)
+                        RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                            .fill(OPSStyle.Colors.glassApprox)
+                    case .listRow:
+                        RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                            .fill(OPSStyle.Colors.surfaceRaised)
+                    }
                     // Top-edge gradient — the only "lit from above" cue
                     LinearGradient(
                         colors: [OPSStyle.Colors.surfaceInput, .clear],
@@ -118,11 +148,14 @@ struct NestedCardModifier: ViewModifier {
 extension View {
     /// L1 glass section card. Pass `cornerRadius` to override the default 10pt;
     /// pass `borderColor` only for singular-emphasis cards needing a hued edge.
+    /// Pass `.listRow` for the opaque fill used by long scrolling lists — see
+    /// `GlassSurfaceFill`.
     func glassSurface(
+        _ fill: GlassSurfaceFill = .translucent,
         cornerRadius: CGFloat = OPSStyle.Layout.panelRadius,
         borderColor: Color = OPSStyle.Colors.glassBorder
     ) -> some View {
-        modifier(GlassSurfaceModifier(cornerRadius: cornerRadius, borderColor: borderColor))
+        modifier(GlassSurfaceModifier(fill: fill, cornerRadius: cornerRadius, borderColor: borderColor))
     }
 
     /// L1 dense glass surface for sheets, popovers, and dropdowns. Default 12pt.

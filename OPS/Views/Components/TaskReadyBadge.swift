@@ -14,13 +14,25 @@
 import SwiftUI
 
 struct TaskReadyBadge: View {
+    /// Which L1 fill the badge is riding on — `.listRow` swaps the frosted
+    /// material for the row's opaque `surfaceRaised` (see `GlassSurfaceFill`).
+    var surface: GlassSurfaceFill = .translucent
+
     var body: some View {
-        Text("READY")
+        let label = Text("READY")
             .font(OPSStyle.Typography.smallCaption)
             .foregroundColor(OPSStyle.Colors.successStatus)
             .padding(.horizontal, OPSStyle.Layout.spacing2)
             .padding(.vertical, OPSStyle.Layout.spacing1)
-            .frostedBadgeFill(OPSStyle.Colors.successStatus, cornerRadius: OPSStyle.Layout.cardCornerRadius)
-            .accessibilityLabel("Ready to start")
+
+        Group {
+            switch surface {
+            case .translucent:
+                label.frostedBadgeFill(OPSStyle.Colors.successStatus, cornerRadius: OPSStyle.Layout.cardCornerRadius)
+            case .listRow:
+                label.listRowBadgeFill(OPSStyle.Colors.successStatus, cornerRadius: OPSStyle.Layout.cardCornerRadius)
+            }
+        }
+        .accessibilityLabel("Ready to start")
     }
 }

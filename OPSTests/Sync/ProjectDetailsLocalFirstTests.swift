@@ -28,6 +28,7 @@
 //
 
 import SwiftData
+import UIKit
 import XCTest
 @testable import OPS
 
@@ -116,16 +117,6 @@ final class ProjectDetailsLocalFirstTests: XCTestCase {
         let clientId = "dddddddd-dddd-4ddd-8ddd-dddddddddddd"
 
         let seed = ModelContext(container)
-        // A SyncOperation row has to exist before the merge's conflict guards
-        // fetch that table — a #Predicate fetch against a table that has never
-        // held a row traps inside SwiftData (see CLAUDE.md).
-        seed.insert(SyncOperation(
-            entityType: SyncEntityType.project.rawValue,
-            entityId: "warm-up",
-            operationType: "update",
-            payload: Data(),
-            changedFields: ["id"]
-        ))
         let existing = Client(id: clientId, name: "Stale name", companyId: "company-1")
         existing.lastSyncedAt = Date(timeIntervalSinceNow: -3600)
         seed.insert(existing)
@@ -241,6 +232,96 @@ final class ProjectDetailsLocalFirstTests: XCTestCase {
         XCTAssertEqual(viewModel.notes.map(\.id), ["local-only"])
     }
 
+    // MARK: - 2b. The composite renderer's generation guard
+
+    /// A render suspended on a download can resume after a LATER render (started
+    /// because the annotation changed) already persisted its result. Without a
+    /// generation guard the stale render overwrites the fresh composite — and
+    /// because the write refreshes the file's mtime, the freshness check then
+    /// keeps serving those pre-edit pixels until the next edit.
+    ///
+    /// A is held open on a gate across B's whole render, exactly as a slow
+    /// base-image fetch would hold it.
+    func test_aRenderSupersededMidFlightNeverOverwritesTheNewerComposite() async throws {
+        let renderer = PhotoCompositeRenderer()
+        let cacheKey = "https://example.com/ops-generation-guard-\(UUID().uuidString).jpg"
+        defer { ImageFileManager.shared.deleteCompositedImage(forURL: cacheKey) }
+
+        // Distinguishable payloads: whichever composite is on disk at the end is
+        // identifiable by its pixel dimensions alone.
+        let stale = try XCTUnwrap(Self.jpeg(side: 8))
+        let fresh = try XCTUnwrap(Self.jpeg(side: 16))
+
+        let gate = ContinuationGate()
+        let aClaimed = expectation(description: "render A claimed the key")
+
+        // Render A: claims the key, then suspends mid-flight.
+        let renderA = Task { () -> PhotoCompositeRenderer.PersistOutcome in
+            let token = await renderer.beginRender(for: cacheKey)
+            aClaimed.fulfill()
+            await gate.wait()
+            return await renderer.persistIfCurrent(jpeg: stale, cacheKey: cacheKey, token: token)
+        }
+        await fulfillment(of: [aClaimed], timeout: 2)
+
+        // Render B: starts after A, runs to completion while A is still parked.
+        let tokenB = await renderer.beginRender(for: cacheKey)
+        let outcomeB = await renderer.persistIfCurrent(jpeg: fresh, cacheKey: cacheKey, token: tokenB)
+        XCTAssertEqual(outcomeB, .written)
+
+        await gate.open()
+        let outcomeA = await renderA.value
+
+        XCTAssertEqual(
+            outcomeA,
+            .superseded,
+            "A newer render owns the key — the stale render's write must be dropped"
+        )
+        let persisted = try XCTUnwrap(ImageFileManager.shared.loadCompositedImage(forURL: cacheKey))
+        XCTAssertEqual(
+            persisted.size,
+            CGSize(width: 16, height: 16),
+            "The composite on disk must be B's, not the stale render's"
+        )
+    }
+
+    /// The guard is per key: a slow render of one photo must not be cancelled by
+    /// a render of a different photo.
+    func test_theGenerationGuardIsScopedToOneCompositeKey() async throws {
+        let renderer = PhotoCompositeRenderer()
+        let keyA = "https://example.com/ops-guard-a-\(UUID().uuidString).jpg"
+        let keyB = "https://example.com/ops-guard-b-\(UUID().uuidString).jpg"
+        defer {
+            ImageFileManager.shared.deleteCompositedImage(forURL: keyA)
+            ImageFileManager.shared.deleteCompositedImage(forURL: keyB)
+        }
+
+        let jpeg = try XCTUnwrap(Self.jpeg(side: 8))
+        let tokenA = await renderer.beginRender(for: keyA)
+        _ = await renderer.beginRender(for: keyB)
+
+        let outcomeA = await renderer.persistIfCurrent(jpeg: jpeg, cacheKey: keyA, token: tokenA)
+        XCTAssertEqual(
+            outcomeA,
+            .written,
+            "Another photo's render must not supersede this one"
+        )
+    }
+
+    /// A solid opaque square, encoded as JPEG. Size is the identity.
+    private static func jpeg(side: CGFloat) -> Data? {
+        let format = UIGraphicsImageRendererFormat.default()
+        format.opaque = true
+        format.scale = 1
+        let image = UIGraphicsImageRenderer(
+            size: CGSize(width: side, height: side), format: format
+        ).image { context in
+            UIColor.darkGray.setFill()
+            context.fill(CGRect(x: 0, y: 0, width: side, height: side))
+        }
+        return image.jpegData(compressionQuality: 0.9)
+    }
+
     // MARK: - 3. getAllProjects drops tombstones
 
     @MainActor
@@ -304,6 +385,12 @@ final class ProjectDetailsLocalFirstTests: XCTestCase {
         return ProjectFixture(context: context, dataController: dataController)
     }
 
+    /// Every container seeds one inert SyncOperation. A `#Predicate` fetch of
+    /// SyncOperation TRAPS (uncatchable EXC_BREAKPOINT, not a thrown error)
+    /// against a table that has never held a row, and the client merge reaches
+    /// exactly such a fetch through `hasRecentLocalWrite` / `acceptableFields`.
+    /// Seeding here rather than per test means no test is green by luck of
+    /// ordering. Same remedy as CatalogMergeDiffGateTests.makeContainer.
     private func makeContainer() throws -> ModelContainer {
         let schema = Schema(versionedSchema: OPSSchemaV19.self)
         let configuration = ModelConfiguration(
@@ -311,7 +398,19 @@ final class ProjectDetailsLocalFirstTests: XCTestCase {
             isStoredInMemoryOnly: true,
             allowsSave: true
         )
-        return try ModelContainer(for: schema, configurations: [configuration])
+        let container = try ModelContainer(for: schema, configurations: [configuration])
+
+        let warmUp = ModelContext(container)
+        warmUp.insert(SyncOperation(
+            entityType: SyncEntityType.project.rawValue,
+            entityId: "sync-operation-warm-up",
+            operationType: "update",
+            payload: Data(),
+            changedFields: ["id"]
+        ))
+        try warmUp.save()
+
+        return container
     }
 
     private func clientDTO(id: String, name: String) -> SupabaseClientDTO {

@@ -535,8 +535,16 @@ class PhotoAnnotationSyncManager {
             // into @State (via reloadFromCache) before the next iteration can
             // evict it. A single post after the loop would arrive once most
             // composites had already been evicted, leaving thumbnails showing
-            // the raw photo. Nothing may be inserted into ImageCache between the
-            // set and the post — that is what this ordering buys.
+            // the raw photo.
+            //
+            // This ordering closes the window against THIS loop, not against the
+            // process: photo downloads now warm ImageCache off the main actor
+            // (PhotoDownloadManager.decodeAndStore), so a concurrent insert can
+            // land between the set and the post. Benign — a thumbnail that finds
+            // the cache entry already evicted falls back to the durable
+            // composite on disk (ProjectPhotosGrid.reloadFromCache: in-memory
+            // first, else loadCompositedImage), so the worst case is one extra
+            // file read, not lost markup.
             NotificationCenter.default.post(name: .annotationsComposited, object: nil)
         }
 
@@ -868,8 +876,12 @@ enum AnnotationClearPlanner {
 ///     of them from writing the same composite file at the same time. An actor
 ///     preserves exactly that: every synchronous stretch — including each
 ///     `saveCompositedImage` — runs in isolation.
-private actor PhotoCompositeRenderer {
+actor PhotoCompositeRenderer {
     static let shared = PhotoCompositeRenderer()
+
+    /// Newest render token handed out per composite key. A render is current
+    /// only while it holds the newest token for its key — see `beginRender`.
+    private var currentGeneration: [String: Int] = [:]
 
     /// State of a photo's durable composite relative to its annotation.
     enum DurableComposite {
@@ -894,11 +906,56 @@ private actor PhotoCompositeRenderer {
         return .fresh(warm: ImageFileManager.shared.loadCompositedImage(forURL: cacheKey))
     }
 
+    /// Claim `cacheKey` for a render and return the token that identifies it.
+    /// Every later claim on the same key supersedes this one.
+    func beginRender(for cacheKey: String) -> Int {
+        let token = (currentGeneration[cacheKey] ?? 0) + 1
+        currentGeneration[cacheKey] = token
+        return token
+    }
+
+    /// What a durable-composite write did.
+    enum PersistOutcome: Equatable {
+        case written
+        /// The key was still current; the disk write itself failed.
+        case writeFailed
+        /// A newer render claimed this key — these pixels are stale and must not
+        /// be persisted OR published.
+        case superseded
+    }
+
+    /// Write `jpeg` as the durable composite for `cacheKey` — but ONLY while
+    /// `token` is still the newest claim on that key.
+    ///
+    /// This closes a lost-update race that outlives any single render: a render
+    /// suspended on a base-image or overlay download can resume AFTER a later
+    /// render (started because the annotation changed) has already persisted its
+    /// result, and would then overwrite the fresh composite with pre-edit
+    /// pixels. Because `saveCompositedImage` refreshes the file's mtime, that
+    /// stale write would also pass `durableComposite`'s freshness check — the
+    /// operator would keep seeing pre-edit markup until the next edit.
+    ///
+    /// The check and the write are one synchronous stretch on the actor, so no
+    /// other render can interleave between them.
+    @discardableResult
+    func persistIfCurrent(jpeg: Data, cacheKey: String, token: Int) -> PersistOutcome {
+        guard isCurrent(token: token, for: cacheKey) else { return .superseded }
+        return ImageFileManager.shared.saveCompositedImage(jpeg, forURL: cacheKey)
+            ? .written
+            : .writeFailed
+    }
+
     /// Flatten the photo + every supplied overlay, persist the result, and hand
     /// the image back for the caller to publish into the display cache. The
     /// caller owns the `ImageCache` insert so it can post `.annotationsComposited`
     /// on the very next line (see `preCompositeAnnotations`).
+    ///
+    /// Returns nil when a newer render for the same photo superseded this one:
+    /// that render has already published fresher pixels, and handing these back
+    /// would put pre-edit markup into the display cache.
     func render(plan: PhotoAnnotationCompositePlan, layers: [MarkupLayer]) async -> UIImage? {
+        let token = beginRender(for: plan.cacheKey)
+
         guard let baseImage = await loadBaseImage(for: plan) else { return nil }
 
         var overlays: [UIImage] = []
@@ -921,11 +978,25 @@ private actor PhotoCompositeRenderer {
         // (opaque, quality 0.9) keeps the file ~5-6× smaller than a lossless PNG
         // of the same 12 MP frame, which matters because every composite counts
         // against the photo storage budget.
-        if let jpeg = composited.jpegData(compressionQuality: 0.9) {
-            _ = ImageFileManager.shared.saveCompositedImage(jpeg, forURL: plan.cacheKey)
+        guard let jpeg = composited.jpegData(compressionQuality: 0.9) else {
+            // No durable copy to write, but the in-memory publish is still only
+            // valid if nothing newer has landed.
+            return isCurrent(token: token, for: plan.cacheKey) ? composited : nil
         }
 
-        return composited
+        switch persistIfCurrent(jpeg: jpeg, cacheKey: plan.cacheKey, token: token) {
+        case .superseded:
+            return nil
+        case .written, .writeFailed:
+            // A failed disk write costs durability, not correctness — the
+            // display cache still gets the freshest pixels, as before.
+            return composited
+        }
+    }
+
+    /// True while `token` is still the newest claim on `cacheKey`.
+    private func isCurrent(token: Int, for cacheKey: String) -> Bool {
+        currentGeneration[cacheKey] == token
     }
 
     /// Resolve the RAW, un-composited base for `plan`. Sources are raw-only: the

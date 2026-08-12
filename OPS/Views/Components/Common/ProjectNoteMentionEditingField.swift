@@ -411,9 +411,6 @@ private struct SelectionAwareMentionTextView: UIViewRepresentable {
         if let isFocused {
             if isFocused.wrappedValue, !textView.isFirstResponder {
                 textView.becomeFirstResponder()
-            } else if !isFocused.wrappedValue,
-                      textView.isFirstResponder {
-                textView.resignFirstResponder()
             }
         }
     }

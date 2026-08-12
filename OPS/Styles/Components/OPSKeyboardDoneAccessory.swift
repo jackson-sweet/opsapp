@@ -15,6 +15,7 @@ import UIKit
 final class OPSKeyboardDoneAccessoryView: UIToolbar {
     private weak var editingResponder: UIResponder?
     private let doneContainer = UIView()
+    let doneLabel = UILabel()
     let doneButton = UIButton(type: .system)
 
     override var intrinsicContentSize: CGSize {
@@ -42,14 +43,19 @@ final class OPSKeyboardDoneAccessoryView: UIToolbar {
         doneContainer.translatesAutoresizingMaskIntoConstraints = false
         doneContainer.isAccessibilityElement = false
 
+        doneLabel.translatesAutoresizingMaskIntoConstraints = false
+        doneLabel.text = "DONE"
+        doneLabel.font = OPSStyle.Typography.uiButtonLabel
+        doneLabel.textColor = UIColor(OPSStyle.Colors.primaryText)
+        doneLabel.textAlignment = .center
+        doneLabel.isUserInteractionEnabled = false
+
         doneButton.translatesAutoresizingMaskIntoConstraints = false
-        doneButton.setTitle("DONE", for: .normal)
-        doneButton.titleLabel?.font = OPSStyle.Typography.uiButtonLabel
-        doneButton.setTitleColor(UIColor(OPSStyle.Colors.primaryText), for: .normal)
         doneButton.accessibilityLabel = "Done"
         doneButton.accessibilityIdentifier = "ops.keyboard.done"
         doneButton.addTarget(self, action: #selector(dismissKeyboard), for: .touchUpInside)
 
+        doneContainer.addSubview(doneLabel)
         doneContainer.addSubview(doneButton)
         NSLayoutConstraint.activate([
             doneContainer.widthAnchor.constraint(
@@ -58,13 +64,16 @@ final class OPSKeyboardDoneAccessoryView: UIToolbar {
             doneContainer.heightAnchor.constraint(
                 equalToConstant: OPSStyle.Layout.keyboardAccessoryHeight
             ),
+            doneLabel.topAnchor.constraint(
+                equalTo: doneContainer.topAnchor,
+                constant: OPSStyle.Layout.spacing1
+            ),
+            doneLabel.leadingAnchor.constraint(equalTo: doneContainer.leadingAnchor),
+            doneLabel.trailingAnchor.constraint(equalTo: doneContainer.trailingAnchor),
             doneButton.leadingAnchor.constraint(equalTo: doneContainer.leadingAnchor),
             doneButton.trailingAnchor.constraint(equalTo: doneContainer.trailingAnchor),
-            doneButton.heightAnchor.constraint(equalToConstant: OPSStyle.Layout.touchTargetMin),
-            doneButton.bottomAnchor.constraint(
-                equalTo: doneContainer.bottomAnchor,
-                constant: -OPSStyle.Layout.spacing2
-            )
+            doneButton.topAnchor.constraint(equalTo: doneContainer.topAnchor),
+            doneButton.bottomAnchor.constraint(equalTo: doneContainer.bottomAnchor)
         ])
 
         let doneItem = UIBarButtonItem(customView: doneContainer)

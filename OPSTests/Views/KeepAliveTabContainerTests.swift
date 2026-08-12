@@ -147,6 +147,24 @@ private struct HeaderProbe: View {
     }
 }
 
+/// Two tab roots, both mounted, both using the REAL `trackScreen` modifier.
+/// Only the active one may claim the bug-report breadcrumb.
+private struct ScreenTrackingHarness: View {
+    @Binding var selected: Int
+    let names: [Int: String]
+
+    var body: some View {
+        ZStack {
+            ForEach(names.keys.sorted(), id: \.self) { index in
+                Color.clear
+                    .trackScreen(names[index] ?? "")
+                    .environment(\.isActiveTab, index == selected)
+            }
+        }
+        .frame(width: 393, height: 200)
+    }
+}
+
 private struct HeaderBandHarness: View {
     @Binding var selected: Int
     /// index -> header height, all mounted at once.
@@ -364,6 +382,56 @@ final class KeepAliveTabContainerTests: XCTestCase {
         controller.view.layoutIfNeeded()
         settle(until: { abs(reported - tall) < 0.5 }, "The band must follow the newly active header")
         XCTAssertEqual(reported, tall, accuracy: 0.5)
+    }
+
+    // MARK: - 5. Bug-report screen breadcrumb
+
+    func testTheScreenBreadcrumbFollowsTheActiveTab() throws {
+        let names: [Int: String] = [0: "ProbeScreenA", 1: "ProbeScreenB"]
+        var selected = 0
+
+        let controller = try host(
+            ScreenTrackingHarness(
+                selected: Binding(get: { selected }, set: { selected = $0 }),
+                names: names
+            )
+        )
+        settle(
+            until: { BugReportCaptureService.shared.currentScreenName == "ProbeScreenA" },
+            "The active tab must claim the breadcrumb on mount"
+        )
+        XCTAssertEqual(
+            BugReportCaptureService.shared.currentScreenName, "ProbeScreenA",
+            "A parked tab claimed the screen name. `trackScreen` is onAppear-based on six tab roots, so with keep-alive it fires once per mount — a bug filed later would carry the wrong screen."
+        )
+
+        selected = 1
+        controller.rootView = ScreenTrackingHarness(
+            selected: Binding(get: { selected }, set: { selected = $0 }),
+            names: names
+        )
+        controller.view.layoutIfNeeded()
+        settle(
+            until: { BugReportCaptureService.shared.currentScreenName == "ProbeScreenB" },
+            "The breadcrumb must follow the tab switch"
+        )
+        XCTAssertEqual(
+            BugReportCaptureService.shared.currentScreenName, "ProbeScreenB",
+            "The breadcrumb did not follow the switch — a bug report filed here would name the tab the operator left."
+        )
+
+        // And back, to prove it is not a one-way latch.
+        selected = 0
+        controller.rootView = ScreenTrackingHarness(
+            selected: Binding(get: { selected }, set: { selected = $0 }),
+            names: names
+        )
+        controller.view.layoutIfNeeded()
+        settle(
+            until: { BugReportCaptureService.shared.currentScreenName == "ProbeScreenA" },
+            "The breadcrumb must follow every switch, not just the first"
+        )
+        XCTAssertEqual(BugReportCaptureService.shared.currentScreenName, "ProbeScreenA")
     }
 }
 #endif

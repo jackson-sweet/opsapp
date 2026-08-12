@@ -14,6 +14,11 @@ struct MyExpensesView: View {
     /// in-view FAB — matching the other embedded list views.
     var embedded: Bool = false
     @Environment(\.dismiss) private var dismiss
+    /// Inherited from the BOOKS slot — this list is either that slot's root
+    /// (booksAutoSkipDestination) or pushed inside it.
+    @Environment(\.isActiveTab) private var isActiveTab
+    /// An expense changed while BOOKS was off screen; the reload waits.
+    @State private var needsExpensesReload = false
     @StateObject private var viewModel = ExpenseViewModel()
     @EnvironmentObject private var dataController: DataController
     @Query private var allProjects: [Project]
@@ -80,7 +85,18 @@ struct MyExpensesView: View {
         .trackScreen("MyExpenses")
         // Refresh when an expense is created/updated anywhere (e.g. the global
         // FAB), since that flow no longer shares this view's model.
+        // Deferred while BOOKS is off screen — this posts from anywhere (the
+        // global FAB, realtime), and a hidden list must not refetch.
         .onReceive(NotificationCenter.default.publisher(for: .opsExpensesDidChange)) { _ in
+            guard isActiveTab else {
+                needsExpensesReload = true
+                return
+            }
+            Task { await viewModel.loadAll() }
+        }
+        .onChange(of: isActiveTab) { _, active in
+            guard active, needsExpensesReload else { return }
+            needsExpensesReload = false
             Task { await viewModel.loadAll() }
         }
         .navigationBarBackButtonHidden(true)

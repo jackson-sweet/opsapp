@@ -57,3 +57,23 @@ extension View {
         modifier(ActiveTabReceiveModifier(publisher: publisher, action: action))
     }
 }
+
+// MARK: - Deliberately ungated
+//
+// Two classes of listener were audited and left alone on purpose:
+//
+//   • `AppHeader`'s unread-count refresh. Six mounted headers now answer the
+//     same push, but each does one idempotent recount onto shared AppState.
+//     Gating it would buy nothing and risk a stale badge. Noted at the site.
+//
+//   • Wizard listeners on PUSHED screens (ManageTeamView, RoleListView,
+//     UserPermissionsListView, PermissionsManagementView, the JobBoard form
+//     sheets). Keep-alive means a navigation stack the operator pushed and
+//     then tabbed away from stays alive, so those can now hear a wizard step
+//     while parked. The reachable case is narrow — a wizard active at the
+//     same time as a parked pushed stack — and wizards drive the tab
+//     themselves, so gating them risks breaking a live flow for an edge that
+//     may not occur. The two wizard listeners that sit in TAB BODIES and
+//     genuinely collide (JobBoardProjectListView and ScheduleView, both
+//     answering `WizardEvaluatePrerequisites` with different count sets) ARE
+//     gated.

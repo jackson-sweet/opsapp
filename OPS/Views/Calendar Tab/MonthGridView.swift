@@ -341,6 +341,10 @@ class MonthGridCache: ObservableObject {
 struct MonthGridView: View {
     @ObservedObject var viewModel: CalendarViewModel
     @StateObject private var cache = MonthGridCache()
+    /// Inherited from the tab slot — the month grid lives inside SCHEDULE.
+    @Environment(\.isActiveTab) private var isActiveTab
+    /// A user event changed while SCHEDULE was hidden; the grid rebuild waits.
+    @State private var needsUserEventsReload = false
     @State private var cellHeight: CGFloat = 120
     @State private var sheetDate: IdentifiableDate?
     @State private var scrollOffset: CGFloat = 0
@@ -394,6 +398,16 @@ struct MonthGridView: View {
             }
         }
         return months
+    }
+
+    /// Re-read user events and rebuild the grid's event cache. Shared by the
+    /// live listener and the deferred spend on activation so both do identical
+    /// work.
+    private func reloadUserEvents() {
+        viewModel.loadUserEvents()
+        if let dataController = viewModel.dataController {
+            cache.loadEvents(from: dataController, viewModel: viewModel, tutorialMode: tutorialMode)
+        }
     }
 
     private func datesForMonth(_ monthStart: Date) -> [Date?] {
@@ -1016,10 +1030,16 @@ struct MonthGridView: View {
                 }
             }
             .onReceive(NotificationCenter.default.publisher(for: Notification.Name("CalendarUserEventsDidChange"))) { _ in
-                viewModel.loadUserEvents()
-                if let dataController = viewModel.dataController {
-                    cache.loadEvents(from: dataController, viewModel: viewModel, tutorialMode: tutorialMode)
+                guard isActiveTab else {
+                    needsUserEventsReload = true
+                    return
                 }
+                reloadUserEvents()
+            }
+            .onChange(of: isActiveTab) { _, active in
+                guard active, needsUserEventsReload else { return }
+                needsUserEventsReload = false
+                reloadUserEvents()
             }
             .sheet(item: $sheetDate) { identifiableDate in
                 DayDetailsSheet(date: identifiableDate.date, viewModel: viewModel)

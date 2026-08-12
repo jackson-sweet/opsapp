@@ -52,6 +52,10 @@ struct ScheduleView: View {
     /// deliberately drops the week cache and rebuilds it, which is far too much
     /// work to do for a calendar nobody is looking at — the trigger waits here.
     @State private var needsCalendarReload = false
+    /// A user event (time off / personal) changed while SCHEDULE was hidden.
+    /// Separate from `needsCalendarReload`, which only covers task changes —
+    /// user events have their own fetch and their own listeners.
+    @State private var needsUserEventsReload = false
     @State private var hasPostedWeekScrollNotification = false
     @State private var hasPostedMonthExploredNotification = false
     @State private var hasPostedWizardWeekScroll = false
@@ -214,6 +218,10 @@ struct ScheduleView: View {
                 if needsCalendarReload {
                     needsCalendarReload = false
                     viewModel.reloadCalendarData()
+                }
+                if needsUserEventsReload {
+                    needsUserEventsReload = false
+                    viewModel.loadUserEvents()
                 }
             } else {
                 endVisit()
@@ -427,8 +435,14 @@ struct ScheduleView: View {
                 .presentationDetents([.medium])
             }
         }
-        // Refresh user events when created from FAB (which owns the sheets)
+        // Refresh user events when created from FAB (which owns the sheets),
+        // or when they arrive from the server. Deferred while hidden — the FAB
+        // and inbound sync both reach here from any tab, and this is a fetch.
         .onReceive(NotificationCenter.default.publisher(for: Notification.Name("CalendarUserEventsDidChange"))) { _ in
+            guard isActiveTab else {
+                needsUserEventsReload = true
+                return
+            }
             viewModel.loadUserEvents()
         }
         // Tutorial mode: Listen for scroll in week view

@@ -571,6 +571,10 @@ struct AppHeader: View {
                     || dataController.syncEngine.isSyncing
             }
         }
+        // Deliberately NOT gated on `isActiveTab`: with every visited tab
+        // mounted these run once per mounted header, but the work is one
+        // idempotent count refresh onto shared AppState — the same number,
+        // recomputed. Deferring it would cost a stale badge for no gain.
         .onReceive(NotificationCenter.default.publisher(for: .notificationReceived)) { _ in
             appState.refreshUnreadCount()
         }

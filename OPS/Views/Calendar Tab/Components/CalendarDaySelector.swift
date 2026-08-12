@@ -151,6 +151,10 @@ struct WeekRowEdgeDropDelegate: DropDelegate {
 struct CalendarDaySelector: View {
     @ObservedObject var viewModel: CalendarViewModel
     @EnvironmentObject private var dataController: DataController
+    /// Inherited from the tab slot — the week strip lives inside SCHEDULE.
+    @Environment(\.isActiveTab) private var isActiveTab
+    /// A user event changed while SCHEDULE was hidden; the refetch waits.
+    @State private var needsUserEventsReload = false
     @State private var dragOffset: CGFloat = 0
     @State private var isDragging: Bool = false
     @State private var isTransitioning: Bool = false
@@ -318,6 +322,15 @@ struct CalendarDaySelector: View {
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: Notification.Name("CalendarUserEventsDidChange"))) { _ in
+            guard isActiveTab else {
+                needsUserEventsReload = true
+                return
+            }
+            viewModel.loadUserEvents()
+        }
+        .onChange(of: isActiveTab) { _, active in
+            guard active, needsUserEventsReload else { return }
+            needsUserEventsReload = false
             viewModel.loadUserEvents()
         }
     }

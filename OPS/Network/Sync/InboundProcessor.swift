@@ -3432,6 +3432,47 @@ enum ProductSyncLocalStore {
         "bundlePricingMode", "createdAt"
     ]
 
+    /// True when any field this merge is allowed to write would change value.
+    /// SwiftData dirties a row on assignment regardless of whether the value
+    /// differs, so without this check a products pass rewrites every field of
+    /// every product on every sync and saves the store for nothing. Fields held
+    /// back by a pending local write are excluded — they are not the server's to
+    /// change, so they can never justify a save.
+    static func differs(
+        dto: ProductDTO,
+        from existing: Product,
+        accepting accept: Set<String>
+    ) -> Bool {
+        if accept.contains("companyId"), existing.companyId != dto.companyId { return true }
+        if accept.contains("name"), existing.name != dto.name { return true }
+        if accept.contains("productDescription"), existing.productDescription != dto.description { return true }
+        if accept.contains("type"), existing.type != (dto.type.flatMap { LineItemType(rawValue: $0) } ?? .labor) { return true }
+        if accept.contains("kind"), existing.kind != (dto.kind.flatMap { ProductKind(rawValue: $0) } ?? .service) { return true }
+        if accept.contains("basePrice"), existing.basePrice != dto.basePrice { return true }
+        if accept.contains("unitCost"), existing.unitCost != dto.unitCost { return true }
+        if accept.contains("pricingUnit"), existing.pricingUnit != (dto.pricingUnit.flatMap { ProductPricingUnit(rawValue: $0) } ?? .each) { return true }
+        if accept.contains("unit"), existing.unit != dto.unit { return true }
+        if accept.contains("category"), existing.category != dto.category { return true }
+        if accept.contains("categoryId"), existing.categoryId != dto.categoryId { return true }
+        if accept.contains("sku"), existing.sku != dto.sku { return true }
+        if accept.contains("thumbnailUrl"), existing.thumbnailUrl != dto.thumbnailUrl { return true }
+        if accept.contains("taxable"), existing.taxable != (dto.isTaxable ?? true) { return true }
+        if accept.contains("isActive"), existing.isActive != dto.isActive { return true }
+        if accept.contains("isFavorite"), existing.isFavorite != dto.isFavorite { return true }
+        if accept.contains("minimumCharge"), existing.minimumCharge != dto.minimumCharge { return true }
+        if accept.contains("minimumQuantity"), existing.minimumQuantity != dto.minimumQuantity { return true }
+        if accept.contains("showBomOnEstimate"), existing.showBomOnEstimate != dto.showBomOnEstimate { return true }
+        if accept.contains("showInStorefront"), existing.showInStorefront != dto.showInStorefront { return true }
+        if accept.contains("tieredPricingJSON"), existing.tieredPricingJSON != dto.tieredPricing?.rawJSONString { return true }
+        if accept.contains("taskTypeId"), existing.taskTypeId != dto.taskTypeId { return true }
+        if accept.contains("taskTypeRef"), existing.taskTypeRef != dto.taskTypeRef { return true }
+        if accept.contains("unitId"), existing.unitId != dto.unitId { return true }
+        if accept.contains("linkedCatalogItemId"), existing.linkedCatalogItemId != dto.linkedCatalogItemId { return true }
+        if accept.contains("bundlePricingMode"), existing.bundlePricingMode != dto.bundlePricingMode { return true }
+        if accept.contains("createdAt"), existing.createdAt != (SupabaseDate.parse(dto.createdAt) ?? existing.createdAt) { return true }
+        return false
+    }
+
     static func merge(
         dto: ProductDTO,
         context: ModelContext,
@@ -3442,6 +3483,7 @@ enum ProductSyncLocalStore {
 
         if let existing = try context.fetch(descriptor).first {
             let accept = acceptedFields ?? Set(mergeFields)
+            guard differs(dto: dto, from: existing, accepting: accept) else { return }
             if accept.contains("companyId")             { existing.companyId = dto.companyId }
             if accept.contains("name")                  { existing.name = dto.name }
             if accept.contains("productDescription")    { existing.productDescription = dto.description }

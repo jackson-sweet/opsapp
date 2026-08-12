@@ -110,6 +110,13 @@ struct FloatingActionMenu: View {
     @State private var showPaymentReviewIntroFAB: Bool = false
     @State private var showTaskReviewIntroFAB: Bool = false
 
+    /// Coalesces the three recount triggers into one pass; see
+    /// `ReviewCountRefreshMonitor`. It has to be a `@StateObject` and not a
+    /// stored publisher: this view re-renders on every `DataController` publish,
+    /// which is exactly when a recount is pending, and a re-rendered pipeline
+    /// would drop the signal it is waiting on.
+    @StateObject private var reviewCountRefreshMonitor = ReviewCountRefreshMonitor()
+
     // Cached review counts — computed on appear, not every render
     @State private var cachedTaskReviewCount: Int = 0
     @State private var cachedUnassignedCount: Int = 0
@@ -535,8 +542,10 @@ struct FloatingActionMenu: View {
         // Use cached review counts (refreshed on appear / data change, not every render)
         let completedTaskCount = cachedCompletedTaskCount
         let completedProjectCount = cachedCompletedProjectCount
-        let taskReviewThreshold = 5
-        let paymentReviewThreshold = 5
+        // Rendered into the locked copy below; the verdict itself was computed
+        // against the same constants in refreshReviewCounts().
+        let taskReviewThreshold = ReviewUnlockThresholds.taskReview
+        let paymentReviewThreshold = ReviewUnlockThresholds.paymentReview
         let isTaskReviewLocked = cachedIsTaskReviewLocked
         let isPaymentReviewLocked = cachedIsPaymentReviewLocked
 
@@ -921,10 +930,12 @@ struct FloatingActionMenu: View {
             calendarViewModel.setDataController(dataController)
             refreshHiddenItemsCache()
             refreshOrderCaches()
+            // First paint needs the badge immediately; every later trigger goes
+            // through the debounce.
             refreshReviewCounts()
         }
         .onReceive(NotificationCenter.default.publisher(for: Notification.Name("DataSyncCompleted"))) { _ in
-            refreshReviewCounts()
+            scheduleReviewCountRefresh()
         }
         // Live refresh: scheduledTasksDidChange fires on any local task mutation
         // (complete / cancel / reschedule / reassign) AND on inbound/realtime
@@ -932,29 +943,59 @@ struct FloatingActionMenu: View {
         // counts only refreshed on .onAppear, which does not re-fire when a
         // review sheet dismisses over the FAB.
         .onChange(of: dataController.scheduledTasksDidChange) { _, _ in
+            scheduleReviewCountRefresh()
+        }
+        .onReceive(reviewCountRefreshMonitor.output) { _ in
             refreshReviewCounts()
         }
     }
 
     // MARK: - Review Count Refresh
 
-    private func refreshReviewCounts() {
-        let taskReviewThreshold = 5
-        let paymentReviewThreshold = 5
+    /// Coalesces the recount triggers. A sync completion posts
+    /// `DataSyncCompleted` AND toggles `scheduledTasksDidChange`, and an inbound
+    /// merge toggles the flag once per batch — undebounced, each of those was a
+    /// separate pass over the task and project tables, on the main thread, from
+    /// whichever tab the operator happened to be on.
+    private func scheduleReviewCountRefresh() {
+        reviewCountRefreshMonitor.signal()
+    }
 
-        let completedTasks = dataController.getAllTasks().filter { $0.status == .completed }.count
-        let completedProjects = dataController.getProjects().filter { $0.status == .completed || $0.status == .closed }.count
+    private func refreshReviewCounts() {
+        let taskReviewThreshold = ReviewUnlockThresholds.taskReview
+        let paymentReviewThreshold = ReviewUnlockThresholds.paymentReview
+
+        // One pass over each table for all five cached values. Every count below
+        // derives from these two arrays — the review queries take them as input
+        // rather than re-fetching per count.
+        let allTasks = dataController.getAllTasks()
+        let allProjects = dataController.getProjects()
+
+        let completedTasks = allTasks.filter { $0.status == .completed }.count
+        let completedProjects = allProjects.filter { $0.status == .completed || $0.status == .closed }.count
 
         cachedCompletedTaskCount = completedTasks
         cachedCompletedProjectCount = completedProjects
         cachedIsTaskReviewLocked = completedTasks < taskReviewThreshold
         cachedIsPaymentReviewLocked = completedProjects < paymentReviewThreshold
 
-        cachedTaskReviewCount = cachedIsTaskReviewLocked ? 0 : computeFABReviewableTasks().count
-        cachedUnassignedCount = computeFABIncompleteTasks().count
+        cachedTaskReviewCount = cachedIsTaskReviewLocked
+            ? 0
+            : TaskReviewQuery.overdueReviewTasks(
+                tasks: allTasks,
+                dataController: dataController
+            ).count
+        cachedUnassignedCount = TaskReviewQuery.unscheduledReviewTasks(
+            tasks: allTasks,
+            dataController: dataController
+        ).count
         cachedCompletionReviewCount = cachedIsPaymentReviewLocked
             ? 0
-            : computeFABPaymentSnapshot().count
+            : ProjectReviewQuery.snapshot(
+                projects: allProjects,
+                dataController: dataController,
+                permissionStore: permissionStore
+            ).count
     }
 
     // MARK: - Review Badge Count

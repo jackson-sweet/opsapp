@@ -21,6 +21,22 @@ enum ProjectReviewQuery {
         dataController: DataController,
         permissionStore: PermissionStore = .shared
     ) -> ProjectReviewSnapshot {
+        snapshot(
+            projects: dataController.getProjects(),
+            dataController: dataController,
+            permissionStore: permissionStore
+        )
+    }
+
+    /// `snapshot(dataController:permissionStore:)` over an already-fetched
+    /// project list — same threshold lookup, same access policy, no second
+    /// whole-table fetch. For callers that already hold the projects, notably
+    /// the FAB badge, which needs the completed/closed tally from the same rows.
+    static func snapshot(
+        projects: [Project],
+        dataController: DataController,
+        permissionStore: PermissionStore = .shared
+    ) -> ProjectReviewSnapshot {
         let threshold: Int
         if let companyID = dataController.currentUser?.companyId,
            let company = dataController.getCompany(id: companyID) {
@@ -39,7 +55,7 @@ enum ProjectReviewQuery {
             canEditInvoices: false
         )
         return snapshot(
-            projects: dataController.getProjects(),
+            projects: projects,
             thresholdDays: threshold,
             accessPolicy: policy
         )

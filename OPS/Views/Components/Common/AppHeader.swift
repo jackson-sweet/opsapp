@@ -25,10 +25,12 @@ import SwiftUI
 /// height lets the overlay start where the header ends, which also keeps the two
 /// apart when Dynamic Type grows the title block and the header gets taller.
 ///
-/// Reduced with `max`: mid-transition both the outgoing and incoming tab headers
-/// are alive and publishing, so the overlay parks below the taller of the two and
-/// can never be overlapped while the slide is in flight. It settles onto the
-/// surviving header's height once the transition completes.
+/// Reduced with `max`, which only works because inactive headers stay silent.
+/// MainTabView keeps every visited tab mounted, so several headers are alive and
+/// publishing at all times; a header that is not in the active tab reports
+/// `defaultValue` (the reduce's own starting point, so it contributes nothing)
+/// and the active tab's real height wins. Without that gate the tallest header
+/// ever mounted would pin the overlay for the rest of the session.
 struct AppHeaderHeightKey: PreferenceKey {
     /// Floor used before any header reports and by tabs without an AppHeader.
     static let defaultValue: CGFloat = OPSStyle.Layout.screenHeaderBandHeight
@@ -63,6 +65,9 @@ struct AppHeader: View {
     @EnvironmentObject private var dataController: DataController
     @EnvironmentObject private var subscriptionManager: SubscriptionManager
     @EnvironmentObject private var appState: AppState
+    /// Only the header in the tab on screen may claim the band height — see
+    /// `AppHeaderHeightKey`.
+    @Environment(\.isActiveTab) private var isActiveTab
     @State private var showLockedMessage: String? = nil
     @State private var showLockedAlert: Bool = false
     // Bug 5d66ee80: avatar dimming during sync used to be wired via nested
@@ -128,7 +133,7 @@ struct AppHeader: View {
                 GeometryReader { proxy in
                     Color.clear.preference(
                         key: AppHeaderHeightKey.self,
-                        value: proxy.size.height
+                        value: isActiveTab ? proxy.size.height : AppHeaderHeightKey.defaultValue
                     )
                 }
             )
@@ -566,6 +571,10 @@ struct AppHeader: View {
                     || dataController.syncEngine.isSyncing
             }
         }
+        // Deliberately NOT gated on `isActiveTab`: with every visited tab
+        // mounted these run once per mounted header, but the work is one
+        // idempotent count refresh onto shared AppState — the same number,
+        // recomputed. Deferring it would cost a stale badge for no gain.
         .onReceive(NotificationCenter.default.publisher(for: .notificationReceived)) { _ in
             appState.refreshUnreadCount()
         }

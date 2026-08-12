@@ -284,6 +284,13 @@ class CalendarViewModel: ObservableObject {
         Self.dateKeyFormatter.string(from: date)
     }
     
+    /// Invariant: `cachedWeekStart` guards against rebuilding on same-week
+    /// NAVIGATION only. Every data-change reload must clear it — a task that
+    /// moved, arrived, or was deleted lands inside the week already cached, so
+    /// keeping the guard set would leave the canvas showing stale work. The
+    /// cost of those rebuilds is partially contained by the predicated fetch in
+    /// `rebuildWeekCache` — the per-survivor relationship walk remains — never
+    /// by skipping the rebuild.
     func clearProjectCountCache() {
         projectCountCache = [:]
         dayTaskCache = [:]
@@ -506,19 +513,42 @@ class CalendarViewModel: ObservableObject {
 
         let cal = Calendar.current
 
-        // Fetch ALL tasks once (single DB hit)
+        // One DB hit for the whole week. The soft-delete and dated gates are
+        // `#Predicate`s rather than in-memory filters: this runs on the main
+        // context every time an inbound change toggles
+        // `scheduledTasksDidChange`, and a row that fails either gate would
+        // otherwise be materialized only to be dropped — and, worse, the
+        // scope filters below fault `teamMembers` and `project` per row.
+        //
+        // No date bound. The per-day filter admits a task by OVERLAP
+        // (`taskStartDay <= dayStart && taskEndDay >= dayStart`), so a task
+        // that began long before the window still belongs to it whenever its
+        // endDate reaches in. Tasks carry no maximum span, so any lower bound
+        // on startDate would silently drop long-running work off the canvas.
+        // An upper bound is sound but would exclude almost nothing — the mass
+        // of rows is historical, not far-future — so it is not worth a second
+        // condition on the hot path.
         let allTasks: [ProjectTask]
         do {
-            allTasks = try context.fetch(FetchDescriptor<ProjectTask>())
+            allTasks = try context.fetch(
+                FetchDescriptor<ProjectTask>(
+                    predicate: #Predicate<ProjectTask> {
+                        $0.deletedAt == nil && $0.startDate != nil
+                    }
+                )
+            )
         } catch {
             return
         }
 
-        // Apply scope/permission filter (no date filter)
+        // Residual cost, named honestly: this walk is still O(all live dated
+        // company tasks) on the main context per inbound change, and it faults
+        // `teamMembers`/`project` on each row it inspects. It CANNOT follow the
+        // gates above into the `#Predicate` — assignment is a comma-joined
+        // string (`ProjectTask.teamMemberIdsString`, parsed by
+        // `getTeamMemberIds()`) OR'd with a to-many relationship traversal, and
+        // neither is expressible in a `#Predicate`. Unlocking it is schema work.
         let scopedTasks = allTasks.filter { task in
-            guard task.deletedAt == nil else { return false }
-            guard task.startDate != nil else { return false }
-
             switch scheduleScope {
             case .all:
                 if shouldShowTeamMemberFilter {

@@ -38,6 +38,9 @@ struct BooksTabView: View {
     @EnvironmentObject var appState: AppState
     @Environment(\.modelContext) private var modelContext
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// BOOKS stays mounted for the session (MainTabView's keep-alive container).
+    /// The five view models are built once; freshness is a per-visit concern.
+    @Environment(\.isActiveTab) private var isActiveTab
 
     // Active segment persisted across sessions and visible to FloatingActionMenu.
     @AppStorage("books.selectedSegment") private var selectedSegmentRaw: String = BooksSection.invoices.rawValue
@@ -258,11 +261,20 @@ struct BooksTabView: View {
         }
         .trackScreen("Books")
         .task {
+            // First visit only — the five view models are wired once and kept.
             setupViewModels()
             await refreshAll()
             if !visibleSegments.contains(selectedSegment), let first = visibleSegments.first {
                 selectedSegmentRaw = first.rawValue
             }
+        }
+        // Every return to BOOKS. `refreshAll` is the same path pull-to-refresh
+        // uses and shows no skeleton over loaded data: the command grid keys its
+        // skeleton on `!hasEverLoaded && isLoading`, and the three ledger view
+        // models just re-read SwiftData.
+        .onChange(of: isActiveTab) { _, active in
+            guard active else { return }
+            Task { await refreshAll() }
         }
         // Segment routing from notification rail / push deep links.
         .onReceive(NotificationCenter.default.publisher(for: Notification.Name("BooksSelectSegment"))) { notification in

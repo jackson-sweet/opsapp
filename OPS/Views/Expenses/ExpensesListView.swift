@@ -29,6 +29,13 @@ struct ExpensesListView: View {
 
     @Environment(\.dismiss) private var dismiss
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// Inherited from the BOOKS slot — this console is either that slot's root
+    /// (booksAutoSkipDestination) or pushed inside it.
+    @Environment(\.isActiveTab) private var isActiveTab
+    /// An expense changed while BOOKS was off screen; the reload waits. Named
+    /// for its content, matching MyExpensesView and the `needs…Reload` deferral
+    /// family across the tab roots.
+    @State private var needsExpensesReload = false
     @StateObject private var viewModel = ExpenseViewModel()
     @EnvironmentObject private var dataController: DataController
     @EnvironmentObject private var permissionStore: PermissionStore
@@ -139,16 +146,25 @@ struct ExpensesListView: View {
         // expenses / expense_batches, so both funnel through the debounce: an
         // approval's event storm (batch flip + every line) collapses to one
         // reload.
+        // Both signals are deferred while BOOKS is off screen (this list is
+        // either the Books slot's root via booksAutoSkipDestination or pushed
+        // inside it, so it inherits the slot's environment). Gating only one
+        // would be pointless — RealtimeProcessor posts both for the same change.
         .onReceive(
             NotificationCenter.default.publisher(for: .opsExpensesDidChange)
                 .receive(on: DispatchQueue.main)
         ) { _ in
-            viewModel.scheduleRealtimeRefresh()
+            refreshOrDefer()
         }
         .onReceive(
             NotificationCenter.default.publisher(for: .expenseUpdated)
                 .receive(on: DispatchQueue.main)
         ) { _ in
+            refreshOrDefer()
+        }
+        .onChange(of: isActiveTab) { _, active in
+            guard active, needsExpensesReload else { return }
+            needsExpensesReload = false
             viewModel.scheduleRealtimeRefresh()
         }
         .onChange(of: deepLinkBatchId) { _, _ in
@@ -309,6 +325,17 @@ struct ExpensesListView: View {
     // MARK: - Helpers
 
     /// One-time landing bucket: the first state of money with work in it.
+    /// Realtime and local expense signals both land here. A console nobody is
+    /// looking at records the change instead of refetching; the activation
+    /// handler spends it.
+    private func refreshOrDefer() {
+        guard isActiveTab else {
+            needsExpensesReload = true
+            return
+        }
+        viewModel.scheduleRealtimeRefresh()
+    }
+
     private func autoSelectBucketIfNeeded() {
         guard !hasAutoSelectedBucket else { return }
         hasAutoSelectedBucket = true

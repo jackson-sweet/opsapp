@@ -20,10 +20,18 @@ struct MainTabView: View {
     @Environment(\.wizardTriggerService) private var wizardTriggerService
     @Environment(\.wizardStateManager) private var wizardStateManager
 
+    /// Never assign directly — route through `tabSelection` / `selectTab`, which
+    /// hold the same-transaction contract the container's slide depends on.
     @State private var selectedTab = 0
     @State private var hasEvaluatedWizards = false
     @State private var needsWizardRetry = false
     @State private var previousTab = 0
+    /// Tabs the operator has visited. A tab mounts on first visit and is never
+    /// unmounted: switching must not rebuild Home's Mapbox stack, throw away
+    /// Leads' and Books' view models, or drop a scroll position. Deliberate
+    /// RAM-for-responsiveness trade — there is no eviction policy. The set is
+    /// reset only when a permission or role change rewrites the index→tab map.
+    @State private var mountedTabs: Set<Int> = [0]
     @State private var keyboardIsShowing = false
     /// Height of the current tab's `AppHeader`, reported by the header itself.
     /// The status band below is offset by this so it starts where the header
@@ -297,18 +305,55 @@ struct MainTabView: View {
         return false
     }
 
-    private var slideTransition: AnyTransition {
-        if selectedTab > previousTab {
-            return .asymmetric(
-                insertion: .move(edge: .trailing),
-                removal: .move(edge: .leading)
-            )
+    // MARK: - Tab selection policy
+
+    /// Mounted slots, filtered to the tab set the operator currently has. A
+    /// permission or role change rewrites the index→tab mapping and resets
+    /// `mountedTabs` outright; this guard only covers the frame in between.
+    private var mountedTabIndices: [Int] {
+        let count = tabs.count
+        return mountedTabs.filter { $0 >= 0 && $0 < count }.sorted()
+    }
+
+    /// Tab selection funnels through here so `previousTab` and the mounted-slot
+    /// set land in the SAME transaction as `selectedTab`. Updating them in a
+    /// later `onChange` pass would teleport the outgoing tab off-screen instead
+    /// of sliding it, and would mount an arriving tab a frame too late to
+    /// animate in.
+    /// `nil` animation on purpose: CustomTabBar already wraps its write in its
+    /// own `withAnimation`, and adding a second one here would nest transactions
+    /// and change the tab bar's own timing.
+    private var tabSelection: Binding<Int> {
+        Binding(
+            get: { selectedTab },
+            set: { selectTab($0, with: nil) }
+        )
+    }
+
+    /// The one implementation of the same-transaction contract, shared with
+    /// `tabSelection`. Pass `nil` to switch without adding an animation.
+    private func selectTab(_ index: Int, with animation: SwiftUI.Animation?) {
+        guard index != selectedTab else { return }
+        previousTab = selectedTab
+        mountedTabs.insert(index)
+        if let animation {
+            withAnimation(animation) { selectedTab = index }
         } else {
-            return .asymmetric(
-                insertion: .move(edge: .leading),
-                removal: .move(edge: .trailing)
-            )
+            selectedTab = index
         }
+    }
+
+    /// A role or permission change rewrites which tab each index maps to, so a
+    /// slot mounted under the old map would render the wrong root — or a second
+    /// copy of Home. Clamp the selection into range, then drop every mounted
+    /// slot but the one in view and let the rest re-mount on their next visit.
+    private func remapMountedTabs() {
+        let target = selectedTab >= tabs.count ? 0 : selectedTab
+        if target != selectedTab {
+            previousTab = target
+            selectedTab = target
+        }
+        mountedTabs = [target]
     }
 
     // FAB visibility expression hoisted out of the modifier chain so the
@@ -379,26 +424,28 @@ struct MainTabView: View {
 
     // Tab content router — extracted from `body` so the compiler can
     // type-check the if/else chain (each new tab added to the chain
-    // multiplies the type-check work, hence the extraction).
+    // multiplies the type-check work, hence the extraction). Parameterized by
+    // index rather than reading `selectedTab`, because every mounted tab is
+    // rendered at once and only one of them is the selected one.
     @ViewBuilder
-    private var tabContent: some View {
-        if selectedTab == 0 {
+    private func tabRoot(for index: Int) -> some View {
+        if index == 0 {
             HomeView()
-        } else if selectedTab == leadsTabIndex {
+        } else if index == leadsTabIndex {
             LeadsTabView()
-        } else if selectedTab == booksTabIndex {
+        } else if index == booksTabIndex {
             if let destination = booksAutoSkipDestination {
                 destination
             } else {
                 BooksTabView()
             }
-        } else if selectedTab == jobBoardTabIndex {
+        } else if index == jobBoardTabIndex {
             JobBoardView()
-        } else if selectedTab == catalogTabIndex {
+        } else if index == catalogTabIndex {
             CatalogView()
-        } else if selectedTab == scheduleTabIndex {
+        } else if index == scheduleTabIndex {
             ScheduleView()
-        } else if selectedTab == settingsTabIndex {
+        } else if index == settingsTabIndex {
             SettingsView()
         } else {
             HomeView()
@@ -411,17 +458,16 @@ struct MainTabView: View {
             // Dynamic content based on tabs array
             let tabCount = tabs.count
 
-            // Content views with transition — each complete view slides as a
-            // unit. Wrapping the tab content in a Group with `.id(selectedTab)`
-            // forces SwiftUI to treat tab swaps as a view identity change,
-            // which is what actually lets `.transition(slideTransition)` fire.
-            // Without the `.id`, the outer container is re-used across tabs and
-            // the inner if/else branches just fade in/out (the bug we're fixing).
-            Group {
-                tabContent
+            // Keep-alive tab container — every visited tab stays mounted and
+            // slides rather than being rebuilt. Geometry lives in the container;
+            // what the indices mean and how one is chosen stays here.
+            KeepAliveTabContainer(
+                selected: selectedTab,
+                previous: previousTab,
+                mounted: mountedTabIndices
+            ) { index in
+                tabRoot(for: index)
             }
-            .id(selectedTab)
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
             .ignoresSafeArea(.all, edges: .bottom)
             // Each tab's AppHeader (search + tab-specific action buttons) lives
             // inside this sliding container, so the whole header slides as one
@@ -429,10 +475,12 @@ struct MainTabView: View {
             // stays mutually aligned. No separate persistent overlay.
             // Pushed detail screens read this to fade the tab bar while on screen.
             .environment(\.tabBarVisibility, tabBarVisibility)
-            .transition(slideTransition)
-            .animation(OPSStyle.Animation.standard, value: selectedTab)
-            // The header inside this container reports how tall it is, so the
-            // status band below can start where the header ends.
+            // The ACTIVE tab's header reports how tall it is, so the status band
+            // below can start where that header ends. Every mounted tab's header
+            // is alive at once now and the key reduces with `max`, so inactive
+            // headers report the floor instead (AppHeader gates on
+            // `isActiveTab`) — otherwise the tallest header ever mounted would
+            // pin the band for the rest of the session.
             .onPreferenceChange(AppHeaderHeightKey.self) { headerBandHeight = $0 }
 
             // Image sync progress bar and sync status, banded directly BELOW the
@@ -472,7 +520,7 @@ struct MainTabView: View {
             // Custom tab bar overlaid at bottom
             VStack {
                 Spacer()
-                CustomTabBar(selectedTab: $selectedTab, tabs: tabs)
+                CustomTabBar(selectedTab: tabSelection, tabs: tabs)
             }
             .ignoresSafeArea(.all, edges: .bottom)
             .preferredColorScheme(.dark)
@@ -640,9 +688,8 @@ struct MainTabView: View {
 
         // Handle navigation to map view
         .onReceive(navigateToMapObserver) { _ in
-            withAnimation(OPSStyle.Animation.fast) {
-                selectedTab = 0 // Switch to home/map tab
-            }
+            // Switch to home/map tab
+            selectTab(0, with: OPSStyle.Animation.fast)
         }
 
         // MARK: - Push Notification Deep Linking Handlers
@@ -775,9 +822,7 @@ struct MainTabView: View {
             }
             print("[PUSH_NAVIGATION] Opening lead details for: \(leadId)")
             appState.pendingLeadDeepLinkId = leadId
-            withAnimation(OPSStyle.Animation.fast) {
-                selectedTab = idx
-            }
+            selectTab(idx, with: OPSStyle.Animation.fast)
         }
 
         // Handle access denied presentations (tapped Spotlight result no longer permitted)
@@ -798,9 +843,7 @@ struct MainTabView: View {
         // Handle opening schedule view from push notification
         .onReceive(openScheduleObserver) { _ in
             print("[PUSH_NAVIGATION] Opening schedule view")
-            withAnimation(OPSStyle.Animation.fast) {
-                selectedTab = scheduleTabIndex
-            }
+            selectTab(scheduleTabIndex, with: OPSStyle.Animation.fast)
         }
 
         // Handle opening subscription/plan selection from push notification
@@ -812,18 +855,14 @@ struct MainTabView: View {
         // Handle opening job board from push notification
         .onReceive(openJobBoardObserver) { _ in
             print("[PUSH_NAVIGATION] Opening job board")
-            withAnimation(OPSStyle.Animation.fast) {
-                selectedTab = jobBoardTabIndex
-            }
+            selectTab(jobBoardTabIndex, with: OPSStyle.Animation.fast)
         }
 
         // Handle opening catalog from notification rail / deep link
         .onReceive(openCatalogObserver) { _ in
             guard let idx = catalogTabIndex else { return }
             print("[PUSH_NAVIGATION] Opening catalog")
-            withAnimation(OPSStyle.Animation.fast) {
-                selectedTab = idx
-            }
+            selectTab(idx, with: OPSStyle.Animation.fast)
         }
 
         // Open Settings from the notifications-menu gear. Settings now lives off
@@ -831,9 +870,7 @@ struct MainTabView: View {
         // CustomTabBar reveals the peek in response to the selection change.
         .onReceive(NotificationCenter.default.publisher(for: Notification.Name("OpenSettings"))) { _ in
             print("[PUSH_NAVIGATION] Opening settings")
-            withAnimation(OPSStyle.Animation.fast) {
-                selectedTab = settingsTabIndex
-            }
+            selectTab(settingsTabIndex, with: OPSStyle.Animation.fast)
         }
 
         // Bug 8ed0d2ed — Open expenses from notification rail / push.
@@ -848,9 +885,7 @@ struct MainTabView: View {
                 print("[PUSH_NAVIGATION] No books access — expense deep link suppressed")
                 return
             }
-            withAnimation(OPSStyle.Animation.fast) {
-                selectedTab = idx
-            }
+            selectTab(idx, with: OPSStyle.Animation.fast)
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
                 NotificationCenter.default.post(
                     name: Notification.Name("BooksSelectSegment"),
@@ -870,9 +905,7 @@ struct MainTabView: View {
                 return
             }
             let batchId = note.userInfo?["batchId"] as? String
-            withAnimation(OPSStyle.Animation.fast) {
-                selectedTab = idx
-            }
+            selectTab(idx, with: OPSStyle.Animation.fast)
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
                 NotificationCenter.default.post(
                     name: Notification.Name("BooksSelectSegment"),
@@ -890,9 +923,7 @@ struct MainTabView: View {
         .onReceive(openInvoicesObserver) { _ in
             print("[PUSH_NAVIGATION] Opening invoices")
             guard hasBooksAccess, let idx = booksTabIndex else { return }
-            withAnimation(OPSStyle.Animation.fast) {
-                selectedTab = idx
-            }
+            selectTab(idx, with: OPSStyle.Animation.fast)
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
                 NotificationCenter.default.post(
                     name: Notification.Name("BooksSelectSegment"),
@@ -910,9 +941,7 @@ struct MainTabView: View {
                 print("[PUSH_NAVIGATION] No books access — cashflow deep link suppressed")
                 return
             }
-            withAnimation(OPSStyle.Animation.fast) {
-                selectedTab = idx
-            }
+            selectTab(idx, with: OPSStyle.Animation.fast)
         }
 
         // Bug 78309d78 — Open the "projects needing tasks" review sheet from
@@ -952,9 +981,7 @@ struct MainTabView: View {
 
         // Handle navigating to Clients tab in Job Board
         .onReceive(NotificationCenter.default.publisher(for: Notification.Name("NavigateToClients"))) { _ in
-            withAnimation(OPSStyle.Animation.panel) {
-                selectedTab = jobBoardTabIndex
-            }
+            selectTab(jobBoardTabIndex, with: OPSStyle.Animation.panel)
             // Post follow-up notification to switch to Clients section within Job Board
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
                 NotificationCenter.default.post(
@@ -966,7 +993,14 @@ struct MainTabView: View {
 
         // Track tab changes for slide transitions and analytics
         .onChange(of: selectedTab) { oldValue, newValue in
-            previousTab = oldValue
+            // Net, not an alternative: a write that bypassed `tabSelection` /
+            // `selectTab` has already rendered one frame with a stale
+            // `previousTab`, so the outgoing tab teleported instead of sliding
+            // and no later fix-up can recover that frame. This only restores
+            // CONSISTENCY for everything after it. A no-op on the normal path —
+            // the values already match — so it costs no extra render.
+            if previousTab != oldValue { previousTab = oldValue }
+            if !mountedTabs.contains(newValue) { mountedTabs.insert(newValue) }
             let tabName = analyticsTabName(for: newValue)
             AnalyticsManager.shared.trackTabSelected(tabName: tabName)
             AnalyticsService.shared.track(
@@ -1002,25 +1036,25 @@ struct MainTabView: View {
             guard let tabTarget = notification.userInfo?["tabTarget"] as? String else { return }
             switch tabTarget {
             case "Home":
-                withAnimation { selectedTab = 0 }
+                selectTab(0, with: .default)
             case "Pipeline":
                 if let idx = leadsTabIndex {
-                    withAnimation { selectedTab = idx }
+                    selectTab(idx, with: .default)
                 }
             case "Books":
                 if let idx = booksTabIndex {
-                    withAnimation { selectedTab = idx }
+                    selectTab(idx, with: .default)
                 }
             case "JobBoard":
-                withAnimation { selectedTab = jobBoardTabIndex }
+                selectTab(jobBoardTabIndex, with: .default)
             case "Schedule":
-                withAnimation { selectedTab = scheduleTabIndex }
+                selectTab(scheduleTabIndex, with: .default)
             case "Catalog":
                 if let idx = catalogTabIndex {
-                    withAnimation { selectedTab = idx }
+                    selectTab(idx, with: .default)
                 }
             case "Settings":
-                withAnimation { selectedTab = settingsTabIndex }
+                selectTab(settingsTabIndex, with: .default)
             default:
                 break
             }
@@ -1028,13 +1062,13 @@ struct MainTabView: View {
         // Wizard deep nav for settings sub-screens — handled here because SettingsView's
         // modifier stack is too deep for additional .onReceive handlers
         .onReceive(NotificationCenter.default.publisher(for: Notification.Name("WizardOpenSecuritySettings"))) { _ in
-            withAnimation { selectedTab = settingsTabIndex }
+            selectTab(settingsTabIndex, with: .default)
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
                 NotificationCenter.default.post(name: Notification.Name("SettingsOpenSecurity"), object: nil)
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: Notification.Name("WizardOpenNotificationSettings"))) { _ in
-            withAnimation { selectedTab = settingsTabIndex }
+            selectTab(settingsTabIndex, with: .default)
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
                 NotificationCenter.default.post(name: Notification.Name("SettingsOpenNotifications"), object: nil)
             }
@@ -1043,13 +1077,13 @@ struct MainTabView: View {
             // Bug 4014b472 — Manage Team is a top-level Settings row in the new
             // IA, so wizards can land there directly instead of the previous
             // two-hop dance through Organization → ManageTeamFromOrg.
-            withAnimation { selectedTab = settingsTabIndex }
+            selectTab(settingsTabIndex, with: .default)
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
                 NotificationCenter.default.post(name: Notification.Name("SettingsOpenManageTeam"), object: nil)
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: Notification.Name("WizardOpenPermissions"))) { _ in
-            withAnimation { selectedTab = settingsTabIndex }
+            selectTab(settingsTabIndex, with: .default)
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
                 NotificationCenter.default.post(name: Notification.Name("SettingsOpenPermissions"), object: nil)
             }
@@ -1151,10 +1185,7 @@ struct MainTabView: View {
             print("[MAIN_TAB_VIEW] After role change - Tab count: \(tabs.count)")
 
             // Ensure selected tab is valid for new tab count
-            let newTabCount = tabs.count
-            if selectedTab >= newTabCount {
-                selectedTab = 0 // Reset to home if current tab no longer exists
-            }
+            remapMountedTabs()
         }
         .onChange(of: dataController.currentUser?.id) { oldUserId, newUserId in
             print("[MAIN_TAB_VIEW] currentUser ID changed")
@@ -1172,10 +1203,7 @@ struct MainTabView: View {
             print("[MAIN_TAB_VIEW] Permissions changed - Tab count: \(tabs.count)")
 
             // Ensure selected tab is valid for new tab count
-            let newTabCount = tabs.count
-            if selectedTab >= newTabCount {
-                selectedTab = 0 // Reset to home if current tab no longer exists
-            }
+            remapMountedTabs()
         }
         // C2: Re-evaluate wizard triggers once initial sync completes
         .onChange(of: dataController.isPerformingInitialSync) { _, isLoading in

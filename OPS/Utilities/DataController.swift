@@ -2358,11 +2358,18 @@ class DataController: ObservableObject {
     
     // MARK: - Project Fetching
     
-    /// Gets projects with flexible filtering options
+    /// Gets non-deleted projects with flexible filtering options
     /// - Parameters:
     ///   - date: Optional date to filter projects scheduled for that day
     ///   - user: Optional user to filter projects assigned to them (pass nil for Admin/Office to see all)
     /// - Returns: Filtered array of projects
+    ///
+    /// Tombstoned rows never leave here. Callers that need them fetch by id
+    /// (`getProject(id:)`, the trash restore path) or hold their own `@Query`
+    /// (`TrashView`) — this is the operational list, and a deleted job is not
+    /// operational. Every consumer already re-filtered `deletedAt == nil`
+    /// except the completed-work counters that gate the review stacks, which
+    /// were counting deleted jobs toward the unlock.
     func getProjects(for date: Date? = nil, assignedTo user: User? = nil) -> [Project] {
         guard let modelContext = modelContext else { return [] }
         
@@ -2373,8 +2380,13 @@ class DataController: ObservableObject {
                             UserDefaults.standard.string(forKey: "currentUserCompanyId")
             
             
-            // Get all projects (will sort in-memory since startDate is computed)
-            let descriptor = FetchDescriptor<Project>()
+            // Get all projects (will sort in-memory since startDate is computed).
+            // The soft-delete gate is a #Predicate, not an in-memory filter: this
+            // is a whole-table fetch on the main context and materializing every
+            // tombstoned row only to drop it is cost paid on the main thread.
+            let descriptor = FetchDescriptor<Project>(
+                predicate: #Predicate<Project> { $0.deletedAt == nil }
+            )
             let allProjects = try modelContext.fetch(descriptor)
             
             
@@ -2442,12 +2454,20 @@ class DataController: ObservableObject {
     
     // MARK: - All Tasks
 
-    /// Get all non-deleted tasks in the local store
+    /// Get all non-deleted tasks in the local store.
+    ///
+    /// The soft-delete gate is a `#Predicate`, not an in-memory filter: this is
+    /// a whole-table fetch on the main context called from badge-count and
+    /// review paths, and materializing every tombstoned row only to drop it is
+    /// cost paid on the main thread per call. Same rows out either way.
     func getAllTasks() -> [ProjectTask] {
         guard let context = modelContext else { return [] }
         do {
-            let allTasks = try context.fetch(FetchDescriptor<ProjectTask>())
-            return allTasks.filter { $0.deletedAt == nil }
+            return try context.fetch(
+                FetchDescriptor<ProjectTask>(
+                    predicate: #Predicate<ProjectTask> { $0.deletedAt == nil }
+                )
+            )
         } catch {
             print("[DataController] Failed to fetch all tasks: \(error)")
             return []
@@ -2664,17 +2684,47 @@ class DataController: ObservableObject {
     }
 
     /// Get all scheduled tasks from a given start date, filtered by current user access
+    ///
+    /// The dated gate, the from-date bound, and the soft-delete gate are all
+    /// `#Predicate`s on the fetch. This is a whole-table fetch feeding the
+    /// month grid, re-run on every inbound data change, and the permission
+    /// branch below faults `teamMembers` and `project` on each row that
+    /// survives — so every row excluded here is relationship-faulting work not
+    /// done on the main thread.
+    ///
+    /// BEHAVIOR CHANGE: tombstoned tasks no longer reach the month grid. The
+    /// in-memory filter this replaced never gated `deletedAt`, so a deleted
+    /// task kept drawing a badge until the next launch — while the same loop
+    /// in `MonthGridCache.loadEvents` was already dropping deleted USER events
+    /// beside it. Every sibling calendar fetcher (`getScheduledTasks(for:)`,
+    /// `getScheduledTasksForCompany`, `CalendarViewModel.rebuildWeekCache`)
+    /// gates soft-deletes; this one was the outlier.
     func getAllScheduledTasks(from startDate: Date) -> [ProjectTask] {
         guard let user = currentUser else { return [] }
         guard let context = modelContext else { return [] }
 
         do {
-            let allTasks = try context.fetch(FetchDescriptor<ProjectTask>())
+            // `?? .distantPast` only satisfies the optional comparison — the
+            // `!= nil` conjunct means it never decides a row.
+            let unscheduledFloor = Date.distantPast
+            let allTasks = try context.fetch(
+                FetchDescriptor<ProjectTask>(
+                    predicate: #Predicate<ProjectTask> { task in
+                        task.deletedAt == nil
+                            && task.startDate != nil
+                            && (task.startDate ?? unscheduledFloor) >= startDate
+                    }
+                )
+            )
 
+            // Residual cost, named honestly: the assignment branch below is
+            // still O(all live company tasks from the cutoff) on the main
+            // context, faulting `teamMembers`/`project` per row. It CANNOT
+            // follow the gates above into the `#Predicate` — assignment is a
+            // comma-joined string (`ProjectTask.teamMemberIdsString`, parsed by
+            // `getTeamMemberIds()`) OR'd with a to-many relationship
+            // traversal, neither expressible in a `#Predicate`. Schema work.
             let filteredTasks = allTasks.filter { task in
-                guard let taskStartDate = task.startDate else { return false }
-                if taskStartDate < startDate { return false }
-
                 if PermissionStore.shared.hasFullAccess("tasks.view") {
                     return task.companyId == user.companyId
                 } else {
@@ -2779,51 +2829,6 @@ class DataController: ObservableObject {
             return nil
         }
     }
-    
-    
-    
-    @MainActor
-    func getProjectsForToday(user: User? = nil) async throws -> [Project] {
-        let today = Calendar.current.startOfDay(for: Date())
-        let _ = Calendar.current.date(byAdding: .day, value: 1, to: today)!
-        
-        // Use the user ID if provided, otherwise use current user
-        let userId = user?.id ?? currentUser?.id
-        
-        guard let userId = userId else {
-            throw NSError(domain: "DataController", code: 3,
-                         userInfo: [NSLocalizedDescriptionKey: "No current user"])
-        }
-        
-        // First check local data
-        let localProjects = getProjects(for: today, assignedTo: user ?? currentUser)
-        
-        // If we're offline or have recent data, use local data
-        if !isConnected || (lastSyncTime != nil &&
-            Date().timeIntervalSince(lastSyncTime!) < AppConfiguration.Sync.minimumSyncInterval) {
-            
-            // Ensure team member relationships are synchronized for each project
-            for project in localProjects {
-                await syncProjectTeamMembers(project)
-            }
-            
-            return localProjects
-        }
-        
-        // Trigger a sync to get fresh data, then use local SwiftData
-        await syncEngine.triggerSync()
-
-        // Re-fetch from local after sync
-        let refreshedProjects = getProjects(for: today, assignedTo: user ?? currentUser)
-
-        // Sync team member relationships for each project
-        for project in refreshedProjects {
-            await syncProjectTeamMembers(project)
-        }
-
-        return refreshedProjects
-    }
-    
     
     func getProjectsForMap() throws -> [Project] {
         guard let context = modelContext else {
@@ -3353,6 +3358,9 @@ class DataController: ObservableObject {
         project.deletedAt = deletionDate
         project.needsSync = true
 
+        let tombstoneFields = ["deleted_at": formatter.string(from: deletionDate)]
+        var specs: [SyncEngine.BulkOperationSpec] = []
+
         // Cascade soft delete to all tasks
         var cascadedTaskIds: [String] = []
         for task in project.tasks where task.deletedAt == nil {
@@ -3360,14 +3368,26 @@ class DataController: ObservableObject {
             task.needsSync = true
             cascadedTaskIds.append(task.id)
 
-            // Record delete for each cascaded task
-            syncEngine.recordOperation(
+            specs.append(.init(
                 entityType: .projectTask,
                 entityId: task.id,
                 operationType: "delete",
-                changedFields: ["deleted_at": formatter.string(from: deletionDate)]
-            )
+                changedFields: tombstoneFields
+            ))
         }
+
+        // The project's own delete rides in the same batch — one cascade, one
+        // commit. Intra-batch ORDER is not guaranteed: recordOperations stamps a
+        // fresh Date() per op rather than the strictly-increasing createdAt that
+        // stageOperationsForTransaction assigns. These tombstones are independent
+        // row updates, so any drain order is correct; an order-sensitive flow
+        // must use stageOperationsForTransaction instead.
+        specs.append(.init(
+            entityType: .project,
+            entityId: project.id,
+            operationType: "delete",
+            changedFields: tombstoneFields
+        ))
 
         // Unmirror cascaded tasks from iPhone Calendar
         Task { @MainActor in
@@ -3376,17 +3396,31 @@ class DataController: ObservableObject {
             }
         }
 
-        // Save changes locally
-        try modelContext.save()
+        // INVARIANT: the batch's single save is what commits the tombstones set
+        // above — true only while the sync engine writes through THIS context.
+        // Mirrors the `===` guard in stageOperationsForTransaction; release
+        // builds fall back to a local save rather than drop the soft-delete.
+        let engineSharesContext = syncEngine.sharesModelContext(with: modelContext)
+        assert(engineSharesContext, "SyncEngine must write through DataController's context")
+
+        // ONE save commits the tombstones AND every queue record. Recording per
+        // task cost a main-thread save and a push per task, so deleting an
+        // N-task project stalled the UI for N+1 saves and opened N pushes.
+        let recorded = syncEngine.recordOperations(specs)
+        if !engineSharesContext || recorded < specs.count {
+            // Covers all three ways the batch can fall short: the engine saved a
+            // different context, or it enqueued nothing (unavailable context /
+            // failed save), or a single spec failed to encode — that last case
+            // already committed the rest, making this save a harmless no-op.
+            // Still throws the way this method always has when persistence fails.
+            try modelContext.save()
+        }
         print("[DELETE_PROJECT] ✅ Project '\(projectTitle)' soft deleted locally")
 
-        // Record for async sync
-        syncEngine.recordOperation(
-            entityType: .project,
-            entityId: project.id,
-            operationType: "delete",
-            changedFields: ["deleted_at": formatter.string(from: deletionDate)]
-        )
+        // ONE push for the whole cascade.
+        if connectivity?.shouldAttemptSync == true {
+            Task { await syncEngine.pushPending() }
+        }
     }
 
     /// Delete a task from both Supabase and local storage
@@ -4800,22 +4834,49 @@ class DataController: ObservableObject {
 
         print("[TASK_INDEX] ✅ Updated \(allTasks.count) task indices")
 
-        // Save changes locally
-        try modelContext?.save()
-
         // Record task index updates for async sync (use display_order — the actual Supabase column)
-        print("[TASK_INDEX] 🔄 Recording \(tasksToSync.count) task index updates for sync...")
+        print("[TASK_INDEX] 🔄 Queuing \(tasksToSync.count) task index updates for sync...")
+        var specs: [SyncEngine.BulkOperationSpec] = []
         for (task, index) in tasksToSync {
-            syncEngine.recordOperation(
+            specs.append(.init(
                 entityType: .projectTask,
                 entityId: task.id,
                 operationType: "update",
-                changedFields: ["display_order": index],
-                deferPush: deferPush
-            )
-            print("[TASK_INDEX]   ✅ Recorded displayOrder=\(index) for task '\(task.displayTitle)'")
+                changedFields: ["display_order": index]
+            ))
+            print("[TASK_INDEX]   • Queued displayOrder=\(index) for task '\(task.displayTitle)'")
         }
-        print("[TASK_INDEX] ✅ Task index updates recorded for sync")
+
+        // INVARIANT: the batch's single save is what commits the new indices set
+        // above — true only while the sync engine writes through THIS context.
+        // Mirrors the `===` guard in stageOperationsForTransaction; release
+        // builds fall back to a local save rather than drop the reorder.
+        let engineSharesContext = modelContext.map { syncEngine.sharesModelContext(with: $0) } ?? false
+        assert(
+            modelContext == nil || engineSharesContext,
+            "SyncEngine must write through DataController's context"
+        )
+
+        // ONE save commits the new indices AND their queue records. Recording
+        // per task cost a main-thread save each, and every schedule commit lands
+        // here — the per-op loop was the reorder half of the scheduling stall.
+        let recorded = syncEngine.recordOperations(specs)
+        if !engineSharesContext || recorded < specs.count {
+            // The engine saved a different context, enqueued nothing, or dropped
+            // a spec that failed to encode — persist the indices locally either
+            // way. Harmless no-op when the engine's save already covered them.
+            try modelContext?.save()
+        }
+        if recorded == specs.count {
+            print("[TASK_INDEX] ✅ \(recorded) task index update(s) recorded for sync")
+        } else {
+            print("[TASK_INDEX] ⚠️ Recorded \(recorded)/\(specs.count) index updates — indices saved locally")
+        }
+
+        // ONE push for the whole reorder, honoring the caller's defer contract.
+        if !deferPush, connectivity?.shouldAttemptSync == true {
+            Task { await syncEngine.pushPending() }
+        }
     }
 
     // MARK: - Team Member Operations

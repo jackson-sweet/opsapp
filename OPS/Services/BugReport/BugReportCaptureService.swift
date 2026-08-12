@@ -275,19 +275,43 @@ final class BugReportCaptureService {
 
 // MARK: - Screen Tracking Modifier
 
+/// Claims the "current screen" a filed bug report is stamped with.
+///
+/// This is mount-based on six tab roots, and MainTabView keeps every visited
+/// tab mounted — so `onAppear` alone fires once per tab, for the whole session,
+/// and a bug filed after two tab switches would carry whichever screen the
+/// operator happened to open first. The foreground re-fire is worse: with six
+/// roots alive it runs from all of them on every return to foreground, and the
+/// last writer wins nondeterministically — quite possibly a parked tab.
+///
+/// The claim therefore follows `\.isActiveTab`: a tab takes the breadcrumb when
+/// it comes on screen and never while parked. The key defaults to true, so
+/// pushed screens, sheets and every non-tab surface using `trackScreen` behave
+/// exactly as they did.
+///
+/// Known residual: a pushed screen and its tab root both track, and on
+/// re-activation both fire with no ordering contract between them, so the
+/// deeper screen is not guaranteed to win. That is inherent to a per-view
+/// breadcrumb and is strictly better than the wrong tab winning.
 struct ScreenTrackingModifier: ViewModifier {
     let screenName: String
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.isActiveTab) private var isActiveTab
 
     func body(content: Content) -> some View {
         content
             .onAppear {
+                // Mount and activation coincide on a tab's first visit.
+                guard isActiveTab else { return }
+                BugReportCaptureService.shared.updateScreen(screenName)
+            }
+            .onChange(of: isActiveTab) { _, active in
+                guard active else { return }
                 BugReportCaptureService.shared.updateScreen(screenName)
             }
             .onChange(of: scenePhase) { _, newPhase in
-                if newPhase == .active {
-                    BugReportCaptureService.shared.updateScreen(screenName)
-                }
+                guard newPhase == .active, isActiveTab else { return }
+                BugReportCaptureService.shared.updateScreen(screenName)
             }
     }
 }

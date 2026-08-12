@@ -394,6 +394,8 @@ final class SiteVisitServerMergeTests: XCTestCase {
             )
         )
 
+        // The await has to resolve before the assertion: XCTAssertTrue takes an
+        // autoclosure, which cannot host a concurrency suspension point.
         let handled = try await sync.executeIfHandled(
             operation: operation,
             context: context,

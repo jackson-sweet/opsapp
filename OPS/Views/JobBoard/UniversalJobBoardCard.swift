@@ -474,7 +474,7 @@ struct UniversalJobBoardCard: View {
         .frame(maxHeight: .infinity, alignment: .center)
         .padding(.vertical, OPSStyle.Layout.spacing2)
         .padding(.horizontal, OPSStyle.Layout.spacing2_5)
-        .glassSurface()
+        .glassSurface(.listRow)
     }
 
     private var compactDateRange: String {
@@ -551,8 +551,8 @@ struct UniversalJobBoardCard: View {
                     subtitleText(project.effectiveClientName)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
-                // Title flows full-width; the frosted overlay badges (top-right)
-                // blur it where they sit, so no trailing reservation/truncation.
+                // Title flows full-width; the opaque overlay badges (top-right)
+                // cover it where they sit, so no trailing reservation/truncation.
 
                 metadataRow([
                     (OPSStyle.Icons.location, model.addressText),
@@ -563,7 +563,7 @@ struct UniversalJobBoardCard: View {
             .frame(maxHeight: .infinity, alignment: .bottom)
             .padding(OPSStyle.Layout.spacing3)
         }
-        .glassSurface()
+        .glassSurface(.listRow)
         .overlay(
             // Tutorial shimmer effect over the card surface (blue/primaryAccent)
             Group {
@@ -617,7 +617,7 @@ struct UniversalJobBoardCard: View {
                             .padding(.vertical, OPSStyle.Layout.spacing1)
                             .background(
                                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                                    .fill(.ultraThinMaterial)
+                                    .fill(OPSStyle.Colors.surfaceRaised)
                             )
                             .overlay(
                                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
@@ -630,7 +630,7 @@ struct UniversalJobBoardCard: View {
                         .foregroundColor(project.status.color)
                         .padding(.horizontal, OPSStyle.Layout.spacing2)
                         .padding(.vertical, OPSStyle.Layout.spacing1)
-                        .frostedBadgeFill(project.status.color, cornerRadius: OPSStyle.Layout.cardCornerRadius)
+                        .listRowBadgeFill(project.status.color, cornerRadius: OPSStyle.Layout.cardCornerRadius)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
                 .padding(OPSStyle.Layout.spacing2)
@@ -653,7 +653,7 @@ struct UniversalJobBoardCard: View {
                             .foregroundColor(OPSStyle.Colors.warningStatus)
                             .padding(.horizontal, OPSStyle.Layout.spacing2)
                             .padding(.vertical, OPSStyle.Layout.spacing1)
-                            .frostedBadgeFill(OPSStyle.Colors.warningStatus, cornerRadius: OPSStyle.Layout.cardCornerRadius)
+                            .listRowBadgeFill(OPSStyle.Colors.warningStatus, cornerRadius: OPSStyle.Layout.cardCornerRadius)
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
                     .padding(OPSStyle.Layout.spacing2)
@@ -752,14 +752,14 @@ struct UniversalJobBoardCard: View {
             .frame(maxHeight: .infinity, alignment: .bottom)
             .padding(OPSStyle.Layout.spacing3)
         }
-        .glassSurface()
+        .glassSurface(.listRow)
         .overlay(
             ZStack {
                 // Status badge + assigned-to-me badge — top right
                 HStack(spacing: 6) {
                     // READY — predecessors all complete, this task can start.
                     if model.isReadyToStart {
-                        TaskReadyBadge()
+                        TaskReadyBadge(surface: .listRow)
                     }
 
                     if model.isAssignedToMe {
@@ -770,7 +770,7 @@ struct UniversalJobBoardCard: View {
                             .padding(.vertical, OPSStyle.Layout.spacing1)
                             .background(
                                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
-                                    .fill(.ultraThinMaterial)
+                                    .fill(OPSStyle.Colors.surfaceRaised)
                             )
                             .overlay(
                                 RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius)
@@ -783,7 +783,7 @@ struct UniversalJobBoardCard: View {
                         .foregroundColor(task.status.color)
                         .padding(.horizontal, OPSStyle.Layout.spacing2)
                         .padding(.vertical, OPSStyle.Layout.spacing1)
-                        .frostedBadgeFill(task.status.color, cornerRadius: OPSStyle.Layout.cardCornerRadius)
+                        .listRowBadgeFill(task.status.color, cornerRadius: OPSStyle.Layout.cardCornerRadius)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
                 .padding(OPSStyle.Layout.spacing2)
@@ -794,7 +794,7 @@ struct UniversalJobBoardCard: View {
                         .foregroundColor(OPSStyle.Colors.warningStatus)
                         .padding(.horizontal, OPSStyle.Layout.spacing2)
                         .padding(.vertical, OPSStyle.Layout.spacing1)
-                        .frostedBadgeFill(OPSStyle.Colors.warningStatus, cornerRadius: OPSStyle.Layout.cardCornerRadius)
+                        .listRowBadgeFill(OPSStyle.Colors.warningStatus, cornerRadius: OPSStyle.Layout.cardCornerRadius)
                         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
                         .padding(OPSStyle.Layout.spacing2)
                 }

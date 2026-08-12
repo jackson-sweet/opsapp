@@ -939,7 +939,11 @@ struct ProjectListSheet: View {
                                 ForEach(filteredProjects) { project in
                                     UniversalJobBoardCard(cardType: .project(project), disableSwipe: true)
                                         .environmentObject(dataController)
-                                        .id("\(project.id)-\(project.teamMemberIdsString)")
+                                        // Identity is the project, not the project +
+                                        // its crew CSV — same rule as the active list:
+                                        // the card observes the @Model, so a crew edit
+                                        // redraws it without destroying its @State.
+                                        .id(project.id)
                                 }
                             }
                             .padding(.horizontal, OPSStyle.Layout.spacing3)

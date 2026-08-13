@@ -4657,6 +4657,8 @@ actor DataActor {
                 readyPendingTaskTypePipelineOperationIds()
             let readySiteVisitsBeforePass =
                 readyPendingSiteVisitOperationIds()
+            let readyCrossEntityBeforePass =
+                readyCrossEntityOperationIds()
             completedProjectTaskIds.formUnion(
                 await processPendingOperationsPass()
             )
@@ -4666,6 +4668,8 @@ actor DataActor {
                 readyPendingTaskTypePipelineOperationIds()
             let readySiteVisitsAfterPass =
                 readyPendingSiteVisitOperationIds()
+            let readyCrossEntityAfterPass =
+                readyCrossEntityOperationIds()
             let shouldContinueMentionDrain = ProjectNoteMentionEditSync
                 .shouldContinueDrain(
                     readyBeforePass: readyMentionsBeforePass,
@@ -4683,10 +4687,19 @@ actor DataActor {
                     readyBeforePass: readySiteVisitsBeforePass,
                     readyAfterPass: readySiteVisitsAfterPass
                 )
+            let shouldContinueCrossEntityDrain = SyncCrossEntityDependency
+                .shouldContinueDrain(
+                    readyBeforePass: readyCrossEntityBeforePass,
+                    readyAfterPass: readyCrossEntityAfterPass
+                )
             shouldContinueDrain =
                 shouldContinueMentionDrain
                     || shouldContinueTaskTypePipeline
                     || shouldContinueSiteVisitDrain
+                    || shouldContinueCrossEntityDrain
+            if shouldContinueCrossEntityDrain {
+                print("[DataActor] A referenced create landed — continuing drain to push the work waiting on it")
+            }
             if shouldContinueMentionDrain {
                 print("[DataActor] Mention dependency released — continuing actor-context drain")
             }
@@ -4713,6 +4726,10 @@ actor DataActor {
     }
 
     private func processPendingOperationsPass() async -> Set<String> {
+        // 0. Hand back work parked before the row it references existed. Runs
+        //    ahead of the fetch so a released op joins THIS pass.
+        releaseCrossEntityMisparkedOperations()
+
         // 1. Fetch pending operations sorted by priority ASC, createdAt ASC.
         let pending: [SyncOperation]
         do {
@@ -4778,6 +4795,21 @@ actor DataActor {
                 print(
                     "[DataActor] Holding site-visit work behind its live graph barrier: "
                         + "\(op.operationType) \(op.entityId)"
+                )
+                return false
+            }
+
+            // Cross-entity ordering: an op referencing a row whose own create
+            // has not reached the server cannot pass that server's RLS check,
+            // and the rejection classifies permanent — it would park forever.
+            // Hold it instead; the create releases it. See bug 06f68200.
+            if SyncCrossEntityDependency.isBlockedByUnresolvedCreate(
+                op,
+                in: allOperations
+            ) {
+                print(
+                    "[DataActor] Holding \(op.entityType) \(op.entityId) "
+                        + "behind an unsynced create it references"
                 )
                 return false
             }
@@ -4866,6 +4898,39 @@ actor DataActor {
             in: operations,
             now: now
         )
+    }
+
+    /// Cross-entity readiness snapshot. Predicate-free by necessity: a
+    /// `#Predicate` fetch of `SyncOperation` traps against a table that has
+    /// never held a row, and this runs on every pass.
+    func readyCrossEntityOperationIds() -> Set<UUID> {
+        modelContext.rollback()
+        let operations = (
+            try? modelContext.fetch(FetchDescriptor<SyncOperation>())
+        ) ?? []
+        return SyncCrossEntityDependency.readyOperationIds(in: operations)
+    }
+
+    /// Returns ops parked by the cross-entity race whose blocking create has
+    /// since landed to `pending`. Single-shot per op by construction — see
+    /// `SyncCrossEntityDependency` for why this cannot loop.
+    private func releaseCrossEntityMisparkedOperations() {
+        let operations = (
+            try? modelContext.fetch(FetchDescriptor<SyncOperation>())
+        ) ?? []
+        guard !operations.isEmpty else { return }
+        var released: [SyncOperation] = []
+        try? modelContext.transaction {
+            released = SyncCrossEntityDependency.releaseParkedOperations(
+                in: operations
+            )
+        }
+        if !released.isEmpty {
+            print(
+                "[DataActor] Released \(released.count) operation(s) "
+                    + "parked before the create they reference landed"
+            )
+        }
     }
 
     // MARK: - Dependency Check

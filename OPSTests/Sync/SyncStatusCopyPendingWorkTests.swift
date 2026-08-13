@@ -62,6 +62,9 @@ final class SyncStatusCopyPendingWorkTests: XCTestCase {
         XCTAssertEqual(Copy.offlineRow, "Waiting for signal")
         XCTAssertEqual(Copy.orphanRow, "Not linked to a job or lead")
         XCTAssertEqual(Copy.draftRow, "Not sent yet — open to finish")
+        XCTAssertEqual(Copy.retryingRow, "Retrying…")
+        XCTAssertEqual(Copy.retrySucceededRow, "Updated")
+        XCTAssertEqual(Copy.retryFailedRow, "Retry failed — still here")
     }
 
     func testBackoffRowInterpolationAndFloor() {

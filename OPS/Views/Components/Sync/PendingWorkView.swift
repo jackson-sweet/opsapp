@@ -49,6 +49,7 @@ struct PendingWorkView: View {
     let inventory: RecoveryInventory
     let actions: PendingWorkActions
     var now: Date = Date()
+    var retryFeedbackByID: [String: PendingWorkRetryFeedback] = [:]
     /// Real link-target search, injected by the wrapper; a safe empty default
     /// keeps the pure view (and its snapshots) engine-free.
     var searchLinkTargets: (String, PendingWorkLinkScope) async -> [PendingWorkLinkTarget] = { _, _ in [] }
@@ -195,6 +196,7 @@ struct PendingWorkView: View {
                             Divider().background(OPSStyle.Colors.lineSoft)
                         }
                         entryView(for: item)
+                            .transition(.opacity)
                     }
                 }
                 .glassSurface()
@@ -211,8 +213,10 @@ struct PendingWorkView: View {
                     bundle: bundle,
                     now: now,
                     onTap: { detailItem = item },
-                    onRetry: { actions.retryItem(item) }
+                    onRetry: { actions.retryItem(item) },
+                    feedback: retryFeedbackByID[item.id]
                 )
+                .allowsHitTesting(retryFeedbackByID[item.id] != .succeeded)
             }
         case .op, .autocreate, .photos:
             swipeRow(for: item) {
@@ -220,8 +224,10 @@ struct PendingWorkView: View {
                     item: item,
                     now: now,
                     onTap: { detailItem = item },
-                    onRetry: { actions.retryItem(item) }
+                    onRetry: { actions.retryItem(item) },
+                    feedback: retryFeedbackByID[item.id]
                 )
+                .allowsHitTesting(retryFeedbackByID[item.id] != .succeeded)
             }
         case .quarantinedVisit:
             swipeRow(for: item) {
@@ -268,6 +274,8 @@ struct PendingWorkView: View {
 
     private func discardActions(for item: RecoveryItem) -> [OPSRowAction] {
         guard discardInFlightID == nil,
+              retryFeedbackByID[item.id] != .retrying,
+              retryFeedbackByID[item.id] != .succeeded,
               item.discardPolicy.canDiscard else { return [] }
         return [
             OPSRowAction(
@@ -375,6 +383,7 @@ struct PendingWorkScreen: View {
     @EnvironmentObject private var dataController: DataController
 
     @State private var inventory = RecoveryInventory(attention: [], sending: [], drafts: [], unlinked: [])
+    @State private var retryTracker = PendingWorkRetryTracker()
     @State private var now = Date()
     @State private var exportPayload: PendingWorkExportPayload?
     @State private var resumingDraft = false
@@ -394,13 +403,23 @@ struct PendingWorkScreen: View {
 
     private var queue: ClientLeadAutocreateQueue { ClientLeadAutocreateQueue.shared }
 
+    private var displayInventory: RecoveryInventory {
+        RecoveryInventory(
+            attention: inventory.attention,
+            sending: inventory.sending + retryTracker.successReceipts,
+            drafts: inventory.drafts,
+            unlinked: inventory.unlinked
+        )
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             header
             PendingWorkView(
-                inventory: inventory,
+                inventory: displayInventory,
                 actions: actions,
                 now: now,
+                retryFeedbackByID: retryTracker.feedbackByID,
                 searchLinkTargets: { await searchLinkTargets($0, $1) }
             )
         }
@@ -457,7 +476,19 @@ struct PendingWorkScreen: View {
     private func refresh() {
         let current = Date()
         now = current
-        inventory = RecoveryInventory.load(from: modelContext, queue: queue, now: current)
+        let refreshed = RecoveryInventory.load(from: modelContext, queue: queue, now: current)
+        let reconciliation: PendingWorkRetryReconciliation = withAnimation(
+            OPSStyle.Animation.panel
+        ) {
+            let result = retryTracker.reconcile(inventory: refreshed, now: current)
+            inventory = refreshed
+            return result
+        }
+        if !reconciliation.failedIDs.isEmpty {
+            UINotificationFeedbackGenerator().notificationOccurred(.error)
+        } else if !reconciliation.succeededIDs.isEmpty {
+            UINotificationFeedbackGenerator().notificationOccurred(.success)
+        }
     }
 
     // MARK: - Actions bundle
@@ -479,6 +510,7 @@ struct PendingWorkScreen: View {
 
     private func retry(item: RecoveryItem) {
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        retryTracker.begin(items: [item])
         apply(retryTo: item)
         Task { await dataController.syncEngine.triggerSync() }
         refresh()
@@ -510,7 +542,7 @@ struct PendingWorkScreen: View {
 
     private func retryAll() {
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-        let hadAttention = inventory.attentionCount > 0
+        retryTracker.begin(items: inventory.attention)
 
         // Reset every recoverable op (failed AND parked) to a fresh pending
         // budget, then re-enqueue crash-stranded in-flight ops.
@@ -523,11 +555,6 @@ struct PendingWorkScreen: View {
 
         Task { await dataController.syncEngine.triggerSync() }
         refresh()
-
-        // Success only when the sweep actually cleared the attention section.
-        if hadAttention && inventory.attentionCount == 0 {
-            UINotificationFeedbackGenerator().notificationOccurred(.success)
-        }
     }
 
     private func retryOperation(id: UUID) {

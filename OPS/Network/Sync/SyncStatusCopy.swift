@@ -220,6 +220,9 @@ enum SyncStatusCopy {
         static let draftRow = "Not sent yet — open to finish"
         static let quarantineTitle = "Site visit recovery"
         static let quarantineRow = "Protected on this phone"
+        static let retryingRow = "Retrying…"
+        static let retrySucceededRow = "Updated"
+        static let retryFailedRow = "Retry failed — still here"
 
         /// Backoff countdown line. `n` is always a whole second, floored to 1 so
         /// the operator never sees "next in 0s". Rendered in mono at the call site.

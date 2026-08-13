@@ -41,6 +41,27 @@ enum PendingWorkVisuals {
         }
     }
 
+    static func feedbackColor(_ feedback: PendingWorkRetryFeedback) -> Color {
+        switch feedback {
+        case .retrying:  return OPSStyle.Colors.primaryAccent
+        case .succeeded: return OPSStyle.Colors.olive
+        case .failed:    return OPSStyle.Colors.rose
+        }
+    }
+
+    static func feedbackStatusLine(
+        _ feedback: PendingWorkRetryFeedback
+    ) -> (text: String, tone: SyncStatusTone) {
+        switch feedback {
+        case .retrying:
+            return (SyncStatusCopy.PendingWork.retryingRow, .syncing)
+        case .succeeded:
+            return (SyncStatusCopy.PendingWork.retrySucceededRow, .waiting)
+        case .failed:
+            return (SyncStatusCopy.PendingWork.retryFailedRow, .stuck)
+        }
+    }
+
     /// SF Symbol for a tone's leading status glyph. `inProgress` is handled by
     /// the caller (it renders a spinner, not a glyph).
     static func glyphName(_ tone: RecoveryTone) -> String {
@@ -162,13 +183,23 @@ enum PendingWorkVisuals {
 struct PendingWorkStatusGlyph: View {
     let tone: RecoveryTone
     let statusRaw: String
+    var feedback: PendingWorkRetryFeedback? = nil
 
     var body: some View {
         Group {
-            if statusRaw == "inProgress" {
+            if feedback == .retrying || statusRaw == "inProgress" {
                 ProgressView()
                     .scaleEffect(0.6)
                     .tint(OPSStyle.Colors.primaryAccent)
+            } else if let feedback {
+                Image(systemName: feedback == .succeeded
+                    ? OPSStyle.Icons.complete
+                    : OPSStyle.Icons.error)
+                    .font(.system(
+                        size: OPSStyle.Layout.IconSize.sm,
+                        weight: .medium
+                    ))
+                    .foregroundColor(PendingWorkVisuals.feedbackColor(feedback))
             } else {
                 Image(systemName: PendingWorkVisuals.glyphName(tone))
                     .font(.system(size: 13, weight: .medium))
@@ -231,17 +262,23 @@ struct PendingWorkEntryRow: View {
     let onTap: () -> Void
     let onRetry: () -> Void
     var showsRetry = true
+    var feedback: PendingWorkRetryFeedback? = nil
 
     private var tone: RecoveryTone { item.tone }
     private var payload: RecoveryStatusPayload { PendingWorkVisuals.displayStatus(for: item) }
     private var title: String { PendingWorkVisuals.title(for: item) }
     private var statusLine: (text: String, tone: SyncStatusTone) {
-        PendingWorkVisuals.statusLine(for: item, now: now)
+        feedback.map(PendingWorkVisuals.feedbackStatusLine)
+            ?? PendingWorkVisuals.statusLine(for: item, now: now)
     }
 
     var body: some View {
         HStack(spacing: 10) {
-            PendingWorkStatusGlyph(tone: tone, statusRaw: payload.statusRaw)
+            PendingWorkStatusGlyph(
+                tone: tone,
+                statusRaw: payload.statusRaw,
+                feedback: feedback
+            )
 
             VStack(alignment: .leading, spacing: 3) {
                 Text(title)
@@ -251,7 +288,8 @@ struct PendingWorkEntryRow: View {
 
                 Text(statusLine.text)
                     .font(OPSStyle.Typography.metadata)
-                    .foregroundColor(PendingWorkVisuals.statusColor(statusLine.tone))
+                    .foregroundColor(feedback.map(PendingWorkVisuals.feedbackColor)
+                        ?? PendingWorkVisuals.statusColor(statusLine.tone))
                     .lineLimit(1)
             }
 
@@ -263,7 +301,8 @@ struct PendingWorkEntryRow: View {
                 .font(OPSStyle.Typography.metadata)
                 .foregroundColor(OPSStyle.Colors.text3)
 
-            if showsRetry && tone >= .attention {
+            if showsRetry && tone >= .attention
+                && feedback != .retrying && feedback != .succeeded {
                 PendingWorkRetryGlyph(action: onRetry)
             }
         }
@@ -286,18 +325,24 @@ struct PendingWorkBundleCard: View {
     let now: Date
     let onTap: () -> Void
     let onRetry: () -> Void
+    var feedback: PendingWorkRetryFeedback? = nil
 
     private var payload: RecoveryStatusPayload {
         PendingWorkVisuals.displayStatus(for: .bundle(bundle))
     }
 
     private var statusLine: (text: String, tone: SyncStatusTone) {
-        PendingWorkVisuals.statusLine(for: .bundle(bundle), now: now)
+        feedback.map(PendingWorkVisuals.feedbackStatusLine)
+            ?? PendingWorkVisuals.statusLine(for: .bundle(bundle), now: now)
     }
 
     var body: some View {
         HStack(spacing: 10) {
-            PendingWorkStatusGlyph(tone: bundle.tone, statusRaw: payload.statusRaw)
+            PendingWorkStatusGlyph(
+                tone: bundle.tone,
+                statusRaw: payload.statusRaw,
+                feedback: feedback
+            )
 
             VStack(alignment: .leading, spacing: 5) {
                 HStack(spacing: OPSStyle.Layout.spacing2) {
@@ -329,11 +374,13 @@ struct PendingWorkBundleCard: View {
 
                 Text(statusLine.text)
                     .font(OPSStyle.Typography.metadata)
-                    .foregroundColor(PendingWorkVisuals.statusColor(statusLine.tone))
+                    .foregroundColor(feedback.map(PendingWorkVisuals.feedbackColor)
+                        ?? PendingWorkVisuals.statusColor(statusLine.tone))
                     .lineLimit(1)
             }
 
-            if bundle.tone >= .attention {
+            if bundle.tone >= .attention
+                && feedback != .retrying && feedback != .succeeded {
                 PendingWorkRetryGlyph(action: onRetry)
             }
         }

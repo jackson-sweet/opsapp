@@ -374,6 +374,14 @@ struct SiteVisitBundle: Identifiable, Equatable {
     /// Every queue record in the work unit. Retry and discard operate on this
     /// complete set so grouped packet stages never strand hidden siblings.
     let syncOperationIds: [UUID]
+    /// True when ANY operation in the unit is on the wire right now.
+    ///
+    /// Carried explicitly because `members` holds one REPRESENTATIVE per packet
+    /// stage, chosen worst-tone-first — a `failed` sibling outranks an
+    /// `inProgress` one and hides it. Reading the member statuses therefore
+    /// reports "nothing in flight" while a send is mid-request, which would let
+    /// a decline race a live write.
+    let hasOperationInFlight: Bool
     /// Distinguishes the durable cloud packet from older draft-only bundles.
     let siteVisitOperationIds: [UUID]
 }
@@ -455,12 +463,32 @@ enum RecoveryReviewState: Equatable {
     case stale30Days
 }
 
-/// The exact unit a destructive confirmation covers.
+/// The exact unit a discard confirmation covers.
+///
+/// PENDING WORK is a SYNC-RECOVERY surface: its rows are queued SENDS, so most
+/// of what DELETE covers here is outbound intent, not a stored record. Only two
+/// scopes touch the last remaining copy of anything — see `isDestructive`.
 enum RecoveryDiscardScope: Equatable {
     case leadDeliveryRequest
     case localPhotos(count: Int)
-    case siteVisitPacket
-    case quarantinedVisit
+    /// Queued sends for one site-visit work unit. Stopping them leaves the
+    /// visit and every captured item exactly where they are, here and in OPS.
+    case queuedSends(count: Int)
+    /// A protected recovery packet held only on this phone. `capturedItemCount`
+    /// lets the confirmation name precisely what deleting it costs.
+    case quarantinedVisit(capturedItemCount: Int)
+
+    /// True only when discarding erases the ONLY copy of real content. The
+    /// confirmation escalates its language on this, and nothing else — a
+    /// stopped send must never borrow a destructive warning it hasn't earned.
+    var isDestructive: Bool {
+        switch self {
+        case .localPhotos, .quarantinedVisit:
+            return true
+        case .queuedSends, .leadDeliveryRequest:
+            return false
+        }
+    }
 }
 
 /// Why a row deliberately omits DELETE. Unsupported items stay recoverable
@@ -515,18 +543,21 @@ extension RecoveryItem {
             }
             return .available(.localPhotos(count: grouped.count))
         case .bundle(let bundle):
-            let isExecuting = bundle.members.contains {
-                $0.status.statusRaw == "inProgress"
-            }
-            return isExecuting
+            // A work unit is a group of queued SENDS. Discarding it stops those
+            // sends; it never reaches the visit, its captures, its answers, or
+            // its identity draft. Deleting a visit is a decision made on the
+            // visit's own surface — never from a sync list (bug f7431c17).
+            return bundle.hasOperationInFlight
                 ? .unavailable(.operationInProgress)
-                : .available(.siteVisitPacket)
+                : .available(.queuedSends(count: bundle.syncOperationIds.count))
         case .draft:
             return .unavailable(.draftRequiresResume)
         case .orphanDesign:
             return .unavailable(.designRequiresReview)
-        case .quarantinedVisit:
-            return .available(.quarantinedVisit)
+        case .quarantinedVisit(let visit):
+            return .available(
+                .quarantinedVisit(capturedItemCount: visit.capturedItemCount)
+            )
         }
     }
 }
@@ -600,6 +631,10 @@ extension RecoveryInventory {
         // 2–4 · Bundle join, one draft at a time.
         for draft in visibleDrafts {
             var members: [RecoveryMember] = []
+            /// Every SyncOperation absorbed by this bundle, kept alongside the
+            /// members because members collapse each packet stage to a single
+            /// representative and would otherwise hide an in-flight sibling.
+            var bundleOperations: [SyncOpSnapshot] = []
             let normalizedSiteVisitId = draft.siteVisitId.lowercased()
             let packetOps = (siteVisitOpsById[normalizedSiteVisitId] ?? [])
                 .filter { !consumedOpIds.contains($0.id) }
@@ -612,6 +647,7 @@ extension RecoveryInventory {
                     && op.entityId.lowercased() == clientId
                     && !consumedOpIds.contains(op.id) {
                     members.append(makeOpMember(op, role: .client, now: now))
+                    bundleOperations.append(op)
                     consumedOpIds.insert(op.id)
                 }
             }
@@ -639,6 +675,7 @@ extension RecoveryInventory {
                     && deckDesignIds.contains(op.entityId.lowercased())
                     && !consumedOpIds.contains(op.id) {
                     members.append(makeOpMember(op, role: .deck, now: now))
+                    bundleOperations.append(op)
                     consumedOpIds.insert(op.id)
                 }
             }
@@ -684,6 +721,8 @@ extension RecoveryInventory {
                     syncOperationIds: sortedUniqueOperationIds(
                         members.compactMap(\.syncOpId) + packetOps.map(\.id)
                     ),
+                    hasOperationInFlight: (bundleOperations + packetOps)
+                        .contains { $0.status == "inProgress" },
                     siteVisitOperationIds: sortedUniqueOperationIds(packetOps.map(\.id))
                 )
                 let item = RecoveryItem.bundle(bundle)
@@ -734,6 +773,7 @@ extension RecoveryInventory {
                 ),
                 blockedStage: blockedStage(for: packetOps),
                 syncOperationIds: sortedUniqueOperationIds(packetOps.map(\.id)),
+                hasOperationInFlight: packetOps.contains { $0.status == "inProgress" },
                 siteVisitOperationIds: sortedUniqueOperationIds(packetOps.map(\.id))
             )
             packetOps.forEach { consumedOpIds.insert($0.id) }

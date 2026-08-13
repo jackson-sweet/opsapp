@@ -61,6 +61,14 @@ enum SiteVisitServerMerge {
         "pending", "inProgress", "failed", "parked",
     ]
 
+    /// Lifecycles that are finished with the row: nothing left to migrate, and
+    /// never a collision. `declined` joins `completed` here because the operator
+    /// explicitly stopped that send from PENDING WORK — canonicalization must
+    /// treat it as settled rather than failing closed on an unknown status.
+    private static let checklistResolvedStatuses: Set<String> = [
+        "completed", "declined",
+    ]
+
     /// What one row's merge resolved to. The write is deferred so the caller can
     /// decide whether a transaction is needed at all.
     private enum MergeOutcome {
@@ -614,7 +622,7 @@ enum SiteVisitServerMerge {
             in: context
         )
         if let unsafe = sourceOperations.first(where: {
-            $0.status != "completed"
+            !checklistResolvedStatuses.contains($0.status)
                 && !checklistUnresolvedStatuses.contains($0.status)
         }) {
             throw SiteVisitMergeError.unsafeChecklistOperation(
@@ -631,7 +639,7 @@ enum SiteVisitServerMerge {
             in: context
         )
         if let collision = targetOperations.first(where: {
-            $0.status != "completed"
+            !checklistResolvedStatuses.contains($0.status)
         }) {
             throw SiteVisitMergeError.unsafeChecklistOperation(
                 operationId: collision.id,

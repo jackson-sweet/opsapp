@@ -226,13 +226,13 @@ struct PendingWorkDetailSheet: View {
             .opsSecondaryButtonStyle()
             .disabled(isDiscarding)
 
-            if item.discardPolicy.canDiscard {
-                Button(role: .destructive) {
+            if let scope = discardScope {
+                Button(role: scope.isDestructive ? .destructive : nil) {
                     showDiscardConfirm = true
                 } label: {
-                    Text(SyncStatusCopy.PendingWork.deleteAction)
+                    Text(SyncStatusCopy.PendingWork.discardActionLabel(for: scope))
                 }
-                .opsDestructiveButtonStyle()
+                .modifier(DiscardButtonStyle(isDestructive: scope.isDestructive))
                 .disabled(isDiscarding)
             }
         }
@@ -241,13 +241,13 @@ struct PendingWorkDetailSheet: View {
         .padding(.bottom, OPSStyle.Layout.spacing3_5)
         .background(OPSStyle.Colors.background)
         .confirmationDialog(
-            SyncStatusCopy.PendingWork.discardConfirmTitle,
+            discardConfirmationTitle,
             isPresented: $showDiscardConfirm,
             titleVisibility: .visible
         ) {
             Button(
-                SyncStatusCopy.PendingWork.deleteAction,
-                role: .destructive
+                discardActionLabel,
+                role: (discardScope?.isDestructive ?? true) ? .destructive : nil
             ) {
                 Task { @MainActor in
                     guard !isDiscarding else { return }
@@ -257,6 +257,9 @@ struct PendingWorkDetailSheet: View {
                     isDiscarding = false
                     if succeeded {
                         dismiss()
+                    } else if let scope = discardScope {
+                        discardError =
+                            SyncStatusCopy.PendingWork.failureMessage(for: scope)
                     } else {
                         discardError = SyncStatusCopy.PendingWork.discardFailure
                     }
@@ -271,8 +274,28 @@ struct PendingWorkDetailSheet: View {
         }
     }
 
+    /// The scope this row's discard covers — nil when the row deliberately
+    /// omits a discard entirely.
+    private var discardScope: RecoveryDiscardScope? {
+        item.discardPolicy.confirmationScope
+    }
+
+    private var discardConfirmationTitle: String {
+        guard let scope = discardScope else {
+            return SyncStatusCopy.PendingWork.discardConfirmTitle
+        }
+        return SyncStatusCopy.PendingWork.discardConfirmationTitle(for: scope)
+    }
+
+    private var discardActionLabel: String {
+        guard let scope = discardScope else {
+            return SyncStatusCopy.PendingWork.deleteAction
+        }
+        return SyncStatusCopy.PendingWork.discardActionLabel(for: scope)
+    }
+
     private var discardConfirmationBody: String {
-        guard let scope = item.discardPolicy.confirmationScope else {
+        guard let scope = discardScope else {
             return SyncStatusCopy.PendingWork.discardConfirmBody
         }
         return SyncStatusCopy.PendingWork.discardConfirmationBody(for: scope)
@@ -330,6 +353,24 @@ struct PendingWorkDetailSheet: View {
             guard !seen.contains(raw) else { return nil }
             seen.insert(raw)
             return raw
+        }
+    }
+}
+
+// MARK: - Discard button styling
+
+/// The two button styles are distinct view modifiers, so the destructive vs
+/// secondary choice has to be made through a modifier rather than a ternary
+/// inside the builder. A stopped send must not wear the destructive treatment.
+private struct DiscardButtonStyle: ViewModifier {
+    let isDestructive: Bool
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if isDestructive {
+            content.opsDestructiveButtonStyle()
+        } else {
+            content.opsSecondaryButtonStyle()
         }
     }
 }

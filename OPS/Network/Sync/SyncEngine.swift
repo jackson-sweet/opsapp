@@ -1449,6 +1449,14 @@ final class SyncEngine {
             // exactly once per device.
             self.enqueueDeckDesignLinkBackfillOnce()
 
+            // Legacy site-visit rows carry no author: `created_by` arrived with
+            // the V19→V20 migration, which could only default existing rows to
+            // nil. Such a row can never build a valid payload, so it failed
+            // before every send and — being a child — dammed its visit's
+            // completion behind it (bug 70db7ed6). Heal the whole backlog here,
+            // ahead of the drain, so no row spends its turn failing.
+            self.healSiteVisitAuthorshipOnce()
+
             // Recover a chain persisted between the instant a predecessor parked
             // and the normal post-failure reconciliation. A later full replacement
             // proves the parked payload and its event are safe to supersede.
@@ -1670,6 +1678,37 @@ final class SyncEngine {
         // Flip the one-time flag only after a clean pass (no fetch failure) — a
         // mid-sweep crash must retry rather than silently skip designs.
         defaults.set(true, forKey: "deckDesignLinkBackfill.v1")
+    }
+
+    /// One-time authorship heal for site-visit rows the V19→V20 lightweight
+    /// migration left holding a nil `createdBy` (bug 70db7ed6). Resolves each
+    /// row's author from its parent visit, else the operator signed in on this
+    /// phone, and persists it — `created_by` only, so nothing is re-dirtied.
+    ///
+    /// The flag flips only after a pass that left NOTHING unresolved: a launch
+    /// that runs before sign-in completes resolves nobody, and must run again
+    /// next launch rather than retire having healed no one.
+    func healSiteVisitAuthorshipOnce() {
+        let defaults = UserDefaults.standard
+        guard !defaults.bool(forKey: "siteVisitAuthorBackfill.v1") else { return }
+        guard let modelContext else { return }
+
+        do {
+            let result = try SiteVisitAuthorHeal.backfillAuthors(
+                in: modelContext,
+                sessionUserId: SiteVisitAuthorHeal.sessionUserId()
+            )
+            if !result.healedIds.isEmpty {
+                print("[SYNC_ENGINE] Site-visit author backfill healed \(result.healedIds.count) row(s)")
+            }
+            if result.isClean {
+                defaults.set(true, forKey: "siteVisitAuthorBackfill.v1")
+            } else {
+                print("[SYNC_ENGINE] Site-visit author backfill left \(result.unresolvedIds.count) row(s) unresolved — retrying next launch")
+            }
+        } catch {
+            print("[SYNC_ENGINE] Site-visit author backfill failed: \(error)")
+        }
     }
 
     /// True if a pending/inProgress `linkOpportunity` op already exists for this

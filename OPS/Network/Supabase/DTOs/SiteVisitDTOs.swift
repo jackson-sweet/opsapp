@@ -17,6 +17,26 @@ enum SiteVisitPayloadError: Error, Equatable {
     case invalidDimensions
 }
 
+/// These reach the operator verbatim, behind the PENDING WORK detail sheet's
+/// DETAILS toggle (`rawErrors`). Plain and specific: the work is safe on the
+/// phone, this says what stops it going out. Deliberately free of the words
+/// `SyncStatusCopy.isOffline` matches — "network", "connection", "timeout" —
+/// which would otherwise mislabel a payload fault as "Waiting for signal".
+extension SiteVisitPayloadError: LocalizedError {
+    var errorDescription: String? {
+        switch self {
+        case .missingRequiredField(let field):
+            return "Can't send — this item is missing \(field)."
+        case .invalidUUID(let field, _):
+            return "Can't send — \(field) isn't a valid id."
+        case .unsupportedUpdateField(let field):
+            return "Can't send — \(field) isn't a field this version can update."
+        case .invalidDimensions:
+            return "Can't send — the measurements on this item aren't valid."
+        }
+    }
+}
+
 // MARK: - Parent read DTO
 
 struct SiteVisitDTO: Decodable, Equatable, Identifiable {

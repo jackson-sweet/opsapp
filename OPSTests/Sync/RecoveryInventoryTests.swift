@@ -309,8 +309,20 @@ final class RecoveryInventoryTests: XCTestCase {
         )
         XCTAssertEqual(
             RecoveryItem.quarantinedVisit(quarantine).discardPolicy,
-            .available(.quarantinedVisit)
+            .available(.quarantinedVisit(capturedItemCount: 1))
         )
+    }
+
+    /// PENDING WORK deletes queued SENDS, not records — so only the two scopes
+    /// that really erase the phone's only copy may warn as destructive. A
+    /// stopped send must never borrow that language.
+    func testOnlyScopesThatEraseTheOnlyCopyAreDestructive() {
+        XCTAssertTrue(RecoveryDiscardScope.localPhotos(count: 3).isDestructive)
+        XCTAssertTrue(
+            RecoveryDiscardScope.quarantinedVisit(capturedItemCount: 4).isDestructive
+        )
+        XCTAssertFalse(RecoveryDiscardScope.queuedSends(count: 2).isDestructive)
+        XCTAssertFalse(RecoveryDiscardScope.leadDeliveryRequest.isDestructive)
     }
 
     func testSiteVisitDiscardIsAvailableOnlyWhenNoStageIsExecuting() throws {
@@ -328,7 +340,7 @@ final class RecoveryInventoryTests: XCTestCase {
         )
         XCTAssertEqual(
             pendingBundle.discardPolicy,
-            .available(.siteVisitPacket)
+            .available(.queuedSends(count: 1))
         )
 
         let executing = opSnap(

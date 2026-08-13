@@ -236,16 +236,51 @@ enum SyncStatusCopy {
         static let linkPickerTitle = "LINK TO"
         static let exportAction = "EXPORT"
         static let deleteAction = "DELETE"
+        /// Most rows here are queued SENDS, not records. Stopping one is not a
+        /// deletion and must not be labelled like one.
+        static let stopSendingAction = "STOP SENDING"
         static let cancelAction = "CANCEL"
         static let acknowledgeAction = "OK"
         static let discardConfirmTitle = "DESTRUCTIVE. NO UNDO."
+        static let stopSendingConfirmTitle = "STOP SENDING?"
         static let discardConfirmBody = "Deletes this work from this phone. It was never sent."
         static let staleReviewTag = "STALE · 30D"
         static let staleReviewAccessibility = "Needs review. 30 days or older."
         static let discardFailure = "COULD NOT DELETE · WORK IS STILL HERE"
         static let discardFailureTitle = "WORK NOT DELETED"
+        static let stopSendingFailure = "COULD NOT STOP THIS SEND · IT IS STILL QUEUED"
+        static let stopSendingFailureTitle = "SEND NOT STOPPED"
+
+        /// A failed action reports what it actually failed to do. Telling the
+        /// operator "WORK NOT DELETED" after a stopped send implies a deletion
+        /// was attempted — the exact over-promise that made bug f7431c17 read as
+        /// catastrophic. Nothing here claims a deletion that was never on offer.
+        static func failureTitle(for scope: RecoveryDiscardScope) -> String {
+            scope.isDestructive ? discardFailureTitle : stopSendingFailureTitle
+        }
+
+        static func failureMessage(for scope: RecoveryDiscardScope) -> String {
+            scope.isDestructive ? discardFailure : stopSendingFailure
+        }
         static let deletingStatus = "DELETING…"
 
+        /// The confirmation title for a scope — a destructive scope warns, a
+        /// stopped send does not pretend to be one.
+        static func discardConfirmationTitle(
+            for scope: RecoveryDiscardScope
+        ) -> String {
+            scope.isDestructive ? discardConfirmTitle : stopSendingConfirmTitle
+        }
+
+        /// The row/sheet action label for a scope.
+        static func discardActionLabel(
+            for scope: RecoveryDiscardScope
+        ) -> String {
+            scope.isDestructive ? deleteAction : stopSendingAction
+        }
+
+        /// What the operator is about to change, said plainly. A stopped send
+        /// names what STAYS; only a scope that erases the last copy says so.
         static func discardConfirmationBody(
             for scope: RecoveryDiscardScope
         ) -> String {
@@ -253,11 +288,11 @@ enum SyncStatusCopy {
             case .leadDeliveryRequest:
                 return "Cancels this pending lead creation. The client stays on this phone."
             case .localPhotos(let count):
-                return "Deletes \(count) unsent photo\(count == 1 ? "" : "s") from this phone."
-            case .siteVisitPacket:
-                return "Deletes the local visit packet and cancels its cloud shell if any part already synced."
-            case .quarantinedVisit:
-                return "Deletes the protected recovery packet from this phone."
+                return "Deletes \(count) unsent photo\(count == 1 ? "" : "s") from this phone. They never reached OPS — there is no other copy."
+            case .queuedSends(let count):
+                return "Stops \(count) queued send\(count == 1 ? "" : "s"). The visit and everything captured on it stay — nothing is deleted here or in OPS."
+            case .quarantinedVisit(let capturedItemCount):
+                return "Deletes the protected recovery packet — \(capturedItemCount) captured item\(capturedItemCount == 1 ? "" : "s") — from this phone. There is no other copy."
             }
         }
 

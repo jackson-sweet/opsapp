@@ -36,6 +36,39 @@ private struct ExpenseSaveInterruption {
     var locksEditing: Bool { kind == .commitConfirmation }
 }
 
+/// The merchant input is deliberately identified as an organization name so
+/// iOS does not offer credential or password AutoFill for an expense field.
+struct ExpenseMerchantTextField: View {
+    @Binding var text: String
+
+    var body: some View {
+        TextField("", text: $text)
+            .font(OPSStyle.Typography.body)
+            .foregroundColor(OPSStyle.Colors.primaryText)
+            .multilineTextAlignment(.trailing)
+            .textContentType(.organizationName)
+            .textInputAutocapitalization(.words)
+            .accessibilityIdentifier("expense.merchant")
+            .placeholder(when: text.isEmpty) {
+                Text("Business name")
+                    .font(OPSStyle.Typography.body)
+                    .foregroundColor(OPSStyle.Colors.placeholderText)
+                    .frame(maxWidth: .infinity, alignment: .trailing)
+            }
+    }
+}
+
+enum ExpenseOCRAutofill {
+    static func description(current: String, suggestion: String?) -> String {
+        guard current.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              let suggestion = suggestion?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !suggestion.isEmpty else {
+            return current
+        }
+        return suggestion
+    }
+}
+
 struct ExpenseFormSheet: View {
     @ObservedObject var viewModel: ExpenseViewModel
     var prefilledProjectId: String? = nil
@@ -655,17 +688,8 @@ struct ExpenseFormSheet: View {
 
             // Merchant
             detailRow(label: "MERCHANT") {
-                TextField("", text: $merchantName)
-                    .font(OPSStyle.Typography.body)
-                    .foregroundColor(OPSStyle.Colors.primaryText)
-                    .multilineTextAlignment(.trailing)
+                ExpenseMerchantTextField(text: $merchantName)
                     .focused($focusedField, equals: .merchant)
-                    .placeholder(when: merchantName.isEmpty) {
-                        Text("Business name")
-                            .font(OPSStyle.Typography.body)
-                            .foregroundColor(OPSStyle.Colors.placeholderText)
-                            .frame(maxWidth: .infinity, alignment: .trailing)
-                    }
             }
 
             dividerLine
@@ -1245,6 +1269,10 @@ struct ExpenseFormSheet: View {
         defer { isScanning = false }
         if let result = await viewModel.scanReceipt(image: image) {
             lastOCRResult = result
+            expenseDescription = ExpenseOCRAutofill.description(
+                current: expenseDescription,
+                suggestion: result.descriptionSuggestion
+            )
             if let merchant = result.merchantName, !merchant.isEmpty {
                 merchantName = merchant
             }

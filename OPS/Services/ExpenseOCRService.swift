@@ -50,8 +50,14 @@ struct OCRResult {
     let subtotal: Double?
     let taxAmount: Double?
     let paymentMethod: String?
+    let lineItems: [String]
     let rawText: String
     let overallConfidence: Float
+
+    var descriptionSuggestion: String? {
+        guard !lineItems.isEmpty else { return nil }
+        return lineItems.joined(separator: ", ")
+    }
 
     var rawDataDict: [String: String] {
         var dict: [String: String] = ["raw_text": rawText]
@@ -61,6 +67,7 @@ struct OCRResult {
         if let s = subtotal { dict["subtotal"] = String(format: "%.2f", s) }
         if let tx = taxAmount { dict["tax_amount"] = String(format: "%.2f", tx) }
         if let p = paymentMethod { dict["payment_method"] = p }
+        if !lineItems.isEmpty { dict["line_items"] = lineItems.joined(separator: "\n") }
         return dict
     }
 }
@@ -266,6 +273,13 @@ struct ReceiptParser {
     private static let totalKeywords = ["GRAND TOTAL", "TOTAL DUE", "AMOUNT DUE", "BALANCE DUE", "PAYMENT DUE", "TOTAL"]
     private static let subtotalKeywords = ["SUBTOTAL", "SUB-TOTAL", "SUB TOTAL", "MERCHANDISE TOTAL", "FOOD TOTAL", "ITEM TOTAL"]
     private static let taxKeywords = ["TAX", "GST", "HST", "PST", "QST", "SALES TAX", "VAT", "LEVY"]
+    private static let lineItemMetadataKeywords = [
+        "RECEIPT", "INVOICE", "ORDER", "STORE", "REGISTER", "CASHIER",
+        "PHONE", "TEL", "FAX", "WWW.", ".COM", ".CA", ".NET",
+        "SUBTOTAL", "TOTAL", "TAX", "GST", "HST", "PST", "QST", "VAT",
+        "VISA", "MASTERCARD", "AMEX", "DEBIT", "CASH", "CHANGE",
+        "TENDERED", "CARD", "AUTH", "APPROVAL", "TRANSACTION",
+    ]
     // Lines containing these should never be treated as the total
     private static let totalExclusionKeywords = ["TIP", "GRATUITY", "DONATION", "SURCHARGE", "CASHBACK", "CASH BACK", "CHANGE DUE", "CHANGE", "TENDERED", "CARD #", "CARD NUM", "AUTH"]
 
@@ -280,6 +294,7 @@ struct ReceiptParser {
         let date = extractDate(from: rawText)
         let amounts = extractAmounts(from: lines)
         let paymentMethod = extractPaymentMethod(from: rawText)
+        let lineItems = extractLineItems(from: lines)
 
         let confidences = lines.map { $0.confidence }
         let avgConfidence = confidences.isEmpty ? 0 : confidences.reduce(0, +) / Float(confidences.count)
@@ -291,6 +306,7 @@ struct ReceiptParser {
         print("[OCR_PARSE]   Subtotal: \(amounts.subtotal.map { String(format: "$%.2f", $0) } ?? "nil")")
         print("[OCR_PARSE]   Tax: \(amounts.tax.map { String(format: "$%.2f", $0) } ?? "nil")")
         print("[OCR_PARSE]   Payment: \(paymentMethod ?? "nil")")
+        print("[OCR_PARSE]   Line items: \(lineItems.isEmpty ? "nil" : lineItems.joined(separator: ", "))")
         print("[OCR_PARSE] ── End ──")
 
         return OCRResult(
@@ -303,6 +319,7 @@ struct ReceiptParser {
             subtotal: amounts.subtotal,
             taxAmount: amounts.tax,
             paymentMethod: paymentMethod,
+            lineItems: lineItems,
             rawText: rawText,
             overallConfidence: avgConfidence
         )
@@ -581,6 +598,95 @@ struct ReceiptParser {
         }
 
         return (total, totalConfidence, subtotal, tax)
+    }
+
+    // MARK: - Line Item Extraction
+
+    /// Extracts purchased-item labels from the receipt body. A usable item must
+    /// be tied to a price, occur below the header, and appear before the totals
+    /// section. This deliberately prefers an empty suggestion over filling the
+    /// expense description with addresses, payment metadata, or totals.
+    private static func extractLineItems(from lines: [RecognizedLine]) -> [String] {
+        let totalsStart = lines.firstIndex(where: isTotalsBoundary) ?? lines.endIndex
+        guard totalsStart > lines.startIndex else { return [] }
+
+        var items: [String] = []
+        var normalizedItems: Set<String> = []
+
+        for index in lines.indices where index < totalsStart {
+            let pricedLine = lines[index]
+            guard extractDollarAmount(from: pricedLine.text) != nil else { continue }
+
+            if let inlineItem = cleanedItemText(from: pricedLine.text),
+               isPlausibleItem(inlineItem, at: pricedLine.verticalPosition) {
+                appendUnique(inlineItem, to: &items, normalizedItems: &normalizedItems)
+                continue
+            }
+
+            guard index > lines.startIndex else { continue }
+            let labelLine = lines[lines.index(before: index)]
+            guard extractDollarAmount(from: labelLine.text) == nil,
+                  let splitRowItem = cleanedItemText(from: labelLine.text),
+                  isPlausibleItem(splitRowItem, at: labelLine.verticalPosition) else {
+                continue
+            }
+
+            appendUnique(splitRowItem, to: &items, normalizedItems: &normalizedItems)
+        }
+
+        return items
+    }
+
+    private static func isTotalsBoundary(_ line: RecognizedLine) -> Bool {
+        guard extractDollarAmount(from: line.text) != nil else { return false }
+        let upper = line.text.uppercased()
+        return subtotalKeywords.contains(where: { containsWholeKeyword($0, in: upper) })
+            || taxKeywords.contains(where: { containsWholeKeyword($0, in: upper) })
+            || totalKeywords.contains(where: { containsWholeKeyword($0, in: upper) })
+    }
+
+    private static func cleanedItemText(from text: String) -> String? {
+        let withoutPrices = text.replacingOccurrences(
+            of: amountPattern,
+            with: " ",
+            options: .regularExpression
+        )
+        let collapsed = withoutPrices
+            .replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
+            .trimmingCharacters(in: CharacterSet(charactersIn: " \t·•|:;,-"))
+        return collapsed.isEmpty ? nil : collapsed
+    }
+
+    private static func isPlausibleItem(_ text: String, at verticalPosition: Float) -> Bool {
+        guard verticalPosition <= 0.70 else { return false }
+        guard text.filter({ $0.isLetter }).count >= 2 else { return false }
+
+        let upper = text.uppercased()
+        guard !lineItemMetadataKeywords.contains(where: {
+            containsWholeKeyword($0, in: upper)
+        }) else { return false }
+        guard !datePatterns.contains(where: {
+            text.range(of: $0, options: .regularExpression) != nil
+        }) else { return false }
+
+        return true
+    }
+
+    private static func containsWholeKeyword(_ keyword: String, in uppercaseText: String) -> Bool {
+        if keyword.contains(".") {
+            return uppercaseText.contains(keyword)
+        }
+        return " \(uppercaseText) ".contains(" \(keyword) ")
+    }
+
+    private static func appendUnique(
+        _ item: String,
+        to items: inout [String],
+        normalizedItems: inout Set<String>
+    ) {
+        let normalized = item.uppercased()
+        guard normalizedItems.insert(normalized).inserted else { return }
+        items.append(item)
     }
 
     // MARK: - Dollar Amount Extraction

@@ -30,8 +30,19 @@ final class SiteVisitPersistenceCoordinator {
         }
     }
 
+    /// Statuses that still OWN a record's outbound send, so the dirty-graph scan
+    /// must not create a second one for the same work.
+    ///
+    /// `declined` is here deliberately (bug f7431c17). The operator stopping a
+    /// send from PENDING WORK leaves the record itself dirty and untouched — if
+    /// a declined operation read as resolved, `queueDirtyGraphs(onlyOrphans:)`
+    /// would re-create the send before the next drain and the row would come
+    /// straight back. Media makes this unavoidable: those sends are re-derived
+    /// from a still-local asset URL, never from `needsSync`, so no flag on the
+    /// model can stop them. Counting `declined` here also makes a genuine later
+    /// edit revive that same operation through `enqueue` rather than duplicate it.
     private static let unresolvedStatuses: Set<String> = [
-        "pending", "inProgress", "failed", "parked",
+        "pending", "inProgress", "failed", "parked", "declined",
     ]
 
     private let modelContext: ModelContext

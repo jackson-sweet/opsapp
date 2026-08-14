@@ -184,6 +184,101 @@ final class HeaderGeometryTests: XCTestCase {
         }
     }
 
+    /// The production leading control — a real `OPSHeaderBackButton` carrying the
+    /// previous screen's name — inside the real header. `Harness` above only ever
+    /// renders a bare chevron, which is exactly why a clipped back LABEL could
+    /// ship unnoticed (PENDING WORK ← SETTINGS).
+    private struct BackLabelHarness: View {
+        let width: CGFloat
+        let title: String
+        let backLabel: String
+        let typeSize: DynamicTypeSize
+        let sink: Measurements
+
+        var body: some View {
+            VStack(spacing: 0) {
+                OPSScreenHeader(
+                    title,
+                    leading: {
+                        OPSHeaderBackButton(label: backLabel) {}
+                            .anchorPreference(key: BoundsKey.self, value: .bounds) {
+                                ["back": $0]
+                            }
+                    }
+                )
+                .transformAnchorPreference(key: BoundsKey.self, value: .bounds) { value, anchor in
+                    value["header"] = anchor
+                }
+
+                Spacer(minLength: 0)
+            }
+            .frame(width: width, height: 260, alignment: .top)
+            .background(OPSStyle.Colors.background)
+            .environment(\.colorScheme, .dark)
+            .dynamicTypeSize(typeSize)
+            .overlayPreferenceValue(BoundsKey.self) { anchors in
+                GeometryReader { proxy -> Color in
+                    for (key, anchor) in anchors {
+                        sink.frames[key] = proxy[anchor]
+                    }
+                    return Color.clear
+                }
+                .allowsHitTesting(false)
+            }
+        }
+    }
+
+    /// Unconstrained ideal width of a view — what it needs in order to render in
+    /// full. `fixedSize()` makes the subject report its ideal size regardless of
+    /// the (deliberately generous) proposal, so the result is the truncation
+    /// threshold to measure a header-hosted control against.
+    private struct IntrinsicHarness<Content: View>: View {
+        let canvas: CGSize
+        let typeSize: DynamicTypeSize
+        let sink: Measurements
+        let content: Content
+
+        init(
+            canvas: CGSize,
+            typeSize: DynamicTypeSize,
+            sink: Measurements,
+            @ViewBuilder content: () -> Content
+        ) {
+            self.canvas = canvas
+            self.typeSize = typeSize
+            self.sink = sink
+            self.content = content()
+        }
+
+        var body: some View {
+            HStack(spacing: 0) {
+                content
+                    .fixedSize()
+                    .anchorPreference(key: BoundsKey.self, value: .bounds) {
+                        ["intrinsic": $0]
+                    }
+                Spacer(minLength: 0)
+            }
+            .frame(
+                width: canvas.width,
+                height: canvas.height,
+                alignment: .topLeading
+            )
+            .background(OPSStyle.Colors.background)
+            .environment(\.colorScheme, .dark)
+            .dynamicTypeSize(typeSize)
+            .overlayPreferenceValue(BoundsKey.self) { anchors in
+                GeometryReader { proxy -> Color in
+                    if let anchor = anchors["intrinsic"] {
+                        sink.frames["intrinsic"] = proxy[anchor]
+                    }
+                    return Color.clear
+                }
+                .allowsHitTesting(false)
+            }
+        }
+    }
+
     private func measure(
         width: CGFloat,
         title: String = "SETTINGS",
@@ -351,6 +446,114 @@ final class HeaderGeometryTests: XCTestCase {
         )
     }
 
+    // MARK: - Labelled back control (MOBILE.md §2.1 / §2.3)
+
+    func testLabelledBackControlIsNeverTruncatedByTheTitle() throws {
+        let ideal = try intrinsicWidth {
+            OPSHeaderBackButton(label: "SETTINGS") {}
+        }
+        let labelIdeal = try intrinsicBackLabelWidth("SETTINGS")
+
+        for width in [CGFloat(390), CGFloat(320)] {
+            let measured = try measureBackLabelHeader(
+                width: width,
+                title: "PENDING WORK",
+                backLabel: "SETTINGS"
+            )
+            let rendered = try XCTUnwrap(measured.frames["back"])
+
+            XCTAssertGreaterThanOrEqual(
+                rendered.width,
+                ideal - 0.5,
+                """
+                \(Int(width))pt: the back control was allotted \(rendered.width)pt \
+                but needs \(ideal)pt — "SETTINGS" is truncated. MOBILE.md §2.1 \
+                requires the previous screen's name to read in full.
+                """
+            )
+            XCTAssertGreaterThan(
+                rendered.width,
+                labelIdeal,
+                """
+                \(Int(width))pt: the whole control (chevron + label) is narrower \
+                than the label's glyph run alone (\(labelIdeal)pt).
+                """
+            )
+        }
+    }
+
+    func testTitleYieldsToTheLabelledBackWithoutGrowingTheBand() throws {
+        let ideal = try intrinsicWidth {
+            OPSHeaderBackButton(label: "SETTINGS") {}
+        }
+        let cases: [(width: CGFloat, title: String)] = [
+            (390, "PENDING WORK"),
+            (320, "CERTIFICATIONS & TRAINING"),
+        ]
+
+        for probe in cases {
+            let measured = try measureBackLabelHeader(
+                width: probe.width,
+                title: probe.title,
+                backLabel: "SETTINGS"
+            )
+            let header = try XCTUnwrap(measured.frames["header"])
+            let rendered = try XCTUnwrap(measured.frames["back"])
+
+            XCTAssertEqual(
+                header.height,
+                OPSStyle.Layout.screenHeaderBandHeight,
+                accuracy: 0.5,
+                """
+                \(Int(probe.width))pt/\(probe.title): at nominal type the TITLE \
+                compresses and truncates — the band never grows past 52pt.
+                """
+            )
+            XCTAssertGreaterThanOrEqual(
+                rendered.width,
+                ideal - 0.5,
+                "\(Int(probe.width))pt/\(probe.title): the back label must not clip while the title yields"
+            )
+        }
+    }
+
+    func testLabelledBackHeaderGrowsAtAccessibilityTypeInsteadOfClipping() throws {
+        let title = "CERTIFICATIONS & TRAINING"
+        let nominal = try measureBackLabelHeader(
+            width: 320,
+            title: title,
+            backLabel: "SETTINGS"
+        )
+        let accessibility = try measureBackLabelHeader(
+            width: 320,
+            title: title,
+            backLabel: "SETTINGS",
+            typeSize: .accessibility5
+        )
+        let nominalHeader = try XCTUnwrap(nominal.frames["header"])
+        let accessibilityHeader = try XCTUnwrap(accessibility.frames["header"])
+
+        XCTAssertGreaterThanOrEqual(
+            nominalHeader.height,
+            OPSStyle.Layout.screenHeaderBandHeight
+        )
+        XCTAssertGreaterThan(
+            accessibilityHeader.height,
+            nominalHeader.height,
+            "Dynamic Type must grow the header rather than shrink or clip its title"
+        )
+
+        let renderedBack = try XCTUnwrap(accessibility.frames["back"])
+        let idealBack = try intrinsicWidth(typeSize: .accessibility5) {
+            OPSHeaderBackButton(label: "SETTINGS") {}
+        }
+        XCTAssertGreaterThanOrEqual(
+            renderedBack.width,
+            idealBack - 0.5,
+            "The back label must stay legible at accessibility type, not clip"
+        )
+    }
+
     func testCompactAndAccessibilitySnapshots() throws {
         try snapshot(
             "header-320-long-title",
@@ -364,6 +567,93 @@ final class HeaderGeometryTests: XCTestCase {
             title: "CERTIFICATIONS & TRAINING",
             typeSize: .accessibility5
         )
+        try backLabelSnapshot(
+            "header-390-pendingwork-settings-back",
+            width: 390,
+            title: "PENDING WORK",
+            backLabel: "SETTINGS",
+            typeSize: .large
+        )
+    }
+
+    private func measureBackLabelHeader(
+        width: CGFloat,
+        title: String,
+        backLabel: String,
+        typeSize: DynamicTypeSize = .large
+    ) throws -> Measurements {
+        let sink = Measurements()
+        let view = BackLabelHarness(
+            width: width,
+            title: title,
+            backLabel: backLabel,
+            typeSize: typeSize,
+            sink: sink
+        )
+        _ = try FixedSizeSnapshot.render(view, size: CGSize(width: width, height: 260))
+        return sink
+    }
+
+    private func intrinsicWidth<Content: View>(
+        typeSize: DynamicTypeSize = .large,
+        @ViewBuilder of content: () -> Content
+    ) throws -> CGFloat {
+        // Wide enough that nothing measured inside is ever proposal-limited.
+        let canvas = CGSize(width: 1_000, height: 260)
+        let sink = Measurements()
+        let view = IntrinsicHarness(
+            canvas: canvas,
+            typeSize: typeSize,
+            sink: sink,
+            content: content
+        )
+        _ = try FixedSizeSnapshot.render(view, size: canvas)
+        return try XCTUnwrap(sink.frames["intrinsic"]).width
+    }
+
+    /// The back label per MOBILE.md §2.1 — JetBrains Mono 10, uppercase, 0.14em
+    /// tracking — measured unconstrained. Mirrors `OPSHeaderBackButton`'s label
+    /// so the assertion is against the SPEC's glyph run, not against whatever
+    /// width the header happened to allot it.
+    private func intrinsicBackLabelWidth(
+        _ label: String,
+        typeSize: DynamicTypeSize = .large
+    ) throws -> CGFloat {
+        try intrinsicWidth(typeSize: typeSize) {
+            Text(label)
+                .font(OPSStyle.Typography.miniLabel)
+                .textCase(.uppercase)
+                .tracking(1.4)
+                .lineLimit(1)
+        }
+    }
+
+    private func backLabelSnapshot(
+        _ name: String,
+        width: CGFloat,
+        title: String,
+        backLabel: String,
+        typeSize: DynamicTypeSize
+    ) throws {
+        let sink = Measurements()
+        let view = BackLabelHarness(
+            width: width,
+            title: title,
+            backLabel: backLabel,
+            typeSize: typeSize,
+            sink: sink
+        )
+        let image = try FixedSizeSnapshot.render(
+            view,
+            size: CGSize(width: width, height: 260)
+        )
+        let attachment = XCTAttachment(
+            data: try XCTUnwrap(image.pngData()),
+            uniformTypeIdentifier: "public.png"
+        )
+        attachment.name = "\(name).png"
+        attachment.lifetime = .keepAlways
+        add(attachment)
     }
 
     private func snapshot(

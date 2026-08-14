@@ -85,6 +85,16 @@ struct OPSHeaderControlSlot<Content: View>: View {
                 minHeight: OPSStyle.Layout.touchTargetMin,
                 alignment: alignment
             )
+            // A slot reports its IDEAL width and is never compressed below it —
+            // the same protection `OPSHeaderActionStrip` already gives the
+            // trailing action row. Without it the title, which carries
+            // `layoutPriority(1)` and `maxWidth: .infinity`, claims its width
+            // first and squeezes the control: that is how the back label
+            // "SETTINGS" shipped fully clipped under the wide PENDING WORK
+            // title (bug ff0f2b18). The band's stated contract is that the
+            // TITLE yields — it already carries `minimumScaleFactor` down to
+            // the 22pt long-title size for exactly this — not the control.
+            .fixedSize(horizontal: true, vertical: false)
             .contentShape(Rectangle())
             .accessibilitySortPriority(
                 OPSHeaderGeometry.accessibilitySortPriority(for: position)

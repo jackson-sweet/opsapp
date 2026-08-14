@@ -19,15 +19,18 @@ struct SiteVisitOutboundSync {
 
     private let repositoryFactory: RepositoryFactory
     private let mediaManager: SiteVisitMediaSyncManager
+    private let sessionUserId: () -> String?
 
     init(
         repositoryFactory: @escaping RepositoryFactory = { companyId in
             await MainActor.run { SiteVisitRepository(companyId: companyId) }
         },
-        mediaManager: SiteVisitMediaSyncManager = SiteVisitMediaSyncManager()
+        mediaManager: SiteVisitMediaSyncManager = SiteVisitMediaSyncManager(),
+        sessionUserId: @escaping () -> String? = { SiteVisitAuthorHeal.sessionUserId() }
     ) {
         self.repositoryFactory = repositoryFactory
         self.mediaManager = mediaManager
+        self.sessionUserId = sessionUserId
     }
 
     static func isSiteVisitOperation(_ operation: SyncOperation) -> Bool {
@@ -281,6 +284,7 @@ struct SiteVisitOutboundSync {
         }
         guard let visit else { return }
         try requireCompany(visit.companyId, expected: envelope.companyId)
+        try healAuthorIfNeeded(visit, parentVisitId: nil, context: context)
         let response = try await repository.upsertVisit(
             try CreateSiteVisitDTO(model: visit)
         )
@@ -318,6 +322,11 @@ struct SiteVisitOutboundSync {
         }
         guard let artifact else { return }
         try requireCompany(artifact.companyId, expected: envelope.companyId)
+        try healAuthorIfNeeded(
+            artifact,
+            parentVisitId: envelope.siteVisitId,
+            context: context
+        )
         let response = try await repository.upsertArtifact(
             try UpsertSiteVisitArtifactDTO(model: artifact)
         )
@@ -354,6 +363,11 @@ struct SiteVisitOutboundSync {
         }
         guard let answer else { return }
         try requireCompany(answer.companyId, expected: envelope.companyId)
+        try healAuthorIfNeeded(
+            answer,
+            parentVisitId: envelope.siteVisitId,
+            context: context
+        )
         let response = try await repository.upsertChecklistAnswer(
             try UpsertSiteVisitChecklistAnswerDTO(model: answer)
         )
@@ -390,6 +404,11 @@ struct SiteVisitOutboundSync {
         }
         guard let draft else { return }
         try requireCompany(draft.companyId, expected: envelope.companyId)
+        try healAuthorIfNeeded(
+            draft,
+            parentVisitId: envelope.siteVisitId,
+            context: context
+        )
         let response = try await repository.upsertIdentityDraft(
             try UpsertSiteVisitIdentityDraftDTO(model: draft)
         )
@@ -404,6 +423,41 @@ struct SiteVisitOutboundSync {
                 draft.needsSync = false
             }
         }
+    }
+
+    // MARK: - Authorship heal
+    //
+    // `createdBy` arrived with the V19→V20 lightweight migration, which could only
+    // default every existing row — parents included — to nil. The wire contract
+    // requires it, so those rows threw at payload build BEFORE any network call,
+    // classified transient, burned the retry budget, and were revived by the launch
+    // sweep on every single launch. Worse, an unresolved child is a live barrier in
+    // `isReady`, so its visit's completion notes never sent (bug 70db7ed6).
+    //
+    // Resolve the author from the parent visit — else the operator holding this
+    // phone — and persist it, so the row is whole from here on instead of rebuilding
+    // the same doomed payload forever.
+
+    /// `parentVisitId` is nil for the visit itself — it has no parent to inherit
+    /// from, so it resolves straight to the operator on this phone.
+    ///
+    /// Writes ONLY `createdBy`. Touching `needsSync`/`updatedAt` here would enqueue
+    /// a fresh write for every legacy row on the device at once.
+    private func healAuthorIfNeeded(
+        _ row: SiteVisitAuthoredRow,
+        parentVisitId: String?,
+        context: ModelContext
+    ) throws {
+        guard SiteVisitAuthorHeal.needsAuthor(row.createdBy) else { return }
+        let parentAuthor = try parentVisitId.flatMap {
+            try fetchVisit(id: $0, context: context)
+        }?.createdBy
+        guard let resolved = SiteVisitAuthorHeal.resolvedAuthor(
+            current: row.createdBy,
+            parentVisitAuthor: parentAuthor,
+            sessionUserId: sessionUserId()
+        ) else { return }
+        try context.transaction { row.createdBy = resolved }
     }
 
     private func markSynced(

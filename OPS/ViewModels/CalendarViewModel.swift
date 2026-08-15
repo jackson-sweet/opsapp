@@ -20,6 +20,7 @@ class CalendarViewModel: ObservableObject {
     @Published var projectIdsForSelectedDate: [String] = []  // Store IDs to avoid invalidation
     @Published var scheduledTaskIdsForSelectedDate: [String] = []  // Store IDs to avoid invalidation
     @Published var userEventsForCurrentPeriod: [CalendarUserEvent] = []
+    @Published var bookedVisitsForCurrentPeriod: [SiteVisit] = []
     @Published var isMonthExpanded: Bool = false
 
     /// Phase-C "Suggested events" (item 63144953). Detected commitments the
@@ -89,6 +90,7 @@ class CalendarViewModel: ObservableObject {
         loadTeamMembersIfNeeded()
         loadProjectsForDate(selectedDate)
         loadUserEvents()
+        loadBookedVisits()
     }
 
     /// Force reload of calendar data (called after scheduling changes)
@@ -96,6 +98,7 @@ class CalendarViewModel: ObservableObject {
         // Clear caches first to force fresh data
         clearProjectCountCache()
         loadProjectsForDate(selectedDate)
+        loadBookedVisits()
     }
     
     // Check if current user should see team member filter
@@ -672,6 +675,74 @@ class CalendarViewModel: ObservableObject {
         userEventsForCurrentPeriod.filter { $0.overlaps(date: date) }
     }
 
+    // MARK: - Booked site visits (calendar third source)
+
+    /// Booked appointments visible to this user: scheduled or on-site, never
+    /// walk-ups (their scheduledAt is junk — the legacy guard), never
+    /// tombstones. Visibility mirrors user events: your own work always, the
+    /// company calendar with calendar.view(all).
+    static func visibleBookedVisits(
+        _ visits: [SiteVisit],
+        currentUserId: String,
+        canViewAllCalendar: Bool
+    ) -> [SiteVisit] {
+        let canonicalUser = currentUserId.lowercased()
+        return visits.filter { visit in
+            guard visit.isBookedAppointment,
+                  visit.deletedAt == nil,
+                  visit.status == .scheduled || visit.status == .inProgress
+            else { return false }
+            if canViewAllCalendar { return true }
+            return visit.assigneeIds.contains(canonicalUser)
+                || visit.createdBy == canonicalUser
+        }
+    }
+
+    /// Same-day slotting for the day canvas, earliest appointment first.
+    static func bookedVisits(
+        in visits: [SiteVisit],
+        on date: Date,
+        calendar: Calendar = .current
+    ) -> [SiteVisit] {
+        visits
+            .filter { visit in
+                guard let scheduledAt = visit.scheduledAt else { return false }
+                return calendar.isDate(scheduledAt, inSameDayAs: date)
+            }
+            .sorted { ($0.scheduledAt ?? .distantFuture) < ($1.scheduledAt ?? .distantFuture) }
+    }
+
+    /// Load booked visits from the local store. Visits are appointments, not
+    /// tasks — they never enter the week task cache, cascade, or auto-schedule.
+    func loadBookedVisits() {
+        guard let dataController = dataController,
+              let context = dataController.modelContext,
+              let userId = dataController.currentUser?.id,
+              let companyId = dataController.currentUser?.companyId else { return }
+
+        let descriptor = FetchDescriptor<SiteVisit>(
+            predicate: #Predicate { visit in
+                visit.companyId == companyId
+                    && visit.bookedAt != nil
+                    && visit.deletedAt == nil
+            }
+        )
+        let canViewAllCalendar = PermissionStore.shared.can("calendar.view", requiredScope: "all")
+        let visits = Self.visibleBookedVisits(
+            (try? context.fetch(descriptor)) ?? [],
+            currentUserId: userId,
+            canViewAllCalendar: canViewAllCalendar
+        )
+        DispatchQueue.main.async {
+            self.bookedVisitsForCurrentPeriod = visits
+        }
+    }
+
+    /// Booked visits on a given date, earliest first.
+    func bookedVisits(for date: Date) -> [SiteVisit] {
+        Self.bookedVisits(in: bookedVisitsForCurrentPeriod, on: date)
+    }
+
     /// Calendar refresh, driven by pull-to-refresh on the day list. Runs a
     /// schedule-scoped backend sync — projects, tasks, task types, and calendar
     /// user events only (a fast "check for schedule updates", the fallback for
@@ -719,9 +790,10 @@ class CalendarViewModel: ObservableObject {
         // repopulating cachedWeekStart mid-sync and re-masking the new data.
         clearProjectCountCache()
 
-        // Reload both the task layer and the user-event layer for the day.
+        // Reload the task, user-event, and booked-visit layers for the day.
         loadProjectsForDate(selectedDate)
         loadUserEvents()
+        loadBookedVisits()
 
         // Refresh Phase-C suggestions too (item 63144953). Dormant on empty.
         await loadSuggestedEvents()

@@ -131,6 +131,7 @@ final class InboundChangeRouter {
     static let userEventEntityName = "CalendarUserEvent"
     static let photoAnnotationEntityName = "PhotoAnnotation"
     static let taskReminderEntityName = "TaskReminder"
+    static let siteVisitEntityName = "SiteVisit"
 
     // MARK: - Configuration
 
@@ -141,6 +142,7 @@ final class InboundChangeRouter {
     private let onCalendarTasksChanged: () -> Void
     private let onUserEventsChanged: () -> Void
     private let onTaskRemindersChanged: () -> Void
+    private let onSiteVisitsChanged: () -> Void
 
     // MARK: - State
 
@@ -160,7 +162,8 @@ final class InboundChangeRouter {
         },
         onCalendarTasksChanged: @escaping () -> Void,
         onUserEventsChanged: @escaping () -> Void,
-        onTaskRemindersChanged: @escaping () -> Void = {}
+        onTaskRemindersChanged: @escaping () -> Void = {},
+        onSiteVisitsChanged: @escaping () -> Void = {}
     ) {
         self.debounceInterval = debounceInterval
         self.maxLatency = maxLatency
@@ -169,6 +172,7 @@ final class InboundChangeRouter {
         self.onCalendarTasksChanged = onCalendarTasksChanged
         self.onUserEventsChanged = onUserEventsChanged
         self.onTaskRemindersChanged = onTaskRemindersChanged
+        self.onSiteVisitsChanged = onSiteVisitsChanged
 
         self.cancellable = NotificationCenter.default
             .publisher(for: .inboundDataMerged)
@@ -230,6 +234,9 @@ final class InboundChangeRouter {
         }
         if names.contains(Self.taskReminderEntityName) {
             onTaskRemindersChanged()
+        }
+        if names.contains(Self.siteVisitEntityName) {
+            onSiteVisitsChanged()
         }
     }
 }

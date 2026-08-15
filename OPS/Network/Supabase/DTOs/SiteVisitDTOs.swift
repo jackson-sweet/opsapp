@@ -58,6 +58,8 @@ struct SiteVisitDTO: Decodable, Equatable, Identifiable {
     let photos: [String]
     let activityId: String?
     let calendarEventId: String?
+    let bookedAt: Date?
+    let reminderLeadMinutes: Int?
     let createdBy: String
     let createdAt: Date?
     let updatedAt: Date?
@@ -82,6 +84,8 @@ struct SiteVisitDTO: Decodable, Equatable, Identifiable {
         case photos
         case activityId = "activity_id"
         case calendarEventId = "calendar_event_id"
+        case bookedAt = "booked_at"
+        case reminderLeadMinutes = "reminder_lead_minutes"
         case createdBy = "created_by"
         case createdAt = "created_at"
         case updatedAt = "updated_at"
@@ -111,6 +115,8 @@ struct SiteVisitDTO: Decodable, Equatable, Identifiable {
         photos = try c.decodeIfPresent([String].self, forKey: .photos) ?? []
         activityId = try SiteVisitWire.optionalUUID(try c.decodeIfPresent(String.self, forKey: .activityId), key: CodingKeys.activityId)
         calendarEventId = try c.decodeIfPresent(String.self, forKey: .calendarEventId)?.lowercased()
+        bookedAt = try SiteVisitWire.optionalDate(c, key: .bookedAt)
+        reminderLeadMinutes = try c.decodeIfPresent(Int.self, forKey: .reminderLeadMinutes)
         createdBy = try SiteVisitWire.requiredText(try c.decode(String.self, forKey: .createdBy), key: CodingKeys.createdBy).lowercased()
         createdAt = try SiteVisitWire.optionalDate(c, key: .createdAt)
         updatedAt = try SiteVisitWire.optionalDate(c, key: .updatedAt)
@@ -142,6 +148,8 @@ struct SiteVisitDTO: Decodable, Equatable, Identifiable {
             photos: photos,
             activityId: activityId ?? self.activityId,
             calendarEventId: calendarEventId,
+            bookedAt: bookedAt,
+            reminderLeadMinutes: reminderLeadMinutes,
             createdBy: createdBy,
             createdAt: createdAt,
             updatedAt: updatedAt,
@@ -168,6 +176,8 @@ struct SiteVisitDTO: Decodable, Equatable, Identifiable {
         photos: [String],
         activityId: String?,
         calendarEventId: String?,
+        bookedAt: Date?,
+        reminderLeadMinutes: Int?,
         createdBy: String,
         createdAt: Date?,
         updatedAt: Date?,
@@ -191,6 +201,8 @@ struct SiteVisitDTO: Decodable, Equatable, Identifiable {
         self.photos = photos
         self.activityId = activityId
         self.calendarEventId = calendarEventId
+        self.bookedAt = bookedAt
+        self.reminderLeadMinutes = reminderLeadMinutes
         self.createdBy = createdBy
         self.createdAt = createdAt
         self.updatedAt = updatedAt

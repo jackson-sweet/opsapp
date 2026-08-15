@@ -110,6 +110,9 @@ struct LeadSiteVisitPanel: View {
     enum State: Equatable {
         case absent
         case open(token: String)
+        /// A real appointment (`bookedAt` non-nil, still scheduled) — the row
+        /// leads with the commitment, not the verb: `BOOKED — THU 10:30AM`.
+        case booked(token: String)
         case completed(token: String, summary: String?)
     }
 
@@ -140,6 +143,15 @@ struct LeadSiteVisitPanel: View {
                 meta: onCapture == nil ? nil : "RESUME",
                 action: onCapture,
                 spoken: "Site visit open, \(token.lowercased())")
+
+        case .booked(let token):
+            // The appointment IS the row. Pressing raises the same NOW/BOOK
+            // branch as the verb — start early, or move/cancel the booking.
+            row(glyph: OPSStyle.Icons.calendar,
+                title: "BOOKED — \(token)",
+                meta: nil,
+                action: onCapture,
+                spoken: "Site visit booked, \(token.lowercased())")
 
         case .completed(let token, let summary):
             // Reading a record needs no grant. Only capturing does.
@@ -285,8 +297,17 @@ struct LeadSiteVisitResolver: View {
 
     var body: some View {
         if let openVisit = openVisit {
-            LeadSiteVisitPanel(state: .open(token: Self.openToken(for: openVisit)),
-                               onCapture: onCapture)
+            if openVisit.isBookedAppointment,
+               openVisit.status == .scheduled,
+               let scheduledAt = openVisit.scheduledAt {
+                LeadSiteVisitPanel(
+                    state: .booked(token: SiteVisitBookingLookup.bookedToken(for: scheduledAt)),
+                    onCapture: onCapture
+                )
+            } else {
+                LeadSiteVisitPanel(state: .open(token: Self.openToken(for: openVisit)),
+                                   onCapture: onCapture)
+            }
         } else if let completedVisit = completedVisit {
             LeadSiteVisitRecord(visit: completedVisit)
         } else {
@@ -294,15 +315,12 @@ struct LeadSiteVisitResolver: View {
         }
     }
 
-    /// A booked date when one exists; otherwise how long the visit has been
-    /// open. Nothing in the app writes `scheduledAt` today — the age fallback
-    /// IS the shipped path, and the date branch is here so a visit booked by
-    /// any future surface reads correctly without a second row design.
+    /// How long the visit has been open. Booked visits never reach here (they
+    /// render `.booked` above), and an unbooked visit's `scheduledAt` is junk
+    /// by definition — the legacy guard: never trust a date without
+    /// `bookedAt`, so the age token is the only honest open-row grammar.
     private static func openToken(for visit: SiteVisit) -> String {
-        if let scheduled = visit.scheduledAt {
-            return DaySheetDateToken.day(scheduled)
-        }
-        return DaySheetDateToken.age(visit.createdAt)
+        DaySheetDateToken.age(visit.createdAt)
     }
 }
 
@@ -678,7 +696,7 @@ private struct LeadSiteVisitArtifactThumbnail: View {
         VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2_5) {
             LeadSiteVisitPanel(state: .absent, onCapture: {})
             LeadSiteVisitPanel(state: .open(token: "3H AGO"), onCapture: {})
-            LeadSiteVisitPanel(state: .open(token: "TMRW"))
+            LeadSiteVisitPanel(state: .booked(token: "THU 10:30AM"), onCapture: {})
             LeadSiteVisitPanel(
                 state: .completed(token: "2D AGO",
                                   summary: "4 PHOTOS · 2 MEASUREMENTS · NOTES"),

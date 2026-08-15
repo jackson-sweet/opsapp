@@ -309,6 +309,15 @@ class DataController: ObservableObject {
                         await NotificationManager.shared
                             .refreshTaskReminderSchedules(context: context)
                     }
+                },
+                onSiteVisitsChanged: {
+                    // Same event the booking sheet posts after its own writes,
+                    // so the calendar's third source repaints identically for
+                    // local commits and inbound sync.
+                    NotificationCenter.default.post(
+                        name: Notification.Name("SiteVisitBookingChanged"),
+                        object: nil
+                    )
                 }
             )
         }

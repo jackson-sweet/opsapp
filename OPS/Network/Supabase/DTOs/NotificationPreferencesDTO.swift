@@ -20,6 +20,7 @@ enum NotificationEventType: String, CaseIterable, Codable {
     case taskAssigned = "task_assigned"
     case taskCompleted = "task_completed"
     case scheduleChanges = "schedule_changes"
+    case siteVisitReminder = "site_visit_reminder"
     case projectUpdates = "project_updates"
     case expenseSubmitted = "expense_submitted"
     case expenseApproved = "expense_approved"
@@ -34,6 +35,7 @@ enum NotificationEventType: String, CaseIterable, Codable {
         case .taskAssigned:      return "Task Assignments"
         case .taskCompleted:     return "Task Completed"
         case .scheduleChanges:   return "Schedule Changes"
+        case .siteVisitReminder: return "Site Visit Reminders"
         case .projectUpdates:    return "Project Updates"
         case .expenseSubmitted:  return "Expense Submitted"
         case .expenseApproved:   return "Expense Approved"
@@ -50,6 +52,7 @@ enum NotificationEventType: String, CaseIterable, Codable {
         case .taskAssigned:      return "When you're assigned to a task"
         case .taskCompleted:     return "When a task is marked complete"
         case .scheduleChanges:   return "When project dates change"
+        case .siteVisitReminder: return "Heads-up and start prompts for booked visits"
         case .projectUpdates:    return "General project activity"
         case .expenseSubmitted:  return "When an expense is submitted for review"
         case .expenseApproved:   return "When your expense is approved"
@@ -87,6 +90,9 @@ struct NotificationPreferencesDTO: Codable, Equatable {
     var channelPreferences: [String: ChannelToggle]
     var quietHoursStart: String?
     var quietHoursEnd: String?
+    /// Default heads-up lead for booked site visits, in minutes. NULL = the
+    /// product default (30). Additive column; the server prompt cron reads it.
+    var siteVisitReminderLeadMinutes: Int?
     let createdAt: String?
     let updatedAt: String?
 
@@ -99,6 +105,7 @@ struct NotificationPreferencesDTO: Codable, Equatable {
         case channelPreferences = "channel_preferences"
         case quietHoursStart    = "quiet_hours_start"
         case quietHoursEnd      = "quiet_hours_end"
+        case siteVisitReminderLeadMinutes = "site_visit_reminder_lead_minutes"
         case createdAt          = "created_at"
         case updatedAt          = "updated_at"
     }
@@ -112,6 +119,7 @@ struct NotificationPreferencesDTO: Codable, Equatable {
         emailEnabled = try container.decodeIfPresent(Bool.self, forKey: .emailEnabled) ?? true
         quietHoursStart = try container.decodeIfPresent(String.self, forKey: .quietHoursStart)
         quietHoursEnd = try container.decodeIfPresent(String.self, forKey: .quietHoursEnd)
+        siteVisitReminderLeadMinutes = try container.decodeIfPresent(Int.self, forKey: .siteVisitReminderLeadMinutes)
         createdAt = try container.decodeIfPresent(String.self, forKey: .createdAt)
         updatedAt = try container.decodeIfPresent(String.self, forKey: .updatedAt)
 
@@ -136,6 +144,7 @@ struct NotificationPreferencesDTO: Codable, Equatable {
         channelPreferences: [String: ChannelToggle]? = nil,
         quietHoursStart: String? = nil,
         quietHoursEnd: String? = nil,
+        siteVisitReminderLeadMinutes: Int? = nil,
         createdAt: String? = nil,
         updatedAt: String? = nil
     ) {
@@ -147,6 +156,7 @@ struct NotificationPreferencesDTO: Codable, Equatable {
         self.channelPreferences = channelPreferences ?? defaultChannelPreferences
         self.quietHoursStart = quietHoursStart
         self.quietHoursEnd = quietHoursEnd
+        self.siteVisitReminderLeadMinutes = siteVisitReminderLeadMinutes
         self.createdAt = createdAt
         self.updatedAt = updatedAt
     }

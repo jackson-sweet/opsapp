@@ -124,6 +124,9 @@ struct MainTabView: View {
     private let openLeadDetailsObserver = NotificationCenter.default
         .publisher(for: Notification.Name("OpenLeadDetails"))
 
+    private let startSiteVisitObserver = NotificationCenter.default
+        .publisher(for: Notification.Name("StartSiteVisit"))
+
     private let openNotificationsObserver = NotificationCenter.default
         .publisher(for: Notification.Name("OpenNotifications"))
 
@@ -823,6 +826,24 @@ struct MainTabView: View {
             print("[PUSH_NAVIGATION] Opening lead details for: \(leadId)")
             appState.pendingLeadDeepLinkId = leadId
             selectTab(idx, with: OPSStyle.Animation.fast)
+        }
+
+        // START-visit relay — the site_visit_start push and the calendar's
+        // START NOW both land here; the leads tab owns the ONE capture cover
+        // and drains `pendingSiteVisitStartLeadId` into it. Same permission
+        // posture as OpenLeadDetails: no pipeline access → access-denied rail.
+        .onReceive(startSiteVisitObserver) { notification in
+            guard let leadId = notification.userInfo?["leadId"] as? String, !leadId.isEmpty else { return }
+            guard hasLeadsAccess, let idx = leadsTabIndex else {
+                print("[PUSH_NAVIGATION] START visit for \(leadId) without pipeline access — access denied")
+                appState.presentAccessDenied(message: "This lead is no longer available.")
+                return
+            }
+            print("[PUSH_NAVIGATION] Starting site visit for lead: \(leadId)")
+            appState.pendingSiteVisitStartLeadId = leadId
+            withAnimation(OPSStyle.Animation.fast) {
+                selectedTab = idx
+            }
         }
 
         // Handle access denied presentations (tapped Spotlight result no longer permitted)

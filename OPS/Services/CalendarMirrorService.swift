@@ -232,6 +232,16 @@ final class CalendarMirrorService: ObservableObject {
             if liveOpsIds.contains(t.id) { continue }
             await mirrorEvent(opsId: t.id, source: .projectTask)
         }
+        // Booked appointments only — the predicate mirrors the calendar's
+        // legacy guard, so walk-up rows (junk scheduledAt) never enumerate.
+        let visitDescriptor = FetchDescriptor<SiteVisit>(
+            predicate: #Predicate { $0.bookedAt != nil && $0.deletedAt == nil }
+        )
+        let visits = (try? context.fetch(visitDescriptor)) ?? []
+        for v in visits where CalendarMirrorEligibility.isEligible(visit: v, currentUserId: currentUserId) {
+            if liveOpsIds.contains(v.id) { continue }
+            await mirrorEvent(opsId: v.id, source: .siteVisit)
+        }
 
         // 3. Orphan sweep — events in OPS calendar with no map entry.
         let predicate = store.predicateForEvents(withStart: lower, end: upper, calendars: [calendar])
@@ -348,6 +358,15 @@ final class CalendarMirrorService: ObservableObject {
                 taskTypeDisplay: taskTypeDisplay,
                 address: address
             )
+        case .siteVisit:
+            let descriptor = FetchDescriptor<SiteVisit>(predicate: #Predicate { $0.id == opsId })
+            guard let visit = try? context.fetch(descriptor).first else { return nil }
+            let lead = visitLead(for: visit, context: context)
+            return CalendarMirrorContent.payload(
+                for: visit,
+                leadName: lead?.displayContactName ?? "Site visit",
+                address: lead?.address
+            )
         }
     }
 
@@ -361,7 +380,22 @@ final class CalendarMirrorService: ObservableObject {
             let descriptor = FetchDescriptor<ProjectTask>(predicate: #Predicate { $0.id == opsId })
             guard let task = try? context.fetch(descriptor).first else { return false }
             return CalendarMirrorEligibility.isEligible(task: task, currentUserId: currentUserId)
+        case .siteVisit:
+            let descriptor = FetchDescriptor<SiteVisit>(predicate: #Predicate { $0.id == opsId })
+            guard let visit = try? context.fetch(descriptor).first else { return false }
+            return CalendarMirrorEligibility.isEligible(visit: visit, currentUserId: currentUserId)
         }
+    }
+
+    /// A booking is always lead-attached; the lead supplies title + location.
+    private func visitLead(for visit: SiteVisit, context: ModelContext) -> Opportunity? {
+        guard let opportunityId = visit.opportunityId else { return nil }
+        let lower = opportunityId.lowercased()
+        var descriptor = FetchDescriptor<Opportunity>(
+            predicate: #Predicate { $0.id == lower }
+        )
+        descriptor.fetchLimit = 1
+        return try? context.fetch(descriptor).first
     }
 
     private func projectDisplayLabel(for task: ProjectTask) -> String {

@@ -85,7 +85,8 @@ struct NotificationSettingsView: View {
 
     /// Event types grouped by section for the UI
     private let projectEventTypes: [NotificationEventType] = [
-        .taskAssigned, .taskCompleted, .scheduleChanges, .projectUpdates, .teamMentions
+        .taskAssigned, .taskCompleted, .scheduleChanges, .siteVisitReminder,
+        .projectUpdates, .teamMentions
     ]
 
     private let financialEventTypes: [NotificationEventType] = [
@@ -139,6 +140,13 @@ struct NotificationSettingsView: View {
                             }
                             .id(AnchorID.projectNotifications)
                             .deepLinkSpotlight(highlightedSection == AnchorID.projectNotifications)
+
+                            // Site-visit heads-up default (Supabase-backed) —
+                            // the lead time the booking sheet preselects; each
+                            // booking can still override it.
+                            settingsSection(title: "SITE VISIT HEADS-UP") {
+                                siteVisitHeadsUpSettings
+                            }
 
                             // Channel Preferences — Financial
                             settingsSection(title: "FINANCIAL NOTIFICATIONS") {
@@ -548,6 +556,49 @@ struct NotificationSettingsView: View {
             } catch {
                 print("[NOTIFICATION PREFS] Channel mode update failed, reverting: \(error)")
                 loadPreferences()
+            }
+        }
+    }
+
+    // MARK: - Site Visit Heads-Up (Supabase-backed)
+
+    /// Default lead time for the booked-visit heads-up push. The booking
+    /// sheet preselects this; a per-booking override always wins.
+    private var siteVisitHeadsUpSettings: some View {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2_5) {
+            ValueChipRow(
+                options: siteVisitHeadsUpOptions,
+                selected: preferences?.siteVisitReminderLeadMinutes ?? 30,
+                label: BookSiteVisitForm.headsUpLabel,
+                onSelect: { setSiteVisitHeadsUpDefault($0) }
+            )
+
+            Text("Lead time before every booked visit. Each booking can override it.")
+                .font(OPSStyle.Typography.smallCaption)
+                .foregroundColor(OPSStyle.Colors.secondaryText)
+        }
+        .padding(.vertical, 14)
+        .padding(.horizontal, OPSStyle.Layout.spacing3)
+    }
+
+    private var siteVisitHeadsUpOptions: [Int] {
+        let current = preferences?.siteVisitReminderLeadMinutes ?? 30
+        return Array(Set(BookSiteVisitForm.headsUpPresets + [current])).sorted()
+    }
+
+    private func setSiteVisitHeadsUpDefault(_ minutes: Int) {
+        guard let userId = UserDefaults.standard.string(forKey: "currentUserId"),
+              let companyId = UserDefaults.standard.string(forKey: "company_id") else { return }
+        preferences?.siteVisitReminderLeadMinutes = minutes
+        Task {
+            do {
+                try await repository.updatePreferences(
+                    userId: userId,
+                    companyId: companyId,
+                    updates: ["site_visit_reminder_lead_minutes": .integer(minutes)]
+                )
+            } catch {
+                print("[NOTIFICATION PREFS] Heads-up default write failed: \(error)")
             }
         }
     }

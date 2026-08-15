@@ -85,6 +85,15 @@ enum SyncErrorClassifier {
                 ) ?? .transient
             }
         }
+        // A payload that never reached the server. Rebuilding it from the same row
+        // fails identically, so a retry can only burn the budget — and a `failed`
+        // op is revived by the launch sweep every launch, which is exactly how an
+        // authorless legacy row retried forever (bug 70db7ed6). Park it: visible in
+        // PENDING WORK, user-retryable, never automatic. Same reasoning as the
+        // `SyncError.encodingFailed` branch below.
+        if error is SiteVisitPayloadError {
+            return .permanent
+        }
         // Media failures split on whether the bytes still exist. An absent file
         // can never come back (the local copy was the only one until upload) —
         // that is terminal. A file that is present but unreadable right now

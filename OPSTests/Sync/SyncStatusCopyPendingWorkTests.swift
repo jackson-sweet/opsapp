@@ -62,6 +62,9 @@ final class SyncStatusCopyPendingWorkTests: XCTestCase {
         XCTAssertEqual(Copy.offlineRow, "Waiting for signal")
         XCTAssertEqual(Copy.orphanRow, "Not linked to a job or lead")
         XCTAssertEqual(Copy.draftRow, "Not sent yet — open to finish")
+        XCTAssertEqual(Copy.retryingRow, "Retrying…")
+        XCTAssertEqual(Copy.retrySucceededRow, "Updated")
+        XCTAssertEqual(Copy.retryFailedRow, "Retry failed — still here")
     }
 
     func testBackoffRowInterpolationAndFloor() {
@@ -85,18 +88,90 @@ final class SyncStatusCopyPendingWorkTests: XCTestCase {
         XCTAssertEqual(Copy.linkAction, "LINK")
         XCTAssertEqual(Copy.linkPickerTitle, "LINK TO")
         XCTAssertEqual(Copy.exportAction, "EXPORT")
+        XCTAssertEqual(Copy.deleteAction, "DELETE")
+        XCTAssertEqual(Copy.stopSendingAction, "STOP SENDING")
         XCTAssertEqual(Copy.discardConfirmTitle, "DESTRUCTIVE. NO UNDO.")
+        XCTAssertEqual(Copy.stopSendingConfirmTitle, "STOP SENDING?")
         XCTAssertEqual(Copy.discardConfirmBody, "Deletes this work from this phone. It was never sent.")
         XCTAssertEqual(Copy.staleReviewTag, "STALE · 30D")
+        XCTAssertEqual(Copy.discardFailure, "COULD NOT DELETE · WORK IS STILL HERE")
+    }
+
+    // MARK: - Discard confirmation bodies (one per scope)
+
+    /// A stopped send names what stays, not what dies — the visit and everything
+    /// captured on it are untouched, here and in OPS.
+    func testQueuedSendsConfirmationPromisesNothingIsDeleted() {
         XCTAssertEqual(
-            Copy.discardConfirmationBody(for: .siteVisitPacket),
-            "Deletes the local visit packet and cancels its cloud shell if any part already synced."
+            Copy.discardConfirmationBody(for: .queuedSends(count: 1)),
+            "Stops 1 queued send. The visit and everything captured on it stay — nothing is deleted here or in OPS."
+        )
+        XCTAssertEqual(
+            Copy.discardConfirmationBody(for: .queuedSends(count: 4)),
+            "Stops 4 queued sends. The visit and everything captured on it stay — nothing is deleted here or in OPS."
+        )
+    }
+
+    func testLocalPhotosConfirmationSaysThereIsNoOtherCopy() {
+        XCTAssertEqual(
+            Copy.discardConfirmationBody(for: .localPhotos(count: 1)),
+            "Deletes 1 unsent photo from this phone. They never reached OPS — there is no other copy."
         )
         XCTAssertEqual(
             Copy.discardConfirmationBody(for: .localPhotos(count: 2)),
-            "Deletes 2 unsent photos from this phone."
+            "Deletes 2 unsent photos from this phone. They never reached OPS — there is no other copy."
         )
-        XCTAssertEqual(Copy.discardFailure, "COULD NOT DELETE · WORK IS STILL HERE")
+    }
+
+    func testQuarantinedVisitConfirmationNamesWhatWillBeDeleted() {
+        XCTAssertEqual(
+            Copy.discardConfirmationBody(for: .quarantinedVisit(capturedItemCount: 1)),
+            "Deletes the protected recovery packet — 1 captured item — from this phone. There is no other copy."
+        )
+        XCTAssertEqual(
+            Copy.discardConfirmationBody(for: .quarantinedVisit(capturedItemCount: 7)),
+            "Deletes the protected recovery packet — 7 captured items — from this phone. There is no other copy."
+        )
+    }
+
+    func testLeadDeliveryConfirmationIsUnchanged() {
+        XCTAssertEqual(
+            Copy.discardConfirmationBody(for: .leadDeliveryRequest),
+            "Cancels this pending lead creation. The client stays on this phone."
+        )
+    }
+
+    // MARK: - Scope-driven title + action label
+
+    /// Only a scope that really erases the only copy is allowed to shout
+    /// "DESTRUCTIVE. NO UNDO." — a stopped send must not pretend to be one.
+    func testConfirmationTitleWarnsOnlyForDestructiveScopes() {
+        XCTAssertEqual(
+            Copy.discardConfirmationTitle(for: .localPhotos(count: 2)),
+            "DESTRUCTIVE. NO UNDO."
+        )
+        XCTAssertEqual(
+            Copy.discardConfirmationTitle(for: .quarantinedVisit(capturedItemCount: 2)),
+            "DESTRUCTIVE. NO UNDO."
+        )
+        XCTAssertEqual(
+            Copy.discardConfirmationTitle(for: .queuedSends(count: 2)),
+            "STOP SENDING?"
+        )
+        XCTAssertEqual(
+            Copy.discardConfirmationTitle(for: .leadDeliveryRequest),
+            "STOP SENDING?"
+        )
+    }
+
+    func testActionLabelMatchesWhatTheScopeActuallyDoes() {
+        XCTAssertEqual(Copy.discardActionLabel(for: .localPhotos(count: 2)), "DELETE")
+        XCTAssertEqual(
+            Copy.discardActionLabel(for: .quarantinedVisit(capturedItemCount: 2)),
+            "DELETE"
+        )
+        XCTAssertEqual(Copy.discardActionLabel(for: .queuedSends(count: 2)), "STOP SENDING")
+        XCTAssertEqual(Copy.discardActionLabel(for: .leadDeliveryRequest), "STOP SENDING")
     }
 
     func testExportTitleInterpolation() {
@@ -213,6 +288,40 @@ final class SyncStatusCopyPendingWorkTests: XCTestCase {
         let result = Copy.statusLine(statusRaw: "local", lastError: nil, secondsUntilRetry: nil)
         XCTAssertEqual(result.text, "Waiting to sync")
         XCTAssertEqual(toneName(result.tone), "waiting")
+    }
+
+    // MARK: - Failure copy names the action that actually failed
+
+    /// A failed stop must never report a deletion. "WORK NOT DELETED" after a
+    /// stopped send implies the app tried to erase something — the exact
+    /// over-promise that made bug f7431c17 read as catastrophic in the field.
+    func testFailureCopyMatchesTheActionTheOperatorTook() {
+        XCTAssertEqual(
+            Copy.failureTitle(for: .queuedSends(count: 3)),
+            "SEND NOT STOPPED"
+        )
+        XCTAssertEqual(
+            Copy.failureMessage(for: .queuedSends(count: 3)),
+            "COULD NOT STOP THIS SEND · IT IS STILL QUEUED"
+        )
+        XCTAssertEqual(
+            Copy.failureTitle(for: .leadDeliveryRequest),
+            "SEND NOT STOPPED"
+        )
+
+        // Scopes that really do erase the last copy keep the deletion language.
+        XCTAssertEqual(
+            Copy.failureTitle(for: .localPhotos(count: 2)),
+            "WORK NOT DELETED"
+        )
+        XCTAssertEqual(
+            Copy.failureMessage(for: .localPhotos(count: 2)),
+            "COULD NOT DELETE · WORK IS STILL HERE"
+        )
+        XCTAssertEqual(
+            Copy.failureTitle(for: .quarantinedVisit(capturedItemCount: 2)),
+            "WORK NOT DELETED"
+        )
     }
 
     // MARK: - Helpers

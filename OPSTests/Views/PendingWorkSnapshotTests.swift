@@ -122,6 +122,24 @@ final class PendingWorkSnapshotTests: XCTestCase {
         RecoveryInventory.build(ops: [], autocreates: [], photos: [], drafts: [], artifacts: [], orphans: [], now: now)
     }
 
+    private func retryItem() -> RecoveryItem {
+        .op(
+            SyncOpSnapshot(
+                id: UUID(uuidString: "EEEEEEEE-EEEE-EEEE-EEEE-EEEEEEEEEEEE")!,
+                entityType: "project",
+                entityId: "project-retry",
+                operationType: "update",
+                status: "failed",
+                retryCount: 20,
+                lastAttemptedAt: ago(60),
+                lastError: "server rejected update",
+                createdAt: ago(300)
+            ),
+            tone: .attention,
+            nextEligibleAt: nil
+        )
+    }
+
     // MARK: - Tests
 
     func testAttentionWithBundle() {
@@ -183,11 +201,41 @@ final class PendingWorkSnapshotTests: XCTestCase {
         )
     }
 
+    func testRetryOutcomeFeedbackRendersDistinctSuccessAndFailureStates() {
+        let item = retryItem()
+        let successInventory = RecoveryInventory(attention: [], sending: [item], drafts: [], unlinked: [])
+        let failureInventory = RecoveryInventory(attention: [item], sending: [], drafts: [], unlinked: [])
+
+        let success = renderAndAttach(
+            "pending-work-retry-success",
+            inventory: successInventory,
+            feedbackByID: [item.id: .succeeded]
+        )
+        let failure = renderAndAttach(
+            "pending-work-retry-failed",
+            inventory: failureInventory,
+            feedbackByID: [item.id: .failed]
+        )
+
+        XCTAssertNotEqual(
+            rgbaBytes(success), rgbaBytes(failure),
+            "A completed retry receipt and a persisted failed row must render as distinct states"
+        )
+    }
+
     // MARK: - Render harness (drawHierarchy, not ImageRenderer — asset colours)
 
     /// Renders the pure view full-screen and returns the image (no attachment).
-    private func render(_ inventory: RecoveryInventory) -> UIImage {
-        let root = PendingWorkView(inventory: inventory, actions: .noop, now: now)
+    private func render(
+        _ inventory: RecoveryInventory,
+        feedbackByID: [String: PendingWorkRetryFeedback] = [:]
+    ) -> UIImage {
+        let root = PendingWorkView(
+            inventory: inventory,
+            actions: .noop,
+            now: now,
+            retryFeedbackByID: feedbackByID
+        )
             .frame(width: deviceWidth, height: deviceHeight)
             .background(OPSStyle.Colors.background)
             .environment(\.colorScheme, .dark)
@@ -218,8 +266,12 @@ final class PendingWorkSnapshotTests: XCTestCase {
     /// Renders, attaches the PNG, and asserts a real (correctly-sized, non-blank)
     /// frame was produced. Returns the image for further per-state assertions.
     @discardableResult
-    private func renderAndAttach(_ name: String, inventory: RecoveryInventory) -> UIImage {
-        let image = render(inventory)
+    private func renderAndAttach(
+        _ name: String,
+        inventory: RecoveryInventory,
+        feedbackByID: [String: PendingWorkRetryFeedback] = [:]
+    ) -> UIImage {
+        let image = render(inventory, feedbackByID: feedbackByID)
 
         if let data = image.pngData() {
             let attachment = XCTAttachment(data: data, uniformTypeIdentifier: "public.png")

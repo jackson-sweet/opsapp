@@ -22,6 +22,162 @@ import Combine
 import SwiftUI
 import SwiftData
 
+// MARK: - Discard semantics
+
+/// What DELETE means on a sync-recovery surface.
+///
+/// PENDING WORK lists queued SENDS. Swiping a row there means "stop trying to
+/// send this" — it must never delete, cancel, or tombstone a stored record, and
+/// never enqueue a delete operation. Deleting a visit is a decision made on the
+/// visit's own surface.
+///
+/// Bug f7431c17 is why this is its own type rather than a private method: one
+/// swipe on a single stuck identity-draft send cancelled the whole parent site
+/// visit — a COMPLETED visit holding real completion notes — tombstoned both
+/// captures and ten checklist answers, and queued durable soft-DELETEs for all
+/// of them. Lifting the behaviour out of the SwiftUI view makes it directly
+/// testable against a real store.
+enum PendingWorkDecline {
+
+    /// Stops every queued send in one work unit and nothing else.
+    ///
+    /// The operations move to the terminal `declined` status rather than being
+    /// deleted outright. That is what makes the decline STICK: orphan recovery
+    /// re-derives a send from any still-dirty row before every drain, and media
+    /// sends are re-derived from a still-local asset URL regardless of
+    /// `needsSync` — so a deleted queue row would simply reappear seconds later.
+    /// `SiteVisitPersistenceCoordinator` counts `declined` as unresolved for
+    /// exactly that reason, which also means a genuine later edit to the record
+    /// revives this operation instead of duplicating it.
+    ///
+    /// Refuses outright while any send in the unit is in flight — a request
+    /// already on the wire cannot be truthfully called off, and its siblings
+    /// must not be declined behind it.
+    @MainActor
+    static func queuedSends(
+        _ bundle: SiteVisitBundle,
+        in modelContext: ModelContext
+    ) -> Bool {
+        let operations = bundle.syncOperationIds
+            .compactMap { fetchOperation(id: $0, in: modelContext) }
+        guard !operations.isEmpty,
+              !operations.contains(where: { $0.status == "inProgress" }) else {
+            return false
+        }
+
+        for operation in operations {
+            operation.status = "declined"
+            operation.lastError = nil
+            operation.lastAttemptedAt = nil
+            operation.completedAt = nil
+        }
+
+        do {
+            try modelContext.save()
+        } catch {
+            modelContext.rollback()
+            print("[PENDING_WORK] Declining queued sends failed: \(error)")
+            return false
+        }
+        return true
+    }
+
+    /// True when the row the operator asked to remove is STILL standing in a
+    /// live section after the inventory rebuild — the honest answer to "did
+    /// that work?".
+    ///
+    /// Drafts are deliberately excluded: a work unit whose sends are all
+    /// declined may legitimately reappear under DRAFTS as a resumable capture.
+    /// That is a real, different state, not the row refusing to leave.
+    static func itemRemains(id: String, in inventory: RecoveryInventory) -> Bool {
+        (inventory.attention + inventory.sending + inventory.unlinked)
+            .contains { $0.id == id }
+    }
+
+    @MainActor
+    private static func fetchOperation(
+        id: UUID,
+        in modelContext: ModelContext
+    ) -> SyncOperation? {
+        let target = id
+        let descriptor = FetchDescriptor<SyncOperation>(
+            predicate: #Predicate<SyncOperation> { $0.id == target }
+        )
+        return (try? modelContext.fetch(descriptor))?.first
+    }
+
+    @MainActor
+    @discardableResult
+    private static func deleteVisitPacket(
+        siteVisitId: String,
+        in modelContext: ModelContext
+    ) -> Bool {
+        let visitDescriptor = FetchDescriptor<SiteVisit>(
+            predicate: #Predicate<SiteVisit> { $0.id == siteVisitId }
+        )
+        guard let visit = (try? modelContext.fetch(visitDescriptor))?.first else {
+            return false
+        }
+        let artifactDescriptor = FetchDescriptor<SiteVisitCaptureArtifact>(
+            predicate: #Predicate<SiteVisitCaptureArtifact> { $0.siteVisitId == siteVisitId }
+        )
+        let answerDescriptor = FetchDescriptor<SiteVisitChecklistAnswer>(
+            predicate: #Predicate<SiteVisitChecklistAnswer> { $0.siteVisitId == siteVisitId }
+        )
+        let draftDescriptor = FetchDescriptor<SiteVisitIdentityDraft>(
+            predicate: #Predicate<SiteVisitIdentityDraft> { $0.siteVisitId == siteVisitId }
+        )
+        let artifacts = (try? modelContext.fetch(artifactDescriptor)) ?? []
+        let answers = (try? modelContext.fetch(answerDescriptor)) ?? []
+        let drafts = (try? modelContext.fetch(draftDescriptor)) ?? []
+        let coordinator = SiteVisitPersistenceCoordinator(
+            modelContext: modelContext,
+            companyId: visit.companyId
+        )
+        let wasNeverSynced = visit.lastSyncedAt == nil
+            && artifacts.allSatisfy { $0.lastSyncedAt == nil }
+            && answers.allSatisfy { $0.lastSyncedAt == nil }
+            && drafts.allSatisfy { $0.lastSyncedAt == nil }
+
+        do {
+            if wasNeverSynced {
+                try coordinator.hardDeleteNeverSyncedVisit(
+                    visit,
+                    artifacts: artifacts,
+                    answers: answers,
+                    drafts: drafts
+                )
+            } else {
+                try coordinator.commit {
+                    let deletedAt = Date()
+                    visit.status = .cancelled
+                    visit.deletedAt = deletedAt
+                    visit.updatedAt = deletedAt
+                    visit.needsSync = true
+                    for artifact in artifacts {
+                        artifact.deletedAt = deletedAt
+                        artifact.updatedAt = deletedAt
+                        artifact.needsSync = true
+                    }
+                    for answer in answers {
+                        answer.deletedAt = deletedAt
+                        answer.updatedAt = deletedAt
+                        answer.needsSync = true
+                    }
+                    for draft in drafts {
+                        draft.deletedAt = deletedAt
+                        draft.touch()
+                    }
+                }
+            }
+            return true
+        } catch {
+            print("[PENDING_WORK] Site-visit discard save failed: \(error)")
+            return false
+        }
+    }
+}
+
 // MARK: - Actions
 
 /// The closure bundle the pure view calls. The wrapper supplies real behaviour;
@@ -49,6 +205,7 @@ struct PendingWorkView: View {
     let inventory: RecoveryInventory
     let actions: PendingWorkActions
     var now: Date = Date()
+    var retryFeedbackByID: [String: PendingWorkRetryFeedback] = [:]
     /// Real link-target search, injected by the wrapper; a safe empty default
     /// keeps the pure view (and its snapshots) engine-free.
     var searchLinkTargets: (String, PendingWorkLinkScope) async -> [PendingWorkLinkTarget] = { _, _ in [] }
@@ -58,6 +215,9 @@ struct PendingWorkView: View {
     @State private var openRowID: String?
     @State private var pendingDiscardItem: RecoveryItem?
     @State private var discardErrorMessage: String?
+    /// Paired with the message so the failure alert names the action the
+    /// operator actually took — a stopped send never reports a deletion.
+    @State private var discardErrorTitle: String?
     @State private var discardInFlightID: String?
 
     private var showRetryAll: Bool { inventory.attentionCount > 0 }
@@ -122,14 +282,15 @@ struct PendingWorkView: View {
             )
         }
         .confirmationDialog(
-            SyncStatusCopy.PendingWork.discardConfirmTitle,
+            discardConfirmationTitle,
             isPresented: discardConfirmationIsPresented,
             titleVisibility: .visible
         ) {
-            if let item = pendingDiscardItem {
+            if let item = pendingDiscardItem,
+               let scope = item.discardPolicy.confirmationScope {
                 Button(
-                    SyncStatusCopy.PendingWork.deleteAction,
-                    role: .destructive
+                    SyncStatusCopy.PendingWork.discardActionLabel(for: scope),
+                    role: scope.isDestructive ? .destructive : nil
                 ) {
                     pendingDiscardItem = nil
                     Task { @MainActor in
@@ -138,8 +299,10 @@ struct PendingWorkView: View {
                         let succeeded = await actions.discardItem(item)
                         discardInFlightID = nil
                         if !succeeded {
+                            discardErrorTitle =
+                                SyncStatusCopy.PendingWork.failureTitle(for: scope)
                             discardErrorMessage =
-                                SyncStatusCopy.PendingWork.discardFailure
+                                SyncStatusCopy.PendingWork.failureMessage(for: scope)
                         }
                     }
                 }
@@ -154,7 +317,7 @@ struct PendingWorkView: View {
             Text(discardConfirmationBody)
         }
         .alert(
-            SyncStatusCopy.PendingWork.discardFailureTitle,
+            discardErrorTitle ?? SyncStatusCopy.PendingWork.discardFailureTitle,
             isPresented: discardErrorIsPresented
         ) {
             Button(
@@ -162,6 +325,7 @@ struct PendingWorkView: View {
                 role: .cancel
             ) {
                 discardErrorMessage = nil
+                discardErrorTitle = nil
             }
         } message: {
             Text(discardErrorMessage ?? "")
@@ -195,6 +359,7 @@ struct PendingWorkView: View {
                             Divider().background(OPSStyle.Colors.lineSoft)
                         }
                         entryView(for: item)
+                            .transition(.opacity)
                     }
                 }
                 .glassSurface()
@@ -211,8 +376,10 @@ struct PendingWorkView: View {
                     bundle: bundle,
                     now: now,
                     onTap: { detailItem = item },
-                    onRetry: { actions.retryItem(item) }
+                    onRetry: { actions.retryItem(item) },
+                    feedback: retryFeedbackByID[item.id]
                 )
+                .allowsHitTesting(retryFeedbackByID[item.id] != .succeeded)
             }
         case .op, .autocreate, .photos:
             swipeRow(for: item) {
@@ -220,8 +387,10 @@ struct PendingWorkView: View {
                     item: item,
                     now: now,
                     onTap: { detailItem = item },
-                    onRetry: { actions.retryItem(item) }
+                    onRetry: { actions.retryItem(item) },
+                    feedback: retryFeedbackByID[item.id]
                 )
+                .allowsHitTesting(retryFeedbackByID[item.id] != .succeeded)
             }
         case .quarantinedVisit:
             swipeRow(for: item) {
@@ -266,20 +435,37 @@ struct PendingWorkView: View {
         )
     }
 
+    /// The swipe action reads as what it actually does. A queued send gets
+    /// STOP SENDING in the attention tone; only a scope that erases the last
+    /// copy earns DELETE, the rose tone, and the destructive role.
     private func discardActions(for item: RecoveryItem) -> [OPSRowAction] {
         guard discardInFlightID == nil,
-              item.discardPolicy.canDiscard else { return [] }
+              retryFeedbackByID[item.id] != .retrying,
+              retryFeedbackByID[item.id] != .succeeded,
+              let scope = item.discardPolicy.confirmationScope else { return [] }
+        let label = SyncStatusCopy.PendingWork.discardActionLabel(for: scope)
         return [
             OPSRowAction(
-                id: "delete:\(item.id)",
-                label: SyncStatusCopy.PendingWork.deleteAction,
-                menuTitle: SyncStatusCopy.PendingWork.deleteAction,
-                icon: OPSStyle.Icons.delete,
-                tone: OPSStyle.Colors.rose,
-                isDestructive: true,
+                id: "discard:\(item.id)",
+                label: label,
+                menuTitle: label,
+                icon: scope.isDestructive
+                    ? OPSStyle.Icons.delete
+                    : OPSStyle.Icons.close,
+                tone: scope.isDestructive
+                    ? OPSStyle.Colors.rose
+                    : OPSStyle.Colors.tan,
+                isDestructive: scope.isDestructive,
                 handler: { pendingDiscardItem = item }
             ),
         ]
+    }
+
+    private var discardConfirmationTitle: String {
+        guard let scope = pendingDiscardItem?.discardPolicy.confirmationScope else {
+            return SyncStatusCopy.PendingWork.discardConfirmTitle
+        }
+        return SyncStatusCopy.PendingWork.discardConfirmationTitle(for: scope)
     }
 
     private var discardConfirmationIsPresented: Binding<Bool> {
@@ -295,7 +481,10 @@ struct PendingWorkView: View {
         Binding(
             get: { discardErrorMessage != nil },
             set: { isPresented in
-                if !isPresented { discardErrorMessage = nil }
+                if !isPresented {
+                    discardErrorMessage = nil
+                    discardErrorTitle = nil
+                }
             }
         )
     }
@@ -375,6 +564,7 @@ struct PendingWorkScreen: View {
     @EnvironmentObject private var dataController: DataController
 
     @State private var inventory = RecoveryInventory(attention: [], sending: [], drafts: [], unlinked: [])
+    @State private var retryTracker = PendingWorkRetryTracker()
     @State private var now = Date()
     @State private var exportPayload: PendingWorkExportPayload?
     @State private var resumingDraft = false
@@ -394,13 +584,23 @@ struct PendingWorkScreen: View {
 
     private var queue: ClientLeadAutocreateQueue { ClientLeadAutocreateQueue.shared }
 
+    private var displayInventory: RecoveryInventory {
+        RecoveryInventory(
+            attention: inventory.attention,
+            sending: inventory.sending + retryTracker.successReceipts,
+            drafts: inventory.drafts,
+            unlinked: inventory.unlinked
+        )
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             header
             PendingWorkView(
-                inventory: inventory,
+                inventory: displayInventory,
                 actions: actions,
                 now: now,
+                retryFeedbackByID: retryTracker.feedbackByID,
                 searchLinkTargets: { await searchLinkTargets($0, $1) }
             )
         }
@@ -457,7 +657,19 @@ struct PendingWorkScreen: View {
     private func refresh() {
         let current = Date()
         now = current
-        inventory = RecoveryInventory.load(from: modelContext, queue: queue, now: current)
+        let refreshed = RecoveryInventory.load(from: modelContext, queue: queue, now: current)
+        let reconciliation: PendingWorkRetryReconciliation = withAnimation(
+            OPSStyle.Animation.panel
+        ) {
+            let result = retryTracker.reconcile(inventory: refreshed, now: current)
+            inventory = refreshed
+            return result
+        }
+        if !reconciliation.failedIDs.isEmpty {
+            UINotificationFeedbackGenerator().notificationOccurred(.error)
+        } else if !reconciliation.succeededIDs.isEmpty {
+            UINotificationFeedbackGenerator().notificationOccurred(.success)
+        }
     }
 
     // MARK: - Actions bundle
@@ -479,6 +691,7 @@ struct PendingWorkScreen: View {
 
     private func retry(item: RecoveryItem) {
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        retryTracker.begin(items: [item])
         apply(retryTo: item)
         Task { await dataController.syncEngine.triggerSync() }
         refresh()
@@ -510,7 +723,7 @@ struct PendingWorkScreen: View {
 
     private func retryAll() {
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-        let hadAttention = inventory.attentionCount > 0
+        retryTracker.begin(items: inventory.attention)
 
         // Reset every recoverable op (failed AND parked) to a fresh pending
         // budget, then re-enqueue crash-stranded in-flight ops.
@@ -523,11 +736,6 @@ struct PendingWorkScreen: View {
 
         Task { await dataController.syncEngine.triggerSync() }
         refresh()
-
-        // Success only when the sweep actually cleared the attention section.
-        if hadAttention && inventory.attentionCount == 0 {
-            UINotificationFeedbackGenerator().notificationOccurred(.success)
-        }
     }
 
     private func retryOperation(id: UUID) {
@@ -584,6 +792,11 @@ struct PendingWorkScreen: View {
 
     // MARK: - Discard (spec §4 semantics)
 
+    /// Returns the truth, not the intent: the caller only hears success when
+    /// the underlying mutation landed AND the row has actually left the live
+    /// sections of the rebuilt inventory. The old code reported success while
+    /// the row was still sitting there, re-populated by the very operations the
+    /// discard had just enqueued.
     private func discard(item: RecoveryItem) async -> Bool {
         guard item.discardPolicy.canDiscard else { return false }
 
@@ -603,7 +816,7 @@ struct PendingWorkScreen: View {
         case .photos(let grouped, _):
             succeeded = deletePhotos(ids: grouped.map(\.id))
         case .bundle(let bundle):
-            succeeded = discardBundle(bundle)
+            succeeded = declineQueuedSends(bundle)
         case .quarantinedVisit(let visit):
             do {
                 succeeded = try SiteVisitRecoveryVault.shared.discardQuarantinedWork(
@@ -622,92 +835,13 @@ struct PendingWorkScreen: View {
         }
 
         refresh()
-        return succeeded
+        guard succeeded else { return false }
+        return !PendingWorkDecline.itemRemains(id: item.id, in: inventory)
     }
 
-    private func discardBundle(_ bundle: SiteVisitBundle) -> Bool {
-        let packetOperations = bundle.siteVisitOperationIds.compactMap(fetchOperation)
-        guard !packetOperations.contains(where: { $0.status == "inProgress" }) else {
-            return false
-        }
-
-        // DELETE on a visit row covers the visit packet only. Client, lead,
-        // deck, and loose-photo work remain individually recoverable; this
-        // avoids a single swipe erasing records outside the confirmation copy.
-        return deleteVisitPacket(siteVisitId: bundle.siteVisitId)
-    }
-
-    private func fetchOperation(id: UUID) -> SyncOperation? {
-        let target = id
-        let descriptor = FetchDescriptor<SyncOperation>(predicate: #Predicate<SyncOperation> { $0.id == target })
-        return (try? modelContext.fetch(descriptor))?.first
-    }
-
-    @discardableResult
-    private func deleteVisitPacket(siteVisitId: String) -> Bool {
-        let visitDescriptor = FetchDescriptor<SiteVisit>(
-            predicate: #Predicate<SiteVisit> { $0.id == siteVisitId }
-        )
-        guard let visit = (try? modelContext.fetch(visitDescriptor))?.first else {
-            return false
-        }
-        let artifactDescriptor = FetchDescriptor<SiteVisitCaptureArtifact>(
-            predicate: #Predicate<SiteVisitCaptureArtifact> { $0.siteVisitId == siteVisitId }
-        )
-        let answerDescriptor = FetchDescriptor<SiteVisitChecklistAnswer>(
-            predicate: #Predicate<SiteVisitChecklistAnswer> { $0.siteVisitId == siteVisitId }
-        )
-        let draftDescriptor = FetchDescriptor<SiteVisitIdentityDraft>(
-            predicate: #Predicate<SiteVisitIdentityDraft> { $0.siteVisitId == siteVisitId }
-        )
-        let artifacts = (try? modelContext.fetch(artifactDescriptor)) ?? []
-        let answers = (try? modelContext.fetch(answerDescriptor)) ?? []
-        let drafts = (try? modelContext.fetch(draftDescriptor)) ?? []
-        let coordinator = SiteVisitPersistenceCoordinator(
-            modelContext: modelContext,
-            companyId: visit.companyId
-        )
-        let wasNeverSynced = visit.lastSyncedAt == nil
-            && artifacts.allSatisfy { $0.lastSyncedAt == nil }
-            && answers.allSatisfy { $0.lastSyncedAt == nil }
-            && drafts.allSatisfy { $0.lastSyncedAt == nil }
-
-        do {
-            if wasNeverSynced {
-                try coordinator.hardDeleteNeverSyncedVisit(
-                    visit,
-                    artifacts: artifacts,
-                    answers: answers,
-                    drafts: drafts
-                )
-            } else {
-                try coordinator.commit {
-                    let deletedAt = Date()
-                    visit.status = .cancelled
-                    visit.deletedAt = deletedAt
-                    visit.updatedAt = deletedAt
-                    visit.needsSync = true
-                    for artifact in artifacts {
-                        artifact.deletedAt = deletedAt
-                        artifact.updatedAt = deletedAt
-                        artifact.needsSync = true
-                    }
-                    for answer in answers {
-                        answer.deletedAt = deletedAt
-                        answer.updatedAt = deletedAt
-                        answer.needsSync = true
-                    }
-                    for draft in drafts {
-                        draft.deletedAt = deletedAt
-                        draft.touch()
-                    }
-                }
-            }
-            return true
-        } catch {
-            print("[PENDING_WORK] Site-visit discard save failed: \(error)")
-            return false
-        }
+    /// Stops every queued send in a site-visit work unit. Touches no model row.
+    private func declineQueuedSends(_ bundle: SiteVisitBundle) -> Bool {
+        PendingWorkDecline.queuedSends(bundle, in: modelContext)
     }
 
     private func deletePhotos(ids: [String]) -> Bool {

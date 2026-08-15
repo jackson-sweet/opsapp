@@ -15,8 +15,13 @@ import Network
 
 // MARK: - ConnectivityManager
 
+/// Non-final by design. `state` is driven exclusively by NWPathMonitor and is
+/// `private(set)`, so no caller — tests included — can put this object into a
+/// chosen connectivity state. Tests that must exercise a code path behind a
+/// sync-decision guard subclass this and override the decision helper. Do not
+/// re-add `final`; it would make those paths untestable on an offline host.
 @MainActor
-final class ConnectivityManager: ObservableObject {
+class ConnectivityManager: ObservableObject {
 
     // MARK: Notifications
 

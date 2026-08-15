@@ -41,6 +41,8 @@ final class OutboundProcessor {
                 )
             let siteVisitReadyBeforePass =
                 readyPendingSiteVisitOperationIds(context: context)
+            let crossEntityReadyBeforePass =
+                readyCrossEntityOperationIds(context: context)
             await processPendingOperationsPass(
                 context: context,
                 connectivity: connectivity
@@ -54,6 +56,8 @@ final class OutboundProcessor {
                 )
             let siteVisitReadyAfterPass =
                 readyPendingSiteVisitOperationIds(context: context)
+            let crossEntityReadyAfterPass =
+                readyCrossEntityOperationIds(context: context)
             let shouldContinueMentionDrain = ProjectNoteMentionEditSync
                 .shouldContinueDrain(
                     readyBeforePass: mentionReadyBeforePass,
@@ -68,11 +72,22 @@ final class OutboundProcessor {
                     readyBeforePass: siteVisitReadyBeforePass,
                     readyAfterPass: siteVisitReadyAfterPass
                 )
+            let shouldContinueCrossEntityDrain = SyncCrossEntityDependency
+                .shouldContinueDrain(
+                    readyBeforePass: crossEntityReadyBeforePass,
+                    readyAfterPass: crossEntityReadyAfterPass
+                )
             shouldContinueDrain =
                 shouldContinueMentionDrain
                     || shouldContinueTaskTypeDrain
                     || shouldContinueSiteVisitDrain
-            if shouldContinueTaskTypeDrain {
+                    || shouldContinueCrossEntityDrain
+            if shouldContinueCrossEntityDrain {
+                print(
+                    "[OutboundProcessor] A referenced create landed — "
+                        + "continuing drain to push the work waiting on it"
+                )
+            } else if shouldContinueTaskTypeDrain {
                 print(
                     "[OutboundProcessor] Task-type ordering released "
                         + "more local work — continuing drain"
@@ -96,6 +111,10 @@ final class OutboundProcessor {
             print("[OutboundProcessor] Skipping — connectivity says do not sync")
             return
         }
+
+        // 0. Hand back work parked before the row it references existed. Runs
+        //    ahead of the fetch so a released op joins THIS pass.
+        releaseCrossEntityMisparkedOperations(context: context)
 
         // 1. Fetch pending operations sorted by priority ASC, createdAt ASC
         let pending: [SyncOperation]
@@ -169,6 +188,21 @@ final class OutboundProcessor {
                 return false
             }
 
+            // Cross-entity ordering: an op referencing a row whose own create
+            // has not reached the server cannot pass that server's RLS check,
+            // and the rejection classifies permanent — it would park forever.
+            // Hold it instead; the create releases it. See bug 06f68200.
+            if SyncCrossEntityDependency.isBlockedByUnresolvedCreate(
+                op,
+                in: allOperations
+            ) {
+                print(
+                    "[OutboundProcessor] Holding \(op.entityType) \(op.entityId) "
+                        + "behind an unsynced create it references"
+                )
+                return false
+            }
+
             return true
         }
 
@@ -220,6 +254,46 @@ final class OutboundProcessor {
             in: operations,
             now: now
         )
+    }
+
+    /// Cross-entity readiness snapshot. Predicate-free by necessity: a
+    /// `#Predicate` fetch of `SyncOperation` traps against a table that has
+    /// never held a row, and this runs on every pass.
+    private func readyCrossEntityOperationIds(
+        context: ModelContext
+    ) -> Set<UUID> {
+        let operations = (
+            try? context.fetch(FetchDescriptor<SyncOperation>())
+        ) ?? []
+        return SyncCrossEntityDependency.readyOperationIds(in: operations)
+    }
+
+    /// Returns ops parked by the cross-entity race whose blocking create has
+    /// since landed to `pending`. Single-shot per op by construction — see
+    /// `SyncCrossEntityDependency` for why this cannot loop.
+    private func releaseCrossEntityMisparkedOperations(context: ModelContext) {
+        let operations = (
+            try? context.fetch(FetchDescriptor<SyncOperation>())
+        ) ?? []
+        guard !operations.isEmpty else { return }
+        do {
+            var released: [SyncOperation] = []
+            try context.transaction {
+                released = SyncCrossEntityDependency.releaseParkedOperations(
+                    in: operations
+                )
+            }
+            if !released.isEmpty {
+                print(
+                    "[OutboundProcessor] Released \(released.count) operation(s) "
+                        + "parked before the create they reference landed"
+                )
+            }
+        } catch {
+            print(
+                "[OutboundProcessor] Failed to release cross-entity parked work: \(error)"
+            )
+        }
     }
 
     private func readyPendingSiteVisitOperationIds(

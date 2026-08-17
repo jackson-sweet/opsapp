@@ -869,6 +869,58 @@ enum OPSSchemaLegacySiteVisitV19 {
     }
 }
 
+/// Frozen `SiteVisit` shape as it shipped through V20–V22 — the full cloud
+/// projection, WITHOUT the V23 booking fields (`bookedAt`,
+/// `reminderLeadMinutes`). Every store written between the V20 cloud release
+/// and the booking build carries this exact fingerprint; keeping it byte-exact
+/// is what lets those installs open and lightweight-migrate to V23.
+/// Migration-fingerprint only — runtime code always uses the top-level model.
+enum OPSSchemaLegacySiteVisitV22 {
+    @Model
+    final class SiteVisit: Identifiable {
+        @Attribute(.unique) var id: String
+        var opportunityId: String?
+        var companyId: String
+        var projectId: String?
+        var projectRef: String?
+        var clientId: String?
+        var clientRef: String?
+        var status: SiteVisitStatus
+        var scheduledAt: Date?
+        var durationMinutes: Int = 60
+        var assigneeIds: [String] = []
+        var completedAt: Date?
+        var notes: String?
+        var internalNotes: String?
+        var measurements: String?
+        var photos: [String] = []
+        var address: String?
+        var assignedTo: String?
+        var calendarEventId: String?
+        var createdBy: String?
+        var createdAt: Date
+        var updatedAt: Date?
+        var deletedAt: Date?
+        var needsSync: Bool = false
+        var lastSyncedAt: Date?
+        var loggedActivityId: String?
+
+        init(
+            id: String = UUID().uuidString,
+            opportunityId: String? = nil,
+            companyId: String,
+            status: SiteVisitStatus = .scheduled,
+            createdAt: Date = Date()
+        ) {
+            self.id = id
+            self.opportunityId = opportunityId
+            self.companyId = companyId
+            self.status = status
+            self.createdAt = createdAt
+        }
+    }
+}
+
 /// Frozen `SiteVisitIdentityDraft` shape as it shipped through V12–V19. V20
 /// adds cloud deletion/sync bookkeeping and author provenance to the live
 /// model, while this type keeps installed-store fingerprints recognizable.
@@ -1455,7 +1507,20 @@ enum OPSSchemaCommon {
     ]
 
     /// SiteVisit from V20 onward — the live cloud-backed model.
+    /// SiteVisit as it shipped through V20–V22 — the cloud-sync shape, WITHOUT
+    /// the V23 booking fields. Frozen at `OPSSchemaLegacySiteVisitV22` because
+    /// the booking build widened the live class in place, which silently
+    /// shifted the V20–V22 fingerprints and made every installed store
+    /// unrecognizable (CoreData 134504 on device, 2026-08-17). The widened
+    /// live model begins at V23.
     static let v20SiteVisitModel: [any PersistentModel.Type] = [
+        OPSSchemaLegacySiteVisitV22.SiteVisit.self
+    ]
+
+    /// The live SiteVisit from V23 onward — adds the server-owned booking
+    /// discriminator (`bookedAt`) and per-booking reminder override
+    /// (`reminderLeadMinutes`).
+    static let v23SiteVisitModel: [any PersistentModel.Type] = [
         SiteVisit.self
     ]
 

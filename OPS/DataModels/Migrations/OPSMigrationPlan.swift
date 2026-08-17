@@ -169,7 +169,8 @@ enum OPSMigrationPlan: SchemaMigrationPlan {
             OPSSchemaV19.self,
             OPSSchemaV20.self,
             OPSSchemaV21.self,
-            OPSSchemaV22.self
+            OPSSchemaV22.self,
+            OPSSchemaV23.self
         ]
     }
 
@@ -195,9 +196,19 @@ enum OPSMigrationPlan: SchemaMigrationPlan {
             addOpportunityActionRequiredV18toV19,
             addSiteVisitCloudFieldsV19toV20,
             addActivityEmailIdentityV20toV21,
-            addActivitySiteVisitIdV21toV22
+            addActivitySiteVisitIdV21toV22,
+            addSiteVisitBookingFieldsV22toV23
         ]
     }
+
+    /// V22 → V23: additive server-owned booking fields on `SiteVisit`.
+    /// Existing rows receive nil for `bookedAt` and `reminderLeadMinutes`; the
+    /// frozen V20–V22 SiteVisit shape preserves those versions' checksums
+    /// while V23 registers the widened live model.
+    static let addSiteVisitBookingFieldsV22toV23 = MigrationStage.lightweight(
+        fromVersion: OPSSchemaV22.self,
+        toVersion: OPSSchemaV23.self
+    )
 
     /// V21 → V22: additive site-visit link on `Activity`. Existing rows receive
     /// nil for `siteVisitId`; the frozen V21 Activity shape preserves that

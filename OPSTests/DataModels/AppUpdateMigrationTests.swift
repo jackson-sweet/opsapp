@@ -69,16 +69,108 @@ final class AppUpdateMigrationTests: XCTestCase {
             contains(OPSSchemaLegacySiteVisitIdentityDraftV19.SiteVisitIdentityDraft.self, in: OPSSchemaV19.self),
             "V19 must register its frozen released identity-draft shape"
         )
-        XCTAssertTrue(contains(SiteVisit.self, in: OPSSchemaV20.self))
+        XCTAssertTrue(contains(OPSSchemaLegacySiteVisitV22.SiteVisit.self, in: OPSSchemaV20.self))
         XCTAssertTrue(contains(SiteVisitIdentityDraft.self, in: OPSSchemaV20.self))
         XCTAssertTrue(
-            contains(SiteVisit.self, in: OPSSchemaV22.self),
-            "The activity-feed widenings above V20 must carry the cloud SiteVisit forward"
+            contains(OPSSchemaLegacySiteVisitV22.SiteVisit.self, in: OPSSchemaV22.self),
+            "The activity-feed widenings above V20 must carry the frozen cloud SiteVisit forward"
         )
         XCTAssertTrue(
             contains(SiteVisitIdentityDraft.self, in: OPSSchemaV22.self),
             "The activity-feed widenings above V20 must carry the cloud identity draft forward"
         )
+    }
+
+    func testReleasedV22DoesNotReferenceWidenedLiveSiteVisit() {
+        XCTAssertFalse(
+            contains(SiteVisit.self, in: OPSSchemaV20.self),
+            "V20 must keep the SiteVisit shape released before the booking fields were added"
+        )
+        XCTAssertFalse(
+            contains(SiteVisit.self, in: OPSSchemaV21.self),
+            "V21 must keep the SiteVisit shape released before the booking fields were added"
+        )
+        XCTAssertFalse(
+            contains(SiteVisit.self, in: OPSSchemaV22.self),
+            "V22 must keep the SiteVisit shape released before the booking fields were added"
+        )
+        XCTAssertTrue(
+            contains(SiteVisit.self, in: OPSSchemaV23.self),
+            "V23 must register the widened live SiteVisit"
+        )
+        XCTAssertFalse(
+            contains(OPSSchemaLegacySiteVisitV22.SiteVisit.self, in: OPSSchemaV23.self),
+            "V23 must not register the frozen booking-era SiteVisit alongside the live one"
+        )
+    }
+
+    func testV22StoreMigratesToV23PreservingSiteVisitAndDefaultingBookingFields() throws {
+        try autoreleasepool {
+            let sourceSchema = Schema(versionedSchema: OPSSchemaV22.self)
+            let sourceConfiguration = ModelConfiguration(schema: sourceSchema, url: storeURL)
+            let sourceContainer = try ModelContainer(
+                for: sourceSchema,
+                configurations: sourceConfiguration
+            )
+            let context = ModelContext(sourceContainer)
+
+            let visit = OPSSchemaLegacySiteVisitV22.SiteVisit(
+                id: "visit-v22",
+                opportunityId: "lead-v22",
+                companyId: "company-1",
+                status: .inProgress,
+                createdAt: Date(timeIntervalSince1970: 2_400_000)
+            )
+            visit.scheduledAt = Date(timeIntervalSince1970: 2_500_000)
+            visit.durationMinutes = 90
+            visit.assigneeIds = ["user-jackson"]
+            visit.notes = "Deck measurements captured"
+            visit.photos = ["https://cdn.ops.test/v22-visit.jpg"]
+            visit.needsSync = true
+            visit.loggedActivityId = "act-v22"
+            context.insert(visit)
+            try context.save()
+        }
+
+        let targetSchema = Schema(versionedSchema: OPSSchemaV23.self)
+        let targetConfiguration = ModelConfiguration(schema: targetSchema, url: storeURL)
+        let migratedContainer = try ModelContainer(
+            for: targetSchema,
+            migrationPlan: OPSMigrationPlan.self,
+            configurations: targetConfiguration
+        )
+        let context = ModelContext(migratedContainer)
+
+        let visits = try context.fetch(FetchDescriptor<SiteVisit>())
+        XCTAssertEqual(visits.count, 1, "The V22 site visit must survive migration.")
+        let migrated = try XCTUnwrap(visits.first)
+        XCTAssertEqual(migrated.id, "visit-v22")
+        XCTAssertEqual(migrated.opportunityId, "lead-v22")
+        XCTAssertEqual(migrated.status, .inProgress)
+        XCTAssertEqual(migrated.durationMinutes, 90)
+        XCTAssertEqual(migrated.assigneeIds, ["user-jackson"])
+        XCTAssertEqual(migrated.notes, "Deck measurements captured")
+        XCTAssertEqual(migrated.photos, ["https://cdn.ops.test/v22-visit.jpg"])
+        XCTAssertTrue(migrated.needsSync)
+        XCTAssertEqual(migrated.loggedActivityId, "act-v22")
+        XCTAssertNil(migrated.bookedAt, "Pre-booking rows must default to nil bookedAt")
+        XCTAssertNil(
+            migrated.reminderLeadMinutes,
+            "Pre-booking rows must default to nil reminderLeadMinutes"
+        )
+        XCTAssertFalse(migrated.isBookedAppointment)
+
+        migrated.bookedAt = Date(timeIntervalSince1970: 2_600_000)
+        migrated.reminderLeadMinutes = 30
+        try context.save()
+
+        let rebound = try XCTUnwrap(
+            try context.fetch(FetchDescriptor<SiteVisit>()).first,
+            "The widened row must persist its booking fields"
+        )
+        XCTAssertEqual(rebound.bookedAt, Date(timeIntervalSince1970: 2_600_000))
+        XCTAssertEqual(rebound.reminderLeadMinutes, 30)
+        XCTAssertTrue(rebound.isBookedAppointment)
     }
 
     func testAppUpdateChangesHaveMigrationBoundaryAfterV15() {

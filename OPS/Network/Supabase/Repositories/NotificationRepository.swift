@@ -241,3 +241,28 @@ class NotificationRepository {
             .execute()
     }
 }
+
+// MARK: - Review-stack reporting
+
+extension NotificationRepository: ReviewStackSyncing {
+    /// Reports one review stack's count to `sync_review_stack_notification`,
+    /// the narrow actor-derived RPC that owns the rail semantics (threshold,
+    /// fixed copy, at-most-one-unread dedupe, below-threshold auto-clear).
+    /// Direct `notifications` inserts are revoked for app roles by the
+    /// 2026-07-15 creation hardening — creation must cross this boundary.
+    @discardableResult
+    func syncReviewStack(stack: String, count: Int) async throws -> String {
+        struct Params: Encodable {
+            let p_stack: String
+            let p_count: Int
+        }
+        let action: String = try await client
+            .rpc(
+                "sync_review_stack_notification",
+                params: Params(p_stack: stack, p_count: count)
+            )
+            .execute()
+            .value
+        return action
+    }
+}

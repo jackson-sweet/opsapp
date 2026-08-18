@@ -15,11 +15,13 @@
 //  operator is promised on one surface cannot drift from the other, or from the
 //  "Complete N …" copy that explains the lock.
 //
-//  Not to be confused with `ReviewThresholdService.threshold`, which decides
-//  when a review BACKLOG is loud enough to earn a rail notification. The two
-//  numbers coincide today by design, but they answer different questions
-//  (may I open this? / should I be told about this?) and are deliberately
-//  separate knobs — moving one must not silently move the other.
+//  Not to be confused with the rail-notification threshold, which decides
+//  when a review BACKLOG is loud enough to earn a rail notification — that
+//  knob is SERVER-owned since 2026-08-17 (`sync_review_stack_notification`;
+//  `ReviewThresholdService` only reports counts). The two numbers coincide
+//  today by design, but they answer different questions (may I open this? /
+//  should I be told about this?) and are deliberately separate knobs —
+//  moving one must not silently move the other.
 //
 
 import Foundation

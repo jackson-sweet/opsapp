@@ -2,67 +2,70 @@
 //  ReviewThresholdService.swift
 //  OPS
 //
-//  Evaluates the three review stacks (task review, payment review, unscheduled
-//  review) after each sync and surfaces a persistent rail notification whenever
-//  a stack crosses the threshold. When a stack drops back below the threshold,
-//  the matching unread notifications are marked as read so the rail clears
-//  automatically without user action.
+//  Reports the three review stacks (task review, payment review, unscheduled
+//  review) to the server after each sync. The SERVER owns the rail semantics:
+//  `sync_review_stack_notification` (SECURITY DEFINER, actor-derived) decides
+//  whether a persistent rail notification is created, kept, or auto-cleared,
+//  renders the fixed copy, and enforces at-most-one-unread-per-stack dedupe
+//  under an advisory lock. The client's whole job is to hand over honest
+//  counts — including zero, so a drained stack clears without user action.
 //
-//  Below 5 outstanding items a stack is manageable and stays silent; at 5+ it
-//  is worth interrupting the operator for.
+//  Why an RPC and not an insert: the 2026-07-15 notification-creation
+//  hardening revoked app-role INSERT on `notifications` (all creation crosses
+//  a narrow actor-derived RPC or a trusted service boundary). The legacy
+//  client-side insert died 42501 on every launch — silently, because push
+//  and rail are separate rails (bug 88a0a1e3).
 //
-//  This value happens to equal the FAB review-queue UNLOCK gate
-//  (`ReviewUnlockThresholds`), but the two are deliberately separate knobs
-//  answering different questions — "should I be told about this backlog?" here
-//  versus "have I done enough work to open this feature?" there. Their
-//  coincidence today is a design choice, not a dependency: retuning rail
-//  loudness must never move the unlock gate, or vice versa.
+//  The 5+ threshold lives in the RPC now. It still deliberately has nothing
+//  to do with the FAB review-queue UNLOCK gate (`ReviewUnlockThresholds`) —
+//  "should I be told about this backlog?" is answered server-side, "have I
+//  done enough work to open this feature?" stays a client design choice.
+//  Retuning rail loudness is a server-side edit and must never move the
+//  unlock gate, or vice versa.
 //
 
 import Foundation
 
+/// Seam for reporting one review stack's count to the server. Conformed to by
+/// `NotificationRepository` (the `sync_review_stack_notification` RPC); tests
+/// substitute a spy.
+protocol ReviewStackSyncing {
+    /// Returns the server's verdict: `created`, `kept`, `cleared`, or `noop`.
+    @discardableResult
+    func syncReviewStack(stack: String, count: Int) async throws -> String
+}
+
 enum ReviewThresholdService {
 
-    /// Stacks below this count are considered manageable and do not surface a
-    /// rail notification. Independent of `ReviewUnlockThresholds` — same number
-    /// today, different question (see the file header).
-    static let threshold: Int = 5
-
-    /// Notification types written into the `notifications` table. These are
-    /// distinct from the existing `task_review_overdue` / `payment_review_overdue`
-    /// types so the condensed threshold rail entries don't collide with the
-    /// older periodic reminder notifications.
-    private enum StackType: String {
-        case taskReview       = "task_review_stack"
-        case paymentReview    = "payment_review_stack"
+    /// Notification `type` values in the `notifications` table — the RPC
+    /// accepts exactly these three stack kinds. Distinct from the older
+    /// `task_review_overdue` / `payment_review_overdue` periodic reminder
+    /// types so the condensed threshold rail entries don't collide with them.
+    private enum StackType: String, CaseIterable {
+        case taskReview        = "task_review_stack"
+        case paymentReview     = "payment_review_stack"
         case unscheduledReview = "unscheduled_review_stack"
-
-        var deepLink: String {
-            switch self {
-            case .taskReview:        return "taskReview"
-            case .paymentReview:     return "paymentReview"
-            case .unscheduledReview: return "unscheduledReview"
-            }
-        }
-
-        var actionLabel: String { "REVIEW" }
     }
 
     // MARK: - Entry Point
 
-    /// Evaluate all three review stacks for the current user and upsert / clear
-    /// the matching rail notifications. Safe to call after every sync.
+    /// Compute all three review-stack counts from local state and report them
+    /// to the server, which surfaces / keeps / clears the matching rail
+    /// notifications. Safe to call after every sync.
     ///
-    /// - Parameter dataController: the app's `DataController`, used to read
-    ///   local SwiftData state for the current user. The data reads are
-    ///   synchronous and happen on the caller's thread; network upsert/clear
-    ///   runs on a background `Task`.
-    static func evaluate(dataController: DataController) {
-        guard let userId = dataController.currentUser?.id,
-              let companyId = dataController.currentUser?.companyId
-        else {
-            print("[REVIEW_STACK] Skipped — no current user / company")
-            return
+    /// The SwiftData reads are synchronous on the caller's thread; the RPC
+    /// calls run on a background `Task` (returned for tests to await —
+    /// production call sites discard it).
+    ///
+    /// - Returns: the reporting task, or `nil` when no operator is resolved.
+    @discardableResult
+    static func evaluate(
+        dataController: DataController,
+        syncer: ReviewStackSyncing = NotificationRepository.shared
+    ) -> Task<Void, Never>? {
+        guard dataController.currentUser != nil else {
+            print("[REVIEW_STACK] Skipped — no current user")
+            return nil
         }
 
         let taskReviewCount        = computeTaskReviewCount(dataController: dataController)
@@ -71,95 +74,38 @@ enum ReviewThresholdService {
 
         print("[REVIEW_STACK] counts — task=\(taskReviewCount) payment=\(paymentReviewCount) unscheduled=\(unscheduledReviewCount)")
 
-        let repo = NotificationRepository()
-
-        Task {
-            await syncStack(
-                stack: .taskReview,
-                count: taskReviewCount,
-                title: "TASKS PILING UP",
-                body: "\(taskReviewCount) past due. Close them out.",
-                userId: userId,
-                companyId: companyId,
-                repo: repo
-            )
-            await syncStack(
-                stack: .paymentReview,
-                count: paymentReviewCount,
-                title: "CLOSEOUTS WAITING",
-                body: "\(paymentReviewCount) completed. Review and close out.",
-                userId: userId,
-                companyId: companyId,
-                repo: repo
-            )
-            await syncStack(
-                stack: .unscheduledReview,
-                count: unscheduledReviewCount,
-                title: "LOOSE ENDS",
-                body: "\(unscheduledReviewCount) tasks with no date or crew.",
-                userId: userId,
-                companyId: companyId,
-                repo: repo
+        return Task {
+            await syncAll(
+                taskReviewCount: taskReviewCount,
+                paymentReviewCount: paymentReviewCount,
+                unscheduledReviewCount: unscheduledReviewCount,
+                syncer: syncer
             )
         }
     }
 
-    // MARK: - Upsert / Clear
-
-    /// Insert a persistent rail notification when `count ≥ threshold` and no
-    /// unread one of the same type already exists; otherwise mark any existing
-    /// unread notifications of this type as read so the rail clears.
-    private static func syncStack(
-        stack: StackType,
-        count: Int,
-        title: String,
-        body: String,
-        userId: String,
-        companyId: String,
-        repo: NotificationRepository
+    /// Report every stack, every evaluation. One stack's transport failure
+    /// must not starve the rest — each report is isolated.
+    static func syncAll(
+        taskReviewCount: Int,
+        paymentReviewCount: Int,
+        unscheduledReviewCount: Int,
+        syncer: ReviewStackSyncing
     ) async {
-        if count >= threshold {
-            // Dedup: only create a new row if the user doesn't already have
-            // one outstanding for this stack.
+        let reports: [(StackType, Int)] = [
+            (.taskReview, taskReviewCount),
+            (.paymentReview, paymentReviewCount),
+            (.unscheduledReview, unscheduledReviewCount),
+        ]
+        for (stack, count) in reports {
             do {
-                let alreadyShown = try await repo.hasUnreadOfType(type: stack.rawValue, userId: userId)
-                guard !alreadyShown else {
-                    print("[REVIEW_STACK] \(stack.rawValue) — existing unread, skipping insert")
-                    return
-                }
+                let action = try await syncer.syncReviewStack(
+                    stack: stack.rawValue,
+                    count: count
+                )
+                print("[REVIEW_STACK] \(stack.rawValue) — \(action) for count=\(count)")
             } catch {
-                print("[REVIEW_STACK] \(stack.rawValue) — dedup check failed: \(error). Proceeding.")
-            }
-
-            let dto = NotificationRepository.CreateNotificationDTO(
-                userId: userId,
-                companyId: companyId,
-                type: stack.rawValue,
-                title: title,
-                body: body,
-                projectId: nil,
-                noteId: nil,
-                expenseId: nil,
-                batchId: nil,
-                deepLinkType: stack.deepLink,
-                persistent: true,
-                actionUrl: "ops://\(stack.deepLink)",
-                actionLabel: stack.actionLabel
-            )
-
-            do {
-                try await repo.createNotification(dto)
-                print("[REVIEW_STACK] \(stack.rawValue) — created for count=\(count)")
-            } catch {
-                print("[REVIEW_STACK] \(stack.rawValue) — create failed: \(error)")
-            }
-        } else {
-            // Count dropped back below threshold — auto-clear any unread
-            // notifications of this stack type so the rail goes quiet.
-            do {
-                try await repo.markAllAsReadByType(type: stack.rawValue, userId: userId)
-            } catch {
-                print("[REVIEW_STACK] \(stack.rawValue) — auto-clear failed: \(error)")
+                print("[REVIEW_STACK] \(stack.rawValue) — sync failed: \(error)")
             }
         }
     }

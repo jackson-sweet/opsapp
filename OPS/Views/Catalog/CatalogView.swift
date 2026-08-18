@@ -190,23 +190,41 @@ struct CatalogView: View {
         }
     }
 
+    /// The tab's trailing header actions, in the order every other root tab
+    /// uses: context menu first, universal search always right-most.
+    private enum HeaderAction: String, CaseIterable, Identifiable {
+        case menu
+        case search
+
+        var id: String { rawValue }
+    }
+
+    /// CATALOG's title band.
+    ///
+    /// Bug f6bf6b38 — this tab rolled its own header: a 22pt `pageTitle`
+    /// instead of the 28pt screen title, a 16pt inset instead of 20pt, and an
+    /// intrinsic height that fell roughly ten points short of the band every
+    /// other root tab stands on. Moving between tabs visibly shifted the
+    /// chrome. It now uses the canonical `OPSScreenHeader` — shared band
+    /// height, inset, title voice, Dynamic Type growth, accessibility order —
+    /// with the same two-action trailing strip and the same 8pt gap to the
+    /// first content strip its sibling tabs carry.
     private var header: some View {
-        HStack(spacing: OPSStyle.Layout.spacing2) {
-            Text("CATALOG")
-                .font(OPSStyle.Typography.pageTitle)
-                .foregroundColor(OPSStyle.Colors.primaryText)
-            Spacer()
-            kebabButton
-            // Universal search — always the right-most trailing action. Uses the
-            // shared UniversalSearchButton so the search icon is identical on
-            // every tab (Catalog has a bespoke header but the search control is
-            // the same universal one).
-            UniversalSearchButton {
-                appState.showingUniversalSearch = true
+        OPSScreenHeader(
+            "CATALOG",
+            trailing: {
+                OPSHeaderActionStrip(HeaderAction.allCases) { action in
+                    switch action {
+                    case .menu:
+                        kebabButton
+                    case .search:
+                        UniversalSearchButton {
+                            appState.showingUniversalSearch = true
+                        }
+                    }
+                }
             }
-        }
-        .padding(.horizontal, OPSStyle.Layout.spacing3)
-        .padding(.top, OPSStyle.Layout.spacing2)
+        )
         .padding(.bottom, OPSStyle.Layout.spacing2)
     }
 
@@ -322,7 +340,7 @@ struct CatalogView: View {
                     }
                 }
             } label: {
-                Image(systemName: "ellipsis")
+                Image(systemName: OPSStyle.Icons.ellipsis)
                     .font(OPSStyle.Typography.bodyBold)
                     .foregroundColor(OPSStyle.Colors.primaryText)
                     .frame(width: OPSStyle.Layout.touchTargetMin, height: OPSStyle.Layout.touchTargetMin)

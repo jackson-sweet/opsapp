@@ -20,7 +20,7 @@ struct ScrollOffsetPreferenceKey: PreferenceKey {
     }
 }
 
-struct ScheduledTaskPreview: Identifiable, Equatable {
+struct ScheduledTaskPreview: Identifiable, Equatable, Sendable {
     let id: String
     let eventId: String
     let title: String
@@ -184,145 +184,47 @@ class MonthGridCache: ObservableObject {
 
     private let calendar = Calendar.current
 
+    /// Rebuild the month grid's badge cache.
+    ///
+    /// The task pass runs on the DataActor (bug 1bade6dd). It is an O(a year of
+    /// scheduled tasks) walk that faults `project`, `teamMembers` and `taskType` per
+    /// row, and it answers every `scheduledTasksDidChange` — so on the main thread it
+    /// froze the screen for seconds after each reschedule. The user-event pass stays
+    /// here: those rows are already in hand and carry nothing to fault.
     func loadEvents(from dataController: DataController, viewModel: CalendarViewModel, tutorialMode: Bool = false) {
         isLoading = true
 
         Task { @MainActor in
-            var cache: [String: [ScheduledTaskPreview]] = [:]
+            let cutoff = calendar.date(byAdding: .year, value: -1, to: Date()) ?? Date()
+            let scope = viewModel.currentTaskScope()
 
-            let oneYearAgo = calendar.date(byAdding: .year, value: -1, to: Date()) ?? Date()
-
-            var allTasks = dataController.getAllScheduledTasks(from: oneYearAgo)
-
-            // Tutorial mode only shows demo tasks
-            if tutorialMode {
-                allTasks = allTasks.filter { $0.id.hasPrefix("DEMO_") }
+            let taskPreviews: [String: [ScheduledTaskPreview]]
+            if let actor = dataController.dataActor {
+                taskPreviews = await actor.calendarMonthPreviews(
+                    scope: scope,
+                    since: cutoff,
+                    tutorialOnly: tutorialMode,
+                    calendar: calendar
+                )
+            } else {
+                // No actor yet (pre-login, or the DataActor flag is off): same
+                // builders, same order, on the main context.
+                var tasks = dataController.getAllScheduledTasks(from: cutoff)
+                if tutorialMode { tasks = tasks.filter { $0.id.hasPrefix("DEMO_") } }
+                taskPreviews = CalendarMonthPreviewBuilder.previews(
+                    tasks: viewModel.applyTaskFilters(to: tasks),
+                    calendar: calendar
+                )
             }
 
-            let filteredTasks = viewModel.applyTaskFilters(to: allTasks)
+            // Bug 1 — time off and personal events share the badge lane so they show
+            // up in the grid alongside project work.
+            let userEventPreviews = CalendarMonthPreviewBuilder.previews(
+                userEvents: viewModel.userEventsForCurrentPeriod.filter { $0.deletedAt == nil },
+                calendar: calendar
+            )
 
-            for task in filteredTasks {
-                guard let startDate = task.startDate else { continue }
-                let taskStart = calendar.startOfDay(for: startDate)
-                // If no end date, treat as single-day event
-                let endDate = task.endDate ?? startDate
-                let taskEnd = calendar.startOfDay(for: endDate)
-
-                let isMultiDay = !calendar.isDate(taskStart, inSameDayAs: taskEnd)
-                let daySpan = calendar.dateComponents([.day], from: taskStart, to: taskEnd).day ?? 0
-                let totalDays = daySpan + 1
-
-                var currentDate = taskStart
-                var dayOffset = 0
-
-                while currentDate <= taskEnd {
-                    let dateKey = formatDateKey(currentDate)
-                    let isFirst = dayOffset == 0
-                    let isLast = currentDate >= taskEnd
-
-                    let weekday = calendar.component(.weekday, from: currentDate)
-                    let isMonday = (weekday == 2)
-                    let isFirstInWeek = isFirst || isMonday
-
-                    let displayColor = task.effectiveColor
-
-                    // Bug 087bfaf8 — Show project title as the primary label on
-                    // month-grid badges so users can identify the job at a glance.
-                    // Falls back to the task's own display title when there's no
-                    // associated project (rare, but possible in tutorial demo data).
-                    let primaryLabel = task.project?.title.isEmpty == false
-                        ? task.project!.title
-                        : task.displayTitle
-
-                    let preview = ScheduledTaskPreview(
-                        id: "\(task.id)_\(dayOffset)",
-                        eventId: task.id,
-                        title: primaryLabel,
-                        color: displayColor,
-                        startDate: taskStart,
-                        endDate: taskEnd,
-                        isMultiDay: isMultiDay,
-                        dayOffset: dayOffset,
-                        totalDays: totalDays,
-                        isFirst: isFirst,
-                        isLast: isLast,
-                        isFirstInWeek: isFirstInWeek,
-                        taskTypeDisplay: task.taskType?.display
-                    )
-
-                    if cache[dateKey] == nil {
-                        cache[dateKey] = []
-                    }
-                    cache[dateKey]?.append(preview)
-
-                    guard let nextDate = calendar.date(byAdding: .day, value: 1, to: currentDate) else { break }
-                    currentDate = nextDate
-                    dayOffset += 1
-                }
-            }
-
-            // Bug 1 — Include user events (time off + personal) alongside
-            // project tasks so they show up in the month grid. We reuse the
-            // same ScheduledTaskPreview shape with a userEvent: prefix on the
-            // eventId so the day sheet can route taps differently if needed.
-            let userEvents = viewModel.userEventsForCurrentPeriod.filter { $0.deletedAt == nil }
-            for event in userEvents {
-                let evStart = calendar.startOfDay(for: event.startDate)
-                let evEnd = calendar.startOfDay(for: event.endDate)
-                let isMultiDay = !calendar.isDate(evStart, inSameDayAs: evEnd)
-                let daySpan = calendar.dateComponents([.day], from: evStart, to: evEnd).day ?? 0
-                let totalDays = max(daySpan + 1, 1)
-
-                // Time off uses the tan event lane; custom events use a neutral
-                // lane so they do not read as work/task badges.
-                let displayColor = event.isTimeOff
-                    ? "#C4A868"  // amber
-                    : "#7A7A7A"  // neutral grey
-
-                let label = event.title.isEmpty
-                    ? (event.isTimeOff ? "Time Off" : "Custom")
-                    : event.title
-
-                var currentDate = evStart
-                var dayOffset = 0
-                while currentDate <= evEnd {
-                    let dateKey = formatDateKey(currentDate)
-                    let isFirst = dayOffset == 0
-                    let isLast = currentDate >= evEnd
-                    let weekday = calendar.component(.weekday, from: currentDate)
-                    let isMonday = (weekday == 2)
-                    let isFirstInWeek = isFirst || isMonday
-
-                    let preview = ScheduledTaskPreview(
-                        id: "userevent_\(event.id)_\(dayOffset)",
-                        eventId: "userevent:\(event.id)",
-                        title: label,
-                        color: displayColor,
-                        startDate: evStart,
-                        endDate: evEnd,
-                        isMultiDay: isMultiDay,
-                        dayOffset: dayOffset,
-                        totalDays: totalDays,
-                        isFirst: isFirst,
-                        isLast: isLast,
-                        isFirstInWeek: isFirstInWeek,
-                        taskTypeDisplay: event.isTimeOff ? "TIME OFF" : "CUSTOM"
-                    )
-
-                    if cache[dateKey] == nil { cache[dateKey] = [] }
-                    cache[dateKey]?.append(preview)
-
-                    guard let nextDate = calendar.date(byAdding: .day, value: 1, to: currentDate) else { break }
-                    currentDate = nextDate
-                    dayOffset += 1
-                }
-            }
-
-            for key in cache.keys {
-                cache[key] = cache[key]?.sorted { $0.startDate < $1.startDate }
-            }
-
-            eventsByDate = cache
+            eventsByDate = CalendarMonthPreviewBuilder.merged(taskPreviews, userEventPreviews)
             isLoading = false
         }
     }
@@ -332,10 +234,10 @@ class MonthGridCache: ObservableObject {
         return eventsByDate[dateKey] ?? []
     }
 
+    /// One shared formatter. `events(for:)` runs per day cell on every grid render,
+    /// and building a DateFormatter inside it was pure per-cell overhead.
     private func formatDateKey(_ date: Date) -> String {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "yyyy-MM-dd"
-        return formatter.string(from: date)
+        CalendarDayKey.key(for: date)
     }
 }
 
@@ -883,11 +785,15 @@ struct MonthGridView: View {
                                                     }
                                                 }
 
-                                                // Badges sit above the day cells; during an active drag
-                                                // disable their hit-testing so drops always reach the
-                                                // MonthDayCell drop targets beneath.
+                                                // Badges sit above the day cells; during a drag they must
+                                                // stand aside so drops always reach the MonthDayCell drop
+                                                // targets beneath. Gated on `isDragInFlight`, not on
+                                                // `active` (bug 4baf3104): `active` used to be cleared
+                                                // mid-drag by the drag preview's teardown, which handed
+                                                // the badges their hit-testing back and let them swallow
+                                                // the drop — the drag then did nothing at all.
                                                 eventBars(weekSpans, dates: dates, dayWidth: dayWidth)
-                                                    .allowsHitTesting(dragSession.active == nil)
+                                                    .allowsHitTesting(!dragSession.isDragInFlight)
 
                                                 ForEach(moreIndicators) { indicator in
                                                     MoreEventsIndicatorView(indicator: indicator, cellHeight: cellHeight, dayWidth: dayWidth)

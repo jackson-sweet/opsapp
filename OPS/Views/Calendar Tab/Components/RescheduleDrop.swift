@@ -188,23 +188,27 @@ struct RescheduleDropDelegate: DropDelegate {
     }
 
     func dropUpdated(info: DropInfo) -> DropProposal? {
-        refreshHover(from: info)
+        // No item-provider load here. `dropUpdated` fires on every drag-move frame,
+        // and loading the Transferable on each one put an async decode + main-actor
+        // hop on the drag's hot path for state `updateHover` already re-arms
+        // synchronously (bug 4baf3104).
+        refreshHover()
         // The whole point of the custom delegate: a move, not a copy.
         return DropProposal(operation: .move)
     }
 
     func dropEntered(info: DropInfo) {
-        let changed = refreshHover(from: info)
+        let changed = refreshHover()
         if changed { UISelectionFeedbackGenerator().selectionChanged() }
+        // Once per cell entry, reconcile against what the system says is in flight.
+        RescheduleDropPayloadAdoption.adopt(from: info, into: session)
     }
 
     @discardableResult
-    private func refreshHover(from info: DropInfo) -> Bool {
+    private func refreshHover() -> Bool {
         let cal = Calendar.current
         let source = ScheduleDragHoverSource.dayCell(for: day, calendar: cal)
-        let changed = session.refreshHover(day: day, source: source, calendar: cal)
-        restoreActive(from: info, whileHovering: source)
-        return changed
+        return session.refreshHover(day: day, source: source, calendar: cal)
     }
 
     func dropExited(info: DropInfo) {
@@ -223,13 +227,18 @@ struct RescheduleDropDelegate: DropDelegate {
         }
         return true
     }
+}
 
-    private func restoreActive(from info: DropInfo, whileHovering source: ScheduleDragHoverSource) {
+/// Pulls the in-flight payload out of a `DropInfo` and hands it to the session.
+/// Shared by both drop delegates so the "what is actually being dragged" answer is
+/// resolved one way, in one place, and only where it is bounded — on target entry.
+enum RescheduleDropPayloadAdoption {
+    static func adopt(from info: DropInfo, into session: ScheduleDragSession) {
         guard let provider = info.itemProviders(for: [.opsRescheduleItem]).first else { return }
         _ = provider.loadTransferable(type: RescheduleDragPayload.self) { result in
             guard case .success(let payload) = result else { return }
             Task { @MainActor in
-                session.restoreActive(payload, whileHovering: source)
+                session.adoptDraggedPayload(payload)
             }
         }
     }
@@ -246,17 +255,15 @@ extension View {
     /// Make an event view draggable for reschedule when `payload` is non-nil
     /// (i.e. the item is permitted to move). Coexists with an existing context menu:
     /// long-press shows the menu, long-press + move lifts into a drag (native iOS).
-    /// The drag preview's `onAppear` is the reliable drag-start hook that arms the
-    /// shared session so day cells can project the span during hover.
+    ///
+    /// The preview's lifecycle is a HINT, not the source of truth (bug 4baf3104).
+    /// `onAppear` arms the session early so the first hover already knows the span;
+    /// `onDisappear` only *proposes* an end, which the session ignores while any
+    /// target owns hover. Nothing visual depends on the preview still being mounted.
     @ViewBuilder
     func reschedulable(_ payload: RescheduleDragPayload?, session: ScheduleDragSession?) -> some View {
         if let payload, let session {
             self.draggable(payload) {
-                // The drag preview is created at lift and torn down when the drag
-                // ENDS — commit or cancel. onAppear arms the session; onDisappear is
-                // the only reliable "drag ended" hook SwiftUI gives `.draggable`.
-                // Cleanup is deferred so native drop targets can keep their highlight
-                // through the payload-backed drop delegate lifecycle.
                 RescheduleDragPreview(payload: payload)
                     .onAppear { session.begin(payload) }
                     .onDisappear { session.endWhenOffGrid() }
@@ -311,9 +318,13 @@ struct RescheduleTargetBanner: View {
 
     var body: some View {
         Group {
-            if let payload = session.active, let start = session.hoveredDate {
+            // Hover alone drives this, for the same reason the day-cell highlight
+            // does (bug 4baf3104): the operator must see where the job lands the
+            // instant the finger is over a day, whatever state the drag preview
+            // happens to be in.
+            if let start = session.hoveredDate {
                 let cal = Calendar.current
-                let end = cal.date(byAdding: .day, value: max(payload.durationDays - 1, 0), to: start) ?? start
+                let end = cal.date(byAdding: .day, value: session.projectedSpanDays - 1, to: start) ?? start
                 let single = cal.isDate(start, inSameDayAs: end)
                 HStack(spacing: OPSStyle.Layout.spacing2) {
                     Image(systemName: "arrow.down.to.line")

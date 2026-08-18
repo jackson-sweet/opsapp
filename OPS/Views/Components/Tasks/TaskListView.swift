@@ -126,6 +126,7 @@ struct TaskRow: View {
     @Query private var users: [User]
     @State private var showingActions = false
     @State private var showingStatusPicker = false
+    @State private var showingTypePicker = false
     @State private var showingTeamPicker = false
     @State private var showingScheduler = false
     @State private var showingDeleteConfirmation = false
@@ -156,6 +157,16 @@ struct TaskRow: View {
             Button("Change Status") {
                 showingStatusPicker = true
             }
+            // Item f15fff4f — same action, same position, same gate as the kanban
+            // card's menu: a mis-typed job is spotted wherever the operator is
+            // looking, so the fix lives on every surface that shows the task.
+            // `canEditFields` is `tasks.edit` scoped to this task's assignees —
+            // narrower than the unscoped `canModify` the other rows use.
+            if task.canEditFields {
+                Button("Change Type") {
+                    showingTypePicker = true
+                }
+            }
             if canModify {
                 Button("Change Team") {
                     showingTeamPicker = true
@@ -178,6 +189,15 @@ struct TaskRow: View {
         .sheet(isPresented: $showingStatusPicker) {
             TaskStatusChangeSheet(task: task)
                 .environmentObject(dataController)
+        }
+        .sheet(isPresented: $showingTypePicker) {
+            TaskTypePickerSheet(
+                selectedTaskTypeId: task.taskTypeId.isEmpty ? nil : task.taskTypeId,
+                onSelect: { picked in
+                    TaskTypeChange.commit(task: task, to: picked, dataController: dataController)
+                }
+            )
+            .environmentObject(dataController)
         }
         .sheet(isPresented: $showingTeamPicker) {
             TaskTeamChangeSheet(task: task)

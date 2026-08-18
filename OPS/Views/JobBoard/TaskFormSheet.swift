@@ -318,12 +318,13 @@ struct TaskFormSheet: View {
         return selectableTaskTypes.first { $0.id == id }
     }
 
+    /// Bug b79abf79 — the picker leads with the most recently touched job.
     private var filteredProjects: [Project] {
         if projectSearchText.isEmpty {
-            return availableProjects.sorted(by: { $0.title < $1.title })
+            return ProjectRecency.pickerOrdered(availableProjects)
         }
         let q = projectSearchText
-        return availableProjects.filter { project in
+        return ProjectRecency.pickerOrdered(availableProjects.filter { project in
             if project.title.localizedCaseInsensitiveContains(q) { return true }
             if project.effectiveClientName.localizedCaseInsensitiveContains(q) { return true }
             // Match on sub-client contacts so the task picker surfaces the
@@ -337,7 +338,7 @@ struct TaskFormSheet: View {
                 }
             }
             return false
-        }.sorted(by: { $0.title < $1.title })
+        })
     }
 
     // Regular init for ProjectTask mode.

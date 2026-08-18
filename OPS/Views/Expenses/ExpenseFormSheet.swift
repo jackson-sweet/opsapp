@@ -1768,8 +1768,9 @@ private struct ExpenseProjectPickerSheet: View {
     @Environment(\.dismiss) private var dismiss
     @State private var searchText = ""
 
+    /// Bug b79abf79 — the picker leads with the most recently touched job.
     private var filteredProjects: [Project] {
-        let sorted = allProjects.sorted { $0.title < $1.title }
+        let sorted = ProjectRecency.pickerOrdered(allProjects)
         if searchText.isEmpty { return sorted }
         return sorted.filter {
             $0.title.localizedCaseInsensitiveContains(searchText) ||

@@ -51,6 +51,16 @@ struct LeadDetailView: View {
     /// Routes a site-visit handoff to conversion for the lead currently attached
     /// to the visit. This can differ from `opportunity` after reassignment.
     var onConvertLead: (Opportunity) -> Void = { _ in }
+    /// Opens the linked project from THIS host instead of the app-wide route.
+    ///
+    /// The app-wide route presents the project sheet from `MainTabView`, which
+    /// sits below any modal. When this dossier is reached from inside a sheet —
+    /// the client profile's LEADS section is the one such host today — that
+    /// route would put the project behind the sheet the operator is standing
+    /// in (the mirror of bug 80dab840). Hosts in that position pass a closure
+    /// and present the project themselves; the LEADS tab leaves it nil and
+    /// keeps the app-wide route.
+    var onOpenProject: ((String) -> Void)? = nil
 
     @StateObject private var vm: LeadDetailViewModel
     @StateObject private var assignmentViewModel: LeadAssignmentViewModel
@@ -113,13 +123,15 @@ struct LeadDetailView: View {
         onMarkLost: @escaping () -> Void = {},
         onEdit:     @escaping () -> Void = {},
         onMarkWon:  @escaping () -> Void = {},
-        onConvertLead: @escaping (Opportunity) -> Void = { _ in }
+        onConvertLead: @escaping (Opportunity) -> Void = { _ in },
+        onOpenProject: ((String) -> Void)? = nil
     ) {
         self.opportunity = opportunity
         self.onMarkLost = onMarkLost
         self.onEdit = onEdit
         self.onMarkWon = onMarkWon
         self.onConvertLead = onConvertLead
+        self.onOpenProject = onOpenProject
         _vm = StateObject(wrappedValue: LeadDetailViewModel(
             opportunityId: opportunity.id,
             companyId: opportunity.companyId,
@@ -136,6 +148,22 @@ struct LeadDetailView: View {
     }
     private var canConvert: Bool {
         leadAccessPolicy.can(.convert, assignedTo: opportunity.assignedTo)
+    }
+    /// Amending a logged note is an edit of this lead, so it rides the lead's
+    /// own edit scope — the same granular check every other correction on this
+    /// screen uses, never a role name. Nil for a viewer, which removes the
+    /// affordance rather than showing one that refuses (bug f740400e).
+    private var noteEditing: LeadNoteEditing? {
+        guard canEdit else { return nil }
+        return LeadNoteEditing { activity, amended in
+            do {
+                try await vm.updateNoteBody(activity: activity, body: amended)
+                UINotificationFeedbackGenerator().notificationOccurred(.success)
+                return true
+            } catch {
+                return false
+            }
+        }
     }
     /// The lead's open booking, resolved when the workflow menu renders so
     /// its second entry always states the current reality.
@@ -308,7 +336,8 @@ struct LeadDetailView: View {
                                         activities: vm.activities,
                                         transitions: vm.stageTransitions,
                                         opportunity: opportunity,
-                                        onViewAll: { showingActivityHistory = true }
+                                        onViewAll: { showingActivityHistory = true },
+                                        noteEditing: noteEditing
                                     )
                                     .padding(.top, 22)
                                 }
@@ -372,7 +401,8 @@ struct LeadDetailView: View {
             LeadActivityHistoryView(
                 activities: vm.activities,
                 transitions: vm.stageTransitions,
-                opportunity: opportunity
+                opportunity: opportunity,
+                noteEditing: noteEditing
             )
         }
         // DECK row → the drawing on the whole display. A push, not a cover: the
@@ -869,10 +899,14 @@ struct LeadDetailView: View {
     }
 
     /// PROJECT row tap — the app-wide project route (same channel Spotlight
-    /// and notifications use).
+    /// and notifications use), unless the host supplied its own.
     private func openLinkedProject() {
         guard let pid = opportunity.projectId, !pid.isEmpty else { return }
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        if let onOpenProject {
+            onOpenProject(pid)
+            return
+        }
         NotificationCenter.default.post(
             name: Notification.Name("OpenProjectDetails"),
             object: nil,

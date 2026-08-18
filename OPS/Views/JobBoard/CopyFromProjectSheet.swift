@@ -52,15 +52,10 @@ struct CopyFromProjectSheet: View {
                 $0.effectiveClientName.localizedCaseInsensitiveContains(searchText)
             }
         }
-        // Sort by most recently synced (or title alphabetically if no sync date)
-        return baseProjects.sorted { (project1: Project, project2: Project) -> Bool in
-            let date1 = project1.lastSyncedAt ?? Date.distantPast
-            let date2 = project2.lastSyncedAt ?? Date.distantPast
-            if date1 == date2 {
-                return project1.title.localizedCompare(project2.title) == .orderedAscending
-            }
-            return date1 > date2
-        }
+        // Most recently touched job first — bug b79abf79. This used to sort on
+        // `lastSyncedAt`, which records when this device last talked to the
+        // server, not when the work actually changed.
+        return ProjectRecency.pickerOrdered(baseProjects)
     }
 
     private var availableFields: [(id: String, label: String, hasData: Bool)] {

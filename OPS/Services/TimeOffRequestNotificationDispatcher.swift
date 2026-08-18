@@ -9,11 +9,14 @@
 //  revoked app-role INSERT. The rails went dead while the pushes kept firing,
 //  so approvers got a buzz pointing at nothing.
 //
-//  The server now owns the whole rail. Both sheets write the
-//  `calendar_user_events` row first, then hand this dispatcher the event id:
-//  `notify_time_off_booked` and `notify_time_off_requested` read that row for
-//  the target, the requester (the actor, by definition), and the approver set,
-//  render the copy, and dedupe per event. Nothing here computes a recipient.
+//  The server now owns the whole rail. The durable calendar-event queue
+//  (`CalendarUserEventOutboundSync`, bug ef5a69e6) delivers the
+//  `calendar_user_events` row first and hands this dispatcher the event id
+//  from the confirmed create: `notify_time_off_booked` and
+//  `notify_time_off_requested` read that row for the target, the requester
+//  (the actor, by definition), and the approver set, render the copy, and
+//  dedupe per event. Nothing here computes a recipient, and the row provably
+//  exists before anyone is told about it.
 //
 //  What stays client-side is the push, and only the push. Its copy is built by
 //  the sheet that knows the wording, and it is aimed at exactly the ids the

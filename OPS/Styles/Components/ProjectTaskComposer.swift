@@ -132,12 +132,15 @@ struct ProjectTaskComposer: View {
 
     /// `availableTaskTypes` intentionally remains the raw cache so existing
     /// rows can resolve a retained deleted type's historical name and color.
-    /// Every option-producing path uses this active same-company subset.
+    /// Every option-producing path uses this active same-company subset,
+    /// grouped by colour so like chips cluster in the picker (bug bc9c2e83).
     private var selectableTaskTypes: [TaskType] {
         guard let companyId, !companyId.isEmpty else { return [] }
-        return TaskTypeSelectionPolicy.selectableTaskTypes(
-            from: availableTaskTypes,
-            companyId: companyId
+        return TaskTypeSelectionPolicy.colorOrdered(
+            TaskTypeSelectionPolicy.selectableTaskTypes(
+                from: availableTaskTypes,
+                companyId: companyId
+            )
         )
     }
 

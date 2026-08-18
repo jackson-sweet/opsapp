@@ -230,6 +230,34 @@ struct DraftSnapshot: Identifiable, Equatable {
     }
 }
 
+/// A site visit's delivery state, reduced to the one question recovery asks:
+/// is this capture finished and on the server? Nothing else about a visit
+/// belongs on a screen about work that has NOT arrived.
+struct VisitDeliverySnapshot: Identifiable, Equatable {
+    let id: String            // lowercased site visit id
+    let isCompleted: Bool
+    let needsSync: Bool
+
+    /// Delivered = the operator finished the visit and the row is not waiting
+    /// to be pushed. A finished-but-dirty visit still has work in flight and
+    /// keeps its place on the screen.
+    var isDelivered: Bool { isCompleted && !needsSync }
+
+    init(id: String, isCompleted: Bool, needsSync: Bool) {
+        self.id = id.lowercased()
+        self.isCompleted = isCompleted
+        self.needsSync = needsSync
+    }
+
+    init(from visit: SiteVisit) {
+        self.init(
+            id: visit.id,
+            isCompleted: visit.status == .completed,
+            needsSync: visit.needsSync
+        )
+    }
+}
+
 /// A site-visit capture artifact — used only to resolve which deck designs were
 /// drawn on a visit, so a draft's deck ops can join its bundle.
 struct ArtifactSnapshot: Identifiable, Equatable {
@@ -600,8 +628,12 @@ extension RecoveryInventory {
         answers: [ChecklistAnswerSnapshot] = [],
         orphans: [OrphanDesignSnapshot],
         quarantines: [QuarantinedSiteVisitSnapshot] = [],
+        visits: [VisitDeliverySnapshot] = [],
         now: Date
     ) -> RecoveryInventory {
+        let deliveredVisitIds = Set(
+            visits.filter(\.isDelivered).map(\.id)
+        )
         // 1 · Only these statuses are live work. `completed` (and anything else) is
         //     ignored entirely.
         let consideredOps = ops.filter { isConsidered(status: $0.status) }
@@ -727,13 +759,20 @@ extension RecoveryInventory {
                 )
                 let item = RecoveryItem.bundle(bundle)
                 if tone >= .attention { attention.append(item) } else { sending.append(item) }
-            } else if draft.opportunityId == nil && draft.lastCommittedAt == nil {
-                // 4 · No live members, never bound, never committed → an abandoned
-                //     capture the operator can resume.
+            } else if draft.opportunityId == nil,
+                      draft.lastCommittedAt == nil,
+                      !deliveredVisitIds.contains(normalizedSiteVisitId) {
+                // 4 · No live members, never bound, never committed, and the
+                //     visit itself never finished → an abandoned capture the
+                //     operator can resume.
                 draftItems.append(.draft(draft))
             }
             // else: a bound / committed draft with nothing outstanding is healthy —
-            // omit it entirely.
+            // omit it entirely. So is an unbound draft whose visit is COMPLETED
+            // and already on the server: that capture was delivered, and calling
+            // it "not sent yet" is what made an operator re-run a visit they had
+            // already saved (bug fe497fb9). Never bound to a lead is an identity
+            // gap, not a sync gap, and this screen is about sync.
         }
 
         // A committed packet can outlive its identity draft while media or the
@@ -1137,6 +1176,20 @@ extension RecoveryInventory {
         let artifacts = captures.artifacts
         let answers = captures.answers
 
+        // Visit delivery state for the drafts on screen. Predicate-free and
+        // filtered in Swift for the same reason the capture fetches are: stored
+        // id casing varies with which side wrote the row, so an id match cannot
+        // ride in a #Predicate. Skipped entirely when there are no drafts.
+        let draftVisitIds = Set(scopedDraftModels.map { $0.siteVisitId.lowercased() })
+        let visits: [VisitDeliverySnapshot] = draftVisitIds.isEmpty
+            ? []
+            : ((try? modelContext.fetch(FetchDescriptor<SiteVisit>())) ?? [])
+                .filter {
+                    $0.companyId.lowercased() == activeCompanyId
+                        && draftVisitIds.contains($0.id.lowercased())
+                }
+                .map(VisitDeliverySnapshot.init(from:))
+
         let quarantines = SiteVisitRecoveryVault.shared.summaries(
             userId: activeUserId,
             companyId: activeCompanyId
@@ -1185,6 +1238,7 @@ extension RecoveryInventory {
             answers: answers,
             orphans: orphans,
             quarantines: quarantines,
+            visits: visits,
             now: now
         )
     }

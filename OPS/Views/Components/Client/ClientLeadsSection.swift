@@ -25,6 +25,10 @@ struct ClientLeadsSection: View {
     /// repository load so the section renders deterministically in snapshots,
     /// mirroring the VinylOrders board's preview seam.
     var previewLeads: [Opportunity]? = nil
+    /// Opens a lead's linked project. This section always lives inside the
+    /// client profile, which is presented modally, so the app-wide project
+    /// route would land the project BEHIND that sheet. The host presents it.
+    var onOpenProject: ((String) -> Void)? = nil
 
     @EnvironmentObject private var dataController: DataController
     @EnvironmentObject private var permissionStore: PermissionStore
@@ -62,7 +66,8 @@ struct ClientLeadsSection: View {
                 onMarkLost: { activeSheet = .lost(lead) },
                 onEdit:     { activeSheet = .edit(lead) },
                 onMarkWon:  { activeSheet = .convert(lead) },
-                onConvertLead: { converted in activeSheet = .convert(converted) }
+                onConvertLead: { converted in activeSheet = .convert(converted) },
+                onOpenProject: onOpenProject
             )
             .environmentObject(dataController)
             .environmentObject(permissionStore)

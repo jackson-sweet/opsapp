@@ -109,6 +109,7 @@ struct UniversalJobBoardCard: View {
         case scheduler
         case taskPicker           // project reschedule with >1 schedulable task
         case statusPicker
+        case typePicker           // task → change which task type it is
         case teamPicker
         case clientDeletion
         case share(ProjectShareItemSource)
@@ -122,6 +123,7 @@ struct UniversalJobBoardCard: View {
             case .scheduler:            return "scheduler"
             case .taskPicker:           return "taskPicker"
             case .statusPicker:         return "statusPicker"
+            case .typePicker:           return "typePicker"
             case .teamPicker:           return "teamPicker"
             case .clientDeletion:       return "clientDeletion"
             case .share:                return "share"
@@ -201,6 +203,20 @@ struct UniversalJobBoardCard: View {
                     .environmentObject(dataController)
             case .client:
                 EmptyView()
+            }
+
+        case .typePicker:
+            // Item f15fff4f — the same picker the task detail sheet raises, so
+            // a type change made from the board and one made from the sheet are
+            // literally the same flow.
+            if case .task(let task) = cardType {
+                TaskTypePickerSheet(
+                    selectedTaskTypeId: task.taskTypeId.isEmpty ? nil : task.taskTypeId,
+                    onSelect: { picked in
+                        changeTaskType(task: task, to: picked)
+                    }
+                )
+                .environmentObject(dataController)
             }
 
         case .teamPicker:
@@ -1079,6 +1095,16 @@ struct UniversalJobBoardCard: View {
                 activeSheet = .statusPicker
             }
 
+            // Item f15fff4f — the board is where a mis-typed job is spotted, so
+            // the fix belongs here and not only inside the task sheet. Gated on
+            // `tasks.edit` scoped to this task's assignees, exactly as the task
+            // detail sheet's type eyebrow is.
+            if case .task(let task) = cardType, task.canEditFields {
+                Button("Change Type") {
+                    activeSheet = .typePicker
+                }
+            }
+
             if canModify {
                 Button("Change Team") {
                     activeSheet = .teamPicker
@@ -1090,6 +1116,39 @@ struct UniversalJobBoardCard: View {
             }
 
             Button("Cancel", role: .cancel) {}
+        }
+    }
+
+    /// Commit a task-type change picked from the card's long-press menu.
+    ///
+    /// Routed through `DataController.updateTaskFields` rather than a bare
+    /// `modelContext.save()` so the edit is queued for sync instead of being
+    /// stranded on this device, and the calendars are told to repaint because
+    /// the type drives every job's colour and title.
+    private func changeTaskType(task: ProjectTask, to picked: TaskType) {
+        guard picked.id != task.taskTypeId else { return }
+        let taskId = task.id
+        let newTypeId = picked.id
+
+        UINotificationFeedbackGenerator().notificationOccurred(.success)
+        ToastCenter.shared.present(Feedback.Task.typeUpdated)
+
+        // Deferred off the picker's dismiss critical path for the same reason
+        // ProjectDetails defers its type commit: `updateTaskFields` saves the
+        // model context, and that notification cascade landing mid sheet
+        // animation is what tore down the host view in bugs 0aa825fe / 62481022.
+        DispatchQueue.main.async {
+            Task {
+                do {
+                    try await dataController.updateTaskFields(
+                        taskId: taskId,
+                        fields: ["task_type_id": .string(newTypeId)]
+                    )
+                    dataController.notifyReviewSourcesChanged()
+                } catch {
+                    print("[JOB_BOARD_CARD] Task type update failed: \(error)")
+                }
+            }
         }
     }
 

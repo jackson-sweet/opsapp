@@ -16,6 +16,23 @@
 import Foundation
 import Supabase
 
+/// Refusals this repository makes on its own, before any round trip.
+enum ActivityRepositoryError: LocalizedError, Equatable {
+    /// Only a note may be amended — see `updateNoteBody`.
+    case onlyNotesAreEditable
+    /// A note with no text is not a note.
+    case emptyNote
+
+    var errorDescription: String? {
+        switch self {
+        case .onlyNotesAreEditable:
+            return "Only notes can be edited."
+        case .emptyNote:
+            return "A note needs some text."
+        }
+    }
+}
+
 final class ActivityRepository {
     private let client: SupabaseClient
     private let companyId: String
@@ -69,6 +86,45 @@ final class ActivityRepository {
         return try await client
             .from("activities")
             .insert(dto)
+            .select()
+            .single()
+            .execute()
+            .value
+    }
+
+    /// Amend the text of a note that has already been logged (bug f740400e).
+    ///
+    /// NOTES ONLY, deliberately. A call, an email, or a stage change is a record
+    /// of something that happened somewhere else, and letting an operator
+    /// rewrite one would turn the lead's history into fiction. A note is the
+    /// operator's own writing about the job — a typo in it is just a typo, and
+    /// it has to be fixable. The caller is responsible for only offering this on
+    /// a `.note` row; the type is re-checked here so no future call site can
+    /// quietly widen it.
+    ///
+    /// Both body columns are written. `body_text` is the primary field, but
+    /// legacy and web-authored rows carry their text in `content`, which
+    /// `Activity.displayBody` falls back to — leaving a stale `content` behind
+    /// would make the edit look like it did not take.
+    ///
+    /// RLS re-checks the operator's edit scope on the row, and separately blocks
+    /// a row with an open quick-touch undo, so a rejected edit throws rather
+    /// than silently no-opping.
+    @discardableResult
+    func updateNoteBody(
+        activityId: String,
+        type: ActivityType,
+        body: String
+    ) async throws -> ActivityDTO {
+        guard type == .note else { throw ActivityRepositoryError.onlyNotesAreEditable }
+        let trimmed = body.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { throw ActivityRepositoryError.emptyNote }
+
+        return try await client
+            .from("activities")
+            .update(UpdateActivityBodyDTO(bodyText: trimmed, content: trimmed))
+            .eq("id", value: activityId)
+            .eq("company_id", value: companyId)
             .select()
             .single()
             .execute()

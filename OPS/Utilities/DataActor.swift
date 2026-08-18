@@ -4833,17 +4833,19 @@ actor DataActor {
                 return false
             }
 
-            // Cross-entity ordering: an op referencing a row whose own create
-            // has not reached the server cannot pass that server's RLS check,
-            // and the rejection classifies permanent — it would park forever.
-            // Hold it instead; the create releases it. See bug 06f68200.
-            if SyncCrossEntityDependency.isBlockedByUnresolvedCreate(
-                op,
-                in: allOperations
-            ) {
+            // Create ordering. Two failures, one gate:
+            //   * an op referencing a row whose create has not reached the
+            //     server cannot pass that server's RLS check, and the rejection
+            //     classifies permanent — it would park forever (bug 06f68200);
+            //   * an op against a row whose OWN create has not reached the
+            //     server matches nothing, and PostgREST answers a zero-row
+            //     PATCH with 200 — the edit retires as delivered and is gone
+            //     (bug 2e58c85b).
+            // Hold either; the create releases it.
+            if SyncCrossEntityDependency.isHeld(op, in: allOperations) {
                 print(
                     "[DataActor] Holding \(op.entityType) \(op.entityId) "
-                        + "behind an unsynced create it references"
+                        + "behind an unsynced create"
                 )
                 return false
             }
@@ -5038,6 +5040,14 @@ actor DataActor {
                     for: operation,
                     in: modelContext,
                     completedAt: completedAt
+                )
+                // Confirmed server success is the ONLY thing that clears a
+                // calendar row's dirty flag — and it commits with the
+                // completion, because that flag is what keeps the inbound merge
+                // off a locally-edited row (bug ef5a69e6).
+                try CalendarUserEventOutboundSync.clearNeedsSyncOnCompletion(
+                    for: operation,
+                    in: modelContext
                 )
             }
             print("[DataActor] Completed \(operation.entityType) \(operation.entityId)")
@@ -5301,6 +5311,18 @@ actor DataActor {
             entityType: entityType,
             operationType: operationType,
             payload: payload
+        ) {
+            return
+        }
+        // Time off and personal events. Owned here rather than by a switch case
+        // below because the create also carries the notification that must not
+        // fire until the server has the row (bug ef5a69e6).
+        if try await CalendarUserEventOutboundSync.executeIfHandled(
+            entityType: entityType,
+            operationType: operationType,
+            entityId: entityId,
+            payload: payload,
+            companyId: companyId
         ) {
             return
         }
@@ -5598,11 +5620,18 @@ actor DataActor {
     private func genericUpdateFields(table: String, entityId: String, fields: [String: AnyJSON]) async throws {
         var payload = fields
         payload["updated_at"] = .string(ISO8601DateFormatter().string(from: Date()))
-        try await SupabaseService.shared.client
+        let response = try await SupabaseService.shared.client
             .from(table)
             .update(payload)
             .eq("id", value: entityId)
+            .select("id")
             .execute()
+        try SupabaseWriteGuard.requireAffectedRow(
+            response: response.data,
+            table: table,
+            id: entityId,
+            fields: payload
+        )
     }
 
     /// Generic fallback for entity types without a dedicated handler.

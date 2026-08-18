@@ -235,6 +235,15 @@ enum SyncErrorClassifier {
             // Deterministic client-side failure — an identical retry fails
             // identically. Park rather than burn the budget.
             return .permanent
+        case .serverRowMissing:
+            // The update reached the server and matched no row. With the create
+            // barrier ordering writes behind their row's create, the only
+            // remaining causes are permanent: the row was deleted server-side,
+            // or RLS does not expose it to this operator. Retrying re-answers
+            // the same nothing, and the old behavior — treating it as delivered
+            // — is the data loss this case exists to end. Park it: visible in
+            // PENDING WORK, exportable, user-retryable, never automatic.
+            return .permanent
         default:
             // networkUnavailable, timeout, notConnected, conflict, dependencyNotMet,
             // decodingFailed, dataCorruption, quotaExceeded, entityNotFound,

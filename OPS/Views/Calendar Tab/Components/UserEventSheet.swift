@@ -1251,9 +1251,18 @@ struct UserEventSheet: View {
         // Stamp every expanded row with the same series_id so we can later
         // resolve siblings for "edit/delete this one / future / all" scopes.
         // Single-occurrence events leave it nil — there's nothing to group.
-        let seriesId: String? = occurrences.count > 1 ? UUID().uuidString : nil
+        // Lowercased for the same reason the row ids are: `series_id` is a
+        // Postgres uuid column, and an uppercase value round-trips back
+        // different from the one every sibling was stamped with.
+        let seriesId: String? = occurrences.count > 1
+            ? UUID().uuidString.lowercased()
+            : nil
 
-        guard let context = dataController.modelContext else {
+        // The queue is the delivery mechanism now, so it is a precondition:
+        // inserting locally with nowhere to send the event is what stranded
+        // rows before (bug ef5a69e6).
+        guard let context = dataController.modelContext,
+              let syncEngine = dataController.syncEngine else {
             isSaving = false
             return
         }
@@ -1270,6 +1279,13 @@ struct UserEventSheet: View {
         for target in effectiveTargets {
             for occurrence in occurrences {
                 let event = CalendarUserEvent(
+                    // The id is ours from the first instant: it is the queue's
+                    // key, and it used to be rewritten to the server's id after
+                    // a successful create — which is exactly why a failed
+                    // create left a row nothing could ever push. Lowercased
+                    // because Postgres uuid columns are, and an uppercase id
+                    // would echo back as a second row.
+                    id: UUID().uuidString.lowercased(),
                     userId: mode == .timeOff ? target.id : userId,
                     companyId: companyId,
                     type: eventType,
@@ -1293,173 +1309,50 @@ struct UserEventSheet: View {
         try? context.save()
         let requesterName = dataController.currentUser?.fullName ?? "A team member"
 
-        // Sync to Supabase — one row per occurrence, all sharing the same
+        // Queue one durable write per occurrence, all sharing the same
         // series_id. Editing a single occurrence will detach it (set
-        // series_id = nil); "edit future" / "edit all" will batch-update
-        // the rest.
-        Task {
-            let repo = CalendarUserEventRepository(companyId: companyId)
-            let iso = ISO8601DateFormatter()
-            let reviewedAtString = reviewedAt.map { iso.string(from: $0) }
-
-            for item in preparedEvents {
-                let dto = CreateCalendarUserEventDTO(
-                    userId: item.event.userId,
+        // series_id = nil); "edit future" / "edit all" queue their own per-row
+        // writes. The time-off notification travels with the operation and
+        // dispatches from the confirmed create, so nobody is told about an
+        // event that only ever existed on this phone (bug ef5a69e6).
+        for item in preparedEvents {
+            let notification: CalendarUserEventOutboundSync.TimeOffNotification?
+            if mode == .timeOff {
+                notification = CalendarUserEventOutboundSync.TimeOffNotification(
+                    kind: canBookTimeOffForOthers ? .booked : .requested,
                     companyId: companyId,
-                    type: eventType.rawValue,
-                    title: eventTitle,
-                    startDate: iso.string(from: item.occurrence.start),
-                    endDate: iso.string(from: item.occurrence.end),
-                    allDay: isAllDay,
-                    notes: eventNotes,
-                    status: eventStatus,
-                    reviewedBy: reviewedBy,
-                    reviewedAt: reviewedAtString,
-                    address: nil,
-                    teamMemberIds: teamIds,
-                    seriesId: seriesId
+                    requesterId: userId,
+                    requesterName: requesterName,
+                    targetUserId: item.target.id,
+                    targetName: item.target.fullName,
+                    eventTitle: eventTitle,
+                    startDate: item.occurrence.start,
+                    endDate: item.occurrence.end
                 )
-                var resolvedEventId = item.event.id
-                if let saved = try? await repo.create(dto) {
-                    let savedId = saved.id
-                    resolvedEventId = savedId
-                    await MainActor.run {
-                        item.event.id = savedId
-                        item.event.needsSync = false
-                        item.event.lastSyncedAt = Date()
-                        try? context.save()
-                    }
-                }
-
-                if mode == .timeOff {
-                    if canBookTimeOffForOthers {
-                        await notifyBookedTimeOff(
-                            requesterId: userId,
-                            requesterName: requesterName,
-                            targetUserId: item.target.id,
-                            targetName: item.target.fullName,
-                            startDate: item.occurrence.start,
-                            endDate: item.occurrence.end,
-                            eventId: resolvedEventId
-                        )
-                    } else {
-                        await notifyAdminsOfTimeOffRequest(
-                            requesterId: userId,
-                            requesterName: requesterName,
-                            targetUserId: item.target.id,
-                            targetName: item.target.fullName,
-                            eventTitle: eventTitle,
-                            startDate: item.occurrence.start,
-                            endDate: item.occurrence.end,
-                            eventId: resolvedEventId
-                        )
-                    }
-                }
+            } else {
+                notification = nil
             }
-
-            await MainActor.run {
-                isSaving = false
-                viewModel.loadUserEvents()
-                // Bug 68123654 — surface the iPhone Calendar Mirror prompt at most
-                // once per install, at the moment the user clearly cares about
-                // their calendar. If the user has already seen the prompt, or has
-                // already granted permission, dismiss directly.
-                if !CalendarMirrorService.shared.hasShownPrompt
-                    && CalendarMirrorService.shared.authorizationStatus == .notDetermined {
-                    showingMirrorPrompt = true
-                } else {
-                    isPresented = false
-                }
-            }
-        }
-    }
-
-    // MARK: - Time Off Notifications
-    //
-    // The rail rows are the server's: both dispatches hand
-    // `TimeOffRequestNotificationDispatcher` the event id just written above,
-    // and the RPCs behind it read that row for the target, the requester, and
-    // the approvers, then render the copy. What is still built here is the
-    // push wording — the lock screen has always been the client's job.
-
-    private func notifyBookedTimeOff(
-        requesterId: String,
-        requesterName: String,
-        targetUserId: String,
-        targetName: String,
-        startDate: Date,
-        endDate: Date,
-        eventId: String
-    ) async {
-        let dateRange = notificationDateRange(startDate: startDate, endDate: endDate)
-        let isSelfBooking = requesterId == targetUserId
-
-        // Push copy is the on-behalf wording only: booking your own time off
-        // never pushes, since the schedule you just changed is on screen.
-        await TimeOffRequestNotificationDispatcher.dispatchBooked(
-            eventId: eventId,
-            targetUserId: targetUserId,
-            targetIsSelf: isSelfBooking,
-            push: TimeOffRequestNotificationDispatcher.PushCopy(
-                title: "Time Off Booked",
-                body: "\(requesterName) booked you off for \(dateRange).",
-                data: [
-                    "type": "time_off_booked",
-                    "eventId": eventId,
-                    "screen": "schedule"
-                ]
+            CalendarUserEventOutboundSync.enqueueCreate(
+                item.event,
+                notification: notification,
+                syncEngine: syncEngine,
+                deferPush: true
             )
-        )
-
-        print("[UserEventSheet] Time off booked for \(targetName): \(dateRange)")
-    }
-
-    private func notifyAdminsOfTimeOffRequest(
-        requesterId: String,
-        requesterName: String,
-        targetUserId: String,
-        targetName: String,
-        eventTitle: String,
-        startDate: Date,
-        endDate: Date,
-        eventId: String
-    ) async {
-        let dateRange = notificationDateRange(startDate: startDate, endDate: endDate)
-        let isSelfRequest = requesterId == targetUserId
-        let approvalBody = isSelfRequest
-            ? "\(requesterName) requested time off: \(dateRange)"
-            : "\(requesterName) requested time off for \(targetName): \(dateRange)"
-
-        // The push reaches exactly the approvers the server says it gave a new
-        // row to — never a locally computed permission list.
-        let pushedApproverIds = await TimeOffRequestNotificationDispatcher.dispatchRequested(
-            eventId: eventId,
-            push: TimeOffRequestNotificationDispatcher.PushCopy(
-                title: "Time Off Request",
-                body: approvalBody,
-                data: [
-                    "type": "time_off_requested",
-                    "eventId": eventId,
-                    "screen": "schedule"
-                ]
-            )
-        )
-
-        guard !pushedApproverIds.isEmpty else {
-            print("[UserEventSheet] No other schedulers to notify")
-            return
         }
+        CalendarUserEventOutboundSync.pushQueued(syncEngine: syncEngine)
 
-        print("[UserEventSheet] Time-off request push sent to \(pushedApproverIds.count) scheduler(s) for \(eventTitle)")
-    }
-
-    private func notificationDateRange(startDate: Date, endDate: Date) -> String {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "MMM d"
-        if Calendar.current.isDate(startDate, inSameDayAs: endDate) {
-            return formatter.string(from: startDate)
+        isSaving = false
+        viewModel.loadUserEvents()
+        // Bug 68123654 — surface the iPhone Calendar Mirror prompt at most
+        // once per install, at the moment the user clearly cares about their
+        // calendar. If the user has already seen the prompt, or has already
+        // granted permission, dismiss directly.
+        if !CalendarMirrorService.shared.hasShownPrompt
+            && CalendarMirrorService.shared.authorizationStatus == .notDetermined {
+            showingMirrorPrompt = true
+        } else {
+            isPresented = false
         }
-        return "\(formatter.string(from: startDate)) - \(formatter.string(from: endDate))"
     }
 
     // MARK: - Recurrence Helpers (Bug a5001a70)

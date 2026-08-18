@@ -7,7 +7,12 @@
 //
 //  1. Performs the local SwiftData mutation immediately (so the calendar
 //     reflects the change before any network round-trip).
-//  2. Mirrors the mutation to Supabase asynchronously.
+//  2. Queues one DURABLE write per affected row on the outbound sync queue.
+//     These used to be fire-and-forget `try?` calls that cleared `needsSync`
+//     regardless of outcome — a failed edit reverted on the next pull and a
+//     failed delete resurrected the event (bug ef5a69e6). A row now stays
+//     dirty, and therefore stays as the operator left it, until the server
+//     confirms its own write.
 //  3. Notifies any observing views via scheduledTasksDidChange.
 //
 //  Callers should NOT read or mutate seriesId rows directly — these helpers
@@ -57,8 +62,10 @@ extension DataController {
         payload: CalendarUserEventEditPayload,
         scope: RecurringEventScope
     ) {
-        guard let context = modelContext,
-              let companyId = currentUser?.companyId else { return }
+        // The queue is now the delivery mechanism, so it is the precondition:
+        // mutating locally with nowhere to send the change is what stranded
+        // rows in the first place.
+        guard let context = modelContext, let syncEngine else { return }
 
         let editedId = event.id
         let editedSeriesId = event.seriesId
@@ -73,77 +80,68 @@ extension DataController {
         let startOffset = payload.startDate.timeIntervalSince(editedDayStart)
         let durationSeconds = payload.endDate.timeIntervalSince(payload.startDate)
 
+        // Resolve the affected rows BEFORE mutating: an edit re-anchors every
+        // sibling's start, so a "from this date forward" fetch run afterwards
+        // can no longer see a row the edit moved earlier.
+        let affected = rowsInScope(
+            event,
+            seriesId: editedSeriesId,
+            anchor: editedAnchor,
+            scope: scope,
+            in: context
+        )
+
         // ---- Local mutations ----
 
-        switch scope {
-        case .thisOnly:
-            applyLocalEdit(to: event,
-                           payload: payload,
-                           start: payload.startDate,
-                           end: payload.endDate)
-            event.seriesId = nil
-            event.needsSync = true
-
-        case .thisAndFuture:
-            // Mutate this row + every later sibling.
-            event.needsSync = true
-            applyLocalEdit(to: event,
-                           payload: payload,
-                           start: payload.startDate,
-                           end: payload.endDate)
-
-            for sibling in localSiblings(seriesId: editedSeriesId,
-                                         in: context,
-                                         from: editedAnchor) {
-                if sibling.id == editedId { continue }
-                let newStart = calendar.startOfDay(for: sibling.startDate)
+        for row in affected {
+            if row.id == editedId {
+                applyLocalEdit(to: row,
+                               payload: payload,
+                               start: payload.startDate,
+                               end: payload.endDate)
+                if scope == .thisOnly { row.seriesId = nil }
+            } else {
+                let newStart = calendar.startOfDay(for: row.startDate)
                     .addingTimeInterval(startOffset)
-                let newEnd = newStart.addingTimeInterval(durationSeconds)
-                applyLocalEdit(to: sibling,
+                applyLocalEdit(to: row,
                                payload: payload,
                                start: newStart,
-                               end: newEnd)
-                sibling.needsSync = true
+                               end: newStart.addingTimeInterval(durationSeconds))
             }
-
-        case .allEvents:
-            event.needsSync = true
-            applyLocalEdit(to: event,
-                           payload: payload,
-                           start: payload.startDate,
-                           end: payload.endDate)
-
-            for sibling in localSiblings(seriesId: editedSeriesId,
-                                         in: context,
-                                         from: nil) {
-                if sibling.id == editedId { continue }
-                let newStart = calendar.startOfDay(for: sibling.startDate)
-                    .addingTimeInterval(startOffset)
-                let newEnd = newStart.addingTimeInterval(durationSeconds)
-                applyLocalEdit(to: sibling,
-                               payload: payload,
-                               start: newStart,
-                               end: newEnd)
-                sibling.needsSync = true
-            }
+            row.needsSync = true
         }
 
         try? context.save()
         scheduledTasksDidChange.toggle()
 
-        // ---- Remote mutations (fire-and-forget) ----
-
-        let payloadCopy = payload
-        Task { [editedSeriesId] in
-            await self.syncEditToSupabase(
-                eventId: editedId,
-                seriesId: editedSeriesId,
-                editedAnchor: editedAnchor,
-                payload: payloadCopy,
-                scope: scope,
-                companyId: companyId
+        // ---- Remote mutations (durable) ----
+        //
+        // One queued write per row the local mutation touched, keyed by that
+        // row's own id. The old path fired these and then cleared `needsSync`
+        // regardless of the outcome, so a failed edit reported success and
+        // reverted on the next pull (bug ef5a69e6). Each row now retries on its
+        // own and clears its flag only when the server confirms it.
+        for row in affected {
+            CalendarUserEventOutboundSync.enqueueUpdate(
+                eventId: row.id,
+                fields: CalendarUserEventOutboundSync.editColumns(
+                    title: row.title,
+                    notes: row.notes,
+                    allDay: row.allDay,
+                    teamMemberIds: row.teamMemberIds,
+                    startDate: row.startDate,
+                    endDate: row.endDate,
+                    // "This only" detaches the row from its series in the SAME
+                    // statement. The old path spent a separate round trip on
+                    // the detach, and a detach that landed while the edit did
+                    // not left the row half-changed.
+                    detachFromSeries: scope == .thisOnly && row.id == editedId
+                ),
+                syncEngine: syncEngine,
+                deferPush: true
             )
         }
+        CalendarUserEventOutboundSync.pushQueued(syncEngine: syncEngine)
     }
 
     // MARK: - Delete
@@ -160,54 +158,41 @@ extension DataController {
         _ event: CalendarUserEvent,
         scope: RecurringEventScope
     ) {
-        guard let context = modelContext,
-              let companyId = currentUser?.companyId else { return }
+        // See `updateRecurringEvent`: no queue, no delivery, no mutation.
+        guard let context = modelContext, let syncEngine else { return }
 
-        let editedId = event.id
-        let editedSeriesId = event.seriesId
-        let editedAnchor = event.startDate
         let now = Date()
 
-        switch scope {
-        case .thisOnly:
-            event.deletedAt = now
-            event.needsSync = true
+        // Resolved before the tombstones land: `localSiblings` skips deleted
+        // rows, so a fetch run afterwards would return nothing to queue.
+        let affected = rowsInScope(
+            event,
+            seriesId: event.seriesId,
+            anchor: event.startDate,
+            scope: scope,
+            in: context
+        )
 
-        case .thisAndFuture:
-            event.deletedAt = now
-            event.needsSync = true
-            for sibling in localSiblings(seriesId: editedSeriesId,
-                                         in: context,
-                                         from: editedAnchor) {
-                if sibling.id == editedId { continue }
-                sibling.deletedAt = now
-                sibling.needsSync = true
-            }
-
-        case .allEvents:
-            event.deletedAt = now
-            event.needsSync = true
-            for sibling in localSiblings(seriesId: editedSeriesId,
-                                         in: context,
-                                         from: nil) {
-                if sibling.id == editedId { continue }
-                sibling.deletedAt = now
-                sibling.needsSync = true
-            }
+        for row in affected {
+            row.deletedAt = now
+            row.needsSync = true
         }
 
         try? context.save()
         scheduledTasksDidChange.toggle()
 
-        Task { [editedSeriesId] in
-            await self.syncDeleteToSupabase(
-                eventId: editedId,
-                seriesId: editedSeriesId,
-                editedAnchor: editedAnchor,
-                scope: scope,
-                companyId: companyId
+        // Durable per-row tombstones. The old path cleared `needsSync` after a
+        // fire-and-forget batch, so a delete that never landed let the event
+        // resurrect on the next pull. The rows stay dirty — and therefore stay
+        // deleted locally — until each delete is confirmed (bug ef5a69e6).
+        for row in affected {
+            CalendarUserEventOutboundSync.enqueueDelete(
+                eventId: row.id,
+                syncEngine: syncEngine,
+                deferPush: true
             )
         }
+        CalendarUserEventOutboundSync.pushQueued(syncEngine: syncEngine)
     }
 
     // MARK: - Local helpers
@@ -228,6 +213,29 @@ extension DataController {
         row.startDate = start
         row.endDate = end
         row.updatedAt = Date()
+    }
+
+    /// Every local row a scoped mutation touches: the tapped row, plus its
+    /// siblings for the series scopes. Resolved BEFORE the mutation, because an
+    /// edit re-anchors sibling start dates and a delete tombstones them — a
+    /// fetch run afterwards can no longer see rows the mutation just moved or
+    /// removed.
+    ///
+    /// The `deletedAt == nil` filter belongs here rather than in the caller:
+    /// an already-tombstoned sibling has nothing left to change and its own
+    /// delete is already queued.
+    private func rowsInScope(
+        _ event: CalendarUserEvent,
+        seriesId: String?,
+        anchor: Date,
+        scope: RecurringEventScope,
+        in context: ModelContext
+    ) -> [CalendarUserEvent] {
+        guard scope != .thisOnly, let seriesId else { return [event] }
+        let from: Date? = scope == .thisAndFuture ? anchor : nil
+        let siblings = localSiblings(seriesId: seriesId, in: context, from: from)
+            .filter { $0.id != event.id }
+        return [event] + siblings
     }
 
     /// Fetch sibling rows from SwiftData. `from` filters to siblings whose
@@ -257,173 +265,5 @@ extension DataController {
             )
         }
         return (try? context.fetch(descriptor)) ?? []
-    }
-
-    // MARK: - Remote sync
-
-    /// Mirrors `updateRecurringEvent` against Supabase. Two-step for
-    /// .thisOnly (detach, then write); single-shot for the series scopes
-    /// where we fetch siblings from the server, compute per-row dates, and
-    /// update them one at a time.
-    private func syncEditToSupabase(
-        eventId: String,
-        seriesId: String?,
-        editedAnchor: Date,
-        payload: CalendarUserEventEditPayload,
-        scope: RecurringEventScope,
-        companyId: String
-    ) async {
-        let repo = CalendarUserEventRepository(companyId: companyId)
-        let iso = ISO8601DateFormatter()
-        let calendar = Calendar.current
-        let editedDayStart = calendar.startOfDay(for: editedAnchor)
-        let startOffset = payload.startDate.timeIntervalSince(editedDayStart)
-        let durationSeconds = payload.endDate.timeIntervalSince(payload.startDate)
-
-        switch scope {
-        case .thisOnly:
-            // Detach first — if the user later runs "edit all" on the
-            // remaining series, this row should not be included.
-            try? await repo.detachFromSeries(eventId)
-            let fields = CalendarUserEventRepository.EventFieldUpdate(
-                title: payload.title,
-                notes: payload.notes,
-                allDay: payload.allDay,
-                teamMemberIds: payload.teamMemberIds,
-                startDate: iso.string(from: payload.startDate),
-                endDate: iso.string(from: payload.endDate),
-                updatedAt: iso.string(from: Date())
-            )
-            try? await repo.updateEvent(eventId, fields: fields)
-
-        case .thisAndFuture, .allEvents:
-            guard let seriesId else {
-                // Defensive: no seriesId means there are no siblings.
-                let fields = CalendarUserEventRepository.EventFieldUpdate(
-                    title: payload.title,
-                    notes: payload.notes,
-                    allDay: payload.allDay,
-                    teamMemberIds: payload.teamMemberIds,
-                    startDate: iso.string(from: payload.startDate),
-                    endDate: iso.string(from: payload.endDate),
-                    updatedAt: iso.string(from: Date())
-                )
-                try? await repo.updateEvent(eventId, fields: fields)
-                return
-            }
-
-            let siblings: [CalendarUserEventDTO]
-            do {
-                if scope == .thisAndFuture {
-                    siblings = try await repo.fetchSeriesFromDate(seriesId, from: editedAnchor)
-                } else {
-                    siblings = try await repo.fetchSeries(seriesId)
-                }
-            } catch {
-                return
-            }
-
-            for sibling in siblings {
-                // Each sibling preserves its own calendar day but adopts
-                // the new time-of-day and duration.
-                let siblingStart: Date
-                let siblingEnd: Date
-                if sibling.id == eventId {
-                    siblingStart = payload.startDate
-                    siblingEnd = payload.endDate
-                } else {
-                    let day = calendar.startOfDay(for: sibling.startDate)
-                    siblingStart = day.addingTimeInterval(startOffset)
-                    siblingEnd = siblingStart.addingTimeInterval(durationSeconds)
-                }
-                let fields = CalendarUserEventRepository.EventFieldUpdate(
-                    title: payload.title,
-                    notes: payload.notes,
-                    allDay: payload.allDay,
-                    teamMemberIds: payload.teamMemberIds,
-                    startDate: iso.string(from: siblingStart),
-                    endDate: iso.string(from: siblingEnd),
-                    updatedAt: iso.string(from: Date())
-                )
-                try? await repo.updateEvent(sibling.id, fields: fields)
-            }
-        }
-
-        // Mark local rows synced.
-        await MainActor.run {
-            guard let context = modelContext else { return }
-            let predicate: Predicate<CalendarUserEvent>
-            if let seriesId, scope != .thisOnly {
-                predicate = #Predicate<CalendarUserEvent> { row in
-                    row.seriesId == seriesId || row.id == eventId
-                }
-            } else {
-                predicate = #Predicate<CalendarUserEvent> { row in row.id == eventId }
-            }
-            let descriptor = FetchDescriptor<CalendarUserEvent>(predicate: predicate)
-            if let rows = try? context.fetch(descriptor) {
-                let now = Date()
-                for row in rows {
-                    row.needsSync = false
-                    row.lastSyncedAt = now
-                }
-                try? context.save()
-            }
-        }
-    }
-
-    /// Mirrors `deleteRecurringEvent` against Supabase using batched RLS-
-    /// scoped soft-deletes. Single row for `.thisOnly`, range delete for
-    /// `.thisAndFuture`, full series for `.allEvents`.
-    private func syncDeleteToSupabase(
-        eventId: String,
-        seriesId: String?,
-        editedAnchor: Date,
-        scope: RecurringEventScope,
-        companyId: String
-    ) async {
-        let repo = CalendarUserEventRepository(companyId: companyId)
-        switch scope {
-        case .thisOnly:
-            try? await repo.softDelete(eventId)
-
-        case .thisAndFuture:
-            guard let seriesId else {
-                try? await repo.softDelete(eventId)
-                return
-            }
-            try? await repo.softDeleteSeriesFromDate(seriesId, from: editedAnchor)
-
-        case .allEvents:
-            guard let seriesId else {
-                try? await repo.softDelete(eventId)
-                return
-            }
-            try? await repo.softDeleteSeries(seriesId)
-        }
-
-        // Mark local rows synced.
-        await MainActor.run {
-            guard let context = modelContext else { return }
-            let predicate: Predicate<CalendarUserEvent>
-            if let seriesId, scope != .thisOnly {
-                predicate = #Predicate<CalendarUserEvent> { row in
-                    row.seriesId == seriesId || row.id == eventId
-                }
-            } else {
-                predicate = #Predicate<CalendarUserEvent> { row in row.id == eventId }
-            }
-            let descriptor = FetchDescriptor<CalendarUserEvent>(predicate: predicate)
-            if let rows = try? context.fetch(descriptor) {
-                let now = Date()
-                for row in rows {
-                    if row.deletedAt != nil {
-                        row.needsSync = false
-                        row.lastSyncedAt = now
-                    }
-                }
-                try? context.save()
-            }
-        }
     }
 }

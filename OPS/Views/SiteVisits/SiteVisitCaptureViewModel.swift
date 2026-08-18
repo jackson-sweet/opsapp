@@ -876,10 +876,17 @@ final class SiteVisitCaptureViewModel: ObservableObject {
         let completingVisit = visit.status == .completed ? visit : nil
         guard persistSiteVisitChanges(completing: completingVisit, {
             currentOpportunity = opportunity
-            bindIdentityDraft(to: opportunity)
-            if let identityCommittedAt {
-                identityDraft?.lastCommittedAt = identityCommittedAt
-            }
+            // Binding to a lead IS the commit, whether that lead was just
+            // created from this draft or picked from search. Only the
+            // auto-create path used to stamp it, so every draft an operator
+            // attached to an EXISTING lead stayed permanently uncommitted —
+            // and recovery, which reads that stamp, kept reporting finished
+            // captures as unsent (bug fe497fb9). The parameter survives as the
+            // clock seam the auto-create tests pin.
+            bindIdentityDraft(
+                to: opportunity,
+                committedAt: identityCommittedAt ?? currentDate()
+            )
             visit.opportunityId = opportunity.id
             if visitAddress == nil || visitAddress?.isEmpty == true || visitAddress == priorAddress {
                 visit.address = opportunity.address
@@ -1553,10 +1560,14 @@ final class SiteVisitCaptureViewModel: ObservableObject {
         return identityDraft
     }
 
-    private func bindIdentityDraft(to opportunity: Opportunity) {
+    private func bindIdentityDraft(
+        to opportunity: Opportunity,
+        committedAt: Date
+    ) {
         guard let draft = requireIdentityDraft() else { return }
         draft.opportunityId = opportunity.id
         draft.clientId = opportunity.clientId
+        draft.lastCommittedAt = committedAt
         if draft.contactName.trimmedNilIfEmpty == nil {
             draft.contactName = opportunity.displayContactName
         }

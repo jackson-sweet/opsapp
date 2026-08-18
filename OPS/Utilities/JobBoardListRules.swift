@@ -270,10 +270,10 @@ struct JobBoardProjectFiltering {
     }
 
     /// Bug 70a4d9fd — "most recently touched" stamp for the latest/earliest
-    /// edited sorts. Prefers the server-maintained `updatedAt`; falls back
-    /// to `createdAt` for legacy rows synced before that column was plumbed.
+    /// edited sorts. Shared with the project pickers so one definition of
+    /// "last modified" serves the whole app.
     private static func recencyStamp(for project: Project) -> Date {
-        max(project.updatedAt ?? .distantPast, project.createdAt ?? .distantPast)
+        ProjectRecency.stamp(for: project)
     }
 
     private static func isUnscheduledActiveProject(_ project: Project) -> Bool {

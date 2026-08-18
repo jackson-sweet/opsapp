@@ -451,25 +451,35 @@ class OpportunityRepository {
     /// Atomically records the structured correction and applies its canonical
     /// lifecycle result. Company, actor, sender evidence, outcome, and policy
     /// context are all derived by the server.
+    ///
+    /// Throws `OpportunityRepositoryError.leadDispositionGateClosed` when the
+    /// server rejects a structured reason because the company's Phase C gate is
+    /// off. The caller uses that to correct its cached gate answer rather than
+    /// showing the operator a generic failure it cannot act on.
     func applyLeadDisposition(
         opportunityId: String,
         reason: LeadDispositionReason,
         note: String?,
         idempotencyKey: String
     ) async throws -> LeadDispositionResult {
-        return try await client
-            .rpc(
-                RPC.applyLeadDisposition,
-                params: LeadFeedbackApplyParams(
-                    opportunityId: opportunityId,
-                    reasonCode: reason.rawValue,
-                    optionalNote: LeadDispositionInteractionPolicy.normalizedNote(note ?? ""),
-                    idempotencyKey: idempotencyKey
+        do {
+            return try await client
+                .rpc(
+                    RPC.applyLeadDisposition,
+                    params: LeadFeedbackApplyParams(
+                        opportunityId: opportunityId,
+                        reasonCode: reason.rawValue,
+                        optionalNote: LeadDispositionInteractionPolicy.normalizedNote(note ?? ""),
+                        idempotencyKey: idempotencyKey
+                    )
                 )
-            )
-            .single()
-            .execute()
-            .value
+                .single()
+                .execute()
+                .value
+        } catch let error as PostgrestError
+                    where error.message.contains("phase_c_disabled") {
+            throw OpportunityRepositoryError.leadDispositionGateClosed
+        }
     }
 
     /// Retracts the learning signal and restores the exact prior lifecycle
@@ -688,6 +698,10 @@ enum OpportunityRepositoryError: LocalizedError, Equatable {
     /// This server has not taken the archive-feedback migration. Callers fall
     /// back to the legacy `archived_at` PATCH — never a dead end.
     case archiveRPCUnavailable
+    /// The company's Phase C gate is off, so the server refused a structured
+    /// discard reason. The caller corrects its cached gate answer and routes the
+    /// operator back to the plain discard path.
+    case leadDispositionGateClosed
 
     var errorDescription: String? {
         switch self {
@@ -697,6 +711,8 @@ enum OpportunityRepositoryError: LocalizedError, Equatable {
             return "Marking a lead won requires guarded project conversion."
         case .archiveRPCUnavailable:
             return "Archive feedback is not available on this server yet."
+        case .leadDispositionGateClosed:
+            return "Discard reasons are switched off for this company."
         }
     }
 }

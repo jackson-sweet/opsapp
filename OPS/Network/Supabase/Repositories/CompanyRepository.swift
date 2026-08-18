@@ -145,11 +145,18 @@ class CompanyRepository {
     func updateFields(companyId: String, fields: [String: AnyJSON]) async throws {
         var payload = fields
         payload["updated_at"] = .string(isoNow())
-        try await client
+        let response = try await client
             .from("companies")
             .update(payload)
             .eq("id", value: companyId)
+            .select("id")
             .execute()
+        try SupabaseWriteGuard.requireAffectedRow(
+            response: response.data,
+            table: "companies",
+            id: companyId,
+            fields: payload
+        )
     }
 
     /// Soft-delete a company by setting deleted_at.

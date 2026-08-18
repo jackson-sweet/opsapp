@@ -93,18 +93,29 @@ private struct LeadDiscardFlow: ViewModifier {
         do {
             let context = try await OpportunityRepository(companyId: lead.companyId)
                 .fetchLeadDispositionContext(opportunityId: lead.id)
+            LeadDispositionGateCache.remember(
+                context.phaseCEnabled,
+                companyId: lead.companyId
+            )
             route = LeadDispositionInteractionPolicy.route(
                 phaseCEnabled: context.phaseCEnabled,
                 explainerSeen: explainerSeen
             )
         } catch {
             // The gate could not be read — offline, or the RPC failed. Discard
-            // still has to work in the field, so fall through to the legacy
-            // path rather than stranding the operator on an error toast. The
+            // still has to work in the field, so fall through rather than
+            // stranding the operator on an error toast. Bug 887722e1: falling
+            // all the way through to the bare confirmation also took away the
+            // reason list from companies that HAVE Phase C, which is what the
+            // operator reported as "will not allow me to mark a reason." The
+            // server's own last answer for this company decides instead. The
             // apply RPC re-checks the gate under the row lock regardless, so
             // this can never smuggle a structured reason past a disabled
             // company.
             route = LeadDispositionInteractionPolicy.routeWhenContextUnavailable(
+                lastKnownPhaseCEnabled: LeadDispositionGateCache.lastKnownPhaseCEnabled(
+                    companyId: lead.companyId
+                ),
                 explainerSeen: explainerSeen
             )
         }
@@ -140,6 +151,16 @@ private struct LeadDiscardFlow: ViewModifier {
             presentSuccess(result, for: lead)
             onCompleted(lead, result)
             return true
+        } catch OpportunityRepositoryError.leadDispositionGateClosed {
+            // The gate answer this device was holding is stale — the company has
+            // Phase C switched off. Correct the cache so the next discard routes
+            // straight to the plain path, and say plainly what happened rather
+            // than repeating a generic failure the operator cannot act on.
+            LeadDispositionGateCache.remember(false, companyId: lead.companyId)
+            ToastCenter.shared.present(
+                Toast(label: "// REASONS ARE OFF FOR THIS COMPANY", tone: .warning)
+            )
+            return false
         } catch {
             ToastCenter.shared.present(
                 Toast(label: "// COULD NOT UPDATE LEAD · TRY AGAIN", tone: .error)

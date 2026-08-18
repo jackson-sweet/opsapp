@@ -373,24 +373,24 @@ class CalendarViewModel: ObservableObject {
     /// The single chokepoint for the week canvas (`rebuildWeekCache`), the
     /// per-day cache (`getTasksForDate`), and the month grid
     /// (`MonthGridCache.loadEvents`) — all three funnel through here, so the
-    /// archived cut below lands on every one of them at once.
+    /// status cut below lands on every one of them at once.
     func applyTaskFilters(to tasks: [ProjectTask]) -> [ProjectTask] {
         applyTaskFilters(
             to: tasks,
-            archivedProjectIds: CalendarTaskVisibility.archivedProjectIds(in: dataController?.modelContext)
+            hiddenProjectIds: CalendarTaskVisibility.hiddenProjectIds(in: dataController?.modelContext)
         )
     }
 
-    /// Pure variant — the archived set is resolved once by the caller rather
+    /// Pure variant — the hidden set is resolved once by the caller rather
     /// than per row. See `CalendarTaskVisibility`.
     func applyTaskFilters(
         to tasks: [ProjectTask],
-        archivedProjectIds: Set<String>
+        hiddenProjectIds: Set<String>
     ) -> [ProjectTask] {
-        // Bug 9997c11c — archived jobs are filed away, not scheduled. This runs
-        // first so nothing downstream (including the crew/type/client filters)
-        // ever gets a chance to surface one.
-        var filteredTasks = CalendarTaskVisibility.visible(tasks, archivedProjectIds: archivedProjectIds)
+        // Bugs 9997c11c + 8351d7a7 — unwon and filed-away jobs are not
+        // commitments. This runs first so nothing downstream (including the
+        // crew/type/client filters) ever gets a chance to surface one.
+        var filteredTasks = CalendarTaskVisibility.visible(tasks, hiddenProjectIds: hiddenProjectIds)
 
         // Apply team member filter
         if !selectedTeamMemberIds.isEmpty {

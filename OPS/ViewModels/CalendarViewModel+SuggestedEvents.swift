@@ -77,8 +77,12 @@ extension CalendarViewModel {
         let title = Self.eventTitle(from: dto.content)
 
         // Local-first insert so the schedule reflects it immediately — mirrors
-        // the UserEventSheet create path.
+        // the UserEventSheet create path. The id is ours from the first instant
+        // because it is the outbound queue's key; it used to be rewritten to
+        // the server's id after a successful create, which is precisely why a
+        // failed create left a row nothing could push (bug ef5a69e6).
         let event = CalendarUserEvent(
+            id: UUID().uuidString.lowercased(),
             userId: userId,
             companyId: companyId,
             type: .personal,
@@ -96,34 +100,18 @@ extension CalendarViewModel {
         suggestedEvents.removeAll { $0.id == dto.id }
         loadUserEvents()
 
-        // Push to Supabase + mirror + resolve, off the interaction path.
+        // Queue the server write durably. The old path pushed it with `try?`
+        // and, on failure, left a dirty row with nothing to retry it — the
+        // accepted suggestion then existed on this phone alone (bug ef5a69e6).
+        // The repository fires the calendar mirror once the write lands.
+        if let syncEngine = dataController.syncEngine {
+            CalendarUserEventOutboundSync.enqueueCreate(event, syncEngine: syncEngine)
+        }
+
+        // Resolve the source commitment so it isn't re-offered. Best-effort —
+        // the title+day dedup is the backstop if this doesn't land.
         let memoryId = dto.id
         Task { @MainActor in
-            let repo = CalendarUserEventRepository(companyId: companyId)
-            let iso = ISO8601DateFormatter()
-            let createDTO = CreateCalendarUserEventDTO(
-                userId: userId,
-                companyId: companyId,
-                type: CalendarUserEventType.personal.rawValue,
-                title: title,
-                startDate: iso.string(from: timing.start),
-                endDate: iso.string(from: timing.end),
-                allDay: timing.allDay,
-                notes: Self.suggestionProvenanceNote,
-                status: CalendarUserEventStatus.none.rawValue
-            )
-            if let saved = try? await repo.create(createDTO) {
-                event.id = saved.id
-                event.needsSync = false
-                event.lastSyncedAt = Date()
-                try? context.save()
-                // create() fires the mirror with the server id before the local
-                // row carries it; fire once more now the ids line up so the event
-                // lands on the phone immediately rather than waiting for reconcile.
-                await CalendarMirrorService.shared.mirrorEvent(opsId: saved.id, source: .calendarUserEvent)
-            }
-            // Resolve the source commitment so it isn't re-offered. Best-effort —
-            // the title+day dedup is the backstop if this doesn't land.
             await SuggestedCalendarEventRepository().resolve(memoryId)
             NotificationCenter.default.post(name: Notification.Name("CalendarUserEventsDidChange"), object: nil)
         }

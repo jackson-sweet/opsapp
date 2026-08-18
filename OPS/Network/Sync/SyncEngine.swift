@@ -282,6 +282,13 @@ final class SyncEngine {
         if !hasSweptRecoverableThisLaunch {
             hasSweptRecoverableThisLaunch = true
             reenqueueRecoverableOperations()
+            // Calendar rows left dirty by the old fire-and-forget writes have
+            // nothing queued to push them — no operation exists to revive. Give
+            // them one, so they drain or become visible (bug ef5a69e6).
+            CalendarUserEventOutboundSync.backfillStrandedEvents(
+                in: modelContext,
+                syncEngine: self
+            )
         }
 
         // Refresh the pending count on configure

@@ -78,9 +78,19 @@ struct HomeView: View {
             // Sheet is hosted at the app root, so it can close over any tab.
             // A hidden Home picks the new count up from its activation refresh.
             guard !showing, isActiveTab else { return }
-            projectsNeedingTasksCount = ProjectsWithoutTasksDetector
-                .projectsWithoutTasks(from: dataController.getProjectsForCurrentUser(for: nil))
-                .count
+            // Same defect class as the load path: the detector faults tasks
+            // for every project, so the count rides the DataActor too.
+            let visibleProjects = dataController.getProjectsForCurrentUser(for: nil)
+            if let actor = dataController.dataActor {
+                let ids = visibleProjects.map(\.id)
+                Task {
+                    projectsNeedingTasksCount = await actor.projectsNeedingTasksCount(projectIds: ids)
+                }
+            } else {
+                projectsNeedingTasksCount = ProjectsWithoutTasksDetector
+                    .projectsWithoutTasks(from: visibleProjects)
+                    .count
+            }
         }
         .trackScreen("Home")
         .environmentObject(locationManager)
@@ -341,15 +351,33 @@ struct HomeView: View {
                     everyProject.append(project)
                 }
             }
-            let billableRollup = computeBillableRollup(projects: everyProject)
-            // Accepted / in-progress projects nobody has broken into tasks —
-            // committed work the crew can't see. Data self-scopes: task-less
-            // projects have no derived members, so only full-visibility
-            // operators ever get a non-zero count. Tutorial demo data is
-            // excluded with the same filter as everything else here.
-            let needsTasksCount = tutorialMode
-                ? 0
-                : ProjectsWithoutTasksDetector.projectsWithoutTasks(from: everyProject).count
+            // Faulting tasks for every live project belongs on the DataActor,
+            // not the render thread — HomeView is MainActor-inferred, so this
+            // Task never leaves main and the compute used to run there on every
+            // mount, tab return, foreground, and sync completion. The actor
+            // gets the ids of the exact list the map shows, so the card can
+            // never disagree with the map about which projects exist.
+            //
+            // Needs-tasks data self-scopes: task-less projects have no derived
+            // members, so only full-visibility operators ever get a non-zero
+            // count. Tutorial demo data is excluded with the same gate as the
+            // legacy path.
+            let billableRollup: HomeBillableThisWeekRollup
+            let needsTasksCount: Int
+            if let actor = dataController.dataActor {
+                let snapshot = await actor.computeHomeRollup(
+                    projectIds: everyProject.map(\.id),
+                    companyId: dataController.currentUser?.companyId
+                )
+                billableRollup = snapshot.rollup
+                needsTasksCount = tutorialMode ? 0 : snapshot.projectsNeedingTasksCount
+            } else {
+                // Legacy path (feature.useDataActor off): unchanged.
+                billableRollup = computeBillableRollup(projects: everyProject)
+                needsTasksCount = tutorialMode
+                    ? 0
+                    : ProjectsWithoutTasksDetector.projectsWithoutTasks(from: everyProject).count
+            }
 
             await MainActor.run {
                 self.todaysScheduledTasks = scheduledTasks

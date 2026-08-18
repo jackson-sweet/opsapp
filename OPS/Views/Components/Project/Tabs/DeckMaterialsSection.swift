@@ -58,9 +58,6 @@ struct DeckMaterialsSection: View {
                     } else {
                         materialsCard { liveContent(materials) }
                     }
-                } else if !resolved.vinylInputs.isEmpty {
-                    // Vinyl set present but scale unconfirmed.
-                    materialsCard { banner(text: "CONFIRM ONE EDGE LENGTH", color: OPSStyle.Colors.warningStatus) }
                 } else {
                     // No vinyl on the design. This section IS the MATERIALS
                     // tab now, so an empty tab must say why and name the path

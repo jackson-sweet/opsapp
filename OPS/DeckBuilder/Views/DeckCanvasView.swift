@@ -1497,14 +1497,15 @@ struct DeckCanvasView: View {
 
         let midX = (start.position.x + end.position.x) / 2
         let midY = (start.position.y + end.position.y) / 2
-        // Stale flag wins over the raw value: prefix the label so the user
-        // sees at a glance that the typed dimension and the drawn length are
-        // out of sync (e.g. they dragged a vertex that was on a manually-typed
-        // edge — the field crew expects a warning, not silent mismatch).
-        let baseLabel = DimensionEngine.format(dim, system: viewModel.drawingData.config.measurementSystem)
-        let label = edge.dimensionStale ? "\u{26A0} \(baseLabel)" : baseLabel
+        // An overridden dimension — one the operator typed or measured, and
+        // then moved the drawing away from — reads in tan with a plain caption
+        // beneath it. Presentation lives in DeckStaleDimensionPresenter so the
+        // read-only viewer shows the identical marker (bug 59d7f468). The old
+        // "\u{26A0}" prefix is gone: decorative glyphs are not in the system,
+        // and the tan chip plus the caption already say it louder.
+        let label = DimensionEngine.format(dim, system: viewModel.drawingData.config.measurementSystem)
         let hasAccuracy = edge.accuracyPercent != nil
-        let isStale = edge.dimensionStale
+        let isStale = DeckStaleDimensionPresenter.isOverridden(edge)
 
         // Offset label perpendicular to the edge so it doesn't sit on the line
         let dx = end.position.x - start.position.x
@@ -1543,14 +1544,14 @@ struct DeckCanvasView: View {
 
         let pillRect = CGRect(x: labelX - pillW / 2, y: labelY - pillH / 2, width: pillW, height: pillH)
         let pillColor: Color = (isStale || hasAccuracy)
-            ? OPSStyle.Colors.warningStatus.opacity(0.15)
+            ? DeckStaleDimensionPresenter.chipFill
             : OPSStyle.Colors.cardBackground.opacity(0.95)
         context.fill(Path(roundedRect: pillRect, cornerRadius: cr), with: .color(pillColor))
         context.stroke(Path(roundedRect: pillRect, cornerRadius: cr),
                        with: .color(OPSStyle.Colors.surfaceActive), lineWidth: 0.5)
 
         let fontSize = scaledSize(11, min: 8, max: 18)
-        let labelColor: Color = (isStale || hasAccuracy) ? OPSStyle.Colors.warningStatus : Color.white
+        let labelColor: Color = (isStale || hasAccuracy) ? DeckStaleDimensionPresenter.valueColor : Color.white
         context.draw(Text(label).font(.system(size: fontSize, weight: .medium, design: .monospaced))
             .foregroundColor(labelColor), at: CGPoint(x: labelX, y: labelY))
 
@@ -1566,8 +1567,8 @@ struct DeckCanvasView: View {
         let userLabelHasContent = (userLabel?.isEmpty == false)
 
         if isStale {
-            secondaryLabel = "DRAWN LENGTH CHANGED"
-            secondaryColor = OPSStyle.Colors.warningStatus
+            secondaryLabel = DeckStaleDimensionPresenter.caption
+            secondaryColor = DeckStaleDimensionPresenter.valueColor
         } else if let accuracy = edge.accuracyPercent {
             secondaryLabel = AccuracyModel.formatAccuracy(dimensionInches: dim, accuracyPercent: accuracy,
                                                            system: viewModel.drawingData.config.measurementSystem)

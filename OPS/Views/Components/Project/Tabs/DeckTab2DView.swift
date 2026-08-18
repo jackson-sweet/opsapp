@@ -600,6 +600,11 @@ struct DeckTab2DView: View {
             position.y -= stairNormal.dy * offset
         }
 
+        // An overridden dimension carries its own marker here too. The viewer
+        // is where the operator reviews a finished drawing, so a dimension that
+        // no longer matches the geometry has to be visible on the edge — not
+        // announced by a blocker on some other screen (bug 59d7f468).
+        let isOverridden = DeckStaleDimensionPresenter.isOverridden(edge)
         let text = DimensionEngine.format(dim, system: drawingData.config.measurementSystem)
         let inverseScale = 1 / max(abs(canvasScale), CGFloat.ulpOfOne.squareRoot())
         context.drawLayer { layer in
@@ -607,7 +612,7 @@ struct DeckTab2DView: View {
             layer.scaleBy(x: inverseScale, y: inverseScale)
             let resolved = layer.resolve(Text(text)
                 .font(OPSStyle.Typography.microLabel)
-                .foregroundColor(OPSStyle.Colors.text))
+                .foregroundColor(isOverridden ? DeckStaleDimensionPresenter.valueColor : OPSStyle.Colors.text))
 
             let textSize = resolved.measure(
                 in: CGSize(
@@ -627,13 +632,26 @@ struct DeckTab2DView: View {
                 roundedRect: bgRect,
                 cornerRadius: CGFloat(OPSStyle.Layout.chipRadius)
             )
-            layer.fill(path, with: .color(OPSStyle.Colors.glassDenseApprox))
+            layer.fill(
+                path,
+                with: .color(isOverridden ? DeckStaleDimensionPresenter.chipFill : OPSStyle.Colors.glassDenseApprox)
+            )
             layer.stroke(
                 path,
-                with: .color(OPSStyle.Colors.line),
+                with: .color(isOverridden ? DeckStaleDimensionPresenter.chipStroke : OPSStyle.Colors.line),
                 lineWidth: OPSStyle.Layout.Border.standard
             )
             layer.draw(resolved, at: .zero, anchor: .center)
+
+            guard isOverridden else { return }
+            let caption = layer.resolve(Text(DeckStaleDimensionPresenter.caption)
+                .font(OPSStyle.Typography.microLabel)
+                .foregroundColor(DeckStaleDimensionPresenter.valueColor))
+            layer.draw(
+                caption,
+                at: CGPoint(x: 0, y: bgRect.maxY + CGFloat(OPSStyle.Layout.spacing1)),
+                anchor: .top
+            )
         }
     }
 

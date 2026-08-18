@@ -5041,6 +5041,14 @@ actor DataActor {
                     in: modelContext,
                     completedAt: completedAt
                 )
+                // Confirmed server success is the ONLY thing that clears a
+                // calendar row's dirty flag — and it commits with the
+                // completion, because that flag is what keeps the inbound merge
+                // off a locally-edited row (bug ef5a69e6).
+                try CalendarUserEventOutboundSync.clearNeedsSyncOnCompletion(
+                    for: operation,
+                    in: modelContext
+                )
             }
             print("[DataActor] Completed \(operation.entityType) \(operation.entityId)")
             if operation.entityType == SyncEntityType.projectTask.rawValue {
@@ -5303,6 +5311,18 @@ actor DataActor {
             entityType: entityType,
             operationType: operationType,
             payload: payload
+        ) {
+            return
+        }
+        // Time off and personal events. Owned here rather than by a switch case
+        // below because the create also carries the notification that must not
+        // fire until the server has the row (bug ef5a69e6).
+        if try await CalendarUserEventOutboundSync.executeIfHandled(
+            entityType: entityType,
+            operationType: operationType,
+            entityId: entityId,
+            payload: payload,
+            companyId: companyId
         ) {
             return
         }

@@ -623,8 +623,8 @@ struct ConvertToProjectSheet: View {
                         }
                     }
                     .padding(.leading, OPSStyle.Layout.spacing2_5)
-                    .padding(.trailing, 6)
-                    .padding(.vertical, 10)
+                    .padding(.trailing, OPSStyle.Layout.spacing2)
+                    .padding(.vertical, OPSStyle.Layout.spacing2_5)
                     .frame(minHeight: 44)
                     .contentShape(Rectangle())
                 }
@@ -641,7 +641,7 @@ struct ConvertToProjectSheet: View {
                     Image(systemName: OPSStyle.Icons.magnifyingglass)
                         .font(.system(size: OPSStyle.Layout.IconSize.xs, weight: .semibold))
                         .foregroundColor(OPSStyle.Colors.text3)
-                        .padding(.horizontal, 10)
+                        .padding(.horizontal, OPSStyle.Layout.spacing2_5)
                         .frame(minHeight: 44)
                         .contentShape(Rectangle())
                 }
@@ -679,7 +679,7 @@ struct ConvertToProjectSheet: View {
                     }
                 }
                 .padding(.horizontal, OPSStyle.Layout.spacing2_5)
-                .padding(.vertical, 10)
+                .padding(.vertical, OPSStyle.Layout.spacing2_5)
                 .frame(minHeight: 44)
                 .contentShape(Rectangle())
             }
@@ -718,7 +718,7 @@ struct ConvertToProjectSheet: View {
                         .foregroundColor(OPSStyle.Colors.text3)
                 }
                 .padding(.horizontal, OPSStyle.Layout.spacing2_5)
-                .padding(.vertical, 10)
+                .padding(.vertical, OPSStyle.Layout.spacing2_5)
                 .frame(minHeight: 44)
                 .contentShape(Rectangle())
             }

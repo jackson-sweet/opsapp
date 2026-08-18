@@ -166,6 +166,40 @@ enum ExpenseBuckets {
         return stats
     }
 
+    // MARK: Line ordering
+
+    /// A line whose money is decided — approved or already reimbursed. Nothing
+    /// is outstanding on it, so it reads as reference, not work.
+    static func isSettled(_ expense: ExpenseDTO) -> Bool {
+        ExpenseStatus(rawValue: expense.status)?.isTerminal ?? false
+    }
+
+    /// The canonical order for any list of expense LINES the operator scans:
+    /// what still needs a decision leads (draft / submitted / sent back),
+    /// settled money follows — newest first inside each group. Stable: equal
+    /// keys keep their source order (the repositories hand lines over newest
+    /// created first).
+    static func attentionOrdered(_ expenses: [ExpenseDTO]) -> [ExpenseDTO] {
+        expenses
+            .enumerated()
+            .sorted { left, right in
+                let leftSettled = isSettled(left.element)
+                let rightSettled = isSettled(right.element)
+                if leftSettled != rightSettled { return !leftSettled }
+                let leftDate = recencyDate(left.element)
+                let rightDate = recencyDate(right.element)
+                if leftDate != rightDate { return leftDate > rightDate }
+                return left.offset < right.offset
+            }
+            .map { $0.element }
+    }
+
+    /// What "recent" means for a line: the day the money went out, falling
+    /// back to when the line was captured.
+    private static func recencyDate(_ expense: ExpenseDTO) -> Date {
+        parseDate(expense.expenseDate) ?? parseDate(expense.createdAt) ?? .distantPast
+    }
+
     // MARK: Bucket split
 
     /// Partition a company's batches into the console's working sets, applying

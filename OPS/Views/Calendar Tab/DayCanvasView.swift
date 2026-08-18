@@ -271,6 +271,11 @@ struct DayPageView: View {
         viewModel.bookedVisits(for: date)
     }
 
+    /// Statutory holiday falling on this day, computed on device. Bug 23ecb01a.
+    private var holidayForDate: StatutoryHoliday? {
+        StatutoryHolidays.holiday(on: date)
+    }
+
     // MARK: - Site-visit branch actions
 
     /// Resolve the visit's lead. A booking is always lead-attached; a missing
@@ -378,6 +383,13 @@ struct DayPageView: View {
                     .padding(.horizontal, OPSStyle.Layout.spacing3_5)
                     .padding(.bottom, OPSStyle.Layout.spacing2_5)
                     .transition(.opacity.combined(with: .move(edge: .top)))
+            }
+
+            // A statutory holiday frames the whole day, so it sits above the
+            // list rather than inside it — and stays put on an empty day,
+            // which is exactly the day it most needs explaining. Bug 23ecb01a.
+            if let holiday = holidayForDate {
+                CalendarHolidayCard(holiday: holiday)
             }
 
             // Scrollable task list

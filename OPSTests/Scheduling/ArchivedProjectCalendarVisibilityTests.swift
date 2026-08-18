@@ -7,15 +7,21 @@
 //  manufacturing phantom conflicts inside the scheduler sheet's day inspector.
 //  Nothing in the calendar layer had ever consulted project status.
 //
+//  Bug 8351d7a7 widened the rule: unwon work (rfq / estimated) was drawing on
+//  the schedule too, making the week read busier than it is and manufacturing
+//  conflicts against days that were actually free.
+//
 //  These pin the rule and its three consumer surfaces:
-//    • the shared predicate itself (archived hidden, everything else visible),
+//    • the shared predicate itself (unwon + archived hidden, won and finished
+//      work visible),
 //    • the week canvas + month grid, which share CalendarViewModel.applyTaskFilters,
 //    • the scheduler sheet's availability engine, which must stop counting
-//      archived work as a conflict.
+//      hidden work as a conflict.
 //
-//  The rule is deliberately narrow: ONLY `.archived`. `.closed` jobs still
-//  belong on a calendar (they are finished, not filed away), and `isActive`
-//  would have erased every rfq/estimated job that is legitimately scheduled.
+//  `.completed` / `.closed` deliberately stay VISIBLE: that work genuinely
+//  happened on those days, and blanking the past out of the calendar would
+//  destroy the record operators look back at. `Status.isActive` alone was
+//  rejected for exactly that reason.
 //
 
 import SwiftData
@@ -35,14 +41,14 @@ final class ArchivedProjectCalendarVisibilityTests: XCTestCase {
 
     func testTaskOnArchivedProjectIsHidden() {
         XCTAssertFalse(
-            CalendarTaskVisibility.includes(projectId: "p-archived", archivedProjectIds: ["p-archived"]),
+            CalendarTaskVisibility.includes(projectId: "p-archived", hiddenProjectIds: ["p-archived"]),
             "An archived job's task must not reach any calendar surface."
         )
     }
 
     func testTaskWhoseProjectIsNotArchivedIsVisible() {
         XCTAssertTrue(
-            CalendarTaskVisibility.includes(projectId: "p-live", archivedProjectIds: ["p-archived"])
+            CalendarTaskVisibility.includes(projectId: "p-live", hiddenProjectIds: ["p-archived"])
         )
     }
 
@@ -54,37 +60,67 @@ final class ArchivedProjectCalendarVisibilityTests: XCTestCase {
     /// missing a row would lose a day of work; showing it costs nothing.
     func testTaskWithNoKnownProjectStaysVisible() {
         XCTAssertTrue(
-            CalendarTaskVisibility.includes(projectId: "p-never-synced", archivedProjectIds: ["p-archived"]),
+            CalendarTaskVisibility.includes(projectId: "p-never-synced", hiddenProjectIds: ["p-archived"]),
             "An unsynced or unlinked project must never hide real scheduled work."
         )
         XCTAssertTrue(
-            CalendarTaskVisibility.includes(projectId: "", archivedProjectIds: ["p-archived"])
+            CalendarTaskVisibility.includes(projectId: "", hiddenProjectIds: ["p-archived"])
         )
     }
 
-    func testEveryNonArchivedStatusStaysVisible() throws {
+    /// Bug 8351d7a7 — every status, sorted into the two halves of the rule.
+    func testOnlyCommittedAndFinishedWorkReachesTheCalendar() throws {
         let container = try makeInMemoryContainer()
         let context = ModelContext(container)
 
-        let live: [Status] = [.rfq, .estimated, .accepted, .inProgress, .completed, .closed]
-        for status in live {
+        let shown: [Status] = [.accepted, .inProgress, .completed, .closed]
+        let hidden: [Status] = [.rfq, .estimated, .archived]
+
+        for status in shown + hidden {
             context.insert(Project(id: status.rawValue, title: status.displayName, status: status))
         }
-        context.insert(Project(id: "archived", title: "Filed away", status: .archived))
 
-        let archivedIds = CalendarTaskVisibility.archivedProjectIds(in: context)
+        let hiddenIds = CalendarTaskVisibility.hiddenProjectIds(in: context)
 
-        XCTAssertEqual(archivedIds, ["archived"], "Only `.archived` may ever land in the exclusion set.")
-        for status in live {
+        XCTAssertEqual(
+            hiddenIds,
+            Set(hidden.map(\.rawValue)),
+            "Unwon and filed-away work is everything the calendar hides — nothing more."
+        )
+        for status in shown {
             XCTAssertTrue(
-                CalendarTaskVisibility.includes(projectId: status.rawValue, archivedProjectIds: archivedIds),
-                "\(status.displayName) is live work and must stay on the calendar."
+                CalendarTaskVisibility.includes(projectId: status.rawValue, hiddenProjectIds: hiddenIds),
+                "\(status.displayName) is committed or finished work and must stay on the calendar."
+            )
+        }
+        for status in hidden {
+            XCTAssertFalse(
+                CalendarTaskVisibility.includes(projectId: status.rawValue, hiddenProjectIds: hiddenIds),
+                "\(status.displayName) work is not a commitment and must not draw on the calendar."
             )
         }
     }
 
-    func testArchivedProjectIdsIsEmptyWithoutAContext() {
-        XCTAssertEqual(CalendarTaskVisibility.archivedProjectIds(in: nil), [])
+    /// A quoted job's pencilled dates are the exact complaint in bug 8351d7a7.
+    func testTaskOnEstimatedProjectIsHidden() throws {
+        let container = try makeInMemoryContainer()
+        let context = ModelContext(container)
+        context.insert(Project(id: "p-quoted", title: "Maybe deck", status: .estimated))
+        context.insert(Project(id: "p-won", title: "Signed deck", status: .accepted))
+
+        let hiddenIds = CalendarTaskVisibility.hiddenProjectIds(in: context)
+
+        XCTAssertEqual(
+            CalendarTaskVisibility.visible(
+                [task(id: "t-quoted", projectId: "p-quoted"), task(id: "t-won", projectId: "p-won")],
+                hiddenProjectIds: hiddenIds
+            ).map(\.id),
+            ["t-won"]
+        )
+    }
+
+    func testHiddenProjectIdsIsEmptyWithoutAContext() {
+        XCTAssertEqual(CalendarTaskVisibility.hiddenProjectIds(in: nil), [])
     }
 
     func testVisibleDropsOnlyArchivedTasksAndKeepsOrder() {
@@ -94,7 +130,7 @@ final class ArchivedProjectCalendarVisibilityTests: XCTestCase {
 
         let kept = CalendarTaskVisibility.visible(
             [archived, live, orphan],
-            archivedProjectIds: ["p-archived"]
+            hiddenProjectIds: ["p-archived"]
         )
 
         XCTAssertEqual(kept.map(\.id), ["t-live", "t-orphan"])
@@ -113,7 +149,7 @@ final class ArchivedProjectCalendarVisibilityTests: XCTestCase {
 
         let filtered = viewModel.applyTaskFilters(
             to: [archived, live],
-            archivedProjectIds: ["p-archived"]
+            hiddenProjectIds: ["p-archived"]
         )
 
         XCTAssertEqual(filtered.map(\.id), ["t-live"])
@@ -131,7 +167,7 @@ final class ArchivedProjectCalendarVisibilityTests: XCTestCase {
 
         let filtered = viewModel.applyTaskFilters(
             to: [archivedInstall, liveInstall, liveTeardown],
-            archivedProjectIds: ["p-archived"]
+            hiddenProjectIds: ["p-archived"]
         )
 
         XCTAssertEqual(filtered.map(\.id), ["t-live-install"])
@@ -139,14 +175,16 @@ final class ArchivedProjectCalendarVisibilityTests: XCTestCase {
 
     /// The status filter chip list must not offer a status the calendar can
     /// never show — a filter that always returns nothing is a dead control.
-    func testCalendarStatusFilterDoesNotOfferArchived() {
-        XCTAssertFalse(
-            CalendarTaskVisibility.filterableStatuses.contains(.archived),
-            "Archived is not a schedule state; offering it would be a dead filter."
-        )
+    func testCalendarStatusFilterOffersOnlyStatusesTheCalendarCanShow() {
+        for dead in [Status.archived, .rfq, .estimated] {
+            XCTAssertFalse(
+                CalendarTaskVisibility.filterableStatuses.contains(dead),
+                "\(dead.displayName) never draws on the calendar; offering it would be a dead filter."
+            )
+        }
         XCTAssertEqual(
             CalendarTaskVisibility.filterableStatuses,
-            [.rfq, .estimated, .accepted, .inProgress, .completed, .closed]
+            [.accepted, .inProgress, .completed, .closed]
         )
     }
 
@@ -237,7 +275,7 @@ final class ArchivedProjectCalendarVisibilityTests: XCTestCase {
 
         let visible = CalendarTaskVisibility.visible(
             [archivedTask],
-            archivedProjectIds: ["p-archived"]
+            hiddenProjectIds: ["p-archived"]
         )
 
         let context = SchedulerDayContext(
@@ -284,7 +322,7 @@ final class ArchivedProjectCalendarVisibilityTests: XCTestCase {
 
         let visible = CalendarTaskVisibility.visible(
             [liveTask],
-            archivedProjectIds: ["p-archived"]
+            hiddenProjectIds: ["p-archived"]
         )
 
         let context = SchedulerDayContext(

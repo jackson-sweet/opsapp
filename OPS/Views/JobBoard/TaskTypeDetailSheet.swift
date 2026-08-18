@@ -18,11 +18,14 @@ struct TaskTypeDetailSheet: View {
     @State private var showingEditForm = false
     @State private var showingDeletionSheet = false
 
+    /// Grouped by colour so like chips cluster (bug bc9c2e83).
     private var availableTaskTypeReassignments: [TaskType] {
-        TaskTypeSelectionPolicy.selectableTaskTypes(
-            from: allTaskTypes,
-            companyId: taskType.companyId
-        ).filter { $0.id != taskType.id }
+        TaskTypeSelectionPolicy.colorOrdered(
+            TaskTypeSelectionPolicy.selectableTaskTypes(
+                from: allTaskTypes,
+                companyId: taskType.companyId
+            ).filter { $0.id != taskType.id }
+        )
     }
 
     var body: some View {

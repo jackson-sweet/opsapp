@@ -84,6 +84,9 @@ struct ProjectFormSheet: View {
     // Typing a non-empty name flips it false; clearing the name or tapping
     // "use address" flips it back true.
     @State private var titleIsAuto: Bool = true
+    /// The operator asked to type a name by hand, so the input is showing even
+    /// though the name is still blank. Cleared by USE ADDRESS. Bug 3c4a1b1f.
+    @State private var isRenamingTitle: Bool = false
     @State private var description: String = ""
     @State private var notes: String = ""
     @State private var address: String = ""
@@ -1144,28 +1147,100 @@ struct ProjectFormSheet: View {
                     }
                     .disabled(selectedClient == nil)
 
-                    // Revert-to-auto button. Clears any custom name so the
-                    // server auto-derives it from the site address. Enabled
-                    // only when a custom name is set (titleIsAuto == false).
+                    // The name's mode toggle, matching the lead-conversion
+                    // sheet: RENAME opens the input, USE ADDRESS drops the
+                    // custom name and lets the server derive it from the site
+                    // address. Dead only when there is nothing to switch to.
                     Button {
-                        title = ""
-                        titleIsAuto = true
-                        focusedField = nil
                         UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        if usesAddressAsName {
+                            isRenamingTitle = true
+                            focusedField = .title
+                        } else {
+                            title = ""
+                            titleIsAuto = true
+                            isRenamingTitle = false
+                            focusedField = nil
+                        }
                     } label: {
                         HStack(spacing: OPSStyle.Layout.spacing1) {
-                            Image(systemName: OPSStyle.Icons.locationFill)
+                            Image(systemName: usesAddressAsName ? OPSStyle.Icons.edit : OPSStyle.Icons.locationFill)
                                 .font(.system(size: 10))
-                            Text("USE ADDRESS")
+                            Text(usesAddressAsName ? "RENAME" : "USE ADDRESS")
                                 .font(OPSStyle.Typography.microLabel)
                         }
-                        .foregroundColor(!titleIsAuto ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.tertiaryText)
+                        .foregroundColor(titleModeToggleIsLive ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.tertiaryText)
                     }
-                    .disabled(titleIsAuto)
+                    .disabled(!titleModeToggleIsLive)
+                    .accessibilityLabel(usesAddressAsName ? "Rename project" : "Use address for project name")
                 }
             }
 
-            TextField("Enter project name", text: $title)
+            if usesAddressAsName {
+                addressNameConfirmation
+            } else {
+                titleInputField
+            }
+
+            // Quiet auto-name preview + quick-fill chips — the manual-entry
+            // aids. They belong with the input; once the name is resolved to
+            // the address, the confirmation above says it outright and three
+            // competing name chips underneath would only argue with it.
+            if !tutorialMode && title.isEmpty && !usesAddressAsName {
+                autoNamePreviewLine
+                autofillSuggestions
+            }
+        }
+    }
+
+    /// The name is blank and the site address can produce one, so the input has
+    /// nothing left to say — the confirmation states the outcome instead. Bug
+    /// 3c4a1b1f. Never while a wizard or the tutorial is driving the form:
+    /// both script a step that asks the operator to type into this field.
+    private var usesAddressAsName: Bool {
+        guard !tutorialMode, wizardStateManager?.isActive != true, !isRenamingTitle else { return false }
+        guard title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return false }
+        return ProjectAutoNamer.streetLine(from: address) != nil
+    }
+
+    /// The toggle is dead only when there is nothing to switch to: no custom
+    /// name to drop, and no address to derive one from.
+    private var titleModeToggleIsLive: Bool {
+        usesAddressAsName || !titleIsAuto || isRenamingTitle
+    }
+
+    /// The settled state that replaces the input: the derived name, stated.
+    /// RENAME in the label row is the way back to typing one by hand.
+    private var addressNameConfirmation: some View {
+        HStack(spacing: OPSStyle.Layout.spacing2_5) {
+            Image(systemName: OPSStyle.Icons.locationFill)
+                .font(.system(size: OPSStyle.Layout.IconSize.sm))
+                .foregroundColor(OPSStyle.Colors.secondaryText)
+
+            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
+                Text("USING ADDRESS AS NAME")
+                    .font(OPSStyle.Typography.microLabel)
+                    .foregroundColor(OPSStyle.Colors.secondaryText)
+                Text(autoDerivedNamePreview.uppercased())
+                    .font(OPSStyle.Typography.body)
+                    .foregroundColor(OPSStyle.Colors.primaryText)
+                    .lineLimit(1)
+            }
+
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, OPSStyle.Layout.spacing3)
+        .padding(.vertical, OPSStyle.Layout.spacing2)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .overlay(
+            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: OPSStyle.Layout.Border.standard)
+        )
+        .accessibilityElement(children: .combine)
+    }
+
+    private var titleInputField: some View {
+        TextField("Enter project name", text: $title)
                 .font(OPSStyle.Typography.body)
                 .foregroundColor(OPSStyle.Colors.primaryText)
                 .autocorrectionDisabled(true)
@@ -1216,14 +1291,6 @@ struct ProjectFormSheet: View {
                     }
                 }
                 .wizardTarget("enter_project_name", style: .input)
-
-            // Quiet auto-name preview — shows the name the server will derive
-            // from the address while the field is blank. Hidden in tutorial.
-            if !tutorialMode && title.isEmpty {
-                autoNamePreviewLine
-                autofillSuggestions
-            }
-        }
     }
 
     /// `// NAME · {derived}` metadata line. Street line from the address, else a

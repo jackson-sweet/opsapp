@@ -1117,10 +1117,19 @@ struct MonthDayCell: View {
         DateHelper.isToday(date)
     }
 
+    /// Bug 23ecb01a — a statutory holiday is a fact about the day, so it
+    /// colours the date itself rather than taking one of the four event-bar
+    /// rows away from real work. The day sheet names it.
+    private var isHoliday: Bool {
+        StatutoryHolidays.holiday(on: date) != nil
+    }
+
     private var textColor: Color {
         if isToday {
             // Today's date is black on white circle
             return .black
+        } else if isHoliday {
+            return OPSStyle.Colors.tanTextM
         } else if isSelected {
             return OPSStyle.Colors.primaryText
         } else {
@@ -1573,6 +1582,11 @@ struct DayDetailsSheet: View {
         viewModel.bookedVisits(for: date)
     }
 
+    /// Statutory holiday falling on this date, computed on device. Bug 23ecb01a.
+    private var dayHoliday: StatutoryHoliday? {
+        StatutoryHolidays.holiday(on: date)
+    }
+
     private var totalEventCount: Int {
         scheduledTasks.count + dayUserEvents.count + dayBookedVisits.count
     }
@@ -1617,6 +1631,13 @@ struct DayDetailsSheet: View {
                     .font(OPSStyle.Typography.caption)
                     .foregroundColor(OPSStyle.Colors.secondaryText)
                     .padding(.horizontal)
+
+                // A statutory holiday frames the day, so it leads — and stays
+                // on an empty day, which is the day it most needs explaining.
+                // Bug 23ecb01a.
+                if let holiday = dayHoliday {
+                    CalendarHolidayCard(holiday: holiday)
+                }
 
                 if scheduledTasks.isEmpty && dayUserEvents.isEmpty && dayBookedVisits.isEmpty {
                     VStack(spacing: OPSStyle.Layout.spacing2_5) {

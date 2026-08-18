@@ -47,12 +47,15 @@ struct SharePhotoToProjectSheet: View {
         order: .reverse
     ) private var allProjects: [Project]
 
+    /// Bug b79abf79 — the picker leads with the most recently touched job.
     private var visibleProjects: [Project] {
         // Exclude closed/archived so users don't accidentally attach
         // photos to a completed project.
-        let active = allProjects.filter { project in
-            project.status != .closed && project.status != .archived
-        }
+        let active = ProjectRecency.pickerOrdered(
+            allProjects.filter { project in
+                project.status != .closed && project.status != .archived
+            }
+        )
         if projectSearchText.isEmpty { return active }
         let query = projectSearchText.lowercased()
         return active.filter { project in

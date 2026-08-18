@@ -19,10 +19,13 @@ struct TaskListFilterSheet: View {
     let availableTaskTypes: [TaskType]
     let availableTeamMembers: [User]
 
+    /// Grouped by colour so like chips cluster (bug bc9c2e83).
     private var selectableTaskTypes: [TaskType] {
-        TaskTypeSelectionPolicy.selectableTaskTypes(
-            from: availableTaskTypes,
-            companyId: dataController.currentUser?.companyId
+        TaskTypeSelectionPolicy.colorOrdered(
+            TaskTypeSelectionPolicy.selectableTaskTypes(
+                from: availableTaskTypes,
+                companyId: dataController.currentUser?.companyId
+            )
         )
     }
 

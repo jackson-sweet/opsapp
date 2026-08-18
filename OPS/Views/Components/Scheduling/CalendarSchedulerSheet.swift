@@ -162,8 +162,24 @@ struct CalendarSchedulerSheet: View {
                             .padding(.bottom, OPSStyle.Layout.spacing2)
                     }
 
-                    if let suggested = dayContext.suggestion, !selection.isCommittable {
+                    // Bug 43944d96 — the chip's ROW is reserved for the life of
+                    // the sheet once a suggestion exists; only the chip itself
+                    // fades once the operator has picked their own range.
+                    // Dropping the row outright resized the calendar underneath
+                    // the second tap, and the lazy month list answered a taller
+                    // viewport by clamping its offset — the grid jumped months
+                    // backwards under the operator's finger, mid-pick. Nothing
+                    // above the calendar may change height while a range is
+                    // being built.
+                    if let suggested = dayContext.suggestion {
                         suggestionChip(suggested)
+                            .opacity(selection.isCommittable ? 0 : 1)
+                            .allowsHitTesting(!selection.isCommittable)
+                            .animation(
+                                reduceMotion ? nil : OPSStyle.Animation.fast,
+                                value: selection.isCommittable
+                            )
+                            .accessibilityHidden(selection.isCommittable)
                             .padding(.bottom, OPSStyle.Layout.spacing2)
                     }
 
@@ -875,14 +891,15 @@ struct CalendarSchedulerSheet: View {
 
         let crewIds = currentItemTeamMemberIds
 
-        // Bug 9997c11c — an archived job is not a commitment. Filtered here,
-        // post-fetch, rather than inside `getScheduledTasks(in:)`: that fetcher
-        // is shared with conflict math and auto-scheduling owned elsewhere.
-        // Left unfiltered, a filed-away job manufactured a phantom clash and
-        // steered the operator off a day that was actually free.
+        // Bugs 9997c11c + 8351d7a7 — a filed-away or not-yet-won job is not a
+        // commitment. Filtered here, post-fetch, rather than inside
+        // `getScheduledTasks(in:)`: that fetcher is shared with conflict math
+        // and auto-scheduling owned elsewhere. Left unfiltered, such a job
+        // manufactured a phantom clash and steered the operator off a day that
+        // was actually free.
         let tasks = CalendarTaskVisibility.visible(
             dataController.getScheduledTasks(in: windowStart...windowEnd),
-            archivedProjectIds: CalendarTaskVisibility.archivedProjectIds(in: modelContext)
+            hiddenProjectIds: CalendarTaskVisibility.hiddenProjectIds(in: modelContext)
         )
         let userEvents = dataController.getUserEvents(in: windowStart...windowEnd)
 

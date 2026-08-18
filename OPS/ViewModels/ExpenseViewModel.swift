@@ -161,14 +161,17 @@ class ExpenseViewModel: ObservableObject {
             }
 
             let projectGroups = projectDict.keys.sorted().map { projectId in
-                ProjectExpenseGroup(id: projectId, expenses: projectDict[projectId]!)
+                ProjectExpenseGroup(
+                    id: projectId,
+                    expenses: ExpenseBuckets.attentionOrdered(projectDict[projectId]!)
+                )
             }
 
             return ExpenseMonthGroup(
                 id: key,
                 monthLabel: bucket.label,
                 projectGroups: projectGroups,
-                unallocated: unallocated
+                unallocated: ExpenseBuckets.attentionOrdered(unallocated)
             )
         }
     }
@@ -702,7 +705,10 @@ class ExpenseViewModel: ObservableObject {
         isLoading = true
         defer { isLoading = false }
         do {
-            selectedBatchExpenses = try await repo.fetchBatchExpenses(batchId)
+            // Undecided lines lead, settled money follows, newest first
+            // inside each group — the reviewer's eye lands on the work.
+            let lines = try await repo.fetchBatchExpenses(batchId)
+            selectedBatchExpenses = ExpenseBuckets.attentionOrdered(lines)
             flaggedExpenseIds = Set(selectedBatchExpenses.compactMap { $0.flaggedBy != nil ? $0.id : nil })
             flagComments = Dictionary(uniqueKeysWithValues:
                 selectedBatchExpenses.compactMap { expense in

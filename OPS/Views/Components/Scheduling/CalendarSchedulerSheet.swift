@@ -875,14 +875,15 @@ struct CalendarSchedulerSheet: View {
 
         let crewIds = currentItemTeamMemberIds
 
-        // Bug 9997c11c — an archived job is not a commitment. Filtered here,
-        // post-fetch, rather than inside `getScheduledTasks(in:)`: that fetcher
-        // is shared with conflict math and auto-scheduling owned elsewhere.
-        // Left unfiltered, a filed-away job manufactured a phantom clash and
-        // steered the operator off a day that was actually free.
+        // Bugs 9997c11c + 8351d7a7 — a filed-away or not-yet-won job is not a
+        // commitment. Filtered here, post-fetch, rather than inside
+        // `getScheduledTasks(in:)`: that fetcher is shared with conflict math
+        // and auto-scheduling owned elsewhere. Left unfiltered, such a job
+        // manufactured a phantom clash and steered the operator off a day that
+        // was actually free.
         let tasks = CalendarTaskVisibility.visible(
             dataController.getScheduledTasks(in: windowStart...windowEnd),
-            archivedProjectIds: CalendarTaskVisibility.archivedProjectIds(in: modelContext)
+            hiddenProjectIds: CalendarTaskVisibility.hiddenProjectIds(in: modelContext)
         )
         let userEvents = dataController.getUserEvents(in: windowStart...windowEnd)
 

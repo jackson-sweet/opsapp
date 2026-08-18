@@ -2,9 +2,10 @@
 //  BugReportTriggerCoordinatorTests.swift
 //  OPSTests
 //
-//  The supported bug-report entry points (shake and Settings) share one
-//  guarded boundary. These tests keep source attribution, debounce, capture
-//  ordering, and non-destructive overlay presentation deterministic.
+//  The supported bug-report entry points (shake, Settings, and the screenshot
+//  offer) share one guarded boundary. These tests keep source attribution,
+//  debounce, capture ordering, which screenshot the report carries, and
+//  non-destructive overlay presentation deterministic.
 //
 
 import XCTest
@@ -195,5 +196,70 @@ final class BugReportTriggerCoordinatorTests: XCTestCase {
             .rejected(.unauthenticated)
         )
         XCTAssertEqual(trigger(coordinator, source: .settings), .accepted(.settings))
+    }
+
+    // MARK: - Screenshot source
+
+    func testScreenshotSourceSharesTheSameGuardedBoundary() {
+        let coordinator = makeCoordinator()
+
+        XCTAssertEqual(trigger(coordinator, source: .screenshot), .accepted(.screenshot))
+
+        // Debounce and the presenter latch cover it exactly like the others —
+        // a screenshot report is a third door into one room, not a side entrance.
+        XCTAssertEqual(trigger(coordinator, source: .shake), .rejected(.debounced))
+
+        now.addTimeInterval(1.501)
+        XCTAssertEqual(
+            trigger(coordinator, source: .screenshot, state: readyState(isPresenterActive: true)),
+            .rejected(.presenterActive)
+        )
+    }
+
+    // MARK: - Which screenshot the report carries
+
+    func testHeldScreenshotIsPreferredOverAFreshCapture() {
+        let held: ScreenshotToken? = ScreenshotToken()
+        var didCaptureLive = false
+
+        let chosen = BugReportTriggerCoordinator.screenshotToPresent(
+            held: held,
+            captureLive: { () -> ScreenshotToken? in
+                didCaptureLive = true
+                return ScreenshotToken()
+            }
+        )
+
+        // The screenshot offer's shot was taken when the operator pressed the
+        // buttons; the live screen has moved on. Re-capturing here would swap
+        // the evidence out from under the report.
+        XCTAssertTrue(chosen === held)
+        XCTAssertFalse(didCaptureLive)
+    }
+
+    func testMissingHeldScreenshotFallsBackToALiveCapture() {
+        let noShot: ScreenshotToken? = nil
+        let live: ScreenshotToken? = ScreenshotToken()
+
+        // Shake and Settings hold nothing and must still get the screen.
+        let chosen = BugReportTriggerCoordinator.screenshotToPresent(
+            held: noShot,
+            captureLive: { () -> ScreenshotToken? in live }
+        )
+
+        XCTAssertTrue(chosen === live)
+    }
+
+    func testAFailedLiveCaptureStillPresentsTheReport() {
+        let noShot: ScreenshotToken? = nil
+
+        let chosen = BugReportTriggerCoordinator.screenshotToPresent(
+            held: noShot,
+            captureLive: { () -> ScreenshotToken? in nil }
+        )
+
+        // A report with no screenshot beats no report at all — the shake path
+        // has always presented on a nil capture.
+        XCTAssertNil(chosen)
     }
 }

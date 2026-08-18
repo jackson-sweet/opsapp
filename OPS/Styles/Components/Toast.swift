@@ -15,6 +15,7 @@
 //    • Exit:  slide-out + opacity, OPSStyle.Animation.fast (200ms)
 //    • Reduced motion: opacity-only crossfade
 //    • Haptic on present: notificationOccurred matching the tone
+//      (opt out with `haptics: false` — unsolicited toasts only)
 //    • Tap to dismiss → light impact haptic
 //    • Auto-dismiss default: 3.0s
 //    • Optional action: a trailing tap-through affordance (label + handler).
@@ -104,19 +105,30 @@ struct Toast: Identifiable, Equatable {
     let autoDismissAfter: TimeInterval
     /// Optional trailing tap-through. `nil` → plain dismiss-on-tap toast.
     let action: ToastAction?
+    /// Whether presenting this toast fires its tone haptic. Default `true` —
+    /// a toast normally confirms something the operator just did, and the
+    /// haptic is the confirmation.
+    ///
+    /// Set `false` for an *unsolicited* toast the operator did not ask for.
+    /// The screenshot bug-report offer is the case: iOS has already flashed
+    /// the screen and played the shutter, so a buzz on top of that reads as
+    /// the app reacting to being watched rather than confirming an action.
+    let haptics: Bool
 
     init(
         id: UUID = UUID(),
         label: String,
         tone: ToastTone,
         autoDismissAfter: TimeInterval = 3.0,
-        action: ToastAction? = nil
+        action: ToastAction? = nil,
+        haptics: Bool = true
     ) {
         self.id = id
         self.label = label
         self.tone = tone
         self.autoDismissAfter = autoDismissAfter
         self.action = action
+        self.haptics = haptics
     }
 
     static func == (lhs: Toast, rhs: Toast) -> Bool { lhs.id == rhs.id }
@@ -290,6 +302,7 @@ private struct ToastBanner: View {
         .contentShape(Rectangle())
         .onTapGesture { onTap() }
         .onAppear {
+            guard toast.haptics else { return }
             UINotificationFeedbackGenerator().notificationOccurred(toast.tone.hapticType)
         }
     }

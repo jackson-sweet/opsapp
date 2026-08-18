@@ -5,7 +5,7 @@
 //  One guarded boundary for every user-initiated bug-report trigger.
 //
 
-import Foundation
+import UIKit
 
 @MainActor
 final class BugReportTriggerCoordinator {
@@ -14,6 +14,10 @@ final class BugReportTriggerCoordinator {
     enum Source: String, Equatable {
         case shake
         case settings
+        /// The operator took a screenshot and accepted the offer to file it.
+        /// See `ScreenshotBugReportOffer` — the shot is captured when the
+        /// screenshot happens, so this source always arrives holding one.
+        case screenshot
     }
 
     struct GuardState: Equatable {
@@ -46,13 +50,20 @@ final class BugReportTriggerCoordinator {
         self.now = now
     }
 
-    /// Production entry point. Both shake and the visible Settings action use
-    /// this method so their eligibility and capture ordering cannot drift.
+    /// Production entry point. Shake, the visible Settings action, and the
+    /// screenshot offer all use this method so their eligibility and capture
+    /// ordering cannot drift.
+    ///
+    /// - Parameter capturedScreenshot: A shot already taken at trigger time.
+    ///   The screenshot offer holds one (grabbed the instant the operator hit
+    ///   the buttons, seconds before the tap that gets here); shake and
+    ///   Settings pass `nil` and get a live capture.
     @discardableResult
     func trigger(
         source: Source,
         appState: AppState,
-        dataController: DataController
+        dataController: DataController,
+        capturedScreenshot: UIImage? = nil
     ) -> Outcome {
         let outcome = trigger(
             source: source,
@@ -61,8 +72,10 @@ final class BugReportTriggerCoordinator {
                 isTutorialActive: appState.shouldRestartTutorial,
                 isPresenterActive: BugReportPresenter.shared.isPresenting
             ),
-            captureScreenshot: {
-                BugReportCaptureService.shared.captureScreenshot()
+            captureScreenshot: { () -> UIImage? in
+                Self.screenshotToPresent(held: capturedScreenshot) {
+                    BugReportCaptureService.shared.captureScreenshot()
+                }
             },
             presentOverlay: { screenshot in
                 BugReportPresenter.shared.present(
@@ -122,5 +135,24 @@ final class BugReportTriggerCoordinator {
         presentOverlay(screenshot)
 
         return .accepted(source)
+    }
+
+    // MARK: - Which screenshot the report carries
+
+    /// A shot already in hand beats a fresh one.
+    ///
+    /// Shake and Settings fire and present in the same runloop turn, so a live
+    /// capture IS the screen the operator meant. The screenshot offer does not:
+    /// its shot was taken when the operator pressed the buttons, and the tap
+    /// that files the report can land seconds later on a screen that has
+    /// scrolled, dismissed, or navigated away. Capturing again there would
+    /// quietly swap the evidence for something else.
+    ///
+    /// Pure decision logic, unit-tested in BugReportTriggerCoordinatorTests.
+    nonisolated static func screenshotToPresent<Snapshot>(
+        held: Snapshot?,
+        captureLive: () -> Snapshot?
+    ) -> Snapshot? {
+        held ?? captureLive()
     }
 }

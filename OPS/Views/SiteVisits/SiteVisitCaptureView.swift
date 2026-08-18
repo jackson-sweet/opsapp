@@ -110,6 +110,16 @@ private struct SiteVisitCaptureConsole: View {
     @State private var showingReview = false
     @State private var showingDeckBuilder = false
     @State private var activeDeckDesign: DeckDesign?
+    /// Bug c84aacb4 — DECK used to fabricate a blank design and drop the
+    /// operator on an empty canvas, so AR deck outline (and template, recent,
+    /// and paper-sketch scan) simply did not exist inside a site visit. The
+    /// visit now opens the same creation picker every other surface uses.
+    @State private var showingDeckCreationPicker = false
+    /// Held between the picker closing and the builder opening. iOS cannot
+    /// stack two modals, so the builder waits for the picker's own dismissal
+    /// rather than a timed guess — two covers can be collapsing at once when
+    /// the design came from the AR walk.
+    @State private var deckDesignPendingOpen: DeckDesign?
     @State private var markupArtifact: SiteVisitCaptureArtifact?
     @State private var previewArtifact: SiteVisitCaptureArtifact?
     @State private var editingNoteArtifact: SiteVisitCaptureArtifact?
@@ -247,6 +257,15 @@ private struct SiteVisitCaptureConsole: View {
                 }
                 showingCamera = false
             }
+        }
+        .sheet(isPresented: $showingDeckCreationPicker, onDismiss: {
+            guard let design = deckDesignPendingOpen else { return }
+            deckDesignPendingOpen = nil
+            // The picker is fully gone by the time onDismiss runs; hop once
+            // more so the builder presents outside the dismissal transaction.
+            DispatchQueue.main.async { activeDeckDesign = design }
+        }) {
+            deckCreationPicker
         }
         .fullScreenCover(item: $activeDeckDesign) { design in
             DeckBuilderView(
@@ -980,20 +999,40 @@ private struct SiteVisitCaptureConsole: View {
             return
         }
 
-        let design = DeckDesign(
-            companyId: viewModel.companyIdentifier,
+        // Nothing to continue — ask how to start it, exactly as the lead page
+        // and the project page do. That is where AR deck outline lives, along
+        // with template, recent design and paper-sketch scan.
+        showingDeckCreationPicker = true
+    }
+
+    /// The shared deck creation picker, bound to the visit's lead. Picker
+    /// dismisses BEFORE the builder presents — iOS cannot stack two modals
+    /// (same dance as the lead and project deck entry points).
+    @ViewBuilder
+    private var deckCreationPicker: some View {
+        CreationPickerView(
             projectId: nil,
             // Bind the sketch to the lead the visit is for — it surfaces on
             // the lead detail immediately and re-parents to the project at
             // conversion (server-side, alongside the existing iOS handoff).
             opportunityId: viewModel.currentOpportunity?.id,
-            title: viewModel.deckDesignTitle,
-            createdBy: dataController.currentUser?.id
+            preferredDesignTitle: viewModel.deckDesignTitle,
+            companyId: viewModel.companyIdentifier,
+            userId: dataController.currentUser?.id,
+            onDesignCreated: { design in
+                // A blank design is handed over unsaved on purpose (the builder
+                // persists it on the first real edit), but a visit artifact has
+                // to point at a row that exists.
+                if design.modelContext == nil {
+                    modelContext.insert(design)
+                }
+                try? modelContext.save()
+                viewModel.attachDeckDesign(design)
+                deckDesignPendingOpen = design
+                showingDeckCreationPicker = false
+            }
         )
-        modelContext.insert(design)
-        try? modelContext.save()
-        viewModel.attachDeckDesign(design)
-        activeDeckDesign = design
+        .presentationDetents([.medium])
     }
 
     private func startDimensionedCapture() {

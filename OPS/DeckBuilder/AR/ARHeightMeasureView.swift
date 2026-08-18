@@ -316,6 +316,14 @@ private struct ARHeightViewContainer: UIViewRepresentable {
         context.coordinator.viewModel = viewModel
     }
 
+    /// Bug c84aacb4 — the AR height measure carried the same missing teardown
+    /// as the AR perimeter walk: the session kept running and kept delivering
+    /// frames after the screen was dismissed. `ARVisualizationView` already had
+    /// this hook; these two did not.
+    static func dismantleUIView(_ arView: ARView, coordinator: Coordinator) {
+        coordinator.tearDown(arView: arView)
+    }
+
     func makeCoordinator() -> Coordinator {
         Coordinator(viewModel: viewModel)
     }
@@ -326,6 +334,10 @@ private struct ARHeightViewContainer: UIViewRepresentable {
         private var backgroundObserver: NSObjectProtocol?
         private var foregroundObserver: NSObjectProtocol?
 
+        /// Set the moment the screen goes away; frames already in flight see it
+        /// and do nothing.
+        private var isTornDown = false
+
         init(viewModel: ARHeightViewModel) {
             self.viewModel = viewModel
             super.init()
@@ -333,12 +345,14 @@ private struct ARHeightViewContainer: UIViewRepresentable {
             backgroundObserver = NotificationCenter.default.addObserver(
                 forName: UIApplication.didEnterBackgroundNotification, object: nil, queue: .main
             ) { [weak self] _ in
-                self?.arView?.session.pause()
+                guard let self, !self.isTornDown else { return }
+                self.arView?.session.pause()
             }
             foregroundObserver = NotificationCenter.default.addObserver(
                 forName: UIApplication.willEnterForegroundNotification, object: nil, queue: .main
             ) { [weak self] _ in
-                guard let arView = self?.arView else { return }
+                // Never restart a session the user has already left.
+                guard let self, !self.isTornDown, let arView = self.arView else { return }
                 let config = ARWorldTrackingConfiguration()
                 config.planeDetection = [.horizontal]
                 config.environmentTexturing = .automatic
@@ -351,8 +365,23 @@ private struct ARHeightViewContainer: UIViewRepresentable {
             if let obs = foregroundObserver { NotificationCenter.default.removeObserver(obs) }
         }
 
+        // MARK: - Teardown
+
+        func tearDown(arView: ARView) {
+            guard !isTornDown else { return }
+            isTornDown = true
+
+            arView.session.delegate = nil
+            arView.session.pause()
+            self.arView = nil
+
+            Task { @MainActor [weak self] in
+                self?.viewModel.cancelPlaneDetectionTimeout()
+            }
+        }
+
         func session(_ session: ARSession, didUpdate frame: ARFrame) {
-            guard let arView = arView else { return }
+            guard !isTornDown, let arView = arView else { return }
             let center = CGPoint(x: arView.bounds.midX, y: arView.bounds.midY)
 
             // For height measurement, we accept any raycast target — we care about Y position
@@ -363,7 +392,8 @@ private struct ARHeightViewContainer: UIViewRepresentable {
                         hit.worldTransform.columns.3.y,
                         hit.worldTransform.columns.3.z
                     )
-                    Task { @MainActor in
+                    Task { @MainActor [weak self] in
+                        guard let self, !self.isTornDown else { return }
                         if !self.viewModel.isPlaneDetected {
                             self.viewModel.isPlaneDetected = true
                             self.viewModel.cancelPlaneDetectionTimeout()
@@ -382,7 +412,8 @@ private struct ARHeightViewContainer: UIViewRepresentable {
                         hit.worldTransform.columns.3.y,
                         hit.worldTransform.columns.3.z
                     )
-                    Task { @MainActor in
+                    Task { @MainActor [weak self] in
+                        guard let self, !self.isTornDown else { return }
                         if !self.viewModel.isPlaneDetected {
                             self.viewModel.isPlaneDetected = true
                             self.viewModel.cancelPlaneDetectionTimeout()
@@ -393,7 +424,8 @@ private struct ARHeightViewContainer: UIViewRepresentable {
                 }
             }
 
-            Task { @MainActor in
+            Task { @MainActor [weak self] in
+                guard let self, !self.isTornDown else { return }
                 self.viewModel.isPlaneDetected = false
             }
         }

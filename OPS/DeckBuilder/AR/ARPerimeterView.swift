@@ -686,6 +686,23 @@ struct ARViewContainer: UIViewRepresentable {
         context.coordinator.viewModel = viewModel
     }
 
+    /// Bug c84aacb4 — the AR walk crashed on the way out.
+    ///
+    /// Nothing tore the session down. Finishing the walk called `onComplete`,
+    /// which dismissed the full-screen cover, but `arView.session` kept running
+    /// and kept delivering frames to the coordinator. Each of those frames
+    /// raycast against a session whose `ARView` was mid-deallocation and then
+    /// hopped to the main actor to mutate the view model and add and remove
+    /// RealityKit entities on a scene that was being destroyed underneath it.
+    ///
+    /// SwiftUI calls this exactly once when the representable goes away, which
+    /// is the right place to stop everything, in order: refuse further
+    /// callbacks, drop the delegate, pause the session, then detach the scene
+    /// content.
+    static func dismantleUIView(_ arView: ARView, coordinator: Coordinator) {
+        coordinator.tearDown(arView: arView)
+    }
+
     func makeCoordinator() -> Coordinator {
         Coordinator(viewModel: viewModel)
     }
@@ -703,6 +720,13 @@ struct ARViewContainer: UIViewRepresentable {
         private let locationManager = CLLocationManager()
         private var hasTriggeredGeocode = false
 
+        /// Set the moment the AR screen goes away. Frames already in flight
+        /// check it and do nothing, so no work can land on a torn-down scene
+        /// (bug c84aacb4). Written and read on the main queue, which is where
+        /// SwiftUI dismantles the view and where ARKit delivers session
+        /// callbacks for a session with no explicit `delegateQueue`.
+        private var isTornDown = false
+
         init(viewModel: ARPerimeterViewModel) {
             self.viewModel = viewModel
             super.init()
@@ -712,12 +736,16 @@ struct ARViewContainer: UIViewRepresentable {
             backgroundObserver = NotificationCenter.default.addObserver(
                 forName: UIApplication.didEnterBackgroundNotification, object: nil, queue: .main
             ) { [weak self] _ in
-                self?.arView?.session.pause()
+                guard let self, !self.isTornDown else { return }
+                self.arView?.session.pause()
             }
             foregroundObserver = NotificationCenter.default.addObserver(
                 forName: UIApplication.willEnterForegroundNotification, object: nil, queue: .main
             ) { [weak self] _ in
-                guard let arView = self?.arView else { return }
+                // Never restart a session the user has already walked away
+                // from — this used to bring the camera back up behind a
+                // dismissed screen on the next foreground transition.
+                guard let self, !self.isTornDown, let arView = self.arView else { return }
                 let config = ARWorldTrackingConfiguration()
                 config.planeDetection = [.horizontal]
                 config.environmentTexturing = .automatic
@@ -730,10 +758,38 @@ struct ARViewContainer: UIViewRepresentable {
             if let obs = foregroundObserver { NotificationCenter.default.removeObserver(obs) }
         }
 
+        // MARK: - Teardown
+
+        /// Stop everything, in the only order that is safe: refuse further
+        /// callbacks, drop the delegate so ARKit stops calling at all, pause
+        /// the session, then detach the scene content.
+        func tearDown(arView: ARView) {
+            guard !isTornDown else { return }
+            isTornDown = true
+
+            arView.session.delegate = nil
+            arView.session.pause()
+
+            for recognizer in arView.gestureRecognizers ?? [] {
+                arView.removeGestureRecognizer(recognizer)
+            }
+
+            renderer?.clearAll()
+            renderer?.rootAnchor.removeFromParent()
+            renderer = nil
+            self.arView = nil
+
+            // The 30-second plane-detection timeout outlives the screen
+            // otherwise, and fires its warning into a view that is gone.
+            Task { @MainActor [weak self] in
+                self?.viewModel.cancelPlaneDetectionTimeout()
+            }
+        }
+
         // MARK: - ARSessionDelegate
 
         func session(_ session: ARSession, didUpdate frame: ARFrame) {
-            guard let arView = arView else { return }
+            guard !isTornDown, let arView = arView else { return }
 
             let center = CGPoint(x: arView.bounds.midX, y: arView.bounds.midY)
 
@@ -747,7 +803,8 @@ struct ARViewContainer: UIViewRepresentable {
                 return
             }
 
-            Task { @MainActor in
+            Task { @MainActor [weak self] in
+                guard let self, !self.isTornDown else { return }
                 self.viewModel.isPlaneDetected = false
             }
         }
@@ -763,8 +820,10 @@ struct ARViewContainer: UIViewRepresentable {
         }
 
         private func handleHit(position: SIMD3<Float>) {
+            guard !isTornDown else { return }
             let renderer = self.renderer
-            Task { @MainActor in
+            Task { @MainActor [weak self] in
+                guard let self, !self.isTornDown else { return }
                 if !self.viewModel.isPlaneDetected {
                     self.viewModel.isPlaneDetected = true
                     self.viewModel.cancelPlaneDetectionTimeout()
@@ -949,7 +1008,7 @@ struct ARViewContainer: UIViewRepresentable {
         // MARK: - Tap Handling
 
         @objc func handleTap(_ gesture: UITapGestureRecognizer) {
-            guard let arView = arView else { return }
+            guard !isTornDown, let arView = arView else { return }
 
             let tapLocation = gesture.location(in: arView)
             guard let query = arView.makeRaycastQuery(from: tapLocation, allowing: .existingPlaneGeometry, alignment: .horizontal),
@@ -961,7 +1020,8 @@ struct ARViewContainer: UIViewRepresentable {
                 hit.worldTransform.columns.3.z
             )
 
-            Task { @MainActor in
+            Task { @MainActor [weak self] in
+                guard let self, !self.isTornDown else { return }
                 self.processTap(hitPosition: hitPosition)
             }
         }

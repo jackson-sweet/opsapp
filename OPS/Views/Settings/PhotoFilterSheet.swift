@@ -34,11 +34,13 @@ struct PhotoFilterSheet: View {
                 predicate: #Predicate<Company> { $0.id == companyId }
             )
             let companies = try context.fetch(descriptor)
-            return TaskTypeSelectionPolicy.selectableTaskTypes(
-                from: companies.first?.taskTypes ?? [],
-                companyId: companyId
+            // Grouped by colour so like chips cluster (bug bc9c2e83).
+            return TaskTypeSelectionPolicy.colorOrdered(
+                TaskTypeSelectionPolicy.selectableTaskTypes(
+                    from: companies.first?.taskTypes ?? [],
+                    companyId: companyId
+                )
             )
-            .sorted { $0.displayOrder < $1.displayOrder }
         } catch {
             return []
         }

@@ -123,33 +123,34 @@ struct TaskFormSheet: View {
     }
 
     /// Bug 9d5c2535 — task types sorted by most-recently used across the
-    /// company, with a divider between recent and the alphabetical rest.
+    /// company, with a divider between recent and the rest. Bug bc9c2e83 —
+    /// the rest is grouped by colour so like chips cluster.
     private var recencyOrderedTaskTypes: [TaskType] {
-        let alphaSorted = selectableTaskTypes.sorted { $0.display < $1.display }
+        let colorSorted = TaskTypeSelectionPolicy.colorOrdered(selectableTaskTypes)
 
         guard let companyId = dataController.currentUser?.companyId else {
-            return alphaSorted
+            return colorSorted
         }
 
         let recentIds = dataController.recentTaskTypeIds(companyId: companyId)
-        guard !recentIds.isEmpty else { return alphaSorted }
+        guard !recentIds.isEmpty else { return colorSorted }
 
         let recencyIndex = Dictionary(
             uniqueKeysWithValues: recentIds.enumerated().map { ($1, $0) }
         )
         let recentSet = Set(recentIds)
 
-        let recentTier = alphaSorted
+        let recentTier = colorSorted
             .filter { recentSet.contains($0.id) }
             .sorted { lhs, rhs in
                 (recencyIndex[lhs.id] ?? Int.max) < (recencyIndex[rhs.id] ?? Int.max)
             }
-        let restTier = alphaSorted.filter { !recentSet.contains($0.id) }
+        let restTier = colorSorted.filter { !recentSet.contains($0.id) }
         return recentTier + restTier
     }
 
     /// Number of "recent" task types so the picker knows where to draw
-    /// the divider between recent and alphabetical-rest tiers.
+    /// the divider between the recent and colour-grouped tiers.
     private var recentTaskTypeCount: Int {
         guard let companyId = dataController.currentUser?.companyId else { return 0 }
         let recentSet = Set(dataController.recentTaskTypeIds(companyId: companyId))

@@ -27,12 +27,15 @@ struct ProjectSearchFilterView: View {
         dataController.currentUser?.companyId
     }
 
+    /// Grouped by colour so like chips cluster (bug bc9c2e83).
     private var selectableTaskTypes: [TaskType] {
         guard let companyId else { return [] }
 
-        return TaskTypeSelectionPolicy.selectableTaskTypes(
-            from: availableTaskTypes,
-            companyId: companyId
+        return TaskTypeSelectionPolicy.colorOrdered(
+            TaskTypeSelectionPolicy.selectableTaskTypes(
+                from: availableTaskTypes,
+                companyId: companyId
+            )
         )
     }
 

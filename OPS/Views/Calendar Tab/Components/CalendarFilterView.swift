@@ -27,13 +27,16 @@ struct CalendarFilterView: View {
     @State private var availableTaskTypes: [TaskType] = []
     @State private var availableClients: [Client] = []
 
+    /// Grouped by colour so like chips cluster (bug bc9c2e83).
     private var selectableTaskTypes: [TaskType] {
         guard let companyId = dataController.currentUser?.companyId else {
             return []
         }
-        return TaskTypeSelectionPolicy.selectableTaskTypes(
-            from: availableTaskTypes,
-            companyId: companyId
+        return TaskTypeSelectionPolicy.colorOrdered(
+            TaskTypeSelectionPolicy.selectableTaskTypes(
+                from: availableTaskTypes,
+                companyId: companyId
+            )
         )
     }
 

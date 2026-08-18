@@ -1119,37 +1119,11 @@ struct UniversalJobBoardCard: View {
         }
     }
 
-    /// Commit a task-type change picked from the card's long-press menu.
-    ///
-    /// Routed through `DataController.updateTaskFields` rather than a bare
-    /// `modelContext.save()` so the edit is queued for sync instead of being
-    /// stranded on this device, and the calendars are told to repaint because
-    /// the type drives every job's colour and title.
+    /// Commit a task-type change picked from the card's long-press menu. The
+    /// commit itself is shared with the ProjectDetails task list so both menus
+    /// are one flow, not two copies of it.
     private func changeTaskType(task: ProjectTask, to picked: TaskType) {
-        guard picked.id != task.taskTypeId else { return }
-        let taskId = task.id
-        let newTypeId = picked.id
-
-        UINotificationFeedbackGenerator().notificationOccurred(.success)
-        ToastCenter.shared.present(Feedback.Task.typeUpdated)
-
-        // Deferred off the picker's dismiss critical path for the same reason
-        // ProjectDetails defers its type commit: `updateTaskFields` saves the
-        // model context, and that notification cascade landing mid sheet
-        // animation is what tore down the host view in bugs 0aa825fe / 62481022.
-        DispatchQueue.main.async {
-            Task {
-                do {
-                    try await dataController.updateTaskFields(
-                        taskId: taskId,
-                        fields: ["task_type_id": .string(newTypeId)]
-                    )
-                    dataController.notifyReviewSourcesChanged()
-                } catch {
-                    print("[JOB_BOARD_CARD] Task type update failed: \(error)")
-                }
-            }
-        }
+        TaskTypeChange.commit(task: task, to: picked, dataController: dataController)
     }
 
     @ViewBuilder

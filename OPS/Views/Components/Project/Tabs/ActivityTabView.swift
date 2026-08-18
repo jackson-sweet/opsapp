@@ -829,16 +829,52 @@ private struct ProjectPhotosCarousel: View {
     @Query private var syncedPhotos: [ProjectPhoto]
 
     // Item 923047f3 — long-press a photo to enter a home-screen-style wiggle
-    // edit mode where each tile carries a delete badge. Gated on projects.edit
-    // (the same gate as the per-photo client-visibility toggle), so crew
-    // without edit permission can view photos but never delete them.
+    // edit mode where each tile carries a delete badge.
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var isEditing = false
     @State private var pendingDeleteURL: String?
     @State private var pendingDeleteWasLast = false
 
-    private var canDeletePhotos: Bool {
+    /// Delete on ANY photo in the company gallery. Mirrors the `projects.edit`
+    /// at scope `all` half of the server's `project_photos` write guard.
+    private var canDeleteAnyPhoto: Bool {
+        PermissionStore.shared.hasFullAccess("projects.edit")
+    }
+
+    /// Some project-edit grant, at any scope. Only decides photos whose uploader
+    /// this device does not know yet — see `canDelete(_:)`.
+    private var canEditProject: Bool {
         PermissionStore.shared.can("projects.edit")
+    }
+
+    /// This operator's id, normalized the same way `project_photos.uploaded_by`
+    /// is (TEXT column, inconsistent UUID casing).
+    private var currentUploaderID: String? {
+        ProjectPhotoUploaderIdentity.canonicalUserID(dataController.currentUser?.id)
+    }
+
+    /// Whether this operator may delete THIS photo.
+    ///
+    /// Mirrors `trg_project_photos_00_write_guard` exactly: a soft-delete is
+    /// allowed when `lower(uploaded_by) = lower(current user)`, or when the
+    /// operator holds `projects.edit` at scope `all`. The old gate was a bare
+    /// `can("projects.edit")`, which any scope satisfies — so a crew member with
+    /// an assigned-scope grant was offered a delete badge on every teammate's
+    /// photo and the server rejected the write (Jackson's 2026-07-29 call: crews
+    /// delete their own photos, admins delete any).
+    ///
+    /// A URL with no synced row yet keeps the previous behaviour rather than
+    /// being hidden: those are this device's own optimistic appends to the
+    /// legacy `project_images` CSV — a photo just taken, whose `project_photos`
+    /// row has been inserted remotely but not yet pulled back — and the server
+    /// will accept that delete because the operator is its uploader.
+    private func canDelete(_ url: String, uploaderByURL: [String: String]) -> Bool {
+        ProjectPhotoDeleteAuthorization.allows(
+            uploaderID: uploaderByURL[url],
+            currentUserID: currentUploaderID,
+            hasFullProjectEdit: canDeleteAnyPhoto,
+            hasAnyProjectEdit: canEditProject
+        )
     }
 
     init(project: Project, imageSyncManager: ImageSyncManager, commentCounts: [String: Int], onPhotoTap: @escaping (Int) -> Void) {
@@ -864,6 +900,15 @@ private struct ProjectPhotosCarousel: View {
             syncedPhotos.compactMap { photo -> (String, String)? in
                 guard let thumb = photo.thumbnailURL, !thumb.isEmpty else { return nil }
                 return (photo.url, thumb)
+            },
+            uniquingKeysWith: { first, _ in first }
+        )
+        // Uploader per full URL, normalized — the ownership half of the delete
+        // gate. Absent for a photo whose `project_photos` row has not synced yet.
+        let uploaderByURL: [String: String] = Dictionary(
+            syncedPhotos.compactMap { photo -> (String, String)? in
+                guard let uploader = ProjectPhotoUploaderIdentity.canonicalUserID(photo.uploadedBy) else { return nil }
+                return (photo.url, uploader)
             },
             uniquingKeysWith: { first, _ in first }
         )
@@ -958,12 +1003,18 @@ private struct ProjectPhotosCarousel: View {
                                         onPhotoTap(index)
                                     }
                                     .onLongPressGesture(minimumDuration: 0.5) {
-                                        guard canDeletePhotos, !isEditing else { return }
+                                        // Edit mode is worth entering only if
+                                        // something in this gallery is actually
+                                        // deletable — otherwise it wiggles and
+                                        // offers nothing.
+                                        guard !isEditing,
+                                              photos.contains(where: { canDelete($0, uploaderByURL: uploaderByURL) })
+                                        else { return }
                                         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                                         withAnimation(OPSStyle.Animation.fast) { isEditing = true }
                                     }
                                     .overlay(alignment: .topLeading) {
-                                        if isEditing {
+                                        if isEditing, canDelete(url, uploaderByURL: uploaderByURL) {
                                             // Home-screen-style delete badge.
                                             PhotoDeleteBadge {
                                                 UIImpactFeedbackGenerator(style: .light).impactOccurred()
@@ -1005,7 +1056,14 @@ private struct ProjectPhotosCarousel: View {
                                     .offset(x: 4, y: -4)
                                 }
                             }
-                            .wiggle(isActive: isEditing, seed: index, reduceMotion: reduceMotion)
+                            // Only the tiles this operator can actually remove
+                            // wiggle — a tile that jitters and offers no delete
+                            // badge reads as broken.
+                            .wiggle(
+                                isActive: isEditing && canDelete(url, uploaderByURL: uploaderByURL),
+                                seed: index,
+                                reduceMotion: reduceMotion
+                            )
                             .transition(.opacity)
                         }
                     }

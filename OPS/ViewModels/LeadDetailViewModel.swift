@@ -275,6 +275,23 @@ class LeadDetailViewModel: ObservableObject {
         activities.insert(resultDTO.toModel(), at: 0)
     }
 
+    /// Amend an already-logged note (bug f740400e). Notes only — the repository
+    /// re-checks the type — and the rail is repainted from the server's row, so
+    /// what the operator sees after saving is what was actually stored.
+    func updateNoteBody(activity: Activity, body: String) async throws {
+        let updated = try await activityRepository.updateNoteBody(
+            activityId: activity.id,
+            type: activity.type,
+            body: body
+        ).toModel()
+
+        if let index = activities.firstIndex(where: { $0.id == updated.id }) {
+            activities[index] = updated
+        } else {
+            await loadActivities()
+        }
+    }
+
     /// `ActivityTarget.opportunity` carries the full model (its `parentKey`
     /// only reads `.id`, but the enum case requires an `Opportunity`). This
     /// view model only ever holds `opportunityId`/`companyId` strings, so a

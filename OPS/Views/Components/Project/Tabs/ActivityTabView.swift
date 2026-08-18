@@ -192,6 +192,16 @@ struct ActivityTabView: View {
                                 note: note,
                                 authorName: notesViewModel.authorName(for: note.authorId)
                             )
+                        // `case <String constant>:` against a `String?` subject
+                        // relies on optional promotion of a non-literal pattern;
+                        // an explicit comparison keeps the constant as the single
+                        // source of the event kind with no pattern-matching risk.
+                        case let kind where kind == VinylOrderActivityNote.eventKind:
+                            VinylOrderEntryView(
+                                note: note,
+                                authorName: notesViewModel.authorName(for: note.authorId),
+                                teamMember: notesViewModel.teamMember(for: note.authorId)
+                            )
                         default:
                             ActivityEntryView(
                                 note: note,

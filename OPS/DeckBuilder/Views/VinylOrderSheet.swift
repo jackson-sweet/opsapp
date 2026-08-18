@@ -1349,6 +1349,17 @@ struct VinylOrderSheet: View {
                     into: &activeData
                 )
                 viewModel.drawingData = activeData
+                // Same record, same builder, same feed entry as every other
+                // MARK ORDERED entry point — built from the frozen snapshot.
+                if let snapshot = viewModel.deckDesign.drawingData.orderedMaterials {
+                    VinylOrderActivityRecorder.record(
+                        projectId: ctx.projectId,
+                        companyId: companyId,
+                        authorId: userId,
+                        snapshot: snapshot,
+                        dataController: dataController
+                    )
+                }
                 isUpdatingProjectMarker = false
                 statusMessage = "VINYL MARKED ORDERED"
                 UINotificationFeedbackGenerator().notificationOccurred(.success)

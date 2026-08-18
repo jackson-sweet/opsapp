@@ -162,8 +162,24 @@ struct CalendarSchedulerSheet: View {
                             .padding(.bottom, OPSStyle.Layout.spacing2)
                     }
 
-                    if let suggested = dayContext.suggestion, !selection.isCommittable {
+                    // Bug 43944d96 — the chip's ROW is reserved for the life of
+                    // the sheet once a suggestion exists; only the chip itself
+                    // fades once the operator has picked their own range.
+                    // Dropping the row outright resized the calendar underneath
+                    // the second tap, and the lazy month list answered a taller
+                    // viewport by clamping its offset — the grid jumped months
+                    // backwards under the operator's finger, mid-pick. Nothing
+                    // above the calendar may change height while a range is
+                    // being built.
+                    if let suggested = dayContext.suggestion {
                         suggestionChip(suggested)
+                            .opacity(selection.isCommittable ? 0 : 1)
+                            .allowsHitTesting(!selection.isCommittable)
+                            .animation(
+                                reduceMotion ? nil : OPSStyle.Animation.fast,
+                                value: selection.isCommittable
+                            )
+                            .accessibilityHidden(selection.isCommittable)
                             .padding(.bottom, OPSStyle.Layout.spacing2)
                     }
 

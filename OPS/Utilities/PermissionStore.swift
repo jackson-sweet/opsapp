@@ -27,6 +27,9 @@ struct CachedPermissions: Codable {
     /// Role/override keys observed during the fetch, including explicit revokes.
     /// Nil = legacy cache, so granular compatibility must fail closed.
     let explicitPermissionKeys: [String]?
+    /// Whether the account is a company admin. Nil = legacy cache written
+    /// before admin authority existed; it reads as false, which fails closed.
+    let isAdmin: Bool?
 }
 
 class PermissionStore: ObservableObject {
@@ -46,6 +49,14 @@ class PermissionStore: ObservableObject {
     /// an explicit revoke.
     @Published private(set) var explicitPermissionKeys: Set<String> = []
 
+    /// Whether this account is a company admin — account holder, a member of
+    /// `companies.admin_ids`, or carrying `users.is_company_admin`. Resolved by
+    /// `AdminAuthority` from the same rows the server's
+    /// `private.current_user_is_admin()` reads, so client and server cannot
+    /// disagree. An admin holds every permission at scope `all`; feature flags
+    /// still sit above it. Not a role name — see `AdminAuthority`.
+    @Published private(set) var isAdmin: Bool = false
+
     /// Permissions blocked by disabled feature flags.
     @Published var blockedByFlags: Set<String> = []
 
@@ -63,8 +74,16 @@ class PermissionStore: ObservableObject {
     /// Returns false if the permission is blocked by a disabled feature flag,
     /// even if the user's role grants it.
     func can(_ permission: String, requiredScope: String = "all") -> Bool {
-        // Feature flag gate — sits above RBAC
+        // Feature flag gate — sits above RBAC, and above admin authority too: a
+        // flag is a rollout/entitlement gate on the whole company, not a
+        // permission an admin could grant themselves.
         if blockedByFlags.contains(permission) { return false }
+
+        // Company admins hold every permission at scope `all`. Checked ahead of
+        // the map, not merely materialized into it, so a permission key that
+        // never made it into the client registry still resolves for an admin —
+        // exactly as the server's admin policies would allow.
+        if isAdmin { return true }
 
         guard let grantedScope = permissions[permission] else { return false }
         return scopeSatisfies(granted: grantedScope, required: requiredScope)
@@ -73,12 +92,14 @@ class PermissionStore: ObservableObject {
     /// Get the granted scope for a permission (nil if not granted or flag-blocked)
     func scope(for permission: String) -> String? {
         if blockedByFlags.contains(permission) { return nil }
+        if isAdmin { return "all" }
         return permissions[permission]
     }
 
     /// Check if the user has "all" scope for a permission (sees everything, not just assigned)
     func hasFullAccess(_ permission: String) -> Bool {
         if blockedByFlags.contains(permission) { return false }
+        if isAdmin { return true }
         return permissions[permission] == "all"
     }
 
@@ -97,7 +118,17 @@ class PermissionStore: ObservableObject {
     /// Feature-flag-blocked permissions are removed and marked explicit so a
     /// legacy manage grant can never resurrect them through compatibility.
     var leadAccessPolicy: LeadAccessPolicy {
-        let availablePermissions = permissions.filter {
+        // A company admin's grants come from the account, not the role tables.
+        // Materialize them here too: this policy reads the raw map rather than
+        // going through `can()`, so without this an admin would inherit
+        // whatever the map happened to contain.
+        var effectivePermissions = permissions
+        if isAdmin {
+            for key in LeadAccessPolicy.granularPermissionKeys {
+                effectivePermissions[key] = "all"
+            }
+        }
+        let availablePermissions = effectivePermissions.filter {
             !blockedByFlags.contains($0.key)
         }
         return LeadAccessPolicy(
@@ -198,6 +229,8 @@ class PermissionStore: ObservableObject {
             self.blockedByFlags = failClosed.blockedPermissions
             self.disabledFlags = failClosed.disabledFlags
             self.explicitPermissionKeys = LeadAccessPolicy.granularPermissionKeys
+            // No cache means no proof of anything, admin authority included.
+            self.isAdmin = false
             return false
         }
 
@@ -208,6 +241,9 @@ class PermissionStore: ObservableObject {
         self.currentUserId = cached.userId
         self.explicitPermissionKeys = cached.explicitPermissionKeys.map(Set.init)
             ?? LeadAccessPolicy.granularPermissionKeys
+        // Legacy cache blobs predate admin authority and decode as nil — read
+        // as false, which fails closed until the next successful fetch.
+        self.isAdmin = cached.isAdmin ?? false
         self.initialized = true
 
         // Restore flag state from cache, or fail closed if legacy cache format
@@ -250,13 +286,38 @@ class PermissionStore: ObservableObject {
             fetchedAt: Date(),
             blockedByFlags: Array(blockedByFlags),
             disabledFlags: Array(disabledFlags),
-            explicitPermissionKeys: Array(explicitPermissionKeys)
+            explicitPermissionKeys: Array(explicitPermissionKeys),
+            isAdmin: isAdmin
         )
 
         if let data = try? JSONEncoder().encode(cached) {
             keychainManager.storePermissions(data)
             print("[PERMISSIONS] Saved \(permissions.count) permissions to Keychain cache (\(blockedByFlags.count) flag-blocked, \(disabledFlags.count) flags disabled)")
         }
+    }
+
+    // MARK: - Apply a Resolved Payload
+
+    /// Commit a freshly resolved payload to in-memory state.
+    ///
+    /// Extracted from `fetchPermissions` so the resolution semantics — above
+    /// all the unknown-admin case — are exercised by tests directly instead of
+    /// only through the network path. Not actor-isolated, matching the other
+    /// state mutators on this store (`loadCachedPermissions`,
+    /// `clearPermissions`, `saveToCache`); the production call site is already
+    /// inside `MainActor.run`.
+    func apply(_ payload: PermissionPayload, userId: String) {
+        self.currentUserId = userId
+        self.permissions = payload.permissions
+        self.roleName = payload.roleName
+        self.roleHierarchy = payload.roleHierarchy
+        self.roleId = payload.roleId
+        self.explicitPermissionKeys = payload.explicitPermissionKeys
+        // A probe that could not complete reports nil — "unknown", not "not an
+        // admin". Keep the last-known answer rather than demoting a live admin
+        // on a network blip; an explicit `false` is authoritative and demotes.
+        self.isAdmin = payload.isAdmin ?? self.isAdmin
+        self.initialized = true
     }
 
     // MARK: - Fetch from Supabase
@@ -288,12 +349,6 @@ class PermissionStore: ObservableObject {
                 let previousRoleId = UserDefaults.standard.string(forKey: lastRoleKey)
                 let roleChanged = previousRoleId != nil && previousRoleId != payload.roleId
 
-                self.permissions = payload.permissions
-                self.roleName = payload.roleName
-                self.roleHierarchy = payload.roleHierarchy
-                self.roleId = payload.roleId
-                self.explicitPermissionKeys = payload.explicitPermissionKeys
-
                 // Cache-first flag resolution: keep the flags we already trust
                 // when the fresh fetch couldn't complete; a fresh result wins.
                 let lastKnownFlags = FeatureFlagResult(
@@ -307,7 +362,7 @@ class PermissionStore: ObservableObject {
                     print("[PERMISSIONS] Feature-flag fetch failed — preserving last-known-good flag state (\(resolvedFlags.disabledFlags.count) disabled, \(resolvedFlags.blockedPermissions.count) blocked)")
                 }
 
-                self.initialized = true
+                self.apply(payload, userId: userId)
                 self.saveToCache(userId: userId)
                 UserDefaults.standard.set(payload.roleId, forKey: lastRoleKey)
 
@@ -356,6 +411,7 @@ class PermissionStore: ObservableObject {
         roleId = nil
         initialized = false
         currentUserId = nil
+        isAdmin = false
         explicitPermissionKeys = LeadAccessPolicy.granularPermissionKeys
         let failClosed = FeatureFlagService.failClosedResult()
         blockedByFlags = failClosed.blockedPermissions
@@ -413,6 +469,15 @@ extension PermissionStore {
     /// identity it actually is. DEBUG-only; excluded from release builds.
     func setPreviewOperatorId(_ id: String?) {
         currentUserId = id
+    }
+
+    /// Force admin authority on or off for a preview or a snapshot host.
+    ///
+    /// Production resolves this from Supabase (`AdminAuthority`), which neither
+    /// a preview nor a snapshot host runs; without it an admin surface previews
+    /// as a locked-out account. DEBUG-only; excluded from release builds.
+    func setPreviewAdminAuthority(_ isAdmin: Bool) {
+        self.isAdmin = isAdmin
     }
 }
 #endif

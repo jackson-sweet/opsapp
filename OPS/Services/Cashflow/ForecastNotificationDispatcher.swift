@@ -13,31 +13,68 @@
 //     "DIP CLEARED" notification, mark `last_cleared_at`, reset
 //     `dismissed_until_balance`.
 //
-//  Recipients are looked up via `public.users_with_permission` — never by role.
+//  Recipients are derived server-side from `public.users_with_permission` —
+//  never by role, and never by a client-side lookup. The client keeps only the
+//  anti-spam cadence (the `forecast_alerts` ledger); the rail rows themselves
+//  are created and resolved by the narrow RPCs.
 //
 
 import Foundation
 import Supabase
 
+/// Seam for the cashflow forecast rail rows. Conformed to by
+/// `NotificationRepository` (the `sync_forecast_dip_notification` /
+/// `sync_forecast_cleared_notification` RPCs); tests substitute a spy.
+protocol ForecastRailNotifying {
+    /// Persistent dip alert to every `finances.view` holder, the actor
+    /// included — a cash dip is a company condition, not an actor echo.
+    /// Returns the ids that received NEW rows.
+    @discardableResult
+    func syncForecastDip(lowestBalance: Double, weekStart: String) async throws -> [String]
+
+    /// Resolves the company's standing dip rows — a persistent row must never
+    /// outlive its condition — and posts the all-clear.
+    @discardableResult
+    func syncForecastCleared() async throws -> [String]
+}
+
+extension NotificationRepository: ForecastRailNotifying {}
+
+/// Seam for the `forecast_alerts` anti-spam ledger. Conformed to by
+/// `ForecastAlertRepository`; tests substitute a spy.
+protocol ForecastAlertLedgering {
+    func fetch() async throws -> ForecastAlertDTO?
+    func upsert(_ dto: UpsertForecastAlertDTO) async throws -> ForecastAlertDTO
+}
+
+extension ForecastAlertRepository: ForecastAlertLedgering {}
+
 actor ForecastNotificationDispatcher {
     private let companyId: String
-    private let alertRepo: ForecastAlertRepository
-    private let notificationRepo: NotificationRepository
+    private let ledger: ForecastAlertLedgering
+    private let railSyncer: ForecastRailNotifying
 
     /// Per-session flag — UI gates the .warning haptic to the first render of
     /// this session where state is .danger.
     static var sessionHasShownDipHaptic = false
 
-    init(companyId: String) {
+    /// `ledger` defaults to the live `forecast_alerts` repository for this
+    /// company. A Swift default argument cannot reference another parameter,
+    /// so nil means "build the real one".
+    init(
+        companyId: String,
+        railSyncer: ForecastRailNotifying = NotificationRepository.shared,
+        ledger: ForecastAlertLedgering? = nil
+    ) {
         self.companyId = companyId
-        self.alertRepo = ForecastAlertRepository(companyId: companyId)
-        self.notificationRepo = NotificationRepository()
+        self.ledger = ledger ?? ForecastAlertRepository(companyId: companyId)
+        self.railSyncer = railSyncer
     }
 
     func reactTo(result: ForecastResult) async {
         guard !companyId.isEmpty else { return }
 
-        let prior = try? await alertRepo.fetch()
+        let prior = try? await ledger.fetch()
 
         switch result.state {
         case .danger:
@@ -48,7 +85,7 @@ actor ForecastNotificationDispatcher {
             if let p = prior,
                p.lastDipNotifiedAt != nil,
                p.lastClearedAt == nil {
-                await fireClearedNotification(result: result, prior: p)
+                await fireClearedNotification(prior: p)
             }
         }
     }
@@ -100,33 +137,16 @@ actor ForecastNotificationDispatcher {
 
     private func fireDipNotification(result: ForecastResult, prior: ForecastAlertDTO?) async {
         let lowestWeek = result.weeks[result.lowestWeekIndex]
-        let body = "Balance drops to \(BooksFormat.currency(result.lowestBalance)) the week of \(formatWeek(lowestWeek.weekStart))."
 
-        let recipients: [String]
-        do {
-            recipients = try await RecipientLookupService.usersWithPermission(
-                companyId: companyId,
-                permission: "finances.view",
-                requiredScope: "own"
-            )
-        } catch {
-            return
-        }
-
-        for userId in recipients {
-            let dto = NotificationRepository.CreateNotificationDTO(
-                userId: userId,
-                companyId: companyId,
-                type: "forecast_dip",
-                title: "// CASH DIP PROJECTED",
-                body: body,
-                deepLinkType: "cashflow",
-                persistent: true,
-                actionUrl: "/books/cashflow",
-                actionLabel: "REVIEW FORECAST"
-            )
-            try? await notificationRepo.createNotification(dto)
-        }
+        // The server resolves every `finances.view` holder, renders the
+        // currency and the week, and replaces a stale unread dip rather than
+        // stacking one. Contained on purpose: the ledger below is the
+        // anti-spam cadence, and a failed rail row must not strand it in its
+        // pre-dip state — that re-fired the same alert on the next tick.
+        _ = try? await railSyncer.syncForecastDip(
+            lowestBalance: result.lowestBalance,
+            weekStart: SupabaseDate.formatDate(lowestWeek.weekStart)
+        )
 
         let payload = UpsertForecastAlertDTO(
             companyId: companyId,
@@ -136,35 +156,14 @@ actor ForecastNotificationDispatcher {
             lastClearedAt: nil,
             dismissedUntilBalance: prior?.dismissedUntilBalance
         )
-        _ = try? await alertRepo.upsert(payload)
+        _ = try? await ledger.upsert(payload)
     }
 
-    private func fireClearedNotification(result: ForecastResult, prior: ForecastAlertDTO) async {
-        let recipients: [String]
-        do {
-            recipients = try await RecipientLookupService.usersWithPermission(
-                companyId: companyId,
-                permission: "finances.view",
-                requiredScope: "own"
-            )
-        } catch {
-            return
-        }
-
-        for userId in recipients {
-            let dto = NotificationRepository.CreateNotificationDTO(
-                userId: userId,
-                companyId: companyId,
-                type: "forecast_cleared",
-                title: "// CASH DIP CLEARED",
-                body: "Projected balance now stays positive across the forecast horizon.",
-                deepLinkType: "cashflow",
-                persistent: false,
-                actionUrl: "/books/cashflow",
-                actionLabel: "VIEW FORECAST"
-            )
-            try? await notificationRepo.createNotification(dto)
-        }
+    private func fireClearedNotification(prior: ForecastAlertDTO) async {
+        // One call resolves the company's standing dip rows and posts the
+        // all-clear to the same holders. Contained for the same reason as the
+        // dip lane.
+        _ = try? await railSyncer.syncForecastCleared()
 
         // Mark cleared; reset dismissal so a *new* dip can re-notify.
         let payload = UpsertForecastAlertDTO(
@@ -175,12 +174,6 @@ actor ForecastNotificationDispatcher {
             lastClearedAt: SupabaseDate.format(Date()),
             dismissedUntilBalance: nil
         )
-        _ = try? await alertRepo.upsert(payload)
-    }
-
-    private func formatWeek(_ date: Date) -> String {
-        let f = DateFormatter()
-        f.dateFormat = "MMM d"
-        return f.string(from: date)
+        _ = try? await ledger.upsert(payload)
     }
 }

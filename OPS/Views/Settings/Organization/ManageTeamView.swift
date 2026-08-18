@@ -8,6 +8,71 @@
 import SwiftUI
 import Supabase
 
+// MARK: - Team Rail Notifications
+
+/// Seam for the team-management rail rows. Conformed to by
+/// `NotificationRepository` (the `notify_role_assigned` /
+/// `notify_team_invites_sent` RPCs); tests substitute a spy.
+protocol TeamManagementNotifying {
+    /// Returns `created` or `noop`. The server checks the actor holds
+    /// `team.assign_roles` and names the member's RECORDED role in the copy —
+    /// never a caller's claim about it.
+    @discardableResult
+    func notifyRoleAssigned(memberId: String) async throws -> String
+
+    /// Returns `created` or `noop`. The server confirms each contact against
+    /// the actor's own recent `team_invitations` rows before naming it.
+    @discardableResult
+    func notifyTeamInvitesSent(emails: [String], phones: [String]) async throws -> String
+}
+
+extension NotificationRepository: TeamManagementNotifying {}
+
+/// The team-management rail dispatches, lifted out of the views so the
+/// push-vs-rail decisions can be exercised without a network or a rendered
+/// sheet. Every entry point is best-effort: the role write and the invitation
+/// send are both already persisted by the time these run, so a failed rail row
+/// must never surface to the caller.
+enum TeamNotificationDispatcher {
+
+    /// Tell a teammate their role changed, then push — but only if the rail
+    /// actually took a new row. A `noop` means an unread notice for this role
+    /// is already standing, and a push on top of it is the same news twice.
+    static func dispatchRoleAssigned(
+        memberId: String,
+        syncer: TeamManagementNotifying = NotificationRepository.shared,
+        push: () async -> Void
+    ) async {
+        let verdict: String
+        do {
+            verdict = try await syncer.notifyRoleAssigned(memberId: memberId)
+        } catch {
+            print("[MANAGE_TEAM] ⚠️ Failed to create role notification: \(error)")
+            return
+        }
+
+        guard verdict == "created" else { return }
+        await push()
+    }
+
+    /// Record a batch of invitations on the sender's own rail. The contacts
+    /// cross verbatim — the server matches them against the invitation rows it
+    /// just wrote and renders the summary itself.
+    static func dispatchInvitesSent(
+        emails: [String],
+        phones: [String],
+        syncer: TeamManagementNotifying = NotificationRepository.shared
+    ) async {
+        do {
+            let verdict = try await syncer.notifyTeamInvitesSent(emails: emails, phones: phones)
+            print("[TEAM_INVITE] In-app notification for admin: \(verdict)")
+        } catch {
+            print("[TEAM_INVITE] ⚠️ Failed to create in-app notification: \(error)")
+            // Non-fatal — invites still sent successfully
+        }
+    }
+}
+
 // MARK: - Pending Invitation Model
 
 struct PendingInvitation: Identifiable {
@@ -898,21 +963,12 @@ struct ManageTeamView: View {
                 NotificationCenter.default.post(name: Notification.Name("WizardTeamRoleAssigned"), object: nil)
             }
 
-            // Send notification to the user about their new role
-            if let companyId = dataController.currentUser?.companyId {
-                let dto = NotificationRepository.CreateNotificationDTO(
-                    userId: member.id,
-                    companyId: companyId,
-                    type: "role_assigned",
-                    title: "Role Updated",
-                    body: "You've been assigned the \(newRole.displayName) role",
-                    projectId: nil,
-                    noteId: nil,
-                    expenseId: nil,
-                    batchId: nil,
-                    deepLinkType: nil
-                )
-                try? await NotificationRepository().createNotification(dto)
+            // Tell the member their role changed. The server resolves the
+            // company and the actor itself, reads the role it actually
+            // recorded, and refuses anyone without `team.assign_roles` — the
+            // copy can no longer drift from the row. Push only follows a row
+            // the rail actually took.
+            await TeamNotificationDispatcher.dispatchRoleAssigned(memberId: member.id) {
                 try? await OneSignalService.shared.sendToUser(
                     userId: member.id,
                     title: "Role Updated",
@@ -1317,39 +1373,14 @@ struct TeamInviteSheet: View {
             // rail has a record of the invite being sent. Email/SMS delivery
             // is sent from the backend but previously there was no in-app
             // confirmation — the admin had to trust the success toast alone.
+            // The same contacts that went to the API go to the rail: the
+            // server matches them against the invitation rows it just wrote
+            // and names the confirmed ones itself.
             let totalSent = validEmails.count + validPhones.count
-            if totalSent > 0,
-               let userId = dataController.currentUser?.id,
-               !companyId.isEmpty {
-                let recipientSummary = buildRecipientSummary(
-                    emails: validEmails,
-                    phones: validPhones
-                )
-                let notificationBody: String
-                if totalSent == 1 {
-                    notificationBody = "Invitation sent to \(recipientSummary)."
-                } else {
-                    notificationBody = "\(totalSent) invitations sent to \(recipientSummary)."
-                }
-                let notificationDTO = NotificationRepository.CreateNotificationDTO(
-                    userId: userId,
-                    companyId: companyId,
-                    type: "team_invite_sent",
-                    title: "TEAM INVITES SENT",
-                    body: notificationBody,
-                    deepLinkType: "team",
-                    persistent: false,
-                    actionUrl: "ops://settings/organization/team",
-                    actionLabel: "VIEW TEAM"
-                )
-                do {
-                    try await NotificationRepository().createNotification(notificationDTO)
-                    print("[TEAM_INVITE] Created in-app notification for admin: \(userId)")
-                } catch {
-                    print("[TEAM_INVITE] ⚠️ Failed to create in-app notification: \(error)")
-                    // Non-fatal — invites still sent successfully
-                }
-            }
+            await TeamNotificationDispatcher.dispatchInvitesSent(
+                emails: validEmails,
+                phones: validPhones
+            )
 
             await MainActor.run {
                 isLoading = false
@@ -1381,17 +1412,6 @@ struct TeamInviteSheet: View {
         }
     }
 
-    /// Build a human-readable summary of invite recipients for the
-    /// in-app notification body. Shows the first recipient by name and
-    /// "+ N more" for additional ones so long lists don't bloat the rail.
-    private func buildRecipientSummary(emails: [String], phones: [String]) -> String {
-        let all = emails + phones
-        guard let first = all.first else { return "" }
-        if all.count == 1 {
-            return first
-        }
-        return "\(first) + \(all.count - 1) more"
-    }
 }
 
 // MARK: - Edit Team Member Sheet

@@ -177,70 +177,53 @@ final class LeadAssignmentFoundationTests: XCTestCase {
         )
     }
 
-    /// Bugs 5468b3c6 / ced5b3cb rewrote this contract deliberately. A chip that
-    /// cannot be matched no longer routes to `.open` (which DISMISSED the
-    /// convert sheet and navigated away, destroying the operator's form state);
-    /// it routes to `.peek`, a layer over the sheet. And "already linked to
-    /// another lead" gets its own honest label instead of borrowing REVIEW.
-    func testConversionPreflightRoutesOnlyEligibleDuplicateCandidatesToMatch() {
-        let matchCandidate = ConvertToProjectSheet.RelatedProjectRef(
-            id: "project-match",
+    /// D1 rewrote this contract. The sheet used to carry a five-case link
+    /// state so it could render rows it would then refuse to accept. There is
+    /// no link state any more: `get_manual_project_link_candidates` omits every
+    /// project already linked to a different lead, so everything the list
+    /// shows IS selectable, and `same_address` / `same_client` only explain
+    /// the server's ranking.
+    func testEveryListedProjectIsSelectableAndEvidenceOnlyExplainsRank() {
+        let sameAddressAndClient = ConvertToProjectSheet.ProjectLinkCandidate(
+            id: "project-both",
             title: "3998 Holland Ave",
             address: "3998 Holland Ave, Victoria bc",
             status: nil,
-            linkState: .matchable,
-            isAddressSuggestion: true
+            sameAddress: true,
+            sameClient: true
         )
-        let reviewOnlyProject = ConvertToProjectSheet.RelatedProjectRef(
-            id: "project-review",
+        let otherAddress = ConvertToProjectSheet.ProjectLinkCandidate(
+            id: "project-other",
             title: "Other client project",
             address: "12 Douglas St",
             status: .accepted,
-            linkState: .reviewOnly
-        )
-        let linkedElsewhereCandidate = ConvertToProjectSheet.RelatedProjectRef(
-            id: "project-stale",
-            title: "Already linked project",
-            address: "3998 Holland Ave, Victoria bc",
-            status: .accepted,
-            linkState: .linkedElsewhere,
-            isAddressSuggestion: true
+            sameAddress: false,
+            sameClient: false
         )
 
-        XCTAssertEqual(matchCandidate.interaction, .match)
-        XCTAssertEqual(matchCandidate.actionLabel, "MATCH")
-        XCTAssertEqual(reviewOnlyProject.interaction, .peek)
-        XCTAssertNil(reviewOnlyProject.actionLabel)
-        XCTAssertFalse(reviewOnlyProject.isLikelyDuplicate)
-        XCTAssertEqual(linkedElsewhereCandidate.interaction, .peek)
-        XCTAssertEqual(linkedElsewhereCandidate.actionLabel, "LINKED")
-        XCTAssertTrue(
-            linkedElsewhereCandidate.isLikelyDuplicate,
-            "a same-address project still gates CREATE whatever its link state"
+        XCTAssertEqual(sameAddressAndClient.evidenceLabel, "SAME ADDRESS · SAME CLIENT")
+        XCTAssertNil(
+            otherAddress.evidenceLabel,
+            "no evidence is not a disqualifier — the row is still a valid answer"
         )
-    }
 
-    func testCandidateProjectMustBeUnlinkedOrAlreadyBelongToThisLead() {
-        XCTAssertTrue(LeadConversionService.projectLinkIsAvailable(
-            opportunityId: nil,
-            opportunityRef: nil,
-            leadId: "lead-current"
-        ))
-        XCTAssertTrue(LeadConversionService.projectLinkIsAvailable(
-            opportunityId: "lead-current",
-            opportunityRef: "lead-current",
-            leadId: "lead-current"
-        ))
-        XCTAssertFalse(LeadConversionService.projectLinkIsAvailable(
-            opportunityId: "lead-other",
-            opportunityRef: "lead-other",
-            leadId: "lead-current"
-        ))
-        XCTAssertFalse(LeadConversionService.projectLinkIsAvailable(
-            opportunityId: "lead-current",
-            opportunityRef: "lead-other",
-            leadId: "lead-current"
-        ))
+        // Both survive the reducer, in the order the server returned them.
+        let reduced = ConvertToProjectSheet.reduceLinkCandidates(
+            manualCandidates: [
+                ManualProjectLinkCandidate(
+                    projectId: "project-both", title: "3998 Holland Ave",
+                    address: "3998 Holland Ave, Victoria bc", status: nil,
+                    sameAddress: true, sameClient: true
+                ),
+                ManualProjectLinkCandidate(
+                    projectId: "project-other", title: "Other client project",
+                    address: "12 Douglas St", status: "accepted",
+                    sameAddress: false, sameClient: false
+                ),
+            ],
+            unavailableMatchProjectIds: []
+        )
+        XCTAssertEqual(reduced.map(\.id), ["project-both", "project-other"])
     }
 
     func testSelectedExistingProjectBecomesTheGuardedConversionTarget() {

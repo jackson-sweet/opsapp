@@ -74,16 +74,161 @@ final class ConvertSheetMatchingTests: XCTestCase {
         )
     }
 
-    // MARK: - 1. No client-side blocker synthesis
+    /// A row exactly as `get_manual_project_link_candidates` returns it. The
+    /// server has ALREADY excluded anything linked to a different lead and has
+    /// ALREADY ranked what remains, so the fixture order is the server order.
+    private func manual(
+        _ id: String,
+        _ title: String,
+        address: String? = "3998 Holland Ave",
+        status: String? = "in_progress",
+        sameAddress: Bool = false,
+        sameClient: Bool = false
+    ) -> ManualProjectLinkCandidate {
+        ManualProjectLinkCandidate(
+            projectId: id,
+            title: title,
+            address: address,
+            status: status,
+            sameAddress: sameAddress,
+            sameClient: sameClient
+        )
+    }
 
-    /// The regression. Every server-approved candidate is already linked to a
-    /// different lead, so nothing is matchable — but the SERVER set no blocker,
-    /// so the sheet must not invent one.
-    func testAllCandidatesLinkedElsewhereNeverSynthesizesACreationBlocker() throws {
+    // MARK: - 1. ONE list, ONE source, ONE selection rule
+
+    /// The heart of D1. The manual-link RPC is the ONLY source of selectable
+    /// projects: `duplicate_candidates` and `other_client_projects` answered
+    /// different questions with different rules, and merging all three is the
+    /// defect. A project the server withheld from the manual list — because it
+    /// belongs to another lead — must not reappear from the preflight.
+    func testCandidateListComesOnlyFromTheManualLinkRPC() throws {
+        let state = ConvertToProjectSheet.reducePreflight(
+            try preflight(
+                candidates: [("project-linked-elsewhere", "3998 Holland Ave")],
+                others: [("project-other-client", "Douglas St porch")]
+            ),
+            manualCandidates: [manual("project-a", "3998 Holland Ave", sameAddress: true)],
+            candidateLoadFailed: false,
+            unavailableMatchProjectIds: []
+        )
+
+        XCTAssertEqual(
+            state.candidates.map(\.id), ["project-a"],
+            "only the manual-link RPC may contribute selectable projects"
+        )
+    }
+
+    /// Every row that survives is selectable. There is no link-state to check
+    /// and therefore no way to render a row the operator cannot choose.
+    func testEveryListedProjectIsSelectable() throws {
+        let state = ConvertToProjectSheet.reducePreflight(
+            try preflight(),
+            manualCandidates: [
+                manual("project-a", "Same address", sameAddress: true),
+                manual("project-b", "Same client", sameClient: true),
+                manual("project-c", "Neither"),
+            ],
+            candidateLoadFailed: false,
+            unavailableMatchProjectIds: []
+        )
+
+        XCTAssertEqual(state.candidates.count, 3)
+        for candidate in state.candidates {
+            XCTAssertFalse(
+                candidate.displayTitle.isEmpty,
+                "a selectable row must name the project it would link"
+            )
+        }
+    }
+
+    /// The server's ORDER IS THE RANKING (same address + client, then address,
+    /// then client, then recency). The client must never re-sort it.
+    func testServerRankingIsPreservedVerbatim() throws {
+        let serverOrder = [
+            manual("project-both", "Both", sameAddress: true, sameClient: true),
+            manual("project-address", "Address", sameAddress: true),
+            manual("project-client", "Client", sameClient: true),
+            manual("project-recent", "Recent"),
+        ]
+        let state = ConvertToProjectSheet.reducePreflight(
+            try preflight(),
+            manualCandidates: serverOrder,
+            candidateLoadFailed: false,
+            unavailableMatchProjectIds: []
+        )
+
+        XCTAssertEqual(
+            state.candidates.map(\.id),
+            ["project-both", "project-address", "project-client", "project-recent"]
+        )
+    }
+
+    /// `same_address` / `same_client` explain a row's rank in the operator's
+    /// terms. They are evidence, never eligibility.
+    func testEvidenceLabelsExplainTheRankWithoutGatingIt() throws {
+        let state = ConvertToProjectSheet.reducePreflight(
+            try preflight(),
+            manualCandidates: [
+                manual("project-both", "Both", sameAddress: true, sameClient: true),
+                manual("project-address", "Address", sameAddress: true),
+                manual("project-client", "Client", sameClient: true),
+                manual("project-none", "Neither"),
+            ],
+            candidateLoadFailed: false,
+            unavailableMatchProjectIds: []
+        )
+
+        XCTAssertEqual(
+            state.candidates.map(\.evidenceLabel),
+            ["SAME ADDRESS · SAME CLIENT", "SAME ADDRESS", "SAME CLIENT", nil]
+        )
+    }
+
+    /// A target this session's commit already rejected is dropped from the
+    /// list entirely rather than shown as an unselectable row.
+    func testRejectedTargetIsDroppedRatherThanShownUnselectable() throws {
+        let state = ConvertToProjectSheet.reducePreflight(
+            try preflight(),
+            manualCandidates: [
+                manual("project-a", "Rejected", sameAddress: true),
+                manual("project-b", "Fine"),
+            ],
+            candidateLoadFailed: false,
+            unavailableMatchProjectIds: ["project-a"]
+        )
+
+        XCTAssertEqual(state.candidates.map(\.id), ["project-b"])
+    }
+
+    /// A server-authored blocker still governs, verbatim — it just describes
+    /// the CREATE path now.
+    func testServerCreationBlockerIsPreservedWithItsOwnMessage() throws {
+        let addressState = ConvertToProjectSheet.reducePreflight(
+            try preflight(creationBlocker: "address_required"),
+            manualCandidates: [],
+            candidateLoadFailed: false,
+            unavailableMatchProjectIds: []
+        )
+        XCTAssertEqual(addressState.creationBlocker, .addressRequired)
+        XCTAssertEqual(addressState.statusMessage, "ADD AN ADDRESS, OR PICK THE PROJECT ABOVE")
+
+        let reviewState = ConvertToProjectSheet.reducePreflight(
+            try preflight(creationBlocker: "project_review_required"),
+            manualCandidates: [],
+            candidateLoadFailed: false,
+            unavailableMatchProjectIds: []
+        )
+        XCTAssertEqual(reviewState.creationBlocker, .projectReviewRequired)
+        XCTAssertEqual(reviewState.statusMessage, "SAME ADDRESS PROJECT — ADMIN ACCESS NEEDED")
+    }
+
+    /// The client must never synthesize a blocker the server did not raise.
+    func testClientNeverSynthesizesACreationBlocker() throws {
         let state = ConvertToProjectSheet.reducePreflight(
             try preflight(candidates: [("project-a", "3998 Holland Ave")]),
-            matchableCandidateIds: [],
-            candidateLinkCheckFailed: false,
+            manualCandidates: [],
+            candidateLoadFailed: false,
             unavailableMatchProjectIds: []
         )
 
@@ -91,101 +236,133 @@ final class ConvertSheetMatchingTests: XCTestCase {
             state.creationBlocker,
             "the blocker is server-authored; the client must never synthesize one"
         )
-        XCTAssertEqual(state.refs.count, 1)
-        XCTAssertEqual(state.refs.first?.linkState, .linkedElsewhere)
-        XCTAssertEqual(state.statusMessage, "EVERY MATCH IS LINKED TO ANOTHER LEAD")
     }
 
-    /// A server-authored blocker still governs, verbatim.
-    func testServerCreationBlockerIsPreservedWithItsOwnMessage() throws {
-        let addressState = ConvertToProjectSheet.reducePreflight(
-            try preflight(creationBlocker: "address_required"),
-            matchableCandidateIds: [],
-            candidateLinkCheckFailed: false,
-            unavailableMatchProjectIds: []
-        )
-        XCTAssertEqual(addressState.creationBlocker, .addressRequired)
-        XCTAssertEqual(addressState.statusMessage, "ADD AN ADDRESS TO CHECK EXISTING PROJECTS")
+    // MARK: - 2. A human's choice IS the evidence
 
-        let reviewState = ConvertToProjectSheet.reducePreflight(
-            try preflight(creationBlocker: "project_review_required"),
-            matchableCandidateIds: [],
-            candidateLinkCheckFailed: false,
-            unavailableMatchProjectIds: []
-        )
-        XCTAssertEqual(reviewState.creationBlocker, .projectReviewRequired)
-        XCTAssertEqual(reviewState.statusMessage, "SAME ADDRESS PROJECT — ADMIN ACCESS NEEDED")
+    /// D1's core rule. The server applies `address_required` /
+    /// `matching_project_requires_review` ONLY when `p_link_to_project_id IS
+    /// NULL`. With a link target selected, both blockers are irrelevant and
+    /// the commit must be allowed — this is exactly what stranded 39% of the
+    /// founder's won leads.
+    func testSelectedProjectCommitsThroughEveryCreatePathBlocker() {
+        for blocker in [ConversionPreflightCreationBlocker.addressRequired,
+                        .projectReviewRequired] {
+            XCTAssertTrue(
+                ConvertToProjectSheet.canCommitConversion(
+                    hasLoadedPreflight: true,
+                    preflightFailed: false,
+                    isSaving: false,
+                    requiresMatchReviewRefresh: false,
+                    answer: .link(projectId: "project-a"),
+                    requiresExplicitAnswer: true,
+                    creationBlocker: blocker
+                ),
+                "a create-path blocker (\(blocker)) must never gate an explicit MATCH"
+            )
+        }
     }
 
-    /// A matchable candidate stays matchable, and no notice is raised.
-    func testMatchableCandidateStaysSelectableAndQuiet() throws {
-        let state = ConvertToProjectSheet.reducePreflight(
-            try preflight(candidates: [("project-a", "3998 Holland Ave")]),
-            matchableCandidateIds: ["project-a"],
-            candidateLinkCheckFailed: false,
-            unavailableMatchProjectIds: []
-        )
-
-        XCTAssertEqual(state.refs.first?.linkState, .matchable)
-        XCTAssertEqual(state.refs.first?.interaction, .match)
-        XCTAssertEqual(state.refs.first?.actionLabel, "MATCH")
-        XCTAssertNil(state.statusMessage)
-    }
-
-    /// A target this session's commit already rejected cannot come straight
-    /// back as an actionable MATCH from the same preflight contract.
-    func testRejectedTargetDoesNotReturnAsAnActionableMatch() throws {
-        let state = ConvertToProjectSheet.reducePreflight(
-            try preflight(candidates: [("project-a", "3998 Holland Ave")]),
-            matchableCandidateIds: ["project-a"],
-            candidateLinkCheckFailed: false,
-            unavailableMatchProjectIds: ["project-a"]
-        )
-
-        XCTAssertEqual(state.refs.first?.linkState, .unavailable)
-        XCTAssertEqual(state.refs.first?.interaction, .peek)
-        XCTAssertEqual(state.refs.first?.actionLabel, "REVIEW")
-    }
-
-    /// A server-authorized project at another address remains selectable. It is
-    /// not a duplicate suggestion, so leaving it unselected never gates CREATE.
-    func testDifferentAddressProjectIsSelectableButDoesNotGateCreate() throws {
-        let state = ConvertToProjectSheet.reducePreflight(
-            try preflight(others: [("project-b", "Douglas St porch")]),
-            matchableCandidateIds: ["project-b"],
-            candidateLinkCheckFailed: false,
-            unavailableMatchProjectIds: []
-        )
-
-        XCTAssertEqual(state.refs.first?.linkState, .matchable)
-        XCTAssertEqual(state.refs.first?.interaction, .match)
-        XCTAssertEqual(state.refs.first?.actionLabel, "MATCH")
-        XCTAssertNil(state.statusMessage)
+    /// The same blockers stay authoritative on the CREATE path.
+    func testCreatePathStillObeysTheServerBlocker() {
         XCTAssertFalse(
-            state.refs.contains(where: \.isLikelyDuplicate),
-            "a manual option is not automatically a duplicate suggestion"
+            ConvertToProjectSheet.canCommitConversion(
+                hasLoadedPreflight: true,
+                preflightFailed: false,
+                isSaving: false,
+                requiresMatchReviewRefresh: false,
+                answer: .createNew,
+                requiresExplicitAnswer: false,
+                creationBlocker: .addressRequired
+            )
         )
     }
 
-    // MARK: - 2. Split error reporting
+    /// A same-address project makes the answer mandatory — but "create a new
+    /// project" is always an available answer, so it is never a dead end.
+    func testSameAddressCandidateRequiresAnAnswerButCreateNewIsAlwaysOne() {
+        func canCommit(_ answer: ConvertToProjectSheet.LinkAnswer) -> Bool {
+            ConvertToProjectSheet.canCommitConversion(
+                hasLoadedPreflight: true,
+                preflightFailed: false,
+                isSaving: false,
+                requiresMatchReviewRefresh: false,
+                answer: answer,
+                requiresExplicitAnswer: true,
+                creationBlocker: nil
+            )
+        }
 
-    /// A failed candidate link re-read is a CHIP-AREA problem, not a preflight
-    /// failure. The server's own answer (blocker, candidates) still stands.
-    func testCandidateLinkCheckFailureIsReportedWithoutBlamingThePreflight() throws {
+        XCTAssertFalse(canCommit(.undecided), "an unanswered duplicate risk must not create")
+        XCTAssertTrue(canCommit(.createNew), "'none of these' is always an available answer")
+        XCTAssertTrue(canCommit(.link(projectId: "project-a")))
+    }
+
+    /// With nothing at the same address there is nothing to disambiguate, so
+    /// CREATE stays the zero-friction default.
+    func testCreateIsTheDefaultAnswerWithoutADuplicateRisk() {
+        XCTAssertEqual(
+            ConvertToProjectSheet.initialAnswer(for: [
+                ConvertToProjectSheet.ProjectLinkCandidate(
+                    id: "project-a", title: "Elsewhere", address: nil,
+                    status: nil, sameAddress: false, sameClient: true
+                )
+            ]),
+            .createNew
+        )
+
+        XCTAssertEqual(
+            ConvertToProjectSheet.initialAnswer(for: [
+                ConvertToProjectSheet.ProjectLinkCandidate(
+                    id: "project-a", title: "Same address", address: nil,
+                    status: nil, sameAddress: true, sameClient: false
+                )
+            ]),
+            .undecided
+        )
+    }
+
+    // MARK: - 2b. A failed read offers a retry, never a dead list
+
+    /// The candidate read failing is a SECTION problem, not a preflight
+    /// failure — the server's own answer (blocker, existing link) still
+    /// stands. It must surface a retry rather than a list nobody can use.
+    func testCandidateLoadFailureIsReportedWithoutBlamingThePreflight() throws {
         let state = ConvertToProjectSheet.reducePreflight(
             try preflight(candidates: [("project-a", "3998 Holland Ave")]),
-            matchableCandidateIds: [],
-            candidateLinkCheckFailed: true,
+            manualCandidates: [],
+            candidateLoadFailed: true,
             unavailableMatchProjectIds: []
         )
 
-        XCTAssertTrue(state.candidateLinkCheckFailed)
+        XCTAssertTrue(state.candidateLoadFailed)
         XCTAssertNil(state.creationBlocker)
-        XCTAssertEqual(state.statusMessage, "COULD NOT CHECK PROJECT LINKS — RETRY")
-        XCTAssertEqual(
-            state.refs.first?.linkState, .unverified,
-            "an unverified candidate is neither offered as a match nor declared taken"
+        XCTAssertTrue(
+            state.candidates.isEmpty,
+            "a failed read has no candidates to offer — it must not fall back to preflight rows"
         )
+        XCTAssertNil(
+            state.statusMessage,
+            "the retry block speaks for this state; a second message would be noise"
+        )
+    }
+
+    /// Search matches what the operator can actually see on the row.
+    func testSearchMatchesTitleAndAddress() {
+        let candidate = ConvertToProjectSheet.ProjectLinkCandidate(
+            id: "project-a",
+            title: "Calloway rear deck",
+            address: "3998 Holland Ave, Victoria BC",
+            status: nil,
+            sameAddress: false,
+            sameClient: false
+        )
+
+        XCTAssertTrue(candidate.matches(""), "an empty query matches everything")
+        XCTAssertTrue(candidate.matches("calloway"), "title, case-insensitively")
+        XCTAssertTrue(candidate.matches("holland"), "address, case-insensitively")
+        XCTAssertTrue(candidate.matches("  deck  "), "a padded query still matches")
+        XCTAssertFalse(candidate.matches("pergola"))
     }
 
     // MARK: - 3. The already-converted branch is not an access denial

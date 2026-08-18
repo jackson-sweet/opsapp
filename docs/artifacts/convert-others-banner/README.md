@@ -1,5 +1,16 @@
 # CLIENT-HAS-OTHERS banner — header wrap fix (bug 4e11e121)
 
+> **Superseded (2026-08-18, D1).** The CLIENT-HAS-OTHERS banner no longer
+> exists. It merged three candidate lists with three different selection rules
+> into one chip strip where most rows could not be picked, which is what left
+> won leads unable to link a project. It was replaced by a single ranked
+> "WHICH PROJECT IS THIS" list in which every row is selectable, and
+> `ConvertOthersBannerSnapshotTests.swift` was replaced by
+> `OPSTests/Views/ConvertProjectLinkSectionSnapshotTests.swift`.
+> The renders below stay as the proof record for bug 4e11e121 — the header-wrap
+> fix they document is real, it just applies to a surface that has since been
+> redesigned. Nothing here should be treated as the current UI.
+
 Proof renders for the convert-lead-to-project sheet's tan attention banner,
 produced by `OPSTests/Views/ConvertOthersBannerSnapshotTests.swift`
 (drawHierarchy harness, banner rendered inside the sheet's exact scroll

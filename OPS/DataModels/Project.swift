@@ -541,6 +541,19 @@ enum ProjectVinylOrderFields {
     static let orderedBy = "vinyl_ordered_by"
     static let color = "vinyl_color"
     static let po = "vinyl_po"
+    /// WHERE the material came from — `supplier` or `shop` (`VinylOrderDisposition`).
+    ///
+    /// A separate column rather than a third `vinyl_order_status` value: that
+    /// column's CHECK admits only `not_ordered`/`ordered`, and every shipped iOS
+    /// build decodes an unknown status as `.notOrdered`, which would put a fully
+    /// handled job back on the VINYL ORDERS board. This column is nullable and
+    /// purely additive — older builds never read it and are unaffected.
+    ///
+    /// Deliberately NOT projected onto `ProjectVinylOrderMarker`: the
+    /// authoritative record is the frozen design snapshot, which already carries
+    /// the disposition, and widening a live `@Model` costs a SwiftData schema
+    /// version for a value the UI reads from the snapshot anyway.
+    static let source = "vinyl_source"
 }
 
 enum ProjectVinylOrderStatus: String, Codable, CaseIterable {

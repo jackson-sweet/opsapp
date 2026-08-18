@@ -5850,7 +5850,7 @@ actor DataActor {
         // silently stripped before push and the optimistic marker reverts on the
         // next sync. Keep in sync with ProjectVinylOrderFields + the inbound DTO.
         "vinyl_order_status", "vinyl_ordered_at", "vinyl_ordered_by",
-        "vinyl_color", "vinyl_po",
+        "vinyl_color", "vinyl_po", "vinyl_source",
         "deleted_at", "created_at", "updated_at", "priority_rank"
     ]
 

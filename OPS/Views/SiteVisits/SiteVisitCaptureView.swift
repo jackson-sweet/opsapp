@@ -497,7 +497,8 @@ private struct SiteVisitCaptureConsole: View {
     private var primaryFormSections: some View {
         ForEach(
             SiteVisitPrimaryFormSemantics.orderedSections(
-                boundLeadSummary: viewModel.currentOpportunity?.aiSummary
+                boundLeadSummary: viewModel.currentOpportunity?.aiSummary,
+                leadDescription: viewModel.currentOpportunity?.descriptionText
             )
         ) { section in
             primaryFormSection(section)
@@ -1028,13 +1029,32 @@ private struct SiteVisitCaptureMetric: View {
 private struct SiteVisitLeadSummaryBand: View {
     let presentation: SiteVisitLeadSummaryPresentation
 
+    /// The agent tint marks agent-written copy. A lead's own inquiry text is
+    /// not that, so it reads in the neutral panel treatment — same band, same
+    /// position, honest about who wrote it.
+    private var isAgentWritten: Bool {
+        presentation.source == .agentSummary
+    }
+
+    private var accentColor: Color {
+        isAgentWritten ? OPSStyle.Colors.agent : OPSStyle.Colors.text2
+    }
+
+    private var fillColor: Color {
+        isAgentWritten ? OPSStyle.Colors.agentSoft : OPSStyle.Colors.surfaceInput
+    }
+
+    private var railColor: Color {
+        isAgentWritten ? OPSStyle.Colors.agentLine : OPSStyle.Colors.line
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
             HStack(spacing: 0) {
                 Text("// ")
                     .foregroundColor(OPSStyle.Colors.textMute)
-                Text("LEAD SUMMARY")
-                    .foregroundColor(OPSStyle.Colors.agent)
+                Text(presentation.source.label)
+                    .foregroundColor(accentColor)
             }
             .font(OPSStyle.Typography.miniLabelBold)
             .textCase(.uppercase)
@@ -1048,10 +1068,10 @@ private struct SiteVisitLeadSummaryBand: View {
         .padding(OPSStyle.Layout.spacing2_5)
         .padding(.leading, OPSStyle.Layout.Border.thick)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(OPSStyle.Colors.agentSoft)
+        .background(fillColor)
         .overlay(alignment: .leading) {
             Rectangle()
-                .fill(OPSStyle.Colors.agentLine)
+                .fill(railColor)
                 .frame(width: OPSStyle.Layout.Border.thick)
         }
         .clipShape(

@@ -165,16 +165,69 @@ enum LeadDispositionInteractionPolicy {
     /// one, so it degrades to the legacy path — same routing as a company with
     /// Phase C switched off. The structured reason is what is lost, not the
     /// ability to work.
+    ///
+    /// Bug 887722e1 — that degrade was too eager. One failed gate read on a
+    /// company that HAS Phase C dropped the operator into a bare "Discard this
+    /// lead?" dialog with nowhere to say why, which reads as the feature being
+    /// broken rather than the network being down. `lastKnownPhaseCEnabled` is
+    /// the server's own last answer for this company (see
+    /// `LeadDispositionGateCache`); when it said yes, a read failure keeps the
+    /// reason sheet. The apply RPC re-checks the gate under the row lock, so a
+    /// stale yes can never smuggle a structured reason past a company that has
+    /// since been switched off — it fails loudly instead of writing a lie.
     static func routeWhenContextUnavailable(
+        lastKnownPhaseCEnabled: Bool? = nil,
         explainerSeen: Bool
     ) -> LeadDispositionInteractionRoute {
-        route(phaseCEnabled: false, explainerSeen: explainerSeen)
+        route(phaseCEnabled: lastKnownPhaseCEnabled ?? false, explainerSeen: explainerSeen)
     }
 
     static func normalizedNote(_ note: String) -> String? {
         let trimmed = note.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return nil }
         return String(trimmed.prefix(noteLimit))
+    }
+}
+
+/// The server's last answer to "does this company have Phase C?", kept per
+/// company so a failed gate read does not silently cost the operator the reason
+/// list (bug 887722e1).
+///
+/// This is a CACHE of a server fact, never a client decision: it is written only
+/// from a successful `get_lead_disposition_context` and read only when that call
+/// fails. The apply RPC re-validates the gate under the opportunity's row lock,
+/// so the worst a stale entry can do is surface a server rejection — which the
+/// flow then writes back, correcting the cache on the spot.
+enum LeadDispositionGateCache {
+    private static let keyPrefix = "leadDisposition.phaseCEnabled."
+
+    /// Company ids are keyed lowercased: stored casing varies with which side
+    /// wrote the row, and an uppercased id would key a second, never-read entry.
+    private static func key(for companyId: String) -> String? {
+        let normalized = companyId
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+        guard !normalized.isEmpty else { return nil }
+        return keyPrefix + normalized
+    }
+
+    static func remember(
+        _ phaseCEnabled: Bool,
+        companyId: String,
+        defaults: UserDefaults = .standard
+    ) {
+        guard let key = key(for: companyId) else { return }
+        defaults.set(phaseCEnabled, forKey: key)
+    }
+
+    /// Nil when this device has never had a successful gate read for the
+    /// company — the caller then routes as if Phase C were off.
+    static func lastKnownPhaseCEnabled(
+        companyId: String,
+        defaults: UserDefaults = .standard
+    ) -> Bool? {
+        guard let key = key(for: companyId) else { return nil }
+        return defaults.object(forKey: key) as? Bool
     }
 }
 

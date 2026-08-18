@@ -349,3 +349,76 @@ enum DeckCanvasPanPolicy {
         return 0
     }
 }
+
+/// Keeps the point the operator is CREATING inside the viewport while they
+/// draw or dictate a perimeter. Bug 5f285f64.
+///
+/// The camera used to follow the anchor — the vertex the current segment runs
+/// FROM — and nothing followed the segment's far end. Dictating a long run
+/// therefore walked the new point straight off the screen: the operator called
+/// out a length and watched nothing happen, because the only thing the viewport
+/// tracked was where they had already been.
+///
+/// The rule is "follow the work, minimally". The new point must always be
+/// visible; the anchor comes along whenever both fit; and the camera nudges by
+/// the smallest amount that achieves it rather than recentring. A recentre on
+/// every dictated digit would throw the drawing across the screen and destroy
+/// the operator's sense of where they are.
+///
+/// Everything here is screen-space and pure, so it is asserted directly rather
+/// than through a rendered canvas.
+enum DeckCanvasFollowPolicy {
+
+    /// Offset delta to ADD to the canvas offset so `focus` — and `context` when
+    /// there is room — sit inside `safeArea`. `.zero` when nothing must move.
+    static func pan(
+        focus: CGPoint,
+        context: CGPoint?,
+        safeArea: CGRect
+    ) -> CGSize {
+        guard focus.x.isFinite, focus.y.isFinite,
+              safeArea.width > 0, safeArea.height > 0 else { return .zero }
+
+        let contextPoint = context.flatMap { $0.x.isFinite && $0.y.isFinite ? $0 : nil }
+
+        // Prefer bringing the whole segment into view; fall back to the new
+        // point alone when the segment is longer than the viewport.
+        if let contextPoint {
+            let span = boundingBox(focus, contextPoint)
+            if span.width <= safeArea.width, span.height <= safeArea.height {
+                return translation(bringing: span, into: safeArea)
+            }
+        }
+        return translation(bringing: boundingBox(focus, focus), into: safeArea)
+    }
+
+    private static func boundingBox(_ a: CGPoint, _ b: CGPoint) -> CGRect {
+        CGRect(
+            x: min(a.x, b.x),
+            y: min(a.y, b.y),
+            width: abs(a.x - b.x),
+            height: abs(a.y - b.y)
+        )
+    }
+
+    /// Smallest translation that puts `box` inside `bounds`. Assumes `box`
+    /// fits; when it does not, the leading edge wins so the caller keeps a
+    /// deterministic anchor.
+    private static func translation(bringing box: CGRect, into bounds: CGRect) -> CGSize {
+        CGSize(
+            width: axisTranslation(min: box.minX, max: box.maxX, boundsMin: bounds.minX, boundsMax: bounds.maxX),
+            height: axisTranslation(min: box.minY, max: box.maxY, boundsMin: bounds.minY, boundsMax: bounds.maxY)
+        )
+    }
+
+    private static func axisTranslation(
+        min boxMin: CGFloat,
+        max boxMax: CGFloat,
+        boundsMin: CGFloat,
+        boundsMax: CGFloat
+    ) -> CGFloat {
+        if boxMin < boundsMin { return boundsMin - boxMin }
+        if boxMax > boundsMax { return boundsMax - boxMax }
+        return 0
+    }
+}

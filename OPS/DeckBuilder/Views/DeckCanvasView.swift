@@ -255,6 +255,10 @@ struct DeckCanvasView: View {
                 guard preview == nil else { return }
                 reconcileWorkspaceOffsetIfReady(viewportSize: unobstructedSize)
             }
+            .onChange(of: viewModel.perimeterDraftPreview) { _, preview in
+                guard let preview else { return }
+                followPerimeterDraft(preview, viewportSize: unobstructedSize)
+            }
             .onChange(of: viewModel.perimeterEntry) { _, entry in
                 if !DeckCanvasGesturePolicy.allowsPerimeterDraftReorientation(for: entry) {
                     isReorientingPerimeterDraft = false
@@ -1773,6 +1777,56 @@ struct DeckCanvasView: View {
             viewportSize: viewportSize,
             minimumVisibleLength: CGFloat(OPSStyle.Layout.touchTargetMin)
         )
+    }
+
+    /// Keep the point being created in view as the operator draws or dictates
+    /// successive points (bug 5f285f64). The camera used to track only the
+    /// anchor — where the segment starts — so a dictated run walked its new
+    /// endpoint off-screen and the canvas appeared frozen.
+    ///
+    /// Pans by the minimum amount that puts the new endpoint (and the anchor
+    /// too, whenever both fit) back inside the work area. Deliberately NOT a
+    /// recentre: recentring on every dictated digit would sling the drawing
+    /// around and cost the operator their bearings.
+    private func followPerimeterDraft(_ preview: PerimeterDraftPreview, viewportSize: CGSize) {
+        // Never fight a finger that is already driving the camera.
+        guard !hasActiveWorkspaceManipulation else { return }
+        guard viewportSize.width > 0, viewportSize.height > 0 else { return }
+
+        // The draft can reach past the session's world bounds; grow them first
+        // so the pan below is not immediately clamped back.
+        expandWorkspace(toInclude: [preview.start, preview.end], viewportSize: viewportSize)
+
+        let margin = CGFloat(OPSStyle.Layout.touchTargetMin)
+        let safeArea = CGRect(origin: .zero, size: viewportSize)
+            .insetBy(dx: margin, dy: margin)
+        guard safeArea.width > 0, safeArea.height > 0 else { return }
+
+        let delta = DeckCanvasFollowPolicy.pan(
+            focus: screenPoint(fromCanvas: preview.end),
+            context: screenPoint(fromCanvas: preview.start),
+            safeArea: safeArea
+        )
+        guard delta != .zero else { return }
+
+        workspaceNeedsOffsetReconciliation = false
+        let target = CGSize(
+            width: canvasOffset.width + delta.width,
+            height: canvasOffset.height + delta.height
+        )
+        viewportSnap.animate(
+            from: canvasOffset,
+            to: target,
+            duration: OPSStyle.Animation.durationPanel,
+            reduceMotion: OPSStyle.Animation.reduceMotion
+        ) { next in
+            canvasOffset = workspace.constrainedOffset(
+                next,
+                scale: canvasScale,
+                viewportSize: viewportSize,
+                minimumVisibleLength: CGFloat(OPSStyle.Layout.touchTargetMin)
+            )
+        }
     }
 
     private func centerViewport(on point: CGPoint, viewportSize: CGSize) {

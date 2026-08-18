@@ -94,12 +94,18 @@ struct SiteVisitOutboundSync {
         // captured when Save was tapped. Any later child/media/parent write for
         // this visit must settle first. Other completion retries are ignored;
         // the guarded RPC is idempotent and each preserves its own payload.
+        // EXCEPT: a candidate whose own dependsOnId chain reaches this
+        // completion is sequenced AFTER it and can never settle first — counting
+        // it deadlocks the queue (the candidate waits on the completion via its
+        // dependency while the completion waits on the candidate via this
+        // barrier; nothing ever attempts — the 2026-08-17 device wedge).
         return !operations.contains { candidate in
             guard candidate.id != operation.id,
                   isSiteVisitOperation(candidate),
                   candidate.operationType
                     != SiteVisitSyncOperation.completionOperationType,
                   unresolvedStatuses.contains(candidate.status),
+                  !dependsTransitively(candidate, on: operation, in: operations),
                   let candidateEnvelope = try? JSONDecoder().decode(
                       SiteVisitSyncOperation.Payload.self,
                       from: candidate.payload
@@ -109,6 +115,28 @@ struct SiteVisitOutboundSync {
             return candidateEnvelope.siteVisitId.lowercased()
                 == envelope.siteVisitId.lowercased()
         }
+    }
+
+    /// True when `candidate` is sequenced after `target` by its own dependsOnId
+    /// chain. Visited-set guarded so a corrupt dependency cycle terminates
+    /// instead of spinning.
+    private static func dependsTransitively(
+        _ candidate: SyncOperation,
+        on target: SyncOperation,
+        in operations: [SyncOperation]
+    ) -> Bool {
+        let operationsById = Dictionary(
+            operations.map { ($0.id.uuidString.lowercased(), $0) },
+            uniquingKeysWith: { first, _ in first }
+        )
+        let targetId = target.id.uuidString.lowercased()
+        var visited = Set<String>()
+        var nextId = candidate.dependsOnId?.lowercased()
+        while let id = nextId, !id.isEmpty, visited.insert(id).inserted {
+            if id == targetId { return true }
+            nextId = operationsById[id]?.dependsOnId?.lowercased()
+        }
+        return false
     }
 
     static func shouldContinueDrain(

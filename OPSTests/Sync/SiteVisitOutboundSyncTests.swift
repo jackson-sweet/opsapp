@@ -117,6 +117,111 @@ final class SiteVisitOutboundSyncTests: XCTestCase {
         )
     }
 
+    func test_completionIgnoresChildrenThatDependOnTheCompletionItself() throws {
+        // Device wedge 2026-08-17 (visit 2091c595): children queued after the
+        // completion carry dependsOnId → completion, directly or transitively.
+        // The barrier counted them as unresolved same-visit work while their
+        // dependency check blocked them on the completion — a mutual block in
+        // which nothing ever attempted and PENDING WORK read 11 forever. A
+        // candidate sequenced AFTER the completion by its own dependency chain
+        // can never settle first, so it must not hold the completion's barrier.
+        let context = try makeContainer().mainContext
+        let visit = makeVisit()
+        let artifact = makeArtifact(localURL: nil)
+        let draft = makeDraft(author: userId)
+        context.insert(visit)
+        context.insert(artifact)
+        context.insert(draft)
+
+        let completion = try insert(
+            SiteVisitSyncOperation.completion(visit),
+            in: context
+        )
+        let child = try insert(
+            SiteVisitSyncOperation.artifact(artifact),
+            dependsOn: completion,
+            in: context
+        )
+        let grandchild = try insert(
+            SiteVisitSyncOperation.identityDraft(draft),
+            dependsOn: child,
+            in: context
+        )
+
+        let ready = SiteVisitOutboundSync.readyPendingOperationIds(
+            in: try allOperations(context)
+        )
+        XCTAssertEqual(ready, [completion.id])
+        XCTAssertFalse(ready.contains(child.id))
+        XCTAssertFalse(ready.contains(grandchild.id))
+    }
+
+    func test_completionStillWaitsForIndependentChildWhenAnotherDependsOnIt() throws {
+        // Mixed chain: one child waits on the completion, another is free to
+        // run first. The free child still holds the barrier — only the ones
+        // sequenced after the completion are excused from it.
+        let context = try makeContainer().mainContext
+        let visit = makeVisit()
+        let artifact = makeArtifact(localURL: nil)
+        let answer = makeAnswer(author: userId)
+        context.insert(visit)
+        context.insert(artifact)
+        context.insert(answer)
+
+        let completion = try insert(
+            SiteVisitSyncOperation.completion(visit),
+            in: context
+        )
+        _ = try insert(
+            SiteVisitSyncOperation.artifact(artifact),
+            dependsOn: completion,
+            in: context
+        )
+        let independent = try insert(
+            SiteVisitSyncOperation.checklistAnswer(answer),
+            in: context
+        )
+
+        let ready = SiteVisitOutboundSync.readyPendingOperationIds(
+            in: try allOperations(context)
+        )
+        XCTAssertEqual(ready, [independent.id])
+        XCTAssertFalse(ready.contains(completion.id))
+    }
+
+    func test_corruptDependencyCycleAmongChildrenTerminates() throws {
+        // Two children pointing at each other (corrupt store state) must not
+        // hang the transitive walk. Neither reaches the completion, so both
+        // still hold the barrier; the assertion here is termination + blocking.
+        let context = try makeContainer().mainContext
+        let visit = makeVisit()
+        let artifact = makeArtifact(localURL: nil)
+        let answer = makeAnswer(author: userId)
+        context.insert(visit)
+        context.insert(artifact)
+        context.insert(answer)
+
+        let completion = try insert(
+            SiteVisitSyncOperation.completion(visit),
+            in: context
+        )
+        let childA = try insert(
+            SiteVisitSyncOperation.artifact(artifact),
+            in: context
+        )
+        let childB = try insert(
+            SiteVisitSyncOperation.checklistAnswer(answer),
+            dependsOn: childA,
+            in: context
+        )
+        childA.dependsOnId = childB.id.uuidString.lowercased()
+
+        let ready = SiteVisitOutboundSync.readyPendingOperationIds(
+            in: try allOperations(context)
+        )
+        XCTAssertFalse(ready.contains(completion.id))
+    }
+
     func test_transientFailureOrParkedDependencyPreventsDownstreamDrain() throws {
         let context = try makeContainer().mainContext
         let visit = makeVisit()

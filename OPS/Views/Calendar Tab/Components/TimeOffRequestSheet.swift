@@ -257,9 +257,13 @@ struct TimeOffRequestSheet: View {
     }
 
     private func submit() {
+        // The queue is the delivery mechanism now, so it is a precondition:
+        // inserting locally with nowhere to send the request is what stranded
+        // rows before (bug ef5a69e6).
         guard let requesterId = dataController.currentUser?.id,
               let companyId = dataController.currentUser?.companyId,
-              let context = dataController.modelContext else { return }
+              let context = dataController.modelContext,
+              let syncEngine = dataController.syncEngine else { return }
 
         // Bug 81470acd — defense-in-depth: enforce the permission gate at
         // submit time too. Roles without time_off.approve that somehow hold a
@@ -294,6 +298,13 @@ struct TimeOffRequestSheet: View {
         var prepared: [PreparedEvent] = []
         for target in effectiveTargets {
             let event = CalendarUserEvent(
+                // The id is ours from the first instant: it is the queue's key,
+                // and it used to be rewritten to the server's id after a
+                // successful create — which is exactly why a failed create left
+                // a row nothing could ever push. Lowercased because Postgres
+                // uuid columns are, and an uppercase id would echo back as a
+                // second row.
+                id: UUID().uuidString.lowercased(),
                 userId: target.id,
                 companyId: companyId,
                 type: .timeOff,
@@ -312,36 +323,15 @@ struct TimeOffRequestSheet: View {
         }
         try? context.save()
 
-        Task {
-            let repo = CalendarUserEventRepository(companyId: companyId)
-            let iso = ISO8601DateFormatter()
-
-            for item in prepared {
-                let dto = CreateCalendarUserEventDTO(
-                    userId: item.target.id,
-                    companyId: companyId,
-                    type: "time_off",
-                    title: item.event.title,
-                    startDate: iso.string(from: startDate),
-                    endDate: iso.string(from: endDate),
-                    allDay: true,
-                    notes: reason.isEmpty ? nil : reason,
-                    status: "pending",
-                    address: nil,
-                    teamMemberIds: nil
-                )
-                var savedId: String? = nil
-                if let saved = try? await repo.create(dto) {
-                    await MainActor.run {
-                        item.event.id = saved.id
-                        item.event.needsSync = false
-                        item.event.lastSyncedAt = Date()
-                        try? context.save()
-                    }
-                    savedId = saved.id
-                }
-
-                await notifyAdminsOfTimeOffRequest(
+        // Queue the server write durably instead of firing it and hoping. The
+        // approver notification travels with the operation and dispatches from
+        // the confirmed create — nobody is told about a request that only ever
+        // existed on this phone (bug ef5a69e6).
+        for item in prepared {
+            CalendarUserEventOutboundSync.enqueueCreate(
+                item.event,
+                notification: CalendarUserEventOutboundSync.TimeOffNotification(
+                    kind: .requested,
                     companyId: companyId,
                     requesterId: requesterId,
                     requesterName: requesterName,
@@ -349,129 +339,16 @@ struct TimeOffRequestSheet: View {
                     targetName: item.target.fullName,
                     eventTitle: item.event.title,
                     startDate: startDate,
-                    endDate: endDate,
-                    eventId: savedId ?? item.event.id
-                )
-            }
-
-            await MainActor.run {
-                isSaving = false
-                viewModel.loadUserEvents()
-                isPresented = false
-            }
-        }
-    }
-
-    // MARK: - Push notification to admins
-
-    private func notifyAdminsOfTimeOffRequest(
-        companyId: String,
-        requesterId: String,
-        requesterName: String,
-        targetUserId: String,
-        targetName: String,
-        eventTitle: String,
-        startDate: Date,
-        endDate: Date,
-        eventId: String
-    ) async {
-        // Recipients = anyone with time_off.approve. Permission-gated, never
-        // role. Companies that want to delegate scheduling to operators or
-        // foremen grant the permission to that custom role or via per-user
-        // override.
-        let approverIds = (try? await RecipientLookupService.usersWithPermission(
-            companyId: companyId,
-            permission: "time_off.approve"
-        )) ?? []
-
-        // Recipients exclude the requester AND the target — neither
-        // should receive their own request as a "review this" entry.
-        let recipientIds = approverIds
-            .filter { $0 != requesterId && $0 != targetUserId }
-
-        let dateFormatter = DateFormatter()
-        dateFormatter.dateFormat = "MMM d"
-        let dateRange = Calendar.current.isDate(startDate, inSameDayAs: endDate)
-            ? dateFormatter.string(from: startDate)
-            : "\(dateFormatter.string(from: startDate)) – \(dateFormatter.string(from: endDate))"
-
-        let isSelfRequest = requesterId == targetUserId
-        let approvalTitle = "Time Off Request"
-        let approvalBody: String = isSelfRequest
-            ? "\(requesterName) requested time off: \(dateRange)"
-            : "\(requesterName) requested time off for \(targetName): \(dateRange)"
-
-        let notifRepo = NotificationRepository()
-
-        // Bug 8ef185af: confirmation row for the requester so they
-        // always see the submission land in the rail. Bug 81470acd: when
-        // an admin requests on behalf of someone else, also drop a row
-        // on the target's rail so they know a request was filed for
-        // them — the calendar event alone isn't enough surface area.
-        let selfNotif = NotificationRepository.CreateNotificationDTO(
-            userId: requesterId,
-            companyId: companyId,
-            type: "time_off_requested",
-            title: "Time Off Submitted",
-            body: isSelfRequest
-                ? "Your request for \(dateRange) is pending review."
-                : "Submitted for \(targetName): \(dateRange) (pending review).",
-            projectId: nil,
-            noteId: nil,
-            expenseId: nil,
-            batchId: nil,
-            deepLinkType: "schedule"
-        )
-        try? await notifRepo.createNotification(selfNotif)
-
-        if !isSelfRequest {
-            let targetNotif = NotificationRepository.CreateNotificationDTO(
-                userId: targetUserId,
-                companyId: companyId,
-                type: "time_off_requested",
-                title: "Time Off Submitted For You",
-                body: "\(requesterName) submitted a time-off request on your behalf for \(dateRange).",
-                projectId: nil,
-                noteId: nil,
-                expenseId: nil,
-                batchId: nil,
-                deepLinkType: "schedule"
+                    endDate: endDate
+                ),
+                syncEngine: syncEngine,
+                deferPush: true
             )
-            try? await notifRepo.createNotification(targetNotif)
         }
+        CalendarUserEventOutboundSync.pushQueued(syncEngine: syncEngine)
 
-        guard !recipientIds.isEmpty else {
-            print("[TimeOffRequestSheet] No other schedulers to notify")
-            return
-        }
-
-        for recipientId in recipientIds {
-            let notifDTO = NotificationRepository.CreateNotificationDTO(
-                userId: recipientId,
-                companyId: companyId,
-                type: "time_off_requested",
-                title: approvalTitle,
-                body: approvalBody,
-                projectId: nil,
-                noteId: nil,
-                expenseId: nil,
-                batchId: nil,
-                deepLinkType: "schedule"
-            )
-            try? await notifRepo.createNotification(notifDTO)
-        }
-
-        try? await OneSignalService.shared.sendToUsers(
-            userIds: recipientIds,
-            title: approvalTitle,
-            body: approvalBody,
-            data: [
-                "type": "time_off_requested",
-                "eventId": eventId,
-                "screen": "schedule"
-            ]
-        )
-
-        print("[TimeOffRequestSheet] Time-off push sent to \(recipientIds.count) scheduler(s) for target \(targetName)")
+        isSaving = false
+        viewModel.loadUserEvents()
+        isPresented = false
     }
 }

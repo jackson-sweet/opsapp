@@ -79,6 +79,16 @@ enum SyncStatusCopy {
             return ("Saving…", .syncing)
         case "pending":
             return ("Waiting to sync", .waiting)
+        case "parked":
+            // A parked op never retries on its own. Saying "waiting to sync"
+            // here — the old default — told the operator to keep waiting for
+            // something that was never coming.
+            return (
+                PendingWork.isMissingRow(rawError)
+                    ? PendingWork.missingRow
+                    : PendingWork.parkedRow,
+                .stuck
+            )
         case "failed":
             if let specific = specificFailure(rawError) { return specific }
             // The retry / dismiss buttons sit right beside this line, so the
@@ -116,6 +126,9 @@ enum SyncStatusCopy {
         }
         if raw.contains("duplicate key") {
             return ("Already saved", .waiting)
+        }
+        if PendingWork.isMissingRow(raw) {
+            return (PendingWork.missingRow, .stuck)
         }
         return nil
     }
@@ -215,6 +228,11 @@ enum SyncStatusCopy {
 
         // Row status lines (sentence case — the existing SyncStatusCopy register).
         static let parkedRow = "Server said no — held here"
+        /// A park with a different cause and a different answer. The server did
+        /// not reject the change; the record it belonged to is not in OPS any
+        /// more. Retrying cannot help, so the line says what happened and the
+        /// detail block below says what the operator still has.
+        static let missingRow = "That record is gone from OPS — held here"
         static let offlineRow = "Waiting for signal"
         static let orphanRow = "Not linked to a job or lead"
         static let draftRow = "Not sent yet — open to finish"
@@ -248,6 +266,30 @@ enum SyncStatusCopy {
         // Detail sheet — parked error block.
         static let parkedDetailLabel = "SYS :: REJECTED BY SERVER"
         static let parkedDetailBody = "Your copy is safe on this phone. Retry now or export it."
+
+        // Detail sheet — the record behind the change no longer exists.
+        static let missingRowDetailLabel = "SYS :: RECORD NOT FOUND"
+        static let missingRowDetailBody = "Someone deleted this record in OPS, or it is no longer shared with you. Your copy is safe on this phone — export it before you stop the send."
+
+        /// The parked block's label + body for one item. A missing record is a
+        /// different event from a rejection and gets different words; every
+        /// other park keeps the rejection block.
+        static func parkedDetail(
+            lastError: String?
+        ) -> (label: String, body: String) {
+            isMissingRow(lastError)
+                ? (missingRowDetailLabel, missingRowDetailBody)
+                : (parkedDetailLabel, parkedDetailBody)
+        }
+
+        /// Our own zero-row PATCH verdict, recognized by the stable marker
+        /// `SyncError.serverRowMissing` writes into every description. Matching
+        /// the typed error's own phrase — not loose wording — is what keeps this
+        /// from claiming a deletion that never happened.
+        static func isMissingRow(_ raw: String?) -> Bool {
+            guard let raw, !raw.isEmpty else { return false }
+            return raw.lowercased().contains(SyncError.serverRowMissingMarker)
+        }
 
         // Actions, labels, confirms.
         static let linkAction = "LINK"
@@ -390,7 +432,8 @@ enum SyncStatusCopy {
             secondsUntilRetry: Int?
         ) -> (text: String, tone: SyncStatusTone) {
             switch statusRaw {
-            case "parked":     return (parkedRow, .stuck)
+            case "parked":
+                return (isMissingRow(lastError) ? missingRow : parkedRow, .stuck)
             case "inProgress": return ("Saving…", .syncing)
             default:           break
             }

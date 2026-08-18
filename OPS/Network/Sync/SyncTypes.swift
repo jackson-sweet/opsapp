@@ -33,7 +33,16 @@ enum SyncError: Error, LocalizedError {
     case conflict(entityType: String, entityId: String, serverVersion: Date, localVersion: Date)
     case quotaExceeded
     case timeout
+    /// A field update reached the server and changed nothing — the row it
+    /// addressed is not there, or not addressable by this operator under RLS.
+    /// See `SupabaseWriteGuard`; classifies permanent, never auto-retried.
+    case serverRowMissing(table: String, id: String)
     case unknown(underlying: Error)
+
+    /// The stable phrase every `serverRowMissing` description carries. The only
+    /// evidence downstream string-only surfaces get — the recovery copy layer
+    /// and the parked-release proof both key off it, so it must not drift.
+    static let serverRowMissingMarker = "server row missing"
 
     var errorDescription: String? {
         switch self {
@@ -74,6 +83,8 @@ enum SyncError: Error, LocalizedError {
             return "Storage quota exceeded. Please free up space or upgrade your plan."
         case .timeout:
             return "The sync request timed out. Will retry automatically."
+        case .serverRowMissing(let table, let id):
+            return "\(Self.serverRowMissingMarker): no \(table) row \(id) on the server."
         case .unknown(let underlying):
             return "Unexpected sync error: \(underlying.localizedDescription)"
         }

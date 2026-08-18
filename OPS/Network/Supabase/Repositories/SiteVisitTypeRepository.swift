@@ -51,12 +51,21 @@ final class SiteVisitTypeRepository: @unchecked Sendable {
         payload["updated_at"] = .string(
             ISO8601DateFormatter().string(from: Date())
         )
-        try await client
+        let response = try await client
             .from("site_visit_types")
             .update(payload)
             .eq("id", value: id.lowercased())
             .eq("company_id", value: companyId)
+            .select("id")
             .execute()
+        // `softDelete` routes through here carrying `deleted_at`; the guard
+        // exempts tombstone writes, so this covers field edits only.
+        try SupabaseWriteGuard.requireAffectedRow(
+            response: response.data,
+            table: "site_visit_types",
+            id: id.lowercased(),
+            fields: payload
+        )
     }
 
     func softDelete(_ id: String) async throws {

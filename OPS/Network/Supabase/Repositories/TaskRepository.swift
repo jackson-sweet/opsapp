@@ -203,11 +203,18 @@ class TaskRepository: ProjectTaskSyncing {
 
         if !payload.isEmpty {
             payload["updated_at"] = .string(isoNow())
-            try await client
+            let response = try await client
                 .from("project_tasks")
                 .update(payload)
                 .eq("id", value: taskId)
+                .select("id")
                 .execute()
+            try SupabaseWriteGuard.requireAffectedRow(
+                response: response.data,
+                table: "project_tasks",
+                id: taskId,
+                fields: payload
+            )
         }
 
         if shouldComplete {

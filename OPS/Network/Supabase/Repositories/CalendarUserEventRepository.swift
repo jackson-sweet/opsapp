@@ -149,6 +149,51 @@ class CalendarUserEventRepository {
         _ = try? await notifySyncer.notifyTimeOffDecision(eventId: eventId)
     }
 
+    // MARK: - Durable outbound queue (CalendarUserEventRemoteWriting)
+
+    /// Insert-or-replace by primary key. The outbound queue owns the id, so a
+    /// create whose response was lost on the wire retries into the same row
+    /// instead of parking on a duplicate key.
+    func upsertEvent(_ columns: [String: Any]) async throws {
+        try await client
+            .from("calendar_user_events")
+            .upsert(AnyJSONBridge.payload(columns), onConflict: "id", returning: .minimal)
+            .execute()
+        let opsId = (columns["id"] as? String) ?? ""
+        guard !opsId.isEmpty else { return }
+        Task { @MainActor in
+            await CalendarMirrorService.shared.mirrorEvent(
+                opsId: opsId,
+                source: .calendarUserEvent
+            )
+        }
+    }
+
+    /// Column-level update for one row, verified against the row count so a
+    /// PATCH that matches nothing parks instead of retiring silently.
+    func updateFields(_ eventId: String, fields: [String: Any]) async throws {
+        var payload = AnyJSONBridge.payload(fields)
+        payload["updated_at"] = .string(isoNow())
+        let response = try await client
+            .from("calendar_user_events")
+            .update(payload)
+            .eq("id", value: eventId)
+            .select("id")
+            .execute()
+        try SupabaseWriteGuard.requireAffectedRow(
+            response: response.data,
+            table: "calendar_user_events",
+            id: eventId,
+            fields: payload
+        )
+        Task { @MainActor in
+            await CalendarMirrorService.shared.mirrorEvent(
+                opsId: eventId,
+                source: .calendarUserEvent
+            )
+        }
+    }
+
     // MARK: - Soft Delete
 
     func softDelete(_ eventId: String) async throws {
@@ -291,6 +336,10 @@ class CalendarUserEventRepository {
         }
     }
 }
+
+// MARK: - Durable outbound conformance
+
+extension CalendarUserEventRepository: CalendarUserEventRemoteWriting {}
 
 // MARK: - Helpers
 

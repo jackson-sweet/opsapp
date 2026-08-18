@@ -1251,9 +1251,18 @@ struct UserEventSheet: View {
         // Stamp every expanded row with the same series_id so we can later
         // resolve siblings for "edit/delete this one / future / all" scopes.
         // Single-occurrence events leave it nil — there's nothing to group.
-        let seriesId: String? = occurrences.count > 1 ? UUID().uuidString : nil
+        // Lowercased for the same reason the row ids are: `series_id` is a
+        // Postgres uuid column, and an uppercase value round-trips back
+        // different from the one every sibling was stamped with.
+        let seriesId: String? = occurrences.count > 1
+            ? UUID().uuidString.lowercased()
+            : nil
 
-        guard let context = dataController.modelContext else {
+        // The queue is the delivery mechanism now, so it is a precondition:
+        // inserting locally with nowhere to send the event is what stranded
+        // rows before (bug ef5a69e6).
+        guard let context = dataController.modelContext,
+              let syncEngine = dataController.syncEngine else {
             isSaving = false
             return
         }
@@ -1270,6 +1279,13 @@ struct UserEventSheet: View {
         for target in effectiveTargets {
             for occurrence in occurrences {
                 let event = CalendarUserEvent(
+                    // The id is ours from the first instant: it is the queue's
+                    // key, and it used to be rewritten to the server's id after
+                    // a successful create — which is exactly why a failed
+                    // create left a row nothing could ever push. Lowercased
+                    // because Postgres uuid columns are, and an uppercase id
+                    // would echo back as a second row.
+                    id: UUID().uuidString.lowercased(),
                     userId: mode == .timeOff ? target.id : userId,
                     companyId: companyId,
                     type: eventType,
@@ -1293,237 +1309,50 @@ struct UserEventSheet: View {
         try? context.save()
         let requesterName = dataController.currentUser?.fullName ?? "A team member"
 
-        // Sync to Supabase — one row per occurrence, all sharing the same
+        // Queue one durable write per occurrence, all sharing the same
         // series_id. Editing a single occurrence will detach it (set
-        // series_id = nil); "edit future" / "edit all" will batch-update
-        // the rest.
-        Task {
-            let repo = CalendarUserEventRepository(companyId: companyId)
-            let iso = ISO8601DateFormatter()
-            let reviewedAtString = reviewedAt.map { iso.string(from: $0) }
-
-            for item in preparedEvents {
-                let dto = CreateCalendarUserEventDTO(
-                    userId: item.event.userId,
+        // series_id = nil); "edit future" / "edit all" queue their own per-row
+        // writes. The time-off notification travels with the operation and
+        // dispatches from the confirmed create, so nobody is told about an
+        // event that only ever existed on this phone (bug ef5a69e6).
+        for item in preparedEvents {
+            let notification: CalendarUserEventOutboundSync.TimeOffNotification?
+            if mode == .timeOff {
+                notification = CalendarUserEventOutboundSync.TimeOffNotification(
+                    kind: canBookTimeOffForOthers ? .booked : .requested,
                     companyId: companyId,
-                    type: eventType.rawValue,
-                    title: eventTitle,
-                    startDate: iso.string(from: item.occurrence.start),
-                    endDate: iso.string(from: item.occurrence.end),
-                    allDay: isAllDay,
-                    notes: eventNotes,
-                    status: eventStatus,
-                    reviewedBy: reviewedBy,
-                    reviewedAt: reviewedAtString,
-                    address: nil,
-                    teamMemberIds: teamIds,
-                    seriesId: seriesId
+                    requesterId: userId,
+                    requesterName: requesterName,
+                    targetUserId: item.target.id,
+                    targetName: item.target.fullName,
+                    eventTitle: eventTitle,
+                    startDate: item.occurrence.start,
+                    endDate: item.occurrence.end
                 )
-                var resolvedEventId = item.event.id
-                if let saved = try? await repo.create(dto) {
-                    let savedId = saved.id
-                    resolvedEventId = savedId
-                    await MainActor.run {
-                        item.event.id = savedId
-                        item.event.needsSync = false
-                        item.event.lastSyncedAt = Date()
-                        try? context.save()
-                    }
-                }
-
-                if mode == .timeOff {
-                    if canBookTimeOffForOthers {
-                        await notifyBookedTimeOff(
-                            companyId: companyId,
-                            requesterId: userId,
-                            requesterName: requesterName,
-                            targetUserId: item.target.id,
-                            targetName: item.target.fullName,
-                            startDate: item.occurrence.start,
-                            endDate: item.occurrence.end,
-                            eventId: resolvedEventId
-                        )
-                    } else {
-                        await notifyAdminsOfTimeOffRequest(
-                            companyId: companyId,
-                            requesterId: userId,
-                            requesterName: requesterName,
-                            targetUserId: item.target.id,
-                            targetName: item.target.fullName,
-                            eventTitle: eventTitle,
-                            startDate: item.occurrence.start,
-                            endDate: item.occurrence.end,
-                            eventId: resolvedEventId
-                        )
-                    }
-                }
+            } else {
+                notification = nil
             }
-
-            await MainActor.run {
-                isSaving = false
-                viewModel.loadUserEvents()
-                // Bug 68123654 — surface the iPhone Calendar Mirror prompt at most
-                // once per install, at the moment the user clearly cares about
-                // their calendar. If the user has already seen the prompt, or has
-                // already granted permission, dismiss directly.
-                if !CalendarMirrorService.shared.hasShownPrompt
-                    && CalendarMirrorService.shared.authorizationStatus == .notDetermined {
-                    showingMirrorPrompt = true
-                } else {
-                    isPresented = false
-                }
-            }
-        }
-    }
-
-    // MARK: - Time Off Notifications
-
-    private func notifyBookedTimeOff(
-        companyId: String,
-        requesterId: String,
-        requesterName: String,
-        targetUserId: String,
-        targetName: String,
-        startDate: Date,
-        endDate: Date,
-        eventId: String
-    ) async {
-        let dateRange = notificationDateRange(startDate: startDate, endDate: endDate)
-        let isSelfBooking = requesterId == targetUserId
-        let title = "Time Off Booked"
-        let body = isSelfBooking
-            ? "Your time off for \(dateRange) is on the schedule."
-            : "\(requesterName) booked you off for \(dateRange)."
-
-        let dto = NotificationRepository.CreateNotificationDTO(
-            userId: targetUserId,
-            companyId: companyId,
-            type: "time_off_booked",
-            title: title,
-            body: body,
-            projectId: nil,
-            noteId: nil,
-            expenseId: nil,
-            batchId: nil,
-            deepLinkType: "schedule"
-        )
-        try? await NotificationRepository().createNotification(dto)
-
-        if !isSelfBooking {
-            try? await OneSignalService.shared.sendToUser(
-                userId: targetUserId,
-                title: title,
-                body: body,
-                data: [
-                    "type": "time_off_booked",
-                    "eventId": eventId,
-                    "screen": "schedule"
-                ]
+            CalendarUserEventOutboundSync.enqueueCreate(
+                item.event,
+                notification: notification,
+                syncEngine: syncEngine,
+                deferPush: true
             )
         }
+        CalendarUserEventOutboundSync.pushQueued(syncEngine: syncEngine)
 
-        print("[UserEventSheet] Time off booked for \(targetName): \(dateRange)")
-    }
-
-    private func notifyAdminsOfTimeOffRequest(
-        companyId: String,
-        requesterId: String,
-        requesterName: String,
-        targetUserId: String,
-        targetName: String,
-        eventTitle: String,
-        startDate: Date,
-        endDate: Date,
-        eventId: String
-    ) async {
-        let approverIds = (try? await RecipientLookupService.usersWithPermission(
-            companyId: companyId,
-            permission: "time_off.approve"
-        )) ?? []
-        let recipientIds = approverIds.filter { $0 != requesterId && $0 != targetUserId }
-
-        let dateRange = notificationDateRange(startDate: startDate, endDate: endDate)
-        let isSelfRequest = requesterId == targetUserId
-        let notifRepo = NotificationRepository()
-
-        let confirmation = NotificationRepository.CreateNotificationDTO(
-            userId: requesterId,
-            companyId: companyId,
-            type: "time_off_requested",
-            title: "Time Off Submitted",
-            body: isSelfRequest
-                ? "Your request for \(dateRange) is pending review."
-                : "Submitted for \(targetName): \(dateRange) (pending review).",
-            projectId: nil,
-            noteId: nil,
-            expenseId: nil,
-            batchId: nil,
-            deepLinkType: "schedule"
-        )
-        try? await notifRepo.createNotification(confirmation)
-
-        if !isSelfRequest {
-            let targetNotification = NotificationRepository.CreateNotificationDTO(
-                userId: targetUserId,
-                companyId: companyId,
-                type: "time_off_requested",
-                title: "Time Off Submitted For You",
-                body: "\(requesterName) submitted a time-off request on your behalf for \(dateRange).",
-                projectId: nil,
-                noteId: nil,
-                expenseId: nil,
-                batchId: nil,
-                deepLinkType: "schedule"
-            )
-            try? await notifRepo.createNotification(targetNotification)
+        isSaving = false
+        viewModel.loadUserEvents()
+        // Bug 68123654 — surface the iPhone Calendar Mirror prompt at most
+        // once per install, at the moment the user clearly cares about their
+        // calendar. If the user has already seen the prompt, or has already
+        // granted permission, dismiss directly.
+        if !CalendarMirrorService.shared.hasShownPrompt
+            && CalendarMirrorService.shared.authorizationStatus == .notDetermined {
+            showingMirrorPrompt = true
+        } else {
+            isPresented = false
         }
-
-        guard !recipientIds.isEmpty else {
-            print("[UserEventSheet] No other schedulers to notify")
-            return
-        }
-
-        let approvalBody = isSelfRequest
-            ? "\(requesterName) requested time off: \(dateRange)"
-            : "\(requesterName) requested time off for \(targetName): \(dateRange)"
-
-        for recipientId in recipientIds {
-            let approvalNotification = NotificationRepository.CreateNotificationDTO(
-                userId: recipientId,
-                companyId: companyId,
-                type: "time_off_requested",
-                title: "Time Off Request",
-                body: approvalBody,
-                projectId: nil,
-                noteId: nil,
-                expenseId: nil,
-                batchId: nil,
-                deepLinkType: "schedule"
-            )
-            try? await notifRepo.createNotification(approvalNotification)
-        }
-
-        try? await OneSignalService.shared.sendToUsers(
-            userIds: recipientIds,
-            title: "Time Off Request",
-            body: approvalBody,
-            data: [
-                "type": "time_off_requested",
-                "eventId": eventId,
-                "screen": "schedule"
-            ]
-        )
-
-        print("[UserEventSheet] Time-off request push sent to \(recipientIds.count) scheduler(s) for \(eventTitle)")
-    }
-
-    private func notificationDateRange(startDate: Date, endDate: Date) -> String {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "MMM d"
-        if Calendar.current.isDate(startDate, inSameDayAs: endDate) {
-            return formatter.string(from: startDate)
-        }
-        return "\(formatter.string(from: startDate)) - \(formatter.string(from: endDate))"
     }
 
     // MARK: - Recurrence Helpers (Bug a5001a70)

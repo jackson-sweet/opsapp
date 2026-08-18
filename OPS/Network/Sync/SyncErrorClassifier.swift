@@ -164,7 +164,7 @@ enum SyncErrorClassifier {
     // MARK: PostgrestError code
 
     private static let transientSQLStates: Set<String> = ["40001", "40P01", "55P03", "57014"]
-    private static let permanentSQLClasses: Set<String> = ["22", "23", "42"]
+    private static let permanentSQLClasses: Set<String> = ["22", "23", "42", "55"]
 
     /// Returns a disposition for a PostgREST/Postgres error code, or nil when the
     /// code is empty or in no known bucket (caller falls back to message heuristics).
@@ -188,6 +188,12 @@ enum SyncErrorClassifier {
         //   22xxx data_exception (bad value/format, e.g. 22023 invalid_parameter_value)
         //   23xxx integrity_constraint_violation (unique/fk/check/not-null)
         //   42xxx syntax_error_or_access_rule_violation (incl. 42501 RLS)
+        //   55xxx object_not_in_prerequisite_state — in this schema every 55000
+        //         is a deliberate SECURITY DEFINER precondition raise (e.g.
+        //         cannot_complete_deleted_site_visit, the lead-assignment
+        //         family); a retry re-fails identically. 55P03 lock_not_available
+        //         is the one retryable member and is caught by the transient set
+        //         above before this class rule runs.
         // plus deliberate SECURITY DEFINER raises:
         //   P0001 raise_exception, P0002 no_data_found
         let sqlClass = String(code.prefix(2))

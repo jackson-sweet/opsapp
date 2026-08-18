@@ -107,6 +107,47 @@ final class SyncErrorClassifierTests: XCTestCase {
         XCTAssertEqual(SyncErrorClassifier.disposition(for: error), .permanent)
     }
 
+    // MARK: - PostgrestError — SQLSTATE class 55 (object_not_in_prerequisite_state)
+
+    /// Every 55000 in this schema is a deliberate SECURITY DEFINER precondition
+    /// raise (`cannot_complete_deleted_site_visit`, the lead-assignment family, …).
+    /// The server will keep rejecting the identical request, so a retry can only
+    /// burn the budget — the wedge that held 11 changes on a phone for days.
+    func testPostgrestClass55DeliberateRaisesArePermanent() {
+        XCTAssertEqual(
+            SyncErrorClassifier.disposition(
+                for: postgrest(code: "55000", message: "cannot_complete_deleted_site_visit")
+            ),
+            .permanent
+        )
+        XCTAssertEqual(
+            SyncErrorClassifier.disposition(for: postgrest(code: "55006")),
+            .permanent,
+            "55006 object_in_use should be permanent"
+        )
+    }
+
+    /// 55P03 lock_not_available shares the class but is the retryable outage
+    /// shape — the transient carve-out must keep winning over the class rule.
+    func testLockNotAvailableStaysTransientDespiteClass55() {
+        XCTAssertEqual(
+            SyncErrorClassifier.disposition(for: postgrest(code: "55P03")),
+            .transient
+        )
+    }
+
+    /// The same rejection as observed on-device: the completion RPC's raise
+    /// surfaces through the site-visit repository's typed `.server` case.
+    func testSiteVisitServer55000IsPermanent() {
+        let error = SiteVisitRepositoryError.server(
+            code: "55000",
+            message: "cannot_complete_deleted_site_visit",
+            detail: nil,
+            hint: nil
+        )
+        XCTAssertEqual(SyncErrorClassifier.disposition(for: error), .permanent)
+    }
+
     // MARK: - PostgrestError — auth (PGRST3xx)
 
     func testPostgrestJWTCodesAreAuth() {

@@ -277,14 +277,16 @@ enum SyncCrossEntityDependency {
 
     // MARK: - Releasing mis-parked work
 
-    /// Postgres rejection phrases that the missing row explains.
-    /// Conservative on purpose: an RLS policy that cannot resolve the row, or a
-    /// foreign key that has nothing to point at. Anything else (a check
+    /// Rejection phrases that the missing row explains: an RLS policy that
+    /// cannot resolve the row, a foreign key with nothing to point at, or our
+    /// own zero-row PATCH verdict — the three ways "that row is not there"
+    /// reaches the queue. Conservative on purpose; anything else (a check
     /// constraint, a bad value, a deliberate raise) has a different cause and
     /// keeps its park.
     private static let releasableRejectionPhrases = [
         "row-level security",
-        "violates foreign key constraint"
+        "violates foreign key constraint",
+        SyncError.serverRowMissingMarker
     ]
 
     /// Parked ops whose park is provably this race: rejected for a reason the

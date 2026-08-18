@@ -157,11 +157,18 @@ class DeckDesignRepository {
         var payload = fields
         payload["updated_at"] = .string(isoNow())
 
-        try await client
+        let response = try await client
             .from("deck_designs")
             .update(payload)
             .eq("id", value: id)
+            .select("id")
             .execute()
+        try SupabaseWriteGuard.requireAffectedRow(
+            response: response.data,
+            table: "deck_designs",
+            id: id,
+            fields: payload
+        )
     }
 
     // MARK: - Soft Delete

@@ -122,11 +122,18 @@ class UserRepository {
     func updateFields(userId: String, fields: [String: AnyJSON]) async throws {
         var payload = fields
         payload["updated_at"] = .string(isoNow())
-        try await client
+        let response = try await client
             .from("users")
             .update(payload)
             .eq("id", value: userId)
+            .select("id")
             .execute()
+        try SupabaseWriteGuard.requireAffectedRow(
+            response: response.data,
+            table: "users",
+            id: userId,
+            fields: payload
+        )
     }
 
     // MARK: - Soft Delete

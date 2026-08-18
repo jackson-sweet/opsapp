@@ -122,13 +122,18 @@ struct PendingWorkDetailSheet: View {
     // MARK: - Parked block
 
     private var parkedBlock: some View {
-        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
-            Text(SyncStatusCopy.PendingWork.parkedDetailLabel)
+        // A record deleted in OPS is a different event from a rejected write,
+        // and retrying it can never work — the block names which one happened.
+        let detail = SyncStatusCopy.PendingWork.parkedDetail(
+            lastError: rawErrors.first
+        )
+        return VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
+            Text(detail.label)
                 .font(OPSStyle.Typography.metadata)
                 .tracking(0.8)
                 .foregroundColor(OPSStyle.Colors.rose)
 
-            Text(SyncStatusCopy.PendingWork.parkedDetailBody)
+            Text(detail.body)
                 .font(OPSStyle.Typography.body)
                 .foregroundColor(OPSStyle.Colors.text2)
                 .fixedSize(horizontal: false, vertical: true)

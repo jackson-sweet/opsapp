@@ -5600,11 +5600,18 @@ actor DataActor {
     private func genericUpdateFields(table: String, entityId: String, fields: [String: AnyJSON]) async throws {
         var payload = fields
         payload["updated_at"] = .string(ISO8601DateFormatter().string(from: Date()))
-        try await SupabaseService.shared.client
+        let response = try await SupabaseService.shared.client
             .from(table)
             .update(payload)
             .eq("id", value: entityId)
+            .select("id")
             .execute()
+        try SupabaseWriteGuard.requireAffectedRow(
+            response: response.data,
+            table: table,
+            id: entityId,
+            fields: payload
+        )
     }
 
     /// Generic fallback for entity types without a dedicated handler.

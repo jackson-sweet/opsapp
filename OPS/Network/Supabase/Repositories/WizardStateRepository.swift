@@ -92,11 +92,18 @@ class WizardStateRepository {
         var payload = fields
         payload["updated_at"] = .string(isoNow())
 
-        try await client
+        let response = try await client
             .from("wizard_states")
             .update(payload)
             .eq("id", value: id)
+            .select("id")
             .execute()
+        try SupabaseWriteGuard.requireAffectedRow(
+            response: response.data,
+            table: "wizard_states",
+            id: id,
+            fields: payload
+        )
     }
 
     // MARK: - Delete

@@ -234,11 +234,18 @@ class ClientRepository {
     func updateFields(_ clientId: String, fields: [String: AnyJSON]) async throws {
         var payload = fields
         payload["updated_at"] = .string(isoNow())
-        try await client
+        let response = try await client
             .from("clients")
             .update(payload)
             .eq("id", value: clientId)
+            .select("id")
             .execute()
+        try SupabaseWriteGuard.requireAffectedRow(
+            response: response.data,
+            table: "clients",
+            id: clientId,
+            fields: payload
+        )
     }
 }
 

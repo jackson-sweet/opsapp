@@ -29,6 +29,10 @@ class ProjectNotesViewModel: ObservableObject {
     /// injectable so the local-first paint order can be asserted against a fetch
     /// that has deliberately not resolved yet.
     private var noteFetcher: ProjectNoteFetching?
+    /// The one narrow server RPC that writes a created note's rail rows.
+    /// Internal so tests can substitute a spy — production always drives the
+    /// shared repository.
+    var noteSyncer: NoteCreatedNotifying = NotificationRepository.shared
     private var companyId: String?
     private var currentUserId: String?
     private(set) var allTeamMembers: [TeamMember] = []
@@ -393,11 +397,15 @@ class ProjectNotesViewModel: ObservableObject {
             error = nil
             ToastCenter.shared.present(Feedback.Project.notePosted)
 
-            // Send push notifications for mentions
-            await sendMentionNotifications(mentionedIds: mentionedIds, noteText: notificationText, noteId: created.id, attachmentURLs: attachmentURLs)
-
-            // Send push notifications to project team members (excluding author and already-mentioned users)
-            await sendNoteAddedNotifications(mentionedIds: mentionedIds, noteText: notificationText, noteId: created.id, attachmentURLs: attachmentURLs)
+            // Rail rows + pushes for this note — mentions and the assigned-crew
+            // broadcast both. One server call, always: the RPC derives every
+            // recipient from the note row it just stored, so the client no
+            // longer decides who hears about this.
+            await dispatchNoteCreatedNotifications(
+                noteId: created.id,
+                noteText: notificationText,
+                attachmentURLs: attachmentURLs
+            )
         } catch {
             if !(error is CancellationError) {
                 // Field-friendly copy (e.g. "Connection timed out. Try moving to
@@ -843,17 +851,41 @@ class ProjectNotesViewModel: ObservableObject {
         return false
     }
 
-    // MARK: - Private Helpers
+    // MARK: - Note Notifications
 
-    private func sendMentionNotifications(mentionedIds: [String], noteText: String, noteId: String, attachmentURLs: [String] = []) async {
-        guard !mentionedIds.isEmpty else { return }
-        guard let companyId = companyId else { return }
+    /// Fan out one created note's notifications.
+    ///
+    /// Every rail row this note produces — the @mention rows and the
+    /// assigned-crew broadcast — is written by `notify_note_created`, a narrow
+    /// SECURITY DEFINER RPC that derives the author, the mentions, and the
+    /// crew from the stored note row and renders the copy server-side. The
+    /// client stopped writing `notifications` rows directly at the 2026-07-15
+    /// hardening: app-role INSERT is revoked, so the old per-recipient insert
+    /// loops 42501'd on every post and both surfaces went silently dead.
+    ///
+    /// The RPC reports back the ids that received NEW rail rows, and the push
+    /// lanes target exactly those. Push and rail can no longer disagree about
+    /// who was told — which is also why a failed RPC sends no push at all:
+    /// with no rail row written there is nothing for a push to match.
+    ///
+    /// Internal rather than private: this is the seam the notification tests
+    /// drive, since `postNote`'s create path is a live network call.
+    func dispatchNoteCreatedNotifications(
+        noteId: String,
+        noteText: String,
+        attachmentURLs: [String]
+    ) async {
+        guard let fanout = try? await noteSyncer.notifyNoteCreated(noteId: noteId) else {
+            print("[PROJECT NOTES] notify_note_created failed for note \(noteId) — no rail rows written, so no push sent")
+            return
+        }
+        let plan = ProjectNotePushPlan(fanout: fanout)
+        guard !plan.isEmpty else { return }
 
+        // Push copy only — the rail's own copy is rendered server-side.
         let authorName = currentUserId.flatMap { id in
             allTeamMembers.first(where: { $0.id == id })?.fullName
         } ?? "A team member"
-
-        // Get project name for notification
         let projectName: String
         if let context = modelContext {
             let pid = projectId
@@ -862,33 +894,9 @@ class ProjectNotesViewModel: ObservableObject {
         } else {
             projectName = "a project"
         }
-
         let firstImageUrl = attachmentURLs.first
-        let preview = noteText.count > 100 ? String(noteText.prefix(100)) + "..." : noteText
-        let notificationRepo = NotificationRepository()
 
-        for userId in mentionedIds {
-            // 1. Create in-app notification in Supabase (guaranteed delivery)
-            do {
-                let dto = NotificationRepository.CreateNotificationDTO(
-                    userId: userId,
-                    companyId: companyId,
-                    type: "mention",
-                    title: "\(authorName) mentioned you",
-                    body: preview.isEmpty ? "on \(projectName)" : "\"\(preview)\" on \(projectName)",
-                    projectId: projectId,
-                    noteId: noteId,
-                    expenseId: nil,
-                    batchId: nil,
-                    deepLinkType: "projectNotes"
-                )
-                try await notificationRepo.createNotification(dto)
-                print("[PROJECT NOTES] In-app mention notification created for user: \(userId)")
-            } catch {
-                print("[PROJECT NOTES] Failed to create in-app mention notification for \(userId): \(error)")
-            }
-
-            // 2. Send push notification via OneSignal (best-effort)
+        for userId in plan.mentionUserIds {
             do {
                 try await OneSignalService.shared.notifyProjectNoteMention(
                     userId: userId,
@@ -903,73 +911,15 @@ class ProjectNotesViewModel: ObservableObject {
                 print("[PROJECT NOTES] Failed to send push mention notification to \(userId): \(error)")
             }
         }
-    }
 
-    /// Notify project team members when a note is added.
-    /// Excludes the author (self) and anyone already @mentioned (they got a mention push).
-    private func sendNoteAddedNotifications(mentionedIds: [String], noteText: String, noteId: String, attachmentURLs: [String] = []) async {
-        // Assigned crew are always notified of new project comments/notes
-        // (the author and anyone already @mentioned are excluded below). The
-        // previous `notifyProjectNoteAdded` UserDefaults gate was never set
-        // anywhere and had no settings UI, so it silently suppressed every
-        // team notification — only @mentions reached teammates.
-        guard let currentUserId = currentUserId, let companyId = companyId else { return }
-
-        // Get project and its team member IDs
-        guard let context = modelContext else { return }
-        let pid = projectId
-        let descriptor = FetchDescriptor<Project>(predicate: #Predicate { $0.id == pid })
-        guard let project = try? context.fetch(descriptor).first else { return }
-
-        let projectTeamIds = project.getTeamMemberIds()
-        guard !projectTeamIds.isEmpty else { return }
-
-        // Exclude: self + already @mentioned users
-        let excludeIds = Set([currentUserId] + mentionedIds)
-        let recipientIds = projectTeamIds.filter { !excludeIds.contains($0) }
-        guard !recipientIds.isEmpty else { return }
-
-        let authorName = allTeamMembers.first(where: { $0.id == currentUserId })?.fullName ?? "A team member"
-        let firstImageUrl = attachmentURLs.first
-        // Photo-only posts read "added a photo" (was "added a note" with an empty
-        // "" body — the quotation-marks bug); a caption/text is carried through.
-        let copy = NoteActivityNotificationCopy(
-            authorName: authorName,
-            noteText: noteText,
-            photoCount: attachmentURLs.count,
-            projectName: project.title
-        )
-        let notificationRepo = NotificationRepository()
-
-        // 1. Create in-app notifications in Supabase for each recipient
-        for recipientId in recipientIds {
-            do {
-                let dto = NotificationRepository.CreateNotificationDTO(
-                    userId: recipientId,
-                    companyId: companyId,
-                    type: "project_note",
-                    title: copy.title,
-                    body: copy.body,
-                    projectId: projectId,
-                    noteId: noteId,
-                    expenseId: nil,
-                    batchId: nil,
-                    deepLinkType: "projectNotes"
-                )
-                try await notificationRepo.createNotification(dto)
-            } catch {
-                print("[PROJECT NOTES] Failed to create in-app note-added notification for \(recipientId): \(error)")
-            }
-        }
-
-        // 2. Send push notification via OneSignal (best-effort)
+        guard !plan.teamUserIds.isEmpty else { return }
         do {
             try await OneSignalService.shared.notifyProjectNoteAdded(
-                userIds: recipientIds,
+                userIds: plan.teamUserIds,
                 authorName: authorName,
                 notePreview: noteText,
                 photoCount: attachmentURLs.count,
-                projectName: project.title,
+                projectName: projectName,
                 projectId: projectId,
                 noteId: noteId,
                 imageUrl: firstImageUrl
@@ -980,25 +930,38 @@ class ProjectNotesViewModel: ObservableObject {
     }
 }
 
-/// OPS-voice copy for a project note/photo activity notification. Photo-only
-/// posts read "added a photo" (or "added N photos"); text-only posts read
-/// "added a note". The body carries the caption/text when present and never
-/// renders an empty "" — the bug where a photo-only post notified with just
-/// quotation marks.
-private struct NoteActivityNotificationCopy {
-    let title: String
-    let body: String
+/// Seam for `notify_note_created` — the single narrow RPC that writes a
+/// created note's rail rows. Conformed to by `NotificationRepository`; tests
+/// substitute a spy. Declared once here and shared with
+/// `PhotoCommentsViewModel`, which drives the same RPC for photo comments.
+protocol NoteCreatedNotifying {
+    @discardableResult
+    func notifyNoteCreated(noteId: String) async throws -> NotificationRepository.NoteCreatedFanout
+}
 
-    init(authorName: String, noteText: String, photoCount: Int, projectName: String) {
-        let trimmed = noteText.trimmingCharacters(in: .whitespacesAndNewlines)
-        let preview = trimmed.count > 100 ? String(trimmed.prefix(100)) + "..." : trimmed
-        let action: String
-        if photoCount > 0 {
-            action = photoCount == 1 ? "added a photo" : "added \(photoCount) photos"
-        } else {
-            action = "added a note"
-        }
-        self.title = "\(authorName) \(action)"
-        self.body = preview.isEmpty ? "on \(projectName)" : "\"\(preview)\" on \(projectName)"
+extension NotificationRepository: NoteCreatedNotifying {}
+
+/// The push lanes a plain project note opens, derived from nothing but the
+/// server's fanout — the client no longer computes a recipient of its own, so
+/// a push cannot reach someone whose rail row was never written.
+///
+/// A plain note has no photo owner to notify, so the fanout's `photoOwnerId`
+/// is deliberately dropped here; that lane belongs to `PhotoCommentsViewModel`.
+struct ProjectNotePushPlan: Equatable {
+    /// One push each. The server already excluded the author and anyone whose
+    /// rail row it did not write (a re-call is idempotent per note).
+    let mentionUserIds: [String]
+    /// One batched push for the whole assigned crew — never a per-recipient
+    /// loop. Empty means no broadcast push.
+    let teamUserIds: [String]
+
+    init(fanout: NotificationRepository.NoteCreatedFanout) {
+        self.mentionUserIds = fanout.mentionUserIds
+        self.teamUserIds = fanout.teamUserIds
+    }
+
+    /// No recipient received a rail row, so there is nothing to push.
+    var isEmpty: Bool {
+        mentionUserIds.isEmpty && teamUserIds.isEmpty
     }
 }

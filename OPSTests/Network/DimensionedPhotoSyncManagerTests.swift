@@ -407,6 +407,103 @@ final class DimensionedPhotoSyncManagerTests: XCTestCase {
         XCTAssertEqual(retried.localCaptureFinishedAt, captured.captureFinishedAt)
     }
 
+    // MARK: - 3a. Queue-drain depth report (spec §6 — banner auto-clear)
+
+    /// The `// SYNC QUEUED` banner is persistent; only the client knows when
+    /// the offline queue drained. A depth of zero is what clears it server-side.
+    @MainActor
+    func test_syncPendingDimensions_reportsZeroDepth_whenQueueFullyDrains() async throws {
+        let captureID = UUID(uuidString: "CCCCCCCC-DDDD-EEEE-FFFF-000000000001")!
+        let captured = try fixtureCaptured(captureID: captureID)
+        let container = try makeInMemoryContainer()
+        let context = container.mainContext
+        context.insert(queuedAnnotation(for: captured, id: "local-\(captureID.uuidString)"))
+        try context.save()
+
+        let notifier = RecordingNotifier()
+        let manager = DimensionedPhotoSyncManager(
+            uploader: RecordingUploader(plan: .alwaysSucceed),
+            persister: RecordingPersister(),
+            notifier: notifier
+        )
+
+        await manager.syncPendingDimensions(modelContext: context)
+
+        let pendingSyncCalls = await notifier.pendingSyncCalls()
+        XCTAssertEqual(pendingSyncCalls.count, 1,
+                       "Exactly one depth report per drain sweep")
+        XCTAssertEqual(pendingSyncCalls.first?.queueDepth, 0,
+                       "A fully drained queue must report zero — that is what clears the banner")
+    }
+
+    /// Guards against a hardcoded zero: when one queued capture cannot be
+    /// drained, the sweep must report the honest remaining depth so the banner
+    /// stays up on the still-stranded measurement.
+    @MainActor
+    func test_syncPendingDimensions_reportsRemainingDepth_whenARowCannotDrain() async throws {
+        let captureID = UUID(uuidString: "CCCCCCCC-DDDD-EEEE-FFFF-000000000002")!
+        let captured = try fixtureCaptured(captureID: captureID)
+        let container = try makeInMemoryContainer()
+        let context = container.mainContext
+        context.insert(queuedAnnotation(for: captured, id: "local-\(captureID.uuidString)"))
+
+        // A second queued capture whose local assets are gone from disk — the
+        // drain loop skips it and it stays `needsSync = true`.
+        let strandedDir = makeTempDir()
+        let strandedID = UUID()
+        let stranded = PhotoAnnotation(
+            id: "local-\(strandedID.uuidString)",
+            projectId: "project-123",
+            companyId: "company-abc",
+            photoURL: strandedDir.appendingPathComponent("\(strandedID.uuidString).heic").path,
+            authorId: "user-xyz",
+            createdAt: Date(timeIntervalSince1970: 1_747_166_400)
+        )
+        stranded.dimensions = fixtureDimensions()
+        stranded.localSidecarPath = strandedDir
+            .appendingPathComponent("\(strandedID.uuidString).metadata.json").path
+        stranded.localDepthMapPath = strandedDir
+            .appendingPathComponent("\(strandedID.uuidString).depth.fp32").path
+        stranded.localCaptureFinishedAt = Date(timeIntervalSince1970: 1_747_166_400)
+        stranded.needsSync = true
+        context.insert(stranded)
+        try context.save()
+
+        let notifier = RecordingNotifier()
+        let manager = DimensionedPhotoSyncManager(
+            uploader: RecordingUploader(plan: .alwaysSucceed),
+            persister: RecordingPersister(),
+            notifier: notifier
+        )
+
+        await manager.syncPendingDimensions(modelContext: context)
+
+        let pendingSyncCalls = await notifier.pendingSyncCalls()
+        XCTAssertEqual(pendingSyncCalls.count, 1)
+        XCTAssertEqual(pendingSyncCalls.first?.queueDepth, 1,
+                       "One capture is still stranded — clearing the banner here would hide a real loss")
+    }
+
+    /// Shared builder for a queued (`needsSync = true`) dimensioned capture
+    /// whose local assets are on disk and therefore drainable.
+    @MainActor
+    private func queuedAnnotation(for captured: CapturedAssets, id: String) -> PhotoAnnotation {
+        let queued = PhotoAnnotation(
+            id: id,
+            projectId: "project-123",
+            companyId: "company-abc",
+            photoURL: captured.heicURL.path,
+            authorId: "user-xyz",
+            createdAt: captured.captureFinishedAt
+        )
+        queued.dimensions = fixtureDimensions()
+        queued.localDepthMapPath = captured.depthURL?.path
+        queued.localSidecarPath = captured.sidecarURL.path
+        queued.localCaptureFinishedAt = captured.captureFinishedAt
+        queued.needsSync = true
+        return queued
+    }
+
     // MARK: - 4. Notification firing (spec §6)
 
     @MainActor
@@ -436,10 +533,8 @@ final class DimensionedPhotoSyncManagerTests: XCTestCase {
         let capturedCalls = await notifier.capturedCalls()
         XCTAssertEqual(capturedCalls.count, 1)
         let call = try XCTUnwrap(capturedCalls.first)
-        XCTAssertEqual(call.projectName, "Smith Residence")
-        XCTAssertEqual(call.projectId, "project-123")
-        XCTAssertEqual(call.userId, "user-xyz")
-        XCTAssertEqual(call.companyId, "company-abc")
+        XCTAssertEqual(call.projectId, "project-123",
+                       "The project anchor is the only identity the server RPC accepts — it derives the title itself")
         if case let .opening(w, h, type, sill) = call.summary {
             XCTAssertEqual(w, 36)
             XCTAssertEqual(h, 60)
@@ -478,7 +573,6 @@ final class DimensionedPhotoSyncManagerTests: XCTestCase {
             let pendingSyncCalls = await notifier.pendingSyncCalls()
             XCTAssertEqual(pendingSyncCalls.count, 1)
             XCTAssertEqual(pendingSyncCalls.first?.queueDepth, 1)
-            XCTAssertEqual(pendingSyncCalls.first?.projectId, "p")
             let capturedCalls = await notifier.capturedCalls()
             XCTAssertEqual(capturedCalls.count, 0)
         }
@@ -709,28 +803,22 @@ private final class RecordingPersister: DimensionedAnnotationPersister, @uncheck
 /// an `actor` so the Sendable protocol can be satisfied without unchecked
 /// concurrency annotations — matches the lightweight test-double style used
 /// elsewhere in this file.
+///
+/// The recorded shapes mirror the post-hardening dispatcher contract: the
+/// server derives recipient identity and project title itself, so the only
+/// client-supplied data is the project anchor, the dimension summary and the
+/// queue depth.
 private actor RecordingNotifier: DimensionedNotificationDispatcher {
 
     struct CapturedCall: Equatable {
-        let userId: String
-        let companyId: String
         let projectId: String
-        let projectName: String
         let summary: MeasurementNotificationCopy.CapturedBodySummary
-        let photoAnnotationId: String
     }
     struct PendingSyncCall: Equatable {
-        let userId: String
-        let companyId: String
-        let projectId: String?
         let queueDepth: Int
     }
     struct SyncFailedCall: Equatable {
-        let userId: String
-        let companyId: String
         let projectId: String
-        let projectName: String
-        let photoAnnotationId: String
     }
 
     private var _capturedCalls: [CapturedCall] = []
@@ -742,43 +830,17 @@ private actor RecordingNotifier: DimensionedNotificationDispatcher {
     func syncFailedCalls() -> [SyncFailedCall] { _syncFailedCalls }
 
     func dispatchCaptured(
-        userId: String,
-        companyId: String,
         projectId: String,
-        projectName: String,
-        summary: MeasurementNotificationCopy.CapturedBodySummary,
-        photoAnnotationId: String
+        summary: MeasurementNotificationCopy.CapturedBodySummary
     ) async {
-        _capturedCalls.append(.init(
-            userId: userId, companyId: companyId,
-            projectId: projectId, projectName: projectName,
-            summary: summary, photoAnnotationId: photoAnnotationId
-        ))
+        _capturedCalls.append(.init(projectId: projectId, summary: summary))
     }
 
-    func dispatchPendingSync(
-        userId: String,
-        companyId: String,
-        projectId: String?,
-        queueDepth: Int
-    ) async {
-        _pendingSyncCalls.append(.init(
-            userId: userId, companyId: companyId,
-            projectId: projectId, queueDepth: queueDepth
-        ))
+    func dispatchPendingSync(queueDepth: Int) async {
+        _pendingSyncCalls.append(.init(queueDepth: queueDepth))
     }
 
-    func dispatchSyncFailed(
-        userId: String,
-        companyId: String,
-        projectId: String,
-        projectName: String,
-        photoAnnotationId: String
-    ) async {
-        _syncFailedCalls.append(.init(
-            userId: userId, companyId: companyId,
-            projectId: projectId, projectName: projectName,
-            photoAnnotationId: photoAnnotationId
-        ))
+    func dispatchSyncFailed(projectId: String) async {
+        _syncFailedCalls.append(.init(projectId: projectId))
     }
 }

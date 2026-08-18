@@ -22,6 +22,27 @@ private enum ExpenseViewModelError: LocalizedError {
     }
 }
 
+/// Seam for the expense batch-decision rail row. Conformed to by
+/// `NotificationRepository` (the `notify_expense_batch_decision` RPC); tests
+/// substitute a spy.
+///
+/// Direct `notifications` inserts have failed 42501 for app roles since the
+/// 2026-07-15 notification-creation hardening, so the server owns everything
+/// the row says: it validates the actor holds `expenses.approve`, validates the
+/// decision is actually recorded on the batch row, derives the submitter
+/// recipient from that row, renders the batch-vocabulary copy and deep link,
+/// and dedupes per batch + decision.
+protocol ExpenseDecisionNotifying {
+    /// `decision` is one of `approved` / `sent_back` / `paid`; `count` is the
+    /// sent-back line count, ignored for the other two. The server reads the
+    /// RECORDED decision, so this may only be called once the decision's own
+    /// write has landed.
+    @discardableResult
+    func notifyExpenseBatchDecision(batchId: String, decision: String, count: Int?) async throws -> String
+}
+
+extension NotificationRepository: ExpenseDecisionNotifying {}
+
 @MainActor
 class ExpenseViewModel: ObservableObject {
     @Published var expenses: [ExpenseDTO] = []
@@ -47,7 +68,10 @@ class ExpenseViewModel: ObservableObject {
     private var storedUserId: String?
     private var storedUserName: String?
     private let ocrService: ExpenseOCRServiceProtocol = AppleVisionOCRService()
-    private let notificationRepo = NotificationRepository()
+    /// Seam for the submitter's decision rail row. A defaulted property rather
+    /// than an init parameter: the view model is constructed at call sites that
+    /// have no business knowing the notification seam exists.
+    var decisionNotifier: ExpenseDecisionNotifying = NotificationRepository()
     /// Debounce for realtime-driven console reloads (`.expenseUpdated` bursts).
     private var realtimeRefreshTask: Task<Void, Never>?
 
@@ -614,7 +638,9 @@ class ExpenseViewModel: ObservableObject {
 
     // MARK: - Submitter notifications (batch vocabulary)
 
-    private enum BatchNotice {
+    /// Internal so the decision tests can drive each case directly — the
+    /// decision -> RPC mapping is this path's entire contract.
+    enum BatchNotice {
         case approved
         case sentBack(count: Int)
         case paid
@@ -622,41 +648,41 @@ class ExpenseViewModel: ObservableObject {
 
     /// In-app row + push to the batch's submitter. Skips self-notification
     /// (the acting approver's feedback is the toast).
-    private func notifySubmitter(of batch: ExpenseBatchDTO, notice: BatchNotice) {
+    ///
+    /// The rail row crosses `notify_expense_batch_decision`, which refuses a
+    /// decision that is not already recorded on the batch row — so every caller
+    /// must await its own status / paid_at / amendment write first (they all
+    /// do). Copy, recipient, and deep link are server-side; the client only
+    /// names the decision.
+    ///
+    /// Best-effort by design: the decision itself is already persisted, so a
+    /// transport failure here must never fail the caller.
+    ///
+    /// - Returns: the dispatch task, or `nil` when nothing is dispatched.
+    @discardableResult
+    func notifySubmitter(of batch: ExpenseBatchDTO, notice: BatchNotice) -> Task<Void, Never>? {
         guard let submitterId = batch.submittedBy, !submitterId.isEmpty,
               let companyId = storedCompanyId, !companyId.isEmpty,
-              submitterId != storedUserId else { return }
-        let capturedRepo = notificationRepo
+              submitterId != storedUserId else { return nil }
+        let notifier = decisionNotifier
         let batchNumber = batch.batchNumber
         let batchId = batch.id
-        Task {
-            let type: String
-            let title: String
-            let body: String
+        return Task {
+            let decision: String
+            let sentBackCount: Int?
             switch notice {
             case .approved:
-                type = "expense_approved"
-                title = "Expenses Approved"
-                body = "Your batch \(batchNumber) was approved"
+                decision = "approved"
+                sentBackCount = nil
             case .sentBack(let count):
-                type = "expense_rejected"
-                title = "Expenses Sent Back"
-                body = "\(count) expense\(count == 1 ? "" : "s") on \(batchNumber) need\(count == 1 ? "s" : "") fixes"
+                decision = "sent_back"
+                sentBackCount = count
             case .paid:
-                type = "expense_paid"
-                title = "Expenses Paid Out"
-                body = "Your expense batch \(batchNumber) has been paid out"
+                decision = "paid"
+                sentBackCount = nil
             }
-            let dto = NotificationRepository.CreateNotificationDTO(
-                userId: submitterId,
-                companyId: companyId,
-                type: type,
-                title: title,
-                body: body,
-                batchId: batchId,
-                deepLinkType: "expense"
-            )
-            try? await capturedRepo.createNotification(dto)
+            _ = try? await notifier.notifyExpenseBatchDecision(
+                batchId: batchId, decision: decision, count: sentBackCount)
             switch notice {
             case .approved:
                 try? await OneSignalService.shared.notifyBatchApproved(

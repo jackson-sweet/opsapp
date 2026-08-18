@@ -11,6 +11,27 @@
 import Foundation
 import SwiftData
 
+// MARK: - Threshold Rail Seam
+
+/// Seam for reporting the inventory below-threshold count to the server.
+/// Conformed to by `NotificationRepository` (the
+/// `sync_threshold_alert_notification` RPC); tests substitute a spy.
+///
+/// Why an RPC and not an insert: the 2026-07-15 notification-creation
+/// hardening revoked app-role INSERT on `notifications`, so the hand-rolled
+/// rail write this call site used to run (mark-read sweep -> unread probe ->
+/// insert) died 42501 and the threshold rail went silently dead. The server
+/// now owns the entire contract — at-most-one-unread persistent
+/// `threshold_alert` under an advisory lock, the fixed copy, the catalogOrders
+/// deep link, the REVIEW action, and the clear-at-zero.
+protocol ThresholdAlertSyncing {
+    /// Returns the server's verdict: `created`, `kept`, `cleared`, or `noop`.
+    @discardableResult
+    func syncThresholdAlert(count: Int) async throws -> String
+}
+
+extension NotificationRepository: ThresholdAlertSyncing {}
+
 // MARK: - InboundProcessor
 
 /// Handles inbound (server → local) data synchronization with field-level merge.
@@ -51,6 +72,10 @@ final class InboundProcessor {
     private var defaultProductRepo: CompanyDefaultProductRepository
     private var orderRepo: CatalogOrderRepository
 
+    /// Server-owned inventory-threshold rail. Injectable so tests can observe
+    /// exactly what the end-of-sync reconcile reports.
+    private let thresholdAlertSyncer: ThresholdAlertSyncing
+
     /// Tracks entities touched during the current sync pass so Spotlight receives
     /// targeted, minimal updates after each sync instead of a full re-index.
     /// Reset at the start of each full/delta sync; dispatched in linkAllRelationships.
@@ -58,7 +83,9 @@ final class InboundProcessor {
 
     // MARK: - Init
 
-    init() {
+    init(thresholdAlertSyncer: ThresholdAlertSyncing = NotificationRepository.shared) {
+        self.thresholdAlertSyncer = thresholdAlertSyncer
+
         let companyId = UserDefaults.standard.string(forKey: "currentUserCompanyId")
             ?? UserDefaults.standard.string(forKey: "company_id")
             ?? ""
@@ -333,15 +360,15 @@ final class InboundProcessor {
 
     // MARK: - Threshold Notifications (Phase 9)
 
-    /// Recompute the order suggestion list at end-of-sync and ensure the
-    /// notification rail reflects current state:
-    ///   - count == 0 → mark all unread `threshold_alert` entries as read
-    ///     so the rail clears once stock is restored.
-    ///   - count > 0 → ensure exactly one unread `threshold_alert` exists.
+    /// Recompute the order-suggestion list at end-of-sync and report the
+    /// below-threshold count to the server, which owns the whole rail
+    /// contract: at-most-one-unread persistent `threshold_alert`, the fixed
+    /// copy, the catalogOrders deep link, the REVIEW action, and the
+    /// clear-at-zero.
     ///
-    /// Wrapped in a single do/catch — a failure here never breaks sync.
-    /// The notification table mutation is idempotent (`hasUnreadOfType`
-    /// gate) so retries on next sync are safe.
+    /// The actor and the recipient are derived from the JWT server-side — the
+    /// local `userId` is read only as the "is anyone signed in" gate and is
+    /// never sent anywhere.
     private func reconcileThresholdNotifications(context: ModelContext) async {
         guard let userId = SupabaseService.shared.currentUserId, !userId.isEmpty else {
             return
@@ -349,6 +376,41 @@ final class InboundProcessor {
         let companyId = self.companyId
         guard !companyId.isEmpty else { return }
 
+        await Self.reconcileThresholdAlert(
+            context: context,
+            companyId: companyId,
+            syncer: thresholdAlertSyncer
+        )
+    }
+
+    /// Count this company's below-threshold variants and report the number —
+    /// including zero, which is how the rail clears once stock is restored.
+    ///
+    /// Wrapped in a single do/catch: a failure here never breaks sync, and the
+    /// RPC is idempotent (server-side advisory lock, at-most-one unread), so
+    /// the next sync's retry is safe.
+    ///
+    /// Split out of the guard above so the reconcile decision is exercisable
+    /// without a live Firebase session.
+    static func reconcileThresholdAlert(
+        context: ModelContext,
+        companyId: String,
+        syncer: ThresholdAlertSyncing
+    ) async {
+        let count = belowThresholdCount(context: context, companyId: companyId)
+
+        do {
+            let action = try await syncer.syncThresholdAlert(count: count)
+            print("[InboundProcessor] threshold reconcile: count=\(count) -> \(action)")
+        } catch {
+            print("[InboundProcessor] threshold reconcile failed: \(error)")
+        }
+    }
+
+    /// Variants at or below their effective warning threshold, scoped to the
+    /// company. Runs the same engine the Orders sheet's SUGGESTED tab renders,
+    /// so the rail count can never disagree with the list the user opens.
+    static func belowThresholdCount(context: ModelContext, companyId: String) -> Int {
         let variants = (try? context.fetch(FetchDescriptor<CatalogVariant>())) ?? []
         let families = (try? context.fetch(FetchDescriptor<CatalogItem>())) ?? []
         let categories = (try? context.fetch(FetchDescriptor<CatalogCategory>())) ?? []
@@ -357,46 +419,11 @@ final class InboundProcessor {
         let scopedFamilies = families.filter { $0.companyId == companyId }
         let scopedCategories = categories.filter { $0.companyId == companyId }
 
-        let suggestions = OrderSuggestionEngine().suggest(
+        return OrderSuggestionEngine().suggest(
             variants: scopedVariants,
             families: scopedFamilies,
             categories: scopedCategories
-        )
-        let count = suggestions.count
-
-        do {
-            if count == 0 {
-                try await NotificationRepository.shared.markAllAsReadByType(
-                    type: "threshold_alert",
-                    userId: userId
-                )
-                print("[InboundProcessor] threshold reconcile: 0 below — cleared rail")
-            } else {
-                let exists = try await NotificationRepository.shared.hasUnreadOfType(
-                    type: "threshold_alert",
-                    userId: userId
-                )
-                if !exists {
-                    let dto = NotificationRepository.CreateNotificationDTO(
-                        userId: userId,
-                        companyId: companyId,
-                        type: "threshold_alert",
-                        title: "// \(count) ITEM\(count == 1 ? "" : "S") BELOW THRESHOLD",
-                        body: "Tap to review and draft an order.",
-                        deepLinkType: "catalogOrders",
-                        persistent: true,
-                        actionUrl: "ops://catalog/orders?tab=suggested",
-                        actionLabel: "REVIEW"
-                    )
-                    try await NotificationRepository.shared.createNotification(dto)
-                    print("[InboundProcessor] threshold reconcile: created rail entry for \(count) item(s)")
-                } else {
-                    print("[InboundProcessor] threshold reconcile: \(count) below; existing rail entry kept")
-                }
-            }
-        } catch {
-            print("[InboundProcessor] threshold reconcile failed: \(error)")
-        }
+        ).count
     }
 
     // MARK: - Entity Type Dispatch

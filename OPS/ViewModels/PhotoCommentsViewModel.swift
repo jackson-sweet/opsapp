@@ -27,6 +27,11 @@ class PhotoCommentsViewModel: ObservableObject {
     private(set) var photoURL: String
     let projectId: String
     private var repository: ProjectNoteRepository?
+    /// The one narrow server RPC that writes a created comment's rail rows.
+    /// Internal so tests can substitute a spy — production always drives the
+    /// shared repository. Same seam `ProjectNotesViewModel` uses; both
+    /// surfaces are fanned out by `notify_note_created`.
+    var noteSyncer: NoteCreatedNotifying = NotificationRepository.shared
     private var companyId: String?
     private var currentUserId: String?
     private var allTeamMembers: [TeamMember] = []
@@ -307,11 +312,14 @@ class PhotoCommentsViewModel: ObservableObject {
             loadCommentsFromLocal()
             ProjectNoteChangeSignal.post(projectId: projectId)
 
-            // Send notifications
-            await sendMentionNotifications(mentionedIds: mentionedIds, noteText: notificationText, noteId: created.id)
-            // Notify the photo's uploader (unless they're the commenter or were
-            // already @mentioned above).
-            await sendPhotoOwnerNotification(mentionedIds: mentionedIds, noteText: notificationText, noteId: created.id)
+            // Rail rows + pushes for this comment — mentions and the photo's
+            // uploader both. One server call, always: the RPC resolves every
+            // recipient from the note row it just stored, including the owner
+            // the client used to look up itself.
+            await dispatchNoteCreatedNotifications(
+                noteId: created.id,
+                noteText: notificationText
+            )
             error = nil
             return true
         } catch {
@@ -630,13 +638,42 @@ class PhotoCommentsViewModel: ObservableObject {
         error = message
     }
 
-    private func sendMentionNotifications(mentionedIds: [String], noteText: String, noteId: String) async {
-        guard !mentionedIds.isEmpty, let companyId = companyId else { return }
+    // MARK: - Comment Notifications
 
+    /// Fan out one created photo comment's notifications.
+    ///
+    /// Every rail row this comment produces — the @mention rows and the row
+    /// for the photo's uploader — is written by `notify_note_created`, a
+    /// narrow SECURITY DEFINER RPC that resolves the recipients from server
+    /// rows: the owner now comes from `project_photos` server-side, replacing
+    /// the client's own `uploaded_by` lookup, and the self / already-mentioned
+    /// exclusions are the server's call too. The client stopped writing
+    /// `notifications` rows directly at the 2026-07-15 hardening: app-role
+    /// INSERT is revoked, so the old per-recipient insert loops 42501'd on
+    /// every comment and both surfaces went silently dead.
+    ///
+    /// The RPC reports back the ids that received NEW rail rows, and the push
+    /// lanes target exactly those. Push and rail can no longer disagree about
+    /// who was told — which is also why a failed RPC sends no push at all:
+    /// with no rail row written there is nothing for a push to match.
+    ///
+    /// Internal rather than private so the notification tests can drive it
+    /// with a spy directly, as well as through `postComment`.
+    func dispatchNoteCreatedNotifications(
+        noteId: String,
+        noteText: String
+    ) async {
+        guard let fanout = try? await noteSyncer.notifyNoteCreated(noteId: noteId) else {
+            print("[PHOTO COMMENTS] notify_note_created failed for note \(noteId) — no rail rows written, so no push sent")
+            return
+        }
+        let plan = PhotoCommentPushPlan(fanout: fanout)
+        guard !plan.isEmpty else { return }
+
+        // Push copy only — the rail's own copy is rendered server-side.
         let authorName = currentUserId.flatMap { id in
             allTeamMembers.first(where: { $0.id == id })?.fullName
         } ?? "A team member"
-
         let projectName: String
         if let context = modelContext {
             let pid = projectId
@@ -646,29 +683,7 @@ class PhotoCommentsViewModel: ObservableObject {
             projectName = "a project"
         }
 
-        let preview = noteText.count > 100 ? String(noteText.prefix(100)) + "..." : noteText
-        let notificationRepo = NotificationRepository()
-
-        for userId in mentionedIds {
-            // Create in-app notification
-            do {
-                let dto = NotificationRepository.CreateNotificationDTO(
-                    userId: userId,
-                    companyId: companyId,
-                    type: "mention",
-                    title: "\(authorName) mentioned you",
-                    body: "\"\(preview)\" on \(projectName)",
-                    projectId: projectId,
-                    noteId: noteId,
-                    expenseId: nil,
-                    batchId: nil,
-                    deepLinkType: "projectNotes"
-                )
-                try await notificationRepo.createNotification(dto)
-            } catch {
-                print("[PHOTO COMMENTS] Failed to create in-app mention notification for \(userId): \(error)")
-            }
-            // Send push
+        for userId in plan.mentionUserIds {
             do {
                 try await OneSignalService.shared.notifyProjectNoteMention(
                     userId: userId,
@@ -682,66 +697,8 @@ class PhotoCommentsViewModel: ObservableObject {
                 print("[PHOTO COMMENTS] Failed to send mention notification to \(userId): \(error)")
             }
         }
-    }
 
-    /// Notify the photo's uploader when someone else comments on their photo.
-    /// The uploader is resolved from `project_photos.uploaded_by` for this
-    /// photo URL. Excludes the commenter (self) and anyone already @mentioned
-    /// (they received a mention notification). Best-effort.
-    private func sendPhotoOwnerNotification(mentionedIds: [String], noteText: String, noteId: String) async {
-        guard let companyId = companyId, let currentUserId = currentUserId else { return }
-
-        // Resolve the photo's uploader from project_photos.
-        struct OwnerRow: Decodable { let uploaded_by: String? }
-        let ownerId: String?
-        do {
-            let rows: [OwnerRow] = try await SupabaseService.shared.client
-                .from("project_photos")
-                .select("uploaded_by")
-                .eq("project_id", value: projectId)
-                .eq("url", value: photoURL)
-                .limit(1)
-                .execute()
-                .value
-            ownerId = rows.first?.uploaded_by
-        } catch {
-            print("[PHOTO COMMENTS] Failed to resolve photo owner for comment notification: \(error)")
-            return
-        }
-
-        guard let ownerId = ownerId, !ownerId.isEmpty,
-              ownerId != currentUserId,
-              !mentionedIds.contains(ownerId) else { return }
-
-        let authorName = allTeamMembers.first(where: { $0.id == currentUserId })?.fullName ?? "A team member"
-        let projectName: String = {
-            guard let context = modelContext else { return "a project" }
-            let pid = projectId
-            let descriptor = FetchDescriptor<Project>(predicate: #Predicate { $0.id == pid })
-            return (try? context.fetch(descriptor).first?.title) ?? "a project"
-        }()
-        let preview = noteText.count > 100 ? String(noteText.prefix(100)) + "..." : noteText
-
-        // In-app notification (guaranteed delivery)
-        do {
-            let dto = NotificationRepository.CreateNotificationDTO(
-                userId: ownerId,
-                companyId: companyId,
-                type: "photo_comment",
-                title: "\(authorName) commented on your photo",
-                body: "\"\(preview)\" on \(projectName)",
-                projectId: projectId,
-                noteId: noteId,
-                expenseId: nil,
-                batchId: nil,
-                deepLinkType: "projectNotes"
-            )
-            try await NotificationRepository().createNotification(dto)
-        } catch {
-            print("[PHOTO COMMENTS] Failed to create in-app photo-comment notification for \(ownerId): \(error)")
-        }
-
-        // Push (best-effort)
+        guard let ownerId = plan.photoOwnerId else { return }
         do {
             try await OneSignalService.shared.notifyPhotoComment(
                 userId: ownerId,
@@ -755,5 +712,36 @@ class PhotoCommentsViewModel: ObservableObject {
         } catch {
             print("[PHOTO COMMENTS] Failed to send photo-comment push to \(ownerId): \(error)")
         }
+    }
+}
+
+/// The push lanes a photo comment opens, derived from nothing but the server's
+/// fanout — the client no longer resolves a recipient of its own, so a push
+/// cannot reach someone whose rail row was never written.
+///
+/// A photo comment has no assigned-crew broadcast, so the fanout's
+/// `teamUserIds` is deliberately dropped here; that lane belongs to
+/// `ProjectNotesViewModel`.
+struct PhotoCommentPushPlan: Equatable {
+    /// One push each. The server already excluded the author and anyone whose
+    /// rail row it did not write (a re-call is idempotent per note).
+    let mentionUserIds: [String]
+    /// The photo's uploader, present only when the server wrote them a rail
+    /// row — it resolves the owner from `project_photos` and applies the
+    /// self / already-mentioned exclusions itself.
+    let photoOwnerId: String?
+
+    init(fanout: NotificationRepository.NoteCreatedFanout) {
+        self.mentionUserIds = fanout.mentionUserIds
+        if let ownerId = fanout.photoOwnerId, !ownerId.isEmpty {
+            self.photoOwnerId = ownerId
+        } else {
+            self.photoOwnerId = nil
+        }
+    }
+
+    /// No recipient received a rail row, so there is nothing to push.
+    var isEmpty: Bool {
+        mentionUserIds.isEmpty && photoOwnerId == nil
     }
 }

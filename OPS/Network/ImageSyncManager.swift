@@ -11,6 +11,19 @@ import Foundation
 import Network
 import Supabase
 
+/// Seam for the crew "photos added" rail broadcast. Conformed to by
+/// `NotificationRepository` (the `notify_project_photos_added` RPC); tests
+/// substitute a spy.
+protocol ProjectPhotosAddedNotifying {
+    /// The server derives the recipients from the project row's crew list,
+    /// renders the copy, and returns ONLY the user ids that received NEW rail
+    /// rows — aim the companion push at exactly that list.
+    @discardableResult
+    func notifyProjectPhotosAdded(projectId: String, photoCount: Int) async throws -> [String]
+}
+
+extension NotificationRepository: ProjectPhotosAddedNotifying {}
+
 /// Manager for handling image synchronization between local storage, S3, and Supabase
 @MainActor
 class ImageSyncManager: ObservableObject {
@@ -18,6 +31,10 @@ class ImageSyncManager: ObservableObject {
     private let modelContext: ModelContext?
     private let connectivity: ConnectivityManager
     private let presignedURLService = PresignedURLUploadService.shared
+
+    /// Creator of the crew photos-added rail rows. Production talks to the
+    /// narrow server RPC; tests substitute a spy.
+    var photosAddedSyncer: ProjectPhotosAddedNotifying = NotificationRepository.shared
 
     // In-memory queue of pending image uploads
     private var pendingUploads: [PendingImageUpload] = []
@@ -241,17 +258,31 @@ class ImageSyncManager: ObservableObject {
         return savedURLs
     }
 
-    /// Fire the "photos added" notification to assigned crew. Resolves the
-    /// recipient list + uploader name on the main actor (cheap local reads),
-    /// then performs the in-app + push writes in a task so the upload return
-    /// isn't blocked. Best-effort — failures log only and never affect the
-    /// upload result.
-    private func notifyCrewOfAddedPhotos(project: Project, uploaderId: String, photoCount: Int, firstURL: String?) {
-        guard photoCount > 0 else { return }
-        let recipientIds = project.getTeamMemberIds().filter { $0 != uploaderId && !$0.isEmpty }
-        guard !recipientIds.isEmpty else { return }
-        let companyId = project.companyId
-        guard !companyId.isEmpty else { return }
+    /// Fire the "photos added" notification to assigned crew.
+    ///
+    /// The rail rows are created by the narrow server RPC
+    /// (`notify_project_photos_added`): it derives the recipients from the
+    /// project row's `team_member_ids` minus the actor, renders the copy, and
+    /// returns ONLY the user ids that received NEW rows. The client no longer
+    /// computes recipients or writes rows itself — the 2026-07-15
+    /// notification-creation hardening revoked app-role INSERT on
+    /// `notifications`, so the old per-recipient insert loop died 42501 on every
+    /// upload and the rail went silently dead.
+    ///
+    /// The push is aimed at exactly the ids the rail accepted, and is skipped
+    /// entirely when the server created nothing. Previously the push fired at
+    /// the locally-computed list even when the rail write failed, so crews got a
+    /// buzz with nothing behind it — that split is the thing being fixed.
+    ///
+    /// The uploader name and project title stay local reads: they only dress the
+    /// push copy (the rail copy is server-rendered). Best-effort throughout —
+    /// failures log only and never affect the upload result.
+    ///
+    /// - Returns: the notification task, for tests to await. Production call
+    ///   sites discard it (the upload return must not block on the rail).
+    @discardableResult
+    func notifyCrewOfAddedPhotos(project: Project, uploaderId: String, photoCount: Int, firstURL: String?) -> Task<Void, Never>? {
+        guard photoCount > 0 else { return nil }
         let projectId = project.id
         let projectTitle = project.title
 
@@ -262,33 +293,27 @@ class ImageSyncManager: ObservableObject {
             return (try? context.fetch(descriptor).first?.fullName) ?? "A teammate"
         }()
 
-        let title = photoCount == 1 ? "\(uploaderName) added a photo" : "\(uploaderName) added photos"
-        let body = photoCount == 1 ? "1 photo on \(projectTitle)" : "\(photoCount) photos on \(projectTitle)"
+        let syncer = photosAddedSyncer
 
-        Task {
-            let notificationRepo = NotificationRepository()
-            for recipientId in recipientIds {
-                do {
-                    let dto = NotificationRepository.CreateNotificationDTO(
-                        userId: recipientId,
-                        companyId: companyId,
-                        type: "photo_uploaded",
-                        title: title,
-                        body: body,
-                        projectId: projectId,
-                        noteId: nil,
-                        expenseId: nil,
-                        batchId: nil,
-                        deepLinkType: "projectNotes"
-                    )
-                    try await notificationRepo.createNotification(dto)
-                } catch {
-                    print("[IMAGE_SYNC] Failed to create in-app photos-added notification for \(recipientId): \(error)")
-                }
+        return Task {
+            let created: [String]
+            do {
+                created = try await syncer.notifyProjectPhotosAdded(
+                    projectId: projectId,
+                    photoCount: photoCount
+                )
+            } catch {
+                print("[IMAGE_SYNC] Failed to create photos-added rail rows for \(projectId): \(error)")
+                return
             }
+
+            // The server's list is the dedupe truth. No new rail rows — no crew
+            // to reach, or a repeat inside the server's window — means no push.
+            guard !created.isEmpty else { return }
+
             do {
                 try await OneSignalService.shared.notifyPhotosAdded(
-                    userIds: recipientIds,
+                    userIds: created,
                     uploaderName: uploaderName,
                     photoCount: photoCount,
                     projectName: projectTitle,

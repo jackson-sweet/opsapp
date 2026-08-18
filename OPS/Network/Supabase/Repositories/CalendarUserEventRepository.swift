@@ -9,9 +9,26 @@
 import Foundation
 import Supabase
 
+/// Seam for creating the time-off decision rail row. Conformed to by
+/// `NotificationRepository` (the `notify_time_off_decision` RPC); tests
+/// substitute a spy.
+protocol TimeOffDecisionNotifying {
+    /// Returns the server's verdict for the event's recorded decision.
+    @discardableResult
+    func notifyTimeOffDecision(eventId: String) async throws -> String
+}
+
+extension NotificationRepository: TimeOffDecisionNotifying {}
+
 class CalendarUserEventRepository {
     private let client: SupabaseClient
     private let companyId: String
+
+    /// Injected so tests can observe the decision dispatch without a network
+    /// call. A defaulted property rather than an init parameter: this
+    /// repository is constructed at nine unrelated call sites, none of which
+    /// should have to know the notification seam exists.
+    var notifySyncer: TimeOffDecisionNotifying = NotificationRepository.shared
 
     init(companyId: String) {
         self.client = SupabaseService.shared.client
@@ -91,13 +108,17 @@ class CalendarUserEventRepository {
         status: CalendarUserEventStatus,
         reviewedBy: String,
         reviewerName: String,
-        eventTitle: String,
-        companyId: String
+        eventTitle: String
     ) async throws {
-        // Update the status
+        // Persist the decision FIRST. The rail RPC reads the RECORDED state
+        // off the row — it requires `type = time_off`, a status of approved /
+        // denied, and an actor matching the row's `reviewed_by` — so it can
+        // only run once this write has landed.
         try await updateStatus(eventId, status: status, reviewedBy: reviewedBy)
 
-        // Send notification to the requesting user
+        // Push copy, built client-side from the reviewer and title the caller
+        // already resolved for the UI. The in-app rail row below renders its
+        // own copy server-side from the same recorded decision.
         let isApproved = status == .approved
         let notificationType = isApproved ? "time_off_approved" : "time_off_denied"
         let title = isApproved ? "Time Off Approved" : "Time Off Denied"
@@ -106,19 +127,7 @@ class CalendarUserEventRepository {
             : "\(reviewerName) denied your time off request: \(eventTitle)"
 
         // Create in-app notification
-        let dto = NotificationRepository.CreateNotificationDTO(
-            userId: userId,
-            companyId: companyId,
-            type: notificationType,
-            title: title,
-            body: body,
-            projectId: nil,
-            noteId: nil,
-            expenseId: nil,
-            batchId: nil,
-            deepLinkType: "schedule"
-        )
-        try? await NotificationRepository().createNotification(dto)
+        await dispatchDecisionNotification(eventId: eventId)
 
         // Send push
         try? await OneSignalService.shared.sendToUser(
@@ -127,6 +136,17 @@ class CalendarUserEventRepository {
             body: body,
             data: ["type": notificationType, "screen": "schedule"]
         )
+    }
+
+    /// Create the in-app rail row for a decision already recorded on the
+    /// event row. The server derives the requester recipient and renders the
+    /// copy; direct `notifications` inserts have failed 42501 for app roles
+    /// since the 2026-07-15 notification-creation hardening.
+    ///
+    /// Best-effort by design: the approve/deny itself is already persisted,
+    /// so a transport failure here must never fail the caller.
+    func dispatchDecisionNotification(eventId: String) async {
+        _ = try? await notifySyncer.notifyTimeOffDecision(eventId: eventId)
     }
 
     // MARK: - Soft Delete

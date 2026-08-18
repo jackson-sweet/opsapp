@@ -51,6 +51,13 @@
 //                companyId: String,
 //                userId: String) async throws -> PhotoAnnotation
 //
+//  Notification dispatch (updated 2026-08-18): the three measurement rail rows
+//  are now created by narrow server RPCs that derive the actor from the JWT and
+//  the project title from the project row, so the dispatcher carries only
+//  `projectId` + validated dimension integers. `projectName` is consequently
+//  no longer read by this manager — it survives on `sync(...)` only because its
+//  call sites live outside this change's scope.
+//
 //  Spec reference:
 //    ops-software-bible/specs/2026-05-10-lidar-dimensioned-photo-capture-design.md
 //      §3.7 (output / deliverable)
@@ -447,12 +454,7 @@ public final class DimensionedPhotoSyncManager: DimensionedPendingSyncing {
             await MainActor.run {
                 Self.lastQueuedAnnotation = stub
             }
-            await notifier.dispatchPendingSync(
-                userId: userId,
-                companyId: companyId,
-                projectId: projectId,
-                queueDepth: 1
-            )
+            await notifier.dispatchPendingSync(queueDepth: 1)
             throw DimensionedSyncError.queuedForRetry(
                 reason: failureReason ?? "unknown upload failure"
             )
@@ -542,12 +544,7 @@ public final class DimensionedPhotoSyncManager: DimensionedPendingSyncing {
             await MainActor.run {
                 Self.lastQueuedAnnotation = stub
             }
-            await notifier.dispatchPendingSync(
-                userId: userId,
-                companyId: companyId,
-                projectId: projectId,
-                queueDepth: 1
-            )
+            await notifier.dispatchPendingSync(queueDepth: 1)
             throw DimensionedSyncError.annotationInsertFailed(
                 reason: "\(error)"
             )
@@ -576,14 +573,7 @@ public final class DimensionedPhotoSyncManager: DimensionedPendingSyncing {
         // fewer than two linear measurements skip the notification silently —
         // the UI dismissal back to the project view is sufficient feedback.
         if let summary = Self.capturedBodySummary(from: enriched) {
-            await notifier.dispatchCaptured(
-                userId: userId,
-                companyId: companyId,
-                projectId: projectId,
-                projectName: projectName,
-                summary: summary,
-                photoAnnotationId: inserted.id
-            )
+            await notifier.dispatchCaptured(projectId: projectId, summary: summary)
         }
         return model
     }
@@ -838,6 +828,19 @@ public final class DimensionedPhotoSyncManager: DimensionedPendingSyncing {
                 )
             }
         }
+
+        // Spec §6: the `// SYNC QUEUED` banner is persistent and only the
+        // client knows when the offline queue actually drained. Report the
+        // honest remaining depth once per sweep — rows that synced above
+        // cleared `needsSync`, rows that were skipped or failed did not. A
+        // depth of zero is what clears the banner server-side; a non-zero
+        // depth leaves the existing banner standing ('kept'). Reporting a
+        // hardcoded zero here would clear the banner while a failed row was
+        // still stranded, which is the exact silent-loss shape the auto-bug
+        // reporting above exists to prevent.
+        await notifier.dispatchPendingSync(
+            queueDepth: pendingDimensionedAnnotationCount(modelContext: modelContext)
+        )
     }
 
     func pendingDimensionedAnnotationCount(modelContext: ModelContext) -> Int {
@@ -1007,34 +1010,35 @@ extension DimensionedPhotoSyncManager {
 // MARK: - Notification dispatch (spec §6)
 
 /// Side-channel for the three measurement notifications. Behind a protocol so
-/// tests can verify the DTO contracts without coupling to a live Supabase
-/// client. The live implementation calls `NotificationRepository.shared` and
-/// swallows-and-logs any error — a missing notification is never worth failing
-/// a successful capture over.
+/// tests can verify what the pipeline dispatches without coupling to a live
+/// Supabase client.
+///
+/// Shaped to what the server actually needs (2026-08-18): the 2026-07-15
+/// notification-creation hardening moved rail-row creation behind narrow
+/// SECURITY DEFINER RPCs that derive the recipient from the JWT and the project
+/// title from the project row. Passing a user id, company id, project name or
+/// annotation id would be passing data the server ignores — and, for identity,
+/// data the server deliberately refuses to trust. What is left is the project
+/// anchor plus the validated integers the server interpolates into its fixed
+/// spec-§6 templates.
+///
+/// The live implementation swallows-and-logs any error — a missing notification
+/// is never worth failing a successful capture over.
 protocol DimensionedNotificationDispatcher: Sendable {
+    /// `notify_measurement_captured` — fires once per successful capture.
     func dispatchCaptured(
-        userId: String,
-        companyId: String,
         projectId: String,
-        projectName: String,
-        summary: MeasurementNotificationCopy.CapturedBodySummary,
-        photoAnnotationId: String
+        summary: MeasurementNotificationCopy.CapturedBodySummary
     ) async
 
-    func dispatchPendingSync(
-        userId: String,
-        companyId: String,
-        projectId: String?,
-        queueDepth: Int
-    ) async
+    /// `sync_measurement_pending_notification` — persistent banner, at most one
+    /// unread. A `queueDepth` of zero is what clears it, so callers must report
+    /// honest depths including zero once the offline queue drains.
+    func dispatchPendingSync(queueDepth: Int) async
 
-    func dispatchSyncFailed(
-        userId: String,
-        companyId: String,
-        projectId: String,
-        projectName: String,
-        photoAnnotationId: String
-    ) async
+    /// `notify_measurement_sync_failed` — project-anchored, because the
+    /// annotation row may not exist server-side when the insert is what failed.
+    func dispatchSyncFailed(projectId: String) async
 }
 
 /// No-op dispatcher for unit tests that don't care about notification firing.
@@ -1043,92 +1047,61 @@ struct NoopDimensionedNotificationDispatcher: DimensionedNotificationDispatcher 
     init() {}
 
     func dispatchCaptured(
-        userId: String,
-        companyId: String,
         projectId: String,
-        projectName: String,
-        summary: MeasurementNotificationCopy.CapturedBodySummary,
-        photoAnnotationId: String
+        summary: MeasurementNotificationCopy.CapturedBodySummary
     ) async {}
 
-    func dispatchPendingSync(
-        userId: String,
-        companyId: String,
-        projectId: String?,
-        queueDepth: Int
-    ) async {}
+    func dispatchPendingSync(queueDepth: Int) async {}
 
-    func dispatchSyncFailed(
-        userId: String,
-        companyId: String,
-        projectId: String,
-        projectName: String,
-        photoAnnotationId: String
-    ) async {}
+    func dispatchSyncFailed(projectId: String) async {}
 }
 
-/// Production dispatcher — talks to Supabase via `NotificationRepository`.
+/// Production dispatcher — talks to Supabase via `NotificationRepository`'s
+/// narrow creation RPCs. Direct inserts into `public.notifications` fail 42501
+/// for app roles since the 2026-07-15 hardening.
 struct LiveDimensionedNotificationDispatcher: DimensionedNotificationDispatcher {
     init() {}
 
     func dispatchCaptured(
-        userId: String,
-        companyId: String,
         projectId: String,
-        projectName: String,
-        summary: MeasurementNotificationCopy.CapturedBodySummary,
-        photoAnnotationId: String
+        summary: MeasurementNotificationCopy.CapturedBodySummary
     ) async {
-        let dto = NotificationRepository.CreateNotificationDTO.measurementCaptured(
-            userId: userId,
-            companyId: companyId,
-            projectId: projectId,
-            projectName: projectName,
-            summary: summary,
-            photoAnnotationId: photoAnnotationId
-        )
+        let arguments = MeasurementNotificationCopy.rpcArguments(for: summary)
         do {
-            try await NotificationRepository.shared.createNotification(dto)
+            let action = try await NotificationRepository.shared.notifyMeasurementCaptured(
+                projectId: projectId,
+                kind: arguments.kind,
+                widthInches: arguments.widthInches,
+                heightInches: arguments.heightInches,
+                openingType: arguments.openingType,
+                sillInches: arguments.sillInches,
+                wallWidthFeet: arguments.wallWidthFeet,
+                wallWidthInches: arguments.wallWidthInches,
+                wallHeightFeet: arguments.wallHeightFeet
+            )
+            print("[DIMENSIONED_SYNC] measurement_captured notification: \(action)")
         } catch {
             print("[DIMENSIONED_SYNC] measurement_captured notification failed (continuing): \(error)")
         }
     }
 
-    func dispatchPendingSync(
-        userId: String,
-        companyId: String,
-        projectId: String?,
-        queueDepth: Int
-    ) async {
-        let dto = NotificationRepository.CreateNotificationDTO.measurementPendingSync(
-            userId: userId,
-            companyId: companyId,
-            projectId: projectId,
-            queueDepth: queueDepth
-        )
+    func dispatchPendingSync(queueDepth: Int) async {
         do {
-            try await NotificationRepository.shared.createNotification(dto)
+            let action = try await NotificationRepository.shared.syncMeasurementPending(
+                queueDepth: queueDepth
+            )
+            print("[DIMENSIONED_SYNC] measurement_pending_sync notification (depth \(queueDepth)): \(action)")
         } catch {
             print("[DIMENSIONED_SYNC] measurement_pending_sync notification failed (continuing): \(error)")
         }
     }
 
-    func dispatchSyncFailed(
-        userId: String,
-        companyId: String,
-        projectId: String,
-        projectName: String,
-        photoAnnotationId: String
-    ) async {
-        let dto = NotificationRepository.CreateNotificationDTO.measurementSyncFailed(
-            userId: userId,
-            companyId: companyId,
-            projectId: projectId,
-            projectName: projectName,
-            photoAnnotationId: photoAnnotationId
-        )
+    func dispatchSyncFailed(projectId: String) async {
         do {
-            try await NotificationRepository.shared.createNotification(dto)
+            let action = try await NotificationRepository.shared.notifyMeasurementSyncFailed(
+                projectId: projectId
+            )
+            print("[DIMENSIONED_SYNC] measurement_sync_failed notification: \(action)")
         } catch {
             print("[DIMENSIONED_SYNC] measurement_sync_failed notification failed (continuing): \(error)")
         }

@@ -12,6 +12,39 @@ import Combine
 import SwiftUI
 import SwiftData
 
+// MARK: - Notification Creation Seams
+//
+// The 2026-07-15 notification-creation hardening revoked app-role INSERT on
+// `notifications` — every rail row is created by a narrow SECURITY DEFINER RPC
+// that derives the actor from the JWT, derives recipients from server rows, and
+// renders the copy server-side. The two protocols below are the seams AppState's
+// review surfaces cross; `NotificationRepository` conforms with the concrete RPC
+// bindings, tests substitute a spy.
+
+/// Throttled periodic review reminders (`sync_review_reminder_notification`).
+/// The client supplies a kind, an honest count, and — for the stale-estimate
+/// kind — the company's staleness threshold; the server renders the copy and
+/// holds at most one unread reminder per kind, so a second device inside the
+/// client's throttle window cannot stack a duplicate rail row.
+protocol ReviewReminderSyncing {
+    /// Returns the server's verdict: `created`, `kept`, or `noop`.
+    @discardableResult
+    func syncReviewReminder(kind: String, count: Int, thresholdDays: Int?) async throws -> String
+}
+
+/// Overdue-invoice rail (`sync_overdue_invoice_notifications`). The server
+/// computes the overdue set AND the `invoices.record_payment` recipient list
+/// itself, and returns only the user ids that received NEW rail rows under its
+/// own 24h dedupe — the companion push must target exactly that list so push
+/// can never fire for a recipient whose rail row was deduped away.
+protocol OverdueInvoiceSyncing {
+    @discardableResult
+    func syncOverdueInvoiceNotifications() async throws -> [String]
+}
+
+extension NotificationRepository: ReviewReminderSyncing {}
+extension NotificationRepository: OverdueInvoiceSyncing {}
+
 class AppState: ObservableObject {
     @Published var activeProjectID: String?
     @Published var activeTaskID: String? // Store only task ID, not the model
@@ -447,21 +480,26 @@ class AppState: ObservableObject {
     /// an in-app rail notification so the admin can plan the work before the
     /// crew shows up empty-handed. Throttled by the standard review-frequency
     /// window so it doesn't pile up daily entries for the same backlog.
-    func checkProjectsNeedingTasks(dataController: DataController, frequencyDays: Int) {
+    /// - Returns: the reporting task, or `nil` when there is nothing to report
+    ///   (production call sites discard it; tests await it).
+    @discardableResult
+    func checkProjectsNeedingTasks(
+        dataController: DataController,
+        frequencyDays: Int,
+        syncer: ReviewReminderSyncing = NotificationRepository.shared
+    ) -> Task<Void, Never>? {
         let allProjects = dataController.getProjects()
         let needsTasks = ProjectsWithoutTasksDetector.projectsWithoutTasks(from: allProjects)
         let count = needsTasks.count
-        guard count > 0 else { return }
+        guard count > 0 else { return nil }
 
-        let plural = count == 1 ? "" : "s"
-        createInAppReviewNotification(
+        return createInAppReviewNotification(
             dataController: dataController,
             throttleKey: "lastProjectsNeedingTasksInAppNotification",
             frequencyDays: frequencyDays,
-            type: "projects_needing_tasks",
-            title: "TASKS MISSING",
-            body: "\(count) accepted job\(plural) with no tasks. Crew can't see it.",
-            deepLinkType: "projectsNeedingTasks"
+            kind: "projects_needing_tasks",
+            count: count,
+            syncer: syncer
         )
     }
 
@@ -470,7 +508,14 @@ class AppState: ObservableObject {
     /// Find projects stuck in .estimated status past the staleness threshold
     /// and surface an in-app notification so the admin can follow up before
     /// the lead goes cold. Runs on the same periodic review-check cadence.
-    func checkStaleEstimates(dataController: DataController, frequencyDays: Int) {
+    /// - Returns: the reporting task, or `nil` when there is nothing to report
+    ///   (production call sites discard it; tests await it).
+    @discardableResult
+    func checkStaleEstimates(
+        dataController: DataController,
+        frequencyDays: Int,
+        syncer: ReviewReminderSyncing = NotificationRepository.shared
+    ) -> Task<Void, Never>? {
         let allProjects = dataController.getProjects()
         let companyId = dataController.currentUser?.companyId
         let company: Company? = companyId.flatMap { dataController.getCompany(id: $0) }
@@ -484,16 +529,16 @@ class AppState: ObservableObject {
             thresholdDays: threshold
         )
         let staleCount = staleProjects.count
-        guard staleCount > 0 else { return }
+        guard staleCount > 0 else { return nil }
 
-        createInAppReviewNotification(
+        return createInAppReviewNotification(
             dataController: dataController,
             throttleKey: "lastStaleEstimateInAppNotification",
             frequencyDays: frequencyDays,
-            type: "stale_estimate_review",
-            title: "Stale Estimates",
-            body: "\(staleCount) estimate\(staleCount == 1 ? "" : "s") sitting \(threshold)+ days without follow-up",
-            deepLinkType: "jobBoard"
+            kind: "stale_estimate_review",
+            count: staleCount,
+            thresholdDays: threshold,
+            syncer: syncer
         )
     }
 
@@ -519,47 +564,54 @@ class AppState: ObservableObject {
         // The local push above remains in place as a periodic iOS reminder.
     }
 
-    /// Creates an in-app notification for a review queue, throttled by frequencyDays
+    /// Reports one review queue's count to the server, throttled by frequencyDays
     /// so the bell rail doesn't accumulate duplicate entries.
+    ///
+    /// The rail row is created by the narrow `sync_review_reminder_notification`
+    /// RPC — the 2026-07-15 hardening revoked app-role INSERT on `notifications`,
+    /// so the legacy direct insert 42501'd. The server owns the recipient (self,
+    /// derived from the JWT) and the copy; the client hands over the kind, the
+    /// count, and the dimension the copy interpolates.
+    ///
+    /// - Returns: the reporting task, or `nil` when throttled or no operator is
+    ///   resolved (production call sites discard it; tests await it).
+    @discardableResult
     private func createInAppReviewNotification(
         dataController: DataController,
         throttleKey: String,
         frequencyDays: Int,
-        type: String,
-        title: String,
-        body: String,
-        deepLinkType: String
-    ) {
+        kind: String,
+        count: Int,
+        thresholdDays: Int? = nil,
+        syncer: ReviewReminderSyncing = NotificationRepository.shared
+    ) -> Task<Void, Never>? {
         // Throttle: only create a new in-app notification once per frequency window
         if let last = UserDefaults.standard.object(forKey: throttleKey) as? Date {
             let daysSince = Calendar.current.dateComponents([.day], from: last, to: Date()).day ?? 0
-            guard daysSince >= frequencyDays else { return }
+            guard daysSince >= frequencyDays else { return nil }
         }
 
-        guard let userId = dataController.currentUser?.id,
-              let companyId = dataController.currentUser?.companyId else { return }
+        guard dataController.currentUser?.id != nil,
+              dataController.currentUser?.companyId != nil else { return nil }
 
         UserDefaults.standard.set(Date(), forKey: throttleKey)
 
-        Task {
-            let dto = NotificationRepository.CreateNotificationDTO(
-                userId: userId,
-                companyId: companyId,
-                type: type,
-                title: title,
-                body: body,
-                projectId: nil,
-                noteId: nil,
-                expenseId: nil,
-                batchId: nil,
-                deepLinkType: deepLinkType
-            )
+        return Task {
             do {
-                try await NotificationRepository().createNotification(dto)
-                await MainActor.run {
-                    self.refreshUnreadCount()
+                let action = try await syncer.syncReviewReminder(
+                    kind: kind,
+                    count: count,
+                    thresholdDays: thresholdDays
+                )
+                // `kept` / `noop` mean the server already holds an unread
+                // reminder for this kind — nothing new landed on the rail, so
+                // the badge is already correct.
+                if action == "created" {
+                    await MainActor.run {
+                        self.refreshUnreadCount()
+                    }
+                    print("[REVIEW_NOTIF] In-app notification created: \(kind)")
                 }
-                print("[REVIEW_NOTIF] In-app notification created: \(title)")
             } catch {
                 print("[REVIEW_NOTIF] Failed to create in-app notification: \(error)")
             }
@@ -568,24 +620,38 @@ class AppState: ObservableObject {
 
     // MARK: - Overdue Invoice Check
 
-    /// Check for overdue invoices and send in-app + push notifications to admin/office users.
-    /// Throttled to once per day to avoid spam.
-    private func checkOverdueInvoices(dataController: DataController) {
+    /// Check for overdue invoices and send in-app + push notifications to the
+    /// users who can act on them. Throttled to once per day to avoid spam.
+    ///
+    /// The rail rows are created by `sync_overdue_invoice_notifications` — the
+    /// server computes the overdue set and the `invoices.record_payment`
+    /// recipient list from its own rows (client input is never trusted for
+    /// recipients) and returns only the ids that received NEW rows under its 24h
+    /// dedupe. The local fetch below stays because the push copy still quotes
+    /// this device's view of the overdue balance.
+    ///
+    /// - Returns: the notification task, or `nil` when throttled or nothing is
+    ///   overdue (production call sites discard it; tests await it).
+    @discardableResult
+    func checkOverdueInvoices(
+        dataController: DataController,
+        invoiceSyncer: OverdueInvoiceSyncing = NotificationRepository.shared
+    ) -> Task<Void, Never>? {
         guard let context = dataController.modelContext,
-              let companyId = dataController.currentUser?.companyId else { return }
+              dataController.currentUser?.companyId != nil else { return nil }
 
         // Throttle: only check once per day
         let lastCheckKey = "lastOverdueInvoiceCheck"
         if let lastCheck = UserDefaults.standard.object(forKey: lastCheckKey) as? Date {
             let hoursSince = Date().timeIntervalSince(lastCheck) / 3600
-            guard hoursSince >= 24 else { return }
+            guard hoursSince >= 24 else { return nil }
         }
 
         let descriptor = FetchDescriptor<Invoice>()
-        guard let allInvoices = try? context.fetch(descriptor) else { return }
+        guard let allInvoices = try? context.fetch(descriptor) else { return nil }
 
         let overdueInvoices = allInvoices.filter { $0.isOverdue }
-        guard !overdueInvoices.isEmpty else { return }
+        guard !overdueInvoices.isEmpty else { return nil }
 
         UserDefaults.standard.set(Date(), forKey: lastCheckKey)
 
@@ -593,42 +659,23 @@ class AppState: ObservableObject {
         let totalOverdue = overdueInvoices.reduce(0.0) { $0 + $1.balanceDue }
         let formattedTotal = BooksFormat.exact(totalOverdue)
 
-        Task {
-            // Notify users with invoices.record_payment — they can act on the
-            // overdue balance, not just see it. Permission-gated, never role.
-            let payerIds = (try? await RecipientLookupService.usersWithPermission(
-                companyId: companyId,
-                permission: "invoices.record_payment"
-            )) ?? []
-            let currentId = UserDefaults.standard.string(forKey: "currentUserId")
-            let recipients = payerIds.filter { $0 != currentId }
-            guard !recipients.isEmpty else { return }
+        return Task {
+            // The server derives the recipients (invoices.record_payment
+            // holders, minus the actor) and returns only the ids that received
+            // a NEW rail row. An empty list means every eligible recipient was
+            // already notified inside the server's 24h window.
+            let createdRecipients = (try? await invoiceSyncer.syncOverdueInvoiceNotifications()) ?? []
+            guard !createdRecipients.isEmpty else { return }
 
-            let notifRepo = NotificationRepository()
-
-            for recipient in recipients {
-                let dto = NotificationRepository.CreateNotificationDTO(
-                    userId: recipient,
-                    companyId: companyId,
-                    type: "invoice_overdue",
-                    title: "Overdue Invoices",
-                    body: "\(overdueCount) invoice\(overdueCount == 1 ? "" : "s") overdue totalling \(formattedTotal)",
-                    projectId: nil,
-                    noteId: nil,
-                    expenseId: nil,
-                    batchId: nil,
-                    deepLinkType: "invoices"
-                )
-                try? await notifRepo.createNotification(dto)
-            }
-
+            // Push targets exactly the ids that got a rail row — rail dedupe
+            // IS push dedupe, so the two surfaces can never disagree.
             try? await OneSignalService.shared.sendToUsers(
-                userIds: recipients,
+                userIds: createdRecipients,
                 title: "Overdue Invoices",
                 body: "\(overdueCount) invoice\(overdueCount == 1 ? "" : "s") overdue totalling \(formattedTotal)",
                 data: ["type": "invoice_overdue", "screen": "expenses"]
             )
-            print("[OVERDUE_CHECK] 📬 Invoice overdue notification sent to \(recipients.count) recipients (\(overdueCount) invoices, \(formattedTotal))")
+            print("[OVERDUE_CHECK] 📬 Invoice overdue notification sent to \(createdRecipients.count) recipients (\(overdueCount) invoices, \(formattedTotal))")
         }
     }
 }

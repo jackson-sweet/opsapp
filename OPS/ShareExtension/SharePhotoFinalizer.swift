@@ -4,7 +4,9 @@
 //
 //  Lands share-extension photos that are already on S3 into a project: appends
 //  their URLs to projects.project_images (text[]), inserts project_photos rows
-//  for the web portal, and posts a completion notification to the uploader.
+//  for the web portal, and posts a completion notification to the uploader via
+//  the narrow `notify_share_photos_finalized` RPC (the server derives the
+//  recipient, the project title, and the copy).
 //
 //  Deliberately REST-only (no SwiftData, no @MainActor) so it works when iOS
 //  relaunches the app in the BACKGROUND to deliver a background-URLSession
@@ -14,6 +16,17 @@
 //
 
 import Foundation
+
+/// Seam for the share-completion rail row. Conformed to by
+/// `NotificationRepository` (the `notify_share_photos_finalized` RPC); tests
+/// substitute a spy.
+protocol SharePhotoFinalizeNotifying {
+    /// Returns the server's verdict for the row it created.
+    @discardableResult
+    func notifySharePhotosFinalized(projectId: String, photoCount: Int) async throws -> String
+}
+
+extension NotificationRepository: SharePhotoFinalizeNotifying {}
 
 enum SharePhotoFinalizer {
 
@@ -34,6 +47,10 @@ enum SharePhotoFinalizer {
     /// Finalizes a batch of already-uploaded photo URLs for one project. Returns
     /// true when the durable writes (project_images + project_photos) succeed, so
     /// the caller can clear the jobs. The notification is best-effort.
+    ///
+    /// `projectTitle` no longer feeds the notification — the RPC reads the title
+    /// off the project row server-side — but it stays on the signature because
+    /// the queued-job manifest carries it and the caller passes it through.
     static func finalize(
         publicURLs: [String],
         projectId: String,
@@ -118,40 +135,34 @@ enum SharePhotoFinalizer {
         await postCompletionNotification(
             count: publicURLs.count,
             projectId: projectId,
-            projectTitle: projectTitle,
             uploadedBy: uploadedBy,
             companyId: companyId
         )
         return true
     }
 
-    private static func postCompletionNotification(
+    /// Internal (not private) so the notification seam can be exercised with a
+    /// spy syncer.
+    ///
+    /// The RPC derives the recipient (the calling operator, i.e. the uploader),
+    /// the project title, and the rendered copy from server rows — none of that
+    /// travels from here. `uploadedBy` / `companyId` are therefore not payload
+    /// but a precondition: an empty identity means there is no authenticated
+    /// share context to attribute the row to, so skip the call entirely.
+    static func postCompletionNotification(
         count: Int,
         projectId: String,
-        projectTitle: String,
         uploadedBy: String,
-        companyId: String
+        companyId: String,
+        syncer: SharePhotoFinalizeNotifying = NotificationRepository()
     ) async {
         guard !uploadedBy.isEmpty, !companyId.isEmpty else { return }
-        let title = count == 1 ? "Photo added" : "Photos added"
-        let body = count == 1 ? "1 photo on \(projectTitle)" : "\(count) photos on \(projectTitle)"
         do {
-            let dto = NotificationRepository.CreateNotificationDTO(
-                userId: uploadedBy,
-                companyId: companyId,
-                type: "photo_uploaded",
-                title: title,
-                body: body,
+            let action = try await syncer.notifySharePhotosFinalized(
                 projectId: projectId,
-                noteId: nil,
-                expenseId: nil,
-                batchId: nil,
-                deepLinkType: "projectNotes",
-                persistent: nil,
-                actionUrl: "ops://projects/\(projectId)",
-                actionLabel: "View"
+                photoCount: count
             )
-            try await NotificationRepository().createNotification(dto)
+            print("[SHARE_FINALIZE] completion notification \(action) for \(projectId)")
         } catch {
             print("[SHARE_FINALIZE] completion notification failed for \(projectId): \(error)")
         }

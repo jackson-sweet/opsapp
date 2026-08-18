@@ -2,206 +2,132 @@
 //  MeasurementNotificationTypes.swift
 //  OPS
 //
-//  Phase G — type constants, body formatters, and DTO factories for the three
-//  LiDAR Dimensioned Photo Capture notification types.
+//  Rail type constants + the RPC argument carrier for the three LiDAR
+//  Dimensioned Photo Capture notifications.
+//
+//  Copy is NOT rendered here any more. The 2026-07-15 notification-creation
+//  hardening revoked app-role INSERT on `public.notifications`, so every rail
+//  row is created by a narrow SECURITY DEFINER RPC that derives the actor from
+//  the JWT, derives the project title from the project row, and interpolates
+//  the client's validated integers into fixed server-held templates:
+//
+//    notify_measurement_captured           → `// MEASUREMENT SAVED`
+//    sync_measurement_pending_notification → `// SYNC QUEUED` (depth 0 clears)
+//    notify_measurement_sync_failed        → `// ERROR — SYNC FAILED`
+//
+//  The spec §6 strings are unchanged — they were relocated verbatim into
+//  ops-software-bible/migrations/
+//      20260818023254_ios_notification_surface_rpcs.sql
+//      20260818023657_measurement_notification_dedupe_keys.sql
+//  Assertions on those strings belong against the database, not against this
+//  file. The client's remaining contract is the notification `type` strings
+//  (the rail reads them) and the mapping from a derived capture summary onto
+//  the RPC's argument set.
+//
+//  `LiveDimensionedNotificationDispatcher` in `DimensionedPhotoSyncManager.swift`
+//  is the only caller.
 //
 //  Spec reference:
 //    ops-software-bible/specs/2026-05-10-lidar-dimensioned-photo-capture-design.md §6
-//
-//  Phase F's `DimensionedPhotoSyncManager` is the call site that fires these
-//  notifications via `NotificationRepository.createNotification(_:)`:
-//    - success                       → `captured(...)` factory
-//    - queued offline (no signal)    → `pendingSync(count:)` factory
-//    - retries exhausted             → `syncFailed(projectName:)` factory
-//
-//  Body strings are spec-verbatim. Tests in
-//  `OPSTests/Utilities/MeasurementNotificationTests.swift` assert verbatim
-//  matches against this file — do not edit the strings here without updating
-//  the spec first.
 //
 
 import Foundation
 
 enum MeasurementNotificationType {
-    /// `// MEASUREMENT SAVED` — dispatch after a full successful 3-asset upload.
+    /// `// MEASUREMENT SAVED` — server-rendered after a full successful
+    /// 3-asset upload.
     static let captured = "measurement_captured"
 
-    /// `// SYNC QUEUED` — dispatch when the capture has been written locally
-    /// but the network is unavailable. iOS surfaces as persistent banner.
+    /// `// SYNC QUEUED` — server-rendered when the capture has been written
+    /// locally but the network is unavailable. Persistent; the server clears
+    /// it once the client reports a queue depth of zero.
     static let pendingSync = "measurement_pending_sync"
 
-    /// `// ERROR — SYNC FAILED` — dispatch after retries exhausted.
+    /// `// ERROR — SYNC FAILED` — server-rendered after retries are exhausted.
     static let syncFailed = "measurement_sync_failed"
 }
 
+/// Argument set for `notify_measurement_captured`. Mirrors the RPC's parameter
+/// list one-for-one: `opening` populates the opening fields and leaves the wall
+/// fields nil; `wall_section` does the inverse. The server rejects (22023) a
+/// kind whose required fields are missing, so the mapper below is the single
+/// place that decides which half of the payload is populated.
+struct MeasurementCapturedRPCArguments: Equatable {
+
+    /// `p_kind` for a window/door opening — width, height, opening type and
+    /// sill are all required server-side.
+    static let openingKind = "opening"
+
+    /// `p_kind` for a wall section — width feet/inches and height feet are all
+    /// required server-side.
+    static let wallSectionKind = "wall_section"
+
+    let kind: String
+    let widthInches: Int?
+    let heightInches: Int?
+    let openingType: String?
+    let sillInches: Int?
+    let wallWidthFeet: Int?
+    let wallWidthInches: Int?
+    let wallHeightFeet: Int?
+}
+
+/// Namespace for the payload types the measurement notifications carry. It is
+/// named for the copy it used to render; the copy now lives server-side (see
+/// the file header) and what remains is the summary the capture pipeline
+/// derives plus the mapping onto the RPC arguments.
 enum MeasurementNotificationCopy {
 
-    /// Title for `measurement_captured`. Spec §6.
-    static let capturedTitle = "// MEASUREMENT SAVED"
-
-    /// Title for `measurement_pending_sync`. Spec §6.
-    static let pendingSyncTitle = "// SYNC QUEUED"
-
-    /// Title for `measurement_sync_failed`. Spec §6.
-    static let syncFailedTitle = "// ERROR — SYNC FAILED"
-
-    /// Action label on the captured / queued cards (`VIEW`).
-    static let viewLabel = "VIEW"
-
-    /// Action label on the failed card (`RETRY`).
-    static let retryLabel = "RETRY"
-
-    // MARK: - Body formatters
-
-    /// Body for `measurement_captured`. Picks the appropriate format based on
-    /// the leading measurement's opening type.
-    ///
-    /// Window / door:   `[PROJECT] · 36″×60″ WINDOW · SILL 28″`
-    /// Wall section:    `[PROJECT] · WALL SECTION · 14′6″ × 8′`
-    static func capturedBody(
-        projectName: String,
-        summary: CapturedBodySummary
-    ) -> String {
-        let projectToken = projectName.uppercased()
+    /// Map a derived capture summary onto `notify_measurement_captured`'s
+    /// argument set. The opening type's raw value (`window` / `door`) is the
+    /// wire contract — the server validates `p_opening_type in ('window','door')`
+    /// and uppercases it into the body itself.
+    static func rpcArguments(
+        for summary: CapturedBodySummary
+    ) -> MeasurementCapturedRPCArguments {
         switch summary {
-        case let .opening(widthInches, heightInches, openingType, sillInches):
-            let widthStr = inchValueString(widthInches)
-            let heightStr = inchValueString(heightInches)
-            let typeStr = openingType.displayName
-            let sillStr = inchValueString(sillInches)
-            return "\(projectToken) · \(widthStr)″×\(heightStr)″ \(typeStr) · SILL \(sillStr)″"
+        case let .opening(widthInches, heightInches, type, sillInches):
+            return MeasurementCapturedRPCArguments(
+                kind: MeasurementCapturedRPCArguments.openingKind,
+                widthInches: widthInches,
+                heightInches: heightInches,
+                openingType: type.rawValue,
+                sillInches: sillInches,
+                wallWidthFeet: nil,
+                wallWidthInches: nil,
+                wallHeightFeet: nil
+            )
         case let .wallSection(widthFeet, widthInches, heightFeet):
-            let widthDimension = formatFeetInches(feet: widthFeet, inches: widthInches)
-            let heightDimension = "\(heightFeet)′"
-            return "\(projectToken) · WALL SECTION · \(widthDimension) × \(heightDimension)"
+            return MeasurementCapturedRPCArguments(
+                kind: MeasurementCapturedRPCArguments.wallSectionKind,
+                widthInches: nil,
+                heightInches: nil,
+                openingType: nil,
+                sillInches: nil,
+                wallWidthFeet: widthFeet,
+                wallWidthInches: widthInches,
+                wallHeightFeet: heightFeet
+            )
         }
-    }
-
-    /// Body for `measurement_pending_sync`. Singular vs plural matches spec
-    /// verbatim — `1 MEASUREMENT` and `N MEASUREMENTS`, no comma in count.
-    static func pendingSyncBody(count: Int) -> String {
-        let noun = count == 1 ? "MEASUREMENT" : "MEASUREMENTS"
-        return "\(count) \(noun) · WILL UPLOAD ON SIGNAL"
-    }
-
-    /// Body for `measurement_sync_failed`. Project name uppercased.
-    static func syncFailedBody(projectName: String) -> String {
-        let projectToken = projectName.uppercased()
-        return "\(projectToken) · MEASUREMENT NOT UPLOADED · RETRY"
-    }
-
-    // MARK: - Number formatting helpers
-
-    /// Format an inch value as integer when whole, otherwise keep up to one
-    /// fractional digit. Numbers are JetBrains Mono in the UI but the body
-    /// string is plain text — typography is applied by the rail.
-    static func inchValueString(_ inches: Int) -> String {
-        return String(inches)
-    }
-
-    /// `14′6″` — feet + inches joined with primes. If `inches` is 0, drop the
-    /// trailing `0″` and emit `14′`. Spec example `14′6″ × 8′`.
-    static func formatFeetInches(feet: Int, inches: Int) -> String {
-        if inches == 0 { return "\(feet)′" }
-        return "\(feet)′\(inches)″"
     }
 }
 
 extension MeasurementNotificationCopy {
 
     /// Closed enum of body shapes for the `captured` notification. The two
-    /// cases match the two examples in spec §6 — window/door and wall section.
+    /// cases match the two examples in spec §6 — window/door and wall section —
+    /// and map onto the RPC's two `p_kind` values. Carried from
+    /// `DimensionedPhotoSyncManager.capturedBodySummary(from:)` through the
+    /// dispatcher to `rpcArguments(for:)`.
     enum CapturedBodySummary: Equatable {
         case opening(widthInches: Int, heightInches: Int, type: OpeningType, sillInches: Int)
         case wallSection(widthFeet: Int, widthInches: Int, heightFeet: Int)
 
+        /// Raw values are the server's accepted `p_opening_type` set.
         enum OpeningType: String {
             case window
             case door
-
-            var displayName: String {
-                switch self {
-                case .window: return "WINDOW"
-                case .door:   return "DOOR"
-                }
-            }
         }
-    }
-}
-
-// MARK: - DTO factories
-
-extension NotificationRepository.CreateNotificationDTO {
-
-    /// Build the `measurement_captured` insert payload.
-    static func measurementCaptured(
-        userId: String,
-        companyId: String,
-        projectId: String,
-        projectName: String,
-        summary: MeasurementNotificationCopy.CapturedBodySummary,
-        photoAnnotationId: String
-    ) -> NotificationRepository.CreateNotificationDTO {
-        NotificationRepository.CreateNotificationDTO(
-            userId: userId,
-            companyId: companyId,
-            type: MeasurementNotificationType.captured,
-            title: MeasurementNotificationCopy.capturedTitle,
-            body: MeasurementNotificationCopy.capturedBody(
-                projectName: projectName,
-                summary: summary
-            ),
-            projectId: projectId,
-            deepLinkType: "projectDetails",
-            persistent: false,
-            actionUrl: "ops://project/\(projectId)/photos/\(photoAnnotationId)",
-            actionLabel: MeasurementNotificationCopy.viewLabel
-        )
-    }
-
-    /// Build the `measurement_pending_sync` insert payload. Marked persistent
-    /// — the rail keeps the banner up until the queue drains, then the iOS
-    /// side calls `markAllAsReadByType(...)` to auto-clear.
-    static func measurementPendingSync(
-        userId: String,
-        companyId: String,
-        projectId: String?,
-        queueDepth: Int
-    ) -> NotificationRepository.CreateNotificationDTO {
-        NotificationRepository.CreateNotificationDTO(
-            userId: userId,
-            companyId: companyId,
-            type: MeasurementNotificationType.pendingSync,
-            title: MeasurementNotificationCopy.pendingSyncTitle,
-            body: MeasurementNotificationCopy.pendingSyncBody(count: queueDepth),
-            projectId: projectId,
-            deepLinkType: nil,
-            persistent: true,
-            actionUrl: nil,
-            actionLabel: nil
-        )
-    }
-
-    /// Build the `measurement_sync_failed` insert payload.
-    static func measurementSyncFailed(
-        userId: String,
-        companyId: String,
-        projectId: String,
-        projectName: String,
-        photoAnnotationId: String
-    ) -> NotificationRepository.CreateNotificationDTO {
-        NotificationRepository.CreateNotificationDTO(
-            userId: userId,
-            companyId: companyId,
-            type: MeasurementNotificationType.syncFailed,
-            title: MeasurementNotificationCopy.syncFailedTitle,
-            body: MeasurementNotificationCopy.syncFailedBody(projectName: projectName),
-            projectId: projectId,
-            deepLinkType: "projectDetails",
-            persistent: false,
-            actionUrl: "ops://project/\(projectId)/photos/\(photoAnnotationId)?retry=1",
-            actionLabel: MeasurementNotificationCopy.retryLabel
-        )
     }
 }
 

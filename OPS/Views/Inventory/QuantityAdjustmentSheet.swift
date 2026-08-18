@@ -9,6 +9,75 @@
 import SwiftUI
 import SwiftData
 
+/// Seam for the inventory threshold rail. Conformed to by
+/// `NotificationRepository` (the `notify_inventory_threshold_crossed` RPC);
+/// tests substitute a spy.
+protocol InventoryThresholdNotifying {
+    /// The server recomputes the item's status from the stored row and returns
+    /// only the `inventory.manage` holders that received NEW rail rows — an
+    /// item that reads healthy returns an empty list rather than throwing.
+    @discardableResult
+    func notifyInventoryThresholdCrossed(itemId: String) async throws -> [String]
+}
+
+extension NotificationRepository: InventoryThresholdNotifying {}
+
+/// The threshold rail and its push, lifted out of the sheet so the rule that
+/// matters stays pinned: the push reaches exactly the people the server just
+/// gave a rail row, and nobody otherwise. The quantity is already saved by the
+/// time this runs, so a failed call is contained.
+enum InventoryThresholdNotificationDispatcher {
+    /// What the push lane would send. Modelled as a value so the send can be
+    /// substituted in tests — `OneSignalService` is a singleton with no seam.
+    struct PushPayload: Equatable {
+        let userIds: [String]
+        let title: String
+        let body: String
+        let data: [String: String]
+    }
+
+    /// Returns the ids the server reported as newly notified.
+    @discardableResult
+    static func dispatch(
+        itemId: String,
+        title: String,
+        body: String,
+        type: String,
+        syncer: InventoryThresholdNotifying = NotificationRepository.shared,
+        push: (PushPayload) async -> Void = { payload in
+            try? await OneSignalService.shared.sendToUsers(
+                userIds: payload.userIds,
+                title: payload.title,
+                body: payload.body,
+                data: payload.data
+            )
+        }
+    ) async -> [String] {
+        let notified: [String]
+        do {
+            notified = try await syncer.notifyInventoryThresholdCrossed(itemId: itemId)
+        } catch {
+            print("[QUANTITY_ADJUST] threshold rail failed: \(error)")
+            return []
+        }
+
+        // Empty is an honest recount — the stored quantity reads healthy, or
+        // everyone who would care already holds an unread alert. Either way,
+        // nobody's phone should buzz.
+        guard !notified.isEmpty else { return [] }
+
+        await push(
+            PushPayload(
+                userIds: notified,
+                title: title,
+                body: body,
+                data: ["type": type, "screen": "inventory"]
+            )
+        )
+        return notified
+    }
+}
+
 struct QuantityAdjustmentSheet: View {
     @EnvironmentObject private var dataController: DataController
     @Environment(\.dismiss) private var dismiss
@@ -370,47 +439,21 @@ struct QuantityAdjustmentSheet: View {
                     dismiss()
                 }
 
-                // Check if quantity crossed a threshold and notify holders
-                // of inventory.manage. Permission-gated, never role.
+                // The saved quantity may have crossed a threshold. The local
+                // reading gates the call; the SERVER decides from the row it
+                // just stored who is told — and the push follows exactly the
+                // ids it reports it told.
                 let status = item.thresholdStatus
                 if status == .warning || status == .critical {
-                    if let companyId = dataController.currentUser?.companyId {
-                        let alertTitle = status == .critical ? "Critical Stock Alert" : "Low Stock Warning"
-                        let alertBody = "\(item.name) is \(status == .critical ? "critically low" : "running low") (\(Int(item.quantity)) remaining)"
-                        let alertType = status == .critical ? "inventory_critical" : "inventory_warning"
-
-                        let managerIds = (try? await RecipientLookupService.usersWithPermission(
-                            companyId: companyId,
-                            permission: "inventory.manage"
-                        )) ?? []
-                        let currentId = UserDefaults.standard.string(forKey: "currentUserId")
-                        let recipients = managerIds.filter { $0 != currentId }
-
-                        if !recipients.isEmpty {
-                            let notifRepo = NotificationRepository()
-                            for recipient in recipients {
-                                let dto = NotificationRepository.CreateNotificationDTO(
-                                    userId: recipient,
-                                    companyId: companyId,
-                                    type: alertType,
-                                    title: alertTitle,
-                                    body: alertBody,
-                                    projectId: nil,
-                                    noteId: nil,
-                                    expenseId: nil,
-                                    batchId: nil,
-                                    deepLinkType: "inventory"
-                                )
-                                try? await notifRepo.createNotification(dto)
-                            }
-                            try? await OneSignalService.shared.sendToUsers(
-                                userIds: recipients,
-                                title: alertTitle,
-                                body: alertBody,
-                                data: ["type": alertType, "screen": "inventory"]
-                            )
-                            print("[QUANTITY_ADJUST] 📬 \(alertType) notification sent to \(recipients.count) recipients")
-                        }
+                    let isCritical = status == .critical
+                    let notified = await InventoryThresholdNotificationDispatcher.dispatch(
+                        itemId: item.id,
+                        title: isCritical ? "Critical Stock Alert" : "Low Stock Warning",
+                        body: "\(item.name) is \(isCritical ? "critically low" : "running low") (\(Int(item.quantity)) remaining)",
+                        type: isCritical ? "inventory_critical" : "inventory_warning"
+                    )
+                    if !notified.isEmpty {
+                        print("[QUANTITY_ADJUST] 📬 threshold notification sent to \(notified.count) recipients")
                     }
                 }
             } catch {

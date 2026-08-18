@@ -13,6 +13,132 @@ import Foundation
 import SwiftData
 import UIKit
 
+// MARK: - Guided setup completion rail
+//
+// All three guided flows — products, catalog, stock — raise the same rail
+// ("you finished building; here is what you built") through the one
+// `notify_guided_setup_completed` RPC. One seam, one gate, one containment
+// rule, stated here rather than three times across three flows.
+
+/// Seam for the guided-setup completion rail row. Conformed to by
+/// `NotificationRepository`; tests substitute a spy.
+protocol GuidedSetupCompletionNotifying {
+    /// The server picks the title, the deep link, and the body template from
+    /// `kind`, and assembles the body from whichever counts that kind reports —
+    /// dropping the zeroes.
+    @discardableResult
+    func notifyGuidedSetupCompleted(
+        kind: String,
+        productCount: Int?,
+        recipeCount: Int?,
+        serviceCount: Int?,
+        goodCount: Int?,
+        assemblyCount: Int?,
+        familyCount: Int?,
+        variantCount: Int?,
+        rollCount: Int?,
+        offcutCount: Int?,
+        bundleCount: Int?
+    ) async throws -> String
+}
+
+extension NotificationRepository: GuidedSetupCompletionNotifying {}
+
+/// What a guided run actually built. Each case carries exactly the counts its
+/// flow reports — a shape the server mirrors, so a count cannot land in the
+/// wrong slot unnoticed.
+enum GuidedSetupCompletion: Equatable {
+    case products(products: Int, recipes: Int)
+    case catalog(services: Int, goods: Int, assemblies: Int)
+    case stock(families: Int, variants: Int, rolls: Int, offcuts: Int, products: Int, bundles: Int)
+
+    /// The server's `p_kind`.
+    var kind: String {
+        switch self {
+        case .products: return "product_setup"
+        case .catalog:  return "catalog_setup"
+        case .stock:    return "stock_setup"
+        }
+    }
+
+    /// Nothing was built. Recipes cannot stand without a product row, and an
+    /// all-zero summary is rejected server-side — so this is the honest gate,
+    /// not a micro-optimization.
+    var builtNothing: Bool {
+        switch self {
+        case let .products(products, _):
+            return products <= 0
+        case let .catalog(services, goods, assemblies):
+            return services + goods + assemblies <= 0
+        case let .stock(families, variants, rolls, offcuts, products, bundles):
+            return families + variants + rolls + offcuts + products + bundles <= 0
+        }
+    }
+}
+
+/// Raises the completion rail for a finished guided run. Silent when the run
+/// built nothing; contained when the server can't be reached — the catalog rows
+/// are already saved either way, so the flow must still close cleanly.
+enum GuidedSetupNotificationDispatcher {
+    static func dispatch(
+        _ completion: GuidedSetupCompletion,
+        syncer: GuidedSetupCompletionNotifying = NotificationRepository.shared
+    ) async {
+        guard !completion.builtNothing else { return }
+
+        do {
+            switch completion {
+            case let .products(products, recipes):
+                _ = try await syncer.notifyGuidedSetupCompleted(
+                    kind: completion.kind,
+                    productCount: products,
+                    recipeCount: recipes,
+                    serviceCount: nil,
+                    goodCount: nil,
+                    assemblyCount: nil,
+                    familyCount: nil,
+                    variantCount: nil,
+                    rollCount: nil,
+                    offcutCount: nil,
+                    bundleCount: nil
+                )
+            case let .catalog(services, goods, assemblies):
+                _ = try await syncer.notifyGuidedSetupCompleted(
+                    kind: completion.kind,
+                    productCount: nil,
+                    recipeCount: nil,
+                    serviceCount: services,
+                    goodCount: goods,
+                    assemblyCount: assemblies,
+                    familyCount: nil,
+                    variantCount: nil,
+                    rollCount: nil,
+                    offcutCount: nil,
+                    bundleCount: nil
+                )
+            case let .stock(families, variants, rolls, offcuts, products, bundles):
+                _ = try await syncer.notifyGuidedSetupCompleted(
+                    kind: completion.kind,
+                    productCount: products,
+                    recipeCount: nil,
+                    serviceCount: nil,
+                    goodCount: nil,
+                    assemblyCount: nil,
+                    familyCount: families,
+                    variantCount: variants,
+                    rollCount: rolls,
+                    offcutCount: offcuts,
+                    bundleCount: bundles
+                )
+            }
+        } catch {
+            print("[GuidedSetup] completion notification failed (\(completion.kind)): \(error)")
+        }
+
+        NotificationCenter.default.post(name: .notificationReceived, object: nil)
+    }
+}
+
 @MainActor
 final class GuidedCatalogSetupModel: ObservableObject {
 
@@ -706,27 +832,19 @@ final class GuidedCatalogSetupModel: ObservableObject {
 
     // MARK: - §14 completion notification
 
-    /// Fires once, only when something was actually created this run.
+    /// Fires once, only when something was actually created this run. The
+    /// server words the row from the counts handed over here.
     func postCompletionNotification() {
         guard !didPostCompletion, !(savedLines.isEmpty && savedAssemblies.isEmpty) else { return }
         guard !userId.isEmpty, !companyId.isEmpty else { return }
         didPostCompletion = true
-        let body = "\(GuidedCatalogSetupModel.summaryLine(services: savedServiceCount, goods: savedGoodCount, assemblies: savedAssemblyCount)) saved for estimating."
-        let userId = self.userId
-        let companyId = self.companyId
+        let completion = GuidedSetupCompletion.catalog(
+            services: savedServiceCount,
+            goods: savedGoodCount,
+            assemblies: savedAssemblyCount
+        )
         Task {
-            try? await NotificationRepository.shared.createNotification(.init(
-                userId: userId,
-                companyId: companyId,
-                type: "standard",
-                title: "CATALOG SETUP COMPLETE",
-                body: body,
-                deepLinkType: "catalog_products",
-                persistent: false,
-                actionUrl: "/catalog?segment=products",
-                actionLabel: "VIEW PRODUCTS"
-            ))
-            NotificationCenter.default.post(name: .notificationReceived, object: nil)
+            await GuidedSetupNotificationDispatcher.dispatch(completion)
         }
     }
 }

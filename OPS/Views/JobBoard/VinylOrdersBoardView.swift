@@ -514,7 +514,8 @@ struct VinylOrdersBoardView: View {
                     settings: DeckMaterialsSettings(),
                     vinylSettings: .default,
                     color: nil,
-                    po: nil
+                    po: nil,
+                    projectTitle: input.title
                 )
             }
 
@@ -541,7 +542,8 @@ struct VinylOrdersBoardView: View {
                 settings: materialsSettings,
                 vinylSettings: vinylSettings,
                 color: (configColor?.isEmpty ?? true) ? nil : configColor,
-                po: nil
+                po: nil,
+                projectTitle: input.title
             )
         }
     }
@@ -552,9 +554,26 @@ struct VinylOrdersBoardView: View {
         resultBanner = nil
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
 
-        let service = VinylBulkMarkService(userId: userId) { pid, fields in
-            try await dataController.updateProjectFields(projectId: pid, fields: fields)
-        }
+        // Empty when the operator has no company on their profile; the
+        // recorder treats that as "cannot attribute" and skips the entry
+        // rather than writing an orphaned feed row.
+        let companyId = self.companyId ?? ""
+        let controller = dataController
+        let service = VinylBulkMarkService(
+            userId: userId,
+            updateProjectFields: { pid, fields in
+                try await dataController.updateProjectFields(projectId: pid, fields: fields)
+            },
+            recordActivity: { item, record in
+                VinylOrderActivityRecorder.record(
+                    projectId: item.projectId,
+                    companyId: companyId,
+                    authorId: userId,
+                    record: record,
+                    dataController: controller
+                )
+            }
+        )
         let allItems = items
         Task { @MainActor in
             let outcome = await service.markOrdered(items: allItems)

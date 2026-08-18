@@ -1430,6 +1430,14 @@ final class SyncEngine {
             // permanent rejection or crosses tenants.
             self.enqueueOrphanedSiteVisitWrites()
 
+            // Settle chains whose site visit was deleted in OPS: a completion
+            // carrying `cannot_complete_deleted_site_visit` can never land, and
+            // its children are RLS-blocked behind the deleted parent. The whole
+            // chain moves to protected vault custody (visible in PENDING WORK)
+            // instead of retrying forever. Runs after the orphan sweep so a
+            // reconstructed parent's dirty flags are already accounted for.
+            self.settleDeletedParentSiteVisitChains()
+
             // A media upload that parked because its local bytes were gone
             // can never be revived by the normal path (parked work never
             // auto-retries, and the orphan sweep treats parked as unresolved).
@@ -2114,6 +2122,54 @@ final class SyncEngine {
             }
         } catch {
             print("[SYNC_ENGINE] Site-visit orphan sweep failed: \(error)")
+        }
+    }
+
+    /// Converts parked/failed deleted-parent completions into protected vault
+    /// custody and settles their whole chain (SITE VISIT SYNC WEDGE). The
+    /// outbound engines only park the failing op — the vault is MainActor-bound,
+    /// so settlement happens here on the sweep cadence. Idempotent; a vault
+    /// failure aborts cleanly and the next sweep retries.
+    func settleDeletedParentSiteVisitChains() {
+        guard let modelContext else { return }
+        let companyId = UserDefaults.standard.string(
+            forKey: "currentUserCompanyId"
+        )?.lowercased() ?? ""
+        let userId = UserDefaults.standard.string(
+            forKey: "currentUserId"
+        )?.lowercased() ?? ""
+        guard !companyId.isEmpty, !userId.isEmpty else { return }
+
+        do {
+            let result = try SiteVisitDeletedParentSettlement.sweep(
+                in: modelContext,
+                activeUserId: userId,
+                activeCompanyId: companyId,
+                quarantine: { record in
+                    try SiteVisitRecoveryVault.shared.recordQuarantine(
+                        record,
+                        from: modelContext
+                    )
+                }
+            )
+            if !result.settledOperationIds.isEmpty {
+                print(
+                    "[SYNC_ENGINE] Settled \(result.settledOperationIds.count) "
+                        + "operation(s) for \(result.quarantinedVisitIds.count) "
+                        + "visit(s) deleted in OPS — moved to protected custody"
+                )
+                AnalyticsService.shared.track(
+                    eventType: .error,
+                    eventName: "sync_deleted_parent_settled",
+                    properties: [
+                        "visit_count": result.quarantinedVisitIds.count,
+                        "operation_count": result.settledOperationIds.count
+                    ]
+                )
+                refreshPendingCount()
+            }
+        } catch {
+            print("[SYNC_ENGINE] Deleted-parent settlement failed: \(error)")
         }
     }
 

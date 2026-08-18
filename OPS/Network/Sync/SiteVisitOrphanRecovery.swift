@@ -13,6 +13,12 @@ enum SiteVisitOrphanQuarantineReason: String, Codable, Equatable, Hashable {
     case foreignCompany = "foreign_company"
     case malformedIdentity = "malformed_identity"
     case ambiguousBinding = "ambiguous_binding"
+    /// The server reported the visit soft-deleted (`cannot_complete_deleted_site_visit`).
+    /// Every queued write for the visit is un-landable — child writes are
+    /// RLS-blocked once the parent carries `deleted_at` — so the chain moves to
+    /// protected custody instead of retrying forever. See
+    /// `SiteVisitDeletedParentSettlement`.
+    case parentDeleted = "parent_deleted"
 }
 
 struct SiteVisitOrphanQuarantine: Codable, Equatable, Identifiable {

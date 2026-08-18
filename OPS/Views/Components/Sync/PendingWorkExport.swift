@@ -43,6 +43,9 @@ enum PendingWorkExport {
         for url in photoFileURLs(item: item, modelContext: modelContext) {
             activityItems.append(url)
         }
+        for url in siteVisitMediaFileURLs(item: item, modelContext: modelContext) {
+            activityItems.append(url)
+        }
 
         return PendingWorkExportPayload(
             title: SyncStatusCopy.PendingWork.exportTitle(name: name),
@@ -70,6 +73,15 @@ enum PendingWorkExport {
             if let phone = client.phoneNumber, !phone.isEmpty { lines.append("  Phone: \(phone)") }
             if let address = client.address, !address.isEmpty { lines.append("  Address: \(address)") }
             if let notes = client.notes, !notes.isEmpty { lines.append("  Notes: \(notes)") }
+            lines.append("")
+        }
+
+        // Visit notes — for a quarantined packet the server may never accept
+        // this work again (deleted-parent custody), so the words the operator
+        // wrote on site travel with the export instead of dying on the phone.
+        if let notes = visitNotes(for: item, modelContext: modelContext) {
+            lines.append("VISIT NOTES")
+            lines.append("  \(notes)")
             lines.append("")
         }
 
@@ -119,6 +131,81 @@ enum PendingWorkExport {
                   FileManager.default.fileExists(atPath: photo.localPath) else { return nil }
             return URL(fileURLWithPath: photo.localPath)
         }
+    }
+
+    // MARK: - Site-visit media (quarantined packets)
+
+    /// Local, still-on-disk capture media for a quarantined site-visit packet.
+    /// The vault holds encrypted copies for custody; EXPORT hands the operator
+    /// the actual files — for a deleted-parent packet these bytes may exist
+    /// nowhere else (e.g. a rendered markup whose upload never landed). Remote
+    /// URLs are skipped (already durable in OPS), as are pointers whose file is
+    /// gone (a dead share item helps no one).
+    private static func siteVisitMediaFileURLs(
+        item: RecoveryItem,
+        modelContext: ModelContext
+    ) -> [URL] {
+        guard case .quarantinedVisit(let visit) = item else { return [] }
+        let visitId = visit.siteVisitId.lowercased()
+        let companyId = visit.companyId.lowercased()
+        // Whole-table fetch + in-memory match: stored id casing varies (see the
+        // capture-scan note in RecoveryInventory), and this runs once per
+        // explicit operator tap, never in a drain loop.
+        let artifacts = (
+            try? modelContext.fetch(FetchDescriptor<SiteVisitCaptureArtifact>())
+        ) ?? []
+        var urls: [URL] = []
+        var seen = Set<String>()
+        for artifact in artifacts where
+            artifact.deletedAt == nil
+                && artifact.siteVisitId.lowercased() == visitId
+                && artifact.companyId.lowercased() == companyId
+        {
+            let sources = [
+                artifact.localAssetURL,
+                artifact.renderedAssetURL,
+                artifact.thumbnailURL,
+            ]
+            for source in sources {
+                guard let source,
+                      !SiteVisitMediaSyncManager.isRemoteURL(source),
+                      seen.insert(source).inserted,
+                      let url = localMediaURL(source),
+                      FileManager.default.fileExists(atPath: url.path) else {
+                    continue
+                }
+                urls.append(url)
+            }
+        }
+        return urls
+    }
+
+    /// Same phone-local id resolution the recovery vault uses.
+    private static func localMediaURL(_ source: String) -> URL? {
+        if source.hasPrefix("local://project_images/") {
+            return ImageFileManager.shared.getFileURL(for: source)
+        }
+        if source.hasPrefix("file://") { return URL(string: source) }
+        if source.hasPrefix("/") { return URL(fileURLWithPath: source) }
+        return nil
+    }
+
+    /// The visit's own notes for a quarantined packet's summary block.
+    private static func visitNotes(
+        for item: RecoveryItem,
+        modelContext: ModelContext
+    ) -> String? {
+        guard case .quarantinedVisit(let visit) = item else { return nil }
+        let visitId = visit.siteVisitId.lowercased()
+        let companyId = visit.companyId.lowercased()
+        let visits = (try? modelContext.fetch(FetchDescriptor<SiteVisit>())) ?? []
+        guard let match = visits.first(where: {
+            $0.id.lowercased() == visitId && $0.companyId.lowercased() == companyId
+        }) else { return nil }
+        let notes = [match.notes, match.internalNotes]
+            .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        return notes.isEmpty ? nil : notes.joined(separator: "\n  ")
     }
 
     // MARK: - Item introspection

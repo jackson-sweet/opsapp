@@ -220,6 +220,21 @@ enum SyncStatusCopy {
         static let draftRow = "Not sent yet — open to finish"
         static let quarantineTitle = "Site visit recovery"
         static let quarantineRow = "Protected on this phone"
+
+        /// Reason-aware custody line. A parent-deleted packet is not an identity
+        /// mystery — the office deleted the visit in OPS while this phone still
+        /// held work for it. Say the event, then the guarantee; identity-review
+        /// packets keep the generic custody line.
+        static func quarantineRow(
+            for reason: SiteVisitOrphanQuarantineReason?
+        ) -> String {
+            switch reason {
+            case .parentDeleted:
+                return "Deleted in OPS — kept on this phone"
+            case .foreignCompany, .malformedIdentity, .ambiguousBinding, nil:
+                return quarantineRow
+            }
+        }
         static let retryingRow = "Retrying…"
         static let retrySucceededRow = "Updated"
         static let retryFailedRow = "Retry failed — still here"

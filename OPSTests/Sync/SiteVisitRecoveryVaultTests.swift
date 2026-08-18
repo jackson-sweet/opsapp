@@ -173,6 +173,53 @@ final class SiteVisitRecoveryVaultTests: XCTestCase {
     }
 
     @MainActor
+    func test_restoreLeavesQuarantinePacketsInProtectedCustody() throws {
+        // restore() runs on every login and must rehydrate only forced-logout
+        // archives (reason nil). A quarantine entry is custody, not luggage:
+        // dissolving it would erase the packet from PENDING WORK while its
+        // operations sit invisibly "quarantined" — the operator's only recovery
+        // surface would vanish silently. Same-identity on purpose; identity
+        // scoping is covered by the forced-logout test above.
+        let root = try makeTemporaryDirectory()
+        let vault = makeVault(root: root) { _ in nil }
+        let container = try makeContainer()
+        let context = container.mainContext
+        let artifact = SiteVisitCaptureArtifact(
+            siteVisitId: visitID,
+            companyId: companyID,
+            kind: .note,
+            source: .keyboard,
+            body: "Captured before the office deleted the visit",
+            createdBy: userID
+        )
+        context.insert(artifact)
+        try context.save()
+        let quarantine = SiteVisitOrphanQuarantine(
+            id: "site-visit-quarantine:foreign_company:\(companyID):\(visitID)",
+            userId: userID,
+            companyId: companyID,
+            siteVisitId: visitID,
+            reason: .foreignCompany,
+            childIds: [artifact.id],
+            createdAt: artifact.createdAt
+        )
+        try vault.recordQuarantine(quarantine, from: context)
+
+        let restored = try vault.restore(
+            into: context,
+            userId: userID,
+            companyId: companyID
+        )
+
+        XCTAssertEqual(restored, 0)
+        XCTAssertEqual(
+            vault.summaries(userId: userID, companyId: companyID).count,
+            1,
+            "The quarantine packet must stay in protected custody across logins"
+        )
+    }
+
+    @MainActor
     func test_explicitQuarantineDiscardRemovesExactOrphanSourceAndMediaButKeepsParent() throws {
         let root = try makeTemporaryDirectory()
         let mediaRoot = root.appendingPathComponent("media", isDirectory: true)

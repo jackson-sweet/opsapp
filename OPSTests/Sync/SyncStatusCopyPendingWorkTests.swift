@@ -67,6 +67,20 @@ final class SyncStatusCopyPendingWorkTests: XCTestCase {
         XCTAssertEqual(Copy.retryFailedRow, "Retry failed — still here")
     }
 
+    func testQuarantineRowSpeaksToTheReason() {
+        // A parent-deleted packet is not an identity mystery — the office
+        // deleted the visit in OPS. Say the event, then the guarantee.
+        XCTAssertEqual(
+            Copy.quarantineRow(for: .parentDeleted),
+            "Deleted in OPS — kept on this phone"
+        )
+        // Identity-review packets keep the existing custody line.
+        XCTAssertEqual(Copy.quarantineRow(for: .foreignCompany), Copy.quarantineRow)
+        XCTAssertEqual(Copy.quarantineRow(for: .malformedIdentity), Copy.quarantineRow)
+        XCTAssertEqual(Copy.quarantineRow(for: .ambiguousBinding), Copy.quarantineRow)
+        XCTAssertEqual(Copy.quarantineRow(for: nil), Copy.quarantineRow)
+    }
+
     func testBackoffRowInterpolationAndFloor() {
         XCTAssertEqual(Copy.backoffRow(seconds: 40), "Retrying — next in 40s")
         XCTAssertEqual(Copy.backoffRow(seconds: 1), "Retrying — next in 1s")

@@ -1342,9 +1342,21 @@ class DataController: ObservableObject {
                 try SiteVisitRecoveryVault.shared.recordQuarantine(record, from: context)
             }
         )
+        // Settle chains whose visit was deleted in OPS before the first drain
+        // of this login runs — see SiteVisitDeletedParentSettlement.
+        let settlement = try SiteVisitDeletedParentSettlement.sweep(
+            in: context,
+            activeUserId: userId,
+            activeCompanyId: companyId,
+            quarantine: { record in
+                try SiteVisitRecoveryVault.shared.recordQuarantine(record, from: context)
+            }
+        )
         let marker = "site_visit_orphan_recovery_v1:\(userId.lowercased()):\(companyId.lowercased())"
         UserDefaults.standard.set(Date().timeIntervalSince1970, forKey: marker)
-        if restored > 0 || !result.operationIds.isEmpty {
+        if restored > 0
+            || !result.operationIds.isEmpty
+            || !settlement.settledOperationIds.isEmpty {
             syncEngine.refreshPendingCount()
         }
     }

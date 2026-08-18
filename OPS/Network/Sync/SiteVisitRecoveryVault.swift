@@ -234,8 +234,16 @@ final class SiteVisitRecoveryVault {
         }
     }
 
-    /// Rehydrates only exact-identity entries. Each entry is removed only after
-    /// its media is restored and its SwiftData transaction commits.
+    /// Rehydrates only exact-identity, forced-logout entries (reason nil). Each
+    /// entry is removed only after its media is restored and its SwiftData
+    /// transaction commits.
+    ///
+    /// Quarantine entries (reason non-nil) are custody, not luggage: they ARE
+    /// the packet PENDING WORK renders, and for `parentDeleted` there is no way
+    /// to re-derive the reason locally after a restore dissolves the entry —
+    /// the packet would vanish silently while its operations sit invisibly
+    /// "quarantined". They leave the vault only through the operator's explicit
+    /// discard (or, for identity-review reasons, the orphan sweep re-recording).
     @discardableResult
     func restore(
         into modelContext: ModelContext,
@@ -245,7 +253,10 @@ final class SiteVisitRecoveryVault {
         let identity = SiteVisitRecoveryIdentity(userId: userId, companyId: companyId)
         guard !identity.userId.isEmpty, !identity.companyId.isEmpty else { return 0 }
         let entries = readEntries()
-            .filter { $0.archive.identity == identity }
+            .filter {
+                $0.archive.identity == identity
+                    && $0.archive.quarantineReason == nil
+            }
             .sorted { $0.archive.createdAt < $1.archive.createdAt }
         var restored = 0
 

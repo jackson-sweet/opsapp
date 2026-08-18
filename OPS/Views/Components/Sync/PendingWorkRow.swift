@@ -165,8 +165,8 @@ enum PendingWorkVisuals {
 
     /// The plain status line + tone for any loose item / bundle, resolved once.
     static func statusLine(for item: RecoveryItem, now: Date) -> (text: String, tone: SyncStatusTone) {
-        if case .quarantinedVisit = item {
-            return (SyncStatusCopy.PendingWork.quarantineRow, .stuck)
+        if case .quarantinedVisit(let visit) = item {
+            return (SyncStatusCopy.PendingWork.quarantineRow(for: visit.reason), .stuck)
         }
         let payload = displayStatus(for: item)
         return SyncStatusCopy.PendingWork.statusLine(

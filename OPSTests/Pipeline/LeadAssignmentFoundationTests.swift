@@ -252,48 +252,48 @@ final class LeadAssignmentFoundationTests: XCTestCase {
             preflightFailed: false,
             isSaving: false,
             requiresMatchReviewRefresh: false,
-            hasLikelyDuplicate: false,
-            hasSelectedMatch: false
+            answer: .createNew,
+            requiresExplicitAnswer: false
         ))
         XCTAssertFalse(ConvertToProjectSheet.canCommitConversion(
             hasLoadedPreflight: true,
             preflightFailed: true,
             isSaving: false,
             requiresMatchReviewRefresh: false,
-            hasLikelyDuplicate: false,
-            hasSelectedMatch: false
+            answer: .createNew,
+            requiresExplicitAnswer: false
         ))
         XCTAssertFalse(ConvertToProjectSheet.canCommitConversion(
             hasLoadedPreflight: true,
             preflightFailed: false,
             isSaving: false,
             requiresMatchReviewRefresh: true,
-            hasLikelyDuplicate: false,
-            hasSelectedMatch: false
+            answer: .createNew,
+            requiresExplicitAnswer: false
         ))
         XCTAssertFalse(ConvertToProjectSheet.canCommitConversion(
             hasLoadedPreflight: true,
             preflightFailed: false,
             isSaving: false,
             requiresMatchReviewRefresh: false,
-            hasLikelyDuplicate: true,
-            hasSelectedMatch: false
+            answer: .undecided,
+            requiresExplicitAnswer: true
         ))
         XCTAssertTrue(ConvertToProjectSheet.canCommitConversion(
             hasLoadedPreflight: true,
             preflightFailed: false,
             isSaving: false,
             requiresMatchReviewRefresh: false,
-            hasLikelyDuplicate: true,
-            hasSelectedMatch: true
+            answer: .link(projectId: "project-existing"),
+            requiresExplicitAnswer: true
         ))
         XCTAssertTrue(ConvertToProjectSheet.canCommitConversion(
             hasLoadedPreflight: true,
             preflightFailed: false,
             isSaving: false,
             requiresMatchReviewRefresh: false,
-            hasLikelyDuplicate: false,
-            hasSelectedMatch: false
+            answer: .createNew,
+            requiresExplicitAnswer: false
         ))
     }
 
@@ -337,8 +337,8 @@ final class LeadAssignmentFoundationTests: XCTestCase {
             preflightFailed: false,
             isSaving: false,
             requiresMatchReviewRefresh: false,
-            hasLikelyDuplicate: false,
-            hasSelectedMatch: false,
+            answer: .createNew,
+            requiresExplicitAnswer: false,
             creationBlocker: addressPreflight.creationBlocker
         ))
         XCTAssertFalse(ConvertToProjectSheet.canCommitConversion(
@@ -346,8 +346,8 @@ final class LeadAssignmentFoundationTests: XCTestCase {
             preflightFailed: false,
             isSaving: false,
             requiresMatchReviewRefresh: false,
-            hasLikelyDuplicate: false,
-            hasSelectedMatch: false,
+            answer: .createNew,
+            requiresExplicitAnswer: false,
             creationBlocker: reviewPreflight.creationBlocker
         ))
         XCTAssertTrue(ConvertToProjectSheet.shouldStopCreateAfterAddressRecheck(

@@ -1039,6 +1039,19 @@ struct PINGatedView: View {
         .onReceive(NotificationCenter.default.publisher(for: .deviceDidShake)) { _ in
             requestBugReport(source: .shake)
         }
+        // MARK: - Bug Report (Screenshot-to-Report)
+        // Second trigger into the same pipeline. iOS posts this AFTER the
+        // screenshot and hands over no image, so the offer renders the app's
+        // own window here and holds the result until the operator either taps
+        // REPORT or lets the toast go. It offers — it never presents; the tap
+        // is what enters BugReportTriggerCoordinator. See
+        // ScreenshotBugReportOffer.swift for the guards and the quiet window.
+        .onReceive(NotificationCenter.default.publisher(for: .operatorDidTakeScreenshot)) { _ in
+            ScreenshotBugReportOffer.shared.offer(
+                appState: appState,
+                dataController: dataController
+            )
+        }
         // MARK: - Company Setup Prompt Sheet (2nd+ launch)
         .sheet(isPresented: $showCompanySetupPrompt) {
             if let company = dataController.getCurrentUserCompany() {

@@ -91,6 +91,7 @@ struct VinylOrderConfirmSheet: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing3) {
                         header
+                        sourceSection
                         vinylSection
                         consumablesSection
                         resetButton
@@ -106,18 +107,95 @@ struct VinylOrderConfirmSheet: View {
 
     private var header: some View {
         VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
-            Text("// CONFIRM ORDER")
+            Text(draft.disposition == .shop ? "// SHOP MATERIAL" : "// CONFIRM ORDER")
                 .font(OPSStyle.Typography.metadata)
                 .foregroundColor(OPSStyle.Colors.secondaryText)
                 .tracking(1.1)
             Text("\(projectTitle.uppercased()) · \(deckTitle.uppercased())")
                 .font(OPSStyle.Typography.captionBold)
                 .foregroundColor(OPSStyle.Colors.primaryText)
-            Text("Adjust any line to what you actually ordered.")
+            Text(draft.disposition.confirmHint)
                 .font(OPSStyle.Typography.caption)
                 .foregroundColor(OPSStyle.Colors.secondaryText)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    // MARK: - Source
+
+    /// WHERE the material came from — the first thing the operator knows when
+    /// this sheet opens (they just hung up with the supplier, or they just
+    /// walked past the rack), and the answer that governs every number below.
+    /// Asking it first means they never fill in quantities and then wipe them.
+    ///
+    /// FROM SHOP zeroes the form, because on the shop path nothing was
+    /// purchased — that is the zeroing Jackson asked for, in the situation he
+    /// asked for it in. Every line stays editable afterwards: a partial pull
+    /// ("vinyl was on the rack, the glue still got ordered") is real, and a
+    /// locked zero would force the record to lie.
+    private var sourceSection: some View {
+        section(title: "SOURCE") {
+            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
+                HStack(spacing: 0) {
+                    ForEach(VinylOrderDisposition.allCases, id: \.self) { option in
+                        Button {
+                            select(option)
+                        } label: {
+                            Text(option.sourceLabel)
+                                .font(OPSStyle.Typography.smallCaption)
+                                .foregroundColor(
+                                    option == draft.disposition
+                                        ? OPSStyle.Colors.primaryText
+                                        : OPSStyle.Colors.secondaryText
+                                )
+                                .frame(maxWidth: .infinity)
+                                .frame(height: OPSStyle.Layout.touchTargetMin)
+                                .background(
+                                    option == draft.disposition
+                                        ? OPSStyle.Colors.surfaceActive
+                                        : Color.clear
+                                )
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityAddTraits(option == draft.disposition ? [.isSelected] : [])
+                    }
+                }
+                .background(OPSStyle.Colors.subtleBackground)
+                .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius))
+                .overlay(
+                    RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                        .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+                )
+
+                if draft.disposition == .shop {
+                    Text("Nothing ordered. Add back anything you still have to buy.")
+                        .font(OPSStyle.Typography.smallCaption)
+                        .foregroundColor(OPSStyle.Colors.tertiaryText)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+        }
+    }
+
+    /// Switching to FROM SHOP zeroes the form; switching back restores the
+    /// calculator's suggestion, so the operator is never left staring at a wall
+    /// of zeros they now have to rebuild by hand.
+    private func select(_ option: VinylOrderDisposition) {
+        guard option != draft.disposition else { return }
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        withAnimation(OPSStyle.Animation.panel) {
+            switch option {
+            case .shop:
+                draft = draft.zeroed()
+                draft.disposition = .shop
+            case .supplier:
+                var restored = draft.isZeroed ? calculated : draft
+                restored.disposition = .supplier
+                restored.sharedConsumables = draft.sharedConsumables
+                draft = restored
+            }
+        }
     }
 
     // MARK: - Vinyl
@@ -126,7 +204,12 @@ struct VinylOrderConfirmSheet: View {
     private var vinylSection: some View {
         section(title: "VINYL") {
             if isRollMode {
-                quantityStepper(label: "ROLLS", value: $draft.rollCount, range: 0...500, step: 1)
+                OPSCounterRow(
+                    label: "ROLLS",
+                    value: $draft.rollCount,
+                    range: 0...500,
+                    support: calculatedSupport(calculated.rollCount, current: draft.rollCount)
+                )
                 HStack(spacing: OPSStyle.Layout.spacing2) {
                     Text("≈ \(rollEchoSqFt) SQ FT")
                         .font(OPSStyle.Typography.smallCaption)
@@ -139,7 +222,13 @@ struct VinylOrderConfirmSheet: View {
                         .monospacedDigit()
                 }
             } else {
-                quantityStepper(label: "ORDER SQ FT", value: $draft.vinylOrderedSqFt, range: 0...20000, step: 5)
+                OPSCounterRow(
+                    label: "ORDER SQ FT",
+                    value: $draft.vinylOrderedSqFt,
+                    range: 0...20000,
+                    step: 5,
+                    support: calculatedSupport(calculated.vinylOrderedSqFt, current: draft.vinylOrderedSqFt)
+                )
             }
         }
     }
@@ -149,19 +238,52 @@ struct VinylOrderConfirmSheet: View {
     private var consumablesSection: some View {
         section(title: "FLASHING & GLUE") {
             VStack(spacing: OPSStyle.Layout.spacing2) {
-                quantityStepper(label: "DRIP STICKS", value: $draft.dripSticks, range: 0...999, step: 1)
-                quantityStepper(label: "CLIP STICKS", value: $draft.clipSticks, range: 0...999, step: 1)
-                quantityStepper(label: "90 STICKS", value: $draft.ninetySticks, range: 0...999, step: 1)
-                quantityStepper(label: "GLUE BUCKETS", value: $draft.glueBuckets, range: 0...999, step: 1)
+                OPSCounterRow(
+                    label: "DRIP STICKS",
+                    value: $draft.dripSticks,
+                    range: 0...999,
+                    support: calculatedSupport(calculated.dripSticks, current: draft.dripSticks)
+                )
+                OPSCounterRow(
+                    label: "CLIP STICKS",
+                    value: $draft.clipSticks,
+                    range: 0...999,
+                    support: calculatedSupport(calculated.clipSticks, current: draft.clipSticks)
+                )
+                OPSCounterRow(
+                    label: "90 STICKS",
+                    value: $draft.ninetySticks,
+                    range: 0...999,
+                    support: calculatedSupport(calculated.ninetySticks, current: draft.ninetySticks)
+                )
+                OPSCounterRow(
+                    label: "GLUE BUCKETS",
+                    value: $draft.glueBuckets,
+                    range: 0...999,
+                    support: calculatedSupport(calculated.glueBuckets, current: draft.glueBuckets)
+                )
             }
         }
+    }
+
+    /// `CALC 14` under a line the operator has moved off the suggestion — so a
+    /// hand-edit always shows what it departed from, and an untouched line stays
+    /// quiet rather than restating its own value.
+    private func calculatedSupport(_ calculatedValue: Int, current: Int) -> String? {
+        current == calculatedValue ? nil : "CALC \(calculatedValue)"
     }
 
     // MARK: - Reset
 
     private var resetButton: some View {
         Button {
-            draft = calculated
+            // Resets the QUANTITIES, not the source. Where the material came
+            // from is a fact the operator stated; the calculator has no opinion
+            // on it and must not silently overwrite it.
+            var restored = calculated
+            restored.disposition = draft.disposition
+            restored.sharedConsumables = draft.sharedConsumables
+            draft = restored
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
         } label: {
             Text("RESET TO CALCULATED")
@@ -190,7 +312,7 @@ struct VinylOrderConfirmSheet: View {
                 onConfirm(draft)
                 dismiss()
             } label: {
-                Text("CONFIRM ORDERED")
+                Text(draft.disposition.commitLabel)
                     .font(OPSStyle.Typography.buttonLabel)
                     .foregroundColor(OPSStyle.Colors.background)
                     .frame(maxWidth: .infinity)
@@ -240,24 +362,4 @@ struct VinylOrderConfirmSheet: View {
         )
     }
 
-    private func quantityStepper(
-        label: String,
-        value: Binding<Int>,
-        range: ClosedRange<Int>,
-        step: Int
-    ) -> some View {
-        Stepper(value: value, in: range, step: step) {
-            HStack(spacing: OPSStyle.Layout.spacing2) {
-                Text(label)
-                    .font(OPSStyle.Typography.smallCaption)
-                    .foregroundColor(OPSStyle.Colors.tertiaryText)
-                Spacer(minLength: 0)
-                Text("\(value.wrappedValue)")
-                    .font(OPSStyle.Typography.dataValue)
-                    .foregroundColor(OPSStyle.Colors.primaryText)
-                    .monospacedDigit()
-            }
-        }
-        .tint(OPSStyle.Colors.secondaryText)
-    }
 }

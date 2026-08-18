@@ -88,6 +88,39 @@ struct ActivityTabView: View {
         return trimmed.isEmpty ? nil : trimmed
     }
 
+    /// Standing instructions written on this project's tasks. They are the
+    /// brief the crew re-reads on every visit, not an event that happened
+    /// once — so they are pinned above the chronology rather than sunk into
+    /// it (bugs f1346d3d / f3c4a2ca). Terminal work sorts last and reads
+    /// faded: its instruction is history, but hiding it would look like data
+    /// loss to the person who wrote it.
+    private var pinnedTaskNotes: [PinnedTaskNote] {
+        let annotated = project.tasks
+            .filter { $0.deletedAt == nil }
+            .compactMap { (task: ProjectTask) -> (task: ProjectTask, notes: String)? in
+                let trimmed = (task.taskNotes ?? "")
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !trimmed.isEmpty else { return nil }
+                return (task: task, notes: trimmed)
+            }
+            .sorted { lhs, rhs in
+                if lhs.task.status.isTerminal != rhs.task.status.isTerminal {
+                    return !lhs.task.status.isTerminal
+                }
+                return lhs.task.displayOrder < rhs.task.displayOrder
+            }
+
+        return annotated.map { entry in
+            PinnedTaskNote(
+                id: entry.task.id,
+                title: entry.task.displayTitle,
+                color: Color(hex: entry.task.effectiveColor) ?? OPSStyle.Colors.primaryAccent,
+                status: entry.task.status,
+                notes: entry.notes
+            )
+        }
+    }
+
     /// Comment count per photo URL for the carousel badge (bug e1f073ed).
     /// Explicit photo comments (photoURL set) always count; a feed note that
     /// attached this photo counts only when it carries text (a caption is a
@@ -113,6 +146,10 @@ struct ActivityTabView: View {
                 ProjectDescriptionPinnedEntryView(description: pinnedProjectDescription)
             }
 
+            if !pinnedTaskNotes.isEmpty {
+                TaskNotesPinnedEntryView(entries: pinnedTaskNotes)
+            }
+
             if notesViewModel.isLoading && notesViewModel.notes.isEmpty && notesViewModel.annotations.isEmpty {
                 HStack {
                     Spacer()
@@ -121,7 +158,7 @@ struct ActivityTabView: View {
                     Spacer()
                 }
                 .padding(.vertical, OPSStyle.Layout.spacing4)
-            } else if feedItems.isEmpty && pinnedProjectDescription == nil {
+            } else if feedItems.isEmpty && pinnedProjectDescription == nil && pinnedTaskNotes.isEmpty {
                 // Empty state
                 VStack(spacing: OPSStyle.Layout.spacing2_5) {
                     Image(systemName: "note.text")
@@ -514,6 +551,144 @@ private struct ProjectDescriptionPinnedEntryView: View {
         .padding(OPSStyle.Layout.spacing3)
         .glassSurface()
         .accessibilityElement(children: .contain)
+    }
+}
+
+/// One task's standing instruction, flattened out of SwiftData so the card
+/// below never re-reads the model while the feed scrolls.
+private struct PinnedTaskNote: Identifiable {
+    let id: String
+    let title: String
+    let color: Color
+    let status: TaskStatus
+    let notes: String
+
+    var isTerminal: Bool { status.isTerminal }
+
+    /// Only terminal work earns a status chip — an active task's chip would
+    /// say nothing the crew does not already assume.
+    var statusChip: String? {
+        switch status {
+        case .active:    return nil
+        case .completed: return "COMPLETE"
+        case .cancelled: return "CANCELLED"
+        }
+    }
+}
+
+/// The task half of the pinned brief: what each piece of work on this project
+/// says, in schedule order, above the chronological feed. Short briefs open
+/// on arrival; a long one opens on request, because a wall of standing text
+/// between the composer and today's photos costs more than it gives.
+private struct TaskNotesPinnedEntryView: View {
+    let entries: [PinnedTaskNote]
+
+    /// Above this count the card arrives collapsed and announces its size.
+    private static let openByDefaultLimit = 3
+
+    @State private var isExpanded: Bool
+
+    init(entries: [PinnedTaskNote]) {
+        self.entries = entries
+        _isExpanded = State(initialValue: entries.count <= Self.openByDefaultLimit)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
+            header
+
+            if isExpanded {
+                VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2_5) {
+                    ForEach(Array(entries.enumerated()), id: \.element.id) { index, entry in
+                        if index > 0 {
+                            Rectangle()
+                                .fill(OPSStyle.Colors.separator)
+                                .frame(height: OPSStyle.Layout.Border.standard)
+                        }
+                        entryRow(entry)
+                    }
+                }
+                .transition(.opacity)
+            }
+        }
+        .padding(OPSStyle.Layout.spacing3)
+        .glassSurface()
+        .accessibilityElement(children: .contain)
+    }
+
+    private var header: some View {
+        Button {
+            withAnimation(OPSStyle.Animation.panel) {
+                isExpanded.toggle()
+            }
+        } label: {
+            HStack(spacing: OPSStyle.Layout.spacing2) {
+                Text("PINNED")
+                    .font(OPSStyle.Typography.microLabel)
+                    .foregroundColor(OPSStyle.Colors.secondaryText)
+
+                Rectangle()
+                    .fill(OPSStyle.Colors.cardBorder)
+                    .frame(height: OPSStyle.Layout.Border.standard)
+
+                Text("TASK NOTES")
+                    .font(OPSStyle.Typography.microLabel)
+                    .foregroundColor(OPSStyle.Colors.primaryText)
+
+                if !isExpanded {
+                    Text("\(entries.count)")
+                        .font(OPSStyle.Typography.microLabel)
+                        .monospacedDigit()
+                        .foregroundColor(OPSStyle.Colors.secondaryText)
+                }
+
+                Image(systemName: isExpanded ? OPSStyle.Icons.chevronUp : OPSStyle.Icons.chevronDown)
+                    .font(OPSStyle.Typography.microLabel)
+                    .foregroundColor(OPSStyle.Colors.secondaryText)
+                    .frame(width: OPSStyle.Layout.touchTargetMin, height: OPSStyle.Layout.touchTargetMin)
+                    .accessibilityHidden(true)
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(PlainButtonStyle())
+        .frame(minHeight: OPSStyle.Layout.touchTargetMin)
+        .accessibilityLabel("Task notes")
+        .accessibilityValue(isExpanded ? "Expanded" : "Collapsed, \(entries.count) tasks")
+    }
+
+    @ViewBuilder
+    private func entryRow(_ entry: PinnedTaskNote) -> some View {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
+            HStack(spacing: OPSStyle.Layout.spacing2) {
+                TaskBadge(
+                    name: entry.title,
+                    color: entry.color,
+                    size: .small,
+                    faded: entry.isTerminal
+                )
+
+                if let chip = entry.statusChip {
+                    StatusBadgePill(
+                        text: chip,
+                        color: entry.status.color,
+                        size: .small
+                    )
+                }
+
+                Spacer(minLength: 0)
+            }
+
+            Text(entry.notes)
+                .font(OPSStyle.Typography.body)
+                .foregroundColor(
+                    entry.isTerminal
+                        ? OPSStyle.Colors.secondaryText
+                        : OPSStyle.Colors.primaryText
+                )
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .combine)
     }
 }
 

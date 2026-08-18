@@ -485,3 +485,446 @@ extension NotificationRepository {
             .value
     }
 }
+
+// MARK: - Legacy call-site RPCs (bug e302355c ADDENDUM)
+//
+// The call sites the first wave left behind — task/project lifecycle, vinyl,
+// guided setup, team management, time-off requests, inventory thresholds,
+// photo storage, billable week, cashflow forecast — cross the same boundary.
+// These are the iOS bindings for migration
+// 20260818043043_ios_legacy_notification_surface_rpcs: the server resolves the
+// actor from the JWT, derives every recipient from the anchor row (project and
+// task crews, permission holders, invitation rows) rather than from these
+// arguments, and renders the shipped copy from fixed templates. A caller-
+// supplied id list may only SUBSET a row's recorded membership; counts and
+// numerics are clamped server-side. Methods that return ids return only the
+// recipients that received NEW rows — aim the companion OneSignal push at
+// exactly that list.
+
+extension NotificationRepository {
+
+    /// Task marked complete → the project's crew. The server refuses a task
+    /// that isn't recorded completed and derives recipients from the project
+    /// row's crew list, minus the actor. Returns the ids that received NEW rows.
+    @discardableResult
+    func notifyTaskCompleted(taskId: String) async throws -> [String] {
+        struct Params: Encodable {
+            let p_task_id: String
+        }
+        return try await client
+            .rpc("notify_task_completed", params: Params(p_task_id: taskId))
+            .execute()
+            .value
+    }
+
+    /// Project marked complete → the project's crew, minus the actor. The
+    /// server refuses a project that isn't recorded completed. Returns the ids
+    /// that received NEW rows.
+    @discardableResult
+    func notifyProjectCompleted(projectId: String) async throws -> [String] {
+        struct Params: Encodable {
+            let p_project_id: String
+        }
+        return try await client
+            .rpc("notify_project_completed", params: Params(p_project_id: projectId))
+            .execute()
+            .value
+    }
+
+    /// Task dates moved → the task's own crew, minus the actor. The server
+    /// refuses completed/cancelled tasks and tasks missing either date — a
+    /// schedule nobody can act on is not announceable. Returns the ids that
+    /// received NEW rows.
+    @discardableResult
+    func notifyTaskRescheduled(taskId: String) async throws -> [String] {
+        struct Params: Encodable {
+            let p_task_id: String
+        }
+        return try await client
+            .rpc("notify_task_rescheduled", params: Params(p_task_id: taskId))
+            .execute()
+            .value
+    }
+
+    /// One task unblocked by `notify_dependency_ready`, with the crew that
+    /// received NEW rows for it.
+    struct DependencyReadyEntry: Decodable, Equatable {
+        let taskId: String
+        let userIds: [String]
+
+        enum CodingKeys: String, CodingKey {
+            case taskId  = "task_id"
+            case userIds = "user_ids"
+        }
+    }
+
+    /// Completing a task unblocks its dependents: the server resolves each
+    /// dependent's effective dependencies, notifies the crew of every task the
+    /// completion cleared, and returns one entry per task that produced NEW
+    /// rows (tasks with none are omitted). Push per entry.
+    @discardableResult
+    func notifyDependencyReady(completedTaskId: String) async throws -> [DependencyReadyEntry] {
+        struct Params: Encodable {
+            let p_completed_task_id: String
+        }
+        return try await client
+            .rpc(
+                "notify_dependency_ready",
+                params: Params(p_completed_task_id: completedTaskId)
+            )
+            .execute()
+            .value
+    }
+
+    /// Crew added to a task. `userIds` nil announces the task's whole recorded
+    /// crew; a supplied list may only SUBSET that crew — the server intersects
+    /// it with the row's membership and drops the actor. Returns the ids that
+    /// received NEW rows.
+    @discardableResult
+    func notifyTaskAssigned(taskId: String, userIds: [String]? = nil) async throws -> [String] {
+        struct Params: Encodable {
+            let p_task_id: String
+            let p_user_ids: [String]?
+        }
+        return try await client
+            .rpc(
+                "notify_task_assigned",
+                params: Params(p_task_id: taskId, p_user_ids: userIds)
+            )
+            .execute()
+            .value
+    }
+
+    /// Crew added to a project. The list is intersected with the project row's
+    /// recorded membership and the actor is dropped. Returns the ids that
+    /// received NEW rows.
+    @discardableResult
+    func notifyProjectAssigned(projectId: String, userIds: [String]) async throws -> [String] {
+        struct Params: Encodable {
+            let p_project_id: String
+            let p_user_ids: [String]
+        }
+        return try await client
+            .rpc(
+                "notify_project_assigned",
+                params: Params(p_project_id: projectId, p_user_ids: userIds)
+            )
+            .execute()
+            .value
+    }
+
+    /// Paired follow-up task spawned by the scheduler → the predecessor's crew,
+    /// the actor included (the spawn is system-initiated, not an actor echo).
+    /// The spawn row must already exist server-side, so flush pending sync
+    /// operations before calling. Rail only — no push lane. Returns the ids
+    /// that received NEW rows.
+    @discardableResult
+    func notifyTaskPairSpawned(taskId: String) async throws -> [String] {
+        struct Params: Encodable {
+            let p_task_id: String
+        }
+        return try await client
+            .rpc("notify_task_pair_spawned", params: Params(p_task_id: taskId))
+            .execute()
+            .value
+    }
+
+    /// One crew member's share of an auto-schedule run — the moved-task count
+    /// their NEW summary row reports.
+    struct ScheduleRunSummaryEntry: Decodable, Equatable {
+        let userId: String
+        let movedCount: Int
+
+        enum CodingKeys: String, CodingKey {
+            case userId     = "user_id"
+            case movedCount = "moved_count"
+        }
+    }
+
+    /// Bulk auto-schedule run → one summary row per affected crew member. Pass
+    /// every moved task id (already pushed); the server counts each member's
+    /// share itself and returns one entry per member that received a NEW row.
+    @discardableResult
+    func notifyScheduleRunSummary(taskIds: [String]) async throws -> [ScheduleRunSummaryEntry] {
+        struct Params: Encodable {
+            let p_task_ids: [String]
+        }
+        return try await client
+            .rpc("notify_schedule_run_summary", params: Params(p_task_ids: taskIds))
+            .execute()
+            .value
+    }
+
+    /// Vinyl order drafted off a deck note (self). The note must be the actor's
+    /// own on that project; square footage is clamped server-side. Returns
+    /// `created` or `noop` — a throw is the call site's rail failure.
+    @discardableResult
+    func notifyVinylOrderDrafted(projectId: String, noteId: String, orderedSqFt: Int) async throws -> String {
+        struct Params: Encodable {
+            let p_project_id: String
+            let p_note_id: String
+            let p_ordered_sq_ft: Int
+        }
+        return try await client
+            .rpc(
+                "notify_vinyl_order_drafted",
+                params: Params(
+                    p_project_id: projectId,
+                    p_note_id: noteId,
+                    p_ordered_sq_ft: orderedSqFt
+                )
+            )
+            .execute()
+            .value
+    }
+
+    /// Vinyl bulk order marked (self). The date blurb is rendered from the
+    /// server clock and the count is clamped. Returns `created` or `noop`.
+    @discardableResult
+    func notifyVinylBulkOrdered(markedCount: Int) async throws -> String {
+        struct Params: Encodable {
+            let p_marked_count: Int
+        }
+        return try await client
+            .rpc("notify_vinyl_bulk_ordered", params: Params(p_marked_count: markedCount))
+            .execute()
+            .value
+    }
+
+    /// Offcut banked to stock (self). The dimensions in the copy are rendered
+    /// from the stock-unit row's own measurements — it must be a live offcut in
+    /// the actor's company. Returns `created` or `noop`.
+    @discardableResult
+    func notifyVinylOffcutBanked(stockUnitId: String, projectId: String? = nil) async throws -> String {
+        struct Params: Encodable {
+            let p_stock_unit_id: String
+            let p_project_id: String?
+        }
+        return try await client
+            .rpc(
+                "notify_vinyl_offcut_banked",
+                params: Params(p_stock_unit_id: stockUnitId, p_project_id: projectId)
+            )
+            .execute()
+            .value
+    }
+
+    /// Guided setup finished (self). `kind` is `product_setup`,
+    /// `catalog_setup`, or `stock_setup`; pass only the counts that kind
+    /// reports and the server assembles the matching body from them, dropping
+    /// the zeroes. Returns `created` or `noop`.
+    @discardableResult
+    func notifyGuidedSetupCompleted(
+        kind: String,
+        productCount: Int? = nil,
+        recipeCount: Int? = nil,
+        serviceCount: Int? = nil,
+        goodCount: Int? = nil,
+        assemblyCount: Int? = nil,
+        familyCount: Int? = nil,
+        variantCount: Int? = nil,
+        rollCount: Int? = nil,
+        offcutCount: Int? = nil,
+        bundleCount: Int? = nil
+    ) async throws -> String {
+        struct Params: Encodable {
+            let p_kind: String
+            let p_product_count: Int?
+            let p_recipe_count: Int?
+            let p_service_count: Int?
+            let p_good_count: Int?
+            let p_assembly_count: Int?
+            let p_family_count: Int?
+            let p_variant_count: Int?
+            let p_roll_count: Int?
+            let p_offcut_count: Int?
+            let p_bundle_count: Int?
+        }
+        return try await client
+            .rpc(
+                "notify_guided_setup_completed",
+                params: Params(
+                    p_kind: kind,
+                    p_product_count: productCount,
+                    p_recipe_count: recipeCount,
+                    p_service_count: serviceCount,
+                    p_good_count: goodCount,
+                    p_assembly_count: assemblyCount,
+                    p_family_count: familyCount,
+                    p_variant_count: variantCount,
+                    p_roll_count: rollCount,
+                    p_offcut_count: offcutCount,
+                    p_bundle_count: bundleCount
+                )
+            )
+            .execute()
+            .value
+    }
+
+    /// Role assigned to a teammate. The actor must hold `team.assign_roles`,
+    /// and the role named in the copy is the member's recorded role — never the
+    /// caller's claim about it. Returns `created` or `noop`; push only on
+    /// `created`.
+    @discardableResult
+    func notifyRoleAssigned(memberId: String) async throws -> String {
+        struct Params: Encodable {
+            let p_member_id: String
+        }
+        return try await client
+            .rpc("notify_role_assigned", params: Params(p_member_id: memberId))
+            .execute()
+            .value
+    }
+
+    /// Team invitations sent (self). The server confirms each contact against
+    /// the actor's own recent invitation rows and names the first confirmed one
+    /// in the body; nothing confirmed means no row. Returns `created` or `noop`.
+    @discardableResult
+    func notifyTeamInvitesSent(emails: [String], phones: [String]) async throws -> String {
+        struct Params: Encodable {
+            let p_emails: [String]
+            let p_phones: [String]
+        }
+        return try await client
+            .rpc(
+                "notify_team_invites_sent",
+                params: Params(p_emails: emails, p_phones: phones)
+            )
+            .execute()
+            .value
+    }
+
+    /// Time off booked → the person it was booked for. The event must be
+    /// recorded approved and the actor must hold `time_off.approve`; the server
+    /// renders the date range and picks the self- or on-behalf wording. Returns
+    /// `created` or `noop` — push only when the target isn't the actor and the
+    /// row was created.
+    @discardableResult
+    func notifyTimeOffBooked(eventId: String) async throws -> String {
+        struct Params: Encodable {
+            let p_event_id: String
+        }
+        return try await client
+            .rpc("notify_time_off_booked", params: Params(p_event_id: eventId))
+            .execute()
+            .value
+    }
+
+    /// Recipients that received NEW rows from `notify_time_off_requested` — the
+    /// approver push lane targets exactly these ids.
+    struct TimeOffRequestFanout: Decodable, Equatable {
+        let approverUserIds: [String]
+        let targetNotified: Bool
+
+        enum CodingKeys: String, CodingKey {
+            case approverUserIds = "approver_user_ids"
+            case targetNotified  = "target_notified"
+        }
+    }
+
+    /// Time-off request submitted → the requester's own confirmation, the
+    /// person it was requested for when that isn't the actor, and every
+    /// approver. The event must be recorded pending; re-calls are idempotent
+    /// per event, so a retried transport can't double-post.
+    @discardableResult
+    func notifyTimeOffRequested(eventId: String) async throws -> TimeOffRequestFanout {
+        struct Params: Encodable {
+            let p_event_id: String
+        }
+        return try await client
+            .rpc("notify_time_off_requested", params: Params(p_event_id: eventId))
+            .execute()
+            .value
+    }
+
+    /// Inventory quantity crossed a threshold → `inventory.manage` holders. The
+    /// server recomputes the item's status from the stored row, so call after
+    /// every successful adjustment and let it decide: an in-range item returns
+    /// an empty list rather than throwing. Returns the ids that received NEW
+    /// rows.
+    @discardableResult
+    func notifyInventoryThresholdCrossed(itemId: String) async throws -> [String] {
+        struct Params: Encodable {
+            let p_item_id: String
+        }
+        return try await client
+            .rpc("notify_inventory_threshold_crossed", params: Params(p_item_id: itemId))
+            .execute()
+            .value
+    }
+
+    /// Photo storage limit reached on this device (self, persistent). The
+    /// server holds at most one unread row per device, so a second report from
+    /// the same device can't stack. Returns `created` or `kept`.
+    @discardableResult
+    func syncPhotoStorageLimit(photosRemaining: Int, deviceName: String) async throws -> String {
+        struct Params: Encodable {
+            let p_photos_remaining: Int
+            let p_device_name: String
+        }
+        return try await client
+            .rpc(
+                "sync_photo_storage_limit_notification",
+                params: Params(p_photos_remaining: photosRemaining, p_device_name: deviceName)
+            )
+            .execute()
+            .value
+    }
+
+    /// Weekly billable summary (self). The actor must hold `finances.view`;
+    /// `weekStart` is the week's first day as a `yyyy-MM-dd` date string, and
+    /// the count and amount are clamped server-side. Returns `created` or
+    /// `kept` — a week already reported stays reported, read or unread.
+    @discardableResult
+    func syncBillableWeek(projectCount: Int, amount: Double, weekStart: String) async throws -> String {
+        struct Params: Encodable {
+            let p_project_count: Int
+            let p_amount: Double
+            let p_week_start: String
+        }
+        return try await client
+            .rpc(
+                "sync_billable_week_notification",
+                params: Params(
+                    p_project_count: projectCount,
+                    p_amount: amount,
+                    p_week_start: weekStart
+                )
+            )
+            .execute()
+            .value
+    }
+
+    /// Cashflow dip forecast → every `finances.view` holder, the actor included
+    /// (a dip is a company condition, not an actor echo). Persistent: the
+    /// server keeps an identical unread row and replaces one whose balance has
+    /// moved. `weekStart` is a `yyyy-MM-dd` date string. Returns the ids that
+    /// received NEW rows.
+    @discardableResult
+    func syncForecastDip(lowestBalance: Double, weekStart: String) async throws -> [String] {
+        struct Params: Encodable {
+            let p_lowest_balance: Double
+            let p_week_start: String
+        }
+        return try await client
+            .rpc(
+                "sync_forecast_dip_notification",
+                params: Params(p_lowest_balance: lowestBalance, p_week_start: weekStart)
+            )
+            .execute()
+            .value
+    }
+
+    /// Forecast recovered: resolves the company's outstanding dip rows — a
+    /// persistent row must never outlive its condition — and posts the
+    /// all-clear to the same `finances.view` holders. Returns the ids that
+    /// received NEW rows.
+    @discardableResult
+    func syncForecastCleared() async throws -> [String] {
+        struct Params: Encodable {}
+        return try await client
+            .rpc("sync_forecast_cleared_notification", params: Params())
+            .execute()
+            .value
+    }
+}

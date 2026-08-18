@@ -6,9 +6,10 @@
 import Foundation
 
 enum HomeBillableThisWeekNotificationDispatcher {
+    /// The rail row's type is the server's to set; this constant survives
+    /// because the local banner tags its `userInfo` with it so a tap routes to
+    /// the same place (`NotificationManager.scheduleBillableThisWeekNotification`).
     static let notificationType = "billable_this_week"
-    static let deepLinkType = "billableThisWeek"
-    static let actionLabel = "OPEN HOME"
 
     static func shouldDispatch(
         rollup: HomeBillableThisWeekRollup,
@@ -55,15 +56,12 @@ enum HomeBillableThisWeekNotificationDispatcher {
                         totalKnownAmount: totalKnownAmount
                     )
                 },
-                hasRemoteNotification: { type, userId, actionUrl in
-                    try await repo.hasNotification(
-                        type: type,
-                        userId: userId,
-                        actionUrl: actionUrl
+                syncRemote: { projectCount, amount, weekKey in
+                    try await repo.syncBillableWeek(
+                        projectCount: projectCount,
+                        amount: amount,
+                        weekStart: weekKey
                     )
-                },
-                createRemoteNotification: { dto in
-                    try await repo.createNotification(dto)
                 },
                 onNotificationCreated: onNotificationCreated
             )
@@ -81,8 +79,7 @@ enum HomeBillableThisWeekNotificationDispatcher {
         lastDispatchedWeekStart: () -> String?,
         markWeekDispatched: (String) -> Void,
         scheduleLocalNotification: (Int, Double) -> Void,
-        hasRemoteNotification: (String, String, String) async throws -> Bool,
-        createRemoteNotification: (NotificationRepository.CreateNotificationDTO) async throws -> Void,
+        syncRemote: (Int, Double, String) async throws -> String,
         onNotificationCreated: () -> Void = {}
     ) async {
         guard let userId, !userId.isEmpty,
@@ -97,49 +94,33 @@ enum HomeBillableThisWeekNotificationDispatcher {
             calendar: calendar
         ) else { return }
 
-        let actionUrl = actionUrl(forWeekStart: weekKey)
-
+        // One call replaces the old read-then-insert pair. The server renders
+        // the copy, owns the deep link, and decides whether this week is new:
+        // `created` means the summary just landed, `kept` means the week was
+        // already reported — read or unread — and must not be announced twice.
         do {
-            let alreadyExists = try await hasRemoteNotification(
-                notificationType,
-                userId,
-                actionUrl
+            let verdict = try await syncRemote(
+                rollup.projectCount,
+                rollup.totalKnownAmount,
+                weekKey
             )
-            if alreadyExists {
-                markWeekDispatched(weekKey)
-                return
-            }
 
-            let dto = NotificationRepository.CreateNotificationDTO(
-                userId: userId,
-                companyId: companyId,
-                type: notificationType,
-                title: "BILLABLE THIS WEEK",
-                body: notificationBody(for: rollup),
-                projectId: nil,
-                noteId: nil,
-                expenseId: nil,
-                batchId: nil,
-                deepLinkType: deepLinkType,
-                persistent: false,
-                actionUrl: actionUrl,
-                actionLabel: actionLabel
-            )
-            try await createRemoteNotification(dto)
-            scheduleLocalNotification(rollup.projectCount, rollup.totalKnownAmount)
-            markWeekDispatched(weekKey)
-            onNotificationCreated()
+            switch verdict {
+            case "created":
+                scheduleLocalNotification(rollup.projectCount, rollup.totalKnownAmount)
+                markWeekDispatched(weekKey)
+                onNotificationCreated()
+            case "kept":
+                // The rail already carries this week. Record it locally so the
+                // Monday gate stops asking, but no banner: a reinstall or a
+                // second device must not re-announce delivered news.
+                markWeekDispatched(weekKey)
+            default:
+                print("[BILLABLE_THIS_WEEK] Unexpected verdict '\(verdict)' — week left unrecorded")
+            }
         } catch {
             print("[BILLABLE_THIS_WEEK] Notification dispatch failed: \(error)")
         }
-    }
-
-    static func notificationBody(for rollup: HomeBillableThisWeekRollup) -> String {
-        let jobLabel = "\(rollup.projectCount) \(rollup.projectCount == 1 ? "job" : "jobs")"
-        guard rollup.totalKnownAmount > 0 else {
-            return "\(jobLabel) ready for billing"
-        }
-        return "\(jobLabel) / \(currency(rollup.totalKnownAmount)) billable"
     }
 
     static func weekStartKey(for date: Date, calendar: Calendar = .current) -> String {
@@ -150,24 +131,7 @@ enum HomeBillableThisWeekNotificationDispatcher {
         return formatter.string(from: date)
     }
 
-    static func actionUrl(forWeekStart weekStart: String) -> String {
-        "ops://home/billable-this-week?weekStart=\(weekStart)"
-    }
-
     private static func defaultsKey(userId: String, companyId: String) -> String {
         "homeBillableThisWeekNotification.\(companyId).\(userId)"
     }
-
-    private static func currency(_ amount: Double) -> String {
-        "$\(wholeDollarFormatter.string(from: NSNumber(value: amount.rounded())) ?? "0")"
-    }
-
-    private static let wholeDollarFormatter: NumberFormatter = {
-        let formatter = NumberFormatter()
-        formatter.numberStyle = .decimal
-        formatter.usesGroupingSeparator = true
-        formatter.groupingSeparator = ","
-        formatter.maximumFractionDigits = 0
-        return formatter
-    }()
 }

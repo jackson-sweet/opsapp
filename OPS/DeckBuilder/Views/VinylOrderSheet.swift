@@ -6,6 +6,51 @@ import SwiftData
 import SwiftUI
 import UIKit
 
+/// Seam for the drafted vinyl-order rail row. Conformed to by
+/// `NotificationRepository` (the `notify_vinyl_order_drafted` RPC); tests
+/// substitute a spy.
+protocol VinylOrderDraftedNotifying {
+    /// The server validates the note against the project and the actor, renders
+    /// the copy from those rows, and reports `created` or `noop`.
+    @discardableResult
+    func notifyVinylOrderDrafted(projectId: String, noteId: String, orderedSqFt: Int) async throws -> String
+}
+
+extension NotificationRepository: VinylOrderDraftedNotifying {}
+
+/// The drafted-order rail dispatch, lifted out of the sheet so its one branch
+/// stays pinned. The order, its line item, and the deck note are all on the
+/// server by the time this runs — a rail that misses downgrades the status
+/// line, it never fails the draft.
+enum VinylOrderNotificationDispatcher {
+    enum Outcome: Equatable {
+        /// The rail holds the row — newly written, or already standing.
+        case delivered
+        /// The rail never got it. The sheet says so rather than implying the
+        /// order was announced.
+        case railFailed
+    }
+
+    static func dispatchDrafted(
+        projectId: String,
+        noteId: String,
+        orderedSqFt: Int,
+        syncer: VinylOrderDraftedNotifying = NotificationRepository.shared
+    ) async -> Outcome {
+        do {
+            _ = try await syncer.notifyVinylOrderDrafted(
+                projectId: projectId,
+                noteId: noteId,
+                orderedSqFt: orderedSqFt
+            )
+            return .delivered
+        } catch {
+            print("[VinylOrderSheet] Order drafted rail failed: \(error)")
+            return .railFailed
+        }
+    }
+}
+
 struct VinylOrderSheet: View {
     @ObservedObject var viewModel: DeckBuilderViewModel
     let projectId: String?
@@ -1625,31 +1670,17 @@ struct VinylOrderSheet: View {
             print("[VinylOrderSheet] Local save failed after remote order create: \(error)")
         }
 
-        var railFailed = false
-        do {
-            try await NotificationRepository.shared.createNotification(
-                NotificationRepository.CreateNotificationDTO(
-                    userId: userId,
-                    companyId: companyId,
-                    type: "catalog_order_drafted",
-                    title: "// VINYL ORDER DRAFTED",
-                    body: "\(draftProjectTitle.uppercased()) · \(draftPlan.totalOrderedSqFt) SQ FT READY",
-                    projectId: projectId,
-                    noteId: createdNoteDTO.id,
-                    deepLinkType: "catalogOrders",
-                    persistent: false,
-                    actionUrl: "ops://catalog/orders?tab=draft",
-                    actionLabel: "REVIEW"
-                )
-            )
-        } catch {
-            railFailed = true
-            print("[VinylOrderSheet] Notification insert failed: \(error)")
-        }
+        // The rail row is the server's to write and to word: it reads the
+        // project and note rows this call names and renders the copy from them.
+        let railOutcome = await VinylOrderNotificationDispatcher.dispatchDrafted(
+            projectId: projectId,
+            noteId: createdNoteDTO.id,
+            orderedSqFt: draftPlan.totalOrderedSqFt
+        )
 
         if localSaveFailed {
             statusMessage = "ORDER DRAFTED / LOCAL SYNC PENDING"
-        } else if railFailed {
+        } else if railOutcome == .railFailed {
             statusMessage = "ORDER DRAFTED / RAIL FAILED"
         } else {
             statusMessage = "ORDER DRAFTED"

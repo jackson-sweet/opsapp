@@ -841,6 +841,33 @@ private struct VinylBulkOrderPageView: View {
 
 // MARK: - Consumables + send page
 
+/// Seam for the bulk-order summary rail row. Conformed to by
+/// `NotificationRepository` (the `notify_vinyl_bulk_ordered` RPC); tests
+/// substitute a spy.
+protocol VinylBulkOrderedNotifying {
+    @discardableResult
+    func notifyVinylBulkOrdered(markedCount: Int) async throws -> String
+}
+
+extension NotificationRepository: VinylBulkOrderedNotifying {}
+
+/// ONE summary row per bulk run — never one per job (spec § 12.9). The server
+/// stamps the date from its own clock, so the run hands over nothing but the
+/// count. The jobs are already marked ordered by the time this runs, so a
+/// failed row is contained.
+enum VinylBulkOrderNotificationDispatcher {
+    static func dispatchSummary(
+        markedCount: Int,
+        syncer: VinylBulkOrderedNotifying = NotificationRepository.shared
+    ) async {
+        do {
+            _ = try await syncer.notifyVinylBulkOrdered(markedCount: markedCount)
+        } catch {
+            print("[VinylBulkOrderSendPageView] summary notification failed: \(error)")
+        }
+    }
+}
+
 struct VinylBulkOrderSendPageView: View {
     let context: VinylBulkOrderWizardContext
     let sections: [VinylBulkOrderSection]
@@ -1171,35 +1198,14 @@ struct VinylBulkOrderSendPageView: View {
             // ONE summary notification whenever anything marked (spec § 12.9) —
             // a partial failure still ordered the succeeded jobs.
             if !outcome.succeeded.isEmpty {
-                await postSummaryNotification(markedCount: outcome.succeeded.count)
+                await VinylBulkOrderNotificationDispatcher.dispatchSummary(
+                    markedCount: outcome.succeeded.count
+                )
             }
             UINotificationFeedbackGenerator().notificationOccurred(outcome.failed.isEmpty ? .success : .warning)
             isCommitting = false
             let failedItems = items.filter { outcome.failed.contains($0.projectId) }
             onCommitted(outcome, failedItems)
-        }
-    }
-
-    private func postSummaryNotification(markedCount: Int) async {
-        guard let userId = context.userId else { return }
-        do {
-            try await NotificationRepository.shared.createNotification(
-                NotificationRepository.CreateNotificationDTO(
-                    userId: userId,
-                    companyId: context.companyId,
-                    type: "vinyl_bulk_ordered",
-                    title: "// VINYL ORDERED",
-                    body: "\(markedCount) PROJECT\(markedCount == 1 ? "" : "S") · \(DateHelper.simpleDateString(from: Date()).uppercased())",
-                    projectId: nil,
-                    noteId: nil,
-                    deepLinkType: nil,
-                    persistent: false,
-                    actionUrl: nil,
-                    actionLabel: nil
-                )
-            )
-        } catch {
-            print("[VinylBulkOrderSendPageView] summary notification failed: \(error)")
         }
     }
 

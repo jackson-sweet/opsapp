@@ -16,6 +16,83 @@ import Supabase
 // here to extract names, addresses, phones, emails.
 import Contacts
 
+// MARK: - Assignment Rail Notifications
+
+/// Seam for the assignment rail rows raised when a project form saves.
+/// Conformed to by `NotificationRepository` (the `notify_project_assigned` /
+/// `notify_task_assigned` RPCs); tests substitute a spy.
+protocol ProjectAssignmentNotifying {
+    /// The supplied ids may only SUBSET the project row's recorded crew — the
+    /// server intersects them and drops the actor. Returns the ids that
+    /// received NEW rail rows.
+    @discardableResult
+    func notifyProjectAssigned(projectId: String, userIds: [String]) async throws -> [String]
+
+    /// `userIds` nil announces the task row's whole recorded crew. Returns the
+    /// ids that received NEW rail rows.
+    @discardableResult
+    func notifyTaskAssigned(taskId: String, userIds: [String]?) async throws -> [String]
+}
+
+extension NotificationRepository: ProjectAssignmentNotifying {}
+
+/// The assignment dispatches, lifted out of the form so the push targeting can
+/// be exercised without a rendered sheet. Both are best-effort: the project and
+/// the task are already saved by the time these run.
+///
+/// The push follows the RETURNED ids, never the candidate list. A candidate
+/// whose rail row was deduped already has an unread assignment notice standing;
+/// pushing at them anyway is a second buzz for news they were already given.
+enum ProjectAssignmentNotificationDispatcher {
+
+    /// Crew added to the project itself (people with no task on it — those get
+    /// a task assignment instead).
+    static func dispatchProjectAssigned(
+        projectId: String,
+        userIds: [String],
+        syncer: ProjectAssignmentNotifying = NotificationRepository.shared,
+        push: (String) async -> Void
+    ) async {
+        guard !userIds.isEmpty else { return }
+
+        let notified: [String]
+        do {
+            notified = try await syncer.notifyProjectAssigned(projectId: projectId, userIds: userIds)
+        } catch {
+            print("[PROJECT_CREATE] ⚠️ Failed to create project assignment notifications: \(error)")
+            return
+        }
+
+        print("[PROJECT_CREATE] 📬 Project assignment rail rows created for \(notified.count) of \(userIds.count) team members")
+        for userId in notified {
+            await push(userId)
+        }
+    }
+
+    /// Crew on a freshly created task. `userIds` is nil at creation time: every
+    /// member recorded on the row is new to it, and the row — not the local
+    /// relationship — is the honest source of that list.
+    static func dispatchTaskAssigned(
+        taskId: String,
+        userIds: [String]?,
+        syncer: ProjectAssignmentNotifying = NotificationRepository.shared,
+        push: (String) async -> Void
+    ) async {
+        let notified: [String]
+        do {
+            notified = try await syncer.notifyTaskAssigned(taskId: taskId, userIds: userIds)
+        } catch {
+            print("[TASK_CREATE] ⚠️ Failed to create task assignment notifications: \(error)")
+            return
+        }
+
+        print("[TASK_CREATE] 📬 Task assignment rail rows created for \(notified.count) team members")
+        for userId in notified {
+            await push(userId)
+        }
+    }
+}
+
 struct ProjectFormSheet: View {
     enum Mode {
         case create
@@ -2754,39 +2831,25 @@ struct ProjectFormSheet: View {
             let taskTeamMemberIds = Set(localTasks.flatMap { $0.teamMemberIds })
             let projectOnlyMemberIds = projectTeamMemberIds.subtracting(taskTeamMemberIds)
 
-            if !projectOnlyMemberIds.isEmpty {
-                let projectName = project.title
-                let capturedProjectId = project.id
+            let projectName = project.title
+            let capturedProjectId = project.id
+            let assignedMemberIds = Array(projectOnlyMemberIds)
 
-                for userId in projectOnlyMemberIds {
-                    Task {
-                        // Create in-app notification
-                        let dto = NotificationRepository.CreateNotificationDTO(
+            Task {
+                await ProjectAssignmentNotificationDispatcher.dispatchProjectAssigned(
+                    projectId: capturedProjectId,
+                    userIds: assignedMemberIds
+                ) { userId in
+                    do {
+                        try await OneSignalService.shared.notifyProjectAssignment(
                             userId: userId,
-                            companyId: companyId,
-                            type: "project_assignment",
-                            title: "Added to Project",
-                            body: "You've been added to \"\(projectName)\"",
-                            projectId: capturedProjectId,
-                            noteId: nil,
-                            expenseId: nil,
-                            batchId: nil,
-                            deepLinkType: "projectDetails"
+                            projectName: projectName,
+                            projectId: capturedProjectId
                         )
-                        try? await NotificationRepository().createNotification(dto)
-                        // Send push
-                        do {
-                            try await OneSignalService.shared.notifyProjectAssignment(
-                                userId: userId,
-                                projectName: projectName,
-                                projectId: capturedProjectId
-                            )
-                        } catch {
-                            print("[PROJECT_CREATE] ⚠️ Failed to send project notification to \(userId): \(error)")
-                        }
+                    } catch {
+                        print("[PROJECT_CREATE] ⚠️ Failed to send project notification to \(userId): \(error)")
                     }
                 }
-                print("[PROJECT_CREATE] 📬 Project assignment notifications queued for \(projectOnlyMemberIds.count) team members")
             }
 
             // Upload images in background (Supabase — clientId/companyId already on project)
@@ -3198,46 +3261,33 @@ struct ProjectFormSheet: View {
                 try? modelContext.save()
             }
 
-            // Send task assignment notifications to team members
-            // Use Set to deduplicate in case teamMembers has duplicates
-            let teamMemberIds = Set(task.teamMembers.map { $0.id })
-            print("[TASK_CREATE] 📬 Team member IDs for notification: \(teamMemberIds) (count: \(teamMemberIds.count))")
-            if !teamMemberIds.isEmpty {
-                let taskName = task.displayTitle
-                let projectName = project.title
+            // Announce the assignment. The task row is on the server now, and
+            // its recorded crew is the honest recipient list — the local
+            // `teamMembers` relationship can be empty even when the CSV that
+            // was pushed is correct (bug daaf7efe), so the client names nobody
+            // and lets the row speak.
+            let taskName = task.displayTitle
+            let projectName = project.title
+            let capturedProjectId = project.id
+            let notifiedTaskId = remoteTaskId
 
-                for userId in teamMemberIds {
-                    print("[TASK_CREATE] 📬 Sending notification to user: \(userId)")
-                    Task {
-                        // Create in-app notification
-                        let dto = NotificationRepository.CreateNotificationDTO(
+            Task {
+                await ProjectAssignmentNotificationDispatcher.dispatchTaskAssigned(
+                    taskId: notifiedTaskId,
+                    userIds: nil
+                ) { userId in
+                    do {
+                        try await OneSignalService.shared.notifyTaskAssignment(
                             userId: userId,
-                            companyId: companyId,
-                            type: "task_assignment",
-                            title: "New Task Assignment",
-                            body: "You've been assigned to \"\(taskName)\" on \(projectName)",
-                            projectId: project.id,
-                            noteId: nil,
-                            expenseId: nil,
-                            batchId: nil,
-                            deepLinkType: "taskDetails"
+                            taskName: taskName,
+                            projectName: projectName,
+                            taskId: notifiedTaskId,
+                            projectId: capturedProjectId
                         )
-                        try? await NotificationRepository().createNotification(dto)
-                        // Send push
-                        do {
-                            try await OneSignalService.shared.notifyTaskAssignment(
-                                userId: userId,
-                                taskName: taskName,
-                                projectName: projectName,
-                                taskId: remoteTaskId,
-                                projectId: project.id
-                            )
-                        } catch {
-                            print("[TASK_CREATE] ⚠️ Failed to send notification to \(userId): \(error)")
-                        }
+                    } catch {
+                        print("[TASK_CREATE] ⚠️ Failed to send notification to \(userId): \(error)")
                     }
                 }
-                print("[TASK_CREATE] 📬 Task assignment notifications queued for \(teamMemberIds.count) team members")
             }
         } catch {
             print("[TASK_CREATE] ⚠️ Failed to sync task to server: \(error)")

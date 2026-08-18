@@ -46,6 +46,59 @@ extension Notification.Name {
     static let photoStorageBudgetExceeded = Notification.Name("photoStorageBudgetExceeded")
 }
 
+// MARK: - Cap-Hit Rail Notification
+
+/// Seam for the photo-storage cap rail row. Conformed to by
+/// `NotificationRepository` (the `sync_photo_storage_limit_notification` RPC);
+/// tests substitute a spy.
+protocol PhotoStorageLimitNotifying {
+    /// Returns `created` or `kept`. The server resolves the actor itself and
+    /// holds at most one unread row per device, so repeated reports from the
+    /// same phone cannot stack.
+    @discardableResult
+    func syncPhotoStorageLimit(photosRemaining: Int, deviceName: String) async throws -> String
+}
+
+extension NotificationRepository: PhotoStorageLimitNotifying {}
+
+/// Reports a cap hit to the rail and decides whether the local cooldown should
+/// start. Lifted out of the service so the verdict handling is testable
+/// without UserDefaults or a network.
+enum PhotoStorageLimitRailDispatcher {
+
+    /// `created` wrote a fresh row; `kept` means the server is already holding
+    /// an unread notice for this device. Both mean the rail is telling the
+    /// truth right now, so both start the cooldown — with the server owning
+    /// at-most-one-unread-per-device, the client cooldown is a call-rate
+    /// optimization, not the dedupe itself. A throw stamps nothing: the next
+    /// sync must stay free to report the cap again.
+    static func dispatch(
+        photosRemaining: Int,
+        deviceName: String,
+        syncer: PhotoStorageLimitNotifying = NotificationRepository.shared,
+        markPosted: () -> Void
+    ) async {
+        let verdict: String
+        do {
+            verdict = try await syncer.syncPhotoStorageLimit(
+                photosRemaining: photosRemaining,
+                deviceName: deviceName
+            )
+        } catch {
+            print("[PhotoPrefetch] Failed to post rail notification: \(error)")
+            return
+        }
+
+        guard verdict == "created" || verdict == "kept" else {
+            print("[PhotoPrefetch] Rail notification returned '\(verdict)' — cooldown not started")
+            return
+        }
+
+        markPosted()
+        print("[PhotoPrefetch] Cap-hit rail notification \(verdict) (\(photosRemaining) photos)")
+    }
+}
+
 /// Snapshot of budget state at the moment prefetch paused. Delivered via
 /// NotificationCenter for the cap-hit UI to act on.
 struct PhotoPrefetchBudgetReport {
@@ -493,42 +546,19 @@ final class PhotoPrefetchService: ObservableObject {
             }
         }
 
-        guard let userId = UserDefaults.standard.string(forKey: "currentUserId"), !userId.isEmpty else {
-            print("[PhotoPrefetch] Skipping rail notification — no currentUserId")
-            return
-        }
-        guard let companyId = UserDefaults.standard.string(forKey: "currentUserCompanyId"), !companyId.isEmpty else {
-            print("[PhotoPrefetch] Skipping rail notification — no currentUserCompanyId")
-            return
-        }
-
-        let photos = report.photosRemaining
-        let photoPhrase = photos == 1 ? "1 photo" : "\(photos) photos"
         // Name the device so the notification is actionable when read on the
         // web rail / another device — the storage cap is a per-device local
         // cache limit, and the user needs to know which one filled up (bug
         // d5da3d51). @MainActor class, so UIDevice.current is safe to read.
+        // The server resolves the actor and their company from the session and
+        // renders the copy from these two values.
         let deviceName = UIDevice.current.name
-        let title = "Photo storage limit reached on \(deviceName)"
-        let body = "\(photoPhrase) couldn't download to \(deviceName). On that device, open Settings → Photo Storage to raise the limit or free up space."
 
-        let dto = NotificationRepository.CreateNotificationDTO(
-            userId: userId,
-            companyId: companyId,
-            type: "photo_storage_limit",
-            title: title,
-            body: body,
-            deepLinkType: "photoStorage",
-            persistent: true,
-            actionLabel: "Manage Storage"
-        )
-
-        do {
-            try await NotificationRepository.shared.createNotification(dto)
+        await PhotoStorageLimitRailDispatcher.dispatch(
+            photosRemaining: report.photosRemaining,
+            deviceName: deviceName
+        ) {
             UserDefaults.standard.set(Date(), forKey: RailKey.lastPostedAt)
-            print("[PhotoPrefetch] Posted cap-hit rail notification (\(photoPhrase))")
-        } catch {
-            print("[PhotoPrefetch] Failed to post rail notification: \(error)")
         }
     }
 }

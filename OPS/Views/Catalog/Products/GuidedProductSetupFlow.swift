@@ -2379,30 +2379,18 @@ struct GuidedProductSetupFlow: View {
         }
     }
 
+    /// Announces what this run built. The dispatcher holds the "built nothing"
+    /// gate and the server words the row from these counts.
     private func postCompletionNotificationIfNeeded() {
-        guard !savedProducts.isEmpty else { return }
         let userId = dataController.currentUser?.id ?? ""
-        let companyId = self.companyId
         guard !userId.isEmpty, !companyId.isEmpty else { return }
 
-        let productClause = "\(savedProducts.count) product \(savedProducts.count == 1 ? "row" : "rows")"
-        let recipeClause = savedRecipeRowCount > 0
-            ? " and \(savedRecipeRowCount) recipe \(savedRecipeRowCount == 1 ? "row" : "rows")"
-            : ""
-        let body = "\(productClause)\(recipeClause) saved for estimating."
+        let completion = GuidedSetupCompletion.products(
+            products: savedProducts.count,
+            recipes: savedRecipeRowCount
+        )
         Task {
-            try? await NotificationRepository.shared.createNotification(.init(
-                userId: userId,
-                companyId: companyId,
-                type: "standard",
-                title: "PRODUCT SETUP COMPLETE",
-                body: body,
-                deepLinkType: "catalog_products",
-                persistent: false,
-                actionUrl: "/catalog?segment=products",
-                actionLabel: "VIEW PRODUCTS"
-            ))
-            NotificationCenter.default.post(name: .notificationReceived, object: nil)
+            await GuidedSetupNotificationDispatcher.dispatch(completion)
         }
     }
 

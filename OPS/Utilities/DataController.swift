@@ -31,6 +31,51 @@ private enum ProjectTeamAssignmentSyncError: LocalizedError {
     }
 }
 
+/// Seam for the task/project lifecycle rails DataController owns — task and
+/// project completion, reschedule, dependency-ready, task assignment, paired
+/// spawn, and the bulk auto-schedule summary. Conformed to by
+/// `NotificationRepository` (the narrow `notify_*` RPCs); tests substitute a spy.
+///
+/// Every one of these derives its recipients and renders its copy SERVER-side
+/// from the recorded rows, which has two consequences the call sites must
+/// honour: the mutation's own writes have to reach the server before the call
+/// runs, and the ids that come back — the recipients that received NEW rail
+/// rows — are the only honest push targets.
+protocol TaskLifecycleNotifying {
+    @discardableResult
+    func notifyTaskCompleted(taskId: String) async throws -> [String]
+
+    @discardableResult
+    func notifyProjectCompleted(projectId: String) async throws -> [String]
+
+    @discardableResult
+    func notifyTaskRescheduled(taskId: String) async throws -> [String]
+
+    /// One call for the whole fan-out: the server resolves which tasks the
+    /// completion unblocked and returns an entry per task that produced NEW rows.
+    @discardableResult
+    func notifyDependencyReady(
+        completedTaskId: String
+    ) async throws -> [NotificationRepository.DependencyReadyEntry]
+
+    /// `userIds` may only SUBSET the task row's recorded crew — the server
+    /// intersects the list with the row's membership and drops the actor.
+    @discardableResult
+    func notifyTaskAssigned(taskId: String, userIds: [String]?) async throws -> [String]
+
+    @discardableResult
+    func notifyTaskPairSpawned(taskId: String) async throws -> [String]
+
+    /// The whole moved-task batch in one call; the server counts each crew
+    /// member's own share from those rows.
+    @discardableResult
+    func notifyScheduleRunSummary(
+        taskIds: [String]
+    ) async throws -> [NotificationRepository.ScheduleRunSummaryEntry]
+}
+
+extension NotificationRepository: TaskLifecycleNotifying {}
+
 /// Main controller for managing data, authentication, and app state
 class DataController: ObservableObject {
     enum LogoutMode {
@@ -101,7 +146,16 @@ class DataController: ObservableObject {
 
     /// Permission store reference — set from OPSApp on launch
     var permissionStore: PermissionStore?
-    
+
+    /// Creator of the task/project lifecycle rail rows. Production talks to the
+    /// narrow server RPCs; tests substitute a spy.
+    var taskLifecycleSyncer: TaskLifecycleNotifying = NotificationRepository.shared
+
+    /// Override for the pending-work flush every lifecycle rail runs before its
+    /// RPC. Production drains the real outbound queue; tests inject a recorder
+    /// so the flush-then-call ordering is pinned rather than assumed.
+    var notificationSyncFlush: (() async -> Void)?
+
     // MARK: - Dependencies
     let authManager: AuthManager
     private let keychainManager: KeychainManager
@@ -3955,59 +4009,29 @@ class DataController: ObservableObject {
                 properties: ["task_type": task.taskType?.display ?? "unknown"]
             )
 
-            // Send task completion notification to all project team members
-            if let project = project {
-                let projectTeamMemberIds = project.teamMembers.map { $0.id }
-                if !projectTeamMemberIds.isEmpty {
-                    let taskName = task.displayTitle
-                    let projectName = project.title
-                    let completedByName = currentUser?.fullName ?? "A team member"
-                    let capturedTaskId = task.id
-                    let capturedProjectId = project.id
-                    let capturedCompanyId = currentUser?.companyId
-
-                    Task {
-                        // Create in-app notifications
-                        if let companyId = capturedCompanyId {
-                            let notifRepo = NotificationRepository()
-                            let currentId = UserDefaults.standard.string(forKey: "currentUserId")
-                            for memberId in projectTeamMemberIds where memberId != currentId {
-                                let dto = NotificationRepository.CreateNotificationDTO(
-                                    userId: memberId,
-                                    companyId: companyId,
-                                    type: "task_completion",
-                                    title: "Task Completed",
-                                    body: "\(completedByName) completed \"\(taskName)\" on \(projectName)",
-                                    projectId: capturedProjectId,
-                                    noteId: nil,
-                                    expenseId: nil,
-                                    batchId: nil,
-                                    deepLinkType: "projectDetails"
-                                )
-                                try? await notifRepo.createNotification(dto)
-                            }
-                        }
-                        // Send push
-                        do {
-                            try await OneSignalService.shared.notifyTaskCompletion(
-                                userIds: projectTeamMemberIds,
-                                taskName: taskName,
-                                projectName: projectName,
-                                taskId: capturedTaskId,
-                                projectId: capturedProjectId,
-                                completedByName: completedByName
-                            )
-                        } catch {
-                            print("[TASK_STATUS] ⚠️ Failed to send task completion notification: \(error)")
-                        }
-                    }
-                    print("[TASK_STATUS] 📬 Task completion notification queued for \(projectTeamMemberIds.count) project team members")
-                }
+            // Completion rail, then the rail for everything this completion
+            // unblocks. Both derive their recipients from the server's copy of
+            // the crew — an empty or absent local crew no longer gates either
+            // call — and the local rows only dress the pushes.
+            let capturedTaskId = task.id
+            let capturedTaskTitle = task.displayTitle
+            let completionPush = project.map {
+                TaskCompletionPushCopy(
+                    taskName: capturedTaskTitle,
+                    projectName: $0.title,
+                    projectId: $0.id,
+                    completedByName: currentUser?.fullName ?? "A team member"
+                )
             }
-
-            // Send dependency completion notifications
-            Task {
-                await sendDependencyCompletionNotifications(for: task)
+            Task { @MainActor in
+                await self.dispatchTaskCompletionNotification(
+                    taskId: capturedTaskId,
+                    push: completionPush
+                )
+                await self.dispatchDependencyReadyNotifications(
+                    completedTaskId: capturedTaskId,
+                    completedTaskTitle: capturedTaskTitle
+                )
             }
         }
 
@@ -4185,45 +4209,17 @@ class DataController: ObservableObject {
             ]
         )
 
-        // Send push + in-app notification if project was just marked as completed
+        // Completion rail for the project's crew. The server derives who that
+        // is from the project row, so a local crew list that hasn't synced yet
+        // can no longer silence it.
         if newStatus == .completed && previousStatus != .completed {
-            let teamMemberIds = project.getTeamMemberIds()
-            if !teamMemberIds.isEmpty {
-                let capturedProjectId = project.id
-                let capturedProjectName = project.title
-                let capturedCompanyId = currentUser?.companyId
-                Task {
-                    // Create in-app notifications
-                    if let companyId = capturedCompanyId {
-                        let notifRepo = NotificationRepository()
-                        let currentId = UserDefaults.standard.string(forKey: "currentUserId")
-                        for memberId in teamMemberIds where memberId != currentId {
-                            let dto = NotificationRepository.CreateNotificationDTO(
-                                userId: memberId,
-                                companyId: companyId,
-                                type: "project_completion",
-                                title: "Project Completed",
-                                body: "\"\(capturedProjectName)\" has been marked as completed",
-                                projectId: capturedProjectId,
-                                noteId: nil,
-                                expenseId: nil,
-                                batchId: nil,
-                                deepLinkType: "projectDetails"
-                            )
-                            try? await notifRepo.createNotification(dto)
-                        }
-                    }
-                    // Send push
-                    do {
-                        try await OneSignalService.shared.notifyProjectCompletion(
-                            userIds: teamMemberIds,
-                            projectName: capturedProjectName,
-                            projectId: capturedProjectId
-                        )
-                    } catch {
-                        print("[NOTIFICATIONS] Failed to send project completion notification: \(error)")
-                    }
-                }
+            let capturedProjectId = project.id
+            let capturedProjectName = project.title
+            Task { @MainActor in
+                await self.dispatchProjectCompletionNotification(
+                    projectId: capturedProjectId,
+                    projectName: capturedProjectName
+                )
             }
         }
 
@@ -4288,52 +4284,25 @@ class DataController: ObservableObject {
             changedFields: changedFields
         )
 
-        // Send schedule change notification if dates actually changed — but
-        // skip terminal tasks (a completed or cancelled task moving shouldn't
-        // ping the crew).
+        // Announce the move only if the dates actually changed and the task can
+        // still be worked (a completed or cancelled task moving shouldn't ping
+        // the crew). Those two are the client's calls; who hears about it, and
+        // in what words, is the server's.
         let datesChanged = previousStartDate != startDate || previousEndDate != endDate
-        if datesChanged, !task.status.isTerminal, let project = project {
-            let teamMemberIds = task.getTeamMemberIds()
-            if !teamMemberIds.isEmpty {
-                let capturedTaskName = task.displayTitle
-                let capturedProjectName = project.title
-                let capturedTaskId = task.id
-                let capturedProjectId = project.id
-                let capturedCompanyId = currentUser?.companyId
-                Task {
-                    // Create in-app notifications
-                    if let companyId = capturedCompanyId {
-                        let notifRepo = NotificationRepository()
-                        let currentId = UserDefaults.standard.string(forKey: "currentUserId")
-                        for memberId in teamMemberIds where memberId != currentId {
-                            let dto = NotificationRepository.CreateNotificationDTO(
-                                userId: memberId,
-                                companyId: companyId,
-                                type: "schedule_change",
-                                title: "Schedule Update",
-                                body: "\"\(capturedTaskName)\" on \(capturedProjectName) has been rescheduled",
-                                projectId: capturedProjectId,
-                                noteId: nil,
-                                expenseId: nil,
-                                batchId: nil,
-                                deepLinkType: "taskDetails"
-                            )
-                            try? await notifRepo.createNotification(dto)
-                        }
-                    }
-                    // Send push
-                    do {
-                        try await OneSignalService.shared.notifyScheduleChange(
-                            userIds: teamMemberIds,
-                            taskName: capturedTaskName,
-                            projectName: capturedProjectName,
-                            taskId: capturedTaskId,
-                            projectId: capturedProjectId
-                        )
-                    } catch {
-                        print("[NOTIFICATIONS] Failed to send schedule change notification: \(error)")
-                    }
-                }
+        if datesChanged, !task.status.isTerminal {
+            let capturedTaskId = task.id
+            let reschedulePush = project.map {
+                TaskPushCopy(
+                    taskName: task.displayTitle,
+                    projectName: $0.title,
+                    projectId: $0.id
+                )
+            }
+            Task { @MainActor in
+                await self.dispatchTaskRescheduleNotification(
+                    taskId: capturedTaskId,
+                    push: reschedulePush
+                )
             }
         }
 
@@ -4735,60 +4704,6 @@ class DataController: ObservableObject {
         return try? ctx.fetch(descriptor).first
     }
 
-    /// Send notifications to dependent task teams when a task is completed
-    @MainActor
-    private func sendDependencyCompletionNotifications(for completedTask: ProjectTask) async {
-        let projectTasks = getTasksForProject(completedTask.projectId)
-
-        for dependentTask in projectTasks {
-            guard dependentTask.effectiveDependencies.contains(where: { $0.dependsOnTaskTypeId == completedTask.taskTypeId }) else { continue }
-
-            let recipientIds = dependentTask.teamMemberIdsString
-                .split(separator: ",")
-                .map(String.init)
-                .filter { !$0.isEmpty }
-
-            guard !recipientIds.isEmpty else { continue }
-
-            let projectTitle = dependentTask.project?.title ?? "Project"
-
-            // Create in-app notifications
-            if let companyId = currentUser?.companyId {
-                let notifRepo = NotificationRepository()
-                let currentId = UserDefaults.standard.string(forKey: "currentUserId")
-                for memberId in recipientIds where memberId != currentId {
-                    let dto = NotificationRepository.CreateNotificationDTO(
-                        userId: memberId,
-                        companyId: companyId,
-                        type: "dependency_completed",
-                        title: "Ready to start",
-                        body: "\(dependentTask.displayTitle) on \(projectTitle) — \(completedTask.displayTitle) is complete",
-                        projectId: dependentTask.projectId,
-                        noteId: nil,
-                        expenseId: nil,
-                        batchId: nil,
-                        deepLinkType: "taskDetails"
-                    )
-                    try? await notifRepo.createNotification(dto)
-                }
-            }
-            // Send push
-            do {
-                try await OneSignalService.shared.notifyDependencyCompleted(
-                    completedTaskTitle: completedTask.displayTitle,
-                    dependentTaskTitle: dependentTask.displayTitle,
-                    projectTitle: projectTitle,
-                    recipientUserIds: recipientIds,
-                    projectId: dependentTask.projectId,
-                    dependentTaskId: dependentTask.id
-                )
-                print("[TASK_STATUS] 📬 Dependency notification sent for \(dependentTask.displayTitle)")
-            } catch {
-                print("[TASK_STATUS] ⚠️ Failed to send dependency notification: \(error)")
-            }
-        }
-    }
-
     enum SchedulingError: Error, LocalizedError {
         case noStartDate
 
@@ -4965,46 +4880,23 @@ class DataController: ObservableObject {
             changedFields: ["team_member_ids": memberIds]
         )
 
-        // Send push + in-app notifications to newly added team members
-        if !addedMemberIds.isEmpty {
-            let taskName = task.displayTitle
-            let projectName = task.project?.title ?? "Project"
-            let capturedTaskId = task.id
-            let capturedProjectId = task.project?.id ?? ""
-            let capturedCompanyId = currentUser?.companyId
-
-            for userId in addedMemberIds {
-                Task {
-                    // Create in-app notification
-                    if let companyId = capturedCompanyId {
-                        let dto = NotificationRepository.CreateNotificationDTO(
-                            userId: userId,
-                            companyId: companyId,
-                            type: "task_assignment",
-                            title: "New Task Assignment",
-                            body: "You've been assigned to \"\(taskName)\" on \(projectName)",
-                            projectId: capturedProjectId,
-                            noteId: nil,
-                            expenseId: nil,
-                            batchId: nil,
-                            deepLinkType: "taskDetails"
-                        )
-                        try? await NotificationRepository().createNotification(dto)
-                    }
-                    // Send push
-                    do {
-                        try await OneSignalService.shared.notifyTaskAssignment(
-                            userId: userId,
-                            taskName: taskName,
-                            projectName: projectName,
-                            taskId: capturedTaskId,
-                            projectId: capturedProjectId
-                        )
-                    } catch {
-                        print("[NOTIFICATIONS] Failed to send task assignment notification: \(error)")
-                    }
-                }
-            }
+        // Announce the task to the members who were just added. Only the added
+        // ids cross the wire — the server intersects them with the task row's
+        // recorded crew, so the members already on the task are never
+        // re-announced and a caller can never notify someone off the row.
+        let capturedTaskId = task.id
+        let capturedAddedMemberIds = Array(addedMemberIds)
+        let assignmentPush = TaskPushCopy(
+            taskName: task.displayTitle,
+            projectName: task.project?.title ?? "Project",
+            projectId: task.project?.id ?? ""
+        )
+        Task { @MainActor in
+            await self.dispatchTaskAssignmentNotifications(
+                taskId: capturedTaskId,
+                addedMemberIds: capturedAddedMemberIds,
+                push: assignmentPush
+            )
         }
 
         // After updating task team members, sync project team members
@@ -5728,43 +5620,13 @@ class DataController: ObservableObject {
             )
         }
 
-        // In-app notification per spawn (rail entry). Doesn't block return.
-        let companyIdForNotif = companyId
-        let predecessorTitle = predecessor.displayTitle
-        let assignees: Set<String> = Set(predecessor.getTeamMemberIds())
+        // Rail entry per spawn. The server reads the spawn row and its
+        // predecessor to name the task type, render the date blurb, and pick
+        // the crew — so the dispatch flushes the CREATE ops above before it
+        // asks. Doesn't block return.
+        let spawnedTaskIds = result.spawned.map { $0.id }
         Task { @MainActor in
-            let repo = NotificationRepository()
-            for entry in result.configs {
-                let spawn = entry.task
-                let typeName = entry.dependentType.display
-                let dateBlurb: String = {
-                    if let start = spawn.startDate {
-                        let fmt = DateFormatter()
-                        fmt.dateFormat = "EEE MMM d"
-                        return " for \(fmt.string(from: start))"
-                    }
-                    return ""
-                }()
-                let body = "Auto-scheduled \(typeName.uppercased())\(dateBlurb) — paired from \(predecessorTitle)"
-                let recipients = assignees.isEmpty
-                    ? (currentUser.map { [$0.id] } ?? [])
-                    : Array(assignees)
-                for userId in recipients {
-                    let dto = NotificationRepository.CreateNotificationDTO(
-                        userId: userId,
-                        companyId: companyIdForNotif,
-                        type: "task_pair_spawned",
-                        title: "// NEW TASK",
-                        body: body,
-                        projectId: spawn.projectId,
-                        noteId: nil,
-                        expenseId: nil,
-                        batchId: nil,
-                        deepLinkType: "projectDetails"
-                    )
-                    try? await repo.createNotification(dto)
-                }
-            }
+            await self.dispatchTaskPairSpawnedNotifications(taskIds: spawnedTaskIds)
         }
     }
 
@@ -7875,7 +7737,6 @@ extension DataController {
         var specs: [SyncEngine.BulkOperationSpec] = []
         var affectedProjects: [String: Project] = [:]
         var movedTaskIds: [String] = []
-        var memberMoveCounts: [String: Int] = [:]   // crew member id -> # of their tasks moved
         var committed = 0
 
         for placement in plan.placements {
@@ -7906,9 +7767,6 @@ extension DataController {
 
             if prevStart != placement.startDate || prevEnd != placement.endDate {
                 movedTaskIds.append(task.id)
-                for memberId in task.getTeamMemberIds() {
-                    memberMoveCounts[memberId, default: 0] += 1
-                }
             }
         }
 
@@ -7939,43 +7797,286 @@ extension DataController {
         }
 
         // ONE summary notification per affected crew member — replaces the old
-        // per-task push to every member (the N×members request storm).
-        await sendScheduleRunSummaries(memberMoveCounts: memberMoveCounts)
+        // per-task push to every member (the N×members request storm). Runs
+        // after the coalesced push above, so the server can read the new dates.
+        await sendScheduleRunSummaries(movedTaskIds: movedTaskIds)
 
         return committed
     }
+}
 
-    /// Send a single "your schedule changed" summary to each affected crew member
-    /// after a bulk auto-schedule run (excludes the operator who ran it).
+// MARK: - Task/Project Lifecycle Notification Rails
+
+// Every rail below crosses one narrow server RPC (migration
+// 20260818043043_ios_legacy_notification_surface_rpcs). The client no longer
+// decides who hears about a completion, a move, an assignment, or a schedule
+// run — the server derives recipients from the anchor rows and renders the copy
+// from fixed templates, because app-role INSERT on `notifications` was revoked
+// on 2026-07-15 and every one of these loops had been 42501'ing silently since.
+//
+// Two rules follow from that, and both are structural here rather than
+// remembered: the mutation's rows must be on the server BEFORE the call (each
+// dispatch flushes the outbound queue first), and the push may only target the
+// ids the server says received NEW rail rows (each dispatch returns exactly
+// what it pushed). All of it is best-effort — the mutation is already saved and
+// queued, so a failed rail must never surface into the save path.
+extension DataController {
+
+    /// Push copy for a task-anchored rail, assembled from LOCAL rows at the
+    /// call site. This dresses the OneSignal push only; the rail row's own copy
+    /// is rendered server-side.
+    struct TaskPushCopy {
+        let taskName: String
+        let projectName: String
+        let projectId: String
+    }
+
+    /// Push copy for a completion, which also names who finished it.
+    struct TaskCompletionPushCopy {
+        let taskName: String
+        let projectName: String
+        let projectId: String
+        let completedByName: String
+    }
+
+    /// One unblocked task's push payload: the server said whose rail it
+    /// reached, the local row supplies the title to say it with.
+    struct DependencyPushTarget: Equatable {
+        let dependentTaskId: String
+        let dependentTaskTitle: String
+        let projectTitle: String
+        let projectId: String
+        let recipientUserIds: [String]
+    }
+
+    /// Drains the outbound queue so the rows these RPCs read — the completed
+    /// status, the new dates, the crew edit, the spawned tasks — exist
+    /// server-side before the server is asked to derive recipients and copy
+    /// from them. Offline it no-ops and the RPC simply fails, contained,
+    /// exactly as the dead client-side insert failed.
     @MainActor
-    private func sendScheduleRunSummaries(memberMoveCounts: [String: Int]) async {
-        guard let companyId = currentUser?.companyId else { return }
-        let currentId = UserDefaults.standard.string(forKey: "currentUserId")
-        let recipients = memberMoveCounts.filter { $0.key != currentId && $0.value > 0 }
-        guard !recipients.isEmpty else { return }
+    func flushPendingWorkForNotifications() async {
+        if let notificationSyncFlush {
+            await notificationSyncFlush()
+            return
+        }
+        await syncEngine?.pushPending()
+    }
 
-        let notifRepo = NotificationRepository()
-        for (memberId, count) in recipients {
-            let body = count == 1
-                ? "1 of your tasks was rescheduled"
-                : "\(count) of your tasks were rescheduled"
-            let dto = NotificationRepository.CreateNotificationDTO(
-                userId: memberId,
-                companyId: companyId,
-                type: "schedule_change",
-                title: "Schedule updated",
-                body: body,
-                projectId: nil,
-                noteId: nil,
-                expenseId: nil,
-                batchId: nil,
-                deepLinkType: "jobBoard"
+    /// Task marked complete → the project's crew, actor excluded. Returns the
+    /// ids the push was aimed at: exactly the recipients the server created NEW
+    /// rail rows for. No local project row means no push copy — the rail still
+    /// fires, because the crew lives in the server's copy of the project.
+    @MainActor
+    @discardableResult
+    func dispatchTaskCompletionNotification(
+        taskId: String,
+        push: TaskCompletionPushCopy?
+    ) async -> [String] {
+        await flushPendingWorkForNotifications()
+
+        guard let recipients = try? await taskLifecycleSyncer.notifyTaskCompleted(taskId: taskId),
+              !recipients.isEmpty,
+              let push
+        else { return [] }
+
+        do {
+            try await OneSignalService.shared.notifyTaskCompletion(
+                userIds: recipients,
+                taskName: push.taskName,
+                projectName: push.projectName,
+                taskId: taskId,
+                projectId: push.projectId,
+                completedByName: push.completedByName
             )
-            try? await notifRepo.createNotification(dto)
+        } catch {
+            print("[TASK_STATUS] ⚠️ Failed to send task completion push: \(error)")
+        }
+        return recipients
+    }
+
+    /// Project marked complete → the project's crew, actor excluded. Returns
+    /// the ids the push was aimed at.
+    @MainActor
+    @discardableResult
+    func dispatchProjectCompletionNotification(
+        projectId: String,
+        projectName: String
+    ) async -> [String] {
+        await flushPendingWorkForNotifications()
+
+        guard let recipients = try? await taskLifecycleSyncer.notifyProjectCompleted(projectId: projectId),
+              !recipients.isEmpty
+        else { return [] }
+
+        do {
+            try await OneSignalService.shared.notifyProjectCompletion(
+                userIds: recipients,
+                projectName: projectName,
+                projectId: projectId
+            )
+        } catch {
+            print("[NOTIFICATIONS] Failed to send project completion push: \(error)")
+        }
+        return recipients
+    }
+
+    /// Task dates moved → the task's own crew, actor excluded. The server
+    /// refuses terminal tasks and tasks missing a date, so the client only
+    /// decides WHETHER the move is worth announcing. Returns the ids the push
+    /// was aimed at.
+    @MainActor
+    @discardableResult
+    func dispatchTaskRescheduleNotification(
+        taskId: String,
+        push: TaskPushCopy?
+    ) async -> [String] {
+        await flushPendingWorkForNotifications()
+
+        guard let recipients = try? await taskLifecycleSyncer.notifyTaskRescheduled(taskId: taskId),
+              !recipients.isEmpty,
+              let push
+        else { return [] }
+
+        do {
+            try await OneSignalService.shared.notifyScheduleChange(
+                userIds: recipients,
+                taskName: push.taskName,
+                projectName: push.projectName,
+                taskId: taskId,
+                projectId: push.projectId
+            )
+        } catch {
+            print("[NOTIFICATIONS] Failed to send schedule change push: \(error)")
+        }
+        return recipients
+    }
+
+    /// A completion unblocks its dependents. One call resolves the whole
+    /// dependent set server-side — the client no longer scans the project's
+    /// tasks or reads dependency rules — and returns an entry per task that
+    /// produced NEW rows. Each entry's push is aimed at that entry's ids and
+    /// titled from the local row; a task the server unblocked but this device
+    /// has never seen is skipped rather than pushed untitled. Returns exactly
+    /// what was pushed.
+    @MainActor
+    @discardableResult
+    func dispatchDependencyReadyNotifications(
+        completedTaskId: String,
+        completedTaskTitle: String
+    ) async -> [DependencyPushTarget] {
+        await flushPendingWorkForNotifications()
+
+        guard let entries = try? await taskLifecycleSyncer.notifyDependencyReady(
+            completedTaskId: completedTaskId
+        ) else { return [] }
+
+        var pushed: [DependencyPushTarget] = []
+        for entry in entries {
+            guard !entry.userIds.isEmpty else { continue }
+            guard let dependent = getTask(id: entry.taskId) else {
+                print("[TASK_STATUS] ⚠️ Dependency rail: task \(entry.taskId) unblocked server-side but not present locally — push skipped")
+                continue
+            }
+
+            let target = DependencyPushTarget(
+                dependentTaskId: dependent.id,
+                dependentTaskTitle: dependent.displayTitle,
+                projectTitle: dependent.project?.title ?? "Project",
+                projectId: dependent.projectId,
+                recipientUserIds: entry.userIds
+            )
+            pushed.append(target)
+
+            do {
+                try await OneSignalService.shared.notifyDependencyCompleted(
+                    completedTaskTitle: completedTaskTitle,
+                    dependentTaskTitle: target.dependentTaskTitle,
+                    projectTitle: target.projectTitle,
+                    recipientUserIds: target.recipientUserIds,
+                    projectId: target.projectId,
+                    dependentTaskId: target.dependentTaskId
+                )
+            } catch {
+                print("[TASK_STATUS] ⚠️ Failed to send dependency push: \(error)")
+            }
+        }
+        return pushed
+    }
+
+    /// Crew added to a task → only the added members. The list may only SUBSET
+    /// the task row's recorded crew; the server intersects it and drops the
+    /// actor. Nobody added is zero work — no flush, no call. Returns the ids
+    /// the push was aimed at.
+    @MainActor
+    @discardableResult
+    func dispatchTaskAssignmentNotifications(
+        taskId: String,
+        addedMemberIds: [String],
+        push: TaskPushCopy
+    ) async -> [String] {
+        guard !addedMemberIds.isEmpty else { return [] }
+        await flushPendingWorkForNotifications()
+
+        guard let recipients = try? await taskLifecycleSyncer.notifyTaskAssigned(
+            taskId: taskId,
+            userIds: addedMemberIds
+        ), !recipients.isEmpty else { return [] }
+
+        for userId in recipients {
+            do {
+                try await OneSignalService.shared.notifyTaskAssignment(
+                    userId: userId,
+                    taskName: push.taskName,
+                    projectName: push.projectName,
+                    taskId: taskId,
+                    projectId: push.projectId
+                )
+            } catch {
+                print("[NOTIFICATIONS] Failed to send task assignment push: \(error)")
+            }
+        }
+        return recipients
+    }
+
+    /// Paired follow-up tasks the scheduler spawned → the predecessor's crew,
+    /// actor included (the spawn is system-initiated, not an actor echo). Rail
+    /// only, no push lane. The spawn CREATE ops must land before the server can
+    /// read the new rows, so the flush comes first — one for the batch.
+    @MainActor
+    func dispatchTaskPairSpawnedNotifications(taskIds: [String]) async {
+        guard !taskIds.isEmpty else { return }
+        await flushPendingWorkForNotifications()
+
+        for taskId in taskIds {
+            _ = try? await taskLifecycleSyncer.notifyTaskPairSpawned(taskId: taskId)
+        }
+    }
+
+    /// One "your schedule changed" summary per affected crew member after a
+    /// bulk auto-schedule run. `applySchedulePlan` drains the whole batch of new
+    /// dates in a single coalesced push immediately before calling this, so the
+    /// moved rows are already on the server and the drain is not repeated here;
+    /// the server counts each member's own share from those rows and returns one
+    /// entry per member that received a NEW summary row. Returns the push map it
+    /// drove — the local move counts never reach the push lane at all.
+    @MainActor
+    @discardableResult
+    func sendScheduleRunSummaries(movedTaskIds: [String]) async -> [String: Int] {
+        guard !movedTaskIds.isEmpty else { return [:] }
+
+        guard let entries = try? await taskLifecycleSyncer.notifyScheduleRunSummary(
+            taskIds: movedTaskIds
+        ), !entries.isEmpty else { return [:] }
+
+        var userMoveCounts: [String: Int] = [:]
+        for entry in entries {
+            userMoveCounts[entry.userId] = entry.movedCount
         }
 
         // One summary push per affected member (vs one push PER TASK before).
-        await OneSignalService.shared.notifyScheduleBatchUpdate(userMoveCounts: recipients)
+        await OneSignalService.shared.notifyScheduleBatchUpdate(userMoveCounts: userMoveCounts)
+        return userMoveCounts
     }
 }
 

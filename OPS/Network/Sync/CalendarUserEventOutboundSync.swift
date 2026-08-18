@@ -390,111 +390,49 @@ enum CalendarUserEventOutboundSync {
         }
     }
 
-    /// Copy is verbatim from the two sheets this moved out of — the words the
-    /// crew already knows, now sent only for requests that exist.
+    /// The rail is the server's: `notify_time_off_requested` reads the event
+    /// row this operation just delivered and writes the requester's receipt,
+    /// the on-behalf target's row, and one row per `time_off.approve` holder —
+    /// recipients are never computed on this phone. The push wording below is
+    /// verbatim from the two sheets this moved out of, and it reaches exactly
+    /// the approvers the server reports as having received NEW rows.
     private static func notifyApproversOfRequest(
         _ notification: TimeOffNotification,
         eventId: String
     ) async {
-        // Recipients = anyone with time_off.approve. Permission-gated, never
-        // role. Companies that delegate scheduling to operators or foremen
-        // grant the permission to that custom role or via per-user override.
-        let approverIds = (try? await RecipientLookupService.usersWithPermission(
-            companyId: notification.companyId,
-            permission: "time_off.approve"
-        )) ?? []
-
-        // Neither the requester nor the target should receive their own request
-        // as a "review this" entry.
-        let recipientIds = approverIds.filter {
-            $0 != notification.requesterId && $0 != notification.targetUserId
-        }
-
         let dateRange = dateRange(
             startDate: notification.startDate,
             endDate: notification.endDate
         )
         let isSelfRequest = notification.requesterId == notification.targetUserId
-        let repository = NotificationRepository()
-
-        // Confirmation row for the requester so they always see the submission
-        // land in the rail (bug 8ef185af). When an admin requests on behalf of
-        // someone else, the target gets a row too — the calendar event alone
-        // isn't enough surface area (bug 81470acd).
-        let confirmation = NotificationRepository.CreateNotificationDTO(
-            userId: notification.requesterId,
-            companyId: notification.companyId,
-            type: "time_off_requested",
-            title: "Time Off Submitted",
-            body: isSelfRequest
-                ? "Your request for \(dateRange) is pending review."
-                : "Submitted for \(notification.targetName): \(dateRange) (pending review).",
-            projectId: nil,
-            noteId: nil,
-            expenseId: nil,
-            batchId: nil,
-            deepLinkType: "schedule"
-        )
-        try? await repository.createNotification(confirmation)
-
-        if !isSelfRequest {
-            let targetNotification = NotificationRepository.CreateNotificationDTO(
-                userId: notification.targetUserId,
-                companyId: notification.companyId,
-                type: "time_off_requested",
-                title: "Time Off Submitted For You",
-                body: "\(notification.requesterName) submitted a time-off request on your behalf for \(dateRange).",
-                projectId: nil,
-                noteId: nil,
-                expenseId: nil,
-                batchId: nil,
-                deepLinkType: "schedule"
-            )
-            try? await repository.createNotification(targetNotification)
-        }
-
-        guard !recipientIds.isEmpty else {
-            print("[CalendarUserEventOutboundSync] No other schedulers to notify")
-            return
-        }
-
         let approvalBody = isSelfRequest
             ? "\(notification.requesterName) requested time off: \(dateRange)"
             : "\(notification.requesterName) requested time off for \(notification.targetName): \(dateRange)"
 
-        for recipientId in recipientIds {
-            let approval = NotificationRepository.CreateNotificationDTO(
-                userId: recipientId,
-                companyId: notification.companyId,
-                type: "time_off_requested",
+        let pushed = await TimeOffRequestNotificationDispatcher.dispatchRequested(
+            eventId: eventId,
+            push: .init(
                 title: "Time Off Request",
                 body: approvalBody,
-                projectId: nil,
-                noteId: nil,
-                expenseId: nil,
-                batchId: nil,
-                deepLinkType: "schedule"
+                data: [
+                    "type": "time_off_requested",
+                    "eventId": eventId,
+                    "screen": "schedule"
+                ]
             )
-            try? await repository.createNotification(approval)
-        }
-
-        try? await OneSignalService.shared.sendToUsers(
-            userIds: recipientIds,
-            title: "Time Off Request",
-            body: approvalBody,
-            data: [
-                "type": "time_off_requested",
-                "eventId": eventId,
-                "screen": "schedule"
-            ]
         )
 
         print(
             "[CalendarUserEventOutboundSync] Time-off request notified "
-                + "\(recipientIds.count) scheduler(s)"
+                + "\(pushed.count) scheduler(s)"
         )
     }
 
+    /// The rail is the server's: `notify_time_off_booked` reads the event row
+    /// this operation just delivered, confirms the recorded 'approved' state,
+    /// and writes the target's row. The push wording stays the sheets' own and
+    /// fires only when the server actually created a new row for someone other
+    /// than the booker.
     private static func notifyBooked(
         _ notification: TimeOffNotification,
         eventId: String
@@ -504,29 +442,16 @@ enum CalendarUserEventOutboundSync {
             endDate: notification.endDate
         )
         let isSelfBooking = notification.requesterId == notification.targetUserId
-        let title = "Time Off Booked"
         let body = isSelfBooking
             ? "Your time off for \(dateRange) is on the schedule."
             : "\(notification.requesterName) booked you off for \(dateRange)."
 
-        let dto = NotificationRepository.CreateNotificationDTO(
-            userId: notification.targetUserId,
-            companyId: notification.companyId,
-            type: "time_off_booked",
-            title: title,
-            body: body,
-            projectId: nil,
-            noteId: nil,
-            expenseId: nil,
-            batchId: nil,
-            deepLinkType: "schedule"
-        )
-        try? await NotificationRepository().createNotification(dto)
-
-        if !isSelfBooking {
-            try? await OneSignalService.shared.sendToUser(
-                userId: notification.targetUserId,
-                title: title,
+        _ = await TimeOffRequestNotificationDispatcher.dispatchBooked(
+            eventId: eventId,
+            targetUserId: notification.targetUserId,
+            targetIsSelf: isSelfBooking,
+            push: .init(
+                title: "Time Off Booked",
                 body: body,
                 data: [
                     "type": "time_off_booked",
@@ -534,7 +459,7 @@ enum CalendarUserEventOutboundSync {
                     "screen": "schedule"
                 ]
             )
-        }
+        )
 
         print("[CalendarUserEventOutboundSync] Time off booked for \(notification.targetName)")
     }

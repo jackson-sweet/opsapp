@@ -33,6 +33,42 @@
 import Foundation
 import SwiftData
 
+/// Seam for the OFFCUT BANKED rail row. Conformed to by
+/// `NotificationRepository` (the `notify_vinyl_offcut_banked` RPC); tests
+/// substitute a spy.
+protocol VinylOffcutBankedNotifying {
+    /// The server measures the strip from the stock-unit row itself, so the
+    /// announced dimensions can never drift from what is actually in stock.
+    @discardableResult
+    func notifyVinylOffcutBanked(stockUnitId: String, projectId: String?) async throws -> String
+}
+
+extension NotificationRepository: VinylOffcutBankedNotifying {}
+
+/// The banked-offcut rail dispatch. The strip is already a stock row and the
+/// source roll is already debited by the time this runs, so a failed rail row
+/// never fails the cut — and the local rail still refreshes either way, because
+/// the badge may hold rows this call knows nothing about.
+enum VinylOffcutBankedNotificationDispatcher {
+    static func dispatchBanked(
+        userId: String,
+        stockUnitId: String,
+        projectId: String?,
+        syncer: VinylOffcutBankedNotifying = NotificationRepository.shared
+    ) async {
+        guard !userId.isEmpty else { return }
+        do {
+            _ = try await syncer.notifyVinylOffcutBanked(
+                stockUnitId: stockUnitId,
+                projectId: projectId
+            )
+        } catch {
+            print("[VinylOffcutInventoryService] offcut banked rail failed: \(error)")
+        }
+        NotificationCenter.default.post(name: .notificationReceived, object: nil)
+    }
+}
+
 @MainActor
 struct VinylOffcutInventoryService {
     let companyId: String
@@ -257,8 +293,13 @@ struct VinylOffcutInventoryService {
         // 5) Re-mirror the variant quantity from the updated stock set.
         await remirrorVariantQuantity(variantId: variantId)
 
-        // 6) Rail notification.
-        await postOffcutBankedNotification(offcut: offcut, projectId: projectId)
+        // 6) Rail notification — anchored on the row just written, so the
+        //    announced dimensions are the stored ones.
+        await VinylOffcutBankedNotificationDispatcher.dispatchBanked(
+            userId: userId,
+            stockUnitId: createdOffcut.id,
+            projectId: projectId
+        )
 
         return offcutModel
     }
@@ -311,26 +352,6 @@ struct VinylOffcutInventoryService {
         } catch {
             print("[VinylOffcutInventoryService] variant quantity re-mirror failed: \(error)")
         }
-    }
-
-    private func postOffcutBankedNotification(offcut: VinylProducedOffcut, projectId: String?) async {
-        guard !userId.isEmpty else { return }
-        let body = "\(inchLabel(offcut.widthInches)) × \(vinylFormatFeetAndInches(offcut.lengthInches)) BANKED TO STOCK"
-        try? await NotificationRepository.shared.createNotification(
-            NotificationRepository.CreateNotificationDTO(
-                userId: userId,
-                companyId: companyId,
-                type: "standard",
-                title: "// OFFCUT BANKED",
-                body: body,
-                projectId: projectId,
-                deepLinkType: "catalog_stock",
-                persistent: false,
-                actionUrl: "/catalog?segment=stock",
-                actionLabel: "VIEW STOCK"
-            )
-        )
-        NotificationCenter.default.post(name: .notificationReceived, object: nil)
     }
 
     private func inchLabel(_ inches: Double) -> String {

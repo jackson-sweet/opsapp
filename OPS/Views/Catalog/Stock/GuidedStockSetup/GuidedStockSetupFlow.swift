@@ -443,22 +443,17 @@ struct GuidedStockSetupFlow: View {
 
     private func postCompletionNotification(_ summary: GuidedStockSummary) {
         let userId = dataController.currentUser?.id ?? ""
-        let companyId = model.companyId
-        guard !userId.isEmpty, !companyId.isEmpty else { return }
-        let body = GuidedStockSetupModel.summaryLine(summary)
+        guard !userId.isEmpty, !model.companyId.isEmpty else { return }
+        let completion = GuidedSetupCompletion.stock(
+            families: summary.familyCount,
+            variants: summary.variantCount,
+            rolls: summary.rollCount,
+            offcuts: summary.offcutCount,
+            products: summary.productCount,
+            bundles: summary.bundleCount
+        )
         Task {
-            try? await NotificationRepository.shared.createNotification(.init(
-                userId: userId,
-                companyId: companyId,
-                type: "standard",
-                title: "STOCK SYSTEM BUILT",
-                body: body,
-                deepLinkType: "catalog_stock",
-                persistent: false,
-                actionUrl: "/catalog?segment=stock",
-                actionLabel: "VIEW STOCK"
-            ))
-            NotificationCenter.default.post(name: .notificationReceived, object: nil)
+            await GuidedSetupNotificationDispatcher.dispatch(completion)
         }
     }
 

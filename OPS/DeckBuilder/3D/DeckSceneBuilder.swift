@@ -1011,13 +1011,14 @@ struct DeckSceneBuilder {
         } else {
             totalRiseInches = Double(deckElevationM) / Double(inchesToMeters)
         }
-        let treadCount = stairConfig.treadCount ?? StairConfig.calculateTreadCount(totalRise: totalRiseInches, risePerStep: stairConfig.risePerStep)
-        guard treadCount > 0 else { return }
+        guard let treadCount = DeckStairGeometryResolver.treadCount(
+            config: stairConfig,
+            totalRiseInches: totalRiseInches
+        ) else { return }
 
         let totalRiseMFromConfig = Float(totalRiseInches) * inchesToMeters
         let risePerStepM = totalRiseMFromConfig / Float(treadCount)
         let runPerTreadM = Float(stairConfig.runPerTread) * inchesToMeters
-        let stairWidthM = Float(stairConfig.width) * inchesToMeters
 
         // Direction vector perpendicular to edge (outward from deck)
         let edgeDx = end.x - start.x
@@ -1029,43 +1030,37 @@ struct DeckSceneBuilder {
         let tx = edgeDx / edgeLen
         let tz = edgeDz / edgeLen
 
-        // Outward perpendicular — same polygon-aware logic as 2D so 3D stairs
-        // also land OPPOSITE the filled deck surface by default. Falls back
-        // to the historic CCW perpendicular when the polygon isn't supplied
-        // (open sketches, AR builds with skipHouseWall). Bug a7429390.
-        let rawN: (x: Float, z: Float)
-        if polygon2DMeters.count >= 3 {
-            let outward = PolygonMath.outwardPerpendicular(
-                edgeStart: CGPoint(x: CGFloat(start.x), y: CGFloat(start.z)),
-                edgeEnd: CGPoint(x: CGFloat(end.x), y: CGFloat(end.z)),
-                polygonVertices: polygon2DMeters
-            )
-            rawN = (x: Float(outward.x), z: Float(outward.y))
-        } else {
-            rawN = (x: -edgeDz / edgeLen, z: edgeDx / edgeLen)
-        }
-        let nx = stairConfig.flipDirection ? -rawN.x : rawN.x
-        let nz = stairConfig.flipDirection ? -rawN.z : rawN.z
+        // Direction and placement come from the shared resolver — the same call
+        // the 2D canvas, the read-only viewer and every export image make, just
+        // evaluated in metres instead of canvas points (bug 4a773e11). The
+        // ground plane maps to canvas coordinates by a positive uniform scale,
+        // so winding, perpendicular handedness and side-of-line tests all carry
+        // over unchanged.
+        let edgeStart2D = CGPoint(x: CGFloat(start.x), y: CGFloat(start.z))
+        let edgeEnd2D = CGPoint(x: CGFloat(end.x), y: CGFloat(end.z))
+        guard let orientation = DeckStairGeometryResolver.orientation(
+            edgeStart: edgeStart2D,
+            edgeEnd: edgeEnd2D,
+            deckFacePolygon: polygon2DMeters,
+            flipDirection: stairConfig.flipDirection
+        ), let placement = DeckStairGeometryResolver.placement(
+            edgeStart: edgeStart2D,
+            edgeEnd: edgeEnd2D,
+            orientation: orientation,
+            widthInches: stairConfig.width,
+            alignment: stairConfig.alignment,
+            offsetInches: stairConfig.offset,
+            treadCount: treadCount,
+            runPerTreadInches: stairConfig.runPerTread,
+            pointsPerUnit: Double(inchesToMeters)
+        ) else { return }
 
-        // Position the stair along the edge using alignment + offset, matching
-        // the 2D canvas logic. Bug 8 — 3D previously always centred on the
-        // edge midpoint, ignoring alignment and offset settings.
-        let stairWidthLimited = min(stairWidthM, edgeLen)
-        let gapTotal = edgeLen - stairWidthLimited
-        let offsetM = Float(stairConfig.offset) * inchesToMeters
-        let stairStartT: Float  // fraction along edge where stair begins
-        switch stairConfig.alignment {
-        case .left:
-            stairStartT = offsetM / edgeLen
-        case .center:
-            stairStartT = (gapTotal / 2 + offsetM) / edgeLen
-        case .right:
-            stairStartT = (gapTotal - offsetM) / edgeLen
-        }
-        let stairBaseX = start.x + tx * edgeLen * stairStartT
-        let stairBaseZ = start.z + tz * edgeLen * stairStartT
-        let midX = stairBaseX + tx * stairWidthLimited / 2
-        let midZ = stairBaseZ + tz * stairWidthLimited / 2
+        let nx = Float(orientation.travel.dx)
+        let nz = Float(orientation.travel.dy)
+        let stairWidthLimited = Float(placement.widthDistance)
+        let baseMid = placement.baseMidpoint
+        let midX = Float(baseMid.x)
+        let midZ = Float(baseMid.y)
 
         // Treads — each rests ON its stringer seat (tread bottom flush with
         // the cut), spanning one run with a slight nosing overhang.
@@ -1108,7 +1103,7 @@ struct DeckSceneBuilder {
                 parent: stairGroup,
                 midX: midX, midZ: midZ,
                 nx: nx, nz: nz, tx: tx, tz: tz,
-                stairWidthM: stairWidthM,
+                stairWidthM: stairWidthLimited,
                 deckElevationM: deckElevationM,
                 treadCount: treadCount,
                 risePerStepM: risePerStepM,
@@ -1257,32 +1252,71 @@ struct DeckSceneBuilder {
         let connectionGroup = SCNNode()
         connectionGroup.name = "levelConnection_\(connection.id)"
 
-        let treadCount = connection.stairConfig.treadCount ?? StairConfig.calculateTreadCount(
-            totalRise: Double(riseDiffM) / Double(inchesToMeters),
-            risePerStep: connection.stairConfig.risePerStep
-        )
-        guard treadCount > 0 else { return }
+        guard let treadCount = DeckStairGeometryResolver.treadCount(
+            config: connection.stairConfig,
+            totalRiseInches: Double(riseDiffM) / Double(inchesToMeters)
+        ) else { return }
 
         let risePerStepM = riseDiffM / Float(treadCount)
         let runPerTreadM = Float(connection.stairConfig.runPerTread) * inchesToMeters
-        let stairWidthM = Float(connection.stairConfig.width) * inchesToMeters
 
         let edgeDx = end3D.x - start3D.x
         let edgeDz = end3D.z - start3D.z
         let edgeLen = sqrt(edgeDx * edgeDx + edgeDz * edgeDz)
         guard edgeLen > 0 else { return }
-
-        // Honor the stair flip toggle here too. The per-edge buildStairs path
-        // (see ~line 883) inverts BOTH perpendicular components on
-        // flipDirection; this connection path previously hardcoded the default
-        // side, so multi-level connecting stairs ignored the swap. Mirror it.
-        let rawN = (x: -edgeDz / edgeLen, z: edgeDx / edgeLen)
-        let nx = connection.stairConfig.flipDirection ? -rawN.x : rawN.x
-        let nz = connection.stairConfig.flipDirection ? -rawN.z : rawN.z
         let tx = edgeDx / edgeLen
         let tz = edgeDz / edgeLen
-        let midX = (start3D.x + end3D.x) / 2
-        let midZ = (start3D.z + end3D.z) / 2
+
+        // Direction and placement come from the SHARED resolver (bug 4a773e11).
+        // This path used to hardcode the raw edge-winding perpendicular while
+        // 2D resolved the outward side of the upper deck's face — opposite
+        // answers on roughly half of all edges, which is what drew a connecting
+        // stair backwards in plan and correctly in 3D from one stored model.
+        // It also always centred on the edge midpoint, ignoring the stair's
+        // width, alignment and offset.
+        let edgeStart2D = CGPoint(x: CGFloat(start3D.x), y: CGFloat(start3D.z))
+        let edgeEnd2D = CGPoint(x: CGFloat(end3D.x), y: CGFloat(end3D.z))
+        let upperFaceMeters: [CGPoint] = {
+            guard let ids = drawingData.stairFaceVertexIds(forEdgeId: upperEdge.id), ids.count >= 3 else { return [] }
+            let mapped = ids.compactMap { id -> CGPoint? in
+                guard let vertex = upperLevel.vertex(byId: id) else { return nil }
+                return convertPointToMeters(vertex.position, scaleFactor: scaleFactor, center: center)
+            }
+            return mapped.count == ids.count ? mapped : []
+        }()
+        let lowerDestinationMeters: CGPoint? = {
+            guard let lowerLevel = drawingData.level(byId: connection.lowerLevelId) else { return nil }
+            let ids = Set(drawingData.connectionDestinationVertexIds(for: connection))
+            let points = lowerLevel.vertices
+                .filter { ids.contains($0.id) }
+                .map { convertPointToMeters($0.position, scaleFactor: scaleFactor, center: center) }
+            return DeckDrawingData.meanPoint(points)
+        }()
+
+        guard let orientation = DeckStairGeometryResolver.connectionOrientation(
+            edgeStart: edgeStart2D,
+            edgeEnd: edgeEnd2D,
+            upperFacePolygon: upperFaceMeters,
+            lowerDestination: lowerDestinationMeters,
+            flipDirection: connection.stairConfig.flipDirection
+        ), let placement = DeckStairGeometryResolver.placement(
+            edgeStart: edgeStart2D,
+            edgeEnd: edgeEnd2D,
+            orientation: orientation,
+            widthInches: connection.stairConfig.width,
+            alignment: connection.stairConfig.alignment,
+            offsetInches: connection.stairConfig.offset,
+            treadCount: treadCount,
+            runPerTreadInches: connection.stairConfig.runPerTread,
+            pointsPerUnit: Double(inchesToMeters)
+        ) else { return }
+
+        let nx = Float(orientation.travel.dx)
+        let nz = Float(orientation.travel.dy)
+        let stairWidthM = Float(placement.widthDistance)
+        let baseMid = placement.baseMidpoint
+        let midX = Float(baseMid.x)
+        let midZ = Float(baseMid.y)
 
         // Treads — rest on the stringer seats.
         let nosingM: Float = 1.0 * inchesToMeters

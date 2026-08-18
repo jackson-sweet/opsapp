@@ -187,22 +187,32 @@ struct DeckCanvasWorkspace: Equatable {
 /// Resolves rendered geometry that extends beyond persisted vertex positions.
 /// Workspace bounds use these points without adding them to the deck payload.
 enum DeckCanvasWorkspaceExtentResolver {
+    /// Every point a stair actually occupies, resolved through the same plans
+    /// the canvas draws — edge-attached AND level-connection. The envelope used
+    /// to miss connection stairs entirely and to skip any edge stair whose
+    /// tread count was auto-derived, so the workspace could clip geometry the
+    /// user could plainly see.
     static func stairPoints(in drawingData: DeckDrawingData) -> [CGPoint] {
+        var points: [CGPoint] = []
+
         if drawingData.isMultiLevel {
-            return drawingData.levels.flatMap { level in
-                stairPoints(
+            for level in drawingData.levels {
+                points += stairPoints(
                     edges: level.edges,
                     vertices: level.vertices,
-                    polygon: level.orderedPositions,
                     drawingData: drawingData
                 )
             }
+            for connection in drawingData.levelConnections {
+                guard let plan = drawingData.connectionStairPlan(for: connection) else { continue }
+                points += plan.outline
+            }
+            return points
         }
 
         return stairPoints(
             edges: drawingData.edges,
             vertices: drawingData.vertices,
-            polygon: drawingData.orderedPositions,
             drawingData: drawingData
         )
     }
@@ -210,7 +220,6 @@ enum DeckCanvasWorkspaceExtentResolver {
     private static func stairPoints(
         edges: [DeckEdge],
         vertices: [DeckVertex],
-        polygon: [CGPoint],
         drawingData: DeckDrawingData
     ) -> [CGPoint] {
         let vertexByID = Dictionary(
@@ -219,19 +228,12 @@ enum DeckCanvasWorkspaceExtentResolver {
         )
 
         return edges.flatMap { edge -> [CGPoint] in
-            guard let config = edge.stairConfig,
-                  let treadCount = config.treadCount,
-                  treadCount > 0,
-                  let start = vertexByID[edge.startVertexId]?.position,
+            guard let start = vertexByID[edge.startVertexId]?.position,
                   let end = vertexByID[edge.endVertexId]?.position,
-                  let plan = DeckStairRenderPlanner.plan(
+                  let plan = drawingData.edgeStairPlan(
+                      for: edge,
                       edgeStart: start,
-                      edgeEnd: end,
-                      polygonVertices: polygon,
-                      config: config,
-                      treadCount: treadCount,
-                      scaleFactor: drawingData.effectiveScaleFactor,
-                      measurementSystem: drawingData.config.measurementSystem
+                      edgeEnd: end
                   ) else {
                 return []
             }

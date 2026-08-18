@@ -18,6 +18,12 @@ struct DeckStairRenderPlan {
     let dimensionLabels: [DeckStairDimensionLabel]
     let boundaryMarkers: [CGPoint]
     let adjacentEdgeLabels: [DeckStairDimensionLabel]
+    /// The direction decision behind this plan, carried so tests and
+    /// diagnostics can tell WHY a stair faces the way it does.
+    let orientation: DeckStairOrientation
+    /// Steps this stair actually spans. `treadLines` is capped for legibility,
+    /// so it is never a safe stand-in for the count.
+    let treadCount: Int
 
     var framePoints: [CGPoint] {
         outline
@@ -93,11 +99,6 @@ struct DeckStairRenderPlan {
         guard length > CGFloat.ulpOfOne.squareRoot() else { return nil }
         return CGVector(dx: dx / length, dy: dy / length)
     }
-}
-
-struct DeckStairTreadLine: Equatable {
-    let start: CGPoint
-    let end: CGPoint
 }
 
 struct DeckStairDimensionLabel: Equatable {
@@ -266,10 +267,71 @@ extension DeckDrawingData {
             )
         )
     }
+
+    // MARK: - Drawable plans (the only entry points renderers may use)
+
+    /// The ONE place an edge-attached stair becomes drawable 2D geometry.
+    ///
+    /// Tread count resolves through the shared ladder rather than requiring a
+    /// stored override, so a stair whose count was auto-derived from its rise
+    /// draws in plan exactly as it already did in 3D. The 2D surfaces used to
+    /// bail on `config.treadCount == nil` and silently render nothing.
+    ///
+    /// `transform` and `scaleFactor` let the export/share renderers work in
+    /// their own fitted canvas space without re-deriving any of the decisions.
+    func edgeStairPlan(
+        for edge: DeckEdge,
+        edgeStart: CGPoint,
+        edgeEnd: CGPoint,
+        transform: (CGPoint) -> CGPoint = { $0 },
+        scaleFactor: Double? = nil
+    ) -> DeckStairRenderPlan? {
+        guard let stairConfig = edge.stairConfig else { return nil }
+        let riseInches = stairTotalRiseInches(for: edge)
+        guard let treadCount = DeckStairGeometryResolver.treadCount(
+            config: stairConfig,
+            totalRiseInches: riseInches
+        ) else { return nil }
+
+        return DeckStairRenderPlanner.plan(
+            edgeStart: transform(edgeStart),
+            edgeEnd: transform(edgeEnd),
+            polygonVertices: stairFacePolygon(forEdgeId: edge.id).map(transform),
+            config: stairConfig,
+            treadCount: treadCount,
+            scaleFactor: scaleFactor ?? effectiveScaleFactor,
+            measurementSystem: config.measurementSystem,
+            edgeDimensionInches: edge.dimension,
+            totalRiseInches: riseInches
+        )
+    }
+
+    /// The ONE place a level-connection stair becomes drawable 2D geometry.
+    func connectionStairPlan(
+        for connection: LevelConnection,
+        transform: (CGPoint) -> CGPoint = { $0 },
+        scaleFactor: Double? = nil
+    ) -> DeckStairRenderPlan? {
+        guard let context = connectionStairContext(for: connection) else { return nil }
+        return DeckStairRenderPlanner.connectionPlan(
+            edgeStart: transform(context.edgeStart),
+            edgeEnd: transform(context.edgeEnd),
+            upperFacePolygon: context.upperFacePolygon.map(transform),
+            lowerDestination: context.lowerDestination.map(transform),
+            config: connection.stairConfig,
+            treadCount: context.treadCount,
+            scaleFactor: scaleFactor ?? effectiveScaleFactor,
+            measurementSystem: config.measurementSystem,
+            totalRiseInches: context.riseInches
+        )
+    }
 }
 
 enum DeckStairRenderPlanner {
 
+    /// Plan for an EDGE-ATTACHED stair. Geometry comes from
+    /// `DeckStairGeometryResolver`; this layer only decorates it with the 2D
+    /// dimension chips.
     static func plan(
         edgeStart start: CGPoint,
         edgeEnd end: CGPoint,
@@ -281,93 +343,105 @@ enum DeckStairRenderPlanner {
         edgeDimensionInches: Double? = nil,
         totalRiseInches: Double? = nil
     ) -> DeckStairRenderPlan? {
-        let dx = end.x - start.x
-        let dy = end.y - start.y
-        let edgeLength = hypot(dx, dy)
-        guard edgeLength > 0, treadCount > 0, scaleFactor > 0 else { return nil }
+        guard let orientation = DeckStairGeometryResolver.orientation(
+            edgeStart: start,
+            edgeEnd: end,
+            deckFacePolygon: polygonVertices,
+            flipDirection: config.flipDirection
+        ) else { return nil }
 
-        let edgeUnit = CGVector(dx: dx / edgeLength, dy: dy / edgeLength)
-        let outward: CGVector
-        if polygonVertices.count >= 3 {
-            let resolved = PolygonMath.outwardPerpendicular(
-                edgeStart: start,
-                edgeEnd: end,
-                polygonVertices: polygonVertices
-            )
-            outward = CGVector(dx: CGFloat(resolved.x), dy: CGFloat(resolved.y))
-        } else {
-            outward = CGVector(dx: -dy / edgeLength, dy: dx / edgeLength)
-        }
-        let stairNormal = config.flipDirection
-            ? CGVector(dx: -outward.dx, dy: -outward.dy)
-            : outward
-
-        let scale = CGFloat(scaleFactor)
-        let stairWidthCanvas = min(max(0, CGFloat(config.width) * scale), edgeLength)
-        let totalRunInches = Double(treadCount) * config.runPerTread
-        let stairDepthCanvas = CGFloat(totalRunInches) * scale
-        guard stairWidthCanvas > 0, stairDepthCanvas > 0 else { return nil }
-
-        let availableGap = max(0, edgeLength - stairWidthCanvas)
-        let offsetCanvas = CGFloat(config.offset) * scale
-        let rawStartDistance: CGFloat
-        switch config.alignment {
-        case .left:
-            rawStartDistance = offsetCanvas
-        case .center:
-            rawStartDistance = (availableGap / 2) + offsetCanvas
-        case .right:
-            rawStartDistance = availableGap - offsetCanvas
-        }
-        let startDistance = min(max(0, rawStartDistance), availableGap)
-
-        let baseStart = CGPoint(
-            x: start.x + edgeUnit.dx * startDistance,
-            y: start.y + edgeUnit.dy * startDistance
+        return plan(
+            edgeStart: start,
+            edgeEnd: end,
+            orientation: orientation,
+            config: config,
+            treadCount: treadCount,
+            scaleFactor: scaleFactor,
+            measurementSystem: measurementSystem,
+            edgeDimensionInches: edgeDimensionInches,
+            totalRiseInches: totalRiseInches
         )
-        let baseEnd = CGPoint(
-            x: baseStart.x + edgeUnit.dx * stairWidthCanvas,
-            y: baseStart.y + edgeUnit.dy * stairWidthCanvas
-        )
-        let farStart = CGPoint(
-            x: baseStart.x + stairNormal.dx * stairDepthCanvas,
-            y: baseStart.y + stairNormal.dy * stairDepthCanvas
-        )
-        let farEnd = CGPoint(
-            x: baseEnd.x + stairNormal.dx * stairDepthCanvas,
-            y: baseEnd.y + stairNormal.dy * stairDepthCanvas
-        )
+    }
 
-        let treadLines: [DeckStairTreadLine] = (1..<min(treadCount, 30)).map { index in
-            let t = CGFloat(index) / CGFloat(treadCount)
-            let lineStart = CGPoint(
-                x: baseStart.x + stairNormal.dx * stairDepthCanvas * t,
-                y: baseStart.y + stairNormal.dy * stairDepthCanvas * t
-            )
-            let lineEnd = CGPoint(
-                x: baseEnd.x + stairNormal.dx * stairDepthCanvas * t,
-                y: baseEnd.y + stairNormal.dy * stairDepthCanvas * t
-            )
-            return DeckStairTreadLine(start: lineStart, end: lineEnd)
-        }
+    /// Plan for a LEVEL-CONNECTION stair. Same geometry, same labels, same
+    /// tread axis as an edge stair — only the direction rule differs, and that
+    /// rule lives in `DeckStairGeometryResolver.connectionOrientation`.
+    ///
+    /// Every 2D surface routes connection stairs through here. They each used
+    /// to draw their own fixed-depth band with lines running the wrong way
+    /// (bug 4a773e11).
+    static func connectionPlan(
+        edgeStart start: CGPoint,
+        edgeEnd end: CGPoint,
+        upperFacePolygon: [CGPoint],
+        lowerDestination: CGPoint?,
+        config: StairConfig,
+        treadCount: Int,
+        scaleFactor: Double,
+        measurementSystem: MeasurementSystem,
+        edgeDimensionInches: Double? = nil,
+        totalRiseInches: Double? = nil
+    ) -> DeckStairRenderPlan? {
+        guard let orientation = DeckStairGeometryResolver.connectionOrientation(
+            edgeStart: start,
+            edgeEnd: end,
+            upperFacePolygon: upperFacePolygon,
+            lowerDestination: lowerDestination,
+            flipDirection: config.flipDirection
+        ) else { return nil }
 
-        let resolvedEdgeInches = max(
-            0,
-            edgeDimensionInches ?? Double(edgeLength / scale)
+        return plan(
+            edgeStart: start,
+            edgeEnd: end,
+            orientation: orientation,
+            config: config,
+            treadCount: treadCount,
+            scaleFactor: scaleFactor,
+            measurementSystem: measurementSystem,
+            edgeDimensionInches: edgeDimensionInches,
+            totalRiseInches: totalRiseInches
         )
-        let widthInches = min(max(0, config.width), resolvedEdgeInches)
-        let availableGapInches = max(0, resolvedEdgeInches - widthInches)
-        let rawLeadingGapInches: Double
-        switch config.alignment {
-        case .left:
-            rawLeadingGapInches = config.offset
-        case .center:
-            rawLeadingGapInches = (availableGapInches / 2) + config.offset
-        case .right:
-            rawLeadingGapInches = availableGapInches - config.offset
-        }
-        let leadingGapInches = min(max(0, rawLeadingGapInches), availableGapInches)
-        let trailingGapInches = max(0, availableGapInches - leadingGapInches)
+    }
+
+    private static func plan(
+        edgeStart start: CGPoint,
+        edgeEnd end: CGPoint,
+        orientation: DeckStairOrientation,
+        config: StairConfig,
+        treadCount: Int,
+        scaleFactor: Double,
+        measurementSystem: MeasurementSystem,
+        edgeDimensionInches: Double?,
+        totalRiseInches: Double?
+    ) -> DeckStairRenderPlan? {
+        guard let placement = DeckStairGeometryResolver.placement(
+            edgeStart: start,
+            edgeEnd: end,
+            orientation: orientation,
+            widthInches: config.width,
+            alignment: config.alignment,
+            offsetInches: config.offset,
+            treadCount: treadCount,
+            runPerTreadInches: config.runPerTread,
+            pointsPerUnit: scaleFactor,
+            edgeDimensionInches: edgeDimensionInches
+        ) else { return nil }
+
+        let edgeLength = hypot(end.x - start.x, end.y - start.y)
+        let edgeUnit = orientation.treadAxis
+        let stairNormal = orientation.travel
+        let baseStart = placement.baseStart
+        let baseEnd = placement.baseEnd
+        let farStart = placement.farStart
+        let farEnd = placement.farEnd
+        let treadLines = placement.treadLines
+        let stairWidthCanvas = placement.widthDistance
+        let stairDepthCanvas = placement.runDistance
+        let startDistance = placement.leadingGapDistance
+        let totalRunInches = placement.totalRunInches
+        let widthInches = placement.widthInches
+        let leadingGapInches = placement.leadingGapInches
+        let trailingGapInches = placement.trailingGapInches
         let labelInset = min(
             CGFloat(OPSStyle.Layout.spacing3),
             max(CGFloat(OPSStyle.Layout.spacing2), stairDepthCanvas * 0.25)
@@ -469,20 +543,13 @@ enum DeckStairRenderPlanner {
             treadLines: treadLines,
             dimensionLabels: labels,
             boundaryMarkers: boundaryMarkers,
-            adjacentEdgeLabels: adjacentEdgeLabels
+            adjacentEdgeLabels: adjacentEdgeLabels,
+            orientation: orientation,
+            treadCount: placement.treadCount
         )
     }
 
     private static func midpoint(_ a: CGPoint, _ b: CGPoint) -> CGPoint {
         CGPoint(x: (a.x + b.x) / 2, y: (a.y + b.y) / 2)
-    }
-}
-
-private extension CGPoint {
-    func offset(by vector: CGVector, distance: CGFloat) -> CGPoint {
-        CGPoint(
-            x: x + vector.dx * distance,
-            y: y + vector.dy * distance
-        )
     }
 }

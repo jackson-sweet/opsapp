@@ -447,7 +447,7 @@ struct DeckTab2DView: View {
         // project viewer (previously a tiny dot at midpoint, easy to miss).
         // Mirror the builder canvas: outline rectangle + tread lines on the
         // outward perpendicular.
-        if let treadCount = edge.stairConfig?.treadCount, treadCount > 0 {
+        if edge.stairConfig != nil {
             drawStairsOnEdge(
                 context: context,
                 edge: edge,
@@ -503,21 +503,7 @@ struct DeckTab2DView: View {
         start: CGPoint,
         end: CGPoint
     ) -> DeckStairRenderPlan? {
-        guard let config = edge.stairConfig,
-              let treadCount = config.treadCount,
-              treadCount > 0 else { return nil }
-
-        return DeckStairRenderPlanner.plan(
-            edgeStart: start,
-            edgeEnd: end,
-            polygonVertices: drawingData.stairFacePolygon(forEdgeId: edge.id),
-            config: config,
-            treadCount: treadCount,
-            scaleFactor: drawingData.effectiveScaleFactor,
-            measurementSystem: drawingData.config.measurementSystem,
-            edgeDimensionInches: edge.dimension,
-            totalRiseInches: drawingData.stairTotalRiseInches(for: edge)
-        )
+        drawingData.edgeStairPlan(for: edge, edgeStart: start, edgeEnd: end)
     }
 
     private func drawStairBoundaryMarker(context: GraphicsContext, at point: CGPoint) {
@@ -717,29 +703,7 @@ struct DeckTab2DView: View {
     /// resolved heights via the shared rail-info source, so the printed rail
     /// run tracks height edits exactly like the rendered stair.
     private func drawLevelConnection(context: GraphicsContext, connection: LevelConnection) {
-        guard let upperLevel = drawingData.levels.first(where: { $0.id == connection.upperLevelId }),
-              let upperEdge = upperLevel.edges.first(where: { $0.id == connection.upperEdgeId }),
-              let uStart = upperLevel.vertex(byId: upperEdge.startVertexId),
-              let uEnd = upperLevel.vertex(byId: upperEdge.endVertexId) else { return }
-
-        let riseInches = drawingData.elevationDifference(
-            upperLevelId: connection.upperLevelId,
-            lowerLevelId: connection.lowerLevelId
-        )
-        let treadCount = drawingData.stairRailInfo(for: connection)?.treadCount
-            ?? connection.stairConfig.treadCount
-            ?? 0
-        guard treadCount > 0,
-              let plan = DeckStairRenderPlanner.plan(
-                edgeStart: uStart.position,
-                edgeEnd: uEnd.position,
-                polygonVertices: drawingData.stairFacePolygon(forEdgeId: upperEdge.id),
-                config: connection.stairConfig,
-                treadCount: treadCount,
-                scaleFactor: drawingData.effectiveScaleFactor,
-                measurementSystem: drawingData.config.measurementSystem,
-                totalRiseInches: (riseInches ?? 0) > 0 ? riseInches : nil
-              ) else { return }
+        guard let plan = drawingData.connectionStairPlan(for: connection) else { return }
 
         var rectPath = Path()
         rectPath.move(to: plan.baseStart)

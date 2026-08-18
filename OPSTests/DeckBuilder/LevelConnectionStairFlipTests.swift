@@ -2,10 +2,20 @@
 //  LevelConnectionStairFlipTests.swift
 //  OPSTests
 //
-//  Regression test: level-connection stairs must honor stairConfig.flipDirection.
-//  Before the fix, buildLevelConnection hardcoded the perpendicular direction and
-//  the toggle was silently ignored — both flip=false and flip=true produced
-//  identical stair positions. This test catches any future regression.
+//  Bug 4a773e11 — what a level-connection stair's direction is allowed to
+//  depend on, asserted against the built SceneKit graph.
+//
+//  This file used to assert the OPPOSITE contract: that `stairConfig
+//  .flipDirection` moved a connecting stair to the other side of its host
+//  edge. That contract is what broke the drawing. 2D resolved the side from
+//  the upper deck's own face while 3D used the raw edge-winding perpendicular,
+//  so operators reached for the flip toggle to correct whichever view they
+//  were looking at — and thereby guaranteed the other view was wrong. On
+//  "3998 Holland Ave" the stored flip is true precisely because 3D needed it.
+//
+//  A connection stair descends onto a deck the drawing already identifies.
+//  Its direction is a fact, so the toggle no longer votes, and 2D and 3D
+//  resolve the identical answer through DeckStairGeometryResolver.
 //
 
 import CoreGraphics
@@ -15,13 +25,9 @@ import XCTest
 
 final class LevelConnectionStairFlipTests: XCTestCase {
 
-    /// Build a two-level design with a connecting stair, once with
-    /// flipDirection=false and once true, and assert the stair tread cluster
-    /// lands on OPPOSITE sides of the connection edge. Before the fix the two
-    /// are identical (the level-connection path ignored the toggle).
-    func testLevelConnectionStairsHonorFlipDirection() throws {
-        // Build `data` mirroring MultiLevelTests' multi-level fixture, with a
-        // single levelConnection between the two levels. Capture the connection id.
+    /// The toggle must not be able to send a connecting stair away from the
+    /// deck it connects to. Both builds land in the same place.
+    func testLevelConnectionStairsIgnoreFlipDirection() throws {
         let (dataDefault, connectionId) = makeTwoLevelConnectedDesign(flip: false)
         let (dataFlipped, _) = makeTwoLevelConnectedDesign(flip: true)
 
@@ -30,15 +36,60 @@ final class LevelConnectionStairFlipTests: XCTestCase {
         let centroidFlipped = try connectionStairCentroid(
             in: DeckSceneBuilder.buildScene(from: dataFlipped), connectionId: connectionId)
 
-        // The two centroids must straddle the connection edge — i.e. their
-        // perpendicular offsets have opposite sign. A simple, robust proxy:
-        // they must not be (near-)equal.
-        let dx = Double(centroidDefault.x - centroidFlipped.x)
-        let dz = Double(centroidDefault.z - centroidFlipped.z)
-        let separation = (dx * dx + dz * dz).squareRoot()
-        XCTAssertGreaterThan(separation, 0.3,
-            "flipDirection must move the connecting stairs to the opposite side")
+        XCTAssertEqual(Double(centroidDefault.x), Double(centroidFlipped.x), accuracy: 1e-4)
+        XCTAssertEqual(Double(centroidDefault.z), Double(centroidFlipped.z), accuracy: 1e-4)
     }
+
+    /// The lower level sits at greater canvas y than the connection edge, so
+    /// the stair descends toward greater z in the scene. Canvas y maps to
+    /// scene z with no axis flip.
+    func testLevelConnectionStairsDescendTowardTheLowerLevel() throws {
+        let (data, connectionId) = makeTwoLevelConnectedDesign(flip: false)
+        let scene = DeckSceneBuilder.buildScene(from: data)
+        let centroid = try connectionStairCentroid(in: scene, connectionId: connectionId)
+
+        // Host edge is the upper rect's y = 100 side; the lower rect spans
+        // y 100…200. The stair body must sit on the lower rect's side of it.
+        let edgeZ = try edgeZInScene(data: data, connectionId: connectionId)
+        XCTAssertGreaterThan(Double(centroid.z), Double(edgeZ),
+                             "the connecting stair must run onto the deck below, not back across the deck above")
+    }
+
+    /// Whichever way the operator happened to draw the host edge, the stair
+    /// lands in the same place. The raw edge-winding perpendicular this path
+    /// used to trust flips with the stored vertex order.
+    func testLevelConnectionStairsIgnoreStoredEdgeWinding() throws {
+        let (forwardData, connectionId) = makeTwoLevelConnectedDesign(flip: false)
+        let (reversedData, _) = makeTwoLevelConnectedDesign(flip: false, reverseHostEdge: true)
+
+        let forward = try connectionStairCentroid(
+            in: DeckSceneBuilder.buildScene(from: forwardData), connectionId: connectionId)
+        let reversed = try connectionStairCentroid(
+            in: DeckSceneBuilder.buildScene(from: reversedData), connectionId: connectionId)
+
+        XCTAssertEqual(Double(forward.x), Double(reversed.x), accuracy: 1e-4)
+        XCTAssertEqual(Double(forward.z), Double(reversed.z), accuracy: 1e-4)
+    }
+
+    /// The whole point of the resolver: plan and scene agree. Resolve the same
+    /// connection in canvas space and assert the scene put the stair on the
+    /// matching side of the host edge.
+    func testPlanAndSceneAgreeOnTheSide() throws {
+        let (data, connectionId) = makeTwoLevelConnectedDesign(flip: true)
+        let connection = try XCTUnwrap(data.levelConnections.first)
+        let plan = try XCTUnwrap(data.connectionStairPlan(for: connection))
+
+        // Canvas: travel must point at greater y (toward the lower rect).
+        XCTAssertGreaterThan(plan.orientation.travel.dy, 0.9)
+
+        // Scene: the stair body must sit at greater z than the host edge.
+        let centroid = try connectionStairCentroid(
+            in: DeckSceneBuilder.buildScene(from: data), connectionId: connectionId)
+        let edgeZ = try edgeZInScene(data: data, connectionId: connectionId)
+        XCTAssertGreaterThan(Double(centroid.z), Double(edgeZ))
+    }
+
+    // MARK: - Scene helpers
 
     /// Average world position of the descendant geometry nodes under the
     /// `levelConnection_<id>` group.
@@ -58,12 +109,37 @@ final class LevelConnectionStairFlipTests: XCTestCase {
         return SCNVector3(sum.x / count, sum.y / count, sum.z / count)
     }
 
+    /// Scene z of the host edge. Both endpoints share a canvas y here, so a
+    /// single converted value describes the whole edge.
+    private func edgeZInScene(data: DeckDrawingData, connectionId: String) throws -> Float {
+        let connection = try XCTUnwrap(data.levelConnections.first { $0.id == connectionId })
+        let upper = try XCTUnwrap(data.level(byId: connection.upperLevelId))
+        let edge = try XCTUnwrap(upper.edge(byId: connection.upperEdgeId))
+        let start = try XCTUnwrap(upper.vertex(byId: edge.startVertexId))
+        let end = try XCTUnwrap(upper.vertex(byId: edge.endVertexId))
+        XCTAssertEqual(start.position.y, end.position.y, accuracy: 1e-6)
+
+        // Mirror DeckSceneBuilder's canvas → metres map for the y/z axis. The
+        // scene centres on the bounding box of every level's vertices.
+        let allPoints = data.levels.flatMap { $0.vertices.map(\.position) }
+        let minY = try XCTUnwrap(allPoints.map(\.y).min())
+        let maxY = try XCTUnwrap(allPoints.map(\.y).max())
+        let centreY = (minY + maxY) / 2
+        let metresPerPoint = 1.0 / data.effectiveScaleFactor / 39.3701
+        return Float((Double(start.position.y) - Double(centreY)) * metresPerPoint)
+    }
+
     // MARK: - Fixture
-    // Two closed 100×100 rects, upper at +3 ft, joined by one LevelConnection
-    // on the upper rect's y=0 edge. Verify field names against DeckLevel.swift
-    // and DeckGeometry.swift if the compiler disagrees (DeckLevel/DeckVertex/
-    // DeckEdge construction mirrors MultiLevelTests.swift).
-    private func makeTwoLevelConnectedDesign(flip: Bool) -> (DeckDrawingData, String) {
+
+    /// Two closed 100×100 rects stacked in canvas y: the upper deck (+3 ft) at
+    /// y 0…100 and the lower deck (0 ft) at y 100…200, joined by one
+    /// LevelConnection riding the shared y = 100 boundary. That is the real
+    /// shape of a connection — the stair leaves the upper deck and lands on the
+    /// lower one.
+    private func makeTwoLevelConnectedDesign(
+        flip: Bool,
+        reverseHostEdge: Bool = false
+    ) -> (DeckDrawingData, String) {
         var upper = DeckLevel(name: "Upper")
         upper.elevation = 3.0
         upper.vertices = [
@@ -72,10 +148,13 @@ final class LevelConnectionStairFlipTests: XCTestCase {
             DeckVertex(id: "u3", position: CGPoint(x: 100, y: 100)),
             DeckVertex(id: "u4", position: CGPoint(x: 0, y: 100)),
         ]
+        let hostEdge = reverseHostEdge
+            ? DeckEdge(id: "ue3", startVertexId: "u4", endVertexId: "u3")
+            : DeckEdge(id: "ue3", startVertexId: "u3", endVertexId: "u4")
         upper.edges = [
             DeckEdge(id: "ue1", startVertexId: "u1", endVertexId: "u2"),
             DeckEdge(id: "ue2", startVertexId: "u2", endVertexId: "u3"),
-            DeckEdge(id: "ue3", startVertexId: "u3", endVertexId: "u4"),
+            hostEdge,
             DeckEdge(id: "ue4", startVertexId: "u4", endVertexId: "u1"),
         ]
 
@@ -98,8 +177,8 @@ final class LevelConnectionStairFlipTests: XCTestCase {
             id: "conn1",
             upperLevelId: upper.id,
             lowerLevelId: lower.id,
-            upperEdgeId: "ue1",                              // upper rect's y=0 edge
-            stairConfig: StairConfig(width: 48, flipDirection: flip)
+            upperEdgeId: "ue3",                              // the shared y = 100 boundary
+            stairConfig: StairConfig(width: 48, treadCount: 4, flipDirection: flip)
         )
 
         var data = DeckDrawingData()

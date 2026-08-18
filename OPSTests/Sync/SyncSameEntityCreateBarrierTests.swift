@@ -222,12 +222,14 @@ final class SyncSameEntityCreateBarrierTests: XCTestCase {
 
     /// Subsystems with their own ordering graph are exempt. Double-gating them
     /// can only deadlock work their own barrier is holding for another reason.
+    /// A plain taskType CRUD op is deliberately absent from this list — see
+    /// `test_sameEntityBarrier_holdsPlainTaskTypeUpdateWhoseOwnCreateIsUnresolved`
+    /// below for why TaskTypeMutationSync's exemption does not reach it.
     func test_sameEntityBarrier_exemptsSubsystemsThatOrderTheirOwnWrites() throws {
         let exemptCases: [(entityType: String, operationType: String, label: String)] = [
             (SyncEntityType.siteVisit.rawValue, "update", "site visit"),
             (SyncEntityType.siteVisitArtifact.rawValue, "update", "site-visit capture"),
             (SyncEntityType.siteVisitIdentityDraft.rawValue, "update", "site-visit identity"),
-            (SyncEntityType.taskType.rawValue, "update", "task type"),
             (SyncEntityType.projectNote.rawValue,
              ProjectNoteMentionEditSync.updateOperationType,
              "mention edit")
@@ -255,6 +257,41 @@ final class SyncSameEntityCreateBarrierTests: XCTestCase {
                 "\(exempt.label) work is ordered by its own graph — this barrier must not touch it"
             )
         }
+    }
+
+    /// `TaskTypeMutationSync.bypassesGenericCoalescing` exempts exactly two
+    /// things: the "taskTypeMutation" reassign/merge COMMAND itself (a
+    /// synthetic entity keyed by a commandId, never by a TaskType row's own
+    /// id) and the "taskTypeMutationGuard" protection ops it attaches to
+    /// entities an in-flight mutation is touching, so a concurrent edit can't
+    /// race the bulk reassignment. Neither mechanism orders a plain taskType
+    /// row against ITS OWN create — a task type created offline and edited
+    /// before that create reaches the server is exactly the zero-row-PATCH
+    /// shape (bug 2e58c85b) this barrier exists to close, so the generic
+    /// barrier — not TaskTypeMutationSync — must hold it.
+    func test_sameEntityBarrier_holdsPlainTaskTypeUpdateWhoseOwnCreateIsUnresolved() throws {
+        let context = try makeContext()
+        let create = makeOp(
+            entityType: SyncEntityType.taskType.rawValue,
+            operationType: "create",
+            payload: ["id": deckId],
+            in: context
+        )
+        let update = makeOp(
+            entityType: SyncEntityType.taskType.rawValue,
+            operationType: "update",
+            payload: ["title": "Renamed"],
+            in: context
+        )
+
+        XCTAssertTrue(
+            SyncCrossEntityDependency.isBlockedByUnresolvedSameEntityCreate(
+                update, in: [create, update]
+            ),
+            "a plain taskType update is not ordered by TaskTypeMutationSync's " +
+            "reassign/merge graph — the generic barrier must hold it behind " +
+            "its own unresolved create"
+        )
     }
 
     // MARK: - A. Pure module — ready sets

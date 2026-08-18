@@ -12,6 +12,13 @@
 //  A UI that offers a delete the server will reject is the defect — Jackson's
 //  2026-07-29 call: field crews delete their own photos, admins delete any.
 //
+//  Note what the server does NOT ask for. No `project_photos` UPDATE policy
+//  requires a `projects.edit` grant (verified against production 2026-08-18:
+//  the only UPDATE-applicable policy is `company_isolation`; DELETE is denied
+//  outright and INSERT carries its own restrictive policy). Owning the photo is
+//  therefore sufficient on its own, and hiding that delete is as much a defect
+//  as offering one the trigger rejects.
+//
 
 import XCTest
 @testable import OPS
@@ -91,16 +98,59 @@ final class ProjectPhotoDeleteAuthorizationTests: XCTestCase {
         )
     }
 
-    /// No project-edit grant at all: nothing is deletable, attributed or not.
-    func testNoProjectEditGrantDeletesNothing() {
+    /// The shape production actually holds. 37 `project_photos` rows carry the
+    /// literal `'system'` in `uploaded_by` — server-written, `source = 'other'`,
+    /// 10 of them still live in the carousel. `lower('system')` equals no
+    /// operator's id, so the trigger rejects the soft-delete for everyone below
+    /// scope `all`, however wide the crew member's grant is otherwise.
+    func testServerWrittenSystemUploaderIsNotDeletableByCrew() {
         XCTAssertFalse(
             ProjectPhotoDeleteAuthorization.allows(
-                rawUploader: mine,
+                rawUploader: "system",
+                rawCurrentUser: mine,
+                hasFullProjectEdit: false,
+                hasAnyProjectEdit: true
+            ),
+            "an uploader that cannot resolve to a user id is unmatchable, not unattributed"
+        )
+        // The admin half of the guard still clears it.
+        XCTAssertTrue(
+            ProjectPhotoDeleteAuthorization.allows(
+                rawUploader: "system",
+                rawCurrentUser: mine,
+                hasFullProjectEdit: true,
+                hasAnyProjectEdit: true
+            )
+        )
+    }
+
+    /// Without the company-wide grant nothing beyond your OWN photo is
+    /// deletable — not a teammate's, not the server's `'system'` rows, not one
+    /// this device cannot attribute.
+    ///
+    /// Your own photo is the exception, and it is deletable with no
+    /// `projects.edit` grant whatsoever: the trigger asks only for a resolvable
+    /// user and `lower(OLD.uploaded_by) = lower(v_uid::text)`, and no UPDATE
+    /// policy adds a permission requirement. Withholding that badge would leave
+    /// a crew member unable to remove a photo the server would happily delete.
+    func testNoFullGrantDeletesNothingBeyondYourOwnPhoto() {
+        XCTAssertFalse(
+            ProjectPhotoDeleteAuthorization.allows(
+                rawUploader: theirs,
                 rawCurrentUser: mine,
                 hasFullProjectEdit: false,
                 hasAnyProjectEdit: false
             ),
-            "own-photo ownership still rides on holding some projects.edit grant"
+            "without projects.edit at scope `all`, a teammate's photo is untouchable"
+        )
+        XCTAssertFalse(
+            ProjectPhotoDeleteAuthorization.allows(
+                rawUploader: "system",
+                rawCurrentUser: mine,
+                hasFullProjectEdit: false,
+                hasAnyProjectEdit: false
+            ),
+            "an unmatchable uploader needs the `all` grant, which this operator lacks"
         )
         XCTAssertFalse(
             ProjectPhotoDeleteAuthorization.allows(
@@ -108,7 +158,17 @@ final class ProjectPhotoDeleteAuthorizationTests: XCTestCase {
                 rawCurrentUser: mine,
                 hasFullProjectEdit: false,
                 hasAnyProjectEdit: false
-            )
+            ),
+            "the unattributed fallback rides on the grant, so no grant offers nothing"
+        )
+        XCTAssertTrue(
+            ProjectPhotoDeleteAuthorization.allows(
+                rawUploader: mine,
+                rawCurrentUser: mine,
+                hasFullProjectEdit: false,
+                hasAnyProjectEdit: false
+            ),
+            "ownership alone satisfies the trigger — never hide a delete the server accepts"
         )
     }
 

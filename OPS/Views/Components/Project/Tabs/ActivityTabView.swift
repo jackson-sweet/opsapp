@@ -878,9 +878,14 @@ private struct ProjectPhotosCarousel: View {
     /// legacy `project_images` CSV — a photo just taken, whose `project_photos`
     /// row has been inserted remotely but not yet pulled back — and the server
     /// will accept that delete because the operator is its uploader.
-    private func canDelete(_ url: String, uploaderByURL: [String: String]) -> Bool {
+    ///
+    /// A row whose `uploaded_by` is not a user id at all — the server writes
+    /// the literal `'system'` on ingested photos — is the opposite case and
+    /// must be hidden: `lower('system')` matches no operator, so the trigger
+    /// rejects the write for everyone below scope `all`.
+    private func canDelete(_ url: String, uploaderByURL: [String: ProjectPhotoUploaderAttribution]) -> Bool {
         ProjectPhotoDeleteAuthorization.allows(
-            uploaderID: uploaderByURL[url],
+            uploader: uploaderByURL[url] ?? .unattributed,
             currentUserID: currentUploaderID,
             hasFullProjectEdit: canDeleteAnyPhoto,
             hasAnyProjectEdit: canEditProject
@@ -913,14 +918,18 @@ private struct ProjectPhotosCarousel: View {
             },
             uniquingKeysWith: { first, _ in first }
         )
-        // Uploader per full URL, normalized — the ownership half of the delete
-        // gate. Absent for a photo whose `project_photos` row has not synced yet.
-        let uploaderByURL: [String: String] = Dictionary(
-            syncedPhotos.compactMap { photo -> (String, String)? in
-                guard let uploader = ProjectPhotoUploaderIdentity.canonicalUserID(photo.uploadedBy) else { return nil }
-                return (photo.url, uploader)
+        // Uploader per full URL — the ownership half of the delete gate. EVERY
+        // synced row is represented: a row whose `uploaded_by` cannot resolve
+        // to a user id must read as unmatchable, not as missing, or the gate
+        // hands it the unattributed fallback and offers a delete the trigger
+        // rejects. URLs with no row at all fall through to `.unattributed`.
+        let uploaderByURL: [String: ProjectPhotoUploaderAttribution] = Dictionary(
+            syncedPhotos.map { photo -> (String, ProjectPhotoUploaderAttribution) in
+                (photo.url, ProjectPhotoUploaderAttribution(rawUploadedBy: photo.uploadedBy))
             },
-            uniquingKeysWith: { first, _ in first }
+            // One statement soft-deletes every row on the URL, so the trigger
+            // must accept them all — rows that disagree are undeletable.
+            uniquingKeysWith: { lhs, rhs in lhs == rhs ? lhs : .unmatchable }
         )
         let pending = imageSyncManager.currentInFlightUploads(for: project.id)
         // Split in-flight tiles into actively-uploading vs failed. The

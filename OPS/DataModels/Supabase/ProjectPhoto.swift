@@ -84,6 +84,43 @@ enum ProjectPhotoUploaderIdentity {
     }
 }
 
+/// What this device knows about a photo's `uploaded_by`.
+///
+/// The distinction between "no value" and "a value that cannot match" is the
+/// whole point of this type. `project_photos.uploaded_by` is `NOT NULL` TEXT
+/// server-side, so any value this device cannot resolve to a user id is still a
+/// value the trigger WILL compare — and reject. Collapsing both states into one
+/// optional is what offered a delete badge on every server-written `'system'`
+/// photo.
+enum ProjectPhotoUploaderAttribution: Equatable {
+    /// A canonical `public.users.id`, normalized the way the trigger's
+    /// `lower()` comparison reads it.
+    case known(String)
+
+    /// This device has no uploader recorded — no `project_photos` row for the
+    /// URL yet, or a local row whose attribution has not been pulled back.
+    case unattributed
+
+    /// A row exists carrying an `uploaded_by` that can never equal a user id:
+    /// the server-written `'system'` sentinel, or any other foreign namespace.
+    /// `lower(uploaded_by) = lower(v_uid::text)` is unsatisfiable for every
+    /// operator, so only the `projects.edit`-at-`all` half of the guard can
+    /// authorize the delete.
+    case unmatchable
+
+    init(rawUploadedBy rawValue: String?) {
+        guard let rawValue else {
+            self = .unattributed
+            return
+        }
+        guard let canonicalID = ProjectPhotoUploaderIdentity.canonicalUserID(rawValue) else {
+            self = .unmatchable
+            return
+        }
+        self = .known(canonicalID)
+    }
+}
+
 /// Who may remove a project photo.
 ///
 /// The single client-side statement of the rule the database enforces in
@@ -92,26 +129,45 @@ enum ProjectPhotoUploaderIdentity {
 /// `projects.edit` at scope `all`. Jackson's 2026-07-29 call — field crews
 /// delete their own photos, admins delete any company photo.
 ///
+/// Note what the server does NOT ask for: no `project_photos` UPDATE policy
+/// requires a `projects.edit` grant. Company isolation plus the comparison
+/// above is the entire rule, so owning the photo is by itself sufficient.
+///
 /// Kept here, beside the identity normalizer it depends on, so every surface
 /// that offers a delete asks the same question and no UI can offer a delete the
 /// server will reject.
 enum ProjectPhotoDeleteAuthorization {
 
     /// - Parameters:
-    ///   - uploaderID: canonical uploader id for the photo, or nil when this
-    ///     device has no `project_photos` row for it yet.
+    ///   - uploader: what this device knows about the photo's `uploaded_by`.
     ///   - currentUserID: canonical id of the signed-in operator.
     ///   - hasFullProjectEdit: `projects.edit` granted at scope `all`.
     ///   - hasAnyProjectEdit: `projects.edit` granted at any scope. Decides only
     ///     the unattributed case below.
     static func allows(
-        uploaderID: String?,
+        uploader: ProjectPhotoUploaderAttribution,
         currentUserID: String?,
         hasFullProjectEdit: Bool,
         hasAnyProjectEdit: Bool
     ) -> Bool {
         if hasFullProjectEdit { return true }
-        guard let uploaderID else {
+
+        switch uploader {
+        case .known(let uploaderID):
+            // The ownership half of the guard, and the whole of it — the server
+            // asks for no project-edit grant on your own photo.
+            guard let currentUserID else { return false }
+            return uploaderID == currentUserID
+
+        case .unmatchable:
+            // The trigger raises 42501 here for every non-`all` operator. The
+            // badge would be worse than useless: `deleteProjectPhoto` soft-deletes
+            // the local row and pushes the legacy CSV removal BEFORE the remote
+            // soft-delete, and that remote failure is swallowed as best-effort —
+            // so the tile vanishes on this device while the server row lives on.
+            return false
+
+        case .unattributed:
             // No synced row. By construction the only gallery URLs in this state
             // are this device's own optimistic appends to the legacy
             // `project_images` CSV — a photo just taken, whose `project_photos`
@@ -121,8 +177,6 @@ enum ProjectPhotoDeleteAuthorization {
             // they just took and cannot remove.
             return hasAnyProjectEdit
         }
-        guard let currentUserID else { return false }
-        return uploaderID == currentUserID
     }
 
     /// Convenience over raw column values — normalizes both sides the way the
@@ -134,7 +188,7 @@ enum ProjectPhotoDeleteAuthorization {
         hasAnyProjectEdit: Bool
     ) -> Bool {
         allows(
-            uploaderID: ProjectPhotoUploaderIdentity.canonicalUserID(rawUploader),
+            uploader: ProjectPhotoUploaderAttribution(rawUploadedBy: rawUploader),
             currentUserID: ProjectPhotoUploaderIdentity.canonicalUserID(rawCurrentUser),
             hasFullProjectEdit: hasFullProjectEdit,
             hasAnyProjectEdit: hasAnyProjectEdit

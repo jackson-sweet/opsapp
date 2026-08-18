@@ -352,13 +352,21 @@ struct ProjectDetailsView: View {
                     }
                     .onAppear { handleOnAppear() }
                     .onDisappear {
-                        NotificationCenter.default.post(name: .projectDetailsDidDisappear, object: nil)
-                        // Wizard system: notify that project details was closed
-                        NotificationCenter.default.post(
-                            name: Notification.Name("WizardScreenDismissed"),
-                            object: nil,
-                            userInfo: ["screen": "ProjectDetails"]
-                        )
+                        // Bug 138b0065 — both of these land real work inside the
+                        // dismissal transaction: `projectDetailsDidDisappear`
+                        // un-pauses the Mapbox render loop underneath, and the
+                        // wizard broadcast re-evaluates step state. Run them one
+                        // main-loop turn later so the close animation finishes
+                        // first. Nothing about WHAT is broadcast changes.
+                        DispatchQueue.main.async {
+                            NotificationCenter.default.post(name: .projectDetailsDidDisappear, object: nil)
+                            // Wizard system: notify that project details was closed
+                            NotificationCenter.default.post(
+                                name: Notification.Name("WizardScreenDismissed"),
+                                object: nil,
+                                userInfo: ["screen": "ProjectDetails"]
+                            )
+                        }
                     }
                     .onReceive(NotificationCenter.default.publisher(for: Notification.Name("WizardEvaluatePrerequisites"))) { _ in
                         // Re-evaluate prerequisites with current photo count
@@ -590,24 +598,40 @@ struct ProjectDetailsView: View {
             withAnimation(OPSStyle.Animation.fast) { isKeyboardVisible = false }
         }
         .offset(y: dismissDragOffset)
-        .opacity(dismissDragOffset > 0 ? 1.0 - Double(dismissDragOffset) / 600.0 : 1.0)
+        .opacity(
+            dismissDragOffset > 0
+                ? 1.0 - Double(dismissDragOffset) / Self.dismissFadeDistance
+                : 1.0
+        )
         .simultaneousGesture(
-            DragGesture(minimumDistance: 50)
+            // Bug 138b0065 — swipe-to-close was measured in the DEFAULT local
+            // space, which is the space this view's own `.offset` moves. Every
+            // point the sheet travelled was therefore subtracted from the next
+            // translation: the content chased the finger, gave back what it had
+            // just taken, and stuttered. `dismissDragSpace` is named on the
+            // wrapper below, whose frame the offset never touches, so the drag
+            // now reads true finger movement.
+            DragGesture(
+                minimumDistance: 50,
+                coordinateSpace: .named(dismissDragSpace)
+            )
                 .onChanged { value in
-                    // Only respond to gestures starting in the top 120pt
-                    guard value.startLocation.y < 120 else { return }
-                    let translation = max(0, value.translation.height)
-                    dismissDragOffset = translation
+                    // Only the top grab band closes the sheet; everywhere else
+                    // the drag belongs to the scroll view.
+                    guard value.startLocation.y < Self.dismissGrabBandHeight else { return }
+                    dismissDragOffset = max(0, value.translation.height)
                 }
                 .onEnded { value in
-                    guard value.startLocation.y < 120 else { return }
-                    if value.translation.height > 150 {
-                        withAnimation(OPSStyle.Animation.standard) {
-                            dismissDragOffset = UIScreen.main.bounds.height
-                        }
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
-                            dismiss()
-                        }
+                    guard value.startLocation.y < Self.dismissGrabBandHeight else { return }
+                    if value.translation.height > Self.dismissCommitDistance {
+                        // Hand the close straight to the sheet's own dismissal.
+                        // The old path animated the content off-screen over a
+                        // quarter second and only THEN called dismiss(), so the
+                        // operator watched two animations back to back — the
+                        // second one on an already-empty frame. Leaving the
+                        // offset where the finger left it lets the system
+                        // dismissal continue the same movement without a seam.
+                        dismiss()
                     } else {
                         withAnimation(OPSStyle.Animation.standard) {
                             dismissDragOffset = 0
@@ -615,7 +639,25 @@ struct ProjectDetailsView: View {
                     }
                 }
         )
+        .coordinateSpace(name: dismissDragSpace)
     }
+
+    // MARK: - Swipe-to-close
+
+    /// Stable space for the dismiss drag — named on the wrapper ABOVE the
+    /// `.offset`, so translations are not fed back through the offset they
+    /// produce.
+    private var dismissDragSpace: String { "projectDetailsDismissDrag" }
+
+    /// Only a drag that starts inside this top band closes the sheet. Below it
+    /// the map spacer and the scroll view own the gesture.
+    private static let dismissGrabBandHeight: CGFloat = 120
+
+    /// How far the sheet must travel before the release commits to closing.
+    private static let dismissCommitDistance: CGFloat = 150
+
+    /// Travel over which the sheet fades to fully transparent while dragging.
+    private static let dismissFadeDistance: Double = 600
 
     /// Gradient overlay that scrolls with title content — fades map into background.
     /// Stops stay mostly-transparent through the top two-thirds so the map

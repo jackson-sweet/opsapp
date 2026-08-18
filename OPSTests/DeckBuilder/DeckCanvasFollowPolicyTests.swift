@@ -140,7 +140,7 @@ final class DeckCanvasFollowPolicyTests: XCTestCase {
     func testIgnoresNonFiniteAndEmptyInput() {
         XCTAssertEqual(
             DeckCanvasFollowPolicy.pan(
-                focus: CGPoint(x: .nan, y: 0),
+                focus: CGPoint(x: CGFloat.nan, y: 0),
                 context: nil,
                 safeArea: safeArea
             ),

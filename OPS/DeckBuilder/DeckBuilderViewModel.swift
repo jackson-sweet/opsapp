@@ -3072,7 +3072,7 @@ class DeckBuilderViewModel: ObservableObject {
 
     func vinylOrderSurfaceInputs(scope: VinylOrderSurfaceScope) -> [VinylOrderSurfaceInput] {
         reconcileSurfaces()
-        guard let scale = vinylOrderEffectiveScale else { return [] }
+        let scale = vinylOrderEffectiveScale
         let selectedIds = selection.selectedSurfaceIds
         if scope == .selectedSurfaces, selectedIds.isEmpty { return [] }
 
@@ -3179,13 +3179,8 @@ class DeckBuilderViewModel: ObservableObject {
     /// Scale used for vinyl ordering. Delegates to the pure
     /// `VinylOrderScaleResolver` (extracted so the read-only deck-tab materials
     /// list resolves scale identically without instantiating this view model).
-    /// Vinyl is a stricter consumer than the editor's area/perimeter readout or
-    /// estimate generation: a cut-to-size order can't tolerate a drawing whose
-    /// typed dimensions disagree with the drawn geometry. Any stale edge blocks
-    /// the order. When a legacy drawing has confirmed dimensions but no persisted
-    /// `scaleFactor`, the resolver infers scale only if every stored dimension
-    /// still agrees with the geometry.
-    var vinylOrderEffectiveScale: Double? {
+    /// Always > 0 — a drawing always has a scale (bug 59d7f468).
+    var vinylOrderEffectiveScale: Double {
         VinylOrderScaleResolver.resolve(drawingData)
     }
 

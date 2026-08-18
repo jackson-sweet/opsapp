@@ -187,22 +187,32 @@ struct DeckCanvasWorkspace: Equatable {
 /// Resolves rendered geometry that extends beyond persisted vertex positions.
 /// Workspace bounds use these points without adding them to the deck payload.
 enum DeckCanvasWorkspaceExtentResolver {
+    /// Every point a stair actually occupies, resolved through the same plans
+    /// the canvas draws — edge-attached AND level-connection. The envelope used
+    /// to miss connection stairs entirely and to skip any edge stair whose
+    /// tread count was auto-derived, so the workspace could clip geometry the
+    /// user could plainly see.
     static func stairPoints(in drawingData: DeckDrawingData) -> [CGPoint] {
+        var points: [CGPoint] = []
+
         if drawingData.isMultiLevel {
-            return drawingData.levels.flatMap { level in
-                stairPoints(
+            for level in drawingData.levels {
+                points += stairPoints(
                     edges: level.edges,
                     vertices: level.vertices,
-                    polygon: level.orderedPositions,
                     drawingData: drawingData
                 )
             }
+            for connection in drawingData.levelConnections {
+                guard let plan = drawingData.connectionStairPlan(for: connection) else { continue }
+                points += plan.outline
+            }
+            return points
         }
 
         return stairPoints(
             edges: drawingData.edges,
             vertices: drawingData.vertices,
-            polygon: drawingData.orderedPositions,
             drawingData: drawingData
         )
     }
@@ -210,7 +220,6 @@ enum DeckCanvasWorkspaceExtentResolver {
     private static func stairPoints(
         edges: [DeckEdge],
         vertices: [DeckVertex],
-        polygon: [CGPoint],
         drawingData: DeckDrawingData
     ) -> [CGPoint] {
         let vertexByID = Dictionary(
@@ -219,19 +228,12 @@ enum DeckCanvasWorkspaceExtentResolver {
         )
 
         return edges.flatMap { edge -> [CGPoint] in
-            guard let config = edge.stairConfig,
-                  let treadCount = config.treadCount,
-                  treadCount > 0,
-                  let start = vertexByID[edge.startVertexId]?.position,
+            guard let start = vertexByID[edge.startVertexId]?.position,
                   let end = vertexByID[edge.endVertexId]?.position,
-                  let plan = DeckStairRenderPlanner.plan(
+                  let plan = drawingData.edgeStairPlan(
+                      for: edge,
                       edgeStart: start,
-                      edgeEnd: end,
-                      polygonVertices: polygon,
-                      config: config,
-                      treadCount: treadCount,
-                      scaleFactor: drawingData.effectiveScaleFactor,
-                      measurementSystem: drawingData.config.measurementSystem
+                      edgeEnd: end
                   ) else {
                 return []
             }
@@ -344,6 +346,79 @@ enum DeckCanvasPanPolicy {
         if location > viewportLength - edgeZone {
             return min(1, 1 - (viewportLength - location) / edgeZone)
         }
+        return 0
+    }
+}
+
+/// Keeps the point the operator is CREATING inside the viewport while they
+/// draw or dictate a perimeter. Bug 5f285f64.
+///
+/// The camera used to follow the anchor — the vertex the current segment runs
+/// FROM — and nothing followed the segment's far end. Dictating a long run
+/// therefore walked the new point straight off the screen: the operator called
+/// out a length and watched nothing happen, because the only thing the viewport
+/// tracked was where they had already been.
+///
+/// The rule is "follow the work, minimally". The new point must always be
+/// visible; the anchor comes along whenever both fit; and the camera nudges by
+/// the smallest amount that achieves it rather than recentring. A recentre on
+/// every dictated digit would throw the drawing across the screen and destroy
+/// the operator's sense of where they are.
+///
+/// Everything here is screen-space and pure, so it is asserted directly rather
+/// than through a rendered canvas.
+enum DeckCanvasFollowPolicy {
+
+    /// Offset delta to ADD to the canvas offset so `focus` — and `context` when
+    /// there is room — sit inside `safeArea`. `.zero` when nothing must move.
+    static func pan(
+        focus: CGPoint,
+        context: CGPoint?,
+        safeArea: CGRect
+    ) -> CGSize {
+        guard focus.x.isFinite, focus.y.isFinite,
+              safeArea.width > 0, safeArea.height > 0 else { return .zero }
+
+        let contextPoint = context.flatMap { $0.x.isFinite && $0.y.isFinite ? $0 : nil }
+
+        // Prefer bringing the whole segment into view; fall back to the new
+        // point alone when the segment is longer than the viewport.
+        if let contextPoint {
+            let span = boundingBox(focus, contextPoint)
+            if span.width <= safeArea.width, span.height <= safeArea.height {
+                return translation(bringing: span, into: safeArea)
+            }
+        }
+        return translation(bringing: boundingBox(focus, focus), into: safeArea)
+    }
+
+    private static func boundingBox(_ a: CGPoint, _ b: CGPoint) -> CGRect {
+        CGRect(
+            x: min(a.x, b.x),
+            y: min(a.y, b.y),
+            width: abs(a.x - b.x),
+            height: abs(a.y - b.y)
+        )
+    }
+
+    /// Smallest translation that puts `box` inside `bounds`. Assumes `box`
+    /// fits; when it does not, the leading edge wins so the caller keeps a
+    /// deterministic anchor.
+    private static func translation(bringing box: CGRect, into bounds: CGRect) -> CGSize {
+        CGSize(
+            width: axisTranslation(min: box.minX, max: box.maxX, boundsMin: bounds.minX, boundsMax: bounds.maxX),
+            height: axisTranslation(min: box.minY, max: box.maxY, boundsMin: bounds.minY, boundsMax: bounds.maxY)
+        )
+    }
+
+    private static func axisTranslation(
+        min boxMin: CGFloat,
+        max boxMax: CGFloat,
+        boundsMin: CGFloat,
+        boundsMax: CGFloat
+    ) -> CGFloat {
+        if boxMin < boundsMin { return boundsMin - boxMin }
+        if boxMax > boundsMax { return boundsMax - boxMax }
         return 0
     }
 }

@@ -22,16 +22,16 @@ import UIKit
 
 /// One selected job, assembled by the board with everything its page needs.
 struct VinylBulkOrderJob: Identifiable {
+    /// The one reason a job can't produce cuts: there is no drawing to cut
+    /// from. "Scale unconfirmed" used to live here too and blocked orders on a
+    /// drawing that was perfectly measurable (bug 59d7f468).
     enum DegenerateReason {
         case noDrawing
-        case unconfirmedScale
 
         var label: String {
             switch self {
             case .noDrawing:
                 return "NO DECK DRAWING — ORDERS COLOR + PO ONLY."
-            case .unconfirmedScale:
-                return "SCALE UNCONFIRMED — CUTS UNAVAILABLE. CONFIRM AN EDGE LENGTH ON THE DECK TAB TO ORDER CUTS."
             }
         }
     }

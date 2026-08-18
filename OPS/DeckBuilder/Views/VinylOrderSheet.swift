@@ -479,8 +479,6 @@ struct VinylOrderSheet: View {
             banner(text: "PROJECT LINK MISSING", color: OPSStyle.Colors.errorStatus)
         } else if viewModel.vinylOrderSurfaceScope == .selectedSurfaces && viewModel.selection.selectedSurfaceIds.isEmpty {
             banner(text: "SELECT A SURFACE", color: OPSStyle.Colors.warningStatus)
-        } else if viewModel.vinylOrderEffectiveScale == nil {
-            banner(text: "CONFIRM ONE EDGE LENGTH", color: OPSStyle.Colors.warningStatus)
         } else if let blocker = plan.blockingMessage {
             banner(text: blocker, color: OPSStyle.Colors.errorStatus)
         } else if settings.catalogItemId != nil && selectedVariant == nil {

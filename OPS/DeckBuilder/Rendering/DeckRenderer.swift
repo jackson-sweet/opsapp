@@ -150,7 +150,13 @@ struct DeckRenderer {
 
                 // Render level connections (stairs between levels)
                 for connection in drawingData.levelConnections {
-                    renderConnectionStairs(gc: gc, connection: connection, drawingData: drawingData, transform: transform)
+                    renderConnectionStairs(
+                        gc: gc,
+                        connection: connection,
+                        drawingData: drawingData,
+                        transform: transform,
+                        scaleFactor: drawingData.effectiveScaleFactor * Double(fitScale)
+                    )
                 }
             } else {
                 // Single-level rendering (existing behavior)
@@ -464,69 +470,72 @@ struct DeckRenderer {
 
     // MARK: - Connection Stair Rendering
 
+    /// Connection stairs in the export image resolve through the same shared
+    /// plan as the editor canvas and the 3D scene (bug 4a773e11). This used to
+    /// hand-roll a raw-winding perpendicular, a fixed 20pt depth, a hardcoded
+    /// 5-tread fallback and lines running along the direction of travel — four
+    /// separate ways to disagree with what the user was looking at.
     private static func renderConnectionStairs(
         gc: CGContext,
         connection: LevelConnection,
         drawingData: DeckDrawingData,
-        transform: (CGPoint) -> CGPoint
+        transform: (CGPoint) -> CGPoint,
+        scaleFactor: Double
     ) {
-        guard let upperLevel = drawingData.level(byId: connection.upperLevelId),
-              let edge = upperLevel.edge(byId: connection.upperEdgeId),
-              let start = upperLevel.vertex(byId: edge.startVertexId),
-              let end = upperLevel.vertex(byId: edge.endVertexId) else { return }
+        guard let plan = drawingData.connectionStairPlan(
+            for: connection,
+            transform: transform,
+            scaleFactor: scaleFactor
+        ) else { return }
 
-        let p1 = transform(start.position)
-        let p2 = transform(end.position)
-        let dx = p2.x - p1.x
-        let dy = p2.y - p1.y
-        let edgeLength = sqrt(dx * dx + dy * dy)
-        guard edgeLength > 0 else { return }
+        let stairColor = UIColor(OPSStyle.Colors.tan)
 
-        let perpX = -dy / edgeLength
-        let perpY = dx / edgeLength
-        let stairDepth: CGFloat = 20.0
-
-        let p3 = CGPoint(x: p2.x + perpX * stairDepth, y: p2.y + perpY * stairDepth)
-        let p4 = CGPoint(x: p1.x + perpX * stairDepth, y: p1.y + perpY * stairDepth)
-
-        let amberColor = UIColor(red: 196/255, green: 168/255, blue: 104/255, alpha: 1)
-
-        // Hatched fill
-        gc.setFillColor(amberColor.withAlphaComponent(0.15).cgColor)
+        gc.setFillColor(stairColor.withAlphaComponent(0.15).cgColor)
         gc.beginPath()
-        gc.move(to: p1); gc.addLine(to: p2); gc.addLine(to: p3); gc.addLine(to: p4)
+        gc.move(to: plan.baseStart)
+        gc.addLine(to: plan.baseEnd)
+        gc.addLine(to: plan.farEnd)
+        gc.addLine(to: plan.farStart)
         gc.closePath()
         gc.fillPath()
 
-        // Outline
-        gc.setStrokeColor(amberColor.withAlphaComponent(0.6).cgColor)
-        gc.setLineWidth(1.5)
+        gc.setStrokeColor(stairColor.withAlphaComponent(0.6).cgColor)
+        gc.setLineWidth(OPSStyle.Layout.Border.thick)
         gc.beginPath()
-        gc.move(to: p1); gc.addLine(to: p2); gc.addLine(to: p3); gc.addLine(to: p4)
+        gc.move(to: plan.baseStart)
+        gc.addLine(to: plan.baseEnd)
+        gc.addLine(to: plan.farEnd)
+        gc.addLine(to: plan.farStart)
         gc.closePath()
         gc.strokePath()
 
-        // Hatch lines
-        let treadCount = connection.stairConfig.treadCount ?? 5
-        gc.setStrokeColor(amberColor.withAlphaComponent(0.4).cgColor)
-        gc.setLineWidth(1.0)
-        for i in 1..<min(treadCount, 20) {
-            let t = CGFloat(i) / CGFloat(treadCount)
-            let ls = CGPoint(x: p1.x + dx * t, y: p1.y + dy * t)
-            let le = CGPoint(x: ls.x + perpX * stairDepth, y: ls.y + perpY * stairDepth)
-            gc.beginPath(); gc.move(to: ls); gc.addLine(to: le); gc.strokePath()
+        gc.setStrokeColor(stairColor.withAlphaComponent(0.4).cgColor)
+        gc.setLineWidth(OPSStyle.Layout.Border.standard)
+        for tread in plan.treadLines {
+            gc.beginPath()
+            gc.move(to: tread.start)
+            gc.addLine(to: tread.end)
+            gc.strokePath()
         }
 
-        // Tread count label
-        let labelX = (p1.x + p3.x) / 2
-        let labelY = (p1.y + p3.y) / 2
-        let label = "\(treadCount) treads" as NSString
+        let railInfo = drawingData.stairRailInfo(for: connection)
+        let labelText: String
+        if let railInfo {
+            labelText = "\(railInfo.treadCount) treads · \(DimensionEngine.format(railInfo.railRunInches, system: drawingData.config.measurementSystem)) rail"
+        } else {
+            labelText = "\(plan.treadCount) treads"
+        }
+        let label = labelText as NSString
         let attrs: [NSAttributedString.Key: Any] = [
-            .font: UIFont.systemFont(ofSize: 10, weight: .semibold),
-            .foregroundColor: amberColor
+            .font: OPSStyle.Typography.uiDataValueMedium(),
+            .foregroundColor: stairColor
         ]
         let labelSize = label.size(withAttributes: attrs)
-        label.draw(at: CGPoint(x: labelX - labelSize.width / 2, y: labelY - labelSize.height / 2), withAttributes: attrs)
+        let anchor = plan.summaryLabelPosition(zoomScale: 1)
+        label.draw(
+            at: CGPoint(x: anchor.x - labelSize.width / 2, y: anchor.y - labelSize.height / 2),
+            withAttributes: attrs
+        )
     }
 
     // MARK: - Helpers

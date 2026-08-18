@@ -29,16 +29,21 @@ final class VinylOrderSelectionTests: XCTestCase {
         XCTAssertEqual(inputs.first?.scaleFactor, DeckBuilderViewModel.prescaleFallbackScale)
     }
 
-    func testSelectedSurfaceRequiresConfirmedLengthWhenManualDimensionConflictsWithGeometry() {
+    /// Bug 59d7f468 — a typed dimension that implies a different scale than the
+    /// canvas-derived ones used to void the whole drawing and raise CONFIRM ONE
+    /// EDGE LENGTH. A measured dimension is the operator's real-world number,
+    /// so it sets the scale and the surface stays orderable.
+    func testMeasuredDimensionSetsTheScaleInsteadOfBlockingTheOrder() {
         var data = rectangleDrawingData()
         data.edges[0].dimensionSource = .manual
-        data.edges[0].dimension = 120
+        data.edges[0].dimension = 120     // 288 canvas points / 120" = 2.4
         let viewModel = viewModelWithSelectedSurface(drawingData: data)
 
         let inputs = viewModel.selectedVinylOrderSurfaceInputs()
 
-        XCTAssertNil(viewModel.vinylOrderEffectiveScale)
-        XCTAssertTrue(inputs.isEmpty)
+        XCTAssertEqual(viewModel.vinylOrderEffectiveScale, 2.4, accuracy: 1e-9)
+        XCTAssertEqual(inputs.count, 1)
+        XCTAssertEqual(inputs.first?.scaleFactor, 2.4)
     }
 
     func testSelectedSurfaceUsesPersistedScaleWhenDrawingIsCalibrated() {
@@ -54,7 +59,10 @@ final class VinylOrderSelectionTests: XCTestCase {
         XCTAssertEqual(inputs.first?.scaleFactor, 2.5)
     }
 
-    func testSelectedSurfaceBlocksWhenConfirmedDimensionIsStale() {
+    /// Bug 59d7f468 — an overridden dimension the drawing has drifted from no
+    /// longer blocks the order. It is real, so it is shown on the edge that
+    /// carries it; it is not a reason to refuse work the operator asked for.
+    func testOverriddenDimensionDoesNotBlockTheOrder() {
         var data = rectangleDrawingData()
         data.scaleFactor = 2
         data.edges[0].dimensionSource = .manual
@@ -63,8 +71,20 @@ final class VinylOrderSelectionTests: XCTestCase {
 
         let inputs = viewModel.selectedVinylOrderSurfaceInputs()
 
-        XCTAssertNil(viewModel.vinylOrderEffectiveScale)
-        XCTAssertTrue(inputs.isEmpty)
+        XCTAssertEqual(viewModel.vinylOrderEffectiveScale, 2)
+        XCTAssertEqual(inputs.count, 1)
+    }
+
+    /// The override state survives the blocker's removal — it is the honest
+    /// signal, and the 2D surfaces mark the edge that carries it.
+    func testOverriddenDimensionIsStillFlaggedOnItsOwnEdge() {
+        var data = rectangleDrawingData()
+        data.scaleFactor = 2
+        data.edges[0].dimensionSource = .manual
+        data.edges[0].dimensionStale = true
+
+        XCTAssertTrue(DeckStaleDimensionPresenter.isOverridden(data.edges[0]))
+        XCTAssertFalse(DeckStaleDimensionPresenter.isOverridden(data.edges[1]))
     }
 
     private func rectangleDrawingData() -> DeckDrawingData {

@@ -255,6 +255,10 @@ struct DeckCanvasView: View {
                 guard preview == nil else { return }
                 reconcileWorkspaceOffsetIfReady(viewportSize: unobstructedSize)
             }
+            .onChange(of: viewModel.perimeterDraftPreview) { _, preview in
+                guard let preview else { return }
+                followPerimeterDraft(preview, viewportSize: unobstructedSize)
+            }
             .onChange(of: viewModel.perimeterEntry) { _, entry in
                 if !DeckCanvasGesturePolicy.allowsPerimeterDraftReorientation(for: entry) {
                     isReorientingPerimeterDraft = false
@@ -915,60 +919,48 @@ struct DeckCanvasView: View {
 
     // MARK: - Level Connection
 
+    /// A level-connection stair draws with the same geometry, the same tread
+    /// axis and the same scale as every other stair — it just resolves its
+    /// direction from the levels it joins. All of that lives in
+    /// `connectionStairPlan`; this only paints it (bug 4a773e11). Previously
+    /// this drew a fixed 30pt band across the whole host edge with its lines
+    /// running along the direction of travel, so the stair read as if it ran
+    /// sideways and ignored width, alignment and run depth entirely.
     private func drawLevelConnection(context: GraphicsContext, connection: LevelConnection) {
-        guard let upperLevel = viewModel.drawingData.level(byId: connection.upperLevelId),
-              let edge = upperLevel.edge(byId: connection.upperEdgeId),
-              let start = upperLevel.vertex(byId: edge.startVertexId),
-              let end = upperLevel.vertex(byId: edge.endVertexId) else { return }
-        let dx = end.position.x - start.position.x
-        let dy = end.position.y - start.position.y
-        let len = sqrt(dx * dx + dy * dy)
-        guard len > 0 else { return }
-        // Connection stairs face away from the upper deck's surface too —
-        // this used to be a raw CCW perpendicular that ignored the deck
-        // entirely, so half of them pointed back across the deck they
-        // descend from. Honors the config's flip like every other stair.
-        let outward = PolygonMath.outwardPerpendicular(
-            edgeStart: start.position,
-            edgeEnd: end.position,
-            polygonVertices: viewModel.drawingData.stairFacePolygon(forEdgeId: edge.id)
-        )
-        let perpX = connection.stairConfig.flipDirection ? -CGFloat(outward.x) : CGFloat(outward.x)
-        let perpY = connection.stairConfig.flipDirection ? -CGFloat(outward.y) : CGFloat(outward.y)
-        let depth: CGFloat = 30
-        let p1 = start.position, p2 = end.position
-        let p3 = CGPoint(x: p2.x + perpX * depth, y: p2.y + perpY * depth)
-        let p4 = CGPoint(x: p1.x + perpX * depth, y: p1.y + perpY * depth)
-        var sp = Path(); sp.move(to: p1); sp.addLine(to: p2); sp.addLine(to: p3); sp.addLine(to: p4); sp.closeSubpath()
+        guard let plan = viewModel.drawingData.connectionStairPlan(for: connection) else { return }
+
+        var sp = Path()
+        sp.move(to: plan.baseStart)
+        sp.addLine(to: plan.baseEnd)
+        sp.addLine(to: plan.farEnd)
+        sp.addLine(to: plan.farStart)
+        sp.closeSubpath()
         context.fill(sp, with: .color(OPSStyle.Colors.warningStatus.opacity(0.08)))
         let outline = scaledSize(1.5, min: 1, max: 3)
         context.stroke(sp, with: .color(OPSStyle.Colors.warningStatus.opacity(0.4)), lineWidth: outline)
-        // Tread count + rail run from the shared source: rise derives from
-        // the two levels' resolved heights, so the label tracks height edits
-        // exactly like the rendered stair does. No hardcoded fallback count —
-        // a degenerate connection (no positive drop) draws its footprint but
-        // makes no tread/rail claims.
-        let railInfo = viewModel.drawingData.stairRailInfo(for: connection)
-        let tc = railInfo?.treadCount ?? connection.stairConfig.treadCount ?? 0
-        guard tc > 1 else { return }
+
         let treadStroke = scaledSize(1, min: 0.75, max: 2)
-        for i in 1..<min(tc, 20) {
-            let t = CGFloat(i) / CGFloat(tc)
-            let ls = CGPoint(x: p1.x + dx * t, y: p1.y + dy * t)
-            let le = CGPoint(x: ls.x + perpX * depth, y: ls.y + perpY * depth)
-            var hp = Path(); hp.move(to: ls); hp.addLine(to: le)
+        for tread in plan.treadLines {
+            var hp = Path()
+            hp.move(to: tread.start)
+            hp.addLine(to: tread.end)
             context.stroke(hp, with: .color(OPSStyle.Colors.warningStatus.opacity(0.25)), lineWidth: treadStroke)
         }
-        let lx = (p1.x + p3.x) / 2, ly = (p1.y + p3.y) / 2
+
+        // Tread count + rail run from the shared source: rise derives from
+        // the two levels' resolved heights, so the label tracks height edits
+        // exactly like the rendered stair does.
+        let railInfo = viewModel.drawingData.stairRailInfo(for: connection)
         let labelFont = scaledSize(9, min: 7, max: 14)
         let labelText: String
         if let railInfo {
             labelText = "\(railInfo.treadCount) treads · \(DimensionEngine.format(railInfo.railRunInches, system: viewModel.drawingData.config.measurementSystem)) rail"
         } else {
-            labelText = "\(tc) treads"
+            labelText = "\(plan.treadCount) treads"
         }
+        let labelPoint = plan.summaryLabelPosition(zoomScale: canvasScale)
         context.draw(Text(labelText).font(.system(size: labelFont, weight: .medium, design: .monospaced))
-            .foregroundColor(OPSStyle.Colors.warningStatus.opacity(0.6)), at: CGPoint(x: lx, y: ly))
+            .foregroundColor(OPSStyle.Colors.warningStatus.opacity(0.6)), at: labelPoint)
     }
 
     // MARK: - Edges
@@ -1084,9 +1076,8 @@ struct DeckCanvasView: View {
     /// canvas so width-on-screen matches the rest of the drawing before scale is set.
     private func drawStairIndicator(context: GraphicsContext, start: CGPoint, end: CGPoint, edge: DeckEdge) {
         guard let config = edge.stairConfig,
-              let treadCount = config.treadCount,
-              treadCount > 0,
               let plan = stairRenderPlan(start: start, end: end, edge: edge) else { return }
+        let treadCount = plan.treadCount
 
         // Stair outline rectangle
         var rectPath = Path()
@@ -1166,21 +1157,7 @@ struct DeckCanvasView: View {
         end: CGPoint,
         edge: DeckEdge
     ) -> DeckStairRenderPlan? {
-        guard let config = edge.stairConfig,
-              let treadCount = config.treadCount,
-              treadCount > 0 else { return nil }
-
-        return DeckStairRenderPlanner.plan(
-            edgeStart: start,
-            edgeEnd: end,
-            polygonVertices: viewModel.drawingData.stairFacePolygon(forEdgeId: edge.id),
-            config: config,
-            treadCount: treadCount,
-            scaleFactor: viewModel.drawingData.effectiveScaleFactor,
-            measurementSystem: viewModel.drawingData.config.measurementSystem,
-            edgeDimensionInches: edge.dimension,
-            totalRiseInches: viewModel.drawingData.stairTotalRiseInches(for: edge)
-        )
+        viewModel.drawingData.edgeStairPlan(for: edge, edgeStart: start, edgeEnd: end)
     }
 
     private func drawStairBoundaryMarker(context: GraphicsContext, at point: CGPoint) {
@@ -1524,14 +1501,15 @@ struct DeckCanvasView: View {
 
         let midX = (start.position.x + end.position.x) / 2
         let midY = (start.position.y + end.position.y) / 2
-        // Stale flag wins over the raw value: prefix the label so the user
-        // sees at a glance that the typed dimension and the drawn length are
-        // out of sync (e.g. they dragged a vertex that was on a manually-typed
-        // edge — the field crew expects a warning, not silent mismatch).
-        let baseLabel = DimensionEngine.format(dim, system: viewModel.drawingData.config.measurementSystem)
-        let label = edge.dimensionStale ? "\u{26A0} \(baseLabel)" : baseLabel
+        // An overridden dimension — one the operator typed or measured, and
+        // then moved the drawing away from — reads in tan with a plain caption
+        // beneath it. Presentation lives in DeckStaleDimensionPresenter so the
+        // read-only viewer shows the identical marker (bug 59d7f468). The old
+        // "\u{26A0}" prefix is gone: decorative glyphs are not in the system,
+        // and the tan chip plus the caption already say it louder.
+        let label = DimensionEngine.format(dim, system: viewModel.drawingData.config.measurementSystem)
         let hasAccuracy = edge.accuracyPercent != nil
-        let isStale = edge.dimensionStale
+        let isStale = DeckStaleDimensionPresenter.isOverridden(edge)
 
         // Offset label perpendicular to the edge so it doesn't sit on the line
         let dx = end.position.x - start.position.x
@@ -1570,14 +1548,14 @@ struct DeckCanvasView: View {
 
         let pillRect = CGRect(x: labelX - pillW / 2, y: labelY - pillH / 2, width: pillW, height: pillH)
         let pillColor: Color = (isStale || hasAccuracy)
-            ? OPSStyle.Colors.warningStatus.opacity(0.15)
+            ? DeckStaleDimensionPresenter.chipFill
             : OPSStyle.Colors.cardBackground.opacity(0.95)
         context.fill(Path(roundedRect: pillRect, cornerRadius: cr), with: .color(pillColor))
         context.stroke(Path(roundedRect: pillRect, cornerRadius: cr),
                        with: .color(OPSStyle.Colors.surfaceActive), lineWidth: 0.5)
 
         let fontSize = scaledSize(11, min: 8, max: 18)
-        let labelColor: Color = (isStale || hasAccuracy) ? OPSStyle.Colors.warningStatus : Color.white
+        let labelColor: Color = (isStale || hasAccuracy) ? DeckStaleDimensionPresenter.valueColor : Color.white
         context.draw(Text(label).font(.system(size: fontSize, weight: .medium, design: .monospaced))
             .foregroundColor(labelColor), at: CGPoint(x: labelX, y: labelY))
 
@@ -1593,8 +1571,8 @@ struct DeckCanvasView: View {
         let userLabelHasContent = (userLabel?.isEmpty == false)
 
         if isStale {
-            secondaryLabel = "DRAWN LENGTH CHANGED"
-            secondaryColor = OPSStyle.Colors.warningStatus
+            secondaryLabel = DeckStaleDimensionPresenter.caption
+            secondaryColor = DeckStaleDimensionPresenter.valueColor
         } else if let accuracy = edge.accuracyPercent {
             secondaryLabel = AccuracyModel.formatAccuracy(dimensionInches: dim, accuracyPercent: accuracy,
                                                            system: viewModel.drawingData.config.measurementSystem)
@@ -1799,6 +1777,56 @@ struct DeckCanvasView: View {
             viewportSize: viewportSize,
             minimumVisibleLength: CGFloat(OPSStyle.Layout.touchTargetMin)
         )
+    }
+
+    /// Keep the point being created in view as the operator draws or dictates
+    /// successive points (bug 5f285f64). The camera used to track only the
+    /// anchor — where the segment starts — so a dictated run walked its new
+    /// endpoint off-screen and the canvas appeared frozen.
+    ///
+    /// Pans by the minimum amount that puts the new endpoint (and the anchor
+    /// too, whenever both fit) back inside the work area. Deliberately NOT a
+    /// recentre: recentring on every dictated digit would sling the drawing
+    /// around and cost the operator their bearings.
+    private func followPerimeterDraft(_ preview: PerimeterDraftPreview, viewportSize: CGSize) {
+        // Never fight a finger that is already driving the camera.
+        guard !hasActiveWorkspaceManipulation else { return }
+        guard viewportSize.width > 0, viewportSize.height > 0 else { return }
+
+        // The draft can reach past the session's world bounds; grow them first
+        // so the pan below is not immediately clamped back.
+        expandWorkspace(toInclude: [preview.start, preview.end], viewportSize: viewportSize)
+
+        let margin = CGFloat(OPSStyle.Layout.touchTargetMin)
+        let safeArea = CGRect(origin: .zero, size: viewportSize)
+            .insetBy(dx: margin, dy: margin)
+        guard safeArea.width > 0, safeArea.height > 0 else { return }
+
+        let delta = DeckCanvasFollowPolicy.pan(
+            focus: screenPoint(fromCanvas: preview.end),
+            context: screenPoint(fromCanvas: preview.start),
+            safeArea: safeArea
+        )
+        guard delta != .zero else { return }
+
+        workspaceNeedsOffsetReconciliation = false
+        let target = CGSize(
+            width: canvasOffset.width + delta.width,
+            height: canvasOffset.height + delta.height
+        )
+        viewportSnap.animate(
+            from: canvasOffset,
+            to: target,
+            duration: OPSStyle.Animation.durationPanel,
+            reduceMotion: OPSStyle.Animation.reduceMotion
+        ) { next in
+            canvasOffset = workspace.constrainedOffset(
+                next,
+                scale: canvasScale,
+                viewportSize: viewportSize,
+                minimumVisibleLength: CGFloat(OPSStyle.Layout.touchTargetMin)
+            )
+        }
     }
 
     private func centerViewport(on point: CGPoint, viewportSize: CGSize) {

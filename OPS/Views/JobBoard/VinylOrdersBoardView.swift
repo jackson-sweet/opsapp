@@ -666,14 +666,8 @@ struct VinylOrdersBoardView: View {
                 ? data.levels.map(\.detectedSurfaces)
                 : [data.detectedSurfaces]
 
-            let degenerateReason: VinylBulkOrderJob.DegenerateReason?
-            if resolved.vinylInputs.isEmpty {
-                degenerateReason = .noDrawing
-            } else if resolved.scale == nil {
-                degenerateReason = .unconfirmedScale
-            } else {
-                degenerateReason = nil
-            }
+            let degenerateReason: VinylBulkOrderJob.DegenerateReason? =
+                resolved.vinylInputs.isEmpty ? .noDrawing : nil
 
             return VinylBulkOrderJob(
                 projectId: input.projectId,

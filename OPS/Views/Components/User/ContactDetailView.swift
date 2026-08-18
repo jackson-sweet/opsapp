@@ -1111,7 +1111,16 @@ struct ContactDetailView: View {
     private var leadsSection: some View {
         if isClient, let client = client,
            permissionStore.leadAccessPolicy.canViewAny {
-            ClientLeadsSection(client: client)
+            ClientLeadsSection(
+                client: client,
+                // Reuse THIS view's project sheet. The app-wide route presents
+                // from MainTabView, below this modal, so a lead's PROJECT row
+                // would open behind the profile the operator is standing in.
+                onOpenProject: { projectId in
+                    guard let project = dataController.getProject(id: projectId) else { return }
+                    selectedProject = project
+                }
+            )
                 .padding(.horizontal)
                 .padding(.top, OPSStyle.Layout.spacing3)
                 .opacity(showFullContact ? 1 : 0)

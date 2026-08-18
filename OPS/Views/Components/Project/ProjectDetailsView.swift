@@ -1417,16 +1417,33 @@ struct ProjectDetailsView: View {
         )
     }
 
+    /// How long to wait after asking this sheet to close before firing an
+    /// app-wide route that targets a surface BELOW it. Long enough for the
+    /// sheet's own dismissal to finish so the tab swap and detail push are not
+    /// racing a view that is still on screen. Matches the notification rail's
+    /// shipped hand-off (`NotificationListView.openLead`).
+    private static let crossEntityRouteDelay: TimeInterval = 0.3
+
     /// LEAD row tap — the app-wide lead route, the same channel notifications
     /// and Spotlight use.
+    ///
+    /// Bug 80dab840: that route lands on the LEADS TAB, and the tab lives
+    /// UNDER this sheet — LeadsTabView PUSHES LeadDetailView onto its own
+    /// navigation stack, so it can never rise above a presented sheet. Posting
+    /// while project details was still up opened the lead behind it. Close this
+    /// sheet first and post once it is gone, the same order the notification
+    /// rail already uses for its own lead taps (NotificationListView.openLead).
     private func openLinkedLead() {
         guard let oid = project.opportunityId,
               !oid.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
-        NotificationCenter.default.post(
-            name: Notification.Name("OpenLeadDetails"),
-            object: nil,
-            userInfo: ["leadId": oid]
-        )
+        dismiss()
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.crossEntityRouteDelay) {
+            NotificationCenter.default.post(
+                name: Notification.Name("OpenLeadDetails"),
+                object: nil,
+                userInfo: ["leadId": oid]
+            )
+        }
     }
 
     /// Bug 10b66fce - a confirmed task-type change from the task detail

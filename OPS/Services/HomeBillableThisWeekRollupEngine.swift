@@ -5,12 +5,12 @@
 
 import Foundation
 
-enum HomeBillableRollupSection: String {
+enum HomeBillableRollupSection: String, Sendable {
     case closingThisWeek
     case readyToBill
 }
 
-struct HomeBillableProjectCandidate: Identifiable {
+struct HomeBillableProjectCandidate: Identifiable, Sendable {
     let id: String
     let projectId: String
     let title: String
@@ -22,7 +22,7 @@ struct HomeBillableProjectCandidate: Identifiable {
     let latestTaskEnd: Date?
 }
 
-struct HomeBillableThisWeekRollup {
+struct HomeBillableThisWeekRollup: Sendable {
     let weekStart: Date
     let weekEnd: Date
     let closingThisWeek: [HomeBillableProjectCandidate]

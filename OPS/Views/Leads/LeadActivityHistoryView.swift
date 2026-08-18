@@ -15,9 +15,13 @@ struct LeadActivityHistoryView: View {
     /// Passed through so a site visit renders as its record here too — the
     /// dossier and the full history must not disagree about what a row is.
     var opportunity: Opportunity? = nil
+    /// Same rule: a note the dossier lets the operator amend must be amendable
+    /// here, or the two surfaces disagree about what a row is.
+    var noteEditing: LeadNoteEditing? = nil
 
     @Environment(\.dismiss) private var dismiss
     @State private var expanded: Set<String> = []
+    @State private var editingNote: Activity?
 
     private var entries: [LeadStreamEntry] {
         LeadStreamEntry.merged(activities: activities, transitions: transitions)
@@ -45,7 +49,8 @@ struct LeadActivityHistoryView: View {
                                     entry: entry,
                                     opportunity: opportunity,
                                     isExpanded: expanded.contains(entry.id),
-                                    onToggle: { toggle(entry.id) }
+                                    onToggle: { toggle(entry.id) },
+                                    onEditNote: noteEditing == nil ? nil : { (note: Activity) in editingNote = note }
                                 )
                                 if entry.id != entries.last?.id {
                                     Rectangle()
@@ -64,6 +69,14 @@ struct LeadActivityHistoryView: View {
             }
         }
         .navigationBarHidden(true)
+        .sheet(item: $editingNote) { note in
+            EditActivityNoteSheet(activity: note) { amended in
+                guard let noteEditing else { return false }
+                return await noteEditing.save(note, amended)
+            }
+            .presentationDetents([.large])
+            .presentationDragIndicator(.visible)
+        }
     }
 
     private var navBar: some View {

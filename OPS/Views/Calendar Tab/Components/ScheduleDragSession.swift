@@ -65,8 +65,25 @@ final class ScheduleDragSession {
     /// A pending three-way prompt, staged by the coordinator after a clash drop and
     /// presented centrally by ScheduleView.
     var pendingPrompt: ReschedulePrompt?
+
+    /// The in-flight deferred end. Exposed (read-only) so a test can await the
+    /// exact task instead of sleeping past it and hoping — a fixed wall-clock
+    /// window is a race the machine wins under full-suite load. Production never
+    /// reads it; it only ever cancels through the mutators below.
     @ObservationIgnored
-    private var deferredEndTask: Task<Void, Never>?
+    private(set) var deferredEndTask: Task<Void, Never>?
+
+    /// How the deferred end waits out its delay. Production sleeps on the real
+    /// clock — identical to the shipped behavior. Tests inject a sleeper they
+    /// resume by hand, which puts the whole timing of this path under the test's
+    /// control and takes the wall clock out of the assertion (bug e0f6915d;
+    /// mirrors the clock seam `InboundChangeRouter` took for the same reason).
+    @ObservationIgnored
+    private let sleep: @MainActor (Duration) async -> Void
+
+    init(sleep: @escaping @MainActor (Duration) async -> Void = { try? await Task.sleep(for: $0) }) {
+        self.sleep = sleep
+    }
 
     /// Mark the start of a drag. Idempotent for the same item so a re-evaluated drag
     /// preview closure can't wipe `hoveredDate` mid-drag and break the highlight.
@@ -122,12 +139,22 @@ final class ScheduleDragSession {
     /// `.draggable` preview teardown can fire before the native drop delegate
     /// finishes. Defer clearing so a live target can keep highlights and edge paging
     /// armed; clear shortly after only if the drag is truly off-grid.
+    ///
+    /// The cancellation check is load-bearing. `try?` swallows the cancellation
+    /// error and lets the body run on, so a cancelled deferred end could still
+    /// reach `end()` and wipe a drag that had just been re-lifted onto the same
+    /// item — `begin` returns early for a repeat id without touching `active` or
+    /// `hoverSource`, which is exactly the state this guard is checking.
     func endWhenOffGrid(after delay: Duration = .milliseconds(500)) {
         let activeId = active?.id
         deferredEndTask?.cancel()
         deferredEndTask = Task { @MainActor [weak self] in
-            try? await Task.sleep(for: delay)
+            // The sleeper, not `self`, is held across the suspension — the
+            // session stays weakly referenced exactly as it was before.
+            guard let sleeper = self?.sleep else { return }
+            await sleeper(delay)
             guard
+                !Task.isCancelled,
                 let self,
                 self.hoverSource == nil,
                 self.active?.id == activeId

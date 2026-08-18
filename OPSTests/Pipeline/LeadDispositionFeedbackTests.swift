@@ -309,4 +309,78 @@ final class LeadDispositionFeedbackTests: XCTestCase {
         LeadDispositionLocalState.applyUndo(undone, to: lead)
         XCTAssertEqual(lead.stage, .quoted)
     }
+
+    // MARK: - Phase C gate cache (bug 887722e1)
+
+    /// A failed gate read used to drop every company to the bare confirmation,
+    /// which is what the operator saw as "will not allow me to mark a reason."
+    /// The server's own last answer for the company decides instead.
+    func testUnreadableGateKeepsTheReasonSheetForAPhaseCCompany() {
+        XCTAssertEqual(
+            LeadDispositionInteractionPolicy.routeWhenContextUnavailable(
+                lastKnownPhaseCEnabled: true,
+                explainerSeen: true
+            ),
+            .structuredReason
+        )
+        XCTAssertEqual(
+            LeadDispositionInteractionPolicy.routeWhenContextUnavailable(
+                lastKnownPhaseCEnabled: true,
+                explainerSeen: false
+            ),
+            .structuredReason
+        )
+    }
+
+    /// No cached answer, or a cached no, still degrades exactly as shipped.
+    func testUnreadableGateWithoutAKnownAnswerStillDegradesToLegacy() {
+        XCTAssertEqual(
+            LeadDispositionInteractionPolicy.routeWhenContextUnavailable(
+                lastKnownPhaseCEnabled: nil,
+                explainerSeen: false
+            ),
+            .legacyExplainer
+        )
+        XCTAssertEqual(
+            LeadDispositionInteractionPolicy.routeWhenContextUnavailable(
+                lastKnownPhaseCEnabled: false,
+                explainerSeen: true
+            ),
+            .legacyConfirmation
+        )
+        XCTAssertEqual(
+            LeadDispositionInteractionPolicy.routeWhenContextUnavailable(explainerSeen: true),
+            .legacyConfirmation
+        )
+    }
+
+    func testGateCacheRoundTripsPerCompanyAndIgnoresIdCasing() throws {
+        let suiteName = "LeadDispositionGateCacheTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let company = "A612EDC0-5C18-4C4D-AF97-55B9410DD077"
+        XCTAssertNil(
+            LeadDispositionGateCache.lastKnownPhaseCEnabled(companyId: company, defaults: defaults)
+        )
+
+        LeadDispositionGateCache.remember(true, companyId: company, defaults: defaults)
+        XCTAssertEqual(
+            LeadDispositionGateCache.lastKnownPhaseCEnabled(
+                companyId: company.lowercased(),
+                defaults: defaults
+            ),
+            true
+        )
+
+        LeadDispositionGateCache.remember(false, companyId: company.lowercased(), defaults: defaults)
+        XCTAssertEqual(
+            LeadDispositionGateCache.lastKnownPhaseCEnabled(companyId: company, defaults: defaults),
+            false
+        )
+
+        XCTAssertNil(
+            LeadDispositionGateCache.lastKnownPhaseCEnabled(companyId: "   ", defaults: defaults)
+        )
+    }
 }

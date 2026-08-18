@@ -794,6 +794,20 @@ struct ActivityDTO: Codable, Identifiable {
     }
 }
 
+/// The only field an already-logged activity may be amended with: the note's
+/// own text (bug f740400e). Both columns are written together —
+/// `Activity.displayBody` prefers `body_text` and falls back to `content`, so a
+/// half-written edit would show the old text on rows that carry both.
+struct UpdateActivityBodyDTO: Encodable {
+    let bodyText: String
+    let content: String
+
+    enum CodingKeys: String, CodingKey {
+        case bodyText = "body_text"
+        case content
+    }
+}
+
 struct CreateActivityDTO: Codable {
     // Unified-activity parents — an activity can be parented to a lead
     // (opportunity), a client, OR a job (project). Exactly one is set per

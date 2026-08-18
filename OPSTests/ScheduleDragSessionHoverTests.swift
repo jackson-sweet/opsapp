@@ -1,5 +1,49 @@
+//
+//  ScheduleDragSessionHoverTests.swift
+//  OPSTests
+//
+//  Hover ownership and deferred-end behavior for the Schedule's reschedule drag.
+//
+//  The two deferred-end cases used to arm a 10ms delay, sleep 30ms on the wall
+//  clock, and assert — which is a race the machine wins. Under full-suite load
+//  the deferred task had not run when the 30ms elapsed and the clear assertion
+//  failed (bug e0f6915d; proven: failed in a loaded full-suite run, passed 6/6
+//  when the suite ran alone). `ScheduleDragSession` now takes an injectable
+//  sleeper, so these tests decide when the delay "elapses" and then await the
+//  exact task instead of sleeping past it and hoping. No wall-clock waits
+//  remain in this file — the same seam, for the same reason, that de-flaked
+//  InboundChangeRouterTests.
+//
+
 import XCTest
 @testable import OPS
+
+/// Hand-fired stand-in for the deferred end's sleep. Records what delay the
+/// session asked for, holds the deferred task suspended until the test says the
+/// delay is over, and never consults a real clock.
+@MainActor
+private final class ManualDeferredEndClock {
+    private(set) var requestedDelays: [Duration] = []
+    private var sleeper: CheckedContinuation<Void, Never>?
+
+    /// True once the deferred task has actually reached the sleep.
+    var isArmed: Bool { sleeper != nil }
+
+    func sleep(_ duration: Duration) async {
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            requestedDelays.append(duration)
+            sleeper = continuation
+        }
+    }
+
+    /// The delay elapses. A no-op when nothing is armed — callers gate on
+    /// `isArmed` first, so a silent no-op here cannot mask a missed arm.
+    func elapse() {
+        let continuation = sleeper
+        sleeper = nil
+        continuation?.resume()
+    }
+}
 
 final class ScheduleDragSessionHoverTests: XCTestCase {
     private var calendar: Calendar {
@@ -75,7 +119,8 @@ final class ScheduleDragSessionHoverTests: XCTestCase {
 
     @MainActor
     func testDeferredPreviewEndDoesNotClearWhileHoveringTarget() async {
-        let session = ScheduleDragSession()
+        let clock = ManualDeferredEndClock()
+        let session = ScheduleDragSession(sleep: { await clock.sleep($0) })
         let payload = makePayload()
         let monday = makeDate(2026, 6, 22)
         let source = ScheduleDragHoverSource.dayCell(for: monday, calendar: calendar)
@@ -83,7 +128,11 @@ final class ScheduleDragSessionHoverTests: XCTestCase {
         session.begin(payload)
         session.updateHover(day: monday, source: source)
         session.endWhenOffGrid(after: .milliseconds(10))
-        try? await Task.sleep(for: .milliseconds(30))
+
+        await awaitArmed(clock)
+        XCTAssertEqual(clock.requestedDelays, [.milliseconds(10)])
+        clock.elapse()
+        await session.deferredEndTask?.value
 
         XCTAssertEqual(session.active?.id, payload.id)
         XCTAssertEqual(session.hoverSource, source)
@@ -92,15 +141,61 @@ final class ScheduleDragSessionHoverTests: XCTestCase {
 
     @MainActor
     func testDeferredPreviewEndClearsWhenNoTargetOwnsHover() async {
-        let session = ScheduleDragSession()
+        let clock = ManualDeferredEndClock()
+        let session = ScheduleDragSession(sleep: { await clock.sleep($0) })
 
         session.begin(makePayload())
         session.endWhenOffGrid(after: .milliseconds(10))
-        try? await Task.sleep(for: .milliseconds(30))
+
+        await awaitArmed(clock)
+        XCTAssertEqual(clock.requestedDelays, [.milliseconds(10)])
+        clock.elapse()
+        await session.deferredEndTask?.value
 
         XCTAssertNil(session.active)
         XCTAssertNil(session.hoveredDate)
         XCTAssertNil(session.hoverSource)
+    }
+
+    /// A re-lift of the SAME item cancels the pending end. `begin` returns early
+    /// for a repeat id without touching `active` or `hoverSource`, so without the
+    /// cancellation check the resumed task would find exactly the state it was
+    /// told to clear and wipe a live drag.
+    @MainActor
+    func testCancelledDeferredEndDoesNotClearAReliftedDrag() async {
+        let clock = ManualDeferredEndClock()
+        let session = ScheduleDragSession(sleep: { await clock.sleep($0) })
+        let payload = makePayload()
+
+        session.begin(payload)
+        session.endWhenOffGrid(after: .milliseconds(10))
+        await awaitArmed(clock)
+
+        let pending = session.deferredEndTask
+        session.begin(payload)          // same id — cancels, changes nothing else
+        clock.elapse()
+        await pending?.value
+
+        XCTAssertEqual(session.active?.id, payload.id)
+    }
+
+    // MARK: - Helpers
+
+    /// Suspends until the deferred end has reached its sleep, on scheduler turns
+    /// rather than wall time — nothing here gets slower under machine load. The
+    /// cap is a loud backstop for a deferred end that never arms at all, not a
+    /// timeout the assertion depends on.
+    @MainActor
+    private func awaitArmed(
+        _ clock: ManualDeferredEndClock,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) async {
+        for _ in 0..<1_000 {
+            if clock.isArmed { return }
+            await Task.yield()
+        }
+        XCTFail("Deferred end never reached its sleep", file: file, line: line)
     }
 
     private func makePayload() -> RescheduleDragPayload {

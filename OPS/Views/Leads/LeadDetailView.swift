@@ -149,6 +149,22 @@ struct LeadDetailView: View {
     private var canConvert: Bool {
         leadAccessPolicy.can(.convert, assignedTo: opportunity.assignedTo)
     }
+    /// Amending a logged note is an edit of this lead, so it rides the lead's
+    /// own edit scope — the same granular check every other correction on this
+    /// screen uses, never a role name. Nil for a viewer, which removes the
+    /// affordance rather than showing one that refuses (bug f740400e).
+    private var noteEditing: LeadNoteEditing? {
+        guard canEdit else { return nil }
+        return LeadNoteEditing { activity, amended in
+            do {
+                try await vm.updateNoteBody(activity: activity, body: amended)
+                UINotificationFeedbackGenerator().notificationOccurred(.success)
+                return true
+            } catch {
+                return false
+            }
+        }
+    }
     /// The lead's open booking, resolved when the workflow menu renders so
     /// its second entry always states the current reality.
     private var openBookingSnapshot: BookSiteVisitForm.BookingSnapshot? {
@@ -320,7 +336,8 @@ struct LeadDetailView: View {
                                         activities: vm.activities,
                                         transitions: vm.stageTransitions,
                                         opportunity: opportunity,
-                                        onViewAll: { showingActivityHistory = true }
+                                        onViewAll: { showingActivityHistory = true },
+                                        noteEditing: noteEditing
                                     )
                                     .padding(.top, 22)
                                 }
@@ -384,7 +401,8 @@ struct LeadDetailView: View {
             LeadActivityHistoryView(
                 activities: vm.activities,
                 transitions: vm.stageTransitions,
-                opportunity: opportunity
+                opportunity: opportunity,
+                noteEditing: noteEditing
             )
         }
         // DECK row → the drawing on the whole display. A push, not a cover: the

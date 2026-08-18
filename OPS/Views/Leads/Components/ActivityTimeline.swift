@@ -39,6 +39,23 @@ enum LeadStreamMetrics {
     static let rowInset: CGFloat = 14
 }
 
+/// Permission to amend the operator's own writing on this rail, plus the way to
+/// store it (bug f740400e).
+///
+/// Handed down as one value rather than a loose `canEdit` flag and a loose
+/// closure: a rail that can show the affordance but has no way to save is a
+/// button that lies, and the two can never drift apart if they arrive together.
+/// Nil — the default — means this surface shows no edit affordance at all, which
+/// is what a viewer without edit scope on the lead gets.
+struct LeadNoteEditing {
+    /// Stores the amended text. Returns false when the save was refused, which
+    /// keeps the sheet up with the operator's words intact.
+    ///
+    /// Main-actor isolated: it drives a `@MainActor` view model and a haptic, and
+    /// every caller is already on the main actor.
+    let save: @MainActor (Activity, String) async -> Bool
+}
+
 /// One stream entry — an activity or a stage change folded into the rail.
 enum LeadStreamEntry: Identifiable {
     case activity(Activity)
@@ -73,9 +90,16 @@ struct ActivityTimeline: View {
     var opportunity: Opportunity? = nil
     var maxItems: Int = 6
     var onViewAll: () -> Void = {}
+    /// Non-nil only when this operator may edit this lead — see `LeadNoteEditing`.
+    var noteEditing: LeadNoteEditing? = nil
 
     /// Inline-expanded rows, per presentation (never persisted).
     @State private var expanded: Set<String> = []
+    /// The note being amended. Owned here rather than by the detail screen so
+    /// the sheet is presented by the surface the row is actually on — the full
+    /// history is a pushed destination, and a sheet reaching across that push is
+    /// the classic way to get a presentation dropped on the floor.
+    @State private var editingNote: Activity?
 
     private var entries: [LeadStreamEntry] {
         LeadStreamEntry.merged(activities: activities, transitions: transitions)
@@ -92,6 +116,14 @@ struct ActivityTimeline: View {
                 .commandCard()
                 .padding(.horizontal, OPSStyle.Layout.spacing3_5)
         }
+        .sheet(item: $editingNote) { note in
+            EditActivityNoteSheet(activity: note) { amended in
+                guard let noteEditing else { return false }
+                return await noteEditing.save(note, amended)
+            }
+            .presentationDetents([.large])
+            .presentationDragIndicator(.visible)
+        }
     }
 
     @ViewBuilder
@@ -106,7 +138,8 @@ struct ActivityTimeline: View {
                         entry: entry,
                         opportunity: opportunity,
                         isExpanded: expanded.contains(entry.id),
-                        onToggle: { toggle(entry.id) }
+                        onToggle: { toggle(entry.id) },
+                        onEditNote: noteEditing == nil ? nil : { (note: Activity) in editingNote = note }
                     )
                     if entry.id != shown.last?.id {
                         Rectangle()
@@ -170,6 +203,9 @@ struct LeadStreamEntryView: View {
     var opportunity: Opportunity? = nil
     let isExpanded: Bool
     var onToggle: () -> Void = {}
+    /// Nil hides the affordance entirely. A site-visit record never offers it —
+    /// its row is not a note, and the branch below cannot reach it anyway.
+    var onEditNote: ((Activity) -> Void)? = nil
 
     var body: some View {
         if case .activity(let activity) = entry,
@@ -185,7 +221,12 @@ struct LeadStreamEntryView: View {
                 onToggle: onToggle
             )
         } else {
-            LeadStreamRow(entry: entry, isExpanded: isExpanded, onToggle: onToggle)
+            LeadStreamRow(
+                entry: entry,
+                isExpanded: isExpanded,
+                onToggle: onToggle,
+                onEditNote: onEditNote
+            )
         }
     }
 }
@@ -287,6 +328,9 @@ struct LeadStreamRow: View {
     let entry: LeadStreamEntry
     let isExpanded: Bool
     var onToggle: () -> Void = {}
+    /// Amend this row's note. Nil on every surface where the operator has no
+    /// edit scope on the lead, and ignored on every row that is not a note.
+    var onEditNote: ((Activity) -> Void)? = nil
 
     var body: some View {
         switch entry {
@@ -358,17 +402,52 @@ struct LeadStreamRow: View {
             .accessibilityLabel(accessibilityLabel(activity, hasBody: body != nil))
 
             if isExpanded, let body {
-                Text(body)
-                    .font(.custom("Mohave-Regular", size: 12.5))
-                    .foregroundColor(OPSStyle.Colors.text2)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, LeadStreamMetrics.rowInset)
-                    .padding(.leading, 20 + OPSStyle.Layout.spacing2_5)
-                    .padding(.bottom, OPSStyle.Layout.spacing2_5)
-                    .transition(.opacity)
+                VStack(alignment: .leading, spacing: 0) {
+                    Text(body)
+                        .font(.custom("Mohave-Regular", size: 12.5))
+                        .foregroundColor(OPSStyle.Colors.text2)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+
+                    if let editAction = editAction(for: activity) {
+                        editNoteButton(action: editAction)
+                    }
+                }
+                .padding(.horizontal, LeadStreamMetrics.rowInset)
+                .padding(.leading, 20 + OPSStyle.Layout.spacing2_5)
+                .padding(.bottom, OPSStyle.Layout.spacing2_5)
+                .transition(.opacity)
             }
         }
+    }
+
+    /// The affordance exists only where amending is honest: a note, on a surface
+    /// whose operator may edit this lead. Every other row on the rail reports
+    /// something that happened elsewhere and stays read-only.
+    private func editAction(for activity: Activity) -> (() -> Void)? {
+        guard activity.type == .note, let onEditNote else { return nil }
+        return { onEditNote(activity) }
+    }
+
+    /// Quiet by design — it sits under an already-expanded body, so it is found
+    /// by the operator who went looking for it and invisible to everyone else.
+    private func editNoteButton(action: @escaping () -> Void) -> some View {
+        Button {
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            action()
+        } label: {
+            Text("EDIT")
+                .font(.custom("JetBrainsMono-Medium", size: 9.5))
+                .tracking(1.2)
+                .textCase(.uppercase)
+                .foregroundColor(OPSStyle.Colors.text3)
+                .frame(minWidth: OPSStyle.Layout.touchTargetMin,
+                       minHeight: OPSStyle.Layout.touchTargetMin,
+                       alignment: .leading)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Edit this note")
     }
 
     /// Direction glyph — ↓ tan inbound (their move), ↑ olive outbound (yours),

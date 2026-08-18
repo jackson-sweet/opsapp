@@ -938,30 +938,98 @@ struct PendingWorkScreen: View {
 
     // MARK: - Link-target search (real queries)
 
+    /// Bug 5677e11b — LINK TO came up empty on the LEADS tab for every operator,
+    /// with any query and with none.
+    ///
+    /// Leads are deliberately OUTSIDE the SwiftData sync engine: the pipeline is
+    /// network-only and `PipelineViewModel` holds opportunities in memory (see
+    /// its note on bug 0b7e9b17). Nothing ever inserts an `Opportunity` into the
+    /// store, so the shipped `FetchDescriptor<Opportunity>` here could only ever
+    /// return zero rows — the picker was querying a table that is always empty.
+    /// The lead scope now reads the live opportunity store and keeps the local
+    /// table strictly as an offline fallback, the same shape
+    /// `SiteVisitCaptureView.loadSearchSources` adopted after the identical
+    /// failure on the visit identity search.
+    ///
+    /// Company ids are compared lowercased on both sides. Stored casing varies
+    /// with which side wrote the row (`UUID().uuidString` is uppercase, Postgres
+    /// `uuid` columns are lowercase), and an exact-case compare silently matches
+    /// nothing — the failure this file's capture path was already hardened
+    /// against.
+    ///
+    /// Jobs stay on SwiftData: projects ARE synced into the store.
     private func searchLinkTargets(
         _ query: String,
         _ scope: PendingWorkLinkScope
     ) async -> [PendingWorkLinkTarget] {
-        guard let companyId = dataController.currentUser?.companyId, !companyId.isEmpty else { return [] }
+        guard let rawCompanyId = dataController.currentUser?.companyId,
+              !rawCompanyId.isEmpty else { return [] }
+        let companyId = rawCompanyId.lowercased()
         let trimmed = query.trimmingCharacters(in: .whitespaces).lowercased()
 
         switch scope {
         case .leads:
-            let all = (try? modelContext.fetch(FetchDescriptor<Opportunity>())) ?? []
-            return all
-                .filter { $0.companyId == companyId && !$0.stage.isTerminal && $0.deletedAt == nil }
-                .filter { trimmed.isEmpty || $0.contactName.lowercased().contains(trimmed) }
-                .sorted { ($0.lastActivityAt ?? $0.createdAt) > ($1.lastActivityAt ?? $1.createdAt) }
-                .prefix(40)
-                .map { PendingWorkLinkTarget(id: $0.id, name: $0.contactName, subtitle: $0.stage.displayName, scope: .leads) }
+            return await leadLinkTargets(companyId: companyId, rawCompanyId: rawCompanyId, query: trimmed)
         case .projects:
             let all = (try? modelContext.fetch(FetchDescriptor<Project>())) ?? []
             return all
-                .filter { $0.companyId == companyId && $0.deletedAt == nil && !$0.status.isCompleted }
-                .filter { trimmed.isEmpty || $0.title.lowercased().contains(trimmed) }
+                .filter {
+                    $0.companyId.lowercased() == companyId
+                        && $0.deletedAt == nil
+                        && !$0.status.isCompleted
+                }
+                .filter { project in
+                    Self.matches(trimmed, in: [project.title, project.address])
+                }
                 .sorted { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending }
                 .prefix(40)
                 .map { PendingWorkLinkTarget(id: $0.id, name: $0.title, subtitle: $0.status.displayName, scope: .projects) }
         }
+    }
+
+    /// Live leads first, cached leads when the fetch cannot run. `rawCompanyId`
+    /// is what the server is queried with (it is the id as stored on the user);
+    /// `companyId` is its lowercased form, used for every local comparison.
+    private func leadLinkTargets(
+        companyId: String,
+        rawCompanyId: String,
+        query: String
+    ) async -> [PendingWorkLinkTarget] {
+        let leads: [Opportunity]
+        if let dtos = try? await OpportunityRepository(companyId: rawCompanyId).fetchAll() {
+            leads = dtos.map { $0.toModel() }
+        } else {
+            leads = (try? modelContext.fetch(FetchDescriptor<Opportunity>())) ?? []
+        }
+
+        return leads
+            .filter {
+                $0.companyId.lowercased() == companyId
+                    && !$0.stage.isTerminal
+                    && !$0.isDeleted
+                    && !$0.isArchived
+            }
+            .filter { lead in
+                Self.matches(query, in: [lead.displayContactName, lead.title, lead.address])
+            }
+            .sorted { ($0.lastActivityAt ?? $0.createdAt) > ($1.lastActivityAt ?? $1.createdAt) }
+            .prefix(40)
+            .map {
+                PendingWorkLinkTarget(
+                    id: $0.id,
+                    name: $0.displayContactName,
+                    subtitle: $0.stage.displayName,
+                    scope: .leads
+                )
+            }
+    }
+
+    /// An empty query matches everything — the picker opens on the full list so
+    /// an operator who does not remember the lead's name still has one to tap.
+    /// Address is searched alongside the name because a drawing is remembered by
+    /// where it was drawn at least as often as by whose name is on it.
+    private static func matches(_ query: String, in values: [String?]) -> Bool {
+        guard !query.isEmpty else { return true }
+        return values.contains { $0?.lowercased().contains(query) == true }
     }
 }

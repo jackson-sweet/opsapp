@@ -33,18 +33,6 @@ import Foundation
 import SwiftData
 import Supabase
 
-private struct MatchCandidateProjectLinkRow: Decodable {
-    let id: String
-    let opportunityId: String?
-    let opportunityRef: String?
-
-    enum CodingKeys: String, CodingKey {
-        case id
-        case opportunityId = "opportunity_id"
-        case opportunityRef = "opportunity_ref"
-    }
-}
-
 struct ConvertOpportunityParams: Encodable {
     let companyId: String
     let opportunityId: String
@@ -206,36 +194,6 @@ final class LeadConversionService {
         }
     }
 
-    /// Preflight duplicate heuristics intentionally find same-address rows,
-    /// including rows whose project relationship changed concurrently. Before
-    /// the UI promotes one to MATCH, re-read both canonical project mirrors in
-    /// one RLS-scoped query and fail closed unless the project is unlinked (or
-    /// already belongs to this exact lead).
-    func matchableCandidateProjectIds(
-        for lead: Opportunity,
-        candidates: [PreflightCandidate]
-    ) async throws -> Set<String> {
-        let projectIds = Array(Set(candidates.map(\.projectId).filter { !$0.isEmpty }))
-        guard !projectIds.isEmpty else { return [] }
-
-        let rows: [MatchCandidateProjectLinkRow] = try await client
-            .from("projects")
-            .select("id, opportunity_id, opportunity_ref")
-            .eq("company_id", value: companyId)
-            .in("id", values: projectIds)
-            .is("deleted_at", value: nil)
-            .execute()
-            .value
-
-        return Set(rows.compactMap { row in
-            Self.projectLinkIsAvailable(
-                opportunityId: row.opportunityId,
-                opportunityRef: row.opportunityRef,
-                leadId: lead.id
-            ) ? row.id.lowercased() : nil
-        })
-    }
-
     /// Every project an operator may explicitly link to this lead. Duplicate
     /// preflight remains the authority for CREATE safety; this read is the
     /// authority for MANUAL choice, where address/client are ranking signals
@@ -257,21 +215,6 @@ final class LeadConversionService {
         } catch {
             throw Self.mapRPCError(error)
         }
-    }
-
-    nonisolated static func projectLinkIsAvailable(
-        opportunityId: String?,
-        opportunityRef: String?,
-        leadId: String
-    ) -> Bool {
-        let normalizedLeadId = leadId.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        guard !normalizedLeadId.isEmpty else { return false }
-
-        let linkedLeadIds = [opportunityId, opportunityRef].compactMap { value -> String? in
-            let normalized = value?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-            return normalized?.isEmpty == false ? normalized : nil
-        }
-        return linkedLeadIds.allSatisfy { $0 == normalizedLeadId }
     }
 
     // MARK: - Unified convert transaction (RPC-backed)

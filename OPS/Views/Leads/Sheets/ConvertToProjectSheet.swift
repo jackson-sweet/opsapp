@@ -18,10 +18,19 @@
 //                        `existing_linked_project`). We surface the existing
 //                        project and let the operator open it; no new project
 //                        gets created.
-//    CLIENT-HAS-OTHERS   the preflight surfaced likely-duplicate candidates
-//                        and/or other client projects. Server-approved duplicate
-//                        candidates can be selected for an atomic match; the
-//                        remaining projects are review-only.
+//    PICK-PROJECT        the lead can be linked to an existing project. ONE
+//                        ranked list answers ONE question — "which project is
+//                        this?" — sourced solely from
+//                        `get_manual_project_link_candidates`. Every row in it
+//                        is selectable; "already linked to another lead" is the
+//                        only disqualifier and the SERVER enforces it by
+//                        omitting those rows. `same_address` / `same_client`
+//                        rank and explain, they never gate.
+//
+//  A human's choice IS the evidence. The server applies `address_required` /
+//  `matching_project_requires_review` only on the CREATE path
+//  (`p_link_to_project_id IS NULL`), so this sheet does the same: with a link
+//  target selected, those blockers are irrelevant and MATCH PROJECT commits.
 //
 //  Auto-naming (Phase 5): the TITLE defaults to AUTO — the server derives the
 //  name from the address via `derive_project_name` (street line before the
@@ -85,12 +94,13 @@ struct ConvertToProjectSheet: View {
     /// preflight; the rich card detail is hydrated best-effort (network → local
     /// SwiftData → preflight title-only) so the sheet never crashes offline.
     @State private var existingProject: DuplicateProjectDisplay?
-    /// Merged candidate + other-client refs (dedup by id, candidates first).
-    @State private var clientOtherProjects: [RelatedProjectRef] = []
-    /// Only server-approved duplicate candidates may populate this value. The
-    /// final CTA passes it to the guarded conversion RPC; merely tapping a chip
-    /// never commits or mutates either row.
-    @State private var selectedExistingProjectId: String?
+    /// THE ranked list of projects this lead may be linked to, server-ordered
+    /// (same address + client, then address, then client, then most recent).
+    /// Sourced only from `get_manual_project_link_candidates`.
+    @State private var linkCandidates: [ProjectLinkCandidate] = []
+    /// The operator's answer to "which project is this?". Selecting never
+    /// commits or mutates anything — the footer CTA owns the transaction.
+    @State private var linkAnswer: LinkAnswer = .createNew
     /// A target rejected by the row-locked conversion must not immediately
     /// return as an actionable MATCH from the same preflight contract.
     @State private var unavailableMatchProjectIds: Set<String> = []
@@ -109,14 +119,18 @@ struct ConvertToProjectSheet: View {
     /// RPC before the client may present a committed win. While this flag is
     /// set, the sheet exposes no create/retry action.
     @State private var hiddenConversionRecoveryDetected = false
-    /// The candidate link re-read failed on its own. Reported in the chip area
-    /// — it is NOT a preflight failure and must not close the sheet's only
-    /// committing action (bug 5468b3c6, H7).
-    @State private var candidateLinkCheckFailed = false
-    /// Honest one-liner about why nothing on screen is matchable.
+    /// The candidate read failed on its own. It is NOT a preflight failure and
+    /// must not close the sheet's only committing action (bug 5468b3c6, H7).
+    /// It surfaces a RETRY — never a list the operator can see but not use.
+    @State private var candidateLoadFailed = false
+    /// True only while the candidate list is being re-read on its own.
+    @State private var isReloadingCandidates = false
+    /// The full searchable picker, layered over this sheet.
+    @State private var showingProjectPicker = false
+    /// Honest one-liner about the state the operator is actually in.
     @State private var chipNotice: String?
     /// The project being peeked at, layered over this sheet. Never a dismissal.
-    @State private var peekProject: RelatedProjectRef?
+    @State private var peekProject: ProjectLinkCandidate?
 
     // MARK: - Operation state
 
@@ -127,7 +141,7 @@ struct ConvertToProjectSheet: View {
 
     private var renderState: RenderState {
         if existingProject != nil { return .duplicate }
-        if !clientOtherProjects.isEmpty { return .clientHasOthers }
+        if !linkCandidates.isEmpty || candidateLoadFailed { return .pickProject }
         return .normal
     }
 
@@ -137,24 +151,28 @@ struct ConvertToProjectSheet: View {
             preflightFailed: preflightFailed,
             isSaving: isSaving,
             requiresMatchReviewRefresh: requiresMatchReviewRefresh,
-            hasLikelyDuplicate: hasLikelyDuplicate,
-            hasSelectedMatch: selectedExistingProjectId != nil,
+            answer: linkAnswer,
+            requiresExplicitAnswer: requiresExplicitAnswer,
             creationBlocker: creationBlocker
         )
     }
 
-    private var hasLikelyDuplicate: Bool {
-        clientOtherProjects.contains(where: \.isLikelyDuplicate)
+    /// A same-address project is a real duplicate risk, so the operator must
+    /// answer the question outright rather than fall through to CREATE. With
+    /// no same-address project on screen there is nothing to disambiguate and
+    /// CREATE stays the zero-friction default.
+    private var requiresExplicitAnswer: Bool {
+        linkCandidates.contains(where: \.sameAddress)
     }
 
     private var primaryActionLabel: String {
-        hasLikelyDuplicate && selectedExistingProjectId == nil
-            ? "SELECT PROJECT"
-            : submissionTarget.primaryLabel
+        if submissionTarget.linkToProjectId != nil { return "MATCH PROJECT" }
+        if requiresExplicitAnswer && linkAnswer == .undecided { return "SELECT PROJECT" }
+        return "CREATE PROJECT"
     }
 
     private var submissionTarget: SubmissionTarget {
-        SubmissionTarget(selectedProjectId: selectedExistingProjectId)
+        SubmissionTarget(selectedProjectId: linkAnswer.linkToProjectId)
     }
 
     private var totalLaborItems: Int {
@@ -191,8 +209,8 @@ struct ConvertToProjectSheet: View {
                         if renderState == .duplicate, let existing = existingProject {
                             duplicateCard(existing: existing)
                         } else {
-                            if renderState == .clientHasOthers {
-                                clientOthersBanner
+                            if renderState == .pickProject {
+                                projectLinkSection
                             }
                             formFields
                             if !estimateBundles.isEmpty {
@@ -233,6 +251,18 @@ struct ConvertToProjectSheet: View {
             .presentationDetents([.medium, .large])
             .presentationDragIndicator(.visible)
         }
+        .sheet(isPresented: $showingProjectPicker) {
+            // The same ranked list, searchable. Not a different question and
+            // not a different rule — just the rest of the answer set.
+            ProjectLinkPickerSheet(
+                candidates: linkCandidates,
+                selectedProjectId: linkAnswer.linkToProjectId,
+                onSelect: { projectId in
+                    showingProjectPicker = false
+                    chooseProject(projectId)
+                }
+            )
+        }
         .task {
             let recoveredCommittedConversion = await Self.runInitialLoad(
                 resolveLinkedClient: {
@@ -251,18 +281,19 @@ struct ConvertToProjectSheet: View {
     }
 
     /// What the peek should say about this project's relationship to the lead.
-    private func peekNote(for project: RelatedProjectRef) -> String? {
-        switch project.linkState {
-        case .matchable:
+    /// Every project on the list is linkable — the server omits the ones that
+    /// are not — so the note explains the evidence behind its rank, not a
+    /// reason it cannot be chosen.
+    private func peekNote(for project: ProjectLinkCandidate) -> String? {
+        switch (project.sameAddress, project.sameClient) {
+        case (true, true):
+            return "Same address and same client as this lead. Selecting it links the lead to this project instead of creating a new one."
+        case (true, false):
             return "Same address as this lead. Selecting it links the lead to this project instead of creating a new one."
-        case .linkedElsewhere:
-            return "Same address as this lead, but already linked to a different lead. It cannot be matched until that link is resolved."
-        case .unverified:
-            return "Same address as this lead. Its link could not be checked just now."
-        case .unavailable:
-            return "This project was rejected as a match during the last attempt."
-        case .reviewOnly:
-            return "This project can be reviewed here but is not available to link."
+        case (false, true):
+            return "Same client as this lead. Selecting it links the lead to this project instead of creating a new one."
+        case (false, false):
+            return "Selecting it links the lead to this project instead of creating a new one."
         }
     }
 
@@ -390,65 +421,96 @@ struct ConvertToProjectSheet: View {
         )
     }
 
-    // MARK: - Client-has-others banner
+    // MARK: - Which project is this?
 
-    private var clientOthersBanner: some View {
-        ClientOthersBanner(
-            projects: clientOtherProjects,
-            selectedProjectId: selectedExistingProjectId,
+    private var projectLinkSection: some View {
+        ProjectLinkSection(
+            candidates: linkCandidates,
+            answer: linkAnswer,
+            inlineLimit: Self.inlineCandidateLimit,
+            requiresExplicitAnswer: requiresExplicitAnswer,
+            notice: chipNotice,
+            loadFailed: candidateLoadFailed,
+            isReloading: isReloadingCandidates,
+            onChoose: chooseProject,
+            onCreateNew: chooseCreateNew,
             onPeek: { peekProject = $0 },
-            onMatch: selectExistingProject,
-            notice: chipNotice
+            onSearchAll: { showingProjectPicker = true },
+            onRetry: retryCandidateLoad
         )
     }
 
-    /// Tan attention banner for the CLIENT-HAS-OTHERS render state. Extracted
-    /// as its own view so the snapshot harness can render it against fixture
-    /// counts (bug 4e11e121 — the old header wrapped onto multiple lines).
-    struct ClientOthersBanner: View {
-        let projects: [RelatedProjectRef]
-        let selectedProjectId: String?
+    /// ONE question — "which project is this?" — answered from ONE ranked list.
+    ///
+    /// Every row is selectable. There is no second list with a second rule:
+    /// the server omits any project already linked to a different lead, and
+    /// `same_address` / `same_client` only rank and explain. The list is shown
+    /// as ROWS, not chips — a truncated 18-character chip cannot tell
+    /// "3185 Fairview Rd" from "3185 Fairview Rd #2", which is the exact
+    /// question being asked.
+    struct ProjectLinkSection: View {
+        let candidates: [ProjectLinkCandidate]
+        let answer: LinkAnswer
+        /// How many of the top-ranked rows are shown inline. The rest live
+        /// behind search — a real company carries hundreds of projects.
+        let inlineLimit: Int
+        /// True when a same-address project makes the answer mandatory.
+        let requiresExplicitAnswer: Bool
+        var notice: String? = nil
+        var loadFailed: Bool = false
+        var isReloading: Bool = false
+        let onChoose: (String) -> Void
+        let onCreateNew: () -> Void
         /// Opens a read-only peek LAYERED over the convert sheet. It never
         /// dismisses or navigates — form state is sacred here.
-        let onPeek: (RelatedProjectRef) -> Void
-        let onMatch: (String) -> Void
-        /// One honest line about why nothing is matchable, rendered inside the
-        /// chip area where the problem actually lives.
-        var notice: String? = nil
+        let onPeek: (ProjectLinkCandidate) -> Void
+        let onSearchAll: () -> Void
+        let onRetry: () -> Void
 
-        /// `CLIENT HAS 02 OTHER PROJECTS` — one message, count zero-padded to
-        /// match the mono HUD style. The old header also carried "REVIEW
-        /// BEFORE CREATING", which pushed the line past every phone width and
-        /// fragment-wrapped (bug 4e11e121); the tan tint + tappable chips
-        /// already carry the review intent.
-        private var headline: String {
-            let count = projects.count
-            let noun = count == 1 ? "PROJECT" : "PROJECTS"
-            return "CLIENT HAS \(String(format: "%02d", count)) OTHER \(noun)"
+        private var inlineCandidates: [ProjectLinkCandidate] {
+            Array(candidates.prefix(inlineLimit))
+        }
+
+        private var hiddenCount: Int {
+            max(0, candidates.count - inlineCandidates.count)
+        }
+
+        /// Tan while the operator still owes an answer; quiet once the list is
+        /// context rather than a decision.
+        private var headlineColor: Color {
+            requiresExplicitAnswer && answer == .undecided
+                ? OPSStyle.Colors.tanTextM
+                : OPSStyle.Colors.text2
         }
 
         var body: some View {
             VStack(alignment: .leading, spacing: 10) {
-                // Single concatenated text run + lineLimit(1): the header can
-                // never fragment-wrap again, at any count.
                 (
                     Text("// ")
                         .foregroundColor(OPSStyle.Colors.textMute)
-                    + Text(headline)
-                        .foregroundColor(OPSStyle.Colors.tanTextM)
+                    + Text("WHICH PROJECT IS THIS")
+                        .foregroundColor(headlineColor)
                 )
                 .font(OPSStyle.Typography.miniLabelBold)
                 .kerning(1.6)
                 .textCase(.uppercase)
                 .lineLimit(1)
 
-                ChipWrap(spacing: 6) {
-                    ForEach(projects.prefix(8)) { project in
-                        projectChip(project)
+                if loadFailed {
+                    retryBlock
+                } else {
+                    VStack(spacing: 6) {
+                        ForEach(inlineCandidates) { candidate in
+                            candidateRow(candidate)
+                        }
+                        createNewRow
+                        if hiddenCount > 0 {
+                            searchAllRow
+                        }
                     }
                 }
 
-                if let notice {
+                if let notice, !loadFailed {
                     Text(notice)
                         .font(OPSStyle.Typography.miniLabel)
                         .kerning(1.0)
@@ -469,118 +531,224 @@ struct ConvertToProjectSheet: View {
             )
         }
 
-        /// A chip is two controls, not one. The BODY carries the chip's
-        /// meaning — select it (matchable) or look at it (everything else) —
-        /// and the trailing control always opens the peek, so an operator
-        /// mid-selection can still inspect what they are about to match
-        /// without losing the selection or the form.
-        private func projectChip(_ project: RelatedProjectRef) -> some View {
-            let isSelected = selectedProjectId == project.id && project.interaction == .match
+        /// A failed read never degrades to a list the operator can see but not
+        /// use. It says so, and hands back the one action that fixes it.
+        private var retryBlock: some View {
+            VStack(alignment: .leading, spacing: 10) {
+                Text("Could not load projects.")
+                    .font(OPSStyle.Typography.body)
+                    .foregroundColor(OPSStyle.Colors.text2)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                Button(action: onRetry) {
+                    HStack(spacing: OPSStyle.Layout.spacing2) {
+                        Image(systemName: OPSStyle.Icons.arrowClockwise)
+                            .font(.system(size: OPSStyle.Layout.IconSize.xs, weight: .semibold))
+                        Text(isReloading ? "RETRYING" : "RETRY")
+                            .font(OPSStyle.Typography.miniLabelBold)
+                            .kerning(1.2)
+                    }
+                    .foregroundColor(OPSStyle.Colors.text)
+                    .padding(.horizontal, OPSStyle.Layout.spacing2_5)
+                    .frame(minHeight: 44)
+                    .contentShape(Rectangle())
+                    .background(
+                        RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius, style: .continuous)
+                            .fill(OPSStyle.Colors.surfaceHover)
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius, style: .continuous)
+                            .strokeBorder(OPSStyle.Colors.line, lineWidth: 1)
+                    )
+                }
+                .buttonStyle(PlainButtonStyle())
+                .disabled(isReloading)
+                .accessibilityLabel("Retry loading projects")
+            }
+        }
+
+        /// A row is two controls: the body answers the question, the trailing
+        /// control opens a peek so an operator mid-decision can inspect what
+        /// they are about to link without losing the selection or the form.
+        private func candidateRow(_ candidate: ProjectLinkCandidate) -> some View {
+            let isSelected = answer == .link(projectId: candidate.id)
 
             return HStack(spacing: 0) {
                 Button {
-                    switch project.interaction {
-                    case .match: onMatch(project.id)
-                    case .peek:  onPeek(project)
-                    }
+                    onChoose(candidate.id)
                 } label: {
-                    HStack(spacing: 6) {
+                    HStack(alignment: .top, spacing: OPSStyle.Layout.spacing2) {
                         Circle()
-                            .fill(project.statusColor)
+                            .fill(candidate.statusColor)
                             .frame(width: 5, height: 5)
-                        Text(truncatedTitle(project.title))
-                            .font(OPSStyle.Typography.miniLabelBold)
-                            .kerning(1.2)
-                            .foregroundColor(OPSStyle.Colors.text)
-                            .textCase(.uppercase)
-                        if let actionLabel = project.actionLabel {
-                            Text("·")
-                                .foregroundColor(OPSStyle.Colors.textMute)
-                            if isSelected {
-                                Image(systemName: OPSStyle.Icons.checkmarkCircleFill)
-                                    .font(.system(size: OPSStyle.Layout.IconSize.xs, weight: .semibold))
-                                    .foregroundColor(OPSStyle.Colors.oliveTextM)
+                            .padding(.top, 7)
+
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text(candidate.displayTitle)
+                                .font(OPSStyle.Typography.body)
+                                .foregroundColor(OPSStyle.Colors.text)
+                                .lineLimit(1)
+                                .truncationMode(.middle)
+
+                            if let address = candidate.address, !address.isEmpty {
+                                Text(address)
+                                    .font(OPSStyle.Typography.miniLabel)
+                                    .kerning(1.0)
+                                    .foregroundColor(OPSStyle.Colors.text3)
+                                    .lineLimit(1)
+                                    .truncationMode(.middle)
+                                    .textCase(.uppercase)
                             }
-                            Text(isSelected ? "SELECTED" : actionLabel)
-                                .font(OPSStyle.Typography.miniLabel)
-                                .kerning(1.0)
-                                .foregroundColor(labelColor(for: project, isSelected: isSelected))
-                                .textCase(.uppercase)
+
+                            if let evidence = candidate.evidenceLabel {
+                                Text(evidence)
+                                    .font(OPSStyle.Typography.miniLabel)
+                                    .kerning(1.0)
+                                    .foregroundColor(
+                                        candidate.sameAddress
+                                            ? OPSStyle.Colors.tanTextM
+                                            : OPSStyle.Colors.text3
+                                    )
+                                    .textCase(.uppercase)
+                            }
+                        }
+
+                        Spacer(minLength: OPSStyle.Layout.spacing2)
+
+                        if isSelected {
+                            Image(systemName: OPSStyle.Icons.checkmarkCircleFill)
+                                .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .semibold))
+                                .foregroundColor(OPSStyle.Colors.oliveTextM)
+                                .padding(.top, 2)
                         }
                     }
-                    .padding(.leading, 10)
-                    .padding(.trailing, project.interaction == .match ? 6 : 10)
+                    .padding(.leading, OPSStyle.Layout.spacing2_5)
+                    .padding(.trailing, 6)
+                    .padding(.vertical, 10)
                     .frame(minHeight: 44)
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(PlainButtonStyle())
-                .accessibilityLabel(accessibilityLabel(for: project))
+                .accessibilityLabel(accessibilityLabel(for: candidate, isSelected: isSelected))
 
-                // Selecting and inspecting are different intents, so a
-                // matchable chip gets its own peek control rather than
-                // overloading the tap.
-                if project.interaction == .match {
-                    Rectangle()
-                        .fill(OPSStyle.Colors.line)
-                        .frame(width: 1, height: 16)
-                    Button {
-                        onPeek(project)
-                    } label: {
-                        Image(systemName: OPSStyle.Icons.magnifyingglass)
-                            .font(.system(size: OPSStyle.Layout.IconSize.xs, weight: .semibold))
-                            .foregroundColor(OPSStyle.Colors.text3)
-                            .padding(.horizontal, 10)
-                            .frame(minHeight: 44)
-                            .contentShape(Rectangle())
-                    }
-                    .buttonStyle(PlainButtonStyle())
-                    .accessibilityLabel("Quick view project \(project.title)")
+                Rectangle()
+                    .fill(OPSStyle.Colors.line)
+                    .frame(width: 1, height: 16)
+
+                Button {
+                    onPeek(candidate)
+                } label: {
+                    Image(systemName: OPSStyle.Icons.magnifyingglass)
+                        .font(.system(size: OPSStyle.Layout.IconSize.xs, weight: .semibold))
+                        .foregroundColor(OPSStyle.Colors.text3)
+                        .padding(.horizontal, 10)
+                        .frame(minHeight: 44)
+                        .contentShape(Rectangle())
                 }
+                .buttonStyle(PlainButtonStyle())
+                .accessibilityLabel("Quick view project \(candidate.displayTitle)")
             }
-            .frame(minHeight: 32)
-            .background(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius, style: .continuous)
-                    .fill(isSelected ? OPSStyle.Colors.oliveFillM : OPSStyle.Colors.surfaceHover)
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius, style: .continuous)
-                    .strokeBorder(isSelected ? OPSStyle.Colors.oliveLineM : OPSStyle.Colors.line, lineWidth: 1)
+            .background(rowFill(isSelected: isSelected))
+            .overlay(rowBorder(isSelected: isSelected))
+        }
+
+        /// Creating a new project is a peer answer to the same question, not a
+        /// fallthrough. Monochrome — the accent is a primary-CTA colour and
+        /// this row sits alongside the project rows above it.
+        private var createNewRow: some View {
+            let isSelected = answer == .createNew
+
+            return Button(action: onCreateNew) {
+                HStack(spacing: OPSStyle.Layout.spacing2) {
+                    Image(systemName: OPSStyle.Icons.plus)
+                        .font(.system(size: OPSStyle.Layout.IconSize.xs, weight: .semibold))
+                        .foregroundColor(OPSStyle.Colors.text3)
+                        .frame(width: 5)
+
+                    Text("Create a new project")
+                        .font(OPSStyle.Typography.body)
+                        .foregroundColor(OPSStyle.Colors.text)
+                        .lineLimit(1)
+
+                    Spacer(minLength: OPSStyle.Layout.spacing2)
+
+                    if isSelected {
+                        Image(systemName: OPSStyle.Icons.checkmarkCircleFill)
+                            .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .semibold))
+                            .foregroundColor(OPSStyle.Colors.oliveTextM)
+                    }
+                }
+                .padding(.horizontal, OPSStyle.Layout.spacing2_5)
+                .padding(.vertical, 10)
+                .frame(minHeight: 44)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(PlainButtonStyle())
+            .background(rowFill(isSelected: isSelected))
+            .overlay(rowBorder(isSelected: isSelected))
+            .accessibilityLabel(
+                isSelected
+                    ? "Selected: create a new project"
+                    : "Create a new project"
             )
         }
 
-        private func labelColor(
-            for project: RelatedProjectRef,
+        /// The rest of the ranked list, behind one control. The count is the
+        /// honest signal that the inline rows are a shortlist, not the whole
+        /// answer set.
+        private var searchAllRow: some View {
+            Button(action: onSearchAll) {
+                HStack(spacing: OPSStyle.Layout.spacing2) {
+                    Image(systemName: OPSStyle.Icons.magnifyingglass)
+                        .font(.system(size: OPSStyle.Layout.IconSize.xs, weight: .semibold))
+                        .foregroundColor(OPSStyle.Colors.text3)
+                        .frame(width: 5)
+
+                    Text("SEARCH ALL PROJECTS")
+                        .font(OPSStyle.Typography.miniLabelBold)
+                        .kerning(1.2)
+                        .foregroundColor(OPSStyle.Colors.text2)
+                        .textCase(.uppercase)
+
+                    Spacer(minLength: OPSStyle.Layout.spacing2)
+
+                    Text(String(format: "%02d", candidates.count))
+                        .font(.custom("JetBrainsMono-Medium", size: 11))
+                        .monospacedDigit()
+                        .foregroundColor(OPSStyle.Colors.text3)
+                }
+                .padding(.horizontal, OPSStyle.Layout.spacing2_5)
+                .padding(.vertical, 10)
+                .frame(minHeight: 44)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(PlainButtonStyle())
+            .background(rowFill(isSelected: false))
+            .overlay(rowBorder(isSelected: false))
+            .accessibilityLabel("Search all \(candidates.count) projects")
+        }
+
+        private func rowFill(isSelected: Bool) -> some View {
+            RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius, style: .continuous)
+                .fill(isSelected ? OPSStyle.Colors.oliveFillM : OPSStyle.Colors.surfaceHover)
+        }
+
+        private func rowBorder(isSelected: Bool) -> some View {
+            RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius, style: .continuous)
+                .strokeBorder(
+                    isSelected ? OPSStyle.Colors.oliveLineM : OPSStyle.Colors.line,
+                    lineWidth: 1
+                )
+        }
+
+        private func accessibilityLabel(
+            for candidate: ProjectLinkCandidate,
             isSelected: Bool
-        ) -> Color {
-            if isSelected { return OPSStyle.Colors.oliveTextM }
-            switch project.linkState {
-            case .matchable:                     return OPSStyle.Colors.tanTextM
-            case .linkedElsewhere, .unavailable,
-                 .unverified, .reviewOnly:       return OPSStyle.Colors.text3
-            }
-        }
-
-        private func accessibilityLabel(for project: RelatedProjectRef) -> String {
-            switch project.linkState {
-            case .matchable:
-                return selectedProjectId == project.id
-                    ? "Selected project \(project.title) for matching"
-                    : "Match lead to project \(project.title)"
-            case .linkedElsewhere:
-                return "Project \(project.title) is already linked to another lead. Quick view."
-            case .unverified:
-                return "Project \(project.title) link state unknown. Quick view."
-            case .unavailable:
-                return "Project \(project.title) is unavailable to match. Quick view."
-            case .reviewOnly:
-                return "Quick view project \(project.title)"
-            }
-        }
-
-        private func truncatedTitle(_ raw: String) -> String {
-            let trimmed = raw.trimmingCharacters(in: .whitespaces)
-            if trimmed.isEmpty { return "UNTITLED" }
-            return trimmed.count > 18 ? String(trimmed.prefix(17)) + "…" : trimmed
+        ) -> String {
+            let evidence = candidate.evidenceLabel.map { ", \($0.lowercased())" } ?? ""
+            return isSelected
+                ? "Selected project \(candidate.displayTitle)\(evidence)"
+                : "Link lead to project \(candidate.displayTitle)\(evidence)"
         }
     }
 
@@ -591,7 +759,8 @@ struct ConvertToProjectSheet: View {
     /// It outranks `[OPTIONAL]` because provenance is the more useful fact;
     /// `[REQUIRED]` still wins, since a blocked field is more urgent.
     private var addressHint: String {
-        if creationBlocker == .addressRequired { return "[REQUIRED]" }
+        if creationBlocker == .addressRequired,
+           submissionTarget.linkToProjectId == nil { return "[REQUIRED]" }
         if addressIsFromClient { return "[FROM CLIENT]" }
         return "[OPTIONAL]"
     }
@@ -964,7 +1133,8 @@ struct ConvertToProjectSheet: View {
                         action: { openExistingProjectAction() }
                     )
                     .disabled(isSaving)
-                } else if creationBlocker == .addressRequired {
+                } else if creationBlocker == .addressRequired,
+                          submissionTarget.linkToProjectId == nil {
                     let hasAddress = !Self.createAddressFingerprint(addressText).isEmpty
                     SheetCTAButton(
                         label: hasAddress ? "CHECK ADDRESS" : "ADD ADDRESS",
@@ -975,7 +1145,8 @@ struct ConvertToProjectSheet: View {
                     )
                     .disabled(isSaving || !hasAddress)
                     .opacity(hasAddress ? 1 : 0.5)
-                } else if creationBlocker == .projectReviewRequired {
+                } else if creationBlocker == .projectReviewRequired,
+                          submissionTarget.linkToProjectId == nil {
                     SheetCTAButton(
                         label: "ADMIN ACCESS NEEDED",
                         variant: .primary,
@@ -1027,7 +1198,7 @@ struct ConvertToProjectSheet: View {
         preflightFailed = false
         creationBlocker = nil
         errorMessage = nil
-        candidateLinkCheckFailed = false
+        candidateLoadFailed = false
         chipNotice = nil
 
         var shouldAutomaticallyRecheckClientAddress = false
@@ -1068,43 +1239,31 @@ struct ConvertToProjectSheet: View {
             // the candidate re-read reported as "COULD NOT CHECK PROJECTS"
             // and closed the sheet's only committing action, even though the
             // authoritative preflight had already succeeded.
-            var matchableCandidateIds: Set<String> = []
+            //
+            // There is no second answer to fall back to: this RPC IS the
+            // manual-link authority. A failure surfaces a RETRY rather than a
+            // list the operator can see but not use.
             var manualCandidates: [ManualProjectLinkCandidate] = []
             do {
                 manualCandidates = try await service.manualProjectLinkCandidates(
                     for: opportunity
                 )
-                matchableCandidateIds = Set(
-                    manualCandidates.map { $0.projectId.lowercased() }
-                )
+                candidateLoadFailed = false
             } catch {
-                // The new complete-manual-list RPC may not be deployed yet.
-                // Preserve the proven same-address path as a compatibility
-                // fallback, but report that the complete link list could not
-                // be checked.
-                candidateLinkCheckFailed = true
-                do {
-                    matchableCandidateIds = try await service
-                        .matchableCandidateProjectIds(
-                            for: opportunity,
-                            candidates: preflight.duplicateCandidates
-                        )
-                } catch {
-                    matchableCandidateIds = []
-                }
+                candidateLoadFailed = true
             }
 
             let state = Self.reducePreflight(
                 preflight,
-                matchableCandidateIds: matchableCandidateIds,
-                candidateLinkCheckFailed: candidateLinkCheckFailed,
-                unavailableMatchProjectIds: unavailableMatchProjectIds,
-                manualCandidates: manualCandidates
+                manualCandidates: manualCandidates,
+                candidateLoadFailed: candidateLoadFailed,
+                unavailableMatchProjectIds: unavailableMatchProjectIds
             )
             creationBlocker = state.creationBlocker
-            clientOtherProjects = state.refs
-            chipNotice = state.refs.isEmpty ? nil : state.statusMessage
-            errorMessage = state.refs.isEmpty ? state.statusMessage : nil
+            linkCandidates = state.candidates
+            linkAnswer = Self.initialAnswer(for: state.candidates)
+            chipNotice = state.candidates.isEmpty ? nil : state.statusMessage
+            errorMessage = state.candidates.isEmpty ? state.statusMessage : nil
             preflightFailed = false
             shouldAutomaticallyRecheckClientAddress =
                 initialClientAddressRecheckGate.consume(
@@ -1536,14 +1695,54 @@ struct ConvertToProjectSheet: View {
         }
     }
 
-    private func selectExistingProject(_ projectId: String) {
-        guard clientOtherProjects.contains(where: {
-            $0.id == projectId && $0.linkState == .matchable
-        }) else { return }
+    /// Answer the question with a project. Every listed project is a valid
+    /// answer — the server already omitted the ones that are not.
+    private func chooseProject(_ projectId: String) {
+        guard linkCandidates.contains(where: { $0.id == projectId }) else { return }
 
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
-        selectedExistingProjectId = selectedExistingProjectId == projectId ? nil : projectId
+        linkAnswer = linkAnswer == .link(projectId: projectId)
+            ? Self.initialAnswer(for: linkCandidates)
+            : .link(projectId: projectId)
         errorMessage = nil
+    }
+
+    /// Answer the question with "none of these".
+    private func chooseCreateNew() {
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        linkAnswer = .createNew
+        errorMessage = nil
+    }
+
+    /// Re-read ONLY the candidate list. The authoritative preflight already
+    /// succeeded, so this never reopens the whole sheet's loading state.
+    private func retryCandidateLoad() {
+        guard !isReloadingCandidates, !isSaving else { return }
+        isReloadingCandidates = true
+        errorMessage = nil
+
+        Task {
+            let service = LeadConversionService(
+                companyId: opportunity.companyId,
+                modelContext: modelContext
+            )
+            do {
+                let candidates = try await service.manualProjectLinkCandidates(
+                    for: opportunity
+                )
+                let resolved = Self.reduceLinkCandidates(
+                    manualCandidates: candidates,
+                    unavailableMatchProjectIds: unavailableMatchProjectIds
+                )
+                candidateLoadFailed = false
+                linkCandidates = resolved
+                linkAnswer = Self.initialAnswer(for: resolved)
+                chipNotice = nil
+            } catch {
+                candidateLoadFailed = true
+            }
+            isReloadingCandidates = false
+        }
     }
 
     /// A candidate can become invalid between preflight and commit. Clear the
@@ -1554,11 +1753,11 @@ struct ConvertToProjectSheet: View {
         if let failedProjectId {
             unavailableMatchProjectIds.insert(failedProjectId.lowercased())
         }
-        selectedExistingProjectId = nil
+        linkAnswer = .createNew
         existingProject = nil
-        clientOtherProjects = []
+        linkCandidates = []
         chipNotice = nil
-        candidateLinkCheckFailed = false
+        candidateLoadFailed = false
         hasLoadedPreflight = false
         let recovered = await loadPreflight()
         if !preflightFailed {
@@ -1571,11 +1770,11 @@ struct ConvertToProjectSheet: View {
         guard hasLoadedPreflight, preflightFailed, !isSaving else { return }
         isSaving = true
         errorMessage = nil
-        selectedExistingProjectId = nil
+        linkAnswer = .createNew
         existingProject = nil
-        clientOtherProjects = []
+        linkCandidates = []
         chipNotice = nil
-        candidateLinkCheckFailed = false
+        candidateLoadFailed = false
         hasLoadedPreflight = false
 
         Task {
@@ -1641,11 +1840,11 @@ struct ConvertToProjectSheet: View {
             }
         }
 
-        selectedExistingProjectId = nil
+        linkAnswer = .createNew
         existingProject = nil
-        clientOtherProjects = []
+        linkCandidates = []
         chipNotice = nil
-        candidateLinkCheckFailed = false
+        candidateLoadFailed = false
         hasLoadedPreflight = false
         let recovered = await loadPreflight()
         if recovered { return true }
@@ -1667,7 +1866,7 @@ struct ConvertToProjectSheet: View {
             errorMessage = "PROJECT LINK UPDATED — REVIEW"
             return true
         }
-        if clientOtherProjects.contains(where: \.isLikelyDuplicate) {
+        if linkCandidates.contains(where: \.sameAddress) {
             errorMessage = "PROJECTS FOUND — REVIEW MATCHES"
             return true
         }
@@ -1743,28 +1942,47 @@ private extension ConvertToProjectSheet {
     enum RenderState {
         case normal
         case duplicate
-        case clientHasOthers
+        case pickProject
     }
 }
 
 // MARK: - Lightweight display models (preflight-sourced)
 
 extension ConvertToProjectSheet {
+    /// The server applies `address_required` / `matching_project_requires_review`
+    /// ONLY when `p_link_to_project_id IS NULL`. This mirrors that exactly: a
+    /// selected link target makes both blockers irrelevant, because the human
+    /// naming the project IS the evidence the create path had to infer.
     static func canCommitConversion(
         hasLoadedPreflight: Bool,
         preflightFailed: Bool,
         isSaving: Bool,
         requiresMatchReviewRefresh: Bool,
-        hasLikelyDuplicate: Bool,
-        hasSelectedMatch: Bool,
+        answer: LinkAnswer,
+        requiresExplicitAnswer: Bool,
         creationBlocker: ConversionPreflightCreationBlocker? = nil
     ) -> Bool {
-        hasLoadedPreflight
-            && !preflightFailed
-            && !isSaving
-            && !requiresMatchReviewRefresh
-            && creationBlocker == nil
-            && (!hasLikelyDuplicate || hasSelectedMatch)
+        guard hasLoadedPreflight,
+              !preflightFailed,
+              !isSaving,
+              !requiresMatchReviewRefresh else { return false }
+
+        // MATCH path — blockers gate CREATE only.
+        if answer.linkToProjectId != nil { return true }
+
+        // CREATE path — the server's blocker stays authoritative.
+        guard creationBlocker == nil else { return false }
+        return !requiresExplicitAnswer || answer == .createNew
+    }
+
+    /// How many top-ranked candidates the sheet shows inline before the rest
+    /// move behind search.
+    static let inlineCandidateLimit = 4
+
+    /// CREATE is the zero-friction default. It stops being the default only
+    /// when a same-address project makes the answer a real decision.
+    static func initialAnswer(for candidates: [ProjectLinkCandidate]) -> LinkAnswer {
+        candidates.contains(where: \.sameAddress) ? .undecided : .createNew
     }
 
     static func createAddressFingerprint(_ address: String) -> String {
@@ -1788,34 +2006,20 @@ extension ConvertToProjectSheet {
         creationBlocker != nil
     }
 
-    enum RelatedProjectInteraction: Equatable {
-        /// Tapping SELECTS this project as the conversion target. Commit still
-        /// belongs to the footer CTA — a chip never converts anything.
-        case match
-        /// Tapping opens a read-only PEEK layered over this sheet. The old
-        /// `.open` dismissed the convert sheet and navigated away, silently
-        /// destroying everything the operator had typed (bug ced5b3cb-A).
-        case peek
-    }
+    /// The operator's answer to "which project is this?".
+    ///
+    /// `undecided` exists so a same-address duplicate cannot be created by
+    /// simply not answering — it is never a dead end, because "create a new
+    /// project" is an explicit, always-available answer.
+    enum LinkAnswer: Equatable {
+        case undecided
+        case createNew
+        case link(projectId: String)
 
-    /// Why a related project can or cannot be this conversion's target.
-    /// Replaces the old `isLikelyDuplicate` + `isMatchAvailable` pair, which
-    /// could not tell "already belongs to another lead" apart from "we could
-    /// not check" — and the sheet blamed an admin for both.
-    enum RelatedProjectLinkState: Equatable {
-        /// Server-approved and unlinked (or already this lead's). Address is a
-        /// ranking signal, not a requirement.
-        case matchable
-        /// Same address and server-approved, but it already belongs to a
-        /// DIFFERENT lead. The commit would reject a link; review only.
-        case linkedElsewhere
-        /// Same address, but the link re-read failed. Neither offered nor
-        /// declared taken — we do not know, and we say so.
-        case unverified
-        /// A target this session's commit already rejected.
-        case unavailable
-        /// Visible context that the server did not authorize as a target.
-        case reviewOnly
+        var linkToProjectId: String? {
+            if case .link(let projectId) = self { return projectId }
+            return nil
+        }
     }
 
     /// Everything the sheet renders from one authoritative preflight, resolved
@@ -1823,14 +2027,22 @@ extension ConvertToProjectSheet {
     struct PreflightViewState: Equatable {
         let existingLinkedProjectId: String?
         let existingLinkedProjectTitle: String?
-        let refs: [RelatedProjectRef]
+        /// THE ranked answer set for "which project is this?".
+        let candidates: [ProjectLinkCandidate]
         let creationBlocker: ConversionPreflightCreationBlocker?
         let statusMessage: String?
-        let candidateLinkCheckFailed: Bool
+        let candidateLoadFailed: Bool
     }
 
-    /// Reduces the server preflight (plus the client's candidate link re-read)
-    /// into render state.
+    /// Reduces the server preflight plus the manual-link read into render state.
+    ///
+    /// The candidate list comes from `get_manual_project_link_candidates` and
+    /// NOTHING ELSE. `duplicate_candidates` and `other_client_projects` are
+    /// deliberately not merged in: they answered a different question (is this
+    /// a duplicate? what else does this client have?) with different rules,
+    /// and three lists with three selection rules is the defect being fixed.
+    /// A project already linked to another lead never appears, because the
+    /// server omits it — that is the only disqualifier and it is enforced once.
     ///
     /// The blocker is SERVER-AUTHORED ONLY. The old code synthesized
     /// `.projectReviewRequired` whenever its own re-check filtered every
@@ -1839,106 +2051,79 @@ extension ConvertToProjectSheet {
     /// (bug 5468b3c6, H1).
     static func reducePreflight(
         _ preflight: ConversionPreflight,
-        matchableCandidateIds: Set<String>,
-        candidateLinkCheckFailed: Bool,
-        unavailableMatchProjectIds: Set<String>,
-        manualCandidates: [ManualProjectLinkCandidate] = []
+        manualCandidates: [ManualProjectLinkCandidate],
+        candidateLoadFailed: Bool,
+        unavailableMatchProjectIds: Set<String>
     ) -> PreflightViewState {
-        var seen = Set<String>()
-        var refs: [RelatedProjectRef] = []
-
-        for candidate in preflight.duplicateCandidates
-        where seen.insert(candidate.projectId.lowercased()).inserted {
-            let id = candidate.projectId.lowercased()
-            let linkState: RelatedProjectLinkState
-            if unavailableMatchProjectIds.contains(id) {
-                linkState = .unavailable
-            } else if candidateLinkCheckFailed {
-                linkState = .unverified
-            } else if matchableCandidateIds.contains(id) {
-                linkState = .matchable
-            } else {
-                linkState = .linkedElsewhere
-            }
-            refs.append(RelatedProjectRef(
-                id: candidate.projectId,
-                title: candidate.title ?? "",
-                address: candidate.address,
-                status: nil,
-                linkState: linkState,
-                isAddressSuggestion: true
-            ))
-        }
-        for other in preflight.otherClientProjects
-        where seen.insert(other.projectId.lowercased()).inserted {
-            let id = other.projectId.lowercased()
-            refs.append(RelatedProjectRef(
-                id: other.projectId,
-                title: other.title ?? "",
-                address: other.address,
-                status: other.status.flatMap { Status(rawValue: $0) },
-                linkState: unavailableMatchProjectIds.contains(id)
-                    ? .unavailable
-                    : (matchableCandidateIds.contains(id) ? .matchable : .reviewOnly),
-                isAddressSuggestion: false
-            ))
-        }
-        for candidate in manualCandidates
-        where seen.insert(candidate.projectId.lowercased()).inserted {
-            let id = candidate.projectId.lowercased()
-            refs.append(RelatedProjectRef(
-                id: candidate.projectId,
-                title: candidate.title ?? "",
-                address: candidate.address,
-                status: candidate.status.flatMap { Status(rawValue: $0) },
-                linkState: unavailableMatchProjectIds.contains(id)
-                    ? .unavailable
-                    : .matchable,
-                isAddressSuggestion: candidate.sameAddress
-            ))
-        }
+        let candidates = reduceLinkCandidates(
+            manualCandidates: manualCandidates,
+            unavailableMatchProjectIds: unavailableMatchProjectIds
+        )
 
         return PreflightViewState(
             existingLinkedProjectId: preflight.existingLinkedProject?.id,
             existingLinkedProjectTitle: preflight.existingLinkedProject?.title,
-            refs: refs,
+            candidates: candidates,
             creationBlocker: preflight.creationBlocker,
             statusMessage: statusMessage(
                 creationBlocker: preflight.creationBlocker,
-                refs: refs,
-                candidateLinkCheckFailed: candidateLinkCheckFailed
+                candidateLoadFailed: candidateLoadFailed
             ),
-            candidateLinkCheckFailed: candidateLinkCheckFailed
+            candidateLoadFailed: candidateLoadFailed
         )
     }
 
+    /// The server's ORDER IS THE RANKING and is preserved verbatim — same
+    /// address + same client, then same address, then same client, then most
+    /// recently updated. Never re-sorted here.
+    ///
+    /// The only rows dropped are duplicates by id and targets this session's
+    /// commit already rejected; everything that survives is selectable, so the
+    /// list can never show a row the operator is not allowed to choose.
+    static func reduceLinkCandidates(
+        manualCandidates: [ManualProjectLinkCandidate],
+        unavailableMatchProjectIds: Set<String>
+    ) -> [ProjectLinkCandidate] {
+        var seen = Set<String>()
+        var candidates: [ProjectLinkCandidate] = []
+
+        for candidate in manualCandidates {
+            let id = candidate.projectId.lowercased()
+            guard !unavailableMatchProjectIds.contains(id) else { continue }
+            guard seen.insert(id).inserted else { continue }
+            candidates.append(ProjectLinkCandidate(
+                id: candidate.projectId,
+                title: candidate.title ?? "",
+                address: candidate.address,
+                status: candidate.status.flatMap { Status(rawValue: $0) },
+                sameAddress: candidate.sameAddress,
+                sameClient: candidate.sameClient
+            ))
+        }
+        return candidates
+    }
+
     /// One honest line about the state the operator is actually in. Every
-    /// message names the obstacle AND leaves a next move on screen — the peek
-    /// affordance stays live on every chip in every one of these states.
+    /// message names the obstacle AND leaves a next move on screen.
+    ///
+    /// These describe the CREATE path only — the view suppresses them once a
+    /// link target is chosen, because neither blocker applies to a match.
     static func statusMessage(
         creationBlocker: ConversionPreflightCreationBlocker?,
-        refs: [RelatedProjectRef],
-        candidateLinkCheckFailed: Bool
+        candidateLoadFailed: Bool
     ) -> String? {
+        if candidateLoadFailed { return nil }
         switch creationBlocker {
         case .addressRequired:
-            return "ADD AN ADDRESS TO CHECK EXISTING PROJECTS"
+            return "ADD AN ADDRESS, OR PICK THE PROJECT ABOVE"
         case .projectReviewRequired:
             // The server raises this when an active same-address project
             // exists that this operator cannot see or edit. Naming the real
             // obstacle beats the old "MATCHING PROJECT REQUIRES ADMIN REVIEW".
             return "SAME ADDRESS PROJECT — ADMIN ACCESS NEEDED"
         case nil:
-            break
+            return nil
         }
-        if candidateLinkCheckFailed {
-            return "COULD NOT CHECK PROJECT LINKS — RETRY"
-        }
-        let duplicates = refs.filter(\.isLikelyDuplicate)
-        if !duplicates.isEmpty, !duplicates.contains(where: { $0.linkState == .matchable }) {
-            return "EVERY MATCH IS LINKED TO ANOTHER LEAD"
-        }
-        return nil
     }
 
     /// Operator copy for each door the server can close on a link.
@@ -2116,58 +2301,46 @@ extension ConvertToProjectSheet {
         let createdAt: Date?
     }
 
-    /// Chip ref for the CLIENT-HAS-OTHERS list, sourced from the server
-    /// preflight (no local Project required).
-    struct RelatedProjectRef: Identifiable, Equatable {
+    /// One row in the ranked answer set for "which project is this?".
+    ///
+    /// Sourced from `get_manual_project_link_candidates`. There is no link
+    /// state on this type ON PURPOSE: everything in the list is selectable,
+    /// so there is no second rule to encode. `sameAddress` / `sameClient`
+    /// explain the row's rank; they never gate it.
+    struct ProjectLinkCandidate: Identifiable, Equatable {
         let id: String
         let title: String
         let address: String?
         let status: Status?
-        let linkState: RelatedProjectLinkState
-        let isAddressSuggestion: Bool
+        let sameAddress: Bool
+        let sameClient: Bool
 
-        init(
-            id: String,
-            title: String,
-            address: String?,
-            status: Status?,
-            linkState: RelatedProjectLinkState,
-            isAddressSuggestion: Bool = false
-        ) {
-            self.id = id
-            self.title = title
-            self.address = address
-            self.status = status
-            self.linkState = linkState
-            self.isAddressSuggestion = isAddressSuggestion
+        var displayTitle: String {
+            let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
+            return trimmed.isEmpty ? "Untitled project" : trimmed
         }
 
-        /// Same-address suggestions gate CREATE under the independent server
-        /// dedupe contract. A manually selectable project at another address
-        /// remains an option without becoming a duplicate warning.
-        var isLikelyDuplicate: Bool { isAddressSuggestion }
-
-        var interaction: RelatedProjectInteraction {
-            linkState == .matchable ? .match : .peek
-        }
-
-        /// What the chip claims, in the operator's terms. `LINKED` is the
-        /// honest word for a same-address project that already belongs to
-        /// another lead — the old copy called it `REVIEW`, which read as a
-        /// suggestion rather than a fact.
-        var actionLabel: String? {
-            switch linkState {
-            case .matchable:       return "MATCH"
-            case .linkedElsewhere: return "LINKED"
-            case .unverified:      return "UNVERIFIED"
-            case .unavailable:     return "REVIEW"
-            case .reviewOnly:      return nil
+        /// The evidence behind this row's rank, in the operator's terms.
+        var evidenceLabel: String? {
+            switch (sameAddress, sameClient) {
+            case (true, true):   return "SAME ADDRESS · SAME CLIENT"
+            case (true, false):  return "SAME ADDRESS"
+            case (false, true):  return "SAME CLIENT"
+            case (false, false): return nil
             }
         }
 
         /// Status color where known; neutral hairline otherwise.
         var statusColor: Color {
             status?.color ?? OPSStyle.Colors.textMute
+        }
+
+        /// Search matches what the operator can actually see on the row.
+        func matches(_ query: String) -> Bool {
+            let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty else { return true }
+            if displayTitle.localizedCaseInsensitiveContains(trimmed) { return true }
+            return address?.localizedCaseInsensitiveContains(trimmed) ?? false
         }
     }
 }

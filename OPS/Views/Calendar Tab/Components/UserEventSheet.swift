@@ -1334,7 +1334,6 @@ struct UserEventSheet: View {
                 if mode == .timeOff {
                     if canBookTimeOffForOthers {
                         await notifyBookedTimeOff(
-                            companyId: companyId,
                             requesterId: userId,
                             requesterName: requesterName,
                             targetUserId: item.target.id,
@@ -1345,7 +1344,6 @@ struct UserEventSheet: View {
                         )
                     } else {
                         await notifyAdminsOfTimeOffRequest(
-                            companyId: companyId,
                             requesterId: userId,
                             requesterName: requesterName,
                             targetUserId: item.target.id,
@@ -1377,9 +1375,14 @@ struct UserEventSheet: View {
     }
 
     // MARK: - Time Off Notifications
+    //
+    // The rail rows are the server's: both dispatches hand
+    // `TimeOffRequestNotificationDispatcher` the event id just written above,
+    // and the RPCs behind it read that row for the target, the requester, and
+    // the approvers, then render the copy. What is still built here is the
+    // push wording — the lock screen has always been the client's job.
 
     private func notifyBookedTimeOff(
-        companyId: String,
         requesterId: String,
         requesterName: String,
         targetUserId: String,
@@ -1390,43 +1393,28 @@ struct UserEventSheet: View {
     ) async {
         let dateRange = notificationDateRange(startDate: startDate, endDate: endDate)
         let isSelfBooking = requesterId == targetUserId
-        let title = "Time Off Booked"
-        let body = isSelfBooking
-            ? "Your time off for \(dateRange) is on the schedule."
-            : "\(requesterName) booked you off for \(dateRange)."
 
-        let dto = NotificationRepository.CreateNotificationDTO(
-            userId: targetUserId,
-            companyId: companyId,
-            type: "time_off_booked",
-            title: title,
-            body: body,
-            projectId: nil,
-            noteId: nil,
-            expenseId: nil,
-            batchId: nil,
-            deepLinkType: "schedule"
-        )
-        try? await NotificationRepository().createNotification(dto)
-
-        if !isSelfBooking {
-            try? await OneSignalService.shared.sendToUser(
-                userId: targetUserId,
-                title: title,
-                body: body,
+        // Push copy is the on-behalf wording only: booking your own time off
+        // never pushes, since the schedule you just changed is on screen.
+        await TimeOffRequestNotificationDispatcher.dispatchBooked(
+            eventId: eventId,
+            targetUserId: targetUserId,
+            targetIsSelf: isSelfBooking,
+            push: TimeOffRequestNotificationDispatcher.PushCopy(
+                title: "Time Off Booked",
+                body: "\(requesterName) booked you off for \(dateRange).",
                 data: [
                     "type": "time_off_booked",
                     "eventId": eventId,
                     "screen": "schedule"
                 ]
             )
-        }
+        )
 
         print("[UserEventSheet] Time off booked for \(targetName): \(dateRange)")
     }
 
     private func notifyAdminsOfTimeOffRequest(
-        companyId: String,
         requesterId: String,
         requesterName: String,
         targetUserId: String,
@@ -1436,85 +1424,33 @@ struct UserEventSheet: View {
         endDate: Date,
         eventId: String
     ) async {
-        let approverIds = (try? await RecipientLookupService.usersWithPermission(
-            companyId: companyId,
-            permission: "time_off.approve"
-        )) ?? []
-        let recipientIds = approverIds.filter { $0 != requesterId && $0 != targetUserId }
-
         let dateRange = notificationDateRange(startDate: startDate, endDate: endDate)
         let isSelfRequest = requesterId == targetUserId
-        let notifRepo = NotificationRepository()
-
-        let confirmation = NotificationRepository.CreateNotificationDTO(
-            userId: requesterId,
-            companyId: companyId,
-            type: "time_off_requested",
-            title: "Time Off Submitted",
-            body: isSelfRequest
-                ? "Your request for \(dateRange) is pending review."
-                : "Submitted for \(targetName): \(dateRange) (pending review).",
-            projectId: nil,
-            noteId: nil,
-            expenseId: nil,
-            batchId: nil,
-            deepLinkType: "schedule"
-        )
-        try? await notifRepo.createNotification(confirmation)
-
-        if !isSelfRequest {
-            let targetNotification = NotificationRepository.CreateNotificationDTO(
-                userId: targetUserId,
-                companyId: companyId,
-                type: "time_off_requested",
-                title: "Time Off Submitted For You",
-                body: "\(requesterName) submitted a time-off request on your behalf for \(dateRange).",
-                projectId: nil,
-                noteId: nil,
-                expenseId: nil,
-                batchId: nil,
-                deepLinkType: "schedule"
-            )
-            try? await notifRepo.createNotification(targetNotification)
-        }
-
-        guard !recipientIds.isEmpty else {
-            print("[UserEventSheet] No other schedulers to notify")
-            return
-        }
-
         let approvalBody = isSelfRequest
             ? "\(requesterName) requested time off: \(dateRange)"
             : "\(requesterName) requested time off for \(targetName): \(dateRange)"
 
-        for recipientId in recipientIds {
-            let approvalNotification = NotificationRepository.CreateNotificationDTO(
-                userId: recipientId,
-                companyId: companyId,
-                type: "time_off_requested",
+        // The push reaches exactly the approvers the server says it gave a new
+        // row to — never a locally computed permission list.
+        let pushedApproverIds = await TimeOffRequestNotificationDispatcher.dispatchRequested(
+            eventId: eventId,
+            push: TimeOffRequestNotificationDispatcher.PushCopy(
                 title: "Time Off Request",
                 body: approvalBody,
-                projectId: nil,
-                noteId: nil,
-                expenseId: nil,
-                batchId: nil,
-                deepLinkType: "schedule"
+                data: [
+                    "type": "time_off_requested",
+                    "eventId": eventId,
+                    "screen": "schedule"
+                ]
             )
-            try? await notifRepo.createNotification(approvalNotification)
-        }
-
-        try? await OneSignalService.shared.sendToUsers(
-            userIds: recipientIds,
-            title: "Time Off Request",
-            body: approvalBody,
-            data: [
-                "type": "time_off_requested",
-                "eventId": eventId,
-                "screen": "schedule"
-            ]
         )
 
-        print("[UserEventSheet] Time-off request push sent to \(recipientIds.count) scheduler(s) for \(eventTitle)")
+        guard !pushedApproverIds.isEmpty else {
+            print("[UserEventSheet] No other schedulers to notify")
+            return
+        }
+
+        print("[UserEventSheet] Time-off request push sent to \(pushedApproverIds.count) scheduler(s) for \(eventTitle)")
     }
 
     private func notificationDateRange(startDate: Date, endDate: Date) -> String {

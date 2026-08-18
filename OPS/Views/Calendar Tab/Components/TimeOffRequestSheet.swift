@@ -342,12 +342,10 @@ struct TimeOffRequestSheet: View {
                 }
 
                 await notifyAdminsOfTimeOffRequest(
-                    companyId: companyId,
                     requesterId: requesterId,
                     requesterName: requesterName,
                     targetUserId: item.target.id,
                     targetName: item.target.fullName,
-                    eventTitle: item.event.title,
                     startDate: startDate,
                     endDate: endDate,
                     eventId: savedId ?? item.event.id
@@ -362,33 +360,22 @@ struct TimeOffRequestSheet: View {
         }
     }
 
-    // MARK: - Push notification to admins
+    // MARK: - Rail + push for a submitted request
 
     private func notifyAdminsOfTimeOffRequest(
-        companyId: String,
         requesterId: String,
         requesterName: String,
         targetUserId: String,
         targetName: String,
-        eventTitle: String,
         startDate: Date,
         endDate: Date,
         eventId: String
     ) async {
-        // Recipients = anyone with time_off.approve. Permission-gated, never
-        // role. Companies that want to delegate scheduling to operators or
-        // foremen grant the permission to that custom role or via per-user
-        // override.
-        let approverIds = (try? await RecipientLookupService.usersWithPermission(
-            companyId: companyId,
-            permission: "time_off.approve"
-        )) ?? []
-
-        // Recipients exclude the requester AND the target — neither
-        // should receive their own request as a "review this" entry.
-        let recipientIds = approverIds
-            .filter { $0 != requesterId && $0 != targetUserId }
-
+        // Recipients are the server's to derive, not this sheet's:
+        // `notify_time_off_requested` reads the event row written just above,
+        // then writes the requester's receipt, the on-behalf target's row, and
+        // one row per `time_off.approve` holder — permission-gated, never role
+        // — and reports back which approvers actually got a new row.
         let dateFormatter = DateFormatter()
         dateFormatter.dateFormat = "MMM d"
         let dateRange = Calendar.current.isDate(startDate, inSameDayAs: endDate)
@@ -401,77 +388,25 @@ struct TimeOffRequestSheet: View {
             ? "\(requesterName) requested time off: \(dateRange)"
             : "\(requesterName) requested time off for \(targetName): \(dateRange)"
 
-        let notifRepo = NotificationRepository()
-
-        // Bug 8ef185af: confirmation row for the requester so they
-        // always see the submission land in the rail. Bug 81470acd: when
-        // an admin requests on behalf of someone else, also drop a row
-        // on the target's rail so they know a request was filed for
-        // them — the calendar event alone isn't enough surface area.
-        let selfNotif = NotificationRepository.CreateNotificationDTO(
-            userId: requesterId,
-            companyId: companyId,
-            type: "time_off_requested",
-            title: "Time Off Submitted",
-            body: isSelfRequest
-                ? "Your request for \(dateRange) is pending review."
-                : "Submitted for \(targetName): \(dateRange) (pending review).",
-            projectId: nil,
-            noteId: nil,
-            expenseId: nil,
-            batchId: nil,
-            deepLinkType: "schedule"
-        )
-        try? await notifRepo.createNotification(selfNotif)
-
-        if !isSelfRequest {
-            let targetNotif = NotificationRepository.CreateNotificationDTO(
-                userId: targetUserId,
-                companyId: companyId,
-                type: "time_off_requested",
-                title: "Time Off Submitted For You",
-                body: "\(requesterName) submitted a time-off request on your behalf for \(dateRange).",
-                projectId: nil,
-                noteId: nil,
-                expenseId: nil,
-                batchId: nil,
-                deepLinkType: "schedule"
+        // The push follows the rail exactly — those ids, and nobody else.
+        let pushedApproverIds = await TimeOffRequestNotificationDispatcher.dispatchRequested(
+            eventId: eventId,
+            push: TimeOffRequestNotificationDispatcher.PushCopy(
+                title: approvalTitle,
+                body: approvalBody,
+                data: [
+                    "type": "time_off_requested",
+                    "eventId": eventId,
+                    "screen": "schedule"
+                ]
             )
-            try? await notifRepo.createNotification(targetNotif)
-        }
+        )
 
-        guard !recipientIds.isEmpty else {
+        guard !pushedApproverIds.isEmpty else {
             print("[TimeOffRequestSheet] No other schedulers to notify")
             return
         }
 
-        for recipientId in recipientIds {
-            let notifDTO = NotificationRepository.CreateNotificationDTO(
-                userId: recipientId,
-                companyId: companyId,
-                type: "time_off_requested",
-                title: approvalTitle,
-                body: approvalBody,
-                projectId: nil,
-                noteId: nil,
-                expenseId: nil,
-                batchId: nil,
-                deepLinkType: "schedule"
-            )
-            try? await notifRepo.createNotification(notifDTO)
-        }
-
-        try? await OneSignalService.shared.sendToUsers(
-            userIds: recipientIds,
-            title: approvalTitle,
-            body: approvalBody,
-            data: [
-                "type": "time_off_requested",
-                "eventId": eventId,
-                "screen": "schedule"
-            ]
-        )
-
-        print("[TimeOffRequestSheet] Time-off push sent to \(recipientIds.count) scheduler(s) for target \(targetName)")
+        print("[TimeOffRequestSheet] Time-off push sent to \(pushedApproverIds.count) scheduler(s) for target \(targetName)")
     }
 }

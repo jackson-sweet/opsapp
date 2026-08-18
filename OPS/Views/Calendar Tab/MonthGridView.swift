@@ -883,11 +883,15 @@ struct MonthGridView: View {
                                                     }
                                                 }
 
-                                                // Badges sit above the day cells; during an active drag
-                                                // disable their hit-testing so drops always reach the
-                                                // MonthDayCell drop targets beneath.
+                                                // Badges sit above the day cells; during a drag they must
+                                                // stand aside so drops always reach the MonthDayCell drop
+                                                // targets beneath. Gated on `isDragInFlight`, not on
+                                                // `active` (bug 4baf3104): `active` used to be cleared
+                                                // mid-drag by the drag preview's teardown, which handed
+                                                // the badges their hit-testing back and let them swallow
+                                                // the drop — the drag then did nothing at all.
                                                 eventBars(weekSpans, dates: dates, dayWidth: dayWidth)
-                                                    .allowsHitTesting(dragSession.active == nil)
+                                                    .allowsHitTesting(!dragSession.isDragInFlight)
 
                                                 ForEach(moreIndicators) { indicator in
                                                     MoreEventsIndicatorView(indicator: indicator, cellHeight: cellHeight, dayWidth: dayWidth)

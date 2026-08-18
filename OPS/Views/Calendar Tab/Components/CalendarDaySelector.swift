@@ -86,23 +86,25 @@ struct WeekRowEdgeDropDelegate: DropDelegate {
     }
 
     func dropUpdated(info: DropInfo) -> DropProposal? {
-        refreshHover(from: info)
+        // Per-frame: hover only. Resolving the item provider here is what put an
+        // async decode on every drag-move frame (bug 4baf3104).
+        refreshHover()
         return DropProposal(operation: .move)
     }
 
     func dropEntered(info: DropInfo) {
-        let changed = refreshHover(from: info)
+        let changed = refreshHover()
         if changed {
             UISelectionFeedbackGenerator().selectionChanged()
         }
+        RescheduleDropPayloadAdoption.adopt(from: info, into: session)
     }
 
     @discardableResult
-    private func refreshHover(from info: DropInfo) -> Bool {
+    private func refreshHover() -> Bool {
         let calendar = Calendar.current
         let source = ScheduleDragHoverSource.weekRowEdge(direction)
         let changed = session.refreshHover(day: fallbackDay, source: source, calendar: calendar)
-        restoreActive(from: info, whileHovering: source)
         onHover(direction)
         return changed
     }
@@ -135,16 +137,6 @@ struct WeekRowEdgeDropDelegate: DropDelegate {
             }
         }
         return true
-    }
-
-    private func restoreActive(from info: DropInfo, whileHovering source: ScheduleDragHoverSource) {
-        guard let provider = info.itemProviders(for: [.opsRescheduleItem]).first else { return }
-        _ = provider.loadTransferable(type: RescheduleDragPayload.self) { result in
-            guard case .success(let payload) = result else { return }
-            Task { @MainActor in
-                session.restoreActive(payload, whileHovering: source)
-            }
-        }
     }
 }
 
@@ -669,7 +661,7 @@ struct CalendarDaySelector: View {
             // Notify wizard system that the week strip was scrolled
             NotificationCenter.default.post(name: Notification.Name("CalendarWeekViewScrolled"), object: nil)
 
-            if let direction = activeEdgePageDirection, dragSession.active != nil {
+            if let direction = activeEdgePageDirection, dragSession.isDragInFlight {
                 armEdgePage(direction)
             }
         }
@@ -685,7 +677,7 @@ struct CalendarDaySelector: View {
     /// Flip the visible week when a reschedule drag dwells on the first/last strip
     /// day, so the operator can drop a job on any week without ending the drag.
     private func handleDragEdgeHover(_ hovered: Date?) {
-        guard dragSession.active != nil, let hovered else {
+        guard dragSession.isDragInFlight, let hovered else {
             cancelEdgePage()
             return
         }
@@ -701,7 +693,7 @@ struct CalendarDaySelector: View {
     }
 
     private func handleDragRowEdgeHover(_ direction: CalendarWeekRowEdgeDirection?) {
-        guard dragSession.active != nil, let direction else {
+        guard dragSession.isDragInFlight, let direction else {
             cancelEdgePage()
             return
         }
@@ -727,7 +719,7 @@ struct CalendarDaySelector: View {
             edgePageTask = nil
             guard
                 !Task.isCancelled,
-                dragSession.active != nil,
+                dragSession.isDragInFlight,
                 activeEdgePageDirection == direction,
                 !isTransitioning
             else {

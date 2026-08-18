@@ -707,9 +707,8 @@ class ExpenseViewModel: ObservableObject {
         do {
             // Undecided lines lead, settled money follows, newest first
             // inside each group — the reviewer's eye lands on the work.
-            selectedBatchExpenses = ExpenseBuckets.attentionOrdered(
-                try await repo.fetchBatchExpenses(batchId)
-            )
+            let lines = try await repo.fetchBatchExpenses(batchId)
+            selectedBatchExpenses = ExpenseBuckets.attentionOrdered(lines)
             flaggedExpenseIds = Set(selectedBatchExpenses.compactMap { $0.flaggedBy != nil ? $0.id : nil })
             flagComments = Dictionary(uniqueKeysWithValues:
                 selectedBatchExpenses.compactMap { expense in

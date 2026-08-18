@@ -164,6 +164,76 @@ final class HomeBillableThisWeekRollupTests: XCTestCase {
         XCTAssertTrue(rollup.readyToBill.isEmpty)
     }
 
+    // MARK: - Bug 3d9ead2f — READY TO BILL has to mean "now", or the card is permanent
+
+    func testStaleFinishedWorkDropsOutOfReadyToBill() {
+        let today = date(2026, 5, 25) // Monday
+        let stale = makeProject(id: "stale", title: "Finished last winter", status: .completed)
+        makeTask(id: "stale-complete", project: stale, status: .completed, end: date(2025, 11, 25))
+
+        let rollup = HomeBillableThisWeekRollupEngine.compute(
+            projects: [stale],
+            invoices: [],
+            estimates: [],
+            today: today,
+            calendar: calendar
+        )
+
+        XCTAssertTrue(rollup.readyToBill.isEmpty)
+        XCTAssertFalse(rollup.hasItems, "A card with nothing to say must not hold its slice of the map")
+    }
+
+    func testWorkFinishedLastWeekIsStillReadyToBillOnMonday() {
+        let today = date(2026, 5, 25) // Monday — week start
+        let friday = makeProject(id: "friday", title: "Wrapped Friday", status: .completed)
+        makeTask(id: "friday-complete", project: friday, status: .completed, end: date(2026, 5, 22))
+
+        let rollup = HomeBillableThisWeekRollupEngine.compute(
+            projects: [friday],
+            invoices: [],
+            estimates: [],
+            today: today,
+            calendar: calendar
+        )
+
+        XCTAssertEqual(rollup.readyToBill.map(\.projectId), ["friday"])
+    }
+
+    func testFinishedWorkExactlyOnTheGraceFloorSurvives() {
+        let today = date(2026, 5, 25)
+        let onFloor = makeProject(id: "floor", title: "On the floor", status: .completed)
+        makeTask(id: "floor-complete", project: onFloor, status: .completed, end: date(2026, 5, 18))
+
+        let justUnder = makeProject(id: "under", title: "A day too old", status: .completed)
+        makeTask(id: "under-complete", project: justUnder, status: .completed, end: date(2026, 5, 17))
+
+        let rollup = HomeBillableThisWeekRollupEngine.compute(
+            projects: [onFloor, justUnder],
+            invoices: [],
+            estimates: [],
+            today: today,
+            calendar: calendar
+        )
+
+        XCTAssertEqual(rollup.readyToBill.map(\.projectId), ["floor"])
+    }
+
+    func testUndatedFinishedWorkMakesNoClaimOnThisWeek() {
+        let today = date(2026, 5, 25)
+        let undated = makeProject(id: "undated", title: "No dates recorded", status: .completed)
+        makeTask(id: "undated-complete", project: undated, status: .completed, end: nil)
+
+        let rollup = HomeBillableThisWeekRollupEngine.compute(
+            projects: [undated],
+            invoices: [],
+            estimates: [],
+            today: today,
+            calendar: calendar
+        )
+
+        XCTAssertTrue(rollup.readyToBill.isEmpty)
+    }
+
     private func date(_ year: Int, _ month: Int, _ day: Int) -> Date {
         calendar.date(from: DateComponents(year: year, month: month, day: day))!
     }

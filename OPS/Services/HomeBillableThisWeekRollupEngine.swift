@@ -73,6 +73,7 @@ enum HomeBillableThisWeekRollupEngine {
     ) -> HomeBillableThisWeekRollup {
         let scopedCalendar = mondayCalendar(from: calendar)
         let bounds = weekBounds(containing: today, calendar: scopedCalendar)
+        let readyFloor = readyToBillFloor(weekStart: bounds.start, calendar: scopedCalendar)
         let invoicesByProject = Dictionary(grouping: invoices.filter { $0.deletedAt == nil }) { invoice in
             invoice.projectId ?? ""
         }
@@ -101,6 +102,22 @@ enum HomeBillableThisWeekRollupEngine {
             )
 
             if remainingTasks.isEmpty {
+                // Bug 3d9ead2f — "READY TO BILL" used to have no time bound at
+                // all: a job whose last task was finished nine months ago sat
+                // on this card forever unless somebody posted an invoice
+                // against it. For a company that does not invoice in OPS the
+                // card was therefore permanent, holding a band of the live map
+                // to report a job count that was mostly historical backlog.
+                //
+                // A card titled BILLABLE THIS WEEK has to mean this week. Work
+                // that finished with no recorded end date makes no claim about
+                // when, so it makes no claim on this card either — old unbilled
+                // work belongs in Books, not over the map.
+                guard let latestEnd = liveTasks.compactMap(\.endDate).max(),
+                      latestEnd >= readyFloor else {
+                    continue
+                }
+
                 ready.append(
                     candidate(
                         project: project,
@@ -226,6 +243,19 @@ enum HomeBillableThisWeekRollupEngine {
         scoped.firstWeekday = 2
         scoped.minimumDaysInFirstWeek = 1
         return scoped
+    }
+
+    /// How far back finished work still counts as ready to bill *now*.
+    ///
+    /// One week of grace on the current week's start, not the week start
+    /// itself: a job wrapped up on Friday must still be on the card when the
+    /// operator opens Home on Monday morning, which is exactly when they sit
+    /// down to bill it. Anything older has stopped being this week's business.
+    private static let readyToBillGraceDays = -7
+
+    private static func readyToBillFloor(weekStart: Date, calendar: Calendar) -> Date {
+        calendar.date(byAdding: .day, value: readyToBillGraceDays, to: weekStart)
+            ?? weekStart.addingTimeInterval(Double(readyToBillGraceDays) * 86_400)
     }
 
     private static func weekBounds(containing date: Date, calendar: Calendar) -> (start: Date, end: Date) {

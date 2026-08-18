@@ -208,6 +208,21 @@ struct DeckMaterialsSnapshot: Codable, Equatable {
     /// order time — drives the subtle ADJUSTED tag on the ordered card. NEVER
     /// affects drift (which is geometry-only); a purely presentational flag.
     var isOrderedEdited: Bool
+    /// WHERE the material came from. `.supplier` (an order was placed) or
+    /// `.shop` (pulled off the rack — nothing ordered). Additive: any snapshot
+    /// written before this field existed decodes as `.supplier`, which is what
+    /// every historic record in fact was.
+    var disposition: VinylOrderDisposition
+    /// The consumable lines actually PURCHASED for this order, with the other
+    /// jobs each line was split across. Written by the bulk order wizard, where
+    /// tubes and buckets are bought once for the whole batch — the count stored
+    /// is the shared count, never a per-job fraction (see `VinylSharedConsumable`).
+    ///
+    /// nil/empty ⇒ nothing shared: the record renders from this snapshot's own
+    /// `dripSticks`/`clipSticks`/`ninetySticks`/`glueBuckets`, which is exactly
+    /// how every single-job and legacy order reads. The per-job stick counts are
+    /// never overwritten by this field — they remain this job's own requirement.
+    var sharedConsumables: [VinylSharedConsumable]?
 
     enum CodingKeys: String, CodingKey {
         case orderedAt
@@ -216,6 +231,8 @@ struct DeckMaterialsSnapshot: Codable, Equatable {
         case vinylSettings
         case vinylColor
         case po
+        case disposition
+        case sharedConsumables
         case vinylOrderedSqFt
         case vinylSurfaceAreaSqFt
         case cutGroups
@@ -262,6 +279,8 @@ struct DeckMaterialsSnapshot: Codable, Equatable {
         isOrderedEdited: Bool = false,
         driftCutGroups: [CutGroup]? = nil,
         po: String? = nil,
+        disposition: VinylOrderDisposition = .supplier,
+        sharedConsumables: [VinylSharedConsumable]? = nil,
         vinylDirectionSurfaces: [VinylSurfaceDirectionGeometrySnapshot]? = nil,
         vinylDirectionRegions: [VinylDirectionRegionSnapshot]? = nil,
         vinylDirectionTransitions: [VinylDirectionTransitionSnapshot]? = nil
@@ -272,6 +291,8 @@ struct DeckMaterialsSnapshot: Codable, Equatable {
         self.vinylSettings = vinylSettings
         self.vinylColor = vinylColor
         self.po = po
+        self.disposition = disposition
+        self.sharedConsumables = sharedConsumables
         self.vinylOrderedSqFt = vinylOrderedSqFt
         self.vinylSurfaceAreaSqFt = vinylSurfaceAreaSqFt
         self.cutGroups = cutGroups
@@ -308,6 +329,10 @@ struct DeckMaterialsSnapshot: Codable, Equatable {
         self.vinylSettings = try c.decodeIfPresent(VinylOrderSettings.self, forKey: .vinylSettings) ?? .default
         self.vinylColor = try c.decodeIfPresent(String.self, forKey: .vinylColor) ?? ""
         self.po = try c.decodeIfPresent(String.self, forKey: .po)
+        // Additive: every snapshot written before the shop disposition existed
+        // recorded a supplier order, so that is the only correct fallback.
+        self.disposition = try c.decodeIfPresent(VinylOrderDisposition.self, forKey: .disposition) ?? .supplier
+        self.sharedConsumables = try c.decodeIfPresent([VinylSharedConsumable].self, forKey: .sharedConsumables)
         self.vinylOrderedSqFt = try c.decodeIfPresent(Int.self, forKey: .vinylOrderedSqFt) ?? 0
         self.vinylSurfaceAreaSqFt = try c.decodeIfPresent(Double.self, forKey: .vinylSurfaceAreaSqFt) ?? 0
         self.cutGroups = try c.decodeIfPresent([CutGroup].self, forKey: .cutGroups) ?? []
@@ -352,5 +377,42 @@ struct DeckMaterialsSnapshot: Codable, Equatable {
         // `orderedMaterials` with `try?`, so a strict Bool did not raise — it
         // silently nilled the whole ordered-materials snapshot.
         self.isOrderedEdited = try c.decodeLegacyBoolIfPresent(forKey: .isOrderedEdited) ?? false
+    }
+
+    // MARK: - The ordered record
+
+    /// The consumable lines AS PURCHASED, in a fixed reading order, for the
+    /// record card and the activity entry.
+    ///
+    /// A bulk order stores its real purchased lines (shared tubes/buckets with
+    /// their sharing partners) in `sharedConsumables`; those are authoritative.
+    /// Every single-job and legacy order stores nothing, and the honest record
+    /// is this job's own confirmed counts with no sharing partners. Zero-count
+    /// lines drop out — an order that bought no glue should not claim a glue line.
+    var orderedConsumables: [VinylSharedConsumable] {
+        if let stored = sharedConsumables, !stored.isEmpty {
+            return stored.filter { $0.count > 0 }
+        }
+        return [
+            VinylSharedConsumable(kind: .dripEdge, count: dripSticks),
+            VinylSharedConsumable(kind: .ninetyFlash, count: ninetySticks),
+            VinylSharedConsumable(kind: .clip, count: clipSticks),
+            VinylSharedConsumable(kind: .glue, count: glueBuckets)
+        ].filter { $0.count > 0 }
+    }
+
+    /// The purchased vinyl lines: `2 @ 9'6"` per cut group, or the whole-roll
+    /// line in full-roll mode. Sentence-case-neutral — used by both the record
+    /// card and the activity body.
+    var orderedVinylLines: [String] {
+        if orderMode == .fullRolls {
+            let rolls = orderedRollCount ?? 0
+            guard rolls > 0 else { return [] }
+            let noun = rolls == 1 ? "roll" : "rolls"
+            return ["\(rolls) \(noun) @ \(Int(fullRollLengthFeet))' × \(vinylFormatInches(vinylSettings.rollWidthInches))"]
+        }
+        return cutGroups
+            .filter { $0.count > 0 }
+            .map { "\($0.count) @ \(vinylFormatFeetAndInches($0.lengthInches))" }
     }
 }

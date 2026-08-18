@@ -855,7 +855,7 @@ final class OutboundProcessor {
         // for the full rationale. MUST stay in sync across both outbound paths or
         // "MARK ORDERED" is stripped before push and reverts on the next sync.
         "vinyl_order_status", "vinyl_ordered_at", "vinyl_ordered_by",
-        "vinyl_color", "vinyl_po",
+        "vinyl_color", "vinyl_po", "vinyl_source",
         "deleted_at", "created_at", "updated_at", "priority_rank"
     ]
 

@@ -64,6 +64,24 @@ private struct VinylWizardPageState {
     var confirmed = false
     var showLayout = false
     var plan: VinylCutPlan?
+    /// Where this job's material comes from. `.shop` drops the job out of the
+    /// supplier message entirely — you do not ask a supplier for material that
+    /// is already on your rack — while still committing the job as handled.
+    var disposition: VinylOrderDisposition = .supplier
+    /// The vinyl quantity the operator is actually ordering for this job. Seeded
+    /// from the calculator, then nudgeable — the calculated plan is a starting
+    /// point, and what gets recorded is what the operator wrote.
+    ///
+    /// nil until the plan first resolves; `orderedVinylQuantity` reads through
+    /// to the calculated value while it is nil so an untouched page always
+    /// commits the calculator's number.
+    var orderedSqFtOverride: Int?
+    var orderedRollsOverride: Int?
+
+    /// True when the operator moved either vinyl quantity off the calculation.
+    var hasQuantityOverride: Bool {
+        orderedSqFtOverride != nil || orderedRollsOverride != nil
+    }
 }
 
 // MARK: - Wizard root
@@ -102,7 +120,7 @@ struct VinylBulkOrderWizardView: View {
                             context: context,
                             sections: confirmedSections,
                             needs: confirmedNeeds,
-                            makeCommitItems: { commitItems() },
+                            makeCommitItems: { commitItems(purchasedConsumables: $0) },
                             onBack: { withAnimation(OPSStyle.Animation.page) { pageIndex = max(0, jobs.count - 1) } },
                             onCommitted: { outcome, failedItems in onCommitted(outcome, failedItems) }
                         )
@@ -342,7 +360,11 @@ struct VinylBulkOrderWizardView: View {
             ?? VinylCutListTextTemplate.defaultCutTemplate
 
         return zip(jobs, pageStates)
-            .filter { _, state in state.confirmed }
+            // A job pulled FROM SHOP needs nothing from the supplier, so it
+            // contributes no section — asking for material already on the rack
+            // is exactly the over-ordering this board exists to stop. It still
+            // commits below as handled.
+            .filter { _, state in state.confirmed && state.disposition == .supplier }
             .map { job, state in
                 let color = state.vinylSettings.color.trimmingCharacters(in: .whitespacesAndNewlines)
                 guard let plan = state.plan, job.degenerateReason == nil else {
@@ -353,7 +375,13 @@ struct VinylBulkOrderWizardView: View {
                         stripLengthsFeet: plan.surfaces.flatMap(\.purchasedCuts).map { $0.lengthInches / 12.0 },
                         rollLengthFeet: state.materialsSettings.fullRollLengthFeet
                     )
-                    let rolls = "\(pack.rollCount) ROLL\(pack.rollCount == 1 ? "" : "S") @ \(Int(state.materialsSettings.fullRollLengthFeet))' × \(vinylFormatInches(state.vinylSettings.rollWidthInches))"
+                    // The supplier is told what the operator is actually buying,
+                    // not what the calculator suggested.
+                    let rollCount = state.orderedRollsOverride ?? pack.rollCount
+                    guard rollCount > 0 else {
+                        return VinylBulkOrderSection(po: state.po, color: color, cutLines: [], rollsLine: nil)
+                    }
+                    let rolls = "\(rollCount) ROLL\(rollCount == 1 ? "" : "S") @ \(Int(state.materialsSettings.fullRollLengthFeet))' × \(vinylFormatInches(state.vinylSettings.rollWidthInches))"
                     return VinylBulkOrderSection(po: state.po, color: color, cutLines: [], rollsLine: rolls)
                 }
                 let lines = VinylCutListTextTemplate.cutLines(for: plan, cutTemplate: cutTemplate)
@@ -367,10 +395,14 @@ struct VinylBulkOrderWizardView: View {
     }
 
     /// Per-job consumable needs for the aggregator — resolved materials at the
-    /// page's confirmed settings; degenerate jobs contribute nothing.
+    /// page's confirmed settings. Degenerate jobs contribute nothing, and
+    /// neither do shop-sourced jobs: their flashing and glue came off the same
+    /// rack as their vinyl.
     private var confirmedNeeds: [VinylConsumableNeed] {
         zip(jobs, pageStates)
-            .filter { job, state in state.confirmed && job.degenerateReason == nil }
+            .filter { job, state in
+                state.confirmed && job.degenerateReason == nil && state.disposition == .supplier
+            }
             .compactMap { job, state in
                 guard let resolved = job.resolved, !resolved.vinylInputs.isEmpty else { return nil }
                 let materials = DeckMaterialsEngine.compute(
@@ -392,44 +424,91 @@ struct VinylBulkOrderWizardView: View {
     /// Commit items for every confirmed job — materials recomputed at the
     /// page's confirmed settings so each frozen snapshot mirrors exactly what
     /// the message ordered; degenerate jobs commit marker fields only.
-    private func commitItems() -> [VinylBulkMarkItem] {
-        zip(jobs, pageStates)
-            .filter { _, state in state.confirmed }
-            .map { job, state in
-                let color = state.vinylSettings.color.trimmingCharacters(in: .whitespacesAndNewlines)
-                let po = state.po.trimmingCharacters(in: .whitespacesAndNewlines)
+    ///
+    /// `purchasedConsumables` are the operator's FINAL tube/bucket counts from
+    /// the send page. Those numbers were previously composed into the supplier
+    /// text and then thrown away — the record kept whatever the calculator had
+    /// said. They are now attributed back to every job that shared the purchase,
+    /// as the shared count plus its sharing partners (never a per-job fraction:
+    /// three tubes across four jobs is three tubes, and 0.75 of a tube is a
+    /// quantity nobody ordered).
+    private func commitItems(
+        purchasedConsumables: [VinylSharedConsumable.Kind: Int]
+    ) -> [VinylBulkMarkItem] {
+        let confirmedPairs = zip(jobs, pageStates).filter { _, state in state.confirmed }
+        // Only supplier-sourced jobs took part in the purchase, so only they
+        // appear in one another's "shared with" list.
+        let supplierTitles = confirmedPairs
+            .filter { _, state in state.disposition == .supplier }
+            .map { job, _ in job.title }
 
-                guard let design = job.design,
-                      let resolved = job.resolved,
-                      !resolved.vinylInputs.isEmpty,
-                      job.degenerateReason == nil else {
-                    return VinylBulkMarkItem(
-                        projectId: job.projectId,
-                        design: nil,
-                        materials: nil,
-                        settings: state.materialsSettings,
-                        vinylSettings: state.vinylSettings,
-                        color: color.isEmpty ? nil : color,
-                        po: po.isEmpty ? nil : po
-                    )
-                }
+        return confirmedPairs.map { job, state in
+            let color = state.vinylSettings.color.trimmingCharacters(in: .whitespacesAndNewlines)
+            let po = state.po.trimmingCharacters(in: .whitespacesAndNewlines)
+            let shared = sharedConsumables(
+                for: job,
+                state: state,
+                purchased: purchasedConsumables,
+                supplierTitles: supplierTitles
+            )
 
-                let materials = DeckMaterialsEngine.compute(
-                    vinylInputs: resolved.vinylInputs,
-                    allDetectedFacesByLevel: job.facesByLevel,
-                    settings: state.materialsSettings,
-                    vinylSettings: state.vinylSettings
-                )
+            guard let design = job.design,
+                  let resolved = job.resolved,
+                  !resolved.vinylInputs.isEmpty,
+                  job.degenerateReason == nil else {
                 return VinylBulkMarkItem(
                     projectId: job.projectId,
-                    design: design,
-                    materials: materials,
+                    design: nil,
+                    materials: nil,
                     settings: state.materialsSettings,
                     vinylSettings: state.vinylSettings,
                     color: color.isEmpty ? nil : color,
-                    po: po.isEmpty ? nil : po
+                    po: po.isEmpty ? nil : po,
+                    projectTitle: job.title,
+                    disposition: state.disposition,
+                    sharedConsumables: shared,
+                    orderedSqFtOverride: state.orderedSqFtOverride,
+                    orderedRollsOverride: state.orderedRollsOverride
                 )
             }
+
+            let materials = DeckMaterialsEngine.compute(
+                vinylInputs: resolved.vinylInputs,
+                allDetectedFacesByLevel: job.facesByLevel,
+                settings: state.materialsSettings,
+                vinylSettings: state.vinylSettings
+            )
+            return VinylBulkMarkItem(
+                projectId: job.projectId,
+                design: design,
+                materials: materials,
+                settings: state.materialsSettings,
+                vinylSettings: state.vinylSettings,
+                color: color.isEmpty ? nil : color,
+                po: po.isEmpty ? nil : po,
+                projectTitle: job.title,
+                disposition: state.disposition,
+                sharedConsumables: shared,
+                orderedSqFtOverride: state.orderedSqFtOverride,
+                orderedRollsOverride: state.orderedRollsOverride
+            )
+        }
+    }
+
+    /// This job's share of the purchased consumables. A shop-sourced job bought
+    /// nothing, so it records nothing.
+    private func sharedConsumables(
+        for job: VinylBulkOrderJob,
+        state: VinylWizardPageState,
+        purchased: [VinylSharedConsumable.Kind: Int],
+        supplierTitles: [String]
+    ) -> [VinylSharedConsumable] {
+        guard state.disposition == .supplier else { return [] }
+        let partners = supplierTitles.filter { $0 != job.title }
+        return VinylSharedConsumable.Kind.allCases.compactMap { kind in
+            guard let count = purchased[kind], count > 0 else { return nil }
+            return VinylSharedConsumable(kind: kind, count: count, sharedWith: partners)
+        }
     }
 }
 
@@ -458,7 +537,7 @@ private struct VinylBulkOrderPageView: View {
             poSection
 
             if job.degenerateReason == nil, let plan = state.plan {
-                cutsSection(plan)
+                orderSection(plan)
 
                 VinylOrderLayoutWindow(
                     plan: plan,
@@ -467,6 +546,78 @@ private struct VinylBulkOrderPageView: View {
                 )
 
                 layoutSection
+            } else {
+                // No cut plan to order against, but the job still has a
+                // disposition worth recording — a drawing-less job can be
+                // handled entirely off the shop rack.
+                pageSection(title: "SOURCE") { sourceControl }
+            }
+        }
+    }
+
+    // MARK: Source
+
+    /// WHERE this job's material comes from. It sits at the head of the ORDER
+    /// section, immediately above the quantity it governs, so its consequence is
+    /// visible in the same glance — and it does not add a step to the common
+    /// path, which is a page full of jobs that are all being ordered.
+    private var sourceControl: some View {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
+            HStack(spacing: 0) {
+                ForEach(VinylOrderDisposition.allCases, id: \.self) { option in
+                    Button {
+                        selectSource(option)
+                    } label: {
+                        Text(option.sourceLabel)
+                            .font(OPSStyle.Typography.smallCaption)
+                            .foregroundColor(
+                                option == state.disposition
+                                    ? OPSStyle.Colors.primaryText
+                                    : OPSStyle.Colors.secondaryText
+                            )
+                            .frame(maxWidth: .infinity)
+                            .frame(height: OPSStyle.Layout.touchTargetMin)
+                            .background(
+                                option == state.disposition
+                                    ? OPSStyle.Colors.surfaceActive
+                                    : Color.clear
+                            )
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityAddTraits(option == state.disposition ? [.isSelected] : [])
+                }
+            }
+            .background(OPSStyle.Colors.subtleBackground)
+            .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius))
+            .overlay(
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+            )
+
+            if state.disposition == .shop {
+                Text("Stays off the supplier message. Recorded as pulled from the shop.")
+                    .font(OPSStyle.Typography.smallCaption)
+                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    private func selectSource(_ option: VinylOrderDisposition) {
+        guard option != state.disposition else { return }
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        withAnimation(OPSStyle.Animation.panel) {
+            state.disposition = option
+            if option == .shop {
+                // Nothing is being bought for this job.
+                state.orderedSqFtOverride = 0
+                state.orderedRollsOverride = 0
+            } else {
+                // Back to the calculator's numbers rather than leaving the
+                // operator with zeros to rebuild by hand.
+                state.orderedSqFtOverride = nil
+                state.orderedRollsOverride = nil
             }
         }
     }
@@ -617,32 +768,94 @@ private struct VinylBulkOrderPageView: View {
 
     // MARK: Cuts
 
-    private func cutsSection(_ plan: VinylCutPlan) -> some View {
-        pageSection(title: "CUTS") {
+    /// What is actually being ordered for this job — the wizard's per-job
+    /// "overwrite the calculated list" step.
+    ///
+    /// The calculation opens the section; the operator can move it. The itemized
+    /// cut lines stay below, unedited, because they are the on-site CUTTING
+    /// GUIDE (geometry), not an order quantity — editing them would change what
+    /// the crew cuts, which is not what a purchasing correction means.
+    ///
+    /// Flashing and glue deliberately do NOT appear here. Their whole value in a
+    /// bulk run is cross-job batching — sticks summed across every job, then one
+    /// round-up to tubes — so they are confirmed once on the send page and
+    /// recorded against every job that shared them.
+    private func orderSection(_ plan: VinylCutPlan) -> some View {
+        let isRollMode = state.materialsSettings.orderMode == .fullRolls
+        let packingPlan = VinylRollPacker.packingPlan(
+            stripLengthsFeet: plan.surfaces.flatMap(\.purchasedCuts).map { $0.lengthInches / 12.0 },
+            rollLengthFeet: state.materialsSettings.fullRollLengthFeet
+        )
+        let calculatedRolls = packingPlan.rolls.count
+        let calculatedSqFt = plan.totalOrderedSqFt
+
+        return pageSection(title: "ORDER") {
             VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
-                if state.materialsSettings.orderMode == .fullRolls {
-                    let packingPlan = VinylRollPacker.packingPlan(
-                        stripLengthsFeet: plan.surfaces.flatMap(\.purchasedCuts).map { $0.lengthInches / 12.0 },
-                        rollLengthFeet: state.materialsSettings.fullRollLengthFeet
-                    )
-                    metricRow(
-                        "ROLLS",
-                        "\(packingPlan.rolls.count) @ \(Int(state.materialsSettings.fullRollLengthFeet))' × \(vinylFormatInches(state.vinylSettings.rollWidthInches))"
+                sourceControl
+
+                Rectangle()
+                    .fill(OPSStyle.Colors.cardBorder)
+                    .frame(height: OPSStyle.Layout.Border.standard)
+
+                if isRollMode {
+                    OPSCounterRow(
+                        label: "ROLLS",
+                        value: Binding(
+                            get: { state.orderedRollsOverride ?? calculatedRolls },
+                            set: { state.orderedRollsOverride = $0 }
+                        ),
+                        range: 0...500,
+                        support: quantitySupport(
+                            calculated: calculatedRolls,
+                            current: state.orderedRollsOverride ?? calculatedRolls,
+                            suffix: "@ \(Int(state.materialsSettings.fullRollLengthFeet))' × \(vinylFormatInches(state.vinylSettings.rollWidthInches))"
+                        )
                     )
                     VinylRollUtilizationView(plan: packingPlan)
                     if !packingPlan.overlengthStripLengthsFeet.isEmpty {
                         overlengthWarning(count: packingPlan.overlengthStripLengthsFeet.count)
                     }
+                } else {
+                    OPSCounterRow(
+                        label: "ORDER SQ FT",
+                        value: Binding(
+                            get: { state.orderedSqFtOverride ?? calculatedSqFt },
+                            set: { state.orderedSqFtOverride = $0 }
+                        ),
+                        range: 0...20000,
+                        step: 5,
+                        support: quantitySupport(
+                            calculated: calculatedSqFt,
+                            current: state.orderedSqFtOverride ?? calculatedSqFt,
+                            suffix: nil
+                        )
+                    )
                 }
-                metricRow("ORDER AREA", "\(plan.totalOrderedSqFt) SQ FT")
+
+                Text("// CUT LIST")
+                    .font(OPSStyle.Typography.metadata)
+                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+                    .tracking(1.1)
+                    .padding(.top, OPSStyle.Layout.spacing1)
 
                 ForEach(VinylCutGroup.groups(from: plan.surfaces.flatMap(\.purchasedCuts))) { group in
                     Text(group.displayLine)
                         .font(OPSStyle.Typography.smallCaption)
                         .foregroundColor(OPSStyle.Colors.secondaryText)
+                        .monospacedDigit()
                 }
             }
         }
+    }
+
+    /// The support line under a quantity: the calculated value once the operator
+    /// has moved off it, plus any fixed unit note. An untouched line stays quiet
+    /// rather than restating its own number back at the reader.
+    private func quantitySupport(calculated: Int, current: Int, suffix: String?) -> String? {
+        var parts: [String] = []
+        if current != calculated { parts.append("CALC \(calculated)") }
+        if let suffix { parts.append(suffix) }
+        return parts.isEmpty ? nil : parts.joined(separator: " · ")
     }
 
     private func orderLayoutSubtitle(for plan: VinylCutPlan) -> String {
@@ -790,32 +1003,14 @@ private struct VinylBulkOrderPageView: View {
         step: Double,
         formatted: String
     ) -> some View {
-        Stepper(value: value, in: range, step: step) {
-            HStack(spacing: OPSStyle.Layout.spacing2) {
-                Text(label)
-                    .font(OPSStyle.Typography.smallCaption)
-                    .foregroundColor(OPSStyle.Colors.tertiaryText)
-                    .frame(width: OPSStyle.Layout.touchTargetStandard + OPSStyle.Layout.spacing5, alignment: .leading)
-                Text(formatted)
-                    .font(OPSStyle.Typography.dataValue)
-                    .foregroundColor(OPSStyle.Colors.primaryText)
-                Spacer(minLength: 0)
-            }
-        }
-        .tint(OPSStyle.Colors.secondaryText)
-    }
-
-    private func metricRow(_ label: String, _ value: String) -> some View {
-        HStack(spacing: OPSStyle.Layout.spacing2) {
-            Text(label)
-                .font(OPSStyle.Typography.smallCaption)
-                .foregroundColor(OPSStyle.Colors.tertiaryText)
-            Spacer(minLength: 0)
-            Text(value)
-                .font(OPSStyle.Typography.dataValue)
-                .foregroundColor(OPSStyle.Colors.primaryText)
-                .multilineTextAlignment(.trailing)
-        }
+        OPSCounterRow(
+            label: label,
+            value: formatted,
+            canDecrement: value.wrappedValue > range.lowerBound,
+            canIncrement: value.wrappedValue < range.upperBound,
+            onDecrement: { value.wrappedValue = max(range.lowerBound, value.wrappedValue - step) },
+            onIncrement: { value.wrappedValue = min(range.upperBound, value.wrappedValue + step) }
+        )
     }
 
     private func pageSection<Content: View>(
@@ -872,7 +1067,10 @@ struct VinylBulkOrderSendPageView: View {
     let context: VinylBulkOrderWizardContext
     let sections: [VinylBulkOrderSection]
     let needs: [VinylConsumableNeed]
-    let makeCommitItems: () -> [VinylBulkMarkItem]
+    /// Builds the commit items, given the operator's FINAL purchased consumable
+    /// counts — the numbers they nudged on this page, which are what actually
+    /// get bought and therefore what belongs in each job's record.
+    let makeCommitItems: ([VinylSharedConsumable.Kind: Int]) -> [VinylBulkMarkItem]
     let onBack: () -> Void
     let onCommitted: (VinylBulkMarkOutcome, [VinylBulkMarkItem]) -> Void
 
@@ -1007,39 +1205,18 @@ struct VinylBulkOrderSendPageView: View {
         unit: String,
         support: String
     ) -> some View {
-        Stepper(value: count, in: 0...200) {
-            HStack(spacing: OPSStyle.Layout.spacing2) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(label)
-                        .font(OPSStyle.Typography.smallCaption)
-                        .foregroundColor(OPSStyle.Colors.tertiaryText)
-                    Text(support)
-                        .font(OPSStyle.Typography.smallCaption)
-                        .foregroundColor(OPSStyle.Colors.secondaryText)
-                }
-                Spacer(minLength: 0)
-                Text("\(count.wrappedValue) \(unit)\(count.wrappedValue == 1 ? "" : "S")")
-                    .font(OPSStyle.Typography.dataValue)
-                    .foregroundColor(count.wrappedValue == 0 ? OPSStyle.Colors.tertiaryText : OPSStyle.Colors.primaryText)
-            }
-        }
-        .tint(OPSStyle.Colors.secondaryText)
+        OPSCounterRow(
+            label: label,
+            value: count,
+            range: 0...200,
+            unit: count.wrappedValue == 1 ? unit : "\(unit)S",
+            support: support
+        )
     }
 
     private func tubeConfigStepper(label: String, value: Binding<Int>) -> some View {
-        Stepper(value: value, in: 1...200) {
-            HStack(spacing: OPSStyle.Layout.spacing2) {
-                Text(label)
-                    .font(OPSStyle.Typography.smallCaption)
-                    .foregroundColor(OPSStyle.Colors.tertiaryText)
-                Spacer(minLength: 0)
-                Text("\(value.wrappedValue)")
-                    .font(OPSStyle.Typography.dataValue)
-                    .foregroundColor(OPSStyle.Colors.primaryText)
-            }
-        }
-        .tint(OPSStyle.Colors.secondaryText)
-        .onChange(of: value.wrappedValue) { _, _ in reseedSuggestedCounts() }
+        OPSCounterRow(label: label, value: value, range: 1...200)
+            .onChange(of: value.wrappedValue) { _, _ in reseedSuggestedCounts() }
     }
 
     private func formattedBuckets(_ value: Double) -> String {
@@ -1185,14 +1362,38 @@ struct VinylBulkOrderSendPageView: View {
 
     /// Commit every confirmed job through the bulk mark service, then one
     /// summary notification — never n (spec § 12.9).
+    /// The operator's final counts, keyed for attribution back to each job.
+    private var purchasedConsumables: [VinylSharedConsumable.Kind: Int] {
+        [
+            .dripEdge: dripTubes,
+            .ninetyFlash: ninetyTubes,
+            .clip: clipTubes,
+            .glue: glueBuckets
+        ]
+    }
+
     private func commitAll() {
         guard let userId = context.userId, !isCommitting else { return }
         isCommitting = true
 
-        let items = makeCommitItems()
-        let service = VinylBulkMarkService(userId: userId) { pid, fields in
-            try await dataController.updateProjectFields(projectId: pid, fields: fields)
-        }
+        let items = makeCommitItems(purchasedConsumables)
+        let companyId = context.companyId
+        let controller = dataController
+        let service = VinylBulkMarkService(
+            userId: userId,
+            updateProjectFields: { pid, fields in
+                try await dataController.updateProjectFields(projectId: pid, fields: fields)
+            },
+            recordActivity: { item, record in
+                VinylOrderActivityRecorder.record(
+                    projectId: item.projectId,
+                    companyId: companyId,
+                    authorId: userId,
+                    record: record,
+                    dataController: controller
+                )
+            }
+        )
         Task { @MainActor in
             let outcome = await service.markOrdered(items: items)
             // ONE summary notification whenever anything marked (spec § 12.9) —

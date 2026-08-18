@@ -21,6 +21,11 @@ struct DeckMaterialsSection: View {
     let project: Project
 
     @Environment(\.modelContext) private var modelContext
+    /// Injected rather than pulled from the environment: the snapshot harness
+    /// renders this section standalone, and an `@EnvironmentObject` would trap
+    /// there. nil simply means a disposition change cannot be pushed remotely,
+    /// which is exactly the situation in a render-only proof.
+    private let dataController: DataController?
 
     /// Memoized resolved materials. Recomputed only on drawing-JSON change +
     /// initial task; the compute pipeline (detection + engine + SwiftData
@@ -35,9 +40,10 @@ struct DeckMaterialsSection: View {
     /// without CLEAR + re-order).
     @State private var showingEditOrder = false
 
-    init(design: DeckDesign, project: Project) {
+    init(design: DeckDesign, project: Project, dataController: DataController? = nil) {
         self.design = design
         self.project = project
+        self.dataController = dataController
     }
 
     var body: some View {
@@ -108,8 +114,33 @@ struct DeckMaterialsSection: View {
                 calculated: DeckMaterialsOrderConfirmation.calculated(fromSnapshot: snapshot),
                 initial: DeckMaterialsOrderConfirmation.stored(fromSnapshot: snapshot),
                 onConfirm: { confirmed in
+                    let priorDisposition = snapshot.disposition
                     DeckMaterialsOrderService.editOrder(design: design, confirmed: confirmed)
                     if !isInjected { recompute() }
+                    // An edit is otherwise local-only — the project is already
+                    // marked. But re-labelling a supplier order as a shop pull
+                    // (or back) changes `vinyl_source` on the remote row, and
+                    // leaving it stale would let the column contradict the
+                    // snapshot the card is rendering.
+                    guard confirmed.disposition != priorDisposition,
+                          let updated = design.drawingData.orderedMaterials,
+                          let dataController else { return }
+                    let userId = dataController.currentUser?.id
+                        ?? SupabaseService.shared.currentUserId
+                        ?? ""
+                    let service = DeckMaterialsOrderService(userId: userId) { pid, fields in
+                        try await dataController.updateProjectFields(projectId: pid, fields: fields)
+                    }
+                    Task { @MainActor in
+                        do {
+                            try await service.updateDisposition(
+                                projectId: project.id,
+                                snapshot: updated
+                            )
+                        } catch {
+                            print("[DeckMaterialsSection] vinyl source update failed: \(error)")
+                        }
+                    }
                 }
             )
             .presentationDetents([.medium, .large])
@@ -189,11 +220,17 @@ struct DeckMaterialsSection: View {
                 MaterialRow(label: "GLUE", value: glueValue(buckets: snapshot.glueBuckets, coverage: snapshot.settings.glueCoverageSqFt))
             ])
 
+            sharedConsumablesBlock(snapshot)
+
             HStack(spacing: OPSStyle.Layout.spacing2) {
-                Text("ORDERED \(DateHelper.simpleDateString(from: snapshot.orderedAt).uppercased())")
+                Text(orderedMetaLine(snapshot))
                     .font(OPSStyle.Typography.smallCaption)
                     .foregroundColor(OPSStyle.Colors.successStatus)
-                if snapshot.isOrderedEdited {
+                    .monospacedDigit()
+                // ADJUSTED explains why the numbers differ from the calculation.
+                // On a shop pull the zeros are already explained by FROM SHOP,
+                // so the tag would only add noise.
+                if snapshot.isOrderedEdited && snapshot.disposition != .shop {
                     Text("ADJUSTED")
                         .font(OPSStyle.Typography.smallCaption)
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
@@ -208,6 +245,62 @@ struct DeckMaterialsSection: View {
             }
 
             editOrderButton
+        }
+    }
+
+    /// `FROM SHOP · PULLED 14 JUL · PO 6836` — the disposition, when, and against
+    /// what. The metric list above says how much; this line says what kind of
+    /// act produced it, which is the part that used to be missing.
+    private func orderedMetaLine(_ snapshot: DeckMaterialsSnapshot) -> String {
+        var parts: [String] = []
+        if snapshot.disposition == .shop {
+            parts.append(snapshot.disposition.statusLabel)
+        }
+        parts.append(
+            "\(snapshot.disposition.datePrefix) \(DateHelper.simpleDateString(from: snapshot.orderedAt).uppercased())"
+        )
+        if let po = snapshot.po?.trimmingCharacters(in: .whitespacesAndNewlines), !po.isEmpty {
+            parts.append("PO \(po.uppercased())")
+        }
+        return parts.joined(separator: " · ")
+    }
+
+    /// Consumables bought once across several jobs. The metric list above shows
+    /// THIS job's requirement; this block shows what was actually purchased and
+    /// who it was split with — the two are different numbers and conflating them
+    /// is how a batch order gets re-ordered by the next person to look.
+    @ViewBuilder
+    private func sharedConsumablesBlock(_ snapshot: DeckMaterialsSnapshot) -> some View {
+        let shared = (snapshot.sharedConsumables ?? []).filter { $0.count > 0 && $0.isShared }
+        if !shared.isEmpty {
+            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
+                Text("// PURCHASED")
+                    .font(OPSStyle.Typography.metadata)
+                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+                    .tracking(1.1)
+                ForEach(shared) { consumable in
+                    VStack(alignment: .leading, spacing: 2) {
+                        HStack(spacing: OPSStyle.Layout.spacing2) {
+                            Text(consumable.kind.displayLabel)
+                                .font(OPSStyle.Typography.smallCaption)
+                                .foregroundColor(OPSStyle.Colors.tertiaryText)
+                            Spacer(minLength: 0)
+                            Text(consumable.recordValue)
+                                .font(OPSStyle.Typography.dataValue)
+                                .foregroundColor(OPSStyle.Colors.primaryText)
+                                .monospacedDigit()
+                        }
+                        if let line = consumable.sharedSupportLine {
+                            Text(line)
+                                .font(OPSStyle.Typography.smallCaption)
+                                .foregroundColor(OPSStyle.Colors.textMute)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+                    .accessibilityElement(children: .combine)
+                }
+            }
+            .padding(.top, OPSStyle.Layout.spacing1)
         }
     }
 
@@ -415,20 +508,14 @@ struct DeckMaterialsSection: View {
         step: Double,
         display: @escaping (Double) -> String
     ) -> some View {
-        Stepper(value: value, in: range, step: step) {
-            HStack(spacing: OPSStyle.Layout.spacing2) {
-                Text(label)
-                    .font(OPSStyle.Typography.smallCaption)
-                    .foregroundColor(OPSStyle.Colors.tertiaryText)
-                    .frame(width: Self.presetLabelWidth, alignment: .leading)
-                Text(display(value.wrappedValue))
-                    .font(OPSStyle.Typography.dataValue)
-                    .foregroundColor(OPSStyle.Colors.primaryText)
-                    .monospacedDigit()
-                Spacer(minLength: 0)
-            }
-        }
-        .tint(OPSStyle.Colors.secondaryText)
+        OPSCounterRow(
+            label: label,
+            value: display(value.wrappedValue),
+            canDecrement: value.wrappedValue > range.lowerBound,
+            canIncrement: value.wrappedValue < range.upperBound,
+            onDecrement: { value.wrappedValue = max(range.lowerBound, value.wrappedValue - step) },
+            onIncrement: { value.wrappedValue = min(range.upperBound, value.wrappedValue + step) }
+        )
     }
 
     private static let presetLabelWidth = CGFloat(OPSStyle.Layout.touchTargetStandard + OPSStyle.Layout.spacing5)
@@ -549,6 +636,7 @@ extension DeckMaterialsSection {
     ) {
         self.design = design
         self.project = project
+        self.dataController = nil
         self._resolved = State(initialValue: injectedResolved)
         self._driftFlagged = State(initialValue: driftFlagged)
         self._isInjected = State(initialValue: true)

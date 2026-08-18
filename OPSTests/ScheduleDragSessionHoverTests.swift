@@ -179,6 +179,114 @@ final class ScheduleDragSessionHoverTests: XCTestCase {
         XCTAssertEqual(session.active?.id, payload.id)
     }
 
+    // MARK: - Bug 4baf3104 — the drag preview's lifecycle must not own the highlight
+
+    /// The reported symptom: the selection haptic fired on every day cell while no
+    /// highlight ever appeared. The haptic only needs the hover to change; the
+    /// highlight used to also need `active`, which the preview teardown had cleared.
+    /// A hover on a private-UTType target is itself proof the drag is live, so it
+    /// alone must project a span.
+    @MainActor
+    func testHoverAloneProjectsASpanWhenTheLiftNeverArmedTheSession() {
+        let session = ScheduleDragSession()
+        let monday = makeDate(2026, 6, 22)
+        let tuesday = makeDate(2026, 6, 23)
+
+        // No `begin` — exactly the state a drag whose preview never appeared is in.
+        session.updateHover(day: monday, source: .dayCell(for: monday, calendar: calendar))
+
+        XCTAssertTrue(session.isDragInFlight)
+        XCTAssertTrue(session.isInProjectedSpan(monday))
+        // Span length is unknown, so it falls back to one day rather than guessing.
+        XCTAssertEqual(session.projectedSpanDays, 1)
+        XCTAssertFalse(session.isInProjectedSpan(tuesday))
+    }
+
+    /// A drag that travels off-grid long enough for the deferred end to fire must
+    /// come back with its full span intact — the stand-down drops the visual state
+    /// but keeps what was lifted, and the next hover re-arms from it synchronously.
+    @MainActor
+    func testHoverReArmsTheFullSpanAfterAnOffGridStandDown() async {
+        let clock = ManualDeferredEndClock()
+        let session = ScheduleDragSession(sleep: { await clock.sleep($0) })
+        let payload = makePayload(durationDays: 3)
+        let monday = makeDate(2026, 6, 22)
+        let thursday = makeDate(2026, 6, 25)
+        let mondaySource = ScheduleDragHoverSource.dayCell(for: monday, calendar: calendar)
+
+        session.begin(payload)
+        session.updateHover(day: monday, source: mondaySource)
+
+        // Finger leaves the grid; the preview teardown's deferred end elapses.
+        session.clearHover(source: mondaySource)
+        await awaitArmed(clock)
+        clock.elapse()
+        await session.deferredEndTask?.value
+
+        XCTAssertNil(session.active)
+        XCTAssertFalse(session.isDragInFlight, "an abandoned drag must give the badges their hit-testing back")
+        XCTAssertEqual(session.lifted?.id, payload.id, "the stand-down must not forget what is in the operator's hand")
+
+        // Finger comes back over the grid — same gesture, so the exact span returns.
+        session.updateHover(day: monday, source: mondaySource)
+
+        XCTAssertEqual(session.active?.id, payload.id)
+        XCTAssertTrue(session.isDragInFlight)
+        XCTAssertEqual(session.projectedSpanDays, 3)
+        XCTAssertTrue(session.isInProjectedSpan(makeDate(2026, 6, 24)))
+        XCTAssertFalse(session.isInProjectedSpan(thursday))
+    }
+
+    /// A committed drop is the end of the gesture: nothing may re-arm from it.
+    @MainActor
+    func testCommittedDropForgetsTheLift() {
+        let session = ScheduleDragSession()
+        let payload = makePayload(durationDays: 3)
+        let monday = makeDate(2026, 6, 22)
+        let source = ScheduleDragHoverSource.dayCell(for: monday, calendar: calendar)
+
+        session.begin(payload)
+        session.updateHover(day: monday, source: source)
+        session.end()
+
+        XCTAssertNil(session.lifted)
+        XCTAssertFalse(session.isDragInFlight)
+
+        // A later hover cannot resurrect the finished drag's span.
+        session.updateHover(day: monday, source: source)
+        XCTAssertNil(session.active)
+        XCTAssertEqual(session.projectedSpanDays, 1)
+    }
+
+    /// The bounded correction path: the payload the system hands us on target entry
+    /// wins, so a drag that never armed the session still gets its real span.
+    @MainActor
+    func testAdoptDraggedPayloadCorrectsTheSpanWhileHovering() {
+        let session = ScheduleDragSession()
+        let monday = makeDate(2026, 6, 22)
+
+        session.updateHover(day: monday, source: .dayCell(for: monday, calendar: calendar))
+        XCTAssertEqual(session.projectedSpanDays, 1)
+
+        session.adoptDraggedPayload(makePayload(durationDays: 4))
+
+        XCTAssertEqual(session.projectedSpanDays, 4)
+        XCTAssertTrue(session.isInProjectedSpan(makeDate(2026, 6, 25)))
+    }
+
+    /// The adopt is asynchronous — it must never resurrect a drag that has already
+    /// left the grid (or committed) by the time the item provider resolves.
+    @MainActor
+    func testAdoptDraggedPayloadIsIgnoredWhenNoTargetOwnsHover() {
+        let session = ScheduleDragSession()
+
+        session.adoptDraggedPayload(makePayload(durationDays: 4))
+
+        XCTAssertNil(session.active)
+        XCTAssertNil(session.lifted)
+        XCTAssertFalse(session.isDragInFlight)
+    }
+
     // MARK: - Helpers
 
     /// Suspends until the deferred end has reached its sleep, on scheduler turns
@@ -198,12 +306,12 @@ final class ScheduleDragSessionHoverTests: XCTestCase {
         XCTFail("Deferred end never reached its sleep", file: file, line: line)
     }
 
-    private func makePayload() -> RescheduleDragPayload {
+    private func makePayload(durationDays: Int = 1) -> RescheduleDragPayload {
         RescheduleDragPayload(
             id: "task-1",
             kind: .task,
             title: "Install rail",
-            durationDays: 1,
+            durationDays: durationDays,
             startEpoch: makeDate(2026, 6, 22).timeIntervalSince1970
         )
     }

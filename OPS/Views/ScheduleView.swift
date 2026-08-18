@@ -217,7 +217,7 @@ struct ScheduleView: View {
                 // Spend anything that changed while the calendar was hidden.
                 if needsCalendarReload {
                     needsCalendarReload = false
-                    viewModel.reloadCalendarData()
+                    Task { await viewModel.reloadCalendarDataOffMain() }
                 }
                 if needsUserEventsReload {
                     needsUserEventsReload = false
@@ -248,7 +248,10 @@ struct ScheduleView: View {
                 needsCalendarReload = true
                 return
             }
-            viewModel.reloadCalendarData()
+            // Off the main thread (bug 1bade6dd). Every schedule commit lands here,
+            // and the rebuild walks every live dated task — done inline it froze the
+            // screen for seconds right after the reschedule toast.
+            Task { await viewModel.reloadCalendarDataOffMain() }
         }
         // Universal search sheet
         .sheet(isPresented: $showSearchSheet) {

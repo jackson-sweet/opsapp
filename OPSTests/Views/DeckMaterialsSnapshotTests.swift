@@ -120,12 +120,6 @@ final class DeckMaterialsSnapshotTests: XCTestCase {
         return DeckMaterialsResolver.Resolved(scale: 1.0, vinylInputs: [input], materials: materials)
     }
 
-    /// Vinyl set present but no resolvable scale — CONFIRM ONE EDGE LENGTH.
-    private func confirmDimsResolved() -> DeckMaterialsResolver.Resolved {
-        let input = VinylOrderSurfaceInput(id: "s1", label: "Main", levelName: nil, positions: [], scaleFactor: 1.0, edges: [])
-        return DeckMaterialsResolver.Resolved(scale: nil, vinylInputs: [input], materials: nil)
-    }
-
     /// Unlocked L-shaped plan with no house edge: the Materials card must show
     /// the canonical blocker instead of order quantities or fabricated cuts.
     private func blockedDirectionResolved() -> DeckMaterialsResolver.Resolved {
@@ -274,9 +268,6 @@ final class DeckMaterialsSnapshotTests: XCTestCase {
 
         // 4b · Ordered + drift — DESIGN CHANGED SINCE ORDER banner.
         snapshot("deck-materials-ordered-drift", design: design(orderedMaterials: orderedSnapshot()), resolved: nil, drift: true)
-
-        // 2 · Confirm dimensions — vinyl set but unresolved scale.
-        snapshot("deck-materials-confirm-dims", design: design(), resolved: confirmDimsResolved(), drift: false)
 
         // 2b · Invalid mixed run — blocker only, no fabricated materials list.
         snapshot("deck-materials-direction-blocked", design: design(), resolved: blockedDirectionResolved(), drift: false)

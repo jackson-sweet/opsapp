@@ -84,6 +84,64 @@ enum ProjectPhotoUploaderIdentity {
     }
 }
 
+/// Who may remove a project photo.
+///
+/// The single client-side statement of the rule the database enforces in
+/// `trg_project_photos_00_write_guard`: a `deleted_at` write is allowed when
+/// `lower(uploaded_by) = lower(<requesting user>)`, or when the operator holds
+/// `projects.edit` at scope `all`. Jackson's 2026-07-29 call — field crews
+/// delete their own photos, admins delete any company photo.
+///
+/// Kept here, beside the identity normalizer it depends on, so every surface
+/// that offers a delete asks the same question and no UI can offer a delete the
+/// server will reject.
+enum ProjectPhotoDeleteAuthorization {
+
+    /// - Parameters:
+    ///   - uploaderID: canonical uploader id for the photo, or nil when this
+    ///     device has no `project_photos` row for it yet.
+    ///   - currentUserID: canonical id of the signed-in operator.
+    ///   - hasFullProjectEdit: `projects.edit` granted at scope `all`.
+    ///   - hasAnyProjectEdit: `projects.edit` granted at any scope. Decides only
+    ///     the unattributed case below.
+    static func allows(
+        uploaderID: String?,
+        currentUserID: String?,
+        hasFullProjectEdit: Bool,
+        hasAnyProjectEdit: Bool
+    ) -> Bool {
+        if hasFullProjectEdit { return true }
+        guard let uploaderID else {
+            // No synced row. By construction the only gallery URLs in this state
+            // are this device's own optimistic appends to the legacy
+            // `project_images` CSV — a photo just taken, whose `project_photos`
+            // row was inserted remotely but has not been pulled back yet. The
+            // server accepts that delete (the operator IS its uploader), so
+            // withholding the affordance would strand a crew member with a photo
+            // they just took and cannot remove.
+            return hasAnyProjectEdit
+        }
+        guard let currentUserID else { return false }
+        return uploaderID == currentUserID
+    }
+
+    /// Convenience over raw column values — normalizes both sides the way the
+    /// trigger's `lower()` comparison does.
+    static func allows(
+        rawUploader: String?,
+        rawCurrentUser: String?,
+        hasFullProjectEdit: Bool,
+        hasAnyProjectEdit: Bool
+    ) -> Bool {
+        allows(
+            uploaderID: ProjectPhotoUploaderIdentity.canonicalUserID(rawUploader),
+            currentUserID: ProjectPhotoUploaderIdentity.canonicalUserID(rawCurrentUser),
+            hasFullProjectEdit: hasFullProjectEdit,
+            hasAnyProjectEdit: hasAnyProjectEdit
+        )
+    }
+}
+
 extension ProjectPhoto {
     /// Applies server-owned attribution while respecting a pending local field.
     /// Invalid/blank inbound identities never erase a valid local attribution;

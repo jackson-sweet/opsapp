@@ -1,42 +1,49 @@
 // OPS/OPS/DeckBuilder/Engine/VinylOrderScaleResolver.swift
 //
 // Pure resolution of the scale a vinyl order (and the deck-tab materials list)
-// should use. Extracted verbatim from `DeckBuilderViewModel` so read-only
-// surfaces — the project Deck tab's materials section — can resolve scale
-// WITHOUT instantiating the editor view model. The view model delegates to this;
-// behavior is unchanged.
+// should use. Extracted from `DeckBuilderViewModel` so read-only surfaces — the
+// project Deck tab's materials section — can resolve scale WITHOUT
+// instantiating the editor view model.
 //
-// Vinyl is a stricter consumer than the editor's area/perimeter readout or
-// estimate generation: a cut-to-size order can't tolerate a drawing whose typed
-// dimensions disagree with the drawn geometry. Any stale edge blocks the order.
-// When a legacy drawing has confirmed dimensions but no persisted `scaleFactor`,
-// infer the scale only if every stored dimension still agrees with the geometry.
+// Bug 59d7f468 — this used to be able to answer "no scale", which the UI
+// surfaced as a CONFIRM ONE EDGE LENGTH blocker on the order sheet, the
+// materials section and the bulk-order wizard. That blocker named no edge,
+// pointed at nothing on the canvas, and stopped an order the operator had
+// every right to place. It is gone.
+//
+// A drawing always has a scale. Either the user calibrated one, or the
+// dimensions they typed imply one, or the canvas is already drawing, snapping
+// and dimensioning at the prescale fallback — a freehand deck is at a sound,
+// internally-consistent scale even before anyone confirms anything.
+//
+// What the old resolver was really detecting is a genuine and separate fact:
+// the operator typed a dimension and then dragged the geometry away from it.
+// That state lives on the edge itself as `DeckEdge.dimensionStale`, and it is
+// surfaced where it belongs — on the overridden dimension, in every 2D view,
+// in tan with a DRAWN LENGTH CHANGED caption. See `DeckStaleDimensionPresenter`.
 
 import CoreGraphics
 import Foundation
 
 enum VinylOrderScaleResolver {
 
-    /// Resolved scale (canvas points per real-world inch) for vinyl ordering, or
-    /// nil when the drawing can't be trusted for a cut-to-size order. Always > 0
-    /// when non-nil.
-    static func resolve(_ data: DeckDrawingData) -> Double? {
-        guard !data.allEdges.contains(where: \.dimensionStale) else { return nil }
+    /// Scale (canvas points per real-world inch) for vinyl ordering and the
+    /// materials list. Always > 0.
+    ///
+    /// Resolution order:
+    /// 1. The calibrated `scaleFactor`, once AR / a sketch scan / a template /
+    ///    a typed dimension has set one.
+    /// 2. The scale implied by the dimensions the user measured or typed —
+    ///    the median, so one drifted edge cannot drag the whole drawing.
+    /// 3. The prescale fallback the canvas already draws at.
+    static func resolve(_ data: DeckDrawingData) -> Double {
         if let scaleFactor = data.scaleFactor, scaleFactor > 0 {
             return scaleFactor
         }
-        if canUsePrescaleFallback(data) {
-            return data.effectiveScaleFactor
+        if let inferred = inferredScaleFromMeasuredDimensions(data) {
+            return inferred
         }
-        return inferredScaleFromConfirmedDimensions(data)
-    }
-
-    private static func canUsePrescaleFallback(_ data: DeckDrawingData) -> Bool {
-        let edges = data.allEdges
-        guard !edges.isEmpty else { return false }
-        return edges.allSatisfy { edge in
-            edge.dimensionSource == .scale && !edge.dimensionStale
-        }
+        return data.effectiveScaleFactor
     }
 
     private struct Measurement {
@@ -49,24 +56,19 @@ enum VinylOrderScaleResolver {
         }
     }
 
-    private static func inferredScaleFromConfirmedDimensions(_ data: DeckDrawingData) -> Double? {
-        let measurements = scaleMeasurements(data)
-        guard !measurements.isEmpty else { return nil }
-
-        let authoritative = measurements.filter { measurement in
-            isConfirmedDimensionSource(measurement.source)
+    /// Median scale across every edge whose dimension the user actually
+    /// measured or typed. The median — not the mean — so a single edge the
+    /// user dragged away from its typed value shifts nothing.
+    private static func inferredScaleFromMeasuredDimensions(_ data: DeckDrawingData) -> Double? {
+        let authoritative = scaleMeasurements(data).filter { measurement in
+            isMeasuredDimensionSource(measurement.source)
         }
         guard !authoritative.isEmpty else { return nil }
 
         let sortedScales = authoritative.map(\.scaleFactor).sorted()
         let referenceScale = sortedScales[sortedScales.count / 2]
         guard referenceScale.isFinite, referenceScale > 0 else { return nil }
-
-        let dimensionsAgree = measurements.allSatisfy { measurement in
-            let expectedInches = measurement.canvasLength / referenceScale
-            return abs(expectedInches - measurement.inches) < toleranceInches
-        }
-        return dimensionsAgree ? referenceScale : nil
+        return referenceScale
     }
 
     private static func scaleMeasurements(_ data: DeckDrawingData) -> [Measurement] {
@@ -103,9 +105,7 @@ enum VinylOrderScaleResolver {
         }
     }
 
-    private static let toleranceInches = 0.5
-
-    private static func isConfirmedDimensionSource(_ source: DimensionSource) -> Bool {
+    private static func isMeasuredDimensionSource(_ source: DimensionSource) -> Bool {
         source == .manual || source == .laser || source == .ar
     }
 }

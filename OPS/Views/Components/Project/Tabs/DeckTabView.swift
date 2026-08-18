@@ -196,7 +196,7 @@ struct DeckTabView: View {
                     // the canvas fallback here is purely defensive against a
                     // stale binding arriving from another surface.
                     if let project = owner.project {
-                        DeckMaterialsSection(design: design, project: project)
+                        DeckMaterialsSection(design: design, project: project, dataController: dataController)
                             .padding(.horizontal, OPSStyle.Layout.spacing3)
                     } else {
                         viewportBlock(design: design)

@@ -73,6 +73,11 @@ struct DetailsTabView: View {
     /// for a freshly-inserted local row).
     @Query private var allUsers: [User]
     @Query private var vinylOrderMarkers: [ProjectVinylOrderMarker]
+    /// Deck designs for THIS project only. The vinyl card shows what was
+    /// actually ordered, and the frozen record lives in the design's drawing
+    /// JSON — a project-scoped query keeps this perf-sensitive tab off a
+    /// whole-table fetch while staying live as the order is marked or edited.
+    @Query private var deckDesigns: [DeckDesign]
 
     private var userById: [String: User] {
         Dictionary(allUsers.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
@@ -89,6 +94,13 @@ struct DetailsTabView: View {
 
     private var vinylOrderMarker: ProjectVinylOrderMarker? {
         vinylOrderMarkers.first { $0.projectId == project.id }
+    }
+
+    /// The frozen ordered record for this project's display-candidate design,
+    /// or nil when the job has no deck drawing (marker-only order).
+    private var vinylOrderSnapshot: DeckMaterialsSnapshot? {
+        DeckDesign.displayCandidate(in: deckDesigns, forProjectId: project.id)?
+            .drawingData.orderedMaterials
     }
 
     /// Permission-scoped section visibility for this viewer (never role-based).
@@ -108,6 +120,7 @@ struct DetailsTabView: View {
             if access.showsVinylOrder {
                 VinylOrderMarkerSection(
                     marker: vinylOrderMarker,
+                    snapshot: vinylOrderSnapshot,
                     canEdit: viewModel.canEditVinylOrderMarker,
                     isUpdating: viewModel.isUpdatingVinylOrderMarker,
                     onToggle: { ordered in viewModel.setVinylOrdered(ordered) }
@@ -595,8 +608,24 @@ private struct ClientRow: View {
 
 // MARK: - Vinyl Order Marker
 
+/// The project's vinyl procurement state, in the two shapes it actually takes.
+///
+/// UNHANDLED, the card is an ENTRY POINT: one status line and one action. There
+/// is nothing to read yet, so nothing pretends there is.
+///
+/// HANDLED, the card is a RECORD: what was obtained, where it came from, when,
+/// and against which PO — because that is the question an operator opens this
+/// project to answer ("did we get the vinyl, and how much?"), not "how do I undo
+/// this?". The destructive verb that used to sit in prime scan space moves
+/// behind an overflow control: rows are for scanning, actions live behind them.
+///
+/// The record is read from the FROZEN SNAPSHOT on the deck design, which is
+/// where MARK ORDERED writes the operator's confirmed quantities. A job with no
+/// deck drawing has no snapshot and honestly shows only the disposition and the
+/// date — it never invents a quantity it does not have.
 private struct VinylOrderMarkerSection: View {
     let marker: ProjectVinylOrderMarker?
+    let snapshot: DeckMaterialsSnapshot?
     let canEdit: Bool
     let isUpdating: Bool
     let onToggle: (Bool) -> Void
@@ -605,58 +634,210 @@ private struct VinylOrderMarkerSection: View {
         marker?.status ?? .notOrdered
     }
 
+    private var isHandled: Bool { status == .ordered }
+
+    /// Where the material came from. The frozen snapshot is authoritative; a
+    /// marker-only job predates the distinction and was, in fact, an order.
+    private var disposition: VinylOrderDisposition {
+        snapshot?.disposition ?? .supplier
+    }
+
+    private var orderedAt: Date? { marker?.orderedAt ?? snapshot?.orderedAt }
+
+    private var color: String? {
+        let raw = (snapshot?.vinylColor ?? marker?.vinylColor ?? "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return raw.isEmpty ? nil : raw.uppercased()
+    }
+
+    private var po: String? {
+        let raw = (snapshot?.po ?? marker?.vinylPO ?? "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return raw.isEmpty ? nil : raw.uppercased()
+    }
+
+    private var vinylLines: [String] { snapshot?.orderedVinylLines ?? [] }
+    private var consumables: [VinylSharedConsumable] { snapshot?.orderedConsumables ?? [] }
+    private var hasRecord: Bool { !vinylLines.isEmpty || !consumables.isEmpty }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             PanelSectionHeader(label: "VINYL")
                 .padding(.horizontal, OPSStyle.Layout.spacing3_5)
                 .padding(.bottom, 10)
 
-            HStack(alignment: .center, spacing: OPSStyle.Layout.spacing2) {
-                VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
-                    Text("ORDER STATUS")
-                        .font(OPSStyle.Typography.smallCaption)
-                        .foregroundColor(OPSStyle.Colors.tertiaryText)
-                    Text(status.displayLabel)
-                        .font(OPSStyle.Typography.dataValue)
-                        .foregroundColor(status == .ordered ? OPSStyle.Colors.successStatus : OPSStyle.Colors.primaryText)
-                    if let orderedAt = marker?.orderedAt, status == .ordered {
-                        Text("ORDERED \(DateHelper.simpleDateString(from: orderedAt).uppercased())")
-                            .font(OPSStyle.Typography.smallCaption)
-                            .foregroundColor(OPSStyle.Colors.secondaryText)
-                    }
+            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
+                statusRow
+                if isHandled && hasRecord {
+                    hairline
+                    recordBody
                 }
-
-                Spacer(minLength: 0)
-
-                Button {
-                    onToggle(status != .ordered)
-                } label: {
-                    HStack(spacing: OPSStyle.Layout.spacing2) {
-                        if isUpdating {
-                            ProgressView()
-                                .tint(OPSStyle.Colors.primaryText)
-                        }
-                        Text(status == .ordered ? "CLEAR ORDERED" : "MARK ORDERED")
-                            .font(OPSStyle.Typography.buttonLabel)
-                    }
-                    .foregroundColor(OPSStyle.Colors.primaryText)
-                    .frame(minHeight: OPSStyle.Layout.touchTargetMin)
-                    .padding(.horizontal, OPSStyle.Layout.spacing2)
-                    .background(OPSStyle.Colors.surfaceHover)
-                    .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius)
-                            .stroke(OPSStyle.Colors.line, lineWidth: OPSStyle.Layout.Border.standard)
-                    )
-                }
-                .buttonStyle(.plain)
-                .disabled(!canEdit || isUpdating)
-                .opacity(canEdit ? 1 : 0.45)
             }
             .padding(14)
             .commandCard()
             .padding(.horizontal, OPSStyle.Layout.spacing3_5)
         }
+    }
+
+    // MARK: Status row
+
+    private var statusRow: some View {
+        HStack(alignment: .center, spacing: OPSStyle.Layout.spacing2) {
+            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
+                Text("ORDER STATUS")
+                    .font(OPSStyle.Typography.smallCaption)
+                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+                Text(isHandled ? disposition.statusLabel : status.displayLabel)
+                    .font(OPSStyle.Typography.dataValue)
+                    .foregroundColor(isHandled ? OPSStyle.Colors.successStatus : OPSStyle.Colors.primaryText)
+                if isHandled, let meta = metaLine {
+                    Text(meta)
+                        .font(OPSStyle.Typography.smallCaption)
+                        .foregroundColor(OPSStyle.Colors.secondaryText)
+                        .monospacedDigit()
+                }
+            }
+
+            Spacer(minLength: 0)
+
+            if isHandled {
+                overflowMenu
+            } else {
+                markOrderedButton
+            }
+        }
+    }
+
+    /// `ORDERED 14 JUL · PO 6836 MARK LN` — the two facts that date and identify
+    /// the record, on one line so the quantities below own the vertical space.
+    private var metaLine: String? {
+        var parts: [String] = []
+        if let orderedAt {
+            parts.append("\(disposition.datePrefix) \(DateHelper.simpleDateString(from: orderedAt).uppercased())")
+        }
+        if let po { parts.append("PO \(po)") }
+        return parts.isEmpty ? nil : parts.joined(separator: " · ")
+    }
+
+    /// The one action on an unhandled job.
+    private var markOrderedButton: some View {
+        Button {
+            onToggle(true)
+        } label: {
+            HStack(spacing: OPSStyle.Layout.spacing2) {
+                if isUpdating {
+                    ProgressView()
+                        .tint(OPSStyle.Colors.primaryText)
+                }
+                Text("MARK ORDERED")
+                    .font(OPSStyle.Typography.buttonLabel)
+            }
+            .foregroundColor(OPSStyle.Colors.primaryText)
+            .frame(minHeight: OPSStyle.Layout.touchTargetMin)
+            .padding(.horizontal, OPSStyle.Layout.spacing2)
+            .background(OPSStyle.Colors.surfaceHover)
+            .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius))
+            .overlay(
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius)
+                    .stroke(OPSStyle.Colors.line, lineWidth: OPSStyle.Layout.Border.standard)
+            )
+        }
+        .buttonStyle(.plain)
+        .disabled(!canEdit || isUpdating)
+        .opacity(canEdit ? 1 : 0.45)
+    }
+
+    /// Undoing a completed order is rare and destructive. It stays reachable and
+    /// stops competing with the record for attention. Quantities are corrected
+    /// on the Deck tab's MATERIALS card, next to the materials context an edit
+    /// needs — a second edit entry point here would be two doors to one room.
+    private var overflowMenu: some View {
+        Menu {
+            Button(role: .destructive) {
+                onToggle(false)
+            } label: {
+                Label("CLEAR ORDERED", systemImage: OPSStyle.Icons.delete)
+            }
+        } label: {
+            Group {
+                if isUpdating {
+                    ProgressView().tint(OPSStyle.Colors.primaryText)
+                } else {
+                    Image(systemName: OPSStyle.Icons.ellipsis)
+                        .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .semibold))
+                        .foregroundColor(OPSStyle.Colors.secondaryText)
+                }
+            }
+            .frame(width: OPSStyle.Layout.touchTargetMin, height: OPSStyle.Layout.touchTargetMin)
+            .contentShape(Rectangle())
+        }
+        .disabled(!canEdit || isUpdating)
+        .opacity(canEdit ? 1 : 0.45)
+        .accessibilityLabel("Vinyl order actions")
+    }
+
+    // MARK: Record
+
+    private var hairline: some View {
+        Rectangle()
+            .fill(OPSStyle.Colors.line)
+            .frame(height: OPSStyle.Layout.Border.standard)
+    }
+
+    private var recordBody: some View {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
+            if let color {
+                Text(color)
+                    .font(OPSStyle.Typography.captionBold)
+                    .foregroundColor(OPSStyle.Colors.primaryText)
+            }
+
+            if !vinylLines.isEmpty {
+                VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
+                    ForEach(Array(vinylLines.enumerated()), id: \.offset) { _, line in
+                        Text(line)
+                            .font(OPSStyle.Typography.dataValue)
+                            .foregroundColor(OPSStyle.Colors.primaryText)
+                            .monospacedDigit()
+                    }
+                }
+            }
+
+            if !consumables.isEmpty {
+                VStack(spacing: 0) {
+                    ForEach(consumables) { consumable in
+                        consumableRow(consumable)
+                    }
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    /// One purchased consumable. The shared count is the count as bought — never
+    /// a per-job fraction — so the sharing partners ride on their own support
+    /// line and the value column stays a clean, scannable number.
+    private func consumableRow(_ consumable: VinylSharedConsumable) -> some View {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
+            HStack(spacing: OPSStyle.Layout.spacing2) {
+                Text(consumable.kind.displayLabel)
+                    .font(OPSStyle.Typography.smallCaption)
+                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+                Spacer(minLength: 0)
+                Text(consumable.recordValue)
+                    .font(OPSStyle.Typography.dataValue)
+                    .foregroundColor(OPSStyle.Colors.primaryText)
+                    .monospacedDigit()
+            }
+            if let shared = consumable.sharedSupportLine {
+                Text(shared)
+                    .font(OPSStyle.Typography.smallCaption)
+                    .foregroundColor(OPSStyle.Colors.textMute)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(.vertical, OPSStyle.Layout.spacing1)
+        .accessibilityElement(children: .combine)
     }
 }
 

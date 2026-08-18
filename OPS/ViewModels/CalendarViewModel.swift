@@ -277,14 +277,10 @@ class CalendarViewModel: ObservableObject {
         return scheduledTasks(for: date)
     }
 
-    private static let dateKeyFormatter: DateFormatter = {
-        let f = DateFormatter()
-        f.dateFormat = "yyyy-MM-dd"
-        return f
-    }()
-
+    /// Delegated so the day keys this view model reads are, by construction, the
+    /// same strings the off-main rebuild writes.
     private func formatDateKey(_ date: Date) -> String {
-        Self.dateKeyFormatter.string(from: date)
+        CalendarDayKey.key(for: date)
     }
     
     /// Invariant: `cachedWeekStart` guards against rebuilding on same-week
@@ -383,52 +379,41 @@ class CalendarViewModel: ObservableObject {
 
     /// Pure variant — the hidden set is resolved once by the caller rather
     /// than per row. See `CalendarTaskVisibility`.
+    ///
+    /// The rule itself lives in `CalendarTaskScoping` so the DataActor rebuild pass
+    /// and this main-actor one run the same code, not two copies of it.
     func applyTaskFilters(
         to tasks: [ProjectTask],
         hiddenProjectIds: Set<String>
     ) -> [ProjectTask] {
-        // Bugs 9997c11c + 8351d7a7 — unwon and filed-away jobs are not
-        // commitments. This runs first so nothing downstream (including the
-        // crew/type/client filters) ever gets a chance to surface one.
-        var filteredTasks = CalendarTaskVisibility.visible(tasks, hiddenProjectIds: hiddenProjectIds)
-
-        // Apply team member filter
-        if !selectedTeamMemberIds.isEmpty {
-            filteredTasks = filteredTasks.filter { task in
-                task.teamMembers.contains { selectedTeamMemberIds.contains($0.id) } ||
-                    task.getTeamMemberIds().contains { selectedTeamMemberIds.contains($0) }
-            }
+        let scope = currentTaskScope()
+        return tasks.filter {
+            CalendarTaskScoping.passesFilters($0, scope: scope, hiddenProjectIds: hiddenProjectIds)
         }
+    }
 
-        // Apply task type filter
-        if !selectedTaskTypeIds.isEmpty {
-            filteredTasks = filteredTasks.filter { task in
-                let taskTypeId = task.taskTypeId
-                return !taskTypeId.isEmpty && selectedTaskTypeIds.contains(taskTypeId)
-            }
+    /// Freeze this operator's calendar visibility — scope, permissions, and every
+    /// active filter — into a value the DataActor can be handed. Resolved here, on
+    /// the main actor, because that is where PermissionStore lives; the actor never
+    /// re-derives any of it.
+    func currentTaskScope() -> CalendarTaskScope {
+        let mode: CalendarTaskScope.Mode
+        switch scheduleScope {
+        case .all: mode = .all
+        case .mine: mode = .mine
+        case .member(let memberId): mode = .member(memberId)
         }
-
-        // Apply client filter
-        if !selectedClientIds.isEmpty {
-            filteredTasks = filteredTasks.filter { task in
-                if let clientId = task.project?.clientId {
-                    return selectedClientIds.contains(clientId)
-                }
-                return false
-            }
-        }
-
-        // Apply status filter
-        if !selectedStatuses.isEmpty {
-            filteredTasks = filteredTasks.filter { task in
-                if let projectStatus = task.project?.status {
-                    return selectedStatuses.contains(projectStatus)
-                }
-                return false
-            }
-        }
-
-        return filteredTasks
+        return CalendarTaskScope(
+            mode: mode,
+            userId: dataController?.currentUser?.id ?? "",
+            companyId: dataController?.currentUser?.companyId,
+            canViewAllCalendar: shouldShowTeamMemberFilter,
+            hasFullTaskAccess: PermissionStore.shared.hasFullAccess("tasks.view"),
+            selectedTeamMemberIds: selectedTeamMemberIds,
+            selectedTaskTypeIds: selectedTaskTypeIds,
+            selectedClientIds: selectedClientIds,
+            selectedStatuses: selectedStatuses
+        )
     }
     
     var filterSummaryText: String {
@@ -497,40 +482,43 @@ class CalendarViewModel: ObservableObject {
 
     // MARK: - Week Cache
 
+    /// The Monday that anchors the cached window for `centerDate`.
+    private func weekCacheAnchor(for centerDate: Date) -> Date? {
+        var weekCal = Calendar.current
+        weekCal.firstWeekday = 2 // Monday
+        return weekCal.dateInterval(of: .weekOfYear, for: centerDate)?.start
+    }
+
     /// Fetches all tasks from DB once and distributes them into a per-day cache.
     /// Covers the current week ± 1 week buffer for smooth DayCanvasView swiping.
+    ///
+    /// Synchronous, on the main context — this is the NAVIGATION path, guarded by
+    /// `cachedWeekStart` so same-week day taps do no work at all. The data-change
+    /// path (`reloadCalendarDataOffMain`) runs the identical scope + filter + bucket
+    /// code on the DataActor instead; both go through `CalendarTaskScoping` and
+    /// `CalendarWeekCacheBuilder`, so they cannot diverge.
     private func rebuildWeekCache(around centerDate: Date) {
         guard let dataController = dataController,
               let context = dataController.modelContext,
-              let user = dataController.currentUser else { return }
+              dataController.currentUser != nil else { return }
 
         var weekCal = Calendar.current
         weekCal.firstWeekday = 2 // Monday
-        guard let weekInterval = weekCal.dateInterval(of: .weekOfYear, for: centerDate) else { return }
-        let weekStart = weekInterval.start
+        guard let weekStart = weekCacheAnchor(for: centerDate) else { return }
 
         // Skip rebuild if same week is already cached
         if let cached = cachedWeekStart, weekCal.isDate(cached, inSameDayAs: weekStart) {
             return
         }
 
-        let cal = Calendar.current
-
-        // One DB hit for the whole week. The soft-delete and dated gates are
-        // `#Predicate`s rather than in-memory filters: this runs on the main
-        // context every time an inbound change toggles
-        // `scheduledTasksDidChange`, and a row that fails either gate would
-        // otherwise be materialized only to be dropped — and, worse, the
-        // scope filters below fault `teamMembers` and `project` per row.
+        // One DB hit for the whole window. The soft-delete and dated gates are
+        // `#Predicate`s rather than in-memory filters so a row that fails either is
+        // never materialized just to be dropped.
         //
-        // No date bound. The per-day filter admits a task by OVERLAP
-        // (`taskStartDay <= dayStart && taskEndDay >= dayStart`), so a task
-        // that began long before the window still belongs to it whenever its
-        // endDate reaches in. Tasks carry no maximum span, so any lower bound
-        // on startDate would silently drop long-running work off the canvas.
-        // An upper bound is sound but would exclude almost nothing — the mass
-        // of rows is historical, not far-future — so it is not worth a second
-        // condition on the hot path.
+        // No date bound. The per-day filter admits a task by OVERLAP, so a task that
+        // began long before the window still belongs to it whenever its endDate
+        // reaches in. Tasks carry no maximum span, so any lower bound on startDate
+        // would silently drop long-running work off the canvas.
         let allTasks: [ProjectTask]
         do {
             allTasks = try context.fetch(
@@ -544,88 +532,100 @@ class CalendarViewModel: ObservableObject {
             return
         }
 
-        // Residual cost, named honestly: this walk is still O(all live dated
-        // company tasks) on the main context per inbound change, and it faults
-        // `teamMembers`/`project` on each row it inspects. It CANNOT follow the
-        // gates above into the `#Predicate` — assignment is a comma-joined
-        // string (`ProjectTask.teamMemberIdsString`, parsed by
-        // `getTeamMemberIds()`) OR'd with a to-many relationship traversal, and
-        // neither is expressible in a `#Predicate`. Unlocking it is schema work.
-        let scopedTasks = allTasks.filter { task in
-            switch scheduleScope {
-            case .all:
-                if shouldShowTeamMemberFilter {
-                    return task.companyId == user.companyId
-                } else {
-                    if PermissionStore.shared.hasFullAccess("tasks.view") {
-                        return task.companyId == user.companyId
-                    } else {
-                        return isUserAssignedToTask(user: user, task: task)
-                    }
-                }
-            case .mine:
-                if PermissionStore.shared.hasFullAccess("tasks.view") {
-                    return task.companyId == user.companyId
-                } else {
-                    return isUserAssignedToTask(user: user, task: task)
-                }
-            case .member(let memberId):
-                guard task.companyId == user.companyId else { return false }
-                return isMemberAssignedToTask(memberId: memberId, task: task)
-            }
+        let scope = currentTaskScope()
+        let hiddenProjectIds = CalendarTaskVisibility.hiddenProjectIds(in: context)
+        let visibleTasks = allTasks.filter {
+            CalendarTaskScoping.admitsForWeekCanvas($0, scope: scope)
+                && CalendarTaskScoping.passesFilters($0, scope: scope, hiddenProjectIds: hiddenProjectIds)
         }
 
-        // Apply additional filters (task type, client, status)
-        let filteredTasks = applyTaskFilters(to: scopedTasks)
+        applyWeekCache(
+            CalendarWeekCacheBuilder.snapshot(tasks: visibleTasks, weekStart: weekStart),
+            resolving: visibleTasks
+        )
+    }
 
-        // Build per-day cache: current week ± 1 week (21 days)
+    /// Land a rebuilt window. `tasks` supplies the live models for the ids the
+    /// snapshot names — the snapshot itself carries ids because it may have been
+    /// built in another context.
+    private func applyWeekCache(_ snapshot: CalendarWeekCacheSnapshot, resolving tasks: [ProjectTask]) {
+        let byId = Dictionary(tasks.map { ($0.id, $0) }, uniquingKeysWith: { current, _ in current })
+
         var newCache: [String: [ProjectTask]] = [:]
-        for dayOffset in -7..<14 {
-            guard let date = cal.date(byAdding: .day, value: dayOffset, to: weekStart) else { continue }
-            let dayStart = cal.startOfDay(for: date)
-            let dateKey = formatDateKey(date)
-
-            let tasksForDay = filteredTasks.filter { task in
-                let taskStartDay = cal.startOfDay(for: task.startDate!)
-                let taskEndDay = cal.startOfDay(for: task.endDate ?? task.startDate!)
-                return taskStartDay <= dayStart && taskEndDay >= dayStart
-            }
-            .sorted { ($0.startDate ?? Date.distantPast) < ($1.startDate ?? Date.distantPast) }
-
-            newCache[dateKey] = tasksForDay
-            projectCountCache[dateKey] = tasksForDay.count
+        for (dateKey, ids) in snapshot.taskIdsByDay {
+            newCache[dateKey] = ids.compactMap { byId[$0] }
         }
 
         dayTaskCache = newCache
-        cachedWeekStart = weekStart
+        // Merged, not replaced: days outside this window keep the counts a previous
+        // window left behind, exactly as the inline build did.
+        for (dateKey, count) in snapshot.countsByDay {
+            projectCountCache[dateKey] = count
+        }
+        cachedWeekStart = snapshot.weekStart
     }
 
-    private func isUserAssignedToTask(user: User, task: ProjectTask) -> Bool {
-        let taskTeamMemberIds = task.getTeamMemberIds()
-        if taskTeamMemberIds.contains(user.id) || task.teamMembers.contains(where: { $0.id == user.id }) {
-            return true
+    /// Reload after a schedule change, with the expensive pass on the DataActor.
+    ///
+    /// Bug 1bade6dd: one reschedule toggles `scheduledTasksDidChange`, and this
+    /// rebuild answered it by walking every live dated task on the main context and
+    /// faulting `project` / `teamMembers` per row — the screen froze for seconds
+    /// right after the toast. The walk still happens; it just no longer happens on
+    /// the thread that draws. Falls back to the synchronous path when there is no
+    /// actor (pre-login, or the DataActor flag is off).
+    @MainActor
+    func reloadCalendarDataOffMain() async {
+        guard let dataController = dataController,
+              let actor = dataController.dataActor,
+              let context = dataController.modelContext,
+              dataController.currentUser != nil,
+              let weekStart = weekCacheAnchor(for: selectedDate) else {
+            reloadCalendarData()
+            return
         }
-        if let project = task.project {
-            let projectTeamMemberIds = project.getTeamMemberIds()
-            return projectTeamMemberIds.contains(user.id)
-                || project.teamMembers.contains(where: { $0.id == user.id })
-        }
-        return false
+
+        isLoading = true
+        let snapshot = await actor.calendarWeekCache(scope: currentTaskScope(), weekStart: weekStart)
+
+        // One id-keyed fetch for exactly the rows this window shows — the models the
+        // actor saw belong to its context and can never cross back.
+        let ids = Array(Set(snapshot.taskIdsByDay.values.flatMap { $0 }))
+        let resolved = (try? context.fetch(
+            FetchDescriptor<ProjectTask>(predicate: #Predicate<ProjectTask> { ids.contains($0.id) })
+        )) ?? []
+
+        // Invalidate and land in the same main-actor turn — clearing before the
+        // await would blank the calendar for the whole round trip. Same clear the
+        // synchronous reload does, so counts outside the window cannot go stale.
+        clearProjectCountCache()
+        applyWeekCache(snapshot, resolving: resolved)
+        publishSelectedDate()
+        loadBookedVisits()
     }
 
-    private func isMemberAssignedToTask(memberId: String, task: ProjectTask) -> Bool {
-        let taskTeamMemberIds = task.getTeamMemberIds()
-        if taskTeamMemberIds.contains(memberId) || task.teamMembers.contains(where: { $0.id == memberId }) {
-            return true
+    /// Republish the selected day's task/project ids from the cache. Shared tail of
+    /// `loadProjectsForDate` and the off-main reload.
+    @MainActor
+    private func publishSelectedDate() {
+        guard let dataController = dataController else { return }
+        let dateKey = formatDateKey(selectedDate)
+        let scheduledTasks = dayTaskCache[dateKey] ?? []
+
+        let projectIds = Set(scheduledTasks.compactMap { $0.projectId })
+        var projects: [Project] = []
+        for projectId in projectIds {
+            if let project = dataController.getProject(id: projectId) {
+                projects.append(project)
+            }
         }
-        if let project = task.project {
-            let projectTeamMemberIds = project.getTeamMemberIds()
-            return projectTeamMemberIds.contains(memberId)
-                || project.teamMembers.contains(where: { $0.id == memberId })
-        }
-        return false
+
+        objectWillChange.send()
+        scheduledTaskIdsForSelectedDate = scheduledTasks.map { $0.id }
+        projectIdsForSelectedDate = projects.map { $0.id }
+        isLoading = false
+        projectCountCache[dateKey] = scheduledTasks.count
     }
-    
+
     /// Load CalendarUserEvents visible to the current user from local SwiftData store.
     /// Own rows always appear; team-invited personal rows appear for assignees;
     /// users with calendar.view(all) see the company calendar; users with

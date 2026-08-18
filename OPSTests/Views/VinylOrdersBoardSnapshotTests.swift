@@ -373,7 +373,9 @@ final class VinylOrdersBoardSnapshotTests: XCTestCase {
                 context: VinylBulkOrderWizardContext(companyId: "co-1", userId: "user-1", jobs: []),
                 sections: sections,
                 needs: needs,
-                makeCommitItems: { [] },
+                // Takes the operator's FINAL purchased consumable counts, and is
+                // called only at COMMIT — which a render never reaches.
+                makeCommitItems: { _ in [] },
                 onBack: {},
                 onCommitted: { _, _ in }
             )

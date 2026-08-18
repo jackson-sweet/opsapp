@@ -63,6 +63,12 @@ struct SettingsView: View {
     // (SYNC RECOVERY · T6). `—` when zero.
     @State private var pendingWorkCount: Int = 0
 
+    // Screenshot-to-report. Ambient behavior — it acts without being asked —
+    // so it gets a switch, sitting under REPORT A BUG because that is the
+    // thing it is a shortcut to. On by default; see ScreenshotBugReportOffer.
+    @AppStorage(ScreenshotBugReportPreference.defaultsKey)
+    private var screenshotReportEnabled: Bool = true
+
     // Bug e33aa336 — when a search result targets a specific section inside
     // a sub-page, this value holds the section identifier until the sub-page
     // mounts. The destination view sees it via SettingsDeepLinkHost (below)
@@ -402,6 +408,15 @@ struct SettingsView: View {
                                     icon: OPSStyle.Icons.alert,
                                     title: "REPORT A BUG",
                                     action: { requestBugReport() }
+                                )
+
+                                sectionDivider
+
+                                settingsToggleRow(
+                                    icon: "camera.viewfinder",
+                                    title: "Screenshot to report",
+                                    description: "Offer a bug report when you take a screenshot",
+                                    isOn: $screenshotReportEnabled
                                 )
 
                                 sectionDivider
@@ -1059,6 +1074,59 @@ struct SettingsView: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(PlainButtonStyle())
+    }
+
+    // MARK: - Toggle Row
+
+    /// A settings row whose trailing control is a switch instead of a chevron.
+    ///
+    /// Carries `settingsRow`'s exact icon gutter, padding, and type so the card
+    /// still reads as one list. Two differences, both deliberate:
+    ///  • The row is NOT tappable — only the switch is. A whole-row tap that
+    ///    silently flips a setting is how people change things by accident.
+    ///  • It carries a description line. Every other row here names a place the
+    ///    operator can go look at; a switch over ambient behavior is the only
+    ///    place that behavior is ever explained, so it says what it does in one
+    ///    line of the quietest type in the system.
+    ///
+    /// The `14` gap/padding and `28` icon gutter are literal on purpose: they
+    /// are `settingsRow`'s values, and the icons and text of the two row kinds
+    /// have to land on the same lines. Change them here only alongside there.
+    private func settingsToggleRow(
+        icon: String,
+        title: String,
+        description: String,
+        isOn: Binding<Bool>
+    ) -> some View {
+        HStack(spacing: 14) {
+            Image(systemName: icon)
+                .font(.system(size: OPSStyle.Layout.IconSize.md))
+                .foregroundColor(OPSStyle.Colors.secondaryText)
+                .frame(width: 28, alignment: .center)
+
+            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
+                Text(title)
+                    .font(OPSStyle.Typography.body)
+                    .foregroundColor(OPSStyle.Colors.primaryText)
+
+                Text(description)
+                    .font(OPSStyle.Typography.smallCaption)
+                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Spacer(minLength: OPSStyle.Layout.spacing2_5)
+
+            // MOBILE.md §9: on-state is a brighter white track, never accent.
+            Toggle("", isOn: isOn)
+                .labelsHidden()
+                .toggleStyle(SwitchToggleStyle(tint: OPSStyle.Colors.text))
+                .accessibilityLabel(title)
+                .accessibilityHint(description)
+        }
+        .padding(.vertical, 14)
+        .padding(.horizontal, OPSStyle.Layout.spacing3)
+        .frame(minHeight: OPSStyle.Layout.inputHeight)
     }
 
     // MARK: - Pending Work Row (SYNC RECOVERY · T6)

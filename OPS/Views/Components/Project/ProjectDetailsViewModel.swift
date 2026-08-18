@@ -593,6 +593,18 @@ class ProjectDetailsViewModel: ObservableObject {
                     vinylSettings: current.vinylSettings,
                     confirmed: confirmed
                 )
+                // The freeze succeeded, so the snapshot IS the record — build
+                // the activity entry from it, never from the pending context,
+                // so the feed and the ordered card can never disagree.
+                if let snapshot = currentDesign.drawingData.orderedMaterials {
+                    VinylOrderActivityRecorder.record(
+                        projectId: ctx.projectId,
+                        companyId: project.companyId,
+                        authorId: userId,
+                        snapshot: snapshot,
+                        dataController: dataController
+                    )
+                }
                 isUpdatingVinylOrderMarker = false
                 ToastCenter.shared.present(Feedback.saved("vinyl status"))
             } catch {

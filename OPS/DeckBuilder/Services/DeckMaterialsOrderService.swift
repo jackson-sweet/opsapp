@@ -42,6 +42,14 @@ struct DeckMaterialsOrderConfirmation: Equatable {
     var clipSticks: Int
     var ninetySticks: Int
     var glueBuckets: Int
+    /// WHERE the material came from. `.shop` means nothing was ordered — the
+    /// quantities describe what was pulled off the rack.
+    var disposition: VinylOrderDisposition = .supplier
+    /// Purchased consumable lines with their sharing partners — set only by the
+    /// bulk order wizard, where tubes and buckets are bought once for the whole
+    /// batch. Empty for single-job orders, whose record derives from the stick
+    /// and bucket counts above.
+    var sharedConsumables: [VinylSharedConsumable] = []
 
     /// The unedited confirmation — every field pre-filled from the calculated
     /// materials list. `VinylOrderConfirmSheet` starts here and lets the operator
@@ -60,6 +68,32 @@ struct DeckMaterialsOrderConfirmation: Equatable {
             ninetySticks: materials.ninetyFlash.sticks,
             glueBuckets: materials.glueBuckets
         )
+    }
+
+    /// Every orderable quantity at zero, preserving mode and roll length.
+    ///
+    /// This is what picking FROM SHOP does: the material came off the rack, so
+    /// nothing was purchased. The lines stay individually editable afterwards —
+    /// a partial pull ("the vinyl was in the shop, the glue still got ordered")
+    /// is a real situation, and forcing it to zero would make the record lie.
+    func zeroed() -> DeckMaterialsOrderConfirmation {
+        var next = self
+        next.vinylOrderedSqFt = 0
+        next.rollCount = 0
+        next.dripSticks = 0
+        next.clipSticks = 0
+        next.ninetySticks = 0
+        next.glueBuckets = 0
+        next.sharedConsumables = []
+        return next
+    }
+
+    /// True when every orderable quantity is zero — the shop path's resting
+    /// state, and the signal that this record documents a pull, not a purchase.
+    var isZeroed: Bool {
+        vinylOrderedSqFt == 0 && rollCount == 0
+            && dripSticks == 0 && clipSticks == 0
+            && ninetySticks == 0 && glueBuckets == 0
     }
 
     /// True when any confirmed quantity differs from the calculated value —
@@ -116,7 +150,12 @@ struct DeckMaterialsOrderConfirmation: Equatable {
             dripSticks: s.dripSticks,
             clipSticks: s.clipSticks,
             ninetySticks: s.ninetySticks,
-            glueBuckets: s.glueBuckets
+            glueBuckets: s.glueBuckets,
+            // EDIT ORDER re-opens on the record as it stands — including where
+            // the material came from and any shared purchase lines, so a
+            // correction never silently re-labels a shop pull as an order.
+            disposition: s.disposition,
+            sharedConsumables: s.sharedConsumables ?? []
         )
     }
 
@@ -252,6 +291,8 @@ struct DeckMaterialsOrderService {
             isOrderedEdited: isOrderedEdited,
             driftCutGroups: driftGroups,
             po: normalized(po),
+            disposition: confirmation.disposition,
+            sharedConsumables: confirmation.sharedConsumables.isEmpty ? nil : confirmation.sharedConsumables,
             vinylDirectionSurfaces: directionGeometry.surfaces,
             vinylDirectionRegions: directionGeometry.regions,
             vinylDirectionTransitions: directionGeometry.transitions
@@ -268,15 +309,16 @@ struct DeckMaterialsOrderService {
         let color = normalized(vinylSettings.color)
         let normalizedPO = normalized(po)
         do {
-            try await updateProjectFields(projectId, [
-                ProjectVinylOrderFields.status: .string(ProjectVinylOrderStatus.ordered.rawValue),
-                ProjectVinylOrderFields.orderedAt: .string(SupabaseDate.format(now)),
-                // The FK targets public.users(id). Outbound sanitization still
-                // nulls any legacy non-UUID identity before it reaches Postgres.
-                ProjectVinylOrderFields.orderedBy: .string(userId),
-                ProjectVinylOrderFields.color: color.map { .string($0) } ?? .null,
-                ProjectVinylOrderFields.po: normalizedPO.map { .string($0) } ?? .null
-            ])
+            try await updateProjectFields(
+                projectId,
+                Self.markerFields(
+                    userId: userId,
+                    at: now,
+                    disposition: confirmation.disposition,
+                    color: color,
+                    po: normalizedPO
+                )
+            )
         } catch {
             var revert = design.drawingData
             revert.orderedMaterials = priorSnapshot
@@ -307,6 +349,8 @@ struct DeckMaterialsOrderService {
         updated.fullRollLengthFeet = confirmed.fullRollLengthFeet
         updated.orderedRollCount = confirmed.orderMode == .fullRolls ? confirmed.rollCount : nil
         updated.isOrderedEdited = confirmed.differs(fromCalculated: calc)
+        updated.disposition = confirmed.disposition
+        updated.sharedConsumables = confirmed.sharedConsumables.isEmpty ? nil : confirmed.sharedConsumables
 
         var next = design.drawingData
         next.orderedMaterials = updated
@@ -344,9 +388,11 @@ struct DeckMaterialsOrderService {
                 ProjectVinylOrderFields.status: .string(ProjectVinylOrderStatus.notOrdered.rawValue),
                 ProjectVinylOrderFields.orderedAt: .null,
                 ProjectVinylOrderFields.orderedBy: .null,
-                // A cleared job carries no stale order record (spec § 8).
+                // A cleared job carries no stale order record (spec § 8) —
+                // including where the material came from.
                 ProjectVinylOrderFields.color: .null,
-                ProjectVinylOrderFields.po: .null
+                ProjectVinylOrderFields.po: .null,
+                ProjectVinylOrderFields.source: .null
             ])
         } catch {
             if let design {
@@ -356,6 +402,59 @@ struct DeckMaterialsOrderService {
             }
             throw error
         }
+    }
+
+    /// Re-write the project marker for an order whose DISPOSITION changed under
+    /// EDIT ORDER (a job re-labelled from a supplier order to a shop pull, or
+    /// back). Everything else about the record is already correct locally —
+    /// `editOrder` is otherwise local-only — but `vinyl_source` lives on the
+    /// remote row, so leaving it alone would let the column contradict the
+    /// snapshot. Idempotent: it re-sends the same marker payload `markOrdered`
+    /// writes, with the corrected source.
+    func updateDisposition(
+        projectId: String,
+        snapshot: DeckMaterialsSnapshot
+    ) async throws {
+        try await updateProjectFields(
+            projectId,
+            Self.markerFields(
+                userId: snapshot.orderedBy ?? userId,
+                at: snapshot.orderedAt,
+                disposition: snapshot.disposition,
+                color: normalized(snapshot.vinylColor),
+                po: normalized(snapshot.po)
+            )
+        )
+    }
+
+    /// The project marker payload for a completed vinyl disposition — status
+    /// trio + color/PO + source, in ONE call so the remote row can never carry a
+    /// half-written order record.
+    ///
+    /// `vinyl_order_status` is `ordered` for BOTH dispositions, deliberately.
+    /// Its CHECK constraint admits only `not_ordered`/`ordered`, and every
+    /// already-installed iOS build reads an unknown value back as `.notOrdered` —
+    /// which would re-surface a fully handled job on the VINYL ORDERS board and
+    /// invite a duplicate order. `vinyl_source` carries the distinction
+    /// additively: old builds ignore the column, new builds read it, and the
+    /// authoritative record is the frozen design snapshot either way.
+    static func markerFields(
+        userId: String,
+        at date: Date,
+        disposition: VinylOrderDisposition,
+        color: String?,
+        po: String?
+    ) -> [String: AnyJSON] {
+        [
+            ProjectVinylOrderFields.status: .string(ProjectVinylOrderStatus.ordered.rawValue),
+            ProjectVinylOrderFields.orderedAt: .string(SupabaseDate.format(date)),
+            // The FK targets public.users(id). Outbound sanitization still
+            // nulls any legacy non-UUID identity before it reaches Postgres.
+            ProjectVinylOrderFields.orderedBy: .string(userId),
+            ProjectVinylOrderFields.color: color.map { .string($0) } ?? .null,
+            ProjectVinylOrderFields.po: po.map { .string($0) } ?? .null,
+            ProjectVinylOrderFields.source: .string(disposition.columnValue)
+        ]
     }
 
     /// Trimmed non-empty string, or nil — the marker columns store real values

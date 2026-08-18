@@ -29,6 +29,31 @@
 //  signal. Holding the op costs nothing and cannot fail. The classifier stays
 //  context-free; ordering stays the queue's job.
 //
+//  THE SAME-ENTITY CASE (bug 2e58c85b). The barrier above orders work ACROSS
+//  entities; nothing ordered a row against ITS OWN create. Coalescing merges a
+//  create with its later updates only when both land in the SAME eligible
+//  batch, so a create that is ineligible — in retry backoff, out of budget,
+//  parked, quarantined — leaves its updates behind as an "all updates" group
+//  that ships alone:
+//
+//      project create {id: P, …}                 ← parked / backing off
+//      project update {title: "Fixed"}           ← pushed alone
+//
+//  PostgREST answers a PATCH that matches no row with 200 and an empty body.
+//  The queue read that as delivered and retired the op: the edit was gone, and
+//  the operator was never told. Same rule, same reasoning as above — an op
+//  whose own row is not on the server yet is HELD, not sent. It costs nothing
+//  and cannot fail, where sending costs the edit itself.
+//
+//  Deletes are held too, deliberately. A delete pushed while its create is
+//  parked "succeeds" against nothing, and the day that create is retried the
+//  row appears on the server with no delete left to remove it — a resurrection
+//  the operator can neither see nor undo. Holding trades one extra round trip
+//  (the create lands, then the delete tombstones it) for a state that always
+//  converges. Subsystems that run their own ordering graph (site visit, task
+//  type, mention edits) are exempt: they are already ordered, and double-gating
+//  them would deadlock work their own barrier is holding for another reason.
+//
 //  SELF-HEALING THE OPS ALREADY PARKED. Shipping the barrier does not un-park
 //  what the race already broke. `parkedOperationsReleasableByCompletedCreates`
 //  identifies parks that are PROVABLY this race — an RLS/FK rejection whose
@@ -76,6 +101,19 @@ enum SyncCrossEntityDependency {
 
     // MARK: - The barrier
 
+    /// THE ordering gate both outbound paths ask before sending anything: true
+    /// when this op cannot legally reach the server yet, because a row it needs
+    /// — one it references, or its own — has no confirmed create.
+    ///
+    /// Held means held: never attempted, never parked, no retry budget consumed.
+    static func isHeld(
+        _ operation: SyncOperation,
+        in operations: [SyncOperation]
+    ) -> Bool {
+        isBlockedByUnresolvedCreate(operation, in: operations)
+            || isBlockedByUnresolvedSameEntityCreate(operation, in: operations)
+    }
+
     /// True when `operation` references an entity whose own create has not yet
     /// been confirmed by the server. Such an op must be HELD — never attempted,
     /// never parked, no retry budget consumed.
@@ -84,6 +122,57 @@ enum SyncCrossEntityDependency {
         in operations: [SyncOperation]
     ) -> Bool {
         !unresolvedCreates(blocking: operation, in: operations).isEmpty
+    }
+
+    /// True when `operation` is a later write against a row whose OWN create is
+    /// still unresolved — the 0-row PATCH that used to retire silently.
+    ///
+    /// A create never blocks on itself, and subsystems with their own ordering
+    /// graph are exempt (see the header). Ids compare lowercased:
+    /// `UUID().uuidString` is uppercase while Postgres uuid columns are not, so
+    /// a case-sensitive match would miss the create and ship the write into the
+    /// void it was meant to be held back from.
+    static func isBlockedByUnresolvedSameEntityCreate(
+        _ operation: SyncOperation,
+        in operations: [SyncOperation]
+    ) -> Bool {
+        !unresolvedSameEntityCreates(blocking: operation, in: operations).isEmpty
+    }
+
+    /// The same-entity create ops (unresolved, or completed when
+    /// `includingCompleted`) that govern `operation`.
+    private static func unresolvedSameEntityCreates(
+        blocking operation: SyncOperation,
+        in operations: [SyncOperation],
+        includingCompleted: Bool = false
+    ) -> [SyncOperation] {
+        guard operation.operationType != "create",
+              !runsItsOwnOrderingGraph(operation) else { return [] }
+
+        let entityType = operation.entityType
+        let entityId = operation.entityId.lowercased()
+
+        return operations.filter { candidate in
+            guard candidate.id != operation.id,
+                  candidate.operationType == "create",
+                  candidate.entityType == entityType,
+                  candidate.entityId.lowercased() == entityId
+            else { return false }
+            return includingCompleted
+                ? candidate.status == "completed"
+                : unresolvedCreateStatuses.contains(candidate.status)
+        }
+    }
+
+    /// Subsystems that order their own writes. Their barriers already know when
+    /// a row exists server-side — and know things this one cannot, like a
+    /// packet's media stage — so a second gate here can only deadlock them.
+    private static func runsItsOwnOrderingGraph(
+        _ operation: SyncOperation
+    ) -> Bool {
+        SiteVisitOutboundSync.isSiteVisitOperation(operation)
+            || TaskTypeMutationSync.bypassesGenericCoalescing(operation)
+            || ProjectNoteMentionEditSync.bypassesGenericCoalescing(operation)
     }
 
     /// The unresolved (or completed, when `includingCompleted`) create ops that
@@ -164,7 +253,7 @@ enum SyncCrossEntityDependency {
         var ready = Set(
             operations.compactMap { operation -> UUID? in
                 guard operation.status == "pending",
-                      !isBlockedByUnresolvedCreate(operation, in: operations)
+                      !isHeld(operation, in: operations)
                 else { return nil }
                 return operation.id
             }
@@ -188,7 +277,7 @@ enum SyncCrossEntityDependency {
 
     // MARK: - Releasing mis-parked work
 
-    /// Postgres rejection phrases that the missing referenced row explains.
+    /// Postgres rejection phrases that the missing row explains.
     /// Conservative on purpose: an RLS policy that cannot resolve the row, or a
     /// foreign key that has nothing to point at. Anything else (a check
     /// constraint, a bad value, a deliberate raise) has a different cause and
@@ -200,8 +289,10 @@ enum SyncCrossEntityDependency {
 
     /// Parked ops whose park is provably this race: rejected for a reason the
     /// missing row explains, and last attempted STRICTLY before the create they
-    /// referenced completed. Strictness is the loop guard — an op attempted at
-    /// or after that moment had its fair chance, so its park is real.
+    /// were waiting on completed — whether that create belongs to a row they
+    /// reference or to the row itself. Strictness is the loop guard — an op
+    /// attempted at or after that moment had its fair chance, so its park is
+    /// real.
     static func parkedOperationsReleasableByCompletedCreates(
         in operations: [SyncOperation]
     ) -> [SyncOperation] {
@@ -212,11 +303,17 @@ enum SyncCrossEntityDependency {
                   rejectionIsExplainedByMissingRow(lastError)
             else { return false }
 
-            return unresolvedCreates(
+            let blockingCreates = unresolvedCreates(
                 blocking: operation,
                 in: operations,
                 includingCompleted: true
-            ).contains { create in
+            ) + unresolvedSameEntityCreates(
+                blocking: operation,
+                in: operations,
+                includingCompleted: true
+            )
+
+            return blockingCreates.contains { create in
                 guard let completedAt = create.completedAt else { return false }
                 return lastAttemptedAt < completedAt
             }

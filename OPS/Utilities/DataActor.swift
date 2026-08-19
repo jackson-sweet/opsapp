@@ -5379,7 +5379,7 @@ actor DataActor {
         case "create":
             let jsonData = try JSONSerialization.data(withJSONObject: sanitizedPayload)
             let dto = try JSONDecoder().decode(SupabaseProjectDTO.self, from: jsonData)
-            _ = try await repo.create(dto)
+            try await repo.create(dto)
 
         case "update":
             let fields = payloadToAnyJSON(sanitizedPayload)
@@ -5451,7 +5451,7 @@ actor DataActor {
         case "create":
             let jsonData = try JSONSerialization.data(withJSONObject: sanitizedPayload)
             let dto = try JSONDecoder().decode(SupabaseClientDTO.self, from: jsonData)
-            _ = try await repo.create(dto)
+            try await repo.create(dto)
 
         case "update":
             let fields = payloadToAnyJSON(sanitizedPayload)

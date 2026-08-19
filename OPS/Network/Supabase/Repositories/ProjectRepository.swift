@@ -115,14 +115,23 @@ class ProjectRepository {
 
     // MARK: - Create
 
-    func create(_ dto: SupabaseProjectDTO) async throws -> SupabaseProjectDTO {
+    /// Deliberately asks for NO representation — same defect as
+    /// `ClientRepository.create`, same reasoning (see its doc comment).
+    ///
+    /// `projects.role_scope_read` resolves the row through
+    /// `private.user_can_view_project`, whose first statement re-reads
+    /// `public.projects` by id. Requesting a representation makes PostgREST emit
+    /// `INSERT … RETURNING`, Postgres evaluates that SELECT policy against the
+    /// new row before it exists, the self-lookup finds nothing, and the create is
+    /// rejected with 42501 — losing the job.
+    ///
+    /// Both callers — `OutboundProcessor.handleProject` and
+    /// `DataActor.handleProject` — discarded the returned DTO.
+    func create(_ dto: SupabaseProjectDTO) async throws {
         try await client
             .from("projects")
             .insert(dto)
-            .select()
-            .single()
             .execute()
-            .value
     }
 
     // MARK: - Upsert

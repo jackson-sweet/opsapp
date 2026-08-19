@@ -57,14 +57,28 @@ class ClientRepository {
 
     // MARK: - Create Client
 
-    func create(_ dto: SupabaseClientDTO) async throws -> SupabaseClientDTO {
+    /// Deliberately asks for NO representation.
+    ///
+    /// `.select()` after `.insert()` appends `Prefer: return=representation`
+    /// (supabase-swift `PostgrestTransformBuilder.select`), PostgREST turns that
+    /// into `INSERT … RETURNING`, and Postgres then applies the table's SELECT
+    /// policies to the new row as an INSERT check — evaluated in `ExecInsert`
+    /// BEFORE the tuple is written. `clients.role_scope_read` resolved the row by
+    /// re-reading `public.clients` by id, found nothing (the row does not exist
+    /// yet), and rejected the whole statement with
+    /// `42501 new row violates row-level security policy "role_scope_read"`.
+    /// A real customer was lost that way on the founder's phone (2026-08-19).
+    ///
+    /// Both callers — `OutboundProcessor.handleClient` and
+    /// `DataActor.handleClient` — discarded the returned DTO, so the
+    /// representation bought nothing and cost the write. The policy itself is
+    /// repaired server-side (`20260819044939_client_project_read_policy_row_columns.sql`);
+    /// this removes the trigger so the create cannot depend on that fix landing.
+    func create(_ dto: SupabaseClientDTO) async throws {
         try await client
             .from("clients")
             .insert(dto)
-            .select()
-            .single()
             .execute()
-            .value
     }
 
     // MARK: - Upsert Client

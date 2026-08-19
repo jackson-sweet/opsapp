@@ -605,6 +605,67 @@ final class SiteVisitOutboundSyncTests: XCTestCase {
         )
     }
 
+    // Jackson's device, 2026-08-19: ten operations sat pending at zero attempts
+    // because their dependsOnId graph had closed on itself — one artifact
+    // update pointed at its own id, and six checklist answers formed a ring.
+    // Sequencing that can never resolve must never gate the drain.
+    func test_operationDependingOnItselfStillDrains() throws {
+        let context = try makeContainer().mainContext
+        let visit = makeVisit()
+        let artifact = makeArtifact(localURL: nil)
+        context.insert(visit)
+        context.insert(artifact)
+
+        let stranded = try insert(SiteVisitSyncOperation.artifact(artifact), in: context)
+        stranded.dependsOnId = stranded.id.uuidString.lowercased()
+
+        XCTAssertTrue(
+            SiteVisitOutboundSync.readyPendingOperationIds(in: try allOperations(context))
+                .contains(stranded.id),
+            "an operation waiting on itself can never be satisfied — it must still run"
+        )
+    }
+
+    func test_operationsInADependencyRingStillDrain() throws {
+        let context = try makeContainer().mainContext
+        let visit = makeVisit()
+        context.insert(visit)
+
+        let first = try insert(SiteVisitSyncOperation.parent(visit), in: context)
+        let second = try insert(SiteVisitSyncOperation.parent(visit), in: context)
+        let third = try insert(SiteVisitSyncOperation.parent(visit), in: context)
+        first.dependsOnId = second.id.uuidString.lowercased()
+        second.dependsOnId = third.id.uuidString.lowercased()
+        third.dependsOnId = first.id.uuidString.lowercased()
+
+        let ready = SiteVisitOutboundSync.readyPendingOperationIds(in: try allOperations(context))
+        XCTAssertFalse(
+            ready.isEmpty,
+            "a closed dependency ring must not strand every member forever"
+        )
+    }
+
+    func test_dependencyOnAnUnfinishedPeerStillBlocks() throws {
+        let context = try makeContainer().mainContext
+        let visit = makeVisit()
+        let artifact = makeArtifact(localURL: nil)
+        context.insert(visit)
+        context.insert(artifact)
+
+        let parent = try insert(SiteVisitSyncOperation.parent(visit), in: context)
+        let child = try insert(
+            SiteVisitSyncOperation.artifact(artifact),
+            dependsOn: parent,
+            in: context
+        )
+
+        XCTAssertFalse(
+            SiteVisitOutboundSync.readyPendingOperationIds(in: try allOperations(context))
+                .contains(child.id),
+            "honest sequencing still holds — only unsatisfiable loops are ignored"
+        )
+    }
+
     private func makeVisit() -> SiteVisit {
         makeVisit(author: userId)
     }

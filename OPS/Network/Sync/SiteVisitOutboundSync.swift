@@ -76,9 +76,16 @@ struct SiteVisitOutboundSync {
            now < lastAttempt.addingTimeInterval(operation.backoffDelay) {
             return false
         }
+        // Sequencing that can never be satisfied must not gate the drain. The
+        // 2026-08-19 device wedge held ten ops at zero attempts indefinitely:
+        // an artifact update whose dependsOnId was its OWN id, an identity
+        // draft likewise, and six checklist answers chained into a closed ring.
+        // A dependency chain that walks back to this operation is exactly that
+        // deadlock, so it is ignored rather than obeyed.
         if let dependency = operation.dependsOnId,
            !dependency.isEmpty,
-           !dependencyIsCompleted(dependency, in: operations) {
+           !dependencyIsCompleted(dependency, in: operations),
+           !dependsTransitively(operation, on: operation, in: operations) {
             return false
         }
 

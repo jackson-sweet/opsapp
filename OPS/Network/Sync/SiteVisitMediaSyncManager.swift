@@ -177,7 +177,15 @@ struct SiteVisitMediaSyncManager {
             existing.payload = payload
             existing.changedFields = specification.changedFields.joined(separator: ",")
             existing.priority = min(existing.priority, specification.priority)
-            existing.dependsOnId = mediaOperation.id.uuidString.lowercased()
+            // The media operation already depends on this CRUD operation when
+            // the coordinator queued them together, so pointing it back here
+            // would close a ring and strand both forever (the 2026-08-19
+            // device wedge, reached by a second route).
+            existing.dependsOnId = SiteVisitOutboundSync.dependencyWithoutCycle(
+                mediaOperation.id.uuidString.lowercased(),
+                for: existing,
+                in: allOperations
+            )
             existing.status = "pending"
             existing.retryCount = 0
             existing.lastAttemptedAt = nil

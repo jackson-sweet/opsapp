@@ -364,31 +364,6 @@ final class SiteVisitPersistenceCoordinator {
             .id.uuidString.lowercased()
     }
 
-    /// A dependency only means anything if it can eventually complete. Walking
-    /// `dependsOnId` forward from `proposed` must never arrive back at
-    /// `operation`: that pair (or ring) waits on itself forever and the drain
-    /// never attempts any member. Returns nil when the edge would close such a
-    /// loop, leaving the operation free to run on its own merits.
-    private static func dependencyWithoutCycle(
-        _ proposed: String?,
-        for operation: SyncOperation,
-        in operations: [SyncOperation]
-    ) -> String? {
-        guard let proposed, !proposed.isEmpty else { return nil }
-        let ownId = operation.id.uuidString.lowercased()
-        let operationsById = Dictionary(
-            operations.map { ($0.id.uuidString.lowercased(), $0) },
-            uniquingKeysWith: { first, _ in first }
-        )
-        var visited = Set<String>()
-        var nextId: String? = proposed.lowercased()
-        while let id = nextId, !id.isEmpty, visited.insert(id).inserted {
-            if id == ownId { return nil }
-            nextId = operationsById[id]?.dependsOnId?.lowercased()
-        }
-        return proposed
-    }
-
     private func enqueue(
         _ specification: SiteVisitSyncOperation.Specification,
         dependsOnId: String?,
@@ -421,7 +396,7 @@ final class SiteVisitPersistenceCoordinator {
             // queued — re-queueing would then make the op wait on itself, or
             // close a ring with its siblings. Either way nothing is ever
             // attempted again (the 2026-08-19 device wedge).
-            existing.dependsOnId = Self.dependencyWithoutCycle(
+            existing.dependsOnId = SiteVisitOutboundSync.dependencyWithoutCycle(
                 dependsOnId,
                 for: existing,
                 in: operations

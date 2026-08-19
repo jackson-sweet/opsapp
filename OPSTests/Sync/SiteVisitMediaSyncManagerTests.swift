@@ -298,6 +298,61 @@ final class SiteVisitMediaSyncManagerTests: XCTestCase {
         XCTAssertNil(values["filename"])
     }
 
+    // The coordinator queues an artifact's CRUD write, then queues its media
+    // upload behind that write. When the upload later re-queues the URL upsert,
+    // pointing that upsert back at the media operation closes a ring — and a
+    // ring is never attempted again (the 2026-08-19 device wedge, reached here
+    // by a second route than the coordinator's own re-queue).
+    func test_urlUpsertRefusesToRingBackToItsMediaOperation() async throws {
+        let context = try makeContainer().mainContext
+        let artifact = makeArtifact()
+        artifact.lastSyncedAt = Date()
+        context.insert(artifact)
+
+        let specification = SiteVisitSyncOperation.artifact(artifact)
+        let queuedWrite = SyncOperation(
+            entityType: specification.entityType.rawValue,
+            entityId: specification.entityId,
+            operationType: specification.operationType,
+            payload: try JSONEncoder().encode(specification.payload),
+            changedFields: specification.changedFields,
+            priority: specification.priority
+        )
+        context.insert(queuedWrite)
+
+        let media = try insertMediaOperation(for: artifact, in: context)
+        media.status = "inProgress"
+        media.dependsOnId = queuedWrite.id.uuidString.lowercased()
+
+        let manager = SiteVisitMediaSyncManager(
+            uploader: { _, _, variant, _, _ in
+                "https://cdn.ops.test/\(variant.rawValue).jpg"
+            },
+            loader: { _ in (Data([1, 2, 3]), "image/jpeg") }
+        )
+        try await manager.uploadPendingMedia(
+            artifactId: artifactId,
+            mediaOperation: media,
+            context: context
+        )
+
+        XCTAssertNotEqual(
+            queuedWrite.dependsOnId,
+            media.id.uuidString.lowercased(),
+            "the upsert must not wait on the media operation that waits on it"
+        )
+        XCTAssertNil(
+            queuedWrite.dependsOnId,
+            "with no satisfiable dependency left, the write runs on its own merits"
+        )
+        XCTAssertTrue(
+            SiteVisitOutboundSync.readyPendingOperationIds(
+                in: try context.fetch(FetchDescriptor<SyncOperation>())
+            ).contains(queuedWrite.id),
+            "the write must be drainable, not stranded behind a ring"
+        )
+    }
+
     private func makeArtifact() -> SiteVisitCaptureArtifact {
         SiteVisitCaptureArtifact(
             id: artifactId,

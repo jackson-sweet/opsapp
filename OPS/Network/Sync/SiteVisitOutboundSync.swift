@@ -146,6 +146,32 @@ struct SiteVisitOutboundSync {
         return false
     }
 
+    /// A dependency only means anything if it can eventually complete. Walking
+    /// `dependsOnId` forward from `proposed` must never arrive back at
+    /// `operation`: that pair (or ring) waits on itself forever and the drain
+    /// never attempts any member. Returns nil when the edge would close such a
+    /// loop, leaving the operation free to run on its own merits. Every writer
+    /// of `dependsOnId` funnels through here so the rule has one home.
+    static func dependencyWithoutCycle(
+        _ proposed: String?,
+        for operation: SyncOperation,
+        in operations: [SyncOperation]
+    ) -> String? {
+        guard let proposed, !proposed.isEmpty else { return nil }
+        let ownId = operation.id.uuidString.lowercased()
+        let operationsById = Dictionary(
+            operations.map { ($0.id.uuidString.lowercased(), $0) },
+            uniquingKeysWith: { first, _ in first }
+        )
+        var visited = Set<String>()
+        var nextId: String? = proposed.lowercased()
+        while let id = nextId, !id.isEmpty, visited.insert(id).inserted {
+            if id == ownId { return nil }
+            nextId = operationsById[id]?.dependsOnId?.lowercased()
+        }
+        return proposed
+    }
+
     static func shouldContinueDrain(
         readyBeforePass: Set<UUID>,
         readyAfterPass: Set<UUID>

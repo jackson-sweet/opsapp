@@ -82,7 +82,12 @@ enum SyncStatusCopy {
         case "parked":
             // A parked op never retries on its own. Saying "waiting to sync"
             // here — the old default — told the operator to keep waiting for
-            // something that was never coming.
+            // something that was never coming. Same three-way split as the
+            // recovery screen so the panel and PENDING WORK cannot disagree
+            // about what happened.
+            if PendingWork.isClientRejected(rawError) {
+                return (PendingWork.clientRejectedRow, .stuck)
+            }
             return (
                 PendingWork.isMissingRow(rawError)
                     ? PendingWork.missingRow
@@ -233,6 +238,11 @@ enum SyncStatusCopy {
         /// more. Retrying cannot help, so the line says what happened and the
         /// detail block below says what the operator still has.
         static let missingRow = "That record is gone from OPS — held here"
+        /// A third cause, and the only one with a fix the operator can act on
+        /// right here: the work is fine, but the customer it belongs to never
+        /// reached OPS. Naming the customer — not the lead — is what points the
+        /// operator at the row that actually needs retrying.
+        static let clientRejectedRow = "Customer never reached OPS — held here"
         static let offlineRow = "Waiting for signal"
         static let orphanRow = "Not linked to a job or lead"
         static let draftRow = "Not sent yet — open to finish"
@@ -271,13 +281,20 @@ enum SyncStatusCopy {
         static let missingRowDetailLabel = "SYS :: RECORD NOT FOUND"
         static let missingRowDetailBody = "Someone deleted this record in OPS, or it is no longer shared with you. Your copy is safe on this phone — export it before you stop the send."
 
-        /// The parked block's label + body for one item. A missing record is a
-        /// different event from a rejection and gets different words; every
-        /// other park keeps the rejection block.
+        // Detail sheet — the customer this work belongs to was refused.
+        static let clientRejectedDetailLabel = "SYS :: CUSTOMER NOT SAVED"
+        static let clientRejectedDetailBody = "This lead is waiting on a customer record the server refused. Both are safe on this phone. Retry the customer in this list — the lead follows on its own."
+
+        /// The parked block's label + body for one item. Three causes, three
+        /// answers: a refused customer is fixable right here, a missing record
+        /// never will be, and every other park is a plain rejection.
         static func parkedDetail(
             lastError: String?
         ) -> (label: String, body: String) {
-            isMissingRow(lastError)
+            if isClientRejected(lastError) {
+                return (clientRejectedDetailLabel, clientRejectedDetailBody)
+            }
+            return isMissingRow(lastError)
                 ? (missingRowDetailLabel, missingRowDetailBody)
                 : (parkedDetailLabel, parkedDetailBody)
         }
@@ -289,6 +306,88 @@ enum SyncStatusCopy {
         static func isMissingRow(_ raw: String?) -> Bool {
             guard let raw, !raw.isEmpty else { return false }
             return raw.lowercased().contains(SyncError.serverRowMissingMarker)
+        }
+
+        /// The lead-delivery queue's own ordering verdict, recognized by the
+        /// marker `ClientLeadAutocreateQueue` stamps when it parks a delivery
+        /// behind a refused customer. Same discipline as `isMissingRow`: match
+        /// the writer's exact phrase, never loose wording.
+        static func isClientRejected(_ raw: String?) -> Bool {
+            guard let raw, !raw.isEmpty else { return false }
+            return raw.lowercased()
+                .contains(ClientLeadAutocreateError.clientCreateRejectedMarker)
+        }
+
+        // MARK: - DETAILS disclosure
+        //
+        // The sheet's DETAILS block used to print the stored error verbatim —
+        // `String(describing:)` of a PostgrestError, struct label and all:
+        //
+        //     PostgrestError(detail: nil, hint: nil, code: Optional("PGRST116"),
+        //     message: "Cannot coerce the result to a single JSON object")
+        //
+        // A business owner read that on his own phone. It is not a detail, it is
+        // a stack trace, and it violates this file's founding rule: a field user
+        // never sees a raw database error. `diagnostic` is the chokepoint that
+        // turns one into a sentence. The raw text still travels — EXPORT carries
+        // it verbatim, which is the surface built for handing evidence to
+        // support.
+
+        // The named causes. Each says what happened in one sentence a person can
+        // act on, and none of them quotes the server.
+        static let diagnosticClientRejected = "The customer record this lead belongs to was refused by the server."
+        static let diagnosticMissingRow = "The record this change belongs to is no longer in OPS."
+        static let diagnosticPermissionDenied = "The server would not let this account save that record."
+        static let diagnosticNoMatchingRow = "The server had no matching record to return."
+        static let diagnosticDuplicate = "A matching record already exists in OPS."
+        static let diagnosticSignInExpired = "The sign-in had expired the last time this was tried."
+        static let diagnosticOffline = "There was no connection the last time this was tried."
+
+        /// Fallback for a cause this app has not seen before. Says the one true
+        /// thing — the server refused it — and points at EXPORT rather than
+        /// spilling the raw text onto a screen in a truck.
+        static let diagnosticUnknown = "The server refused this change. Export it to send the full reason to support."
+
+        /// One plain-language line for a stored error. Never echoes the raw
+        /// text, and never returns nil for a non-empty error — an unrecognized
+        /// cause still owes the operator a sentence.
+        ///
+        /// Ordering is precedence, and it is deliberate: a cause the operator can
+        /// DO something about outranks the transport symptom it produced. A lead
+        /// blocked behind a refused customer also carries PGRST116; naming the
+        /// customer is what points at the row that needs retrying.
+        static func diagnostic(_ raw: String?) -> String? {
+            guard let raw, !raw.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                return nil
+            }
+            let lowered = raw.lowercased()
+
+            if isClientRejected(lowered) { return diagnosticClientRejected }
+            if isMissingRow(lowered) { return diagnosticMissingRow }
+            if lowered.contains("row-level security") || lowered.contains("42501") {
+                return diagnosticPermissionDenied
+            }
+            if lowered.contains("pgrst116") || lowered.contains("coerce the result") {
+                return diagnosticNoMatchingRow
+            }
+            if lowered.contains("duplicate key") { return diagnosticDuplicate }
+            if lowered.contains("jwt") || lowered.contains("401")
+                || lowered.contains("unauthorized") || lowered.contains("authentication") {
+                return diagnosticSignInExpired
+            }
+            if isOffline(lowered) { return diagnosticOffline }
+            return diagnosticUnknown
+        }
+
+        /// The DETAILS block's full text: one line per distinct cause, deduped
+        /// so two members blocked by the same thing do not say it twice.
+        static func diagnostics(_ rawErrors: [String]) -> [String] {
+            var seen = Set<String>()
+            return rawErrors.compactMap { raw in
+                guard let line = diagnostic(raw), !seen.contains(line) else { return nil }
+                seen.insert(line)
+                return line
+            }
         }
 
         // Actions, labels, confirms.
@@ -433,6 +532,7 @@ enum SyncStatusCopy {
         ) -> (text: String, tone: SyncStatusTone) {
             switch statusRaw {
             case "parked":
+                if isClientRejected(lastError) { return (clientRejectedRow, .stuck) }
                 return (isMissingRow(lastError) ? missingRow : parkedRow, .stuck)
             case "inProgress": return ("Saving…", .syncing)
             default:           break

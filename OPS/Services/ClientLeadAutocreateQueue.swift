@@ -62,6 +62,29 @@ struct ClientLeadAutocreateDelivery {
     let createdNow: Bool
 }
 
+/// What the outbound queue knows about a client's OWN `create` — the row this
+/// lead delivery hangs off. Derived from `SyncOperation` alone; no network.
+///
+/// This is ordering, and ordering is the queue's job. `SyncErrorClassifier`
+/// stays context-free by design (see its header, and
+/// `SyncCrossEntityDependency`'s): the precondition read in
+/// `performLiveAttempt` answers PGRST116 when the parent is missing, and
+/// PGRST116 must keep meaning "no rows, try again" for every read that
+/// legitimately retries. Teaching the classifier to park it would re-open the
+/// 2026-07-22 outage class. The queue already knows which case this is.
+enum ClientCreateState: Equatable {
+    /// No create op, or one that completed — the customer is (or should be) on
+    /// the server, so the delivery may be attempted.
+    case landed
+    /// A create op exists and is still working: pending, in flight, or out of
+    /// retries but revivable. HELD — never attempted, no retry budget consumed.
+    case inFlight
+    /// The create is parked or quarantined: the server permanently refused the
+    /// customer. The lead can never land until a human resolves that, so this
+    /// delivery parks too instead of retrying against a row that will not come.
+    case rejected
+}
+
 @MainActor
 protocol ClientLeadAutocreateQueueing: AnyObject {
     func enqueueAndDrainInBackground(_ client: Client, companyId: String)
@@ -226,6 +249,130 @@ final class ClientLeadAutocreateQueue: ClientLeadAutocreateQueueing {
         pending[index].lastError = nil
     }
 
+    // MARK: - The parent gate (ordering, not classification)
+
+    /// Statuses that mean the server permanently refused the customer. Mirrors
+    /// `SyncOperation`'s own vocabulary: `parked` is a permanent rejection that
+    /// only a user Retry moves, `quarantined` is never sent at all.
+    private static let rejectedCreateStatuses: Set<String> = ["parked", "quarantined"]
+
+    /// Statuses that mean the create is still working. Mirrors
+    /// `SyncCrossEntityDependency.unresolvedCreateStatuses` minus the two above:
+    /// a `failed` op is revived by the launch / reconnect sweep, so it is
+    /// in-flight, not rejected.
+    private static let inFlightCreateStatuses: Set<String> = ["pending", "inProgress", "failed"]
+
+    /// The parent client's server state, derived from the outbound queue alone.
+    ///
+    /// Pure: takes a plain `[SyncOperation]` and does no fetching, so it is
+    /// unit-testable and cannot trap. `completed` outranks `parked` — a create
+    /// that was refused and later succeeded means the row IS there, and that
+    /// ordering is what makes `releaseParkIfWaitingOnClientCreate` terminate.
+    ///
+    /// No create op at all reads as `.landed`, deliberately: completed ops are
+    /// swept after 24h, clients arrive from paths that never record one, and
+    /// holding on absence would strand every one of them forever.
+    ///
+    /// Ids compare lowercased — `UUID().uuidString` is uppercase while Postgres
+    /// uuid columns are not, so a case-sensitive match would miss the create and
+    /// attempt the very delivery this gate exists to hold.
+    static func clientCreateState(
+        forClientId clientId: String,
+        in operations: [SyncOperation]
+    ) -> ClientCreateState {
+        let normalizedId = clientId.lowercased()
+        let entityType = SyncEntityType.client.rawValue
+        let creates = operations.filter { operation in
+            operation.entityType == entityType
+                && operation.operationType == "create"
+                && operation.entityId.lowercased() == normalizedId
+        }
+        guard !creates.isEmpty else { return .landed }
+        if creates.contains(where: { $0.status == "completed" }) { return .landed }
+        if creates.contains(where: { rejectedCreateStatuses.contains($0.status) }) {
+            return .rejected
+        }
+        if creates.contains(where: { inFlightCreateStatuses.contains($0.status) }) {
+            return .inFlight
+        }
+        // An unrecognized status is not evidence of anything. Attempting is the
+        // safe verdict: the delivery is idempotent on `source_thread_key`, while
+        // holding on a guess strands the lead with nothing to release it.
+        return .landed
+    }
+
+    /// Deliberately predicate-free, filtered in Swift.
+    ///
+    /// A `#Predicate` fetch of `SyncOperation` TRAPS — uncatchable
+    /// EXC_BREAKPOINT inside SwiftData, not a thrown error — against a store
+    /// whose operation table has never held a row, and it reproduces in every
+    /// fresh container. This runs on every drain pass, including the very first
+    /// one on a new install, which is exactly that store. Same rule and same
+    /// reason as `ProjectCacheMerge.operations`.
+    private func syncOperations() -> [SyncOperation] {
+        guard let modelContext else { return [] }
+        return (try? modelContext.fetch(FetchDescriptor<SyncOperation>())) ?? []
+    }
+
+    /// Parks a delivery whose customer the server permanently refused, stamped
+    /// with `ClientLeadAutocreateError.clientCreateRejectedMarker`.
+    ///
+    /// That marker is load-bearing twice over: it is the copy layer's cue for
+    /// which plain-language line to show, and it is the release rule's proof
+    /// that this park — and only this park — may be handed back automatically.
+    ///
+    /// Idempotent. The drain runs every 60s; re-parking each pass would restamp
+    /// the clock and fire an analytics event for a request already sitting in
+    /// NEEDS ATTENTION.
+    private func parkAwaitingClientCreate(clientId: String) {
+        guard let index = pending.firstIndex(where: { $0.id == clientId }) else { return }
+        let detail = ClientLeadAutocreateError.clientCreateRejectedDetail
+        if pending[index].isParked, pending[index].lastError == detail { return }
+
+        pending[index].parkedAt = now()
+        pending[index].lastError = detail
+        persist()
+
+        AnalyticsService.shared.track(
+            eventType: .error,
+            eventName: "lead_autocreate_parked",
+            properties: [
+                "error_type": detail,
+                "attempts": pending[index].effectiveAttempts,
+                "entity_type": "opportunity",
+                "operation_type": "autocreate"
+            ]
+        )
+        print(
+            "[LEAD_AUTOCREATE_QUEUE] Parked client \(pending[index].clientId) — "
+                + "its customer record was refused by the server; will not auto-retry"
+        )
+    }
+
+    /// Hands back a delivery that parked ONLY because its customer create was
+    /// refused, once that create has completed.
+    ///
+    /// Loop-safe by construction: the release is gated on the exact marker this
+    /// queue writes, and `clearRetryState` erases it. A delivery that goes on to
+    /// park for its own reason carries a different `lastError` and can never be
+    /// released by this rule again.
+    @discardableResult
+    private func releaseParkIfWaitingOnClientCreate(clientId: String) -> Bool {
+        guard let index = pending.firstIndex(where: { $0.id == clientId }),
+              pending[index].isParked,
+              pending[index].lastError == ClientLeadAutocreateError.clientCreateRejectedDetail
+        else { return false }
+
+        let releasedClientId = pending[index].clientId
+        clearRetryState(at: index)
+        persist()
+        print(
+            "[LEAD_AUTOCREATE_QUEUE] Released client \(releasedClientId) — "
+                + "its customer record reached OPS"
+        )
+        return true
+    }
+
     func drain() async {
         if isDraining {
             drainRequestedWhileRunning = true
@@ -243,11 +390,40 @@ final class ClientLeadAutocreateQueue: ClientLeadAutocreateQueueing {
             }
         }
 
+        // One predicate-free read of the outbound queue per pass — see
+        // `clientCreateState(forClientId:in:)` for why it cannot be a fetch with
+        // a `#Predicate`, and why once per pass rather than once per request.
+        let operations = syncOperations()
+
         // Snapshot the ids, then re-read each request's live state every
         // iteration — a prior iteration may have parked, backed off, delivered,
         // or removed it.
         let requestIds = pending.map { $0.id }
         for requestId in requestIds {
+            guard let queued = pending.first(where: { $0.id == requestId }) else { continue }
+
+            // THE PARENT GATE. A lead cannot exist before its customer does, so
+            // the customer's own create governs this delivery.
+            switch Self.clientCreateState(forClientId: queued.clientId, in: operations) {
+            case .rejected:
+                // Park rather than attempt: the delivery would spend a round
+                // trip to be told what the queue already knows, and its
+                // precondition read answers PGRST116 — transient by design —
+                // so it would retry against that missing row forever.
+                parkAwaitingClientCreate(clientId: requestId)
+                continue
+            case .inFlight:
+                // Held means held: never attempted, never parked, no retry
+                // budget consumed. Costs nothing and cannot fail.
+                continue
+            case .landed:
+                // The customer reached OPS. If this delivery was parked waiting
+                // on exactly that, hand it back now — the operator should not
+                // have to retry the same work twice.
+                releaseParkIfWaitingOnClientCreate(clientId: requestId)
+            }
+
+            // Re-read: the release above may have just cleared this park.
             guard let request = pending.first(where: { $0.id == requestId }) else { continue }
 
             // A permanent rejection is parked until the operator Retries — never

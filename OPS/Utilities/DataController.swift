@@ -1337,6 +1337,30 @@ class DataController: ObservableObject {
         await importDecksetHandoffIfPossible()
     }
 
+    /// Hands the share-photo drain the two things it needs from the model layer:
+    /// the connectivity source it defers on, and a reader for the outbound queue
+    /// so it can honour the SAME create barrier every queued write honours.
+    ///
+    /// The extension's picker is fed from local SwiftData, so a share can be
+    /// aimed at a project whose own create has not reached the server. Without
+    /// the queue in hand the drain cannot tell that apart from a genuinely dead
+    /// project, and burns the job's retry budget on a 404 that would have healed
+    /// itself (bug c3486912).
+    ///
+    /// The fetch is predicate-free by necessity — a `#Predicate` fetch of
+    /// `SyncOperation` traps (uncatchable EXC_BREAKPOINT) against a table that
+    /// has never held a row — and the barrier filters in Swift.
+    ///
+    /// Idempotent; safe to call on every launch and foreground.
+    @MainActor
+    func attachShareUploadCoordinator() {
+        ShareUploadCoordinator.shared.connectivity = connectivity
+        ShareUploadCoordinator.shared.queuedOperationsProvider = { [weak self] in
+            guard let context = self?.modelContext else { return [] }
+            return (try? context.fetch(FetchDescriptor<SyncOperation>())) ?? []
+        }
+    }
+
     /// Lets an operator-driven logout wait briefly for a real server ACK. If
     /// work still remains, Settings presents the explicit stay/discard choice.
     @MainActor

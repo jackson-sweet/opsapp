@@ -108,6 +108,47 @@ class ImageSyncManager: ObservableObject {
             }
         }
     }
+
+    // MARK: - The create barrier, asked from outside the queue
+
+    /// The outbound queue as a plain array.
+    ///
+    /// Fetched predicate-free and filtered in Swift on purpose: a `#Predicate`
+    /// fetch of `SyncOperation` traps (uncatchable EXC_BREAKPOINT) against a
+    /// table that has never held a row, and this runs on every photo save.
+    /// See the note on `ProjectCacheMerge.operations`.
+    private func queuedOperations() -> [SyncOperation] {
+        guard let modelContext else { return [] }
+        return (try? modelContext.fetch(FetchDescriptor<SyncOperation>())) ?? []
+    }
+
+    /// True when this project has no confirmed row on the server yet — its own
+    /// `create` is still queued, retrying, or parked.
+    ///
+    /// Every server write this file makes is scoped to a project: the
+    /// `project_photos` insert is gated by an RLS policy that begins
+    /// `EXISTS (SELECT 1 FROM projects …)`, and the `projects.project_images`
+    /// PATCH addresses the project row itself. Against a project the server has
+    /// never seen, the first is a guaranteed 42501 and the second is a 0-row
+    /// PATCH that PostgREST answers 200 — a silent write-off (bug ca26fd7a,
+    /// 2026-08-19: two note photos reached S3, the portal insert was rejected,
+    /// and the gallery mirror "succeeded" against nothing).
+    ///
+    /// So a photo aimed at such a project is not sent. It is saved on the phone
+    /// and queued exactly as an offline photo is, and the retry timer delivers
+    /// it once the create lands. Ordering is the queue's job.
+    /// Internal, not private, so `SharePhotoCreateBarrierTests` can prove this
+    /// manager asks the barrier about the right project over real SwiftData rows
+    /// — the connectivity guard beside it has no test seam (`isConnected` is a
+    /// stored `private(set)` property), so a `saveImages` test would pass
+    /// vacuously through the offline branch and prove nothing.
+    func projectAwaitsItsOwnCreate(_ projectId: String) -> Bool {
+        SyncCrossEntityDependency.hasUnresolvedCreate(
+            entityType: .project,
+            entityId: projectId,
+            in: queuedOperations()
+        )
+    }
     
     /// Save images using S3 and update Supabase.
     ///
@@ -131,14 +172,31 @@ class ImageSyncManager: ObservableObject {
         let placeholders = beginInFlightUploads(images, for: project)
         var savedURLs: [String] = []
 
-        guard connectivity.isConnected else {
-            // Offline — save every image locally. The carousel renders each via
-            // its local:// URL and the retry timer drains the queue once signal
-            // returns. Clear the spinner tiles (the local photo now renders).
+        // Two reasons a photo waits on the phone rather than going out now, and
+        // they take the SAME path because they have the same answer: there is
+        // no signal, or the job it belongs to has not reached the server yet
+        // (its create is queued, retrying, or parked). Sending in the second
+        // case is not a failed send — it is a guaranteed RLS rejection for the
+        // portal row plus a 0-row PATCH that reports success for the gallery
+        // mirror, which is how photos went missing in bug ca26fd7a.
+        //
+        // Held is not failed: the photo is on disk, renders in the carousel via
+        // its local:// URL, sits in `pendingUploads`, and the retry timer
+        // delivers it the moment the project lands. Nothing is shown to the
+        // operator, because there is nothing for them to do.
+        let awaitsProjectCreate = projectAwaitsItsOwnCreate(project.id)
+        guard connectivity.isConnected, !awaitsProjectCreate else {
             for (index, image) in images.enumerated() {
                 if let localURL = await saveImageLocally(image, for: project, index: index) {
                     savedURLs.append(localURL)
                 }
+            }
+            if awaitsProjectCreate {
+                DebugLogger.shared.log(
+                    "saveImages holding \(images.count) photo(s) for \(project.id) — project create not on server yet",
+                    level: .info,
+                    category: "ImageSyncManager"
+                )
             }
             endInFlightUploads(placeholders.map { $0.id }, for: project.id)
             return savedURLs
@@ -150,6 +208,10 @@ class ImageSyncManager: ObservableObject {
         let successURLs = outcomes.compactMap { $0.url }
         let uploaderId = UserDefaults.standard.string(forKey: "currentUserId") ?? ""
         var portalMirrorSucceeded = true
+        // What a failed tile says when the portal mirror doesn't land. Defaults
+        // to the retryable case; the missing-project branch below swaps it for
+        // copy that names what actually happened.
+        var portalMirrorMessage = SyncStatusCopy.Photo.portalMirrorPending
 
         // 1) Record the photos that DID upload — immediately. Their S3 bytes are
         //    real; a sibling photo's failure must never drop them.
@@ -163,27 +225,76 @@ class ImageSyncManager: ObservableObject {
             // Legacy projects.project_images CSV mirror — best effort. The
             // canonical cross-device + portal store is project_photos (below),
             // so a failure here only delays the legacy CSV; the photo isn't lost.
+            //
+            // Guarded by `SupabaseWriteGuard` (bug ca26fd7a): PostgREST answers a
+            // PATCH that matches no row with 200 and an empty body, so this used
+            // to clear `needsSync` after writing to nothing at all. The barrier
+            // above removes the common cause (a create still queued); a PATCH
+            // that STILL matches nothing means the project row is genuinely not
+            // addressable — deleted server-side, or invisible to this operator
+            // under RLS. Both are permanent, and both mean the portal insert
+            // below would be a certain 42501, so it is skipped rather than fired
+            // into a rejection whose auto-bug names the wrong cause.
+            let imagesPayload: [String: AnyJSON] = [
+                "project_images": .array(currentImages.map { .string($0) })
+            ]
+            var projectRowMissing = false
             do {
-                try await SupabaseService.shared.client
+                let response = try await SupabaseService.shared.client
                     .from("projects")
-                    .update(["project_images": currentImages])
+                    .update(imagesPayload)
                     .eq("id", value: project.id)
+                    .select("id")
                     .execute()
+                try SupabaseWriteGuard.requireAffectedRow(
+                    response: response.data,
+                    table: "projects",
+                    id: project.id,
+                    fields: imagesPayload
+                )
                 project.needsSync = false
             } catch {
                 // Leave needsSync set so the project's normal sync re-pushes it.
                 project.needsSync = true
+                if let syncError = error as? SyncError,
+                   case .serverRowMissing = syncError {
+                    projectRowMissing = true
+                }
             }
 
-            // Bug 7b43be32 — project_photos rows so the web client portal sees
-            // the photos. insertProjectPhotoRows auto-bugs on a permanent reject.
-            portalMirrorSucceeded = await insertProjectPhotoRows(
-                urls: successURLs,
-                projectId: project.id,
-                companyId: companyId,
-                uploadedBy: uploaderId,
-                source: "in_progress"
-            )
+            if projectRowMissing {
+                // Never silent: the operator gets a failed tile that says where
+                // the photo is, and we file the precise cause rather than the
+                // downstream RLS symptom.
+                portalMirrorSucceeded = false
+                portalMirrorMessage = SyncStatusCopy.Photo.projectMissing
+                DebugLogger.shared.log(
+                    "saveImages: project \(project.id) has no server row — portal mirror skipped for \(successURLs.count) photo(s)",
+                    level: .error,
+                    category: "ImageSyncManager"
+                )
+                await AutoBugReporter.shared.report(
+                    screen: "ImageSyncManager.saveImages",
+                    suspectedFile: "ImageSyncManager.swift",
+                    errorCode: "PROJECT_ROW_MISSING",
+                    summary: "projects row \(project.id) is absent server-side; \(successURLs.count) uploaded photo(s) kept on device and not mirrored to the portal.",
+                    metadata: [
+                        "project_id": project.id,
+                        "company_id": companyId,
+                        "url_count": successURLs.count
+                    ]
+                )
+            } else {
+                // Bug 7b43be32 — project_photos rows so the web client portal sees
+                // the photos. insertProjectPhotoRows auto-bugs on a permanent reject.
+                portalMirrorSucceeded = await insertProjectPhotoRows(
+                    urls: successURLs,
+                    projectId: project.id,
+                    companyId: companyId,
+                    uploadedBy: uploaderId,
+                    source: "in_progress"
+                )
+            }
 
             project.lastSyncedAt = Date()
             if let modelContext = modelContext {
@@ -217,7 +328,7 @@ class ImageSyncManager: ObservableObject {
                     markInFlightUploadsFailed(
                         ids: [tileId],
                         for: project.id,
-                        lastError: "Photo saved, but not yet visible in the client portal. It'll retry automatically."
+                        lastError: portalMirrorMessage
                     )
                 }
             case .failure(let image, _, let kind, let message):
@@ -965,6 +1076,21 @@ class ImageSyncManager: ObservableObject {
 
         let companyId = project.companyId
         guard !companyId.isEmpty else {
+            return
+        }
+
+        // The same barrier `saveImages` applies, applied again on every drain.
+        // The queue is durable and the retry timer fires every 30s, so without
+        // this a photo held at capture would be pushed into the guaranteed
+        // rejection on the very next tick. Returning early leaves the uploads in
+        // `pendingUploads`, which keeps the retry timer alive — so the photo is
+        // re-offered for free until the project's create lands, then delivered.
+        guard !projectAwaitsItsOwnCreate(projectId) else {
+            DebugLogger.shared.log(
+                "syncImagesForProject holding \(uploads.count) photo(s) for \(projectId) — project create not on server yet",
+                level: .info,
+                category: "ImageSyncManager"
+            )
             return
         }
 

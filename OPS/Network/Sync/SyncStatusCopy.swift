@@ -33,6 +33,30 @@ enum SyncStatusCopy {
         static let savingLabel = "SAVING VISIT..."
     }
 
+    /// Photo-rail lines. Photos reach the server on two rails that sit OUTSIDE
+    /// the outbound queue — the in-app gallery / note attachments, and the share
+    /// extension's App Group queue — so their words live here with every other
+    /// sync surface rather than inline at the call site.
+    /// There is deliberately NO line for the held state. A photo waiting on its
+    /// job's create is in exactly the position an offline photo is in — on the
+    /// phone, in the carousel, going out on its own — and the offline path says
+    /// nothing either. If that create is parked for good, the operator is told
+    /// at the right altitude: the JOB failed to save, which PENDING WORK already
+    /// shows. Nagging about the photo on top of that would be a second alarm for
+    /// one problem, and clearing the job clears the photo with it.
+    enum Photo {
+        /// S3 and the gallery took the photo but the client-portal mirror did
+        /// not, and it will be retried. Existing wording, moved off the call
+        /// site so this file stays the chokepoint.
+        static let portalMirrorPending =
+            "Photo saved, but not yet visible in the client portal. It'll retry automatically."
+
+        /// The job the photo was attached to is not on the server at all, and
+        /// no create is queued for it — retrying cannot help. Say what happened
+        /// and where the photo is; never imply it was lost.
+        static let projectMissing =
+            "That job isn't in OPS any more. The photo is safe on this phone."
+    }
 
     // MARK: - Collapsed header
 

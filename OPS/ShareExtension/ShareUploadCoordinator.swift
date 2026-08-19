@@ -34,6 +34,16 @@ final class ShareUploadCoordinator: NSObject {
     /// queued and drain when connectivity returns). Weak — owned by DataController.
     weak var connectivity: ConnectivityManager?
 
+    /// Reads the outbound queue so the drain can ask the SAME create barrier
+    /// that orders every queued write (`SyncCrossEntityDependency`). Set by the
+    /// app at startup beside `connectivity`.
+    ///
+    /// A closure rather than a context because this type is deliberately free of
+    /// SwiftData — it runs the App Group rail, not the model layer — and because
+    /// nil then means exactly "no queue knowledge", under which the drain behaves
+    /// precisely as it did before the barrier existed.
+    var queuedOperationsProvider: (() -> [SyncOperation])?
+
     private var darwinObserverRegistered = false
     private var isDraining = false
     private var rerunRequested = false
@@ -156,6 +166,31 @@ final class ShareUploadCoordinator: NSObject {
             return
         }
 
+        // The destination job can exist only on this phone. The extension's
+        // picker is fed from local SwiftData (`ShareSessionBridgeWriter`), which
+        // publishes any non-deleted, non-terminal project — including one whose
+        // own `create` is still queued, retrying, or parked. Against such a
+        // project `/api/uploads/share-photo` answers 404, and `isTransient`
+        // — correctly, and context-free — calls a 404 permanent. Ten of those
+        // park the share and spend the operator a recovery notice for a job that
+        // would have landed on its own minutes later.
+        //
+        // So hold, exactly as the outbound queue holds a write whose row has no
+        // confirmed create: no attempt, no attempt count, no park. The bytes stay
+        // in the App Group and the next drain — foreground, Darwin nudge, or
+        // connectivity restored — retries for free. Ordering is the queue's job;
+        // the failure policy stays context-free.
+        if let queuedOperationsProvider,
+           Self.holdsForUnresolvedProjectCreate(
+               projectId: reference.projectId,
+               operations: queuedOperationsProvider()
+           ) {
+            log.info(
+                "drain: holding \(jobs.count, privacy: .public) photo(s) for project \(reference.projectId, privacy: .public) — its create has not reached the server yet"
+            )
+            return
+        }
+
         // Deployed jobs from the previous pipeline may already carry a random S3
         // URL. Those must re-finalize that exact URL; uploading them through the
         // deterministic endpoint would create a second photo.
@@ -259,6 +294,26 @@ final class ShareUploadCoordinator: NSObject {
     private func isCurrentUser(_ userId: String) -> Bool {
         guard !userId.isEmpty else { return false }
         return UserDefaults.standard.string(forKey: "currentUserId") == userId
+    }
+
+    /// The share rail's ordering policy, in one place: photos wait when the job
+    /// they were shared into has no confirmed row on the server yet.
+    ///
+    /// It delegates rather than deciding, and that IS the decision — the share
+    /// rail gets no bespoke notion of "is this project real". It asks the same
+    /// `SyncCrossEntityDependency` barrier that orders every queued write, over
+    /// the same operations. Named and static so the delegation is visible at the
+    /// seam and locked down by test: a future bespoke rule here fails
+    /// `SharePhotoCreateBarrierTests`.
+    static func holdsForUnresolvedProjectCreate(
+        projectId: String,
+        operations: [SyncOperation]
+    ) -> Bool {
+        SyncCrossEntityDependency.hasUnresolvedCreate(
+            entityType: .project,
+            entityId: projectId,
+            in: operations
+        )
     }
 
     static func actionForAttemptCount(_ attempts: Int) -> AttemptAction {

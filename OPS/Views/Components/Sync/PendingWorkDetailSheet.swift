@@ -52,7 +52,7 @@ struct PendingWorkDetailSheet: View {
                         parkedBlock
                     }
 
-                    if !rawErrors.isEmpty {
+                    if !diagnosticLines.isEmpty {
                         detailsDisclosure
                     }
                 }
@@ -173,7 +173,7 @@ struct PendingWorkDetailSheet: View {
             .buttonStyle(.plain)
 
             if showRawDetails {
-                Text(rawErrors.joined(separator: "\n\n"))
+                Text(diagnosticLines.joined(separator: "\n\n"))
                     .font(OPSStyle.Typography.metadata)
                     .foregroundColor(OPSStyle.Colors.text3)
                     .textSelection(.enabled)
@@ -343,7 +343,22 @@ struct PendingWorkDetailSheet: View {
         }
     }
 
-    /// Raw server errors, deduped — the honest text behind the DETAILS toggle.
+    /// What DETAILS actually shows: one plain sentence per distinct cause.
+    ///
+    /// This block used to print `rawErrors` verbatim, which meant a business
+    /// owner reading `PostgrestError(detail: nil, hint: nil, code:
+    /// Optional("PGRST116"), message: "Cannot coerce the result to a single
+    /// JSON object")` on his own phone. The raw text still exists and still
+    /// travels — EXPORT carries it untouched for support — but it never renders
+    /// here. `SyncStatusCopy` stays the single chokepoint for every word the
+    /// operator reads.
+    private var diagnosticLines: [String] {
+        SyncStatusCopy.PendingWork.diagnostics(rawErrors)
+    }
+
+    /// Raw server errors, deduped. Kept raw on purpose: `parkedDetail` and the
+    /// diagnostic rules classify by matching the writer's own markers, and the
+    /// export payload needs the untouched text.
     private var rawErrors: [String] {
         let collected: [String?]
         switch item {

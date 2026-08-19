@@ -88,11 +88,31 @@ enum ClientLeadAutocreate {
 
 enum ClientLeadAutocreateError: LocalizedError {
     case missingClientName
+    /// The parent client's OWN outbound create was permanently rejected by the
+    /// server, so this lead has no customer row to hang off. Not a failure of
+    /// the lead write — the lead was never attempted. Raised by the queue's
+    /// ordering gate, never by the network layer.
+    case clientCreateRejected
+
+    /// The stable phrase every `clientCreateRejected` record carries, and the
+    /// only thing the copy layer and the release rule match on. Loose wording
+    /// would let an unrelated park masquerade as this one and be auto-released.
+    /// Mirrors `SyncError.serverRowMissingMarker`.
+    static let clientCreateRejectedMarker = "client create rejected"
+
+    /// The exact string the queue stores in `lastError` when it parks a delivery
+    /// behind a rejected customer. A constant rather than
+    /// `String(describing:)` — that renders an enum case as its bare case name
+    /// and would drop the marker entirely.
+    static let clientCreateRejectedDetail =
+        "\(clientCreateRejectedMarker): the server refused the customer record this lead belongs to."
 
     var errorDescription: String? {
         switch self {
         case .missingClientName:
             return "Client saved. Pipeline lead needs a client name."
+        case .clientCreateRejected:
+            return Self.clientCreateRejectedDetail
         }
     }
 }

@@ -335,7 +335,7 @@ struct OPSApp: App {
                         if dataController.isAuthenticated {
                             Task { @MainActor in
                                 await dataController.refreshShareSessionBridge()
-                                ShareUploadCoordinator.shared.connectivity = dataController.connectivity
+                                dataController.attachShareUploadCoordinator()
                                 ShareUploadCoordinator.shared.activate()
                                 await ShareUploadCoordinator.shared.drainInbox()
                             }
@@ -384,7 +384,7 @@ struct OPSApp: App {
                         // Drain any share-sheet photos queued before sign-in completed
                         // (cold launch with a pending share).
                         Task { @MainActor in
-                            ShareUploadCoordinator.shared.connectivity = dataController.connectivity
+                            dataController.attachShareUploadCoordinator()
                             ShareUploadCoordinator.shared.activate()
                             await ShareUploadCoordinator.shared.drainInbox()
                         }

@@ -139,6 +139,48 @@ enum SyncCrossEntityDependency {
         !unresolvedSameEntityCreates(blocking: operation, in: operations).isEmpty
     }
 
+    // MARK: - The same question, asked from outside the queue
+
+    /// True when the server has no confirmed row for `entityId` yet, because a
+    /// local `create` for it is still unresolved.
+    ///
+    /// The barrier above orders QUEUED work. Two photo rails write by REST,
+    /// entirely outside the `SyncOperation` queue, and so were never ordered by
+    /// anything: `ImageSyncManager` (in-app gallery + note attachments, which
+    /// inserts `project_photos` and PATCHes `projects.project_images` directly)
+    /// and `ShareUploadCoordinator` (the share extension's App Group queue,
+    /// which POSTs to `/api/uploads/share-photo`). Both address a project the
+    /// operator picked on THIS phone, which may exist only on this phone.
+    ///
+    /// Rather than teach each rail its own notion of "is this project real",
+    /// they ask this — the same rule, over the same data, that governs every
+    /// queued write. Held means held: the photo waits on the device and goes
+    /// out on a later pass, once the create lands. Same reasoning as the
+    /// header's: holding costs one more drain pass, sending costs the photo.
+    ///
+    /// Pure like everything else here — a `#Predicate` fetch of `SyncOperation`
+    /// traps (uncatchable EXC_BREAKPOINT) against a table that has never held a
+    /// row, so callers fetch predicate-free and hand the array in.
+    ///
+    /// Ids compare lowercased: `UUID().uuidString` is uppercase while Postgres
+    /// uuid columns are not, and a case-sensitive match would miss the blocking
+    /// create and ship the photo into the rejection it was meant to be held
+    /// back from.
+    static func hasUnresolvedCreate(
+        entityType: SyncEntityType,
+        entityId: String,
+        in operations: [SyncOperation]
+    ) -> Bool {
+        let canonicalId = entityId.lowercased()
+        guard !canonicalId.isEmpty else { return false }
+        return operations.contains { candidate in
+            candidate.operationType == "create"
+                && candidate.entityType == entityType.rawValue
+                && candidate.entityId.lowercased() == canonicalId
+                && unresolvedCreateStatuses.contains(candidate.status)
+        }
+    }
+
     /// The same-entity create ops (unresolved, or completed when
     /// `includingCompleted`) that govern `operation`.
     private static func unresolvedSameEntityCreates(

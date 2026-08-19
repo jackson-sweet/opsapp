@@ -20,10 +20,18 @@
 //  stair takes the derived branch (`StairConfigView.applyStairs` leaves
 //  `treadCount` nil on purpose so the count tracks live level heights).
 //
+//  NOTE ON LITERALS: every floating-point argument below names its type
+//  explicitly (`Double.nan`, `Float.infinity`, `240.0`). `SCNVector3` and
+//  `CGPoint` each expose Float/CGFloat/Double/Int initializer overloads, so a
+//  bare `.nan` or `.infinity` is genuinely ambiguous to the type checker and
+//  fails the build — a file about degenerate float inputs is exactly where that
+//  bites.
+//
 
 #if DEBUG
 import CoreGraphics
 import SceneKit
+import simd
 import XCTest
 @testable import OPS
 
@@ -41,7 +49,7 @@ final class DeckViewerCrashGuardTests: XCTestCase {
         )
         // Partial step rounds up — a stair always reaches the deck.
         XCTAssertEqual(
-            StairConfig.calculateTreadCount(totalRise: 30, risePerStep: 7.5),
+            StairConfig.calculateTreadCount(totalRise: 30.0, risePerStep: 7.5),
             4
         )
     }
@@ -49,14 +57,29 @@ final class DeckViewerCrashGuardTests: XCTestCase {
     /// `Int(ceil(totalRise / 0))` is `Int(+inf)`, which TRAPS. `risePerStep`
     /// reaches this straight from stored JSON, so this is the crash guard.
     func testDerivedTreadCountSurvivesZeroRisePerStep() {
-        XCTAssertEqual(StairConfig.calculateTreadCount(totalRise: 97.5, risePerStep: 0), 0)
+        XCTAssertEqual(
+            StairConfig.calculateTreadCount(totalRise: 97.5, risePerStep: 0.0),
+            0
+        )
     }
 
     func testDerivedTreadCountSurvivesNonFiniteInputs() {
-        XCTAssertEqual(StairConfig.calculateTreadCount(totalRise: 97.5, risePerStep: .nan), 0)
-        XCTAssertEqual(StairConfig.calculateTreadCount(totalRise: 97.5, risePerStep: -0.0), 0)
-        XCTAssertEqual(StairConfig.calculateTreadCount(totalRise: .nan, risePerStep: 7.5), 0)
-        XCTAssertEqual(StairConfig.calculateTreadCount(totalRise: .infinity, risePerStep: 7.5), 0)
+        XCTAssertEqual(
+            StairConfig.calculateTreadCount(totalRise: 97.5, risePerStep: Double.nan),
+            0
+        )
+        XCTAssertEqual(
+            StairConfig.calculateTreadCount(totalRise: 97.5, risePerStep: -0.0),
+            0
+        )
+        XCTAssertEqual(
+            StairConfig.calculateTreadCount(totalRise: Double.nan, risePerStep: 7.5),
+            0
+        )
+        XCTAssertEqual(
+            StairConfig.calculateTreadCount(totalRise: Double.infinity, risePerStep: 7.5),
+            0
+        )
     }
 
     /// A rise big enough to overflow the conversion clamps instead of trapping.
@@ -74,7 +97,7 @@ final class DeckViewerCrashGuardTests: XCTestCase {
     func testExplicitZeroRisePerStepSurvivesDecode() throws {
         let json = Data(#"{"width":48,"risePerStep":0,"runPerTread":10}"#.utf8)
         let config = try JSONDecoder().decode(StairConfig.self, from: json)
-        XCTAssertEqual(config.risePerStep, 0)
+        XCTAssertEqual(config.risePerStep, 0.0)
         XCTAssertNil(config.treadCount)
     }
 
@@ -88,8 +111,13 @@ final class DeckViewerCrashGuardTests: XCTestCase {
             DeckVertex(id: "v1", position: CGPoint(x: 0, y: 0)),
             DeckVertex(id: "v2", position: CGPoint(x: 48, y: 0))
         ]
-        var edge = DeckEdge(id: "e1", startVertexId: "v1", endVertexId: "v2", dimension: 48)
-        edge.stairConfig = StairConfig(width: 48, risePerStep: 0, runPerTread: 10, treadCount: nil)
+        var edge = DeckEdge(id: "e1", startVertexId: "v1", endVertexId: "v2", dimension: 48.0)
+        edge.stairConfig = StairConfig(
+            width: 48.0,
+            risePerStep: 0.0,
+            runPerTread: 10.0,
+            treadCount: nil
+        )
         drawing.edges = [edge]
 
         // The assertion is that this RETURNS. A trap would abort the process.
@@ -106,42 +134,48 @@ final class DeckViewerCrashGuardTests: XCTestCase {
     /// `NaN >= 0` is false and `abs(NaN)` is NaN, so the negative-value branch
     /// recursed on the identical argument forever and overflowed the stack.
     func testFormatImperialSurvivesNonFiniteInput() {
-        XCTAssertEqual(DimensionEngine.formatImperial(.nan), "—")
-        XCTAssertEqual(DimensionEngine.formatImperial(.infinity), "—")
-        XCTAssertEqual(DimensionEngine.formatImperial(-.infinity), "—")
+        XCTAssertEqual(DimensionEngine.formatImperial(Double.nan), "—")
+        XCTAssertEqual(DimensionEngine.formatImperial(Double.infinity), "—")
+        XCTAssertEqual(DimensionEngine.formatImperial(-Double.infinity), "—")
     }
 
     func testFormatImperialUnchangedForRealDimensions() {
-        XCTAssertEqual(DimensionEngine.formatImperial(240), "20'")
-        XCTAssertEqual(DimensionEngine.formatImperial(294), "24' 6\"")
+        XCTAssertEqual(DimensionEngine.formatImperial(240.0), "20'")
+        XCTAssertEqual(DimensionEngine.formatImperial(294.0), "24' 6\"")
     }
 
     /// `+inf >= 10` is true, so the infinite case reached `Int(_:)` and trapped.
     func testFormatAreaSurvivesNonFiniteInput() {
-        XCTAssertEqual(DimensionEngine.formatAreaImperial(.infinity), "—")
-        XCTAssertEqual(DimensionEngine.formatAreaImperial(.nan), "—")
+        XCTAssertEqual(DimensionEngine.formatAreaImperial(Double.infinity), "—")
+        XCTAssertEqual(DimensionEngine.formatAreaImperial(Double.nan), "—")
     }
 
     func testFormatAreaUnchangedForRealAreas() {
         // 240" × 144" = 34,560 sq in = 240 sq ft.
-        XCTAssertEqual(DimensionEngine.formatAreaImperial(34_560), "240 sq ft")
+        XCTAssertEqual(DimensionEngine.formatAreaImperial(34_560.0), "240 sq ft")
     }
 
     // MARK: - Scene geometry
 
     /// `simd_normalize` of a zero vector is NaN, and a NaN quaternion silently
     /// corrupts the whole node transform. A self-loop edge produces exactly this.
+    ///
+    /// `SCNVector3`'s components are `Float`; every argument is built as a
+    /// concrete `Float` so only the `(Float, Float, Float)` overload can match.
     func testSpanningOrientationIsFiniteForDegenerateDirection() {
-        for direction in [
-            SCNVector3(0, 0, 0),
-            SCNVector3(.nan, 0, 0),
-            SCNVector3(0, .infinity, 0)
-        ] {
-            let q = DeckSceneBuilder.spanningBoxOrientation(direction: direction)
+        let degenerateDirections: [SCNVector3] = [
+            SCNVector3(Float.zero, Float.zero, Float.zero),
+            SCNVector3(Float.nan, Float.zero, Float.zero),
+            SCNVector3(Float.zero, Float.infinity, Float.zero)
+        ]
+
+        for direction in degenerateDirections {
+            let orientation = DeckSceneBuilder.spanningBoxOrientation(direction: direction)
+            let vector = orientation.vector
             XCTAssertTrue(
-                q.vector.x.isFinite && q.vector.y.isFinite
-                    && q.vector.z.isFinite && q.vector.w.isFinite,
-                "Degenerate span \(direction) produced a non-finite orientation"
+                vector.x.isFinite && vector.y.isFinite
+                    && vector.z.isFinite && vector.w.isFinite,
+                "Degenerate span (\(direction.x), \(direction.y), \(direction.z)) produced a non-finite orientation"
             )
         }
     }
@@ -157,8 +191,13 @@ final class DeckViewerCrashGuardTests: XCTestCase {
             DeckVertex(id: "dup", position: CGPoint(x: 48, y: 0)),
             DeckVertex(id: "v3", position: CGPoint(x: 48, y: 48))
         ]
-        var edge = DeckEdge(id: "e1", startVertexId: "dup", endVertexId: "v3", dimension: 48)
-        edge.stairConfig = StairConfig(width: 48, risePerStep: 7.5, runPerTread: 10, treadCount: 4)
+        var edge = DeckEdge(id: "e1", startVertexId: "dup", endVertexId: "v3", dimension: 48.0)
+        edge.stairConfig = StairConfig(
+            width: 48.0,
+            risePerStep: 7.5,
+            runPerTread: 10.0,
+            treadCount: 4
+        )
         drawing.edges = [edge]
 
         // Returning at all is the assertion; a scene always carries its ground,
@@ -178,8 +217,8 @@ final class DeckViewerCrashGuardTests: XCTestCase {
             DeckVertex(id: "v2", position: CGPoint(x: 48, y: 0))
         ]
         drawing.edges = [
-            DeckEdge(id: "loop", startVertexId: "v1", endVertexId: "v1", dimension: 0),
-            DeckEdge(id: "e1", startVertexId: "v1", endVertexId: "v2", dimension: 48)
+            DeckEdge(id: "loop", startVertexId: "v1", endVertexId: "v1", dimension: 0.0),
+            DeckEdge(id: "e1", startVertexId: "v1", endVertexId: "v2", dimension: 48.0)
         ]
 
         let scene = DeckSceneBuilder.buildScene(from: drawing)

@@ -1566,7 +1566,17 @@ struct DeckSceneBuilder {
         measurementSystem: MeasurementSystem
     ) -> [CGPoint] {
         guard scaleFactor > 0 else { return [] }
-        let verticesById = Dictionary(uniqueKeysWithValues: vertices.map { ($0.id, $0.position) })
+        // `Dictionary(uniqueKeysWithValues:)` has a UNIQUENESS PRECONDITION —
+        // duplicate ids abort the process. Nothing validates `DeckVertex.id`
+        // uniqueness on decode, on import (sketch scan / AR), or when the
+        // builder migrates vertices between levels, and this runs during camera
+        // framing — the first thing `buildScene` does — so a duplicate id would
+        // kill the app before a single node is placed. Last writer wins; the
+        // positions are only used for framing.
+        let verticesById = Dictionary(
+            vertices.map { ($0.id, $0.position) },
+            uniquingKeysWith: { _, latest in latest }
+        )
 
         return edges.flatMap { edge -> [CGPoint] in
             guard let config = edge.stairConfig,
@@ -1784,10 +1794,13 @@ struct DeckSceneBuilder {
         scaleFactor: Double,
         center: CGPoint
     ) -> [String: CGPoint] {
+        // Duplicate vertex ids must not abort the process — see the note in
+        // `stairFramePositions`. Last writer wins.
         Dictionary(
-            uniqueKeysWithValues: vertices.map {
+            vertices.map {
                 ($0.id, convertPointToMeters($0.position, scaleFactor: scaleFactor, center: center))
-            }
+            },
+            uniquingKeysWith: { _, latest in latest }
         )
     }
 
@@ -1819,7 +1832,21 @@ struct DeckSceneBuilder {
     /// - Parameter direction: span vector `p2 - p1` in world space (need not be
     ///   unit length; only its direction is used). Must be non-zero.
     static func spanningBoxOrientation(direction: SCNVector3) -> simd_quatf {
-        let zAxis = simd_normalize(SIMD3<Float>(direction.x, direction.y, direction.z))  // length → along the span
+        // The doc above says "must be non-zero"; enforce it rather than trusting
+        // it. `simd_normalize` of a zero (or non-finite) vector yields NaN, and
+        // a NaN quaternion assigned to `SCNNode.simdOrientation` corrupts the
+        // node transform — SceneKit asserts on it in some builds and renders
+        // garbage in the rest. A zero-length span is reachable from real data: a
+        // self-loop edge (`startVertexId == endVertexId`) has identical
+        // endpoints, and the sketch-scan and AR importers can map both ends of a
+        // short segment onto one vertex id with no minimum-length rule. Identity
+        // leaves the (zero-length) box unrotated, which is exactly right.
+        let raw = SIMD3<Float>(direction.x, direction.y, direction.z)
+        guard raw.x.isFinite, raw.y.isFinite, raw.z.isFinite,
+              simd_length(raw) > 1e-6 else {
+            return simd_quatf(angle: 0, axis: SIMD3<Float>(0, 1, 0))
+        }
+        let zAxis = simd_normalize(raw)  // length → along the span
         // Width lies along the horizontal perpendicular to the span's ground
         // track (matches the legacy euler-Y width direction). Guard the
         // degenerate purely-vertical span (no rail is vertical) by falling back
@@ -1828,6 +1855,14 @@ struct DeckSceneBuilder {
         let xAxis = simd_length(horizPerp) > 1e-6 ? simd_normalize(horizPerp) : SIMD3<Float>(1, 0, 0)
         let yAxis = simd_normalize(simd_cross(zAxis, xAxis))                              // height → normal to the span
         return simd_quatf(simd_float3x3(columns: (xAxis, yAxis, zAxis)))
+    }
+
+    /// SceneKit stores node transforms as raw floats and never validates them,
+    /// so one NaN silently corrupts a whole subtree's matrix. Collapse to the
+    /// origin instead — a misplaced strut is a visible, reportable defect; a
+    /// corrupt transform is not.
+    private static func finiteOrZero(_ value: Float) -> Float {
+        value.isFinite ? value : 0
     }
 
     private static func buildSpanningBox(
@@ -1843,9 +1878,14 @@ struct DeckSceneBuilder {
         // sloped stair handrail it includes the rise so the rail is no longer
         // ~cos(pitch) too short.
         let delta = SCNVector3(p2.x - p1.x, p2.y - p1.y, p2.z - p1.z)
-        let length = sqrt(delta.x * delta.x + delta.y * delta.y + delta.z * delta.z)
+        let rawLength = sqrt(delta.x * delta.x + delta.y * delta.y + delta.z * delta.z)
+        // A non-finite endpoint (corrupt scale or coordinate) would otherwise
+        // hand SceneKit a NaN box dimension and a NaN position.
+        let length = rawLength.isFinite ? rawLength : 0
+        let safeWidth = width.isFinite ? width : 0
+        let safeHeight = height.isFinite ? height : 0
 
-        let box = SCNBox(width: CGFloat(width), height: CGFloat(height), length: CGFloat(length), chamferRadius: 0)
+        let box = SCNBox(width: CGFloat(safeWidth), height: CGFloat(safeHeight), length: CGFloat(length), chamferRadius: 0)
         box.firstMaterial = material
 
         let node = SCNNode(geometry: box)
@@ -1855,9 +1895,9 @@ struct DeckSceneBuilder {
         // tilted symmetrically between its two posts. The XZ center is always
         // the endpoint midpoint, as before.
         node.position = SCNVector3(
-            (p1.x + p2.x) / 2,
-            yCenter,
-            (p1.z + p2.z) / 2
+            finiteOrZero((p1.x + p2.x) / 2),
+            finiteOrZero(yCenter),
+            finiteOrZero((p1.z + p2.z) / 2)
         )
         node.simdOrientation = spanningBoxOrientation(direction: delta)
 

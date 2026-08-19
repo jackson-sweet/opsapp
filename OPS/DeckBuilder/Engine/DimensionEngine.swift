@@ -8,10 +8,21 @@ struct DimensionEngine {
 
     /// Format inches as feet and inches string (e.g., 294 → "24' 6\"")
     static func formatImperial(_ totalInches: Double) -> String {
+        // Non-finite FIRST, and before the negative branch below. `NaN >= 0` is
+        // false and `abs(NaN)` is NaN, so a NaN reaching that branch recurses
+        // with the identical argument forever and overflows the stack; `-inf`
+        // recurses once to `+inf` and then traps in the `Int(...)` conversion.
+        // Dimensions are derived from synced drawing geometry, so a corrupt
+        // scale or coordinate must degrade to a dash, never take the app down.
+        guard totalInches.isFinite else { return "—" }
         guard totalInches >= 0 else {
             print("[DeckBuilder] formatImperial: negative value \(totalInches), using absolute")
             return formatImperial(abs(totalInches))
         }
+        // `Int(_:)` traps past `Int.max`. Clamp to a span no deck approaches
+        // (1,000,000 inches ≈ 15.8 miles) so a corrupt value renders large
+        // rather than aborting the process.
+        guard totalInches <= 1_000_000 else { return "—" }
         // Snap to the picker's resolution — nearest 1/16" — and render as a
         // reduced fraction (e.g. 5 1/2", 5 3/16"), never a decimal. Integer math
         // on total sixteenths handles foot/inch rollover with no "11' 12\"" edge.
@@ -55,6 +66,9 @@ struct DimensionEngine {
 
     /// Format centimeters as meters and cm (e.g., 245 → "2.45 m")
     static func formatMetric(_ totalCm: Double) -> String {
+        // `String(format:)` renders "nan"/"inf" rather than trapping, but the
+        // design system's empty value is a dash — never a raw float token.
+        guard totalCm.isFinite else { return "—" }
         if totalCm >= 100 {
             return String(format: "%.2f m", totalCm / 100.0)
         }
@@ -76,8 +90,12 @@ struct DimensionEngine {
 
     /// Format area in square feet (e.g., 56448 sq inches → "392 sq ft")
     static func formatAreaImperial(_ sqInches: Double) -> String {
+        // `+inf >= 10` is true and `Int(inf)` traps, so the non-finite check has
+        // to come before the branch, not inside it.
+        guard sqInches.isFinite else { return "—" }
         let sqFeet = sqInches / 144.0
         if sqFeet >= 10 {
+            guard sqFeet <= 1_000_000_000 else { return "—" }
             return "\(Int(sqFeet.rounded())) sq ft"
         }
         return String(format: "%.1f sq ft", sqFeet)

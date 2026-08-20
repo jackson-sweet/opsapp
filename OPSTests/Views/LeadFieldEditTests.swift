@@ -112,20 +112,28 @@ final class LeadFieldEditTests: XCTestCase {
 
     /// The headline promise: a viewer holding a dossier field gets NOTHING.
     /// Not a disabled editor, not a refusal — no editing effect at all.
-    func testViewerHoldResolvesToNothing() {
+    ///
+    /// The gate is `InfoRowEdit.offersLongPressEdit`, the SAME rule the
+    /// project-details document already uses for its CLIENT / ADDRESS / NOTES
+    /// rows, so the two documents cannot drift apart.
+    func testViewerIsNeverOfferedAnEditor() {
         for hasValue in [true, false] {
-            for hasTapAction in [true, false] {
-                XCTAssertEqual(
-                    LeadFieldPress.resolve(
-                        .hold,
-                        canEdit: false,
-                        hasValue: hasValue,
-                        hasTapAction: hasTapAction
-                    ),
-                    .ignore,
-                    "A viewer must never reach an editor (hasValue: \(hasValue), hasTapAction: \(hasTapAction))"
-                )
-            }
+            XCTAssertFalse(
+                InfoRowEdit.offersLongPressEdit(canEdit: false, hasValue: hasValue),
+                "A viewer must never be gated in (hasValue: \(hasValue))"
+            )
+        }
+
+        for hasTapAction in [true, false] {
+            XCTAssertEqual(
+                LeadFieldPress.resolve(
+                    .hold,
+                    offersEdit: false,
+                    hasTapAction: hasTapAction
+                ),
+                .ignore,
+                "A hold that is not gated in must resolve to nothing"
+            )
         }
     }
 
@@ -133,17 +141,8 @@ final class LeadFieldEditTests: XCTestCase {
     /// takes nothing away from them.
     func testViewerKeepsTapMeaning() {
         XCTAssertEqual(
-            LeadFieldPress.resolve(.tap, canEdit: false, hasValue: true, hasTapAction: true),
+            LeadFieldPress.resolve(.tap, offersEdit: false, hasTapAction: true),
             .activate
-        )
-    }
-
-    /// An EMPTY field taps into its editor — but only for someone who may edit.
-    /// A viewer tapping an em dash still gets nothing.
-    func testViewerTappingEmptyFieldGetsNothing() {
-        XCTAssertEqual(
-            LeadFieldPress.resolve(.tap, canEdit: false, hasValue: false, hasTapAction: true),
-            .ignore
         )
     }
 
@@ -152,43 +151,30 @@ final class LeadFieldEditTests: XCTestCase {
     /// and an inert fact must not announce itself as a button.
     func testInertFactIsNotAButtonForAViewer() {
         XCTAssertFalse(
-            LeadFieldPress.isInteractive(canEdit: false, hasTapAction: false),
+            LeadFieldPress.isInteractive(offersEdit: false, hasTapAction: false),
             "A viewer reading an estimated value hears a value, not a button"
         )
-        XCTAssertTrue(LeadFieldPress.isInteractive(canEdit: false, hasTapAction: true))
-        XCTAssertTrue(LeadFieldPress.isInteractive(canEdit: true, hasTapAction: false))
+        XCTAssertTrue(LeadFieldPress.isInteractive(offersEdit: false, hasTapAction: true))
+        XCTAssertTrue(LeadFieldPress.isInteractive(offersEdit: true, hasTapAction: false))
     }
 
     // MARK: - 2. One effect per press
 
-    func testHoldOpensEditorForPermittedOperator() {
+    func testHoldOpensEditorWhenGatedIn() {
+        XCTAssertTrue(InfoRowEdit.offersLongPressEdit(canEdit: true, hasValue: true))
         XCTAssertEqual(
-            LeadFieldPress.resolve(.hold, canEdit: true, hasValue: true, hasTapAction: true),
+            LeadFieldPress.resolve(.hold, offersEdit: true, hasTapAction: true),
             .edit
         )
     }
 
-    /// A hold must never ALSO fire the tap. Populated address: hold edits, and
-    /// the only other outcome the resolver can produce for a tap is `.activate`
-    /// — the two can never both come out of one press.
+    /// A hold must never ALSO fire the tap. The resolver can only ever produce
+    /// one effect per press, so the two can never both come out of one gesture.
     func testPopulatedFieldTapKeepsItsOwnMeaning() {
         XCTAssertEqual(
-            LeadFieldPress.resolve(.tap, canEdit: true, hasValue: true, hasTapAction: true),
+            LeadFieldPress.resolve(.tap, offersEdit: true, hasTapAction: true),
             .activate,
             "A tap on a populated field routes/opens — it must not pop a keyboard under a reading finger"
-        )
-    }
-
-    /// Long-pressing an em dash is a poor target, and an empty field has no tap
-    /// meaning worth protecting, so the tap edits.
-    func testEmptyFieldTapsStraightIntoItsEditor() {
-        XCTAssertEqual(
-            LeadFieldPress.resolve(.tap, canEdit: true, hasValue: false, hasTapAction: true),
-            .edit
-        )
-        XCTAssertEqual(
-            LeadFieldPress.resolve(.tap, canEdit: true, hasValue: false, hasTapAction: false),
-            .edit
         )
     }
 
@@ -196,8 +182,26 @@ final class LeadFieldEditTests: XCTestCase {
     /// finger — only a deliberate hold opens it.
     func testPopulatedFieldWithoutTapMeaningStaysInert() {
         XCTAssertEqual(
-            LeadFieldPress.resolve(.tap, canEdit: true, hasValue: true, hasTapAction: false),
+            LeadFieldPress.resolve(.tap, offersEdit: true, hasTapAction: false),
             .ignore
+        )
+    }
+
+    /// A BLANK field is deliberately not hold-editable. A long press on nothing
+    /// is undiscoverable, so a blank carries an explicit ADD / ASSIGN chip
+    /// instead — the project document's rule, applied here unchanged.
+    func testBlankFieldIsNotHoldEditable() {
+        XCTAssertFalse(
+            InfoRowEdit.offersLongPressEdit(canEdit: true, hasValue: false),
+            "A blank shows a named way in, never a hidden gesture"
+        )
+    }
+
+    /// A field already in its editor offers nothing further — a hold inside an
+    /// open editor must not re-open it underneath the operator.
+    func testFieldAlreadyEditingOffersNothingFurther() {
+        XCTAssertFalse(
+            InfoRowEdit.offersLongPressEdit(canEdit: true, hasValue: true, isEditing: true)
         )
     }
 

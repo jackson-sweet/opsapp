@@ -95,30 +95,31 @@ enum LeadFieldPressEffect: Equatable {
 
 /// Resolves a press into exactly one effect.
 ///
-/// The empty-field rule is the interesting one. A populated field is data being
-/// READ — popping a keyboard under a reading finger is hostile, so a tap keeps
-/// its own meaning and only a hold edits. An EMPTY field has no tap meaning to
-/// protect and is a poor long-press target besides (holding an em dash teaches
-/// nobody anything), so a plain tap opens its editor. The affordance matches
-/// the operator's current reality instead of the data model's shape.
+/// `offersEdit` is deliberately NOT a bare permission flag — every call site
+/// feeds it `InfoRowEdit.offersLongPressEdit(canEdit:hasValue:isEditing:)`, the
+/// same gate the project-details document already uses for its own CLIENT /
+/// ADDRESS / NOTES rows. One rule answers both documents, so the two cannot
+/// drift apart, and it carries the empty-field decision with it: a blank field
+/// is NOT hold-editable, because a long press on nothing is undiscoverable. A
+/// blank field shows an explicit ADD / ASSIGN chip instead.
+///
+/// A populated field is data being READ, so a tap keeps its own meaning —
+/// directions, the client sheet, the contact dialog — and only a deliberate
+/// hold corrects it. Popping a keyboard under a reading finger is hostile.
 enum LeadFieldPress {
     static func resolve(
         _ gesture: LeadFieldGesture,
-        canEdit: Bool,
-        hasValue: Bool,
+        offersEdit: Bool,
         hasTapAction: Bool
     ) -> LeadFieldPressEffect {
         switch gesture {
         case .hold:
-            // The hold gesture is only ever attached when `canEdit`; the guard
+            // The hold half is only ever attached when `offersEdit`; the guard
             // is restated here so the resolver is honest standalone.
-            guard canEdit else { return .ignore }
-            return .edit
+            return offersEdit ? .edit : .ignore
 
         case .tap:
-            if canEdit && !hasValue { return .edit }
-            if hasValue && hasTapAction { return .activate }
-            return .ignore
+            return hasTapAction ? .activate : .ignore
         }
     }
 
@@ -129,8 +130,8 @@ enum LeadFieldPress {
     /// and must not announce itself as a button. This is why a viewer reading
     /// an estimated value hears a value, while an operator who can correct it
     /// hears a button.
-    static func isInteractive(canEdit: Bool, hasTapAction: Bool) -> Bool {
-        canEdit || hasTapAction
+    static func isInteractive(offersEdit: Bool, hasTapAction: Bool) -> Bool {
+        offersEdit || hasTapAction
     }
 }
 
@@ -449,8 +450,9 @@ final class LeadFieldEditController: ObservableObject {
 /// the plain tap they have today rather than a dead affordance that teases.
 private struct HoldToEditModifier: ViewModifier {
     let field: LeadEditableField
-    let canEdit: Bool
-    let hasValue: Bool
+    /// `InfoRowEdit.offersLongPressEdit(...)` — permission AND a value to
+    /// correct AND not already editing. See `LeadFieldPress`.
+    let offersEdit: Bool
     /// Radius of the press tint. Must match the surface the field sits on, or
     /// a squarer tint peeks past a rounder card's clipped corners.
     let cornerRadius: CGFloat
@@ -468,9 +470,9 @@ private struct HoldToEditModifier: ViewModifier {
         decorated(content)
             .accessibilityElement(children: .combine)
             .modifier(EditAffordanceAccessibility(
-                canEdit: canEdit,
+                offersEdit: offersEdit,
                 isInteractive: LeadFieldPress.isInteractive(
-                    canEdit: canEdit,
+                    offersEdit: offersEdit,
                     hasTapAction: hasTapAction
                 ),
                 actionName: field.accessibilityActionName,
@@ -492,7 +494,7 @@ private struct HoldToEditModifier: ViewModifier {
             .animation(OPSStyle.Animation.hover, value: isPressing)
             .contentShape(Rectangle())
 
-        if canEdit {
+        if offersEdit {
             painted.gesture(editGesture)
         } else if hasTapAction {
             painted.gesture(TapGesture().onEnded { perform(.tap) })
@@ -521,8 +523,7 @@ private struct HoldToEditModifier: ViewModifier {
     private func perform(_ gesture: LeadFieldGesture) {
         switch LeadFieldPress.resolve(
             gesture,
-            canEdit: canEdit,
-            hasValue: hasValue,
+            offersEdit: offersEdit,
             hasTapAction: hasTapAction
         ) {
         case .edit:
@@ -546,14 +547,14 @@ private struct HoldToEditModifier: ViewModifier {
 /// offered and then silently does nothing. A viewer gets the button trait only
 /// where the field genuinely does something on tap, and no edit action at all.
 private struct EditAffordanceAccessibility: ViewModifier {
-    let canEdit: Bool
+    let offersEdit: Bool
     let isInteractive: Bool
     let actionName: String
     let onEdit: () -> Void
 
     @ViewBuilder
     func body(content: Content) -> some View {
-        if canEdit {
+        if offersEdit {
             content
                 .accessibilityAddTraits(.isButton)
                 .accessibilityHint("Touch and hold to edit.")
@@ -570,24 +571,24 @@ extension View {
     /// Dossier field: tap keeps its meaning, hold corrects it.
     ///
     /// - Parameters:
-    ///   - hasValue: whether the field currently carries a value. An empty
-    ///     editable field takes a plain tap to its editor.
+    ///   - offersEdit: pass `InfoRowEdit.offersLongPressEdit(canEdit:hasValue:
+    ///     isEditing:)` — the shared gate the project-details document uses for
+    ///     the same job. Blank fields are excluded by design; they carry an
+    ///     explicit ADD / ASSIGN chip instead of a hidden gesture.
     ///   - cornerRadius: radius of the press tint — match the surface the
     ///     field sits on (an L2 nested card is `cardRadius`, a bare row is
     ///     `cornerRadius`).
     ///   - onActivate: the field's own tap meaning, or nil when it has none.
     func holdToEdit(
         _ field: LeadEditableField,
-        canEdit: Bool,
-        hasValue: Bool,
+        offersEdit: Bool,
         cornerRadius: CGFloat = OPSStyle.Layout.cornerRadius,
         onEdit: @escaping () -> Void,
         onActivate: (() -> Void)? = nil
     ) -> some View {
         modifier(HoldToEditModifier(
             field: field,
-            canEdit: canEdit,
-            hasValue: hasValue,
+            offersEdit: offersEdit,
             cornerRadius: cornerRadius,
             onEdit: onEdit,
             onActivate: onActivate

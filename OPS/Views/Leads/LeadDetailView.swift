@@ -778,14 +778,27 @@ struct LeadDetailView: View {
         return !phone.isEmpty || !email.isEmpty
     }
 
+    /// Only an operator who can actually fill the blank is invited to. A viewer
+    /// looking at a lead with no contact details still reads CONTACT — offering
+    /// them ADD CONTACT would be a promise the screen cannot keep.
+    private var contactInvitesAdd: Bool {
+        !contactHasValue && canEdit
+    }
+
+    /// A lead with no phone and no email has nothing behind CONTACT ▾ but a
+    /// CANCEL button. On that lead the control states what it can actually do —
+    /// ADD CONTACT — and goes straight to the editor. Same principle as the
+    /// document's empty-row chips: a blank never hides its way in behind a
+    /// gesture, and the label describes the operator's reality, not the
+    /// feature's name.
     private var actionPairControls: some View {
         HStack(spacing: OPSStyle.Layout.spacing2) {
             HStack(spacing: 6) {
-                Text("CONTACT")
+                Text(contactInvitesAdd ? "ADD CONTACT" : "CONTACT")
                     .font(.custom("CakeMono-Light", size: 13.5))
                     .kerning(0.27)
                     .textCase(.uppercase)
-                Image(systemName: "chevron.down")
+                Image(systemName: contactInvitesAdd ? "plus" : "chevron.down")
                     .font(.system(size: 10, weight: .semibold))
             }
             .foregroundColor(OPSStyle.Colors.text)
@@ -804,16 +817,27 @@ struct LeadDetailView: View {
             )
             .holdToEdit(
                 .contact,
-                canEdit: canEdit,
-                hasValue: contactHasValue,
+                offersEdit: InfoRowEdit.offersLongPressEdit(
+                    canEdit: canEdit,
+                    hasValue: contactHasValue,
+                    isEditing: fieldEdit.isEditing(.contact)
+                ),
                 cornerRadius: OPSStyle.Layout.buttonRadius,
                 onEdit: { fieldEdit.begin(.contact) },
                 onActivate: {
                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                    showingContactDialog = true
+                    if contactHasValue {
+                        showingContactDialog = true
+                    } else if canEdit {
+                        fieldEdit.begin(.contact)
+                    }
                 }
             )
-            .accessibilityLabel("Contact \(opportunity.displayContactName)")
+            .accessibilityLabel(
+                contactInvitesAdd
+                    ? "Add contact details for \(opportunity.displayContactName)"
+                    : "Contact \(opportunity.displayContactName)"
+            )
 
             Menu {
                 if canConvert && !opportunity.stage.isTerminal {

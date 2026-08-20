@@ -147,18 +147,25 @@ struct DeckTabView: View {
             refreshLocalDeckDesign()
         }
         .onReceive(
-            NotificationCenter.default.publisher(for: ModelContext.didSave)
+            NotificationCenter.default.publisher(for: ModelContext.didSave, object: modelContext)
                 .receive(on: DispatchQueue.main)
         ) { notification in
             refreshLocalDeckDesign(ifAffectedBy: notification)
         }
         .onReceive(
-            NotificationCenter.default.publisher(for: .dataActorDidSave)
+            NotificationCenter.default.publisher(
+                for: .dataActorMainContextDidRefresh,
+                object: modelContext
+            )
                 .receive(on: DispatchQueue.main)
         ) { notification in
             refreshLocalDeckDesign(ifAffectedBy: notification)
         }
         .task(id: owner.id) {
+            // Do not depend on `.onAppear` versus `.task` modifier ordering:
+            // establish local truth before deciding whether the remote repair
+            // fetch is necessary.
+            refreshLocalDeckDesign()
             await fetchRemoteDeckDesignIfNeeded()
             refreshLocalDeckDesign()
         }
@@ -253,18 +260,15 @@ struct DeckTabView: View {
             return
         }
 
-        if updated.contains(where: { $0 == currentIdentifier }) {
-            refreshLocalDeckDesign()
-            return
-        }
-
         // An inserted identifier may already have been deleted by the time a
         // main-queue notification is delivered (sync commonly batches exactly
         // that sequence). `modelContext.model(for:)` returns a fault for that
-        // identifier and touching it traps in SwiftData. A scoped fetch is both
-        // safe and cheap, and only insertions can introduce a new candidate for
-        // this owner; unrelated updates and deletes stay entirely off the view.
-        if inserted.contains(where: isDeckDesignIdentifier) {
+        // identifier and touching it traps in SwiftData. Updates also need a
+        // scoped fetch: a design can be reassigned from another owner into this
+        // one (or the current design away from it). The fetch is identity-gated
+        // before state is written, so unrelated traffic never rebuilds the
+        // view graph even though it checks the narrow owner index.
+        if (inserted + updated).contains(where: isDeckDesignIdentifier) {
             refreshLocalDeckDesign()
         }
     }

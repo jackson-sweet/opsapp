@@ -272,18 +272,22 @@ final class DeckViewportUpdateBudgetTests: XCTestCase {
         defer { hosted.restore() }
         RunLoop.main.run(until: Date(timeIntervalSinceNow: 1.5))
 
-        // Churn from a run-loop timer so the ONLY blocking pump is the single
-        // `run(until:)` below.
+        // Churn one unrelated persisted row from a run-loop timer so this
+        // exercises the production-heavy UPDATE path — including an owner
+        // reassignment eligibility check — while the ONLY blocking pump is the
+        // single `run(until:)` below.
+        let unrelated = DeckDesign(
+            companyId: "budget-company",
+            opportunityId: UUID().uuidString.lowercased(),
+            title: "churn"
+        )
+        context.insert(unrelated)
+        try context.save()
+
         var writes = 0
         let timer = Timer(timeInterval: churnInterval, repeats: true) { _ in
-            let throwaway = DeckDesign(
-                companyId: "budget-company",
-                opportunityId: UUID().uuidString.lowercased(),
-                title: "churn"
-            )
-            context.insert(throwaway)
-            try? context.save()
-            context.delete(throwaway)
+            unrelated.title = "churn-\(writes)"
+            unrelated.updatedAt = Date()
             try? context.save()
             writes += 1
         }
@@ -353,6 +357,102 @@ final class DeckViewportUpdateBudgetTests: XCTestCase {
         let relevantId = relevant.id
         context.insert(relevant)
         try context.save()
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.5))
+
+        XCTAssertEqual(observedDesignIds, [relevantId])
+    }
+
+    /// A server update can attach an existing standalone/other-owner design to
+    /// this lead. It is an UPDATE, not an INSERT, and must become visible even
+    /// when there was no current model identifier to match.
+    func testTargetedFeedShowsDesignReassignedIntoVisibleOwner() throws {
+        let opportunityId = UUID().uuidString.lowercased()
+        let container = try makeEmptyContainer()
+        let context = container.mainContext
+        let reassigned = DeckDesign(
+            companyId: "budget-company",
+            opportunityId: UUID().uuidString.lowercased(),
+            title: "Reassigned"
+        )
+        context.insert(reassigned)
+        try context.save()
+        let reassignedId = reassigned.id
+        var observedDesignIds: [String?] = []
+
+        let hosted = try hostDeckTab(
+            opportunity: lead(id: opportunityId),
+            container: container,
+            onDesignChange: { observedDesignIds.append($0?.id) }
+        )
+        defer { hosted.restore() }
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.5))
+        XCTAssertTrue(observedDesignIds.isEmpty)
+
+        reassigned.opportunityId = opportunityId
+        reassigned.updatedAt = Date()
+        try context.save()
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.5))
+
+        XCTAssertEqual(observedDesignIds, [reassignedId])
+
+        reassigned.opportunityId = UUID().uuidString.lowercased()
+        reassigned.updatedAt = Date()
+        try context.save()
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.5))
+
+        XCTAssertEqual(observedDesignIds.count, 2)
+        XCTAssertNil(observedDesignIds.last!)
+    }
+
+    /// Background actor inserts on iOS 17.6–25 are not queryable from the main
+    /// context until MainContextRefreshBridge registers their identifiers.
+    /// DeckTabView must consume the bridge's ordered completion event, never
+    /// race the original DataActor notification.
+    func testTargetedFeedWaitsForMainContextBridgeBeforeBackgroundInsertFetch() throws {
+        let opportunityId = UUID().uuidString.lowercased()
+        let container = try makeEmptyContainer()
+        let mainContext = container.mainContext
+        let actorNotification = Notification.Name("DeckBudgetBackgroundActorDidSave")
+        let bridge = MainContextRefreshBridge(
+            mainContext: mainContext,
+            listeningTo: actorNotification,
+            forceInsertedIdentifiersIntoRegistry: true
+        )
+        _ = bridge
+        var observedDesignIds: [String?] = []
+
+        let hosted = try hostDeckTab(
+            opportunity: lead(id: opportunityId),
+            container: container,
+            onDesignChange: { observedDesignIds.append($0?.id) }
+        )
+        defer { hosted.restore() }
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.5))
+
+        let backgroundContext = ModelContext(container)
+        let relevant = DeckDesign(
+            companyId: "budget-company",
+            opportunityId: opportunityId,
+            title: "Background"
+        )
+        let relevantId = relevant.id
+        backgroundContext.insert(relevant)
+        try backgroundContext.save()
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.25))
+        XCTAssertTrue(
+            observedDesignIds.isEmpty,
+            "The deck tab reacted to the background save before the visibility bridge completed"
+        )
+
+        NotificationCenter.default.post(
+            name: actorNotification,
+            object: nil,
+            userInfo: [
+                "inserted": [relevant.persistentModelID],
+                "updated": [PersistentIdentifier](),
+                "deleted": [PersistentIdentifier]()
+            ]
+        )
         RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.5))
 
         XCTAssertEqual(observedDesignIds, [relevantId])

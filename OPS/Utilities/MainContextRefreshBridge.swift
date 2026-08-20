@@ -30,6 +30,15 @@ import Foundation
 import SwiftData
 import Combine
 
+extension Notification.Name {
+    /// Posted only after a DataActor save has been made visible to the main
+    /// ModelContext, including the iOS 17.6–25 inserted-ID registry workaround.
+    /// Consumers that fetch main-context models after background saves must
+    /// observe this boundary, not `.dataActorDidSave` directly.
+    static let dataActorMainContextDidRefresh =
+        Notification.Name("DataActorMainContextDidRefresh")
+}
+
 @MainActor
 final class MainContextRefreshBridge: ObservableObject {
     // MARK: - Published State
@@ -42,6 +51,7 @@ final class MainContextRefreshBridge: ObservableObject {
     // MARK: - Dependencies
 
     private let mainContext: ModelContext
+    private let forceInsertedIdentifiersIntoRegistry: Bool
     private var cancellable: AnyCancellable?
 
     // MARK: - OS Workaround Cache
@@ -65,8 +75,14 @@ final class MainContextRefreshBridge: ObservableObject {
     /// Subscribes to a Sendable notification posted by a background actor after save.
     /// The notification's userInfo must contain "inserted" / "updated" / "deleted"
     /// arrays of PersistentIdentifier. See DataActor.configure for the producer side.
-    init(mainContext: ModelContext, listeningTo notificationName: Notification.Name) {
+    init(
+        mainContext: ModelContext,
+        listeningTo notificationName: Notification.Name,
+        forceInsertedIdentifiersIntoRegistry: Bool? = nil
+    ) {
         self.mainContext = mainContext
+        self.forceInsertedIdentifiersIntoRegistry =
+            forceInsertedIdentifiersIntoRegistry ?? Self.needsInsertForceWorkaround
         self.cancellable = NotificationCenter.default
             .publisher(for: notificationName)
             .receive(on: DispatchQueue.main)
@@ -89,7 +105,7 @@ final class MainContextRefreshBridge: ObservableObject {
         // iOS 26+ resolves the auto-refresh gap natively; skip the loop to
         // reclaim the small per-save main-thread cost observed in calendar
         // swipe perf verification.
-        if Self.needsInsertForceWorkaround,
+        if forceInsertedIdentifiersIntoRegistry,
            let insertedIds = userInfo["inserted"] as? [PersistentIdentifier] {
             for id in insertedIds {
                 _ = mainContext.model(for: id)
@@ -97,5 +113,15 @@ final class MainContextRefreshBridge: ObservableObject {
         }
 
         refreshCounter &+= 1  // wrap-safe overflow
+
+        // This is the ordered visibility boundary for targeted main-context
+        // consumers. Posting from the bridge (rather than observing the actor's
+        // original notification independently) guarantees the old-OS registry
+        // force above has completed before a consumer performs its fetch.
+        NotificationCenter.default.post(
+            name: .dataActorMainContextDidRefresh,
+            object: mainContext,
+            userInfo: userInfo
+        )
     }
 }

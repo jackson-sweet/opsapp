@@ -154,7 +154,14 @@
   performs zero drawing serializations, ignores unrelated deck inserts, shows
   a relevant insert, and safely clears a deleted visible model.
 - The local repair pins Supabase Swift 2.54.1 and replaces the two lead viewer
-  queries with one owner-scoped feed. The focused simulator suite passes 30
-  tests and the signed generic-device build succeeds. The four founder-phone
-  DECK taps remain a separate manual acceptance gate; simulator proof cannot
-  claim them.
+  queries with one owner-scoped feed. Background actor saves now cross an
+  ordered main-context visibility boundary before that feed fetches, and any
+  deck update is re-evaluated so reassignment into or away from the visible
+  lead cannot leave a stale selection.
+- The final focused simulator suite passes 32 tests. The repeated unrelated
+  update test measures 184–304 ms of main-thread CPU over 200 persisted
+  updates, performs zero drawing serializations, and the signed generic-device
+  build succeeds. Independent code review found no remaining correctness or
+  merge-blocking issue.
+- The four founder-phone DECK taps remain a separate manual acceptance gate;
+  simulator proof cannot claim them.

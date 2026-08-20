@@ -87,7 +87,7 @@ enum UploadErrorClassifier {
                 return .transient(reason: "invalid_response")
             case .invalidURL:
                 return .permanent(errorCode: "INVALID_URL", reason: "invalid upload URL")
-            case .presignError(let code):
+            case .presignError(let code, _):
                 return classifyHTTPStatus(code, context: "presign")
             case .s3Error(let code):
                 return classifyHTTPStatus(code, context: "s3")

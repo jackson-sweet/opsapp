@@ -9,6 +9,7 @@
 
 import Foundation
 import SwiftData
+import UIKit
 
 enum SiteVisitMediaSyncError: Error, Equatable, LocalizedError {
     /// The bytes are gone. A local capture's file is the ONLY copy until it
@@ -20,6 +21,7 @@ enum SiteVisitMediaSyncError: Error, Equatable, LocalizedError {
     /// pointer to a photo that is perfectly fine.
     case localFileUnreadable(String)
     case invalidRemoteURL(String)
+    case uploadPreparationFailed
 
     var errorDescription: String? {
         switch self {
@@ -29,6 +31,98 @@ enum SiteVisitMediaSyncError: Error, Equatable, LocalizedError {
             return "Site-visit media file could not be read: \(source)"
         case .invalidRemoteURL(let value):
             return "Site-visit upload returned an invalid URL: \(value)"
+        case .uploadPreparationFailed:
+            return "Couldn't prepare this site visit photo for upload. The original remains on this phone."
+        }
+    }
+}
+
+/// One byte-and-dimension policy for durable site-visit media. The server's
+/// typed presign route rejects files above 10 MiB, while annotation composites
+/// can inherit a camera's full 12 MP+ canvas. Existing safe assets pass through
+/// untouched; only over-limit files are decoded, capped, and re-encoded.
+enum SiteVisitMediaImagePreparation {
+    static let maximumUploadBytes = 10 * 1_024 * 1_024
+    static let maximumPixelDimension: CGFloat = 2_048
+
+    static func prepare(
+        data: Data,
+        contentType: String
+    ) throws -> (data: Data, contentType: String) {
+        guard data.count > maximumUploadBytes else {
+            return (data, contentType)
+        }
+        guard let image = UIImage(data: data),
+              let jpeg = jpegData(for: image) else {
+            throw SiteVisitMediaSyncError.uploadPreparationFailed
+        }
+        return (jpeg, "image/jpeg")
+    }
+
+    /// Produces a durable/upload-safe JPEG for newly rendered composites as
+    /// well as legacy over-limit files. The dimension cap does the heavy work;
+    /// the quality ladder is a hard final guard against pathological images.
+    static func jpegData(for image: UIImage) -> Data? {
+        let dimensionLadder: [CGFloat] = [2_048, 1_536, 1_280, 1_024]
+        for dimension in dimensionLadder {
+            let resized = resizeToFit(image, maximumDimension: dimension)
+            let pixelCount = resized.size.width * resized.size.height
+            let startingQuality: CGFloat
+            if pixelCount > 4_000_000 {
+                startingQuality = 0.5
+            } else if pixelCount > 2_000_000 {
+                startingQuality = 0.6
+            } else if pixelCount > 1_000_000 {
+                startingQuality = 0.7
+            } else {
+                startingQuality = 0.8
+            }
+            for quality in [startingQuality, 0.5, 0.4, 0.3] {
+                guard let candidate = resized.jpegData(compressionQuality: quality) else {
+                    continue
+                }
+                if candidate.count <= maximumUploadBytes {
+                    return candidate
+                }
+            }
+        }
+        return nil
+    }
+
+    private static func resizeToFit(
+        _ image: UIImage,
+        maximumDimension: CGFloat
+    ) -> UIImage {
+        let longestEdge = max(image.size.width, image.size.height)
+        guard longestEdge > maximumDimension else { return image }
+        let scale = maximumDimension / longestEdge
+        let size = CGSize(
+            width: max(1, (image.size.width * scale).rounded()),
+            height: max(1, (image.size.height * scale).rounded())
+        )
+        let format = UIGraphicsImageRendererFormat()
+        format.opaque = true
+        format.scale = 1
+        return UIGraphicsImageRenderer(size: size, format: format).image { _ in
+            image.draw(in: CGRect(origin: .zero, size: size))
+        }
+    }
+}
+
+/// Runs raster decoding and encoding on its own serial executor, never on the
+/// MainActor that owns SwiftData and the sync UI.
+actor SiteVisitMediaUploadPreparer {
+    static let shared = SiteVisitMediaUploadPreparer()
+
+    func prepare(
+        data: Data,
+        contentType: String
+    ) async throws -> (data: Data, contentType: String) {
+        try autoreleasepool {
+            try SiteVisitMediaImagePreparation.prepare(
+                data: data,
+                contentType: contentType
+            )
         }
     }
 }
@@ -36,6 +130,7 @@ enum SiteVisitMediaSyncError: Error, Equatable, LocalizedError {
 struct SiteVisitMediaSyncManager {
     typealias LoadedAsset = (data: Data, contentType: String)
     typealias Loader = (String) throws -> LoadedAsset
+    typealias Preparer = (LoadedAsset) async throws -> LoadedAsset
     typealias Uploader = (
         _ siteVisitId: String,
         _ artifactId: String,
@@ -46,6 +141,7 @@ struct SiteVisitMediaSyncManager {
 
     private let uploader: Uploader
     private let loader: Loader
+    private let preparer: Preparer
 
     init(
         uploader: @escaping Uploader = { siteVisitId, artifactId, variant, data, contentType in
@@ -57,10 +153,17 @@ struct SiteVisitMediaSyncManager {
                 contentType: contentType
             )
         },
-        loader: @escaping Loader = Self.loadAsset
+        loader: @escaping Loader = Self.loadAsset,
+        preparer: @escaping Preparer = { asset in
+            try await SiteVisitMediaUploadPreparer.shared.prepare(
+                data: asset.data,
+                contentType: asset.contentType
+            )
+        }
     ) {
         self.uploader = uploader
         self.loader = loader
+        self.preparer = preparer
     }
 
     func uploadPendingMedia(
@@ -120,12 +223,13 @@ struct SiteVisitMediaSyncManager {
                 }
                 continue
             }
+            let prepared = try await preparer(asset)
             let remoteURL = try await uploader(
                 artifact.siteVisitId.lowercased(),
                 artifact.id.lowercased(),
                 variant,
-                asset.data,
-                asset.contentType
+                prepared.data,
+                prepared.contentType
             )
             guard Self.isRemoteURL(remoteURL) else {
                 throw SiteVisitMediaSyncError.invalidRemoteURL(remoteURL)

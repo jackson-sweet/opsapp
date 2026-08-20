@@ -7,6 +7,7 @@
 
 import XCTest
 import SwiftData
+import UIKit
 @testable import OPS
 
 @MainActor
@@ -100,6 +101,114 @@ final class SiteVisitMediaSyncManagerTests: XCTestCase {
             }.count,
             1
         )
+    }
+
+    func test_oversizedRasterIsNormalizedBeforePresignWithoutMutatingSourceBytes() async throws {
+        let format = UIGraphicsImageRendererFormat()
+        format.opaque = true
+        format.scale = 1
+        let image = UIGraphicsImageRenderer(
+            size: CGSize(width: 3_024, height: 4_032),
+            format: format
+        ).image { renderer in
+            UIColor.black.setFill()
+            renderer.fill(CGRect(x: 0, y: 0, width: 3_024, height: 4_032))
+            for index in 0..<64 {
+                UIColor(
+                    hue: CGFloat(index) / 64,
+                    saturation: 0.8,
+                    brightness: 0.8,
+                    alpha: 1
+                ).setFill()
+                renderer.fill(
+                    CGRect(
+                        x: CGFloat(index % 8) * 378,
+                        y: CGFloat(index / 8) * 504,
+                        width: 378,
+                        height: 504
+                    )
+                )
+            }
+        }
+        var source = try XCTUnwrap(image.jpegData(compressionQuality: 0.98))
+        if source.count <= SiteVisitMediaImagePreparation.maximumUploadBytes {
+            source.append(
+                Data(
+                    repeating: 0xA5,
+                    count: SiteVisitMediaImagePreparation.maximumUploadBytes
+                        - source.count + 1
+                )
+            )
+        }
+        let original = source
+        let context = try makeContainer().mainContext
+        let artifact = makeArtifact()
+        artifact.renderedAssetURL = nil
+        artifact.thumbnailURL = nil
+        context.insert(artifact)
+        let media = try insertMediaOperation(for: artifact, in: context)
+        var uploaded: Data?
+        var uploadedContentType: String?
+        let manager = SiteVisitMediaSyncManager(
+            uploader: { _, _, _, data, contentType in
+                uploaded = data
+                uploadedContentType = contentType
+                return "https://cdn.ops.test/normalized.jpg"
+            },
+            loader: { _ in (source, "image/jpeg") }
+        )
+
+        try await manager.uploadPendingMedia(
+            artifactId: artifactId,
+            mediaOperation: media,
+            context: context
+        )
+
+        XCTAssertEqual(source, original, "Upload preparation must never rewrite the durable source")
+        let prepared = try XCTUnwrap(uploaded)
+        XCTAssertLessThanOrEqual(
+            prepared.count,
+            SiteVisitMediaImagePreparation.maximumUploadBytes
+        )
+        XCTAssertEqual(uploadedContentType, "image/jpeg")
+        let normalized = try XCTUnwrap(UIImage(data: prepared))
+        XCTAssertLessThanOrEqual(
+            max(normalized.size.width, normalized.size.height),
+            SiteVisitMediaImagePreparation.maximumPixelDimension
+        )
+    }
+
+    func test_safeAssetPassesThroughByteForByteWithoutRasterDecode() async throws {
+        let source = Data([0x00, 0x01, 0x02, 0x03])
+
+        let prepared = try await SiteVisitMediaUploadPreparer().prepare(
+            data: source,
+            contentType: "image/heic"
+        )
+
+        XCTAssertEqual(prepared.data, source)
+        XCTAssertEqual(prepared.contentType, "image/heic")
+    }
+
+    func test_presignFailurePreservesBoundedJSONReason() throws {
+        let body = try JSONSerialization.data(
+            withJSONObject: ["error": "Invalid site visit upload request"]
+        )
+
+        let error = UploadError.presignFailure(statusCode: 400, responseData: body)
+
+        XCTAssertEqual(
+            error.errorDescription,
+            "Upload request failed (400): Invalid site visit upload request"
+        )
+    }
+
+    func test_presignFailureNeverDisplaysArbitraryResponseBody() {
+        let body = Data("<html>private proxy output</html>".utf8)
+
+        let error = UploadError.presignFailure(statusCode: 502, responseData: body)
+
+        XCTAssertEqual(error.errorDescription, "Upload request failed (502)")
     }
 
     func test_duplicateDrainWithOnlyRemoteURLsIsNoOp() async throws {

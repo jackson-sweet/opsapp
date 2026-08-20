@@ -664,6 +664,11 @@ struct DeckTabView: View {
         }
 
         let squareFeet = areaSquareInches / 144.0
+        // `.isFinite` before the threshold, not after: `+inf >= 0.5` is true and
+        // the caller feeds this straight into `Int(_:)`, which traps on a
+        // non-finite value. NaN would fail the threshold on its own; infinity
+        // would not.
+        guard squareFeet.isFinite else { return nil }
         return squareFeet >= 0.5 ? squareFeet : nil
     }
 
@@ -686,7 +691,9 @@ struct DeckTabView: View {
             .reduce(0, +)
         let linearFeet = totalInches / 12.0
 
-        guard linearFeet >= 0.5 else { return typeText }
+        // Same trap as the area chip: `+inf >= 0.5` passes and `Int(inf)` aborts
+        // the process. Fall back to naming the railing type alone.
+        guard linearFeet.isFinite, linearFeet >= 0.5 else { return typeText }
         return "\(Int(linearFeet.rounded()).formatted()) FT \(typeText)"
     }
 
@@ -718,6 +725,9 @@ struct DeckTabView: View {
     /// Format a height in feet — whole numbers drop the decimal (`9 FT`),
     /// fractional heights keep one place (`8.5 FT`).
     private func feetText(_ value: Double) -> String {
+        // An infinite elevation satisfies `rounded == rounded.rounded()` and
+        // then traps in `Int(_:)`. Heights come from stored drawing data.
+        guard value.isFinite, abs(value) <= 1_000_000 else { return "—" }
         let rounded = (value * 10).rounded() / 10
         if rounded == rounded.rounded() {
             return "\(Int(rounded)) FT"

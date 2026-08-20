@@ -526,10 +526,35 @@ struct StairConfig: Codable, Equatable {
     }
 
     /// Calculate tread count from total rise (elevation difference at edge endpoints)
+    ///
+    /// Every input is treated as hostile because this runs inside the read-only
+    /// viewers, not just the editor. `2d0d83bc` made the derived branch reachable
+    /// from a plain deck view (a stair with no stored `treadCount` now renders
+    /// instead of being skipped), and EVERY in-app level-connection stair takes
+    /// that branch — `StairConfigView.applyStairs` deliberately leaves
+    /// `treadCount` nil so the count re-derives when a level's height is edited.
+    ///
+    /// `risePerStep` reaches here straight from stored JSON
+    /// (`decodeIfPresent(...) ?? 7.5` only defaults a MISSING key, so a literal
+    /// `"risePerStep": 0` survives), and `Int(_: Double)` is a trapping
+    /// conversion: `Int(inf)` and `Int(nan)` both abort the process with an
+    /// uncatchable runtime failure, as does any quotient past `Int.max`. A deck
+    /// drawing is user data synced from other devices — it must never be able to
+    /// kill the app that opens it.
     static func calculateTreadCount(totalRise: Double, risePerStep: Double = 7.5) -> Int {
-        guard totalRise > 0 else { return 0 }
-        return Int(ceil(totalRise / risePerStep))
+        guard totalRise > 0, totalRise.isFinite,
+              risePerStep > 0, risePerStep.isFinite else { return 0 }
+        let steps = (totalRise / risePerStep).rounded(.up)
+        guard steps.isFinite else { return 0 }
+        // A real stair is tens of treads; the clamp keeps a corrupt rise from
+        // overflowing the conversion AND from asking the renderers for millions
+        // of nodes.
+        return Int(min(steps, Double(maximumTreadCount)))
     }
+
+    /// Upper bound on a derived tread count. Two storeys of 7.5" risers is ~32;
+    /// 500 is far beyond any real deck while staying trivially convertible.
+    static let maximumTreadCount = 500
 
     /// Calculate stringer length from total rise and run
     static func stringerLength(totalRise: Double, treadCount: Int, runPerTread: Double = 10.0) -> Double {

@@ -423,8 +423,7 @@ struct DeckCanvasView: View {
                         drawDimensionLabel(
                             context: context,
                             edge: viewModel.renderEdge(edge),
-                            vertexLookup: viewModel.renderVertex(byId:),
-                            canvasSize: size
+                            vertexLookup: viewModel.renderVertex(byId:)
                         )
                     }
                     if let anchor = viewModel.perimeterEntry.activeAnchor {
@@ -472,8 +471,7 @@ struct DeckCanvasView: View {
                     drawDimensionLabel(
                         context: context,
                         edge: viewModel.renderEdge(edge),
-                        vertexLookup: viewModel.renderVertex(byId:),
-                        canvasSize: size
+                        vertexLookup: viewModel.renderVertex(byId:)
                     )
                 }
                 if let anchor = viewModel.perimeterEntry.activeAnchor {
@@ -1494,13 +1492,11 @@ struct DeckCanvasView: View {
 
     // MARK: - Dimension Labels (offset from line with dark pill)
 
-    private func drawDimensionLabel(context: GraphicsContext, edge: DeckEdge, vertexLookup: (String) -> DeckVertex?, canvasSize viewportSize: CGSize) {
+    private func drawDimensionLabel(context: GraphicsContext, edge: DeckEdge, vertexLookup: (String) -> DeckVertex?) {
         guard let dim = edge.dimension,
               let start = vertexLookup(edge.startVertexId),
               let end = vertexLookup(edge.endVertexId) else { return }
 
-        let midX = (start.position.x + end.position.x) / 2
-        let midY = (start.position.y + end.position.y) / 2
         // An overridden dimension — one the operator typed or measured, and
         // then moved the drawing away from — reads in tan with a plain caption
         // beneath it. Presentation lives in DeckStaleDimensionPresenter so the
@@ -1524,40 +1520,29 @@ struct DeckCanvasView: View {
             ?? (len > 0 ? (-dy / len) * offsetDist : 0)
         let perpY = stairNormal.map { -$0.dy * offsetDist }
             ?? (len > 0 ? (dx / len) * offsetDist : -offsetDist)
-        let rawLabelX = midX + perpX
-        let labelY = midY + perpY
-
         // Dark pill background
         let charW = scaledSize(7.5, min: 5, max: 12)
         let pillW = CGFloat(label.count) * charW + scaledSize(16, min: 10, max: 24)
         let pillH = scaledSize(20, min: 14, max: 28)
         let cr = scaledSize(4, min: 2, max: 6)
-
-        // Clamp the label into the real visible world region. Negative workspace
-        // coordinates remain valid after the session canvas expands leftward.
-        let halfPill = pillW / 2
-        let edgeBuffer: CGFloat = 16 / canvasScale   // viewport px → canvas units
-        let visibleBounds = workspace.visibleWorldRect(
-            viewportSize: viewportSize,
-            scale: canvasScale,
-            offset: canvasOffset
+        let placement = DeckDimensionLabelPlacement.resolve(
+            edgeStart: start.position,
+            edgeEnd: end.position,
+            perpendicularOffset: CGVector(dx: perpX, dy: perpY),
+            pillSize: CGSize(width: pillW, height: pillH)
         )
-        let minX = visibleBounds.minX + halfPill + edgeBuffer
-        let maxX = max(minX, visibleBounds.maxX - halfPill - edgeBuffer)
-        let labelX = min(max(rawLabelX, minX), maxX)
 
-        let pillRect = CGRect(x: labelX - pillW / 2, y: labelY - pillH / 2, width: pillW, height: pillH)
         let pillColor: Color = (isStale || hasAccuracy)
             ? DeckStaleDimensionPresenter.chipFill
             : OPSStyle.Colors.cardBackground.opacity(0.95)
-        context.fill(Path(roundedRect: pillRect, cornerRadius: cr), with: .color(pillColor))
-        context.stroke(Path(roundedRect: pillRect, cornerRadius: cr),
+        context.fill(Path(roundedRect: placement.pillRect, cornerRadius: cr), with: .color(pillColor))
+        context.stroke(Path(roundedRect: placement.pillRect, cornerRadius: cr),
                        with: .color(OPSStyle.Colors.surfaceActive), lineWidth: 0.5)
 
         let fontSize = scaledSize(11, min: 8, max: 18)
         let labelColor: Color = (isStale || hasAccuracy) ? DeckStaleDimensionPresenter.valueColor : Color.white
         context.draw(Text(label).font(.system(size: fontSize, weight: .medium, design: .monospaced))
-            .foregroundColor(labelColor), at: CGPoint(x: labelX, y: labelY))
+            .foregroundColor(labelColor), at: placement.primaryAnchor)
 
         // Secondary label below dimension. Priority: stale > accuracy > user
         // label (bug 4a03f507) > railing > house > material > AR.
@@ -1599,7 +1584,7 @@ struct DeckCanvasView: View {
             let secOffset = scaledSize(12, min: 8, max: 18)
             context.draw(Text(secText)
                 .font(.system(size: scaledSize(9, min: 6, max: 14), weight: .medium, design: .monospaced))
-                .foregroundColor(secondaryColor), at: CGPoint(x: labelX, y: labelY + secOffset))
+                .foregroundColor(secondaryColor), at: placement.secondaryAnchor(verticalOffset: secOffset))
         }
     }
 

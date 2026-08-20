@@ -233,6 +233,7 @@ struct DeckTabView: View {
                 // any face is closed on any level. Bug ee787f29 follow-up.
                 if design.drawingData.hasAnyClosedSurface {
                     DeckTab3DView(drawingData: design.drawingData,
+                                  drawingIdentity: design.drawingDataJSON,
                                   onInteractingChange: { isViewportInteracting = $0 })
                 } else {
                     incompleteDesignMessage(openEnds: design.drawingData.openEndpointCount)

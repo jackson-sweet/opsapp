@@ -197,6 +197,7 @@ struct LeadDeckScreen: View {
         DeckFullscreenViewer(
             title: opportunity.deckDesignTitle,
             drawingData: design.drawingData,
+            drawingIdentity: design.drawingDataJSON,
             viewMode: $deckViewMode,
             toolState: deckToolState,
             onClose: { dismissDeckFullscreen() },

@@ -516,6 +516,7 @@ struct ProjectDetailsView: View {
                 DeckFullscreenViewer(
                     title: project.title,
                     drawingData: design.drawingData,
+                    drawingIdentity: design.drawingDataJSON,
                     viewMode: $deckViewMode,
                     toolState: deckToolState,
                     onClose: { dismissDeckFullscreen() },

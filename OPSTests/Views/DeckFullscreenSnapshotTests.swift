@@ -48,6 +48,7 @@ final class DeckFullscreenSnapshotTests: XCTestCase {
         let view = DeckFullscreenViewer(
             title: title,
             drawingData: drawingData,
+            drawingIdentity: drawingData.toJSON(),
             viewMode: .constant(.twoD),
             toolState: toolState,
             onClose: {},
@@ -81,6 +82,7 @@ final class DeckFullscreenSnapshotTests: XCTestCase {
             DeckFullscreenViewer(
                 title: title,
                 drawingData: Self.centeredSingleLevel(),
+                drawingIdentity: Self.centeredSingleLevel().toJSON(),
                 viewMode: .constant(.twoD),
                 toolState: DeckViewerToolState(),
                 onClose: {},

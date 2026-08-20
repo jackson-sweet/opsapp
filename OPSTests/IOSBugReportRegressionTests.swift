@@ -172,7 +172,7 @@ final class IOSBugReportRegressionTests: XCTestCase {
     }
 
     @MainActor
-    func testGlobalKeyboardDoneAccessoryKeepsCompactBandAndSpaceBelowLabel() throws {
+    func testGlobalKeyboardDoneAccessoryInsetsButtonBorderFromKeyboardAndCentersLabel() throws {
         let textField = UITextField()
         let accessory = OPSKeyboardDoneAccessoryView(editingResponder: textField)
         accessory.frame = CGRect(
@@ -201,22 +201,59 @@ final class IOSBugReportRegressionTests: XCTestCase {
             accessory.doneLabel.bounds,
             to: accessory
         )
-        let labelToKeyboardSeparation = accessory.bounds.maxY - labelFrame.maxY
+        // The bug this guards (026891c5): the predecessor test measured the
+        // LABEL's clearance, which an inner top padding satisfies while the
+        // BUTTON — the element whose border the user actually sees — still
+        // spanned the whole band and sat flush on the keyboard. Measure the
+        // button's own edges against the band, and the label against the
+        // button. Nothing here is satisfiable by nudging the label alone.
+        let borderToKeyboardSeparation = accessory.bounds.maxY - doneFrame.maxY
+        let borderToTopSeparation = doneFrame.minY - accessory.bounds.minY
 
-        XCTAssertEqual(
-            OPSStyle.Layout.keyboardAccessoryHeight,
-            OPSStyle.Layout.touchTargetMin
-        )
         XCTAssertEqual(
             accessory.intrinsicContentSize.height,
             OPSStyle.Layout.keyboardAccessoryHeight
         )
-        XCTAssertGreaterThanOrEqual(doneFrame.height, OPSStyle.Layout.touchTargetMin)
-        XCTAssertLessThan(labelFrame.height, doneFrame.height)
-        XCTAssertGreaterThanOrEqual(
-            labelToKeyboardSeparation,
-            OPSStyle.Layout.spacing2
+
+        // The band grew only enough to gutter a full-size target, and stays
+        // compact — an earlier build was rejected for being too tall.
+        XCTAssertGreaterThan(
+            OPSStyle.Layout.keyboardAccessoryHeight,
+            OPSStyle.Layout.touchTargetMin
         )
+        XCTAssertLessThanOrEqual(
+            OPSStyle.Layout.keyboardAccessoryHeight,
+            OPSStyle.Layout.bottomCTAHeight
+        )
+
+        // Touch target is never traded away to buy the gap.
+        XCTAssertGreaterThanOrEqual(doneFrame.height, OPSStyle.Layout.touchTargetMin)
+        XCTAssertGreaterThanOrEqual(doneFrame.width, OPSStyle.Layout.touchTargetMin)
+
+        // The visible border is inset from the keyboard edge, and from the top.
+        XCTAssertGreaterThanOrEqual(
+            borderToKeyboardSeparation,
+            OPSStyle.Layout.spacing1,
+            "DONE button's bottom border must clear the keyboard's top edge"
+        )
+        XCTAssertGreaterThanOrEqual(
+            borderToTopSeparation,
+            OPSStyle.Layout.spacing1,
+            "DONE button's top border must clear the top of the accessory band"
+        )
+
+        // "DONE" sits centred in the button, not floating off its top. The
+        // label's box is nudged by a sub-point cap-height offset so the glyph
+        // INK lands dead centre; exact optical centring is asserted against
+        // rendered pixels in KeyboardDoneAccessorySnapshotTests.
+        XCTAssertEqual(
+            labelFrame.midY,
+            doneFrame.midY,
+            accuracy: 4.0,
+            "DONE label must be vertically centred within the button"
+        )
+        XCTAssertLessThan(labelFrame.height, doneFrame.height)
+
         XCTAssertEqual(accessory.doneButton.accessibilityIdentifier, "ops.keyboard.done")
         XCTAssertTrue(accessory.doneButton.isUserInteractionEnabled)
     }
@@ -302,16 +339,19 @@ final class IOSBugReportRegressionTests: XCTestCase {
         let accessory = try XCTUnwrap(
             textField.inputAccessoryView as? OPSKeyboardDoneAccessoryView
         )
-        let doneItem = try XCTUnwrap(
-            accessory.items?.first(where: { $0.title == "DONE" })
+        // DONE is a direct subview rather than a bar item (iOS 26 wraps bar
+        // items in a glass platter that cannot be positioned) — route through
+        // the button's own target/action.
+        let target = try XCTUnwrap(accessory.doneButton.allTargets.first)
+        let action = try XCTUnwrap(
+            accessory.doneButton.actions(forTarget: target, forControlEvent: .touchUpInside)?.first
         )
-        let action = try XCTUnwrap(doneItem.action)
 
         XCTAssertTrue(
             UIApplication.shared.sendAction(
-                action,
-                to: doneItem.target,
-                from: doneItem,
+                NSSelectorFromString(action),
+                to: target,
+                from: accessory.doneButton,
                 for: nil
             )
         )

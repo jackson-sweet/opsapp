@@ -14,7 +14,6 @@ import UIKit
 @MainActor
 final class OPSKeyboardDoneAccessoryView: UIToolbar {
     private weak var editingResponder: UIResponder?
-    private let doneContainer = UIView()
     let doneLabel = UILabel()
     let doneButton = UIButton(type: .system)
 
@@ -40,9 +39,6 @@ final class OPSKeyboardDoneAccessoryView: UIToolbar {
         autoresizingMask = [.flexibleWidth]
         tintColor = UIColor(OPSStyle.Colors.primaryText)
 
-        doneContainer.translatesAutoresizingMaskIntoConstraints = false
-        doneContainer.isAccessibilityElement = false
-
         doneLabel.translatesAutoresizingMaskIntoConstraints = false
         doneLabel.text = "DONE"
         doneLabel.font = OPSStyle.Typography.uiButtonLabel
@@ -50,45 +46,62 @@ final class OPSKeyboardDoneAccessoryView: UIToolbar {
         doneLabel.textAlignment = .center
         doneLabel.isUserInteractionEnabled = false
 
+        // DONE is a direct subview, deliberately NOT a UIBarButtonItem. On
+        // iOS 26 a bar item is wrapped in a Liquid Glass platter that the
+        // toolbar pins to its own fixed ~48pt content band and clips to it.
+        // Measured across custom-view heights 36/40/44/48, that platter always
+        // began at the band's top edge and overhung the item's bottom by ~5pt
+        // — so the visible border sat on the keyboard, was sheared flat on
+        // top, and no band height could buy a gutter above it. Owning the
+        // layout puts both visible edges under `OPSStyle` control.
         doneButton.translatesAutoresizingMaskIntoConstraints = false
         doneButton.accessibilityLabel = "Done"
         doneButton.accessibilityIdentifier = "ops.keyboard.done"
+        doneButton.backgroundColor = UIColor(OPSStyle.Colors.surfaceHover)
+        doneButton.layer.cornerRadius = OPSStyle.Layout.buttonRadius
+        doneButton.layer.cornerCurve = .continuous
+        doneButton.layer.borderWidth = OPSStyle.Layout.hairlineWidth
+        doneButton.layer.borderColor = UIColor(OPSStyle.Colors.line).cgColor
         doneButton.addTarget(self, action: #selector(dismissKeyboard), for: .touchUpInside)
 
-        doneContainer.addSubview(doneLabel)
-        doneContainer.addSubview(doneButton)
+        addSubview(doneButton)
+        doneButton.addSubview(doneLabel)
         NSLayoutConstraint.activate([
-            doneContainer.widthAnchor.constraint(
+            // Full-size target, centred in the band so the visible border
+            // keeps an equal `spacing1` gutter above and below — the one below
+            // being the clearance from the keyboard's top edge.
+            doneButton.heightAnchor.constraint(
+                equalToConstant: OPSStyle.Layout.touchTargetMin
+            ),
+            doneButton.widthAnchor.constraint(
                 greaterThanOrEqualToConstant: OPSStyle.Layout.touchTargetMin
             ),
-            doneContainer.heightAnchor.constraint(
-                equalToConstant: OPSStyle.Layout.keyboardAccessoryHeight
+            doneButton.centerYAnchor.constraint(equalTo: centerYAnchor),
+            doneButton.trailingAnchor.constraint(
+                equalTo: safeAreaLayoutGuide.trailingAnchor,
+                constant: -OPSStyle.Layout.spacing3
             ),
-            doneLabel.topAnchor.constraint(
-                equalTo: doneContainer.topAnchor,
-                constant: OPSStyle.Layout.spacing1
+            // Optical, not geometric, centring. Centring the label's box would
+            // centre a line box that reserves descender space "DONE" never
+            // uses, leaving the caps visibly low. Pin the BASELINE instead so
+            // the cap-height ink straddles the button's centre exactly; this
+            // needs only `capHeight`, so it retunes itself if the type token
+            // changes.
+            doneLabel.firstBaselineAnchor.constraint(
+                equalTo: doneButton.centerYAnchor,
+                constant: OPSStyle.Typography.uiButtonLabel.capHeight / 2
             ),
-            doneLabel.leadingAnchor.constraint(equalTo: doneContainer.leadingAnchor),
-            doneLabel.trailingAnchor.constraint(equalTo: doneContainer.trailingAnchor),
-            doneButton.leadingAnchor.constraint(equalTo: doneContainer.leadingAnchor),
-            doneButton.trailingAnchor.constraint(equalTo: doneContainer.trailingAnchor),
-            doneButton.topAnchor.constraint(equalTo: doneContainer.topAnchor),
-            doneButton.bottomAnchor.constraint(equalTo: doneContainer.bottomAnchor)
+            doneLabel.leadingAnchor.constraint(
+                equalTo: doneButton.leadingAnchor,
+                constant: OPSStyle.Layout.spacing3
+            ),
+            doneLabel.trailingAnchor.constraint(
+                equalTo: doneButton.trailingAnchor,
+                constant: -OPSStyle.Layout.spacing3
+            )
         ])
 
-        let doneItem = UIBarButtonItem(customView: doneContainer)
-        // Retain item identity and target/action for UIKit command routing and
-        // the existing exactly-once dismissal regression.
-        doneItem.title = "DONE"
-        doneItem.target = self
-        doneItem.action = #selector(dismissKeyboard)
-        doneItem.accessibilityLabel = "Done"
-        doneItem.accessibilityIdentifier = "ops.keyboard.done"
-
-        items = [
-            UIBarButtonItem(systemItem: .flexibleSpace),
-            doneItem
-        ]
+        items = []
     }
 
     required init?(coder: NSCoder) {

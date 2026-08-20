@@ -33,17 +33,26 @@ struct DetailHero: View {
     let canChangeAssignee: Bool
     let onAssigneeTap: () -> Void
 
+    // Hold-to-edit (bug b1d30fe8). Two of the five correctable facts live in
+    // this hero: the job's VALUE and who it is ASSIGNED TO.
+    let canEditValue: Bool
+    var fieldEdit: LeadFieldEditController? = nil
+
     init(
         opportunity: Opportunity,
         clientName: String? = nil,
         assigneeName: String = "Unassigned",
         canChangeAssignee: Bool = false,
+        canEditValue: Bool = false,
+        fieldEdit: LeadFieldEditController? = nil,
         onAssigneeTap: @escaping () -> Void = {}
     ) {
         self.opportunity = opportunity
         self.clientName = clientName
         self.assigneeName = assigneeName
         self.canChangeAssignee = canChangeAssignee
+        self.canEditValue = canEditValue
+        self.fieldEdit = fieldEdit
         self.onAssigneeTap = onAssigneeTap
     }
 
@@ -53,6 +62,16 @@ struct DetailHero: View {
 
             kpiStrip
                 .padding(.top, OPSStyle.Layout.spacing2)
+
+            // The money editor opens BENEATH the strip, never inside it. A
+            // three-column scan surface has ~110pt per cell — a bad place to
+            // type a number, and a worse place to watch the neighbouring
+            // columns reflow around a keyboard. The strip stays whole so the
+            // operator keeps the context they were reading.
+            if let fieldEdit, fieldEdit.isEditing(.value) {
+                LeadValueInlineEditor(controller: fieldEdit)
+                    .padding(.top, OPSStyle.Layout.spacing2_5)
+            }
         }
         .padding(.horizontal, OPSStyle.Layout.spacing3_5)
         .padding(.top, OPSStyle.Layout.spacing1)
@@ -67,11 +86,20 @@ struct DetailHero: View {
     @ViewBuilder
     private var assigneeRow: some View {
         if canChangeAssignee {
-            Button(action: onAssigneeTap) {
-                assigneeRowContent
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Assigned to \(assigneeName). Change assignee")
+            // Tap and hold both reach the house member picker. Assignment has
+            // exactly one editor, so there is no second meaning for the hold to
+            // carry — and a dossier where four facts answer a hold and the
+            // fifth ignores it is a pattern with a hole in it.
+            assigneeRowContent
+                .holdToEdit(
+                    .assignee,
+                    canEdit: true,
+                    hasValue: true,
+                    cornerRadius: OPSStyle.Layout.cardRadius,
+                    onEdit: onAssigneeTap,
+                    onActivate: onAssigneeTap
+                )
+                .accessibilityLabel("Assigned to \(assigneeName). Change assignee")
         } else {
             assigneeRowContent
                 .accessibilityElement(children: .ignore)
@@ -126,6 +154,21 @@ struct DetailHero: View {
                 value: estimatedValue.map(Self.formatMoneyCompact) ?? "—",
                 sub: "ESTIMATED",
                 useMono: false
+            )
+            // A KPI cell has no tap meaning of its own, so `onActivate` is nil:
+            // a populated value stays inert under a stray finger and only a
+            // deliberate hold opens the editor. An unset value takes a plain
+            // tap — there is nothing to disturb and an em dash is a poor hold
+            // target.
+            .holdToEdit(
+                .value,
+                canEdit: canEditValue && !(fieldEdit?.isEditing(.value) ?? false),
+                hasValue: estimatedValue != nil,
+                cornerRadius: OPSStyle.Layout.cardRadius,
+                onEdit: { fieldEdit?.begin(.value) }
+            )
+            .accessibilityLabel(
+                "Estimated value, \(estimatedValue.map(Self.formatMoneyCompact) ?? "not set")"
             )
 
             KpiDivider()

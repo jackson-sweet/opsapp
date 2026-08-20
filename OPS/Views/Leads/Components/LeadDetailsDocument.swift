@@ -59,6 +59,17 @@ struct LeadDetailsDocument: View {
     var onOpenAttachments: () -> Void = {}
     var onOpenEstimate: (Estimate) -> Void = { _ in }
 
+    // Hold-to-edit (bug b1d30fe8). CLIENT and ADDRESS are two of the five
+    // facts an operator corrects on a lead; both live in this document, so both
+    // take the dossier's hold gesture. The controller owns the open editor, the
+    // staged input, and the failure — this view only renders it.
+    var fieldEdit: LeadFieldEditController? = nil
+    /// Opens the house client picker. The picker is hosted by LeadDetailView so
+    /// it presents above the whole dossier, not inside a document row.
+    var onEditClient: () -> Void = {}
+    /// One-time discovery line on the DETAILS header. Retires itself.
+    var showsHoldHint: Bool = false
+
     enum ProjectRowPresentation: Equatable {
         case linked(label: String)
         case match
@@ -92,7 +103,10 @@ struct LeadDetailsDocument: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            PanelSectionHeader(label: "DETAILS")
+            PanelSectionHeader(
+                label: "DETAILS",
+                hint: showsHoldHint ? LeadHoldHint.label : nil
+            )
                 .padding(.horizontal, OPSStyle.Layout.spacing3_5)
                 .padding(.bottom, 10)
 
@@ -148,32 +162,68 @@ struct LeadDetailsDocument: View {
     private var clientRow: some View {
         DocRow(label: "CLIENT") {
             VStack(alignment: .leading, spacing: 6) {
-                if client != nil {
-                    Button(action: onOpenClient) {
-                        HStack(spacing: OPSStyle.Layout.spacing2) {
-                            Text(client?.name ?? "—")
-                                .font(.custom("Mohave-Medium", size: 14))
-                                .foregroundColor(OPSStyle.Colors.text)
-                                .lineLimit(1)
-                                .truncationMode(.tail)
-                            Spacer(minLength: 0)
-                            Image(systemName: "chevron.right")
-                                .font(.system(size: 11, weight: .regular))
-                                .foregroundColor(OPSStyle.Colors.text3)
-                        }
-                        .contentShape(Rectangle())
+                clientValueLine
+
+                if let failure = fieldEdit?.failure(for: .client) {
+                    LeadInlineEditError(failure: failure) {
+                        Task { await fieldEdit?.retry() }
                     }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("Open client \(client?.name ?? "")")
-                } else {
-                    Text("—")
-                        .font(.custom("Mohave-Medium", size: 14))
-                        .foregroundColor(OPSStyle.Colors.textMute)
                 }
 
                 rosterLine
             }
         }
+    }
+
+    /// The client line, in whichever of its three realities is true right now:
+    /// linked, being relinked, or absent. Tap opens the client; hold swaps it.
+    /// With no client there is nothing to open, so a plain tap picks one —
+    /// holding an em dash teaches nobody anything.
+    @ViewBuilder
+    private var clientValueLine: some View {
+        let isWorking = fieldEdit?.isSaving(.client) ?? false
+        let pendingName = fieldEdit?.pendingClientName
+        let displayName = isWorking
+            ? (pendingName ?? client?.name ?? "—")
+            : (client?.name ?? "—")
+        let hasClient = client != nil
+
+        HStack(spacing: OPSStyle.Layout.spacing2) {
+            Text(displayName)
+                .font(.custom("Mohave-Medium", size: 14))
+                .foregroundColor(hasClient || isWorking
+                                 ? OPSStyle.Colors.text
+                                 : OPSStyle.Colors.textMute)
+                .lineLimit(1)
+                .truncationMode(.tail)
+
+            Spacer(minLength: 0)
+
+            if isWorking {
+                ProgressView()
+                    .controlSize(.mini)
+                    .tint(OPSStyle.Colors.text2)
+            } else if hasClient {
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 11, weight: .regular))
+                    .foregroundColor(OPSStyle.Colors.text3)
+            }
+        }
+        .frame(
+            maxWidth: .infinity,
+            minHeight: OPSStyle.Layout.touchTargetMin,
+            alignment: .leading
+        )
+        .holdToEdit(
+            .client,
+            canEdit: canEdit && !isWorking,
+            hasValue: hasClient,
+            onEdit: onEditClient,
+            onActivate: hasClient ? onOpenClient : nil
+        )
+        .accessibilityLabel(
+            hasClient ? "Client, \(displayName)" : "Client, none set"
+        )
     }
 
     /// The lead's person against the roster: ON FILE stamp, an ADD TO CLIENT
@@ -236,40 +286,63 @@ struct LeadDetailsDocument: View {
     // MARK: - ADDRESS
 
     private var addressRow: some View {
-        let presentation = LeadDetailsAddressPresentation.resolve(lead.address)
-
-        return DocRow(label: "ADDRESS") {
-            switch presentation {
-            case .routable(let address):
-                Button(action: onOpenAddress) {
-                    HStack(spacing: OPSStyle.Layout.spacing2) {
-                        Text(presentation.displayValue)
-                            .font(OPSStyle.Typography.bodyEmphasis)
-                            .foregroundColor(OPSStyle.Colors.text)
-                            .fixedSize(horizontal: false, vertical: true)
-
-                        Spacer(minLength: 0)
-
-                        Image(systemName: OPSStyle.Icons.chevronRight)
-                            .font(.system(size: OPSStyle.Layout.IconSize.xs, weight: .regular))
-                            .foregroundColor(OPSStyle.Colors.text3)
-                    }
-                    .frame(
-                        maxWidth: .infinity,
-                        minHeight: OPSStyle.Layout.touchTargetMin,
-                        alignment: .leading
-                    )
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Open directions to \(address)")
-
-            case .empty:
-                Text(presentation.displayValue)
-                    .font(OPSStyle.Typography.bodyEmphasis)
-                    .foregroundColor(OPSStyle.Colors.textMute)
+        DocRow(label: "ADDRESS") {
+            if let fieldEdit, fieldEdit.isEditing(.address) {
+                LeadAddressInlineEditor(controller: fieldEdit)
+            } else {
+                addressValueLine
             }
         }
+    }
+
+    /// Read state. Tap routes; hold corrects. An address the lead never had
+    /// takes a plain tap straight into the editor — there are no directions to
+    /// protect, and a bare em dash is a poor long-press target.
+    @ViewBuilder
+    private var addressValueLine: some View {
+        let presentation = LeadDetailsAddressPresentation.resolve(lead.address)
+        let isRoutable: Bool = {
+            if case .routable = presentation { return true }
+            return false
+        }()
+
+        HStack(spacing: OPSStyle.Layout.spacing2) {
+            Text(presentation.displayValue)
+                .font(OPSStyle.Typography.bodyEmphasis)
+                .foregroundColor(isRoutable
+                                 ? OPSStyle.Colors.text
+                                 : OPSStyle.Colors.textMute)
+                .fixedSize(horizontal: false, vertical: true)
+
+            Spacer(minLength: 0)
+
+            if isRoutable {
+                Image(systemName: OPSStyle.Icons.chevronRight)
+                    .font(.system(size: OPSStyle.Layout.IconSize.xs, weight: .regular))
+                    .foregroundColor(OPSStyle.Colors.text3)
+            }
+        }
+        .frame(
+            maxWidth: .infinity,
+            minHeight: OPSStyle.Layout.touchTargetMin,
+            alignment: .leading
+        )
+        .holdToEdit(
+            .address,
+            canEdit: canEdit,
+            hasValue: isRoutable,
+            onEdit: { fieldEdit?.begin(.address) },
+            onActivate: isRoutable ? onOpenAddress : nil
+        )
+        // The route meaning rides in the LABEL, not a second hint: a trailing
+        // `.accessibilityHint` would silently replace the hold hint that
+        // `holdToEdit` just published, and the hold is the capability VoiceOver
+        // users cannot otherwise reach.
+        .accessibilityLabel(
+            isRoutable
+                ? "Address, \(presentation.displayValue). Opens directions."
+                : "Address, none set"
+        )
     }
 
     // MARK: - PROJECT

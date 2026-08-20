@@ -692,6 +692,84 @@ struct EditOpportunityPatch: Encodable {
     }
 }
 
+// MARK: - Single-field correction patches (bug b1d30fe8)
+
+// Hold-to-edit on the lead dossier corrects ONE fact at a time, so each patch
+// below carries only the keys that fact owns. `EditOpportunityPatch` is
+// deliberately not reused here: it writes every edit-managed column on every
+// save, which would let a one-field correction silently clobber a change made
+// elsewhere between the dossier loading and the operator holding a row.
+//
+// Every patch encodes with `encode`, never `encodeIfPresent`, so a nil emits
+// explicit JSON null and CLEARS the column — the operator can wipe a wrong
+// phone number by saving the field blank (the same rule EditOpportunityPatch
+// documents at review I-12).
+
+/// ADDRESS + the coordinates that ride it. Clearing the address nulls the pin
+/// with it — a coordinate with no address is a map hero pointing at nothing,
+/// and stale geo must never outlive a hand-typed street.
+struct LeadAddressPatch: Encodable {
+    var address: String?
+    var latitude: Double?
+    var longitude: Double?
+
+    enum CodingKeys: String, CodingKey {
+        case address, latitude, longitude
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(address, forKey: .address)
+        try c.encode(latitude, forKey: .latitude)
+        try c.encode(longitude, forKey: .longitude)
+    }
+}
+
+/// PHONE + EMAIL. The pair travels together because the dossier edits them
+/// together — they are one "how do I reach this person" fact.
+struct LeadContactPatch: Encodable {
+    var contactPhone: String?
+    var contactEmail: String?
+
+    enum CodingKeys: String, CodingKey {
+        case contactPhone = "contact_phone"
+        case contactEmail = "contact_email"
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(contactPhone, forKey: .contactPhone)
+        try c.encode(contactEmail, forKey: .contactEmail)
+    }
+}
+
+/// ESTIMATED VALUE. Explicit null so an operator who learns the job is not
+/// worth quoting can empty the number instead of being stuck writing a zero,
+/// which would be a real value and would pollute pipeline totals.
+struct LeadValuePatch: Encodable {
+    var estimatedValue: Double?
+
+    enum CodingKeys: String, CodingKey {
+        case estimatedValue = "estimated_value"
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(estimatedValue, forKey: .estimatedValue)
+    }
+}
+
+/// CLIENT link. Non-optional: the picker always yields a client, and unlinking
+/// a lead from its client is not a correction — it is a different decision with
+/// different consequences, and it does not belong behind a long press.
+struct LeadClientPatch: Encodable {
+    var clientId: String
+
+    enum CodingKeys: String, CodingKey {
+        case clientId = "client_id"
+    }
+}
+
 // MARK: - Activity
 
 struct ActivityDTO: Codable, Identifiable {

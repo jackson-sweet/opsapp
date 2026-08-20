@@ -540,6 +540,9 @@ enum OPSStyle {
 
         // Touch targets - Minimum 44×44 as per Apple HIG, but we go larger for field use
         static let touchTargetMin = 44.0
+        /// Hairline stroke width — the OPS "glass + hairlines" edge. UIKit
+        /// layers need an explicit value where SwiftUI defaults to 1.
+        static let hairlineWidth: CGFloat = 1.0
         static let touchTargetStandard = 56.0
         static let touchTargetLarge = 64.0
 
@@ -551,10 +554,12 @@ enum OPSStyle {
         // Spec'd component heights that sit between the touch-target presets.
         static let inputHeight: CGFloat = 48.0          // §9 text input height (mobile touch)
         static let bottomCTAHeight: CGFloat = 52.0      // §8 bottom-anchored primary CTA (thumb zone)
-        /// Global keyboard band. The hit target fills this 44pt band while the
-        /// visible label is top-aligned, leaving tokenized space above the
-        /// keyboard without inflating the entire accessory.
-        static let keyboardAccessoryHeight: CGFloat = touchTargetMin
+        /// Global keyboard band: a full 44pt DONE target plus one `spacing1`
+        /// gutter above and below it, so the button's visible edge never meets
+        /// the keyboard's top edge. This is the smallest band that keeps the
+        /// touch target at `touchTargetMin` while still showing separation —
+        /// shrink it and the gap can only come out of the hit area.
+        static let keyboardAccessoryHeight: CGFloat = touchTargetMin + spacing1 * 2
         static let chipMinHeight: CGFloat = 36.0        // §4.3 filter / form-picker chip — the one sanctioned sub-44pt target
         static let segmentedControlInset: CGFloat = 3.0 // §4.1 inset between container and segments
         static let segmentedControlRadius: CGFloat = 5.0

@@ -118,6 +118,19 @@ struct LeadDetailView: View {
     // One activity stream (spec §5.10)
     @State private var showingActivityHistory = false
 
+    // Hold-to-edit (bug b1d30fe8). Holding a dossier fact turns it into its
+    // editor in place rather than sending the operator to hunt for an edit
+    // affordance. The correction set is client / address / contact / value /
+    // assigned-to — the things a person fixes when a lead arrives wrong.
+    // Stage and status are deliberately excluded: they carry real side effects
+    // and keep their own guarded flows.
+    @StateObject private var fieldEdit: LeadFieldEditController
+    /// The house client picker, hosted here so it presents above the whole
+    /// dossier rather than from inside a document row.
+    @State private var showingClientPicker = false
+    /// One-time discovery counter for the hold gesture. Retires itself.
+    @AppStorage(LeadHoldHint.storageKey) private var holdHintState = 0
+
     init(
         opportunity: Opportunity,
         onMarkLost: @escaping () -> Void = {},
@@ -139,6 +152,9 @@ struct LeadDetailView: View {
         ))
         _assignmentViewModel = StateObject(
             wrappedValue: LeadAssignmentViewModel(opportunity: opportunity)
+        )
+        _fieldEdit = StateObject(
+            wrappedValue: LeadFieldEditController(opportunity: opportunity)
         )
     }
 
@@ -256,6 +272,8 @@ struct LeadDetailView: View {
                                         clientName: vm.client?.name,
                                         assigneeName: currentAssigneeName,
                                         canChangeAssignee: canChangeAssignee,
+                                        canEditValue: canEdit,
+                                        fieldEdit: fieldEdit,
                                         onAssigneeTap: {
                                             UIImpactFeedbackGenerator(style: .light).impactOccurred()
                                             showingAssignmentPicker = true
@@ -328,7 +346,13 @@ struct LeadDetailView: View {
                                             photoViewerState = LeadPhotoViewerState(items: items, initialIndex: index)
                                         },
                                         onOpenAttachments: { showingAttachments = true },
-                                        onOpenEstimate: { estimateToOpen = $0 }
+                                        onOpenEstimate: { estimateToOpen = $0 },
+                                        fieldEdit: fieldEdit,
+                                        onEditClient: { showingClientPicker = true },
+                                        showsHoldHint: LeadHoldHint.shouldShow(
+                                            state: holdHintState,
+                                            canEdit: canEdit
+                                        )
                                     )
                                     .padding(.top, 22)
 
@@ -446,6 +470,17 @@ struct LeadDetailView: View {
                 leadId: opportunity.id,
                 projectId: opportunity.projectId
             )
+            // A gesture nobody knows about is a feature nobody has. The DETAILS
+            // header carries one mono line for an operator's first few
+            // dossiers, then stops on its own.
+            if LeadHoldHint.shouldShow(state: holdHintState, canEdit: canEdit) {
+                holdHintState = LeadHoldHint.advanced(holdHintState)
+            }
+        }
+        .onChange(of: fieldEdit.didCompleteAnEdit) { _, completed in
+            // They corrected something. The hint has done its job — retire it
+            // for good rather than keep explaining a gesture they now know.
+            if completed { holdHintState = LeadHoldHint.retired() }
         }
         .onReceive(
             NotificationCenter.default.publisher(
@@ -523,6 +558,20 @@ struct LeadDetailView: View {
                 isOnline: dataController.isConnected,
                 onMutation: handleAssignmentMutation
             )
+        }
+        // CLIENT hold → the house client picker (the same one that reassigns a
+        // project's client, so it already searches the roster, blends in phone
+        // contacts, and can create a client that exists nowhere yet). It
+        // dismisses on select; the CLIENT row does the work and owns the
+        // failure, so a lost write never sends the operator back to re-pick.
+        .sheet(isPresented: $showingClientPicker) {
+            ClientPickerSheet(
+                currentClientId: opportunity.clientId,
+                companyId: opportunity.companyId
+            ) { client in
+                Task { await fieldEdit.commitClient(id: client.id, name: client.name) }
+            }
+            .environmentObject(dataController)
         }
         // CLIENT row → the canonical contact surface (same as every other
         // client tap app-wide: JobBoard, universal search, Spotlight).
@@ -704,34 +753,91 @@ struct LeadDetailView: View {
     // MARK: - CONTACT ▾ + ⋯ pair (spec §5.8)
 
     private var actionPair: some View {
-        HStack(spacing: OPSStyle.Layout.spacing2) {
-            Button {
-                UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                showingContactDialog = true
-            } label: {
-                HStack(spacing: 6) {
-                    Text("CONTACT")
-                        .font(.custom("CakeMono-Light", size: 13.5))
-                        .kerning(0.27)
-                        .textCase(.uppercase)
-                    Image(systemName: "chevron.down")
-                        .font(.system(size: 10, weight: .semibold))
-                }
-                .foregroundColor(OPSStyle.Colors.text)
-                .frame(maxWidth: .infinity)
-                .frame(height: 48)
-                .background(
-                    RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius, style: .continuous)
-                        .fill(OPSStyle.Colors.surfaceInput)
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius, style: .continuous)
-                        .strokeBorder(OPSStyle.Colors.line, lineWidth: 1)
-                )
-                .contentShape(Rectangle())
+        // Editing the contact takes over the whole pair's row: phone and email
+        // side by side need the width, and the ⋯ workflows are not what the
+        // operator is doing right now.
+        Group {
+            if fieldEdit.isEditing(.contact) {
+                LeadContactInlineEditor(controller: fieldEdit)
+                    .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+            } else {
+                actionPairControls
             }
-            .buttonStyle(PlainButtonStyle())
-            .accessibilityLabel("Contact \(opportunity.displayContactName)")
+        }
+    }
+
+    /// Phone and email have no row of their own on this dossier — they live
+    /// behind CONTACT ▾, which makes that control the contact FIELD. It is also
+    /// exactly where the operator is standing when they notice the number is
+    /// wrong: they opened it to call. A lead carrying no phone and no email
+    /// opens a dialog with nothing but CANCEL in it, so on that lead a plain
+    /// tap goes straight to the editor instead of the dead end.
+    private var contactHasValue: Bool {
+        let phone = opportunity.contactPhone?.trimmingCharacters(in: .whitespaces) ?? ""
+        let email = opportunity.contactEmail?.trimmingCharacters(in: .whitespaces) ?? ""
+        return !phone.isEmpty || !email.isEmpty
+    }
+
+    /// Only an operator who can actually fill the blank is invited to. A viewer
+    /// looking at a lead with no contact details still reads CONTACT — offering
+    /// them ADD CONTACT would be a promise the screen cannot keep.
+    private var contactInvitesAdd: Bool {
+        !contactHasValue && canEdit
+    }
+
+    /// A lead with no phone and no email has nothing behind CONTACT ▾ but a
+    /// CANCEL button. On that lead the control states what it can actually do —
+    /// ADD CONTACT — and goes straight to the editor. Same principle as the
+    /// document's empty-row chips: a blank never hides its way in behind a
+    /// gesture, and the label describes the operator's reality, not the
+    /// feature's name.
+    private var actionPairControls: some View {
+        HStack(spacing: OPSStyle.Layout.spacing2) {
+            HStack(spacing: 6) {
+                Text(contactInvitesAdd ? "ADD CONTACT" : "CONTACT")
+                    .font(.custom("CakeMono-Light", size: 13.5))
+                    .kerning(0.27)
+                    .textCase(.uppercase)
+                Image(systemName: contactInvitesAdd ? "plus" : "chevron.down")
+                    .font(.system(size: 10, weight: .semibold))
+            }
+            .foregroundColor(OPSStyle.Colors.text)
+            .frame(maxWidth: .infinity)
+            .frame(height: 48)
+            .background(
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius, style: .continuous)
+                    .fill(OPSStyle.Colors.surfaceInput)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius, style: .continuous)
+                    .strokeBorder(
+                        OPSStyle.Colors.line,
+                        lineWidth: OPSStyle.Layout.Border.standard
+                    )
+            )
+            .holdToEdit(
+                .contact,
+                offersEdit: InfoRowEdit.offersLongPressEdit(
+                    canEdit: canEdit,
+                    hasValue: contactHasValue,
+                    isEditing: fieldEdit.isEditing(.contact)
+                ),
+                cornerRadius: OPSStyle.Layout.buttonRadius,
+                onEdit: { fieldEdit.begin(.contact) },
+                onActivate: {
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    if contactHasValue {
+                        showingContactDialog = true
+                    } else if canEdit {
+                        fieldEdit.begin(.contact)
+                    }
+                }
+            )
+            .accessibilityLabel(
+                contactInvitesAdd
+                    ? "Add contact details for \(opportunity.displayContactName)"
+                    : "Contact \(opportunity.displayContactName)"
+            )
 
             Menu {
                 if canConvert && !opportunity.stage.isTerminal {

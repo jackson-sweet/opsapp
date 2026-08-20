@@ -5,9 +5,12 @@
 //  Shared form view consumed by AddLeadSheet and EditLeadSheet. Phase 4 of the
 //  LEADS tab rebuild (docs/superpowers/plans/2026-05-19-leads-tab-rebuild.md
 //  §8.2). The form primitives (LeadField, LeadTextInput, LeadTextArea,
-//  LeadChipPicker, SheetCTAButton, FlowLayout) are intentionally private to
-//  this file — they exist only to compose lead sheets. If JobBoard or another
-//  surface needs them later, lift to `Styles/Components/SheetFormPrimitives.swift`.
+//  LeadChipPicker, SheetCTAButton, FlowLayout) exist to compose LEADS surfaces
+//  and are scoped to them by convention rather than by `private`. The dossier's
+//  inline contact editor (LeadFieldEdit.swift, bug b1d30fe8) reuses LeadField +
+//  LeadTextInput so a phone corrected in place looks identical to the same
+//  field in the edit sheet. If a surface OUTSIDE Leads needs them, lift to
+//  `Styles/Components/SheetFormPrimitives.swift` rather than widening use here.
 //
 //  Field order matches `prototypes/app/sheets.jsx` § LeadForm:
 //

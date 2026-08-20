@@ -33,17 +33,26 @@ struct DetailHero: View {
     let canChangeAssignee: Bool
     let onAssigneeTap: () -> Void
 
+    // Hold-to-edit (bug b1d30fe8). Two of the five correctable facts live in
+    // this hero: the job's VALUE and who it is ASSIGNED TO.
+    let canEditValue: Bool
+    var fieldEdit: LeadFieldEditController? = nil
+
     init(
         opportunity: Opportunity,
         clientName: String? = nil,
         assigneeName: String = "Unassigned",
         canChangeAssignee: Bool = false,
+        canEditValue: Bool = false,
+        fieldEdit: LeadFieldEditController? = nil,
         onAssigneeTap: @escaping () -> Void = {}
     ) {
         self.opportunity = opportunity
         self.clientName = clientName
         self.assigneeName = assigneeName
         self.canChangeAssignee = canChangeAssignee
+        self.canEditValue = canEditValue
+        self.fieldEdit = fieldEdit
         self.onAssigneeTap = onAssigneeTap
     }
 
@@ -53,6 +62,16 @@ struct DetailHero: View {
 
             kpiStrip
                 .padding(.top, OPSStyle.Layout.spacing2)
+
+            // The money editor opens BENEATH the strip, never inside it. A
+            // three-column scan surface has ~110pt per cell — a bad place to
+            // type a number, and a worse place to watch the neighbouring
+            // columns reflow around a keyboard. The strip stays whole so the
+            // operator keeps the context they were reading.
+            if let fieldEdit, fieldEdit.isEditing(.value) {
+                LeadValueInlineEditor(controller: fieldEdit)
+                    .padding(.top, OPSStyle.Layout.spacing2_5)
+            }
         }
         .padding(.horizontal, OPSStyle.Layout.spacing3_5)
         .padding(.top, OPSStyle.Layout.spacing1)
@@ -67,11 +86,24 @@ struct DetailHero: View {
     @ViewBuilder
     private var assigneeRow: some View {
         if canChangeAssignee {
-            Button(action: onAssigneeTap) {
-                assigneeRowContent
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Assigned to \(assigneeName). Change assignee")
+            // Tap and hold both reach the house member picker. Assignment has
+            // exactly one editor, so there is no second meaning for the hold to
+            // carry — and a dossier where four facts answer a hold and the
+            // fifth ignores it is a pattern with a hole in it.
+            assigneeRowContent
+                .holdToEdit(
+                    .assignee,
+                    offersEdit: InfoRowEdit.offersLongPressEdit(
+                        canEdit: true,
+                        // Assignment is never blank: "Unassigned" is a state
+                        // the operator reads and acts on, not a hole.
+                        hasValue: true
+                    ),
+                    cornerRadius: OPSStyle.Layout.cardRadius,
+                    onEdit: onAssigneeTap,
+                    onActivate: onAssigneeTap
+                )
+                .accessibilityLabel("Assigned to \(assigneeName). Change assignee")
         } else {
             assigneeRowContent
                 .accessibilityElement(children: .ignore)
@@ -121,12 +153,7 @@ struct DetailHero: View {
 
     private var kpiStrip: some View {
         HStack(spacing: 0) {
-            KvCell(
-                label: "VALUE",
-                value: estimatedValue.map(Self.formatMoneyCompact) ?? "—",
-                sub: "ESTIMATED",
-                useMono: false
-            )
+            valueCell
 
             KpiDivider()
 
@@ -147,6 +174,57 @@ struct DetailHero: View {
             )
         }
         .nestedCard()
+    }
+
+    /// VALUE — the one KPI cell that is also a correctable fact.
+    ///
+    /// A KPI cell has no tap meaning of its own, so `onActivate` is nil: a set
+    /// value stays inert under a stray finger and only a deliberate hold opens
+    /// the editor. An UNSET value shows the document's explicit ADD chip in
+    /// place of the em dash, because a hidden gesture on a blank is
+    /// undiscoverable — the same rule the project document applies to its own
+    /// empty rows. The chip is the compact `ADD`: a KPI column is ~110pt and
+    /// has no room for a sentence.
+    @ViewBuilder
+    private var valueCell: some View {
+        if let value = estimatedValue {
+            KvCell(
+                label: "VALUE",
+                value: Self.formatMoneyCompact(value),
+                sub: "ESTIMATED",
+                useMono: false
+            )
+            .holdToEdit(
+                .value,
+                offersEdit: InfoRowEdit.offersLongPressEdit(
+                    canEdit: canEditValue,
+                    hasValue: true,
+                    isEditing: fieldEdit?.isEditing(.value) ?? false
+                ),
+                cornerRadius: OPSStyle.Layout.cardRadius,
+                onEdit: { fieldEdit?.begin(.value) }
+            )
+            .accessibilityLabel("Estimated value, \(Self.formatMoneyCompact(value))")
+        } else if canEditValue, let fieldEdit, !fieldEdit.isEditing(.value) {
+            KvCell(
+                label: "VALUE",
+                value: "—",
+                sub: "ESTIMATED",
+                useMono: false,
+                addAction: {
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    fieldEdit.begin(.value)
+                }
+            )
+        } else {
+            KvCell(
+                label: "VALUE",
+                value: "—",
+                sub: "ESTIMATED",
+                useMono: false
+            )
+            .accessibilityLabel("Estimated value, not set")
+        }
     }
 
     // MARK: - Derived
@@ -372,6 +450,11 @@ private struct KvCell: View {
     let value: String
     let sub: String
     var useMono: Bool = false
+    /// Stands in place of the value line when the field is blank and this
+    /// operator can fill it. A hidden gesture on an em dash is undiscoverable,
+    /// so the blank carries a named way in instead — the project document's
+    /// rule for its own empty rows, at the width a KPI column can afford.
+    var addAction: (() -> Void)? = nil
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -386,7 +469,10 @@ private struct KvCell: View {
                 .lineLimit(1)
                 .truncationMode(.tail)
 
-            if useMono {
+            if let addAction {
+                InfoActionChip(icon: OPSStyle.Icons.plus, title: "ADD", action: addAction)
+                    .accessibilityLabel("Add an estimated value")
+            } else if useMono {
                 Text(value)
                     .font(.custom("JetBrainsMono-Medium", size: 13))
                     .foregroundColor(OPSStyle.Colors.text)

@@ -16,6 +16,12 @@ struct AddressAutocompleteField: View {
     @Binding var address: String
     let placeholder: String
     let onAddressSelected: ((String, CLLocationCoordinate2D?) -> Void)?
+    /// Opt-in keyboard-on-open. Default off, so every existing caller behaves
+    /// exactly as it always has. The lead dossier's inline address editor sets
+    /// it: that editor is summoned by a deliberate hold on one specific field,
+    /// so making the operator tap the field they just held would be the app
+    /// forgetting what it was just asked to do.
+    let autofocus: Bool
 
     @State private var searchText = ""
     @State private var searchResults: [MKLocalSearchCompletion] = []
@@ -30,9 +36,11 @@ struct AddressAutocompleteField: View {
 
     init(address: Binding<String>,
          placeholder: String = "Enter Address",
+         autofocus: Bool = false,
          onAddressSelected: ((String, CLLocationCoordinate2D?) -> Void)? = nil) {
         self._address = address
         self.placeholder = placeholder
+        self.autofocus = autofocus
         self.onAddressSelected = onAddressSelected
     }
 
@@ -167,6 +175,11 @@ struct AddressAutocompleteField: View {
             // Initialize with current address if available
             if !address.isEmpty {
                 searchText = address
+            }
+            if autofocus {
+                // Next runloop tick: SwiftUI has to place the field before it
+                // can be focused.
+                DispatchQueue.main.async { isFocused = true }
             }
         }
         .onChange(of: address) { _, newValue in

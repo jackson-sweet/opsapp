@@ -114,10 +114,7 @@ final class DeckViewportUpdateBudgetTests: XCTestCase {
     }
 
     private func makeContainer(drawing: DeckDrawingData, opportunityId: String) throws -> ModelContainer {
-        let container = try ModelContainer(
-            for: DeckDesign.self, Project.self, ProjectTask.self, Product.self, CatalogItem.self,
-            configurations: ModelConfiguration(isStoredInMemoryOnly: true)
-        )
+        let container = try makeEmptyContainer()
         let design = DeckDesign(
             companyId: "budget-company",
             opportunityId: opportunityId,
@@ -127,6 +124,13 @@ final class DeckViewportUpdateBudgetTests: XCTestCase {
         container.mainContext.insert(design)
         try container.mainContext.save()
         return container
+    }
+
+    private func makeEmptyContainer() throws -> ModelContainer {
+        try ModelContainer(
+            for: DeckDesign.self, Project.self, ProjectTask.self, Product.self, CatalogItem.self,
+            configurations: ModelConfiguration(isStoredInMemoryOnly: true)
+        )
     }
 
     private func lead(id: String) -> Opportunity {
@@ -191,6 +195,41 @@ final class DeckViewportUpdateBudgetTests: XCTestCase {
         })
     }
 
+    /// Hosts the shared deck tab directly so the tests can observe its targeted
+    /// model feed without reaching through LeadDeckScreen's private state.
+    private func hostDeckTab(
+        opportunity: Opportunity,
+        container: ModelContainer,
+        onDesignChange: @escaping (DeckDesign?) -> Void
+    ) throws -> (window: UIWindow, restore: () -> Void) {
+        let window = try AppHostWindow.acquire()
+        let originalRoot = window.rootViewController
+
+        let host = UIHostingController(
+            rootView: DeckTabView(
+                owner: .lead(opportunity),
+                onCreateDeckDesign: {},
+                onEditDeckDesign: { _ in },
+                viewMode: .constant(.threeD),
+                onDesignChange: onDesignChange
+            )
+            .environmentObject(permissions())
+            .environmentObject(DataController())
+            .modelContainer(container)
+        )
+        host.overrideUserInterfaceStyle = .dark
+        host.view.backgroundColor = .black
+        host.safeAreaRegions = []
+
+        window.rootViewController = host
+        window.layoutIfNeeded()
+
+        return (window, {
+            window.rootViewController = originalRoot
+            window.layoutIfNeeded()
+        })
+    }
+
     // MARK: - 1. The push itself
 
     /// Pushing the deck screen must not serialize the drawing. The host already
@@ -233,18 +272,22 @@ final class DeckViewportUpdateBudgetTests: XCTestCase {
         defer { hosted.restore() }
         RunLoop.main.run(until: Date(timeIntervalSinceNow: 1.5))
 
-        // Churn from a run-loop timer so the ONLY blocking pump is the single
-        // `run(until:)` below.
+        // Churn one unrelated persisted row from a run-loop timer so this
+        // exercises the production-heavy UPDATE path — including an owner
+        // reassignment eligibility check — while the ONLY blocking pump is the
+        // single `run(until:)` below.
+        let unrelated = DeckDesign(
+            companyId: "budget-company",
+            opportunityId: UUID().uuidString.lowercased(),
+            title: "churn"
+        )
+        context.insert(unrelated)
+        try context.save()
+
         var writes = 0
         let timer = Timer(timeInterval: churnInterval, repeats: true) { _ in
-            let throwaway = DeckDesign(
-                companyId: "budget-company",
-                opportunityId: UUID().uuidString.lowercased(),
-                title: "churn"
-            )
-            context.insert(throwaway)
-            try? context.save()
-            context.delete(throwaway)
+            unrelated.title = "churn-\(writes)"
+            unrelated.updatedAt = Date()
             try? context.save()
             writes += 1
         }
@@ -275,6 +318,172 @@ final class DeckViewportUpdateBudgetTests: XCTestCase {
             "The deck viewport burned \(String(format: "%.0f", cpuMilliseconds))ms of main-thread CPU "
                 + "across \(writes) unrelated store writes — watchdog territory on device hardware."
         )
+    }
+
+    // MARK: - 3. Targeted feed correctness
+
+    /// Removing the broad `@Query` must not make the empty screen stale. A new
+    /// design for another lead is ignored; one for this lead appears without
+    /// leaving and reopening the route.
+    func testTargetedFeedIgnoresUnrelatedInsertAndShowsRelevantInsert() throws {
+        let opportunityId = UUID().uuidString.lowercased()
+        let container = try makeEmptyContainer()
+        let context = container.mainContext
+        var observedDesignIds: [String?] = []
+
+        let hosted = try hostDeckTab(
+            opportunity: lead(id: opportunityId),
+            container: container,
+            onDesignChange: { observedDesignIds.append($0?.id) }
+        )
+        defer { hosted.restore() }
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.5))
+
+        let unrelated = DeckDesign(
+            companyId: "budget-company",
+            opportunityId: UUID().uuidString.lowercased(),
+            title: "Unrelated"
+        )
+        context.insert(unrelated)
+        try context.save()
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.25))
+        XCTAssertTrue(observedDesignIds.isEmpty, "Unrelated deck traffic changed the visible lead")
+
+        let relevant = DeckDesign(
+            companyId: "budget-company",
+            opportunityId: opportunityId,
+            title: "Relevant"
+        )
+        let relevantId = relevant.id
+        context.insert(relevant)
+        try context.save()
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.5))
+
+        XCTAssertEqual(observedDesignIds, [relevantId])
+    }
+
+    /// A server update can attach an existing standalone/other-owner design to
+    /// this lead. It is an UPDATE, not an INSERT, and must become visible even
+    /// when there was no current model identifier to match.
+    func testTargetedFeedShowsDesignReassignedIntoVisibleOwner() throws {
+        let opportunityId = UUID().uuidString.lowercased()
+        let container = try makeEmptyContainer()
+        let context = container.mainContext
+        let reassigned = DeckDesign(
+            companyId: "budget-company",
+            opportunityId: UUID().uuidString.lowercased(),
+            title: "Reassigned"
+        )
+        context.insert(reassigned)
+        try context.save()
+        let reassignedId = reassigned.id
+        var observedDesignIds: [String?] = []
+
+        let hosted = try hostDeckTab(
+            opportunity: lead(id: opportunityId),
+            container: container,
+            onDesignChange: { observedDesignIds.append($0?.id) }
+        )
+        defer { hosted.restore() }
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.5))
+        XCTAssertTrue(observedDesignIds.isEmpty)
+
+        reassigned.opportunityId = opportunityId
+        reassigned.updatedAt = Date()
+        try context.save()
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.5))
+
+        XCTAssertEqual(observedDesignIds, [reassignedId])
+
+        reassigned.opportunityId = UUID().uuidString.lowercased()
+        reassigned.updatedAt = Date()
+        try context.save()
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.5))
+
+        XCTAssertEqual(observedDesignIds.count, 2)
+        XCTAssertNil(observedDesignIds.last!)
+    }
+
+    /// Background actor inserts on iOS 17.6–25 are not queryable from the main
+    /// context until MainContextRefreshBridge registers their identifiers.
+    /// DeckTabView must consume the bridge's ordered completion event, never
+    /// race the original DataActor notification.
+    func testTargetedFeedWaitsForMainContextBridgeBeforeBackgroundInsertFetch() throws {
+        let opportunityId = UUID().uuidString.lowercased()
+        let container = try makeEmptyContainer()
+        let mainContext = container.mainContext
+        let actorNotification = Notification.Name("DeckBudgetBackgroundActorDidSave")
+        let bridge = MainContextRefreshBridge(
+            mainContext: mainContext,
+            listeningTo: actorNotification,
+            forceInsertedIdentifiersIntoRegistry: true
+        )
+        _ = bridge
+        var observedDesignIds: [String?] = []
+
+        let hosted = try hostDeckTab(
+            opportunity: lead(id: opportunityId),
+            container: container,
+            onDesignChange: { observedDesignIds.append($0?.id) }
+        )
+        defer { hosted.restore() }
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.5))
+
+        let backgroundContext = ModelContext(container)
+        let relevant = DeckDesign(
+            companyId: "budget-company",
+            opportunityId: opportunityId,
+            title: "Background"
+        )
+        let relevantId = relevant.id
+        backgroundContext.insert(relevant)
+        try backgroundContext.save()
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.25))
+        XCTAssertTrue(
+            observedDesignIds.isEmpty,
+            "The deck tab reacted to the background save before the visibility bridge completed"
+        )
+
+        NotificationCenter.default.post(
+            name: actorNotification,
+            object: nil,
+            userInfo: [
+                "inserted": [relevant.persistentModelID],
+                "updated": [PersistentIdentifier](),
+                "deleted": [PersistentIdentifier]()
+            ]
+        )
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.5))
+
+        XCTAssertEqual(observedDesignIds, [relevantId])
+    }
+
+    /// SwiftData invalidates deleted model backing storage immediately. The
+    /// feed must compare persistent identity and refetch; dereferencing the
+    /// deleted fault is a fatal trap rather than a catchable error.
+    func testTargetedFeedSafelyClearsDeletedVisibleDesign() throws {
+        let opportunityId = UUID().uuidString.lowercased()
+        let container = try makeContainer(drawing: realisticDrawing(), opportunityId: opportunityId)
+        let context = container.mainContext
+        let design = try XCTUnwrap(context.fetch(FetchDescriptor<DeckDesign>()).first)
+        let designId = design.id
+        var observedDesignIds: [String?] = []
+
+        let hosted = try hostDeckTab(
+            opportunity: lead(id: opportunityId),
+            container: container,
+            onDesignChange: { observedDesignIds.append($0?.id) }
+        )
+        defer { hosted.restore() }
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.5))
+        XCTAssertEqual(observedDesignIds, [designId])
+
+        context.delete(design)
+        try context.save()
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.5))
+
+        XCTAssertEqual(observedDesignIds.count, 2)
+        XCTAssertNil(observedDesignIds.last!)
     }
 }
 #endif

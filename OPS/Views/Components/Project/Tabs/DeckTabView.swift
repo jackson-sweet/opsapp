@@ -8,6 +8,7 @@
 
 import SwiftUI
 import SwiftData
+import Combine
 
 enum DeckTabViewMode: String {
     case threeD = "3D"
@@ -88,6 +89,9 @@ struct DeckTabView: View {
     /// triggers it isn't operable under VoiceOver, so the deck canvas exposes
     /// this as a custom action.
     var onRequestFullscreen: () -> Void = {}
+    /// Keeps hosts that need the resolved model (the lead fullscreen viewer)
+    /// on the same single source instead of mounting a second SwiftData query.
+    var onDesignChange: (DeckDesign?) -> Void = { _ in }
 
     @EnvironmentObject private var permissionStore: PermissionStore
     @EnvironmentObject private var dataController: DataController
@@ -107,63 +111,28 @@ struct DeckTabView: View {
     /// state separately, so nothing the user does in fullscreen leaks here.
     @StateObject private var toolState = DeckViewerToolState()
 
-    // Bug 4 fix: use @Query so SwiftData automatically invalidates this view
-    // when a DeckDesign is inserted/updated for this project — no manual
-    // loadDesign() or onAppear dance needed. The previous @State + loadDesign()
-    // pattern missed the case where DeckBuilderView saves and dismisses while
-    // ProjectDetailsView stays alive, leaving the deck tab stale until the
-    // user navigated away and back.
-    @Query private var allDesigns: [DeckDesign]
+    /// The one design this viewport renders. A SwiftData `@Query` used to own
+    /// this value, but SwiftData invalidates a filtered query for every save of
+    /// the entity type. Realtime deck traffic elsewhere in the company then
+    /// synchronously re-fetched and rebuilt this full view graph on the main
+    /// thread. The targeted did-save feed below refreshes only when the changed
+    /// persistent identifier belongs to this owner.
+    @State private var deckDesign: DeckDesign?
 
     init(
         owner: DeckOwner,
         onCreateDeckDesign: @escaping () -> Void,
         onEditDeckDesign: @escaping (DeckDesign) -> Void,
         viewMode: Binding<DeckTabViewMode>,
-        onRequestFullscreen: @escaping () -> Void = {}
+        onRequestFullscreen: @escaping () -> Void = {},
+        onDesignChange: @escaping (DeckDesign?) -> Void = { _ in }
     ) {
         self.owner = owner
         self.onCreateDeckDesign = onCreateDeckDesign
         self.onEditDeckDesign = onEditDeckDesign
         self._viewMode = viewMode
         self.onRequestFullscreen = onRequestFullscreen
-        // Scope to this owner — deck_designs is realtime-subscribed, so an
-        // unfiltered @Query invalidated this tab on ANY company deck save.
-        switch owner {
-        case .project(let project):
-            let pid: String? = project.id
-            self._allDesigns = Query(
-                filter: #Predicate<DeckDesign> { $0.projectId == pid }
-            )
-        case .lead(let lead):
-            // Three-way id match rather than the project branch's single
-            // equality: `DeckDesign` canonicalises every id it stores
-            // (lowercased UUID) while `Opportunity.id` arrives in whatever
-            // case its source produced, so a raw `==` can silently miss a
-            // lead's own deck. `displayCandidate` re-filters canonically
-            // below, so a wider net costs nothing.
-            let canonical = DeckDesign.canonicalUUIDString(lead.id)
-            let exact: String? = canonical
-            let lowered: String? = canonical.lowercased()
-            let uppered: String? = canonical.uppercased()
-            self._allDesigns = Query(
-                filter: #Predicate<DeckDesign> {
-                    $0.opportunityId == exact
-                        || $0.opportunityId == lowered
-                        || $0.opportunityId == uppered
-                }
-            )
-        }
-    }
-
-    /// Most-recently-updated non-deleted design for this owner.
-    private var deckDesign: DeckDesign? {
-        switch owner {
-        case .project(let project):
-            return DeckDesign.displayCandidate(in: allDesigns, forProjectId: project.id)
-        case .lead(let lead):
-            return DeckDesign.displayCandidate(in: allDesigns, forOpportunityId: lead.id)
-        }
+        self.onDesignChange = onDesignChange
     }
 
     var body: some View {
@@ -174,9 +143,148 @@ struct DeckTabView: View {
                 emptyState
             }
         }
-        .task(id: owner.id) {
-            await fetchRemoteDeckDesignIfNeeded()
+        .onAppear {
+            refreshLocalDeckDesign()
         }
+        .onReceive(
+            NotificationCenter.default.publisher(for: ModelContext.didSave, object: modelContext)
+                .receive(on: DispatchQueue.main)
+        ) { notification in
+            refreshLocalDeckDesign(ifAffectedBy: notification)
+        }
+        .onReceive(
+            NotificationCenter.default.publisher(
+                for: .dataActorMainContextDidRefresh,
+                object: modelContext
+            )
+                .receive(on: DispatchQueue.main)
+        ) { notification in
+            refreshLocalDeckDesign(ifAffectedBy: notification)
+        }
+        .task(id: owner.id) {
+            // Do not depend on `.onAppear` versus `.task` modifier ordering:
+            // establish local truth before deciding whether the remote repair
+            // fetch is necessary.
+            refreshLocalDeckDesign()
+            await fetchRemoteDeckDesignIfNeeded()
+            refreshLocalDeckDesign()
+        }
+    }
+
+    // MARK: - Targeted local design feed
+
+    @MainActor
+    private func refreshLocalDeckDesign() {
+        let candidates: [DeckDesign]
+
+        do {
+            switch owner {
+            case .project(let project):
+                let projectId: String? = DeckDesign.canonicalUUIDString(project.id)
+                let descriptor = FetchDescriptor<DeckDesign>(
+                    predicate: #Predicate { $0.projectId == projectId }
+                )
+                candidates = try modelContext.fetch(descriptor)
+
+            case .lead(let lead):
+                let canonical: String? = DeckDesign.canonicalUUIDString(lead.id)
+                let lowercased: String? = canonical?.lowercased()
+                let uppercased: String? = canonical?.uppercased()
+                let descriptor = FetchDescriptor<DeckDesign>(
+                    predicate: #Predicate {
+                        $0.opportunityId == canonical
+                            || $0.opportunityId == lowercased
+                            || $0.opportunityId == uppercased
+                    }
+                )
+                candidates = try modelContext.fetch(descriptor)
+            }
+        } catch {
+            print("[DeckTabView] Local deck fetch failed for \(owner.id): \(error)")
+            return
+        }
+
+        let resolved: DeckDesign?
+        switch owner {
+        case .project(let project):
+            resolved = DeckDesign.displayCandidate(in: candidates, forProjectId: project.id)
+        case .lead(let lead):
+            resolved = DeckDesign.displayCandidate(in: candidates, forOpportunityId: lead.id)
+        }
+
+        // A scoped insert check commonly resolves to the model already on
+        // screen. Do not write identical identity back into `@State`: even a
+        // same-value state write invalidates the SwiftUI graph and recreates
+        // the layout work this feed exists to prevent. Field mutations on the
+        // current `@Model` are observed directly by SwiftUI.
+        guard deckDesign?.persistentModelID != resolved?.persistentModelID else {
+            return
+        }
+        deckDesign = resolved
+        onDesignChange(resolved)
+    }
+
+    @MainActor
+    private func refreshLocalDeckDesign(ifAffectedBy notification: Notification) {
+        let info = notification.userInfo ?? [:]
+        let inserted = persistentIdentifiers(
+            in: info,
+            key: .insertedIdentifiers,
+            rebroadcastKey: "inserted"
+        )
+        let updated = persistentIdentifiers(
+            in: info,
+            key: .updatedIdentifiers,
+            rebroadcastKey: "updated"
+        )
+        let deleted = persistentIdentifiers(
+            in: info,
+            key: .deletedIdentifiers,
+            rebroadcastKey: "deleted"
+        )
+
+        // A manually posted or store-wide invalidation has no safe identity
+        // boundary. Refresh once; ordinary saves always take the narrow path.
+        let invalidatedAll =
+            (info[ModelContext.NotificationKey.invalidatedAllIdentifiers.rawValue] as? Bool) == true
+            || ((info[ModelContext.NotificationKey.invalidatedAllIdentifiers.rawValue]
+                as? [PersistentIdentifier])?.isEmpty == false)
+        if info.isEmpty || invalidatedAll {
+            refreshLocalDeckDesign()
+            return
+        }
+
+        let currentIdentifier = deckDesign?.persistentModelID
+        if deleted.contains(where: { $0 == currentIdentifier }) {
+            refreshLocalDeckDesign()
+            return
+        }
+
+        // An inserted identifier may already have been deleted by the time a
+        // main-queue notification is delivered (sync commonly batches exactly
+        // that sequence). `modelContext.model(for:)` returns a fault for that
+        // identifier and touching it traps in SwiftData. Updates also need a
+        // scoped fetch: a design can be reassigned from another owner into this
+        // one (or the current design away from it). The fetch is identity-gated
+        // before state is written, so unrelated traffic never rebuilds the
+        // view graph even though it checks the narrow owner index.
+        if (inserted + updated).contains(where: isDeckDesignIdentifier) {
+            refreshLocalDeckDesign()
+        }
+    }
+
+    private func persistentIdentifiers(
+        in info: [AnyHashable: Any],
+        key: ModelContext.NotificationKey,
+        rebroadcastKey: String
+    ) -> [PersistentIdentifier] {
+        (info[key.rawValue] as? [PersistentIdentifier])
+            ?? (info[rebroadcastKey] as? [PersistentIdentifier])
+            ?? []
+    }
+
+    private func isDeckDesignIdentifier(_ identifier: PersistentIdentifier) -> Bool {
+        identifier.entityName == String(describing: DeckDesign.self)
     }
 
     // MARK: - Design Viewer

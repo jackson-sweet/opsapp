@@ -38,11 +38,6 @@ struct LeadDeckScreen: View {
     @EnvironmentObject private var dataController: DataController
     @EnvironmentObject private var permissionStore: PermissionStore
 
-    /// Live local designs for this lead. The screen re-resolves the display
-    /// candidate rather than carrying one in from the row it was pushed from —
-    /// a builder save has to land in the viewer without a pop-and-re-push.
-    @Query private var allDesigns: [DeckDesign]
-
     // ── Viewer state ────────────────────────────────────────────────────────
     // Owned HERE, exactly as `ProjectDetailsView` owns the pair: the fullscreen
     // viewer's tool state has to outlive any rebuild of the canvas beneath it,
@@ -50,6 +45,10 @@ struct LeadDeckScreen: View {
     @StateObject private var deckToolState = DeckViewerToolState()
     @State private var deckViewMode: DeckTabViewMode = .threeD
     @State private var isDeckFullscreen = false
+    /// Resolved by `DeckTabView`'s targeted store feed. Keeping the model here
+    /// lets fullscreen and the overscroll gate share the same source without a
+    /// second `@Query` invalidating the whole screen for unrelated deck saves.
+    @State private var displayedDeckDesign: DeckDesign?
 
     // ── Authoring routes ────────────────────────────────────────────────────
     @State private var deckDesignToOpen: DeckDesign?
@@ -62,26 +61,6 @@ struct LeadDeckScreen: View {
     @State private var deckViewportHeight: CGFloat = 0
 
     private let deckScrollSpace = "leadDeckScroll"
-
-    init(opportunity: Opportunity) {
-        self.opportunity = opportunity
-        // The SAME three-way id match `DeckTabView`'s lead branch makes:
-        // `DeckDesign` canonicalises every id it stores while `Opportunity.id`
-        // arrives in whatever case its source produced, so a raw `==` can
-        // silently miss a lead's own deck. `displayCandidate` re-filters
-        // canonically below, so the wider net costs nothing.
-        let canonical = DeckDesign.canonicalUUIDString(opportunity.id)
-        let exact: String? = canonical
-        let lowered: String? = canonical.lowercased()
-        let uppered: String? = canonical.uppercased()
-        self._allDesigns = Query(
-            filter: #Predicate<DeckDesign> {
-                $0.opportunityId == exact
-                    || $0.opportunityId == lowered
-                    || $0.opportunityId == uppered
-            }
-        )
-    }
 
     // MARK: - Body
 
@@ -149,7 +128,8 @@ struct LeadDeckScreen: View {
                     onCreateDeckDesign: { showingDeckCreationPicker = true },
                     onEditDeckDesign: { deckDesignToOpen = $0 },
                     viewMode: $deckViewMode,
-                    onRequestFullscreen: { presentDeckFullscreen() }
+                    onRequestFullscreen: { presentDeckFullscreen() },
+                    onDesignChange: { displayedDeckDesign = $0 }
                 )
                 .padding(.top, OPSStyle.Layout.spacing2_5)
 
@@ -210,12 +190,6 @@ struct LeadDeckScreen: View {
     }
 
     // MARK: - Deck resolution + expand gate
-
-    /// The design the canvas is currently showing — mirrors `DeckTabView`'s own
-    /// selection so the viewer can never expand a different drawing.
-    private var displayedDeckDesign: DeckDesign? {
-        DeckDesign.displayCandidate(in: allDesigns, forOpportunityId: opportunity.id)
-    }
 
     private var hasRenderableDeck: Bool {
         displayedDeckDesign?.hasRenderableGeometry == true

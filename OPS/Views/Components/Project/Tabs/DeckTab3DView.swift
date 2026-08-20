@@ -23,6 +23,21 @@ import SceneKit
 
 struct DeckTab3DView: View {
     let drawingData: DeckDrawingData
+    /// Token that changes exactly when `drawingData` changes — the persisted
+    /// `DeckDesign.drawingDataJSON` at every production call site. It is the
+    /// scene-rebuild decision, so it must never be a constant when the host can
+    /// hand down a mutated drawing.
+    ///
+    /// WHY a token and not a re-serialization: this viewer used to answer "did
+    /// the drawing change?" by calling `DeckDrawingData.toJSON()` on every
+    /// SwiftUI update — a `ComponentEmitter` pass, a full `JSONEncoder` pass, a
+    /// lexical re-parse and a re-render of the WHOLE drawing, on the main
+    /// thread, inside `layoutSubviews`. `DeckDesign` already documents the same
+    /// failure mode on the decode side (see `DeckDrawingDataCache`), and a
+    /// device watchdog report caught this encode running inside
+    /// `GraphHost.flushTransactions()`. The host already holds the canonical
+    /// string, so the comparison costs nothing.
+    let drawingIdentity: String
     /// Called on the main thread when the user starts or stops panning/zooming
     /// the scene. `true` = gesture active; `false` = gesture ended (debounced
     /// ~0.25s so back-to-back pan+pinch phases don't flicker the badges).
@@ -32,6 +47,7 @@ struct DeckTab3DView: View {
         GeometryReader { geo in
             if geo.size.height > 0 {
                 DeckTab3DSceneView(drawingData: drawingData,
+                                   drawingIdentity: drawingIdentity,
                                    onInteractingChange: onInteractingChange)
                     .transition(.opacity)
             }
@@ -43,6 +59,7 @@ struct DeckTab3DView: View {
 
 private struct DeckTab3DSceneView: UIViewRepresentable {
     let drawingData: DeckDrawingData
+    let drawingIdentity: String
     var onInteractingChange: (Bool) -> Void
 
     func makeCoordinator() -> Coordinator {
@@ -64,11 +81,13 @@ private struct DeckTab3DSceneView: UIViewRepresentable {
         /// Pending "ended" work item — cancelled if a new began/changed fires
         /// before the debounce window elapses.
         private var endWork: DispatchWorkItem?
-        /// JSON of the drawing the scene was last built from. `updateUIView`
+        /// Identity of the drawing the scene was last built from. `updateUIView`
         /// only rebuilds when this changes, so unrelated SwiftUI re-renders —
         /// notably the badge-fade `@State` flip that fires at the start of every
         /// pan/pinch — don't reset the camera out from under the user's gesture.
-        var lastDrawingJSON: String = ""
+        /// Optional so the FIRST update after `makeUIView` can't be mistaken for
+        /// a change when the host's identity is legitimately the empty string.
+        var lastDrawingIdentity: String?
 
         init(onInteractingChange: @escaping (Bool) -> Void) {
             self.onInteractingChange = onInteractingChange
@@ -132,7 +151,7 @@ private struct DeckTab3DSceneView: UIViewRepresentable {
         if let cam = scene.rootNode.childNode(withName: "camera", recursively: true) {
             scnView.pointOfView = cam
         }
-        context.coordinator.lastDrawingJSON = drawingData.toJSON()
+        context.coordinator.lastDrawingIdentity = drawingIdentity
 
         return scnView
     }
@@ -142,16 +161,16 @@ private struct DeckTab3DSceneView: UIViewRepresentable {
         // SwiftUI re-render — including the badge-fade `@State` flip in
         // DeckTabView that fires at the START of every pan/pinch — would
         // reassign the scene and reset `pointOfView`, snapping the camera home
-        // and fighting the gesture the user just made. Mirrors the JSON-diff
-        // guard in DeckScene3DView (the builder's viewer).
-        let currentJSON = drawingData.toJSON()
-        guard currentJSON != context.coordinator.lastDrawingJSON else { return }
+        // and fighting the gesture the user just made. Mirrors the revision
+        // gate in DeckScene3DView (the builder's viewer): a token comparison,
+        // never a re-serialization of the drawing.
+        guard drawingIdentity != context.coordinator.lastDrawingIdentity else { return }
         let scene = buildScene()
         uiView.scene = scene
         if let cam = scene.rootNode.childNode(withName: "camera", recursively: true) {
             uiView.pointOfView = cam
         }
-        context.coordinator.lastDrawingJSON = currentJSON
+        context.coordinator.lastDrawingIdentity = drawingIdentity
     }
 
     /// Render through the canonical `DeckSceneBuilder`. Calibrated designs use

@@ -1259,7 +1259,19 @@ struct DeckDrawingData: Codable {
 
     // MARK: - Serialization
 
+    #if DEBUG
+    /// Count of full `toJSON()` passes since it was last reset. DEBUG-only
+    /// instrumentation for the render-path budget tests: a full encode is
+    /// `ComponentEmitter.emit` + `JSONEncoder` + a lexical re-parse + a
+    /// re-render, so a viewer that performs one per SwiftUI update pass is a
+    /// watchdog risk on a real drawing. Never read by shipping code.
+    static var diagnosticEncodeCount = 0
+    #endif
+
     func toJSON() -> String {
+        #if DEBUG
+        Self.diagnosticEncodeCount += 1
+        #endif
         // Recompute the catalog-facing components projection on every encode.
         // The projection is derived from geometry — never authored directly —
         // so refreshing it here guarantees the on-disk JSON always carries an

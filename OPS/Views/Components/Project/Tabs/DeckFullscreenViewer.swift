@@ -25,6 +25,12 @@ struct DeckFullscreenViewer: View {
     /// The geometry to render — the only inputs the viewer needs, so it stays
     /// decoupled from SwiftData models (and headlessly renderable).
     let drawingData: DeckDrawingData
+    /// Token that changes exactly when `drawingData` changes — the persisted
+    /// `DeckDesign.drawingDataJSON` at every production call site. Forwarded to
+    /// the 3D canvas as its scene-rebuild decision so the canvas never has to
+    /// re-serialize the drawing to detect a change (see `DeckTab3DView`). Still
+    /// a plain String, so the viewer stays model-free.
+    let drawingIdentity: String
     @Binding var viewMode: DeckTabViewMode
     @ObservedObject var toolState: DeckViewerToolState
     let onClose: () -> Void
@@ -68,6 +74,7 @@ struct DeckFullscreenViewer: View {
         case .threeD:
             if drawingData.hasAnyClosedSurface {
                 DeckTab3DView(drawingData: drawingData,
+                              drawingIdentity: drawingIdentity,
                               onInteractingChange: { isViewportInteracting = $0 })
                     .transition(.opacity)
             } else {

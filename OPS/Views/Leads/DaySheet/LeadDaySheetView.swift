@@ -151,6 +151,7 @@ struct LeadDaySheetView: View {
             DeckFullscreenViewer(
                 title: request.lead.deckDesignTitle,
                 drawingData: request.design.drawingData,
+                drawingIdentity: request.design.drawingDataJSON,
                 viewMode: $deckViewMode,
                 toolState: deckToolState,
                 onClose: { deckViewing = nil },

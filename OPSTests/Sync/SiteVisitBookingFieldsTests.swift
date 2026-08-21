@@ -180,6 +180,29 @@ final class SiteVisitBookingFieldsTests: XCTestCase {
         XCTAssertNil(local.reminderLeadMinutes)
     }
 
+    func testPhaseCAppointmentMetadataLandsLocally() throws {
+        let context = try makeContext()
+        let dto = try decodeVisit(extraFields: """
+            ,"booked_at":"2026-08-11T17:00:00Z"
+            ,"appointment_handoff_id":"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+            ,"appointment_kind":"meeting"
+            ,"appointment_title":"Design review — North deck"
+            ,"appointment_location":"Microsoft Teams"
+            ,"updated_at":"2026-08-11T17:05:00Z"
+            """)
+        _ = try SiteVisitServerMerge.merge(
+            visit: dto,
+            companyId: companyId,
+            into: context
+        )
+
+        let local = try XCTUnwrap(context.fetch(FetchDescriptor<SiteVisit>()).first)
+        XCTAssertEqual(local.appointmentHandoffId, "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa")
+        XCTAssertEqual(local.appointmentKind, "meeting")
+        XCTAssertEqual(local.appointmentTitle, "Design review — North deck")
+        XCTAssertEqual(local.appointmentLocation, "Microsoft Teams")
+    }
+
     // MARK: - Outbound contract: the device never writes booking state
 
     func testCreatePayloadOmitsBookingColumns() throws {
@@ -193,6 +216,10 @@ final class SiteVisitBookingFieldsTests: XCTestCase {
         )
         model.bookedAt = Date(timeIntervalSince1970: 50)
         model.reminderLeadMinutes = 30
+        model.appointmentHandoffId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+        model.appointmentKind = "meeting"
+        model.appointmentTitle = "Design review — North deck"
+        model.appointmentLocation = "Microsoft Teams"
 
         let payload = try CreateSiteVisitDTO(model: model)
         let json = try XCTUnwrap(
@@ -203,6 +230,10 @@ final class SiteVisitBookingFieldsTests: XCTestCase {
 
         XCTAssertNil(json["booked_at"], "walk-up create must never carry booking state")
         XCTAssertNil(json["reminder_lead_minutes"], "walk-up create must never carry booking state")
+        XCTAssertNil(json["appointment_handoff_id"])
+        XCTAssertNil(json["appointment_kind"])
+        XCTAssertNil(json["appointment_title"])
+        XCTAssertNil(json["appointment_location"])
     }
 
     func testUpdatePayloadRejectsBookingColumns() {

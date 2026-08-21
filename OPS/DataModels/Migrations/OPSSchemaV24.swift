@@ -1,25 +1,20 @@
 //
-//  OPSSchemaV23.swift
+//  OPSSchemaV24.swift
 //  OPS
 //
-//  Schema version 23.0.0 — site-visit booking fields.
+//  Schema version 24.0.0 — Phase C appointment presentation metadata.
 //
-//  `SiteVisit` gains two nullable server-owned attributes: `bookedAt` (the
-//  booking discriminator mirroring `site_visits.booked_at`) and
-//  `reminderLeadMinutes` (the per-booking heads-up override). The booking
-//  build originally widened the live class in place, which silently shifted
-//  the V20–V22 fingerprints and made every installed store unrecognizable at
-//  launch (CoreData 134504 on device, 2026-08-17). V20–V22 now retain
-//  `OPSSchemaLegacySiteVisitV22`, so every released fingerprint stays exact.
-//  V23's released widened shape is now frozen as
-//  `OPSSchemaLegacySiteVisitV23`; the live model advances again at V24.
+//  `SiteVisit` gains four nullable server-owned attributes that preserve the
+//  exact bilateral appointment identity, kind, title, and location across
+//  local schedule rendering and EventKit mirrors. V23 is frozen at its
+//  released fingerprint and migrates here through one lightweight stage.
 //
 
 import Foundation
 import SwiftData
 
-enum OPSSchemaV23: VersionedSchema {
-    static var versionIdentifier: Schema.Version { Schema.Version(23, 0, 0) }
+enum OPSSchemaV24: VersionedSchema {
+    static var versionIdentifier: Schema.Version { Schema.Version(24, 0, 0) }
 
     static var models: [any PersistentModel.Type] {
         OPSSchemaCommon.unchangedModels
@@ -28,7 +23,7 @@ enum OPSSchemaV23: VersionedSchema {
             + OPSSchemaCommon.v13ProjectNoteModel
             + OPSSchemaCommon.v18PhotoAnnotationModel
             + OPSSchemaCommon.v22ActivityModel
-            + OPSSchemaCommon.v23SiteVisitModel
+            + OPSSchemaCommon.v24SiteVisitModel
             + OPSSchemaCommon.v4CoreModels
             + OPSSchemaCommon.v4TaskModels
             + OPSSchemaCommon.v8CatalogModels

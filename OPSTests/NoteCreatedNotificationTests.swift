@@ -350,7 +350,7 @@ final class NoteCreatedNotificationTests: XCTestCase {
     /// against a table that has never held a row, so no test here is green by
     /// luck of ordering. Same remedy as ProjectDetailsLocalFirstTests.
     private func makeContainer() throws -> ModelContainer {
-        let schema = Schema(versionedSchema: OPSSchemaV23.self)
+        let schema = Schema(versionedSchema: OPSSchemaV24.self)
         let configuration = ModelConfiguration(
             schema: schema,
             isStoredInMemoryOnly: true,

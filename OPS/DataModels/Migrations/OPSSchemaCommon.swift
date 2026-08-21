@@ -921,6 +921,58 @@ enum OPSSchemaLegacySiteVisitV22 {
     }
 }
 
+/// Frozen `SiteVisit` shape as it shipped in V23 — the V20 cloud projection
+/// plus `bookedAt` and `reminderLeadMinutes`, before Phase C appointment
+/// presentation metadata. V24 adds those nullable server-owned fields without
+/// rewriting the released V23 fingerprint.
+enum OPSSchemaLegacySiteVisitV23 {
+    @Model
+    final class SiteVisit: Identifiable {
+        @Attribute(.unique) var id: String
+        var opportunityId: String?
+        var companyId: String
+        var projectId: String?
+        var projectRef: String?
+        var clientId: String?
+        var clientRef: String?
+        var status: SiteVisitStatus
+        var scheduledAt: Date?
+        var durationMinutes: Int = 60
+        var assigneeIds: [String] = []
+        var completedAt: Date?
+        var notes: String?
+        var internalNotes: String?
+        var measurements: String?
+        var photos: [String] = []
+        var address: String?
+        var assignedTo: String?
+        var calendarEventId: String?
+        var createdBy: String?
+        var createdAt: Date
+        var updatedAt: Date?
+        var deletedAt: Date?
+        var needsSync: Bool = false
+        var lastSyncedAt: Date?
+        var loggedActivityId: String?
+        var bookedAt: Date?
+        var reminderLeadMinutes: Int?
+
+        init(
+            id: String = UUID().uuidString,
+            opportunityId: String? = nil,
+            companyId: String,
+            status: SiteVisitStatus = .scheduled,
+            createdAt: Date = Date()
+        ) {
+            self.id = id
+            self.opportunityId = opportunityId
+            self.companyId = companyId
+            self.status = status
+            self.createdAt = createdAt
+        }
+    }
+}
+
 /// Frozen `SiteVisitIdentityDraft` shape as it shipped through V12–V19. V20
 /// adds cloud deletion/sync bookkeeping and author provenance to the live
 /// model, while this type keeps installed-store fingerprints recognizable.
@@ -1517,10 +1569,14 @@ enum OPSSchemaCommon {
         OPSSchemaLegacySiteVisitV22.SiteVisit.self
     ]
 
-    /// The live SiteVisit from V23 onward — adds the server-owned booking
-    /// discriminator (`bookedAt`) and per-booking reminder override
-    /// (`reminderLeadMinutes`).
+    /// SiteVisit as released in V23, frozen before V24 adds Phase C
+    /// appointment presentation metadata.
     static let v23SiteVisitModel: [any PersistentModel.Type] = [
+        OPSSchemaLegacySiteVisitV23.SiteVisit.self
+    ]
+
+    /// The live SiteVisit from V24 onward.
+    static let v24SiteVisitModel: [any PersistentModel.Type] = [
         SiteVisit.self
     ]
 

@@ -94,17 +94,21 @@ final class AppUpdateMigrationTests: XCTestCase {
             contains(SiteVisit.self, in: OPSSchemaV22.self),
             "V22 must keep the SiteVisit shape released before the booking fields were added"
         )
-        XCTAssertTrue(
-            contains(SiteVisit.self, in: OPSSchemaV23.self),
-            "V23 must register the widened live SiteVisit"
-        )
         XCTAssertFalse(
-            contains(OPSSchemaLegacySiteVisitV22.SiteVisit.self, in: OPSSchemaV23.self),
-            "V23 must not register the frozen booking-era SiteVisit alongside the live one"
+            contains(SiteVisit.self, in: OPSSchemaV23.self),
+            "V23 must retain the released booking-only SiteVisit shape"
+        )
+        XCTAssertTrue(
+            contains(OPSSchemaLegacySiteVisitV23.SiteVisit.self, in: OPSSchemaV23.self),
+            "V23 must register its frozen released SiteVisit shape"
+        )
+        XCTAssertTrue(
+            contains(SiteVisit.self, in: OPSSchemaV24.self),
+            "V24 must register the widened live SiteVisit"
         )
     }
 
-    func testV22StoreMigratesToV23PreservingSiteVisitAndDefaultingBookingFields() throws {
+    func testV22StoreMigratesToV24PreservingSiteVisitAndDefaultingServerFields() throws {
         try autoreleasepool {
             let sourceSchema = Schema(versionedSchema: OPSSchemaV22.self)
             let sourceConfiguration = ModelConfiguration(schema: sourceSchema, url: storeURL)
@@ -132,7 +136,7 @@ final class AppUpdateMigrationTests: XCTestCase {
             try context.save()
         }
 
-        let targetSchema = Schema(versionedSchema: OPSSchemaV23.self)
+        let targetSchema = Schema(versionedSchema: OPSSchemaV24.self)
         let targetConfiguration = ModelConfiguration(schema: targetSchema, url: storeURL)
         let migratedContainer = try ModelContainer(
             for: targetSchema,
@@ -158,10 +162,18 @@ final class AppUpdateMigrationTests: XCTestCase {
             migrated.reminderLeadMinutes,
             "Pre-booking rows must default to nil reminderLeadMinutes"
         )
+        XCTAssertNil(migrated.appointmentHandoffId)
+        XCTAssertNil(migrated.appointmentKind)
+        XCTAssertNil(migrated.appointmentTitle)
+        XCTAssertNil(migrated.appointmentLocation)
         XCTAssertFalse(migrated.isBookedAppointment)
 
         migrated.bookedAt = Date(timeIntervalSince1970: 2_600_000)
         migrated.reminderLeadMinutes = 30
+        migrated.appointmentHandoffId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+        migrated.appointmentKind = "call"
+        migrated.appointmentTitle = "Call — North deck"
+        migrated.appointmentLocation = "Microsoft Teams"
         try context.save()
 
         let rebound = try XCTUnwrap(
@@ -170,6 +182,9 @@ final class AppUpdateMigrationTests: XCTestCase {
         )
         XCTAssertEqual(rebound.bookedAt, Date(timeIntervalSince1970: 2_600_000))
         XCTAssertEqual(rebound.reminderLeadMinutes, 30)
+        XCTAssertEqual(rebound.appointmentKind, "call")
+        XCTAssertEqual(rebound.appointmentTitle, "Call — North deck")
+        XCTAssertEqual(rebound.appointmentLocation, "Microsoft Teams")
         XCTAssertTrue(rebound.isBookedAppointment)
     }
 

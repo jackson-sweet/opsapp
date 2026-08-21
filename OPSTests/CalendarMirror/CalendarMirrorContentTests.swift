@@ -127,6 +127,21 @@ final class CalendarMirrorContentTests: XCTestCase {
         XCTAssertEqual(p.source, .siteVisit)
     }
 
+    func test_siteVisit_phaseCMetadataOverridesLegacyTitleAndAddress() throws {
+        let visit = makeBookedVisit()
+        visit.appointmentTitle = "Call — Dana Whitfield"
+        visit.appointmentLocation = "Microsoft Teams"
+        let payload = try XCTUnwrap(
+            CalendarMirrorContent.payload(
+                for: visit,
+                leadName: "Dana Whitfield",
+                address: "418 Larchmont Ave"
+            )
+        )
+        XCTAssertEqual(payload.title, "Call — Dana Whitfield")
+        XCTAssertEqual(payload.body, "Microsoft Teams\n// OPS · view in app")
+    }
+
     func test_siteVisit_windowSpansDurationFromScheduledAt() throws {
         let start = Date(timeIntervalSince1970: 1_790_000_000)
         let p = try XCTUnwrap(

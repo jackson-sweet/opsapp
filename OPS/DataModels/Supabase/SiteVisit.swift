@@ -49,6 +49,13 @@ class SiteVisit: Identifiable {
     /// NULL = the assignee's default lead applies. Server-owned, like `bookedAt`.
     var reminderLeadMinutes: Int?
 
+    /// Server-owned Phase C appointment identity and presentation. These are
+    /// nullable for every legacy/manual visit and never enter outbound edits.
+    var appointmentHandoffId: String?
+    var appointmentKind: String?
+    var appointmentTitle: String?
+    var appointmentLocation: String?
+
     /// Walk-up/legacy rows carry junk `scheduledAt` (defaulted to `createdAt`);
     /// every scheduling surface must gate on this, never on `status` alone.
     var isBookedAppointment: Bool { bookedAt != nil }

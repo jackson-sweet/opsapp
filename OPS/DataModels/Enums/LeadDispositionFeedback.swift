@@ -29,6 +29,7 @@ enum LeadDispositionReason: String, Codable, CaseIterable, Hashable {
     case testTraffic = "test_traffic"
     case duplicate
     case notAFit = "not_a_fit"
+    case createdByError = "created_by_error"
     case other
     case legacyUnspecified = "legacy_unspecified"
 
@@ -41,6 +42,7 @@ enum LeadDispositionReason: String, Codable, CaseIterable, Hashable {
         .testTraffic,
         .duplicate,
         .notAFit,
+        .createdByError,
         .other,
     ]
 
@@ -54,6 +56,7 @@ enum LeadDispositionReason: String, Codable, CaseIterable, Hashable {
         case .testTraffic: return "TEST OR AUTOMATED TRAFFIC"
         case .duplicate: return "DUPLICATE"
         case .notAFit: return "NOT A FIT"
+        case .createdByError: return "CREATED BY ERROR"
         case .other: return "SOMETHING ELSE"
         case .legacyUnspecified: return "DISCARD"
         }
@@ -67,9 +70,10 @@ enum LeadDispositionReason: String, Codable, CaseIterable, Hashable {
         case .internalMessage: return "Your team or company traffic"
         case .platformNotification: return "Receipt, alert, or status update"
         case .testTraffic: return "System-generated or test message"
-        case .duplicate: return "Hold for duplicate review"
-        case .notAFit: return "Real inquiry — mark it lost"
-        case .other: return "Keep it for human review"
+        case .duplicate: return "Already captured elsewhere"
+        case .notAFit: return "Not a qualified lead"
+        case .createdByError: return "Made by mistake"
+        case .other: return "Another reason"
         case .legacyUnspecified: return "Off your board; never a lost deal"
         }
     }
@@ -77,14 +81,9 @@ enum LeadDispositionReason: String, Codable, CaseIterable, Hashable {
     var expectedOutcome: LeadDispositionOutcome {
         switch self {
         case .spam, .jobApplicant, .vendorSales, .internalMessage,
-             .platformNotification, .testTraffic, .legacyUnspecified:
+             .platformNotification, .testTraffic, .duplicate, .notAFit,
+             .createdByError, .other, .legacyUnspecified:
             return .discarded
-        case .duplicate:
-            return .duplicateReview
-        case .notAFit:
-            return .lost
-        case .other:
-            return .reviewDeferred
         }
     }
 

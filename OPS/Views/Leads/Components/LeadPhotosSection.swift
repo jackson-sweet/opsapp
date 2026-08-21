@@ -116,7 +116,7 @@ struct LeadPhotosSection: View {
     /// Tile edge. 84 on the detail document, where the strip is the section;
     /// 52 on the day-sheet card, where it is one band among six (day-sheet
     /// spec §3.4.1). One strip, two densities — never two strips.
-    var tileSize: CGFloat = 84
+    var tileSize: CGFloat = OPSStyle.Layout.leadPhotoTileSize
     var importingPhotoIDs: [String] = []
     /// Canonical stored email images attributed to this lead. They share the
     /// photo viewer but remain read-only correspondence evidence.

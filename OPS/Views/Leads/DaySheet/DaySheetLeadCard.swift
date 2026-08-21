@@ -505,7 +505,7 @@ private struct DaySheetPhotoStrip: View {
     let canEdit: Bool
 
     /// Spec §3.4.1 — 52pt tiles on the card (the detail document uses 84).
-    private static let tileSize: CGFloat = 52
+    private static let tileSize = OPSStyle.Layout.leadPhotoTileCompactSize
 
     @ObservedObject private var imageService = LeadImageService.shared
 

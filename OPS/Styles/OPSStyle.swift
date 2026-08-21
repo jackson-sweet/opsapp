@@ -566,6 +566,8 @@ enum OPSStyle {
         static let segmentedItemRadius: CGFloat = 3.0
         static let segmentedItemMinWidth: CGFloat = 52.0
         static let formMediaPreviewMaxHeight: CGFloat = 360.0
+        static let leadPhotoTileSize: CGFloat = 84.0
+        static let leadPhotoTileCompactSize: CGFloat = 52.0
         static let monthGridDayHeaderHeight: CGFloat = 26.0
         static let monthGridCompactBadgeHeight: CGFloat = 10.0
         static let monthGridStandardBadgeHeight: CGFloat = 14.0

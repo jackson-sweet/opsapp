@@ -95,6 +95,28 @@ final class ConvertSheetMatchingTests: XCTestCase {
         )
     }
 
+    /// SQL boolean expressions become NULL when the lead has no client. One
+    /// nullable ranking hint must never make JSONDecoder discard the entire
+    /// authoritative project list.
+    func testNullableRankingHintsDecodeAsFalse() throws {
+        let candidate = try JSONDecoder().decode(
+            ManualProjectLinkCandidate.self,
+            from: Data("""
+            {
+              "project_id": "project-no-client",
+              "title": "3185 Fairview Rd",
+              "address": "3185 Fairview Rd",
+              "status": "accepted",
+              "same_address": true,
+              "same_client": null
+            }
+            """.utf8)
+        )
+
+        XCTAssertTrue(candidate.sameAddress)
+        XCTAssertFalse(candidate.sameClient)
+    }
+
     // MARK: - 1. ONE list, ONE source, ONE selection rule
 
     /// The heart of D1. The manual-link RPC is the ONLY source of selectable

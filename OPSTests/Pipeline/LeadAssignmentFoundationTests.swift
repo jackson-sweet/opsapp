@@ -161,7 +161,7 @@ final class LeadAssignmentFoundationTests: XCTestCase {
             sourcePath: "ios",
             winOpportunity: true,
             projectStatus: "accepted",
-            evidence: ["surface": "convert_sheet"],
+            evidence: ConversionEvidence(),
             expectedAssignmentVersion: 12
         )
 
@@ -172,9 +172,62 @@ final class LeadAssignmentFoundationTests: XCTestCase {
         XCTAssertEqual(object["p_link_to_project_id"] as? String, "project-existing")
         XCTAssertEqual(object["p_project_status"] as? String, "accepted")
         XCTAssertEqual(
-            (object["p_evidence"] as? [String: String])?["surface"],
+            (object["p_evidence"] as? [String: Any])?["surface"] as? String,
             "convert_sheet"
         )
+    }
+
+    func testConversionEvidenceDistinguishesLegacyOmissionFromExplicitNone() throws {
+        let legacy = try jsonObject(ConversionEvidence())
+        XCTAssertNil(legacy["selected_lead_photo_urls"])
+        XCTAssertNil(legacy["selected_email_attachment_ids"])
+
+        let explicitNone = try jsonObject(
+            LeadConversionPhotoSelection(
+                leadPhotoURLs: [],
+                emailAttachmentIDs: []
+            ).evidence
+        )
+        XCTAssertEqual(explicitNone["selected_lead_photo_urls"] as? [String], [])
+        XCTAssertEqual(explicitNone["selected_email_attachment_ids"] as? [String], [])
+    }
+
+    func testConversionPhotoSelectionStartsWithAllAndPreservesOperatorChoice() {
+        let leadPhoto = ConversionPhotoCandidate(
+            sourceKind: .lead,
+            selectionKey: "https://example.com/lead.jpg",
+            filename: "lead.jpg",
+            mimeType: "image/jpeg",
+            sourceURL: "https://example.com/lead.jpg",
+            ingestStatus: "stored",
+            occurredAt: nil,
+            createdAt: "2026-08-20T12:00:00Z"
+        )
+        let emailPhoto = ConversionPhotoCandidate(
+            sourceKind: .email,
+            selectionKey: "attachment-1",
+            filename: "email.jpg",
+            mimeType: "image/jpeg",
+            sourceURL: nil,
+            ingestStatus: "stored",
+            occurredAt: "2026-08-20T12:00:00Z",
+            createdAt: "2026-08-20T12:00:00Z"
+        )
+
+        var state = ConversionPhotoSelectionState()
+        state.refresh(with: [leadPhoto, emailPhoto, leadPhoto])
+        XCTAssertEqual(state.candidates.count, 2)
+        XCTAssertEqual(state.selection.leadPhotoURLs, [leadPhoto.selectionKey])
+        XCTAssertEqual(state.selection.emailAttachmentIDs, [emailPhoto.selectionKey])
+
+        state.toggle(emailPhoto)
+        state.refresh(with: [leadPhoto, emailPhoto])
+        XCTAssertEqual(state.selection.leadPhotoURLs, [leadPhoto.selectionKey])
+        XCTAssertEqual(state.selection.emailAttachmentIDs, [])
+
+        state.selectNone()
+        state.refresh(with: [leadPhoto, emailPhoto])
+        XCTAssertEqual(state.selectedIDs, [])
     }
 
     /// D1 rewrote this contract. The sheet used to carry a five-case link

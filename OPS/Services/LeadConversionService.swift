@@ -45,7 +45,7 @@ struct ConvertOpportunityParams: Encodable {
     let sourcePath: String
     let winOpportunity: Bool
     let projectStatus: String?
-    let evidence: [String: String]
+    let evidence: ConversionEvidence
     let expectedAssignmentVersion: Int64
 
     init(
@@ -60,7 +60,7 @@ struct ConvertOpportunityParams: Encodable {
         sourcePath: String,
         winOpportunity: Bool,
         projectStatus: String?,
-        evidence: [String: String],
+        evidence: ConversionEvidence,
         expectedAssignmentVersion: Int64
     ) {
         precondition(expectedAssignmentVersion >= 0, "Assignment versions cannot be negative")
@@ -93,6 +93,40 @@ struct ConvertOpportunityParams: Encodable {
         case projectStatus               = "p_project_status"
         case evidence                    = "p_evidence"
         case expectedAssignmentVersion   = "p_expected_assignment_version"
+    }
+}
+
+struct ConversionEvidence: Encodable, Equatable {
+    let surface: String
+    let selectedLeadPhotoURLs: [String]?
+    let selectedEmailAttachmentIDs: [String]?
+
+    init(
+        surface: String = "convert_sheet",
+        selectedLeadPhotoURLs: [String]? = nil,
+        selectedEmailAttachmentIDs: [String]? = nil
+    ) {
+        self.surface = surface
+        self.selectedLeadPhotoURLs = selectedLeadPhotoURLs
+        self.selectedEmailAttachmentIDs = selectedEmailAttachmentIDs
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case surface
+        case selectedLeadPhotoURLs = "selected_lead_photo_urls"
+        case selectedEmailAttachmentIDs = "selected_email_attachment_ids"
+    }
+}
+
+struct LeadConversionPhotoSelection: Equatable {
+    let leadPhotoURLs: [String]
+    let emailAttachmentIDs: [String]
+
+    var evidence: ConversionEvidence {
+        ConversionEvidence(
+            selectedLeadPhotoURLs: leadPhotoURLs,
+            selectedEmailAttachmentIDs: emailAttachmentIDs
+        )
     }
 }
 
@@ -217,6 +251,25 @@ final class LeadConversionService {
         }
     }
 
+    func conversionPhotoCandidates(
+        for lead: Opportunity
+    ) async throws -> [ConversionPhotoCandidate] {
+        struct Params: Encodable {
+            let p_opportunity_id: String
+        }
+        do {
+            return try await client
+                .rpc(
+                    "get_opportunity_conversion_photo_candidates",
+                    params: Params(p_opportunity_id: lead.id)
+                )
+                .execute()
+                .value
+        } catch {
+            throw Self.mapRPCError(error)
+        }
+    }
+
     // MARK: - Unified convert transaction (RPC-backed)
 
     /// THE convert transaction. Calls the unified `convert_opportunity_to_project`
@@ -249,6 +302,7 @@ final class LeadConversionService {
         notes: String?,
         linkToProjectId: String?,
         userId: String?,
+        photoSelection: LeadConversionPhotoSelection? = nil,
         expectedStage: String? = nil,
         expectedAssignmentVersion: Int64? = nil
     ) async throws -> LeadConversionOutcome {
@@ -264,7 +318,7 @@ final class LeadConversionService {
             sourcePath: "ios",
             winOpportunity: true,
             projectStatus: "accepted",
-            evidence: ["surface": "convert_sheet"],
+            evidence: photoSelection?.evidence ?? ConversionEvidence(),
             expectedAssignmentVersion: expectedAssignmentVersion ?? lead.assignmentVersion
         )
 
@@ -603,6 +657,75 @@ struct ManualProjectLinkCandidate: Decodable, Equatable {
         case title, address, status
         case sameAddress = "same_address"
         case sameClient = "same_client"
+    }
+
+    init(
+        projectId: String,
+        title: String?,
+        address: String?,
+        status: String?,
+        sameAddress: Bool,
+        sameClient: Bool
+    ) {
+        self.projectId = projectId
+        self.title = title
+        self.address = address
+        self.status = status
+        self.sameAddress = sameAddress
+        self.sameClient = sameClient
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        projectId = try container.decode(String.self, forKey: .projectId)
+        title = try container.decodeIfPresent(String.self, forKey: .title)
+        address = try container.decodeIfPresent(String.self, forKey: .address)
+        status = try container.decodeIfPresent(String.self, forKey: .status)
+        sameAddress = try container.decodeIfPresent(Bool.self, forKey: .sameAddress) ?? false
+        sameClient = try container.decodeIfPresent(Bool.self, forKey: .sameClient) ?? false
+    }
+}
+
+enum ConversionPhotoSourceKind: String, Decodable, Equatable, Sendable {
+    case lead
+    case email
+}
+
+struct ConversionPhotoCandidate: Decodable, Identifiable, Equatable, Sendable {
+    let sourceKind: ConversionPhotoSourceKind
+    let selectionKey: String
+    let filename: String?
+    let mimeType: String?
+    let sourceURL: String?
+    let ingestStatus: String
+    let occurredAt: String?
+    let createdAt: String
+
+    var id: String { "\(sourceKind.rawValue):\(selectionKey)" }
+
+    enum CodingKeys: String, CodingKey {
+        case sourceKind = "source_kind"
+        case selectionKey = "selection_key"
+        case filename
+        case mimeType = "mime_type"
+        case sourceURL = "source_url"
+        case ingestStatus = "ingest_status"
+        case occurredAt = "occurred_at"
+        case createdAt = "created_at"
+    }
+
+    var attachment: LeadAttachment? {
+        guard sourceKind == .email else { return nil }
+        return LeadAttachment(
+            id: selectionKey,
+            filename: filename,
+            mimeType: mimeType,
+            sourceUrl: sourceURL,
+            fromEmail: nil,
+            ingestStatus: ingestStatus,
+            occurredAt: occurredAt,
+            createdAt: createdAt
+        )
     }
 }
 

@@ -267,6 +267,41 @@ extension NotificationRepository: ReviewStackSyncing {
 
 extension NotificationRepository {
 
+    /// Authenticated server dispatch for crew lifecycle events. The request
+    /// carries only a persisted anchor id; OPS-Web resolves recipients and
+    /// copy, writes the rail through the existing narrow RPC, then applies
+    /// channel preferences and quiet hours to push.
+    private func dispatchCrewNotification(
+        eventType: String,
+        proof: [String: Any]
+    ) async throws {
+        let idToken = try await FirebaseAuthService.shared.getIDToken()
+        let endpoint = AppConfiguration.apiBaseURL
+            .appendingPathComponent("api")
+            .appendingPathComponent("notifications")
+            .appendingPathComponent("dispatch")
+        var request = URLRequest(url: endpoint)
+        request.httpMethod = "POST"
+        request.timeoutInterval = 30
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("Bearer \(idToken)", forHTTPHeaderField: "Authorization")
+        var payload = proof
+        payload["eventType"] = eventType
+        request.httpBody = try JSONSerialization.data(withJSONObject: payload)
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let http = response as? HTTPURLResponse,
+              (200..<300).contains(http.statusCode) else {
+            let status = (response as? HTTPURLResponse)?.statusCode ?? -1
+            let detail = String(data: data, encoding: .utf8) ?? ""
+            throw NSError(
+                domain: "CrewNotificationDispatch",
+                code: status,
+                userInfo: [NSLocalizedDescriptionKey: detail]
+            )
+        }
+    }
+
     /// AppState periodic review reminders (self). `kind` is one of
     /// `projects_needing_tasks` / `stale_estimate_review`; the server holds at
     /// most one unread reminder per kind ('kept'), so a second device inside
@@ -497,53 +532,46 @@ extension NotificationRepository {
 // task crews, permission holders, invitation rows) rather than from these
 // arguments, and renders the shipped copy from fixed templates. A caller-
 // supplied id list may only SUBSET a row's recorded membership; counts and
-// numerics are clamped server-side. Methods that return ids return only the
-// recipients that received NEW rows — aim the companion OneSignal push at
-// exactly that list.
+// numerics are clamped server-side. Crew lifecycle methods below now return an
+// empty legacy result after OPS-Web completes both rail and push delivery; this
+// prevents older direct-push call sites from bypassing quiet hours.
 
 extension NotificationRepository {
 
     /// Task marked complete → the project's crew. The server refuses a task
     /// that isn't recorded completed and derives recipients from the project
-    /// row's crew list, minus the actor. Returns the ids that received NEW rows.
+    /// row's crew list, minus the actor. OPS-Web owns rail and push delivery.
     @discardableResult
     func notifyTaskCompleted(taskId: String) async throws -> [String] {
-        struct Params: Encodable {
-            let p_task_id: String
-        }
-        return try await client
-            .rpc("notify_task_completed", params: Params(p_task_id: taskId))
-            .execute()
-            .value
+        try await dispatchCrewNotification(
+            eventType: "task_completed",
+            proof: ["taskId": taskId]
+        )
+        return []
     }
 
     /// Project marked complete → the project's crew, minus the actor. The
-    /// server refuses a project that isn't recorded completed. Returns the ids
-    /// that received NEW rows.
+    /// server refuses a project that isn't recorded completed. OPS-Web owns
+    /// rail and push delivery.
     @discardableResult
     func notifyProjectCompleted(projectId: String) async throws -> [String] {
-        struct Params: Encodable {
-            let p_project_id: String
-        }
-        return try await client
-            .rpc("notify_project_completed", params: Params(p_project_id: projectId))
-            .execute()
-            .value
+        try await dispatchCrewNotification(
+            eventType: "project_completed",
+            proof: ["projectId": projectId]
+        )
+        return []
     }
 
     /// Task dates moved → the task's own crew, minus the actor. The server
     /// refuses completed/cancelled tasks and tasks missing either date — a
-    /// schedule nobody can act on is not announceable. Returns the ids that
-    /// received NEW rows.
+    /// schedule nobody can act on is not announceable.
     @discardableResult
     func notifyTaskRescheduled(taskId: String) async throws -> [String] {
-        struct Params: Encodable {
-            let p_task_id: String
-        }
-        return try await client
-            .rpc("notify_task_rescheduled", params: Params(p_task_id: taskId))
-            .execute()
-            .value
+        try await dispatchCrewNotification(
+            eventType: "task_rescheduled",
+            proof: ["taskId": taskId]
+        )
+        return []
     }
 
     /// One task unblocked by `notify_dependency_ready`, with the crew that
@@ -560,57 +588,39 @@ extension NotificationRepository {
 
     /// Completing a task unblocks its dependents: the server resolves each
     /// dependent's effective dependencies, notifies the crew of every task the
-    /// completion cleared, and returns one entry per task that produced NEW
-    /// rows (tasks with none are omitted). Push per entry.
+    /// completion cleared. OPS-Web resolves and pushes each resulting entry.
     @discardableResult
     func notifyDependencyReady(completedTaskId: String) async throws -> [DependencyReadyEntry] {
-        struct Params: Encodable {
-            let p_completed_task_id: String
-        }
-        return try await client
-            .rpc(
-                "notify_dependency_ready",
-                params: Params(p_completed_task_id: completedTaskId)
-            )
-            .execute()
-            .value
+        try await dispatchCrewNotification(
+            eventType: "dependency_ready",
+            proof: ["completedTaskId": completedTaskId]
+        )
+        return []
     }
 
     /// Crew added to a task. `userIds` nil announces the task's whole recorded
     /// crew; a supplied list may only SUBSET that crew — the server intersects
-    /// it with the row's membership and drops the actor. Returns the ids that
-    /// received NEW rows.
+    /// it with the row's membership and drops the actor.
     @discardableResult
     func notifyTaskAssigned(taskId: String, userIds: [String]? = nil) async throws -> [String] {
-        struct Params: Encodable {
-            let p_task_id: String
-            let p_user_ids: [String]?
-        }
-        return try await client
-            .rpc(
-                "notify_task_assigned",
-                params: Params(p_task_id: taskId, p_user_ids: userIds)
-            )
-            .execute()
-            .value
+        _ = userIds // The server derives the recorded crew; client ids are not authority.
+        try await dispatchCrewNotification(
+            eventType: "task_assigned",
+            proof: ["taskId": taskId]
+        )
+        return []
     }
 
     /// Crew added to a project. The list is intersected with the project row's
-    /// recorded membership and the actor is dropped. Returns the ids that
-    /// received NEW rows.
+    /// recorded membership and the actor is dropped.
     @discardableResult
     func notifyProjectAssigned(projectId: String, userIds: [String]) async throws -> [String] {
-        struct Params: Encodable {
-            let p_project_id: String
-            let p_user_ids: [String]
-        }
-        return try await client
-            .rpc(
-                "notify_project_assigned",
-                params: Params(p_project_id: projectId, p_user_ids: userIds)
-            )
-            .execute()
-            .value
+        _ = userIds // The server derives the recorded crew; client ids are not authority.
+        try await dispatchCrewNotification(
+            eventType: "project_assigned",
+            proof: ["projectId": projectId]
+        )
+        return []
     }
 
     /// Paired follow-up task spawned by the scheduler → the predecessor's crew,
@@ -643,16 +653,14 @@ extension NotificationRepository {
 
     /// Bulk auto-schedule run → one summary row per affected crew member. Pass
     /// every moved task id (already pushed); the server counts each member's
-    /// share itself and returns one entry per member that received a NEW row.
+    /// share itself. OPS-Web sends one quiet-hours-aware summary per member.
     @discardableResult
     func notifyScheduleRunSummary(taskIds: [String]) async throws -> [ScheduleRunSummaryEntry] {
-        struct Params: Encodable {
-            let p_task_ids: [String]
-        }
-        return try await client
-            .rpc("notify_schedule_run_summary", params: Params(p_task_ids: taskIds))
-            .execute()
-            .value
+        try await dispatchCrewNotification(
+            eventType: "schedule_run_summary",
+            proof: ["taskIds": taskIds]
+        )
+        return []
     }
 
     /// Vinyl order drafted off a deck note (self). The note must be the actor's

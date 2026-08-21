@@ -3977,26 +3977,65 @@ class DataController: ObservableObject {
     /// - Parameters:
     ///   - task: The task to update
     ///   - newStatus: The new status to set
+    typealias DurableSyncOperationStager = (
+        [SyncEngine.BulkOperationSpec],
+        ModelContext
+    ) throws -> [SyncOperation]
+
+    enum DurableSyncMutationError: LocalizedError, Equatable {
+        case contextUnavailable
+        case invalidProjectContact
+        case syncQueueFailed
+        case persistenceFailed(String)
+
+        var errorDescription: String? {
+            switch self {
+            case .contextUnavailable:
+                return "Local storage is unavailable."
+            case .invalidProjectContact:
+                return "That contact is no longer available for this project."
+            case .syncQueueFailed:
+                return "The change could not be secured for sync."
+            case .persistenceFailed(let message):
+                return message
+            }
+        }
+    }
+
+    private enum DurableSyncMutationTransactionFailure: Error {
+        case stagingFailed
+        case incompleteLedger
+    }
+
     @MainActor
     func updateTaskStatus(task: ProjectTask, to newStatus: TaskStatus) async throws {
+        guard let syncEngine else {
+            throw DurableSyncMutationError.contextUnavailable
+        }
+        try await updateTaskStatus(
+            task: task,
+            to: newStatus,
+            stagingOperationsWith: { specs, context in
+                try syncEngine.stageOperationsForTransaction(specs, in: context)
+            }
+        )
+    }
+
+    /// Injectable transaction seam used by operator-action durability tests.
+    /// Production always supplies SyncEngine's encode-first stager above.
+    @MainActor
+    func updateTaskStatus(
+        task: ProjectTask,
+        to newStatus: TaskStatus,
+        stagingOperationsWith stageOperations: DurableSyncOperationStager
+    ) async throws {
+        guard let context = modelContext else {
+            throw DurableSyncMutationError.contextUnavailable
+        }
         let oldStatus = task.status
         let project = task.project
         let predecessorId = task.id
 
-        // Apply locally
-        task.status = newStatus
-        task.needsSync = true
-        try? modelContext?.save()
-
-        // Notify calendar + review-count surfaces (task/completion/unscheduled
-        // badges in the header and quick-actions FAB) to refresh immediately. A
-        // status change alters review eligibility, so without this the badges
-        // stay stale until the owning view reappears or the app relaunches.
-        DispatchQueue.main.async { [weak self] in
-            self?.scheduledTasksDidChange.toggle()
-        }
-
-        // Record for async sync
         var changedFields: [String: Any] = ["status": newStatus.rawValue]
         if newStatus == .completed {
             changedFields[TaskCompletionSync.idempotencyKeyPayloadKey] =
@@ -4004,12 +4043,35 @@ class DataController: ObservableObject {
             changedFields[TaskCompletionSync.materialAdjustmentsPayloadKey] = [String: Any]()
         }
 
-        syncEngine.recordOperation(
+        let spec = SyncEngine.BulkOperationSpec(
             entityType: .projectTask,
             entityId: task.id,
             operationType: "update",
             changedFields: changedFields
         )
+        try persistDurableSyncMutation(
+            spec: spec,
+            in: context,
+            stagingOperationsWith: stageOperations,
+            apply: {
+                task.status = newStatus
+                task.needsSync = true
+            },
+            rematerializeAfterRollback: {
+                let taskId = task.id
+                let descriptor = FetchDescriptor<ProjectTask>(
+                    predicate: #Predicate { $0.id == taskId }
+                )
+                _ = try? context.fetch(descriptor).first
+            }
+        )
+
+        // Notify calendar + review-count surfaces (task/completion/unscheduled
+        // badges in the header and quick-actions FAB) only after the local
+        // model and its outbox record commit together.
+        DispatchQueue.main.async { [weak self] in
+            self?.scheduledTasksDidChange.toggle()
+        }
 
         // Cascade cancel to paired tasks (one-way — uncancelling does NOT
         // reactivate the children; user must do that manually).
@@ -4073,6 +4135,87 @@ class DataController: ObservableObject {
                 taskOldStatus: oldStatus,
                 taskNewStatus: newStatus
             )
+        }
+    }
+
+    /// Commits one local model mutation and its outbound operation together.
+    /// A caller may report success only after this transaction returns.
+    @MainActor
+    private func persistDurableSyncMutation(
+        spec: SyncEngine.BulkOperationSpec,
+        in context: ModelContext,
+        stagingOperationsWith stageOperations: DurableSyncOperationStager,
+        apply: () -> Void,
+        rematerializeAfterRollback: () -> Void
+    ) throws {
+        guard let syncEngine else {
+            throw DurableSyncMutationError.contextUnavailable
+        }
+
+        do {
+            if context.hasChanges {
+                try context.save()
+            }
+        } catch {
+            throw DurableSyncMutationError.persistenceFailed(
+                error.localizedDescription
+            )
+        }
+
+        let operationIDsBefore: Set<UUID>
+        do {
+            operationIDsBefore = Set(
+                try context.fetch(FetchDescriptor<SyncOperation>()).map(\.id)
+            )
+        } catch {
+            throw DurableSyncMutationError.persistenceFailed(
+                error.localizedDescription
+            )
+        }
+
+        var stagedOperations: [SyncOperation] = []
+        do {
+            try context.transaction {
+                apply()
+                do {
+                    stagedOperations = try stageOperations([spec], context)
+                } catch {
+                    throw DurableSyncMutationTransactionFailure.stagingFailed
+                }
+
+                let stagedIDs = Set(stagedOperations.map(\.id))
+                let operationIDsInsideTransaction = Set(
+                    try context.fetch(FetchDescriptor<SyncOperation>()).map(\.id)
+                )
+                let operation = stagedOperations.first
+                let hasCompleteLedger = stagedOperations.count == 1
+                    && stagedIDs.count == 1
+                    && stagedIDs.isDisjoint(with: operationIDsBefore)
+                    && stagedIDs.isSubset(of: operationIDsInsideTransaction)
+                    && operation?.entityType == spec.entityType.rawValue
+                    && operation?.entityId == spec.entityId.lowercased()
+                    && operation?.operationType == spec.operationType
+                    && Set(operation?.getChangedFields() ?? [])
+                        == Set(spec.changedFields.keys)
+
+                guard hasCompleteLedger else {
+                    throw DurableSyncMutationTransactionFailure.incompleteLedger
+                }
+            }
+        } catch {
+            context.rollback()
+            rematerializeAfterRollback()
+            if error is DurableSyncMutationTransactionFailure {
+                throw DurableSyncMutationError.syncQueueFailed
+            }
+            throw DurableSyncMutationError.persistenceFailed(
+                error.localizedDescription
+            )
+        }
+
+        syncEngine.didPersistStagedOperations(stagedOperations)
+        if connectivity?.shouldAttemptSync == true {
+            Task { await syncEngine.pushPending() }
         }
     }
 
@@ -6414,6 +6557,94 @@ class DataController: ObservableObject {
 
     // MARK: - Generic Project Field Updates (SyncEngine Migration)
 
+    /// Assigns or clears the project's explicit client contact as one durable
+    /// local model + outbox transaction. This is intentionally narrower than
+    /// the generic field writer because the UI must never report assignment
+    /// success unless the choice is secured for offline sync.
+    @MainActor
+    func updateProjectPrimaryContact(
+        project: Project,
+        primarySubClientId: String?
+    ) async throws {
+        guard let syncEngine else {
+            throw DurableSyncMutationError.contextUnavailable
+        }
+        try await updateProjectPrimaryContact(
+            project: project,
+            primarySubClientId: primarySubClientId,
+            stagingOperationsWith: { specs, context in
+                try syncEngine.stageOperationsForTransaction(specs, in: context)
+            }
+        )
+    }
+
+    /// Injectable transaction seam used by project-contact durability tests.
+    @MainActor
+    func updateProjectPrimaryContact(
+        project: Project,
+        primarySubClientId: String?,
+        stagingOperationsWith stageOperations: DurableSyncOperationStager
+    ) async throws {
+        guard let context = modelContext else {
+            throw DurableSyncMutationError.contextUnavailable
+        }
+
+        if let primarySubClientId {
+            let selectedId = primarySubClientId
+            let descriptor = FetchDescriptor<SubClient>(
+                predicate: #Predicate { $0.id == selectedId }
+            )
+            let selected: SubClient?
+            do {
+                selected = try context.fetch(descriptor).first
+                    ?? project.client?.subClients.first {
+                        $0.id == selectedId
+                    }
+            } catch {
+                throw DurableSyncMutationError.persistenceFailed(
+                    error.localizedDescription
+                )
+            }
+
+            guard let selected,
+                  selected.deletedAt == nil,
+                  selected.client?.id == project.clientId,
+                  selected.client?.companyId == project.companyId else {
+                throw DurableSyncMutationError.invalidProjectContact
+            }
+        }
+
+        let payloadValue: Any
+        if let primarySubClientId {
+            payloadValue = primarySubClientId
+        } else {
+            payloadValue = NSNull()
+        }
+        let spec = SyncEngine.BulkOperationSpec(
+            entityType: .project,
+            entityId: project.id,
+            operationType: "update",
+            changedFields: ["primary_sub_client_id": payloadValue]
+        )
+
+        try persistDurableSyncMutation(
+            spec: spec,
+            in: context,
+            stagingOperationsWith: stageOperations,
+            apply: {
+                project.primarySubClientId = primarySubClientId
+                project.needsSync = true
+            },
+            rematerializeAfterRollback: {
+                let projectId = project.id
+                let descriptor = FetchDescriptor<Project>(
+                    predicate: #Predicate { $0.id == projectId }
+                )
+                _ = try? context.fetch(descriptor).first
+            }
+        )
+    }
+
     /// Update project with generic AnyJSON fields - SINGLE SOURCE OF TRUTH
     /// This replaces syncManager.updateProjectFields() calls.
     /// For known fields, it applies optimistic local updates.
@@ -6465,7 +6696,23 @@ class DataController: ObservableObject {
                     break
                 }
             case "client_id":
-                if case .string(let v) = value { project.clientId = v }
+                switch value {
+                case .string(let v):
+                    project.clientId = v
+                case .null:
+                    project.clientId = nil
+                default:
+                    break
+                }
+            case "primary_sub_client_id":
+                switch value {
+                case .string(let v):
+                    project.primarySubClientId = v
+                case .null:
+                    project.primarySubClientId = nil
+                default:
+                    break
+                }
             default:
                 break
             }

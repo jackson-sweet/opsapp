@@ -176,6 +176,22 @@ class PermissionStore: ObservableObject {
         scope(for: "calendar.edit") != nil
     }
 
+    // MARK: - Project-Edit Gate
+
+    /// Whether `userId` may edit this exact project. `projects.edit = all`
+    /// reaches every project; assigned/own reaches only projects whose team
+    /// contains that operator. This is the client-side mirror of the
+    /// record-scoped server policy and prevents a scoped grant from becoming a
+    /// company-wide edit affordance.
+    func canEditProject(_ project: Project, userId: String) -> Bool {
+        guard let granted = scope(for: "projects.edit") else { return false }
+        if granted == "all" { return true }
+        let canonicalUserId = userId.lowercased()
+        return project.getTeamMemberIds().contains {
+            $0.lowercased() == canonicalUserId
+        }
+    }
+
     // MARK: - Task-Edit Gates
 
     /// Whether the current user may edit a task's *fields* (type, description,

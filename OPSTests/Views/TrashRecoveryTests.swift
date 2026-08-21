@@ -13,6 +13,19 @@ import XCTest
 
 @MainActor
 final class TrashRecoveryTests: XCTestCase {
+    func testQuickViewMediaUsesTheLedgerRepresentativePhoto() {
+        let project = Project(id: "project-media", title: "Media project", status: .accepted)
+        project.companyId = "company-1"
+        project.setProjectImageURLs(["https://example.com/recovery.jpg"])
+        project.deletedAt = Date()
+
+        let descriptor = TrashRecoveryRowDescriptor.project(project, syncedPhotos: [])
+        let media = TrashRecoveryQuickViewMedia(descriptor: descriptor)
+
+        XCTAssertEqual(media.source, .projectPhoto("https://example.com/recovery.jpg"))
+        XCTAssertEqual(media.title, "Media project")
+    }
+
     private let now = Date(timeIntervalSince1970: 1_800_000_000)
 
     override func tearDown() {

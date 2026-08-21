@@ -211,6 +211,7 @@ extension SupabaseProjectDTO {
         let project = Project(id: id, title: title, status: resolvedStatus)
         project.companyId = companyId
         project.clientId = clientId
+        project.primarySubClientId = primarySubClientId
         project.opportunityId = opportunityId
         project.titleIsAuto = titleIsAuto ?? false
         project.address = address

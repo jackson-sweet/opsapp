@@ -177,16 +177,17 @@ struct ProjectDetailsView: View {
                             onSelect: { client in
                                 project.client = client
                                 project.clientId = client.id
+                                project.primarySubClientId = nil
                                 project.needsSync = true
                                 try? dataController.modelContext?.save()
                                 Task {
                                     try? await dataController.updateProjectFields(
                                         projectId: project.id,
-                                        fields: ["client_id": .string(client.id)]
+                                        fields: [
+                                            "client_id": .string(client.id),
+                                            "primary_sub_client_id": .null
+                                        ]
                                     )
-                                    project.needsSync = false
-                                    project.lastSyncedAt = Date()
-                                    try? dataController.modelContext?.save()
                                 }
                                 let generator = UIImpactFeedbackGenerator(style: .medium)
                                 generator.impactOccurred()

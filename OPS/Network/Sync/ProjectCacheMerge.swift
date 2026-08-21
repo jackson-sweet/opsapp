@@ -39,7 +39,7 @@ enum ProjectCacheMerge {
     /// (`SyncOperation.changedFields` speaks wire names, not Swift property
     /// names — bug 209281ba), so protection comparisons must use them too.
     static let mergedFields: [String] = [
-        "title", "status", "company_id", "client_id", "opportunity_id",
+        "title", "status", "company_id", "client_id", "primary_sub_client_id", "opportunity_id",
         "address", "latitude", "longitude",
         "start_date", "end_date", "duration",
         "notes", "description", "all_day",
@@ -115,6 +115,9 @@ enum ProjectCacheMerge {
             if !protectedFields.contains("status")          { existing.status = model.status }
             if !protectedFields.contains("company_id")      { existing.companyId = model.companyId }
             if !protectedFields.contains("client_id")       { existing.clientId = model.clientId }
+            if !protectedFields.contains("primary_sub_client_id") {
+                existing.primarySubClientId = model.primarySubClientId
+            }
             if !protectedFields.contains("opportunity_id")  { existing.opportunityId = model.opportunityId }
             if !protectedFields.contains("address")         { existing.address = model.address }
             if !protectedFields.contains("latitude")        { existing.latitude = model.latitude }

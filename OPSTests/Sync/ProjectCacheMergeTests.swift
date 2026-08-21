@@ -74,13 +74,15 @@ final class ProjectCacheMergeTests: XCTestCase {
         title: String = "3998 Holland Ave",
         status: String = "accepted",
         address: String? = "3998 Holland Ave, Victoria BC",
-        opportunityId: String? = "lead-1"
+        opportunityId: String? = "lead-1",
+        primarySubClientId: String? = "contact-1"
     ) throws -> SupabaseProjectDTO {
         let json = """
         {
           "id": "\(id)",
           "company_id": "company-1",
           "client_id": "client-1",
+          "primary_sub_client_id": \(primarySubClientId.map { "\"\($0)\"" } ?? "null"),
           "opportunity_id": \(opportunityId.map { "\"\($0)\"" } ?? "null"),
           "title": "\(title)",
           "status": "\(status)",
@@ -111,6 +113,7 @@ final class ProjectCacheMergeTests: XCTestCase {
         XCTAssertEqual(stored.count, 1)
         XCTAssertEqual(stored.first?.title, "3998 Holland Ave")
         XCTAssertEqual(stored.first?.opportunityId, "lead-1")
+        XCTAssertEqual(stored.first?.primarySubClientId, "contact-1")
         XCTAssertEqual(merged.id, dto.id)
         XCTAssertFalse(merged.needsSync)
         XCTAssertNotNil(merged.lastSyncedAt)
@@ -194,6 +197,28 @@ final class ProjectCacheMergeTests: XCTestCase {
         XCTAssertEqual(stored?.title, "3998 Holland Ave", "protected local title must win")
         XCTAssertEqual(stored?.status, .inProgress, "unprotected fields still merge")
         XCTAssertTrue(stored?.needsSync ?? false, "an un-pushed local write stays dirty")
+    }
+
+    @MainActor
+    func testProtectedPrimaryContactSurvivesTheMerge() throws {
+        let context = try makeContext()
+        let cached = try ProjectCacheMerge.apply(
+            dto: try projectDTO(), context: context,
+            protectedFields: [], hasPendingWrite: false
+        )
+        cached.primarySubClientId = "local-contact"
+        cached.needsSync = true
+        try context.save()
+
+        let merged = try ProjectCacheMerge.apply(
+            dto: try projectDTO(primarySubClientId: "server-contact"),
+            context: context,
+            protectedFields: ["primary_sub_client_id"],
+            hasPendingWrite: true
+        )
+
+        XCTAssertEqual(merged.primarySubClientId, "local-contact")
+        XCTAssertTrue(merged.needsSync)
     }
 
     /// With nothing pending, the merged row is clean and fully server-shaped.

@@ -164,8 +164,13 @@ class ProjectDetailsViewModel: ObservableObject {
 
     var canEditProject: Bool {
         // Mention-only users cannot edit any project field (Bug G9, Rule 1+2).
-        if isMentionOnlyAccess { return false }
-        return PermissionStore.shared.can("projects.edit")
+        guard !isMentionOnlyAccess,
+              let userId = dataController?.currentUser?.id
+                ?? SupabaseService.shared.currentUserId
+                ?? UserDefaults.standard.string(forKey: "currentUserId") else {
+            return false
+        }
+        return PermissionStore.shared.canEditProject(project, userId: userId)
     }
 
     /// Duplicating inserts a new `project_tasks` row, so this deliberately uses

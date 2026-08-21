@@ -1046,7 +1046,7 @@ final class InboundProcessor {
                 entityType: .project,
                 entityId: id,
                 fields: [
-                    "title", "title_is_auto", "status", "company_id", "client_id", "opportunity_id",
+                    "title", "title_is_auto", "status", "company_id", "client_id", "primary_sub_client_id", "opportunity_id",
                     "address", "latitude", "longitude",
                     "start_date", "end_date", "duration",
                     "notes", "description", "all_day",
@@ -1073,6 +1073,9 @@ final class InboundProcessor {
                 // sync earlier in `syncOrder` so the lookup almost always
                 // hits; if not, the end-of-sync pass still fixes it up.
                 wireProjectClient(existing, clientId: dto.clientId, context: context)
+            }
+            if accept.contains("primary_sub_client_id") {
+                existing.primarySubClientId = dto.primarySubClientId
             }
             if accept.contains("opportunity_id") { existing.opportunityId = dto.opportunityId }
             if accept.contains("address") { existing.address = dto.address }

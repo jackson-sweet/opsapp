@@ -88,6 +88,7 @@ enum SyncCrossEntityDependency {
     static let payloadReferenceKeys: [String: String] = [
         "project_id": SyncEntityType.project.rawValue,
         "client_id": SyncEntityType.client.rawValue,
+        "primary_sub_client_id": SyncEntityType.subClient.rawValue,
         "company_id": SyncEntityType.company.rawValue,
         "task_type_id": SyncEntityType.taskType.rawValue
     ]

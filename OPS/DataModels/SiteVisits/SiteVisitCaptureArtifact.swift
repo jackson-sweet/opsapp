@@ -187,6 +187,7 @@ struct SiteVisitProjectPayload: Equatable {
     // time from the local opportunity instead, behind `finances.view`.
     var contactName: String? = nil
     var companyName: String? = nil
+    var recordedByUserId: String? = nil
 }
 
 enum SiteVisitProjectPayloadBuilder {
@@ -197,7 +198,8 @@ enum SiteVisitProjectPayloadBuilder {
         artifacts: [SiteVisitCaptureArtifact],
         checklistAnswers: [SiteVisitChecklistAnswer] = [],
         contactName: String? = nil,
-        companyName: String? = nil
+        companyName: String? = nil,
+        recordedByUserId: String? = nil
     ) -> SiteVisitProjectPayload {
         let included = artifacts
             .filter { $0.isActive && $0.includedInProjectReview }
@@ -226,7 +228,8 @@ enum SiteVisitProjectPayloadBuilder {
             checklistLines: checklist.map(\.legacyLine),
             checklistItems: checklist.map(\.item),
             contactName: contactName,
-            companyName: companyName
+            companyName: companyName,
+            recordedByUserId: recordedByUserId
         )
     }
 
@@ -263,7 +266,7 @@ enum SiteVisitProjectPayloadBuilder {
         case .deckDesign:
             guard let deckDesignId = value.deckDesignId,
                   !deckDesignId.isEmpty else { return nil }
-            renderedValue = "DECK DESIGN \(deckDesignId)"
+            renderedValue = "DESIGN LINKED"
             artifactCount = 1
         }
 

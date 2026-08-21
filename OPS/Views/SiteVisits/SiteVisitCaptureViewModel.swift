@@ -861,7 +861,8 @@ final class SiteVisitCaptureViewModel: ObservableObject {
             // carried — the packet syncs to a column OPS-Web renders ungated,
             // so money is resolved at render time from the local opportunity.
             contactName: currentOpportunity?.displayContactName ?? identityDraft?.contactName.trimmedNilIfEmpty,
-            companyName: identityDraft?.clientName.trimmedNilIfEmpty
+            companyName: identityDraft?.clientName.trimmedNilIfEmpty,
+            recordedByUserId: visit.createdBy
         )
     }
 

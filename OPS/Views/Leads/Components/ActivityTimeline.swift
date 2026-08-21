@@ -276,11 +276,16 @@ private struct LeadSiteVisitEntryView: View {
         _identityDrafts = Query(
             filter: #Predicate<SiteVisitIdentityDraft> { $0.siteVisitId == visitId }
         )
-        let authorId = activity.createdBy ?? ""
-        _authors = Query(filter: #Predicate<TeamMember> { $0.id == authorId })
+        _authors = Query()
     }
 
-    private var teamMember: TeamMember? { authors.first }
+    private var teamMember: TeamMember? {
+        let recorderId = visits.first?.createdBy ?? activity.createdBy
+        guard let recorderId else { return nil }
+        return authors.first(where: {
+            DeckDesign.canonicalUUIDString($0.id) == DeckDesign.canonicalUUIDString(recorderId)
+        })
+    }
 
     /// Matches the project feed's author fallback so one visit reads the same
     /// on both surfaces.
@@ -312,9 +317,12 @@ private struct LeadSiteVisitEntryView: View {
             .padding(.horizontal, LeadStreamMetrics.rowInset)
             .padding(.vertical, OPSStyle.Layout.spacing2)
             .sheet(isPresented: $showRecord) {
-                // No photo tap-through: a lead has no project gallery to open
-                // into, and a dead-end tap is worse than no tap.
-                SiteVisitRecordView(record: record)
+                SiteVisitRecordSheet(
+                    record: record,
+                    opportunityId: opportunity?.id,
+                    companyId: opportunity?.companyId,
+                    deckTitle: opportunity?.deckDesignTitle
+                )
             }
         } else {
             LeadStreamRow(entry: entry, isExpanded: isExpanded, onToggle: onToggle)

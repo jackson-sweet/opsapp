@@ -180,6 +180,40 @@ final class SiteVisitHandoffDurabilityTests: XCTestCase {
     }
 
     @MainActor
+    func test_handoffAttributesGeneratedRecordsToTheVisitRecorderNotTheConversionActor() throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+        let recorderId = "310fbd03-4ffd-4432-b502-e20aff43d548"
+        let conversionActorId = "eb23ad84-cbba-4e45-b3f9-ad3fef3b801e"
+        let remoteURL = "https://example.supabase.co/storage/v1/object/public/site-visit-media/recorded.jpg"
+        let photo = SiteVisitCaptureArtifact.durabilityFixture(
+            kind: .photo,
+            siteVisitId: cloudVisitID,
+            capturedAt: Date(timeIntervalSince1970: 1)
+        )
+        photo.localAssetURL = remoteURL
+        let payload = SiteVisitProjectPayloadBuilder.payload(
+            siteVisitId: cloudVisitID,
+            opportunityId: "lead-1",
+            address: nil,
+            artifacts: [photo],
+            recordedByUserId: recorderId
+        )
+
+        SiteVisitProjectHandoff.apply(
+            payload: payload,
+            artifacts: [photo],
+            projectId: cloudProjectID,
+            companyId: cloudCompanyID,
+            userId: conversionActorId,
+            modelContext: context
+        )
+
+        XCTAssertEqual(try XCTUnwrap(context.fetch(FetchDescriptor<ProjectPhoto>()).first).uploadedBy, recorderId)
+        XCTAssertEqual(try XCTUnwrap(context.fetch(FetchDescriptor<ProjectNote>()).first).authorId, recorderId)
+    }
+
+    @MainActor
     func test_repeatedHandoffDoesNotDuplicatePhotoPacketOrDeckLink() throws {
         let container = try makeContainer()
         let context = container.mainContext
@@ -521,7 +555,12 @@ final class SiteVisitHandoffDurabilityTests: XCTestCase {
         let container = try makeContainer()
         let context = container.mainContext
 
-        let visit = SiteVisit(id: "visit-1", opportunityId: "lead-1", companyId: "company-1")
+        let visit = SiteVisit(
+            id: "visit-1",
+            opportunityId: "lead-1",
+            companyId: "company-1",
+            createdBy: "recorder-1"
+        )
         context.insert(visit)
 
         let photo = SiteVisitCaptureArtifact.durabilityFixture(id: "photo-1", kind: .photo, capturedAt: Date(timeIntervalSince1970: 1))
@@ -564,6 +603,7 @@ final class SiteVisitHandoffDurabilityTests: XCTestCase {
         XCTAssertEqual(derived.payload.siteVisitId, "visit-1")
         XCTAssertEqual(derived.payload.opportunityId, "lead-1")
         XCTAssertEqual(derived.payload.address, "972 Lyall St, Esquimalt")
+        XCTAssertEqual(derived.payload.recordedByUserId, "recorder-1")
         XCTAssertEqual(
             derived.payload.photoArtifactIds,
             ["photo-1", "photo-0"],

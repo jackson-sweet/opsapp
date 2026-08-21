@@ -135,6 +135,12 @@ struct SubClientRow: View {
     let onCall: () -> Void
     let onMessage: () -> Void
     let onEmail: () -> Void
+    var showsProjectContactControl: Bool = false
+    var isProjectContact: Bool = false
+    var canAssignProjectContact: Bool = false
+    var isProjectContactSaving: Bool = false
+    var projectContactError: String? = nil
+    var onToggleProjectContact: () -> Void = {}
     
     @State private var showingCreateContact = false
     @State private var showingContactExportOptions = false
@@ -173,6 +179,12 @@ struct SubClientRow: View {
                         Text(title)
                             .font(OPSStyle.Typography.smallCaption)
                             .foregroundColor(OPSStyle.Colors.secondaryText)
+                    }
+
+                    if isProjectContact {
+                        Text("PROJECT CONTACT")
+                            .font(OPSStyle.Typography.microLabel)
+                            .foregroundColor(OPSStyle.Colors.primaryAccent)
                     }
                 }
                 
@@ -437,6 +449,54 @@ struct SubClientRow: View {
                                         RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                                             .stroke(OPSStyle.Colors.primaryText, lineWidth: OPSStyle.Layout.Border.standard)
                                     )
+                            }
+                        }
+                        .padding(.horizontal, OPSStyle.Layout.spacing3)
+                    }
+
+                    if showsProjectContactControl {
+                        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
+                            if let projectContactError {
+                                Text("// CONTACT NOT CHANGED")
+                                    .font(OPSStyle.Typography.microLabel)
+                                    .foregroundColor(OPSStyle.Colors.errorText)
+
+                                Text(projectContactError)
+                                    .font(OPSStyle.Typography.smallCaption)
+                                    .foregroundColor(OPSStyle.Colors.secondaryText)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+
+                            if canAssignProjectContact {
+                                Button(action: onToggleProjectContact) {
+                                    HStack(spacing: OPSStyle.Layout.spacing2) {
+                                        if isProjectContactSaving {
+                                            ProgressView()
+                                                .tint(OPSStyle.Colors.primaryAccent)
+                                        } else {
+                                            Image(systemName: isProjectContact ? OPSStyle.Icons.xmark : OPSStyle.Icons.checkmark)
+                                                .font(OPSStyle.Typography.smallBody)
+                                        }
+
+                                        Text(isProjectContact ? "REMOVE FROM PROJECT" : "USE FOR THIS PROJECT")
+                                            .font(OPSStyle.Typography.button)
+
+                                        Spacer()
+                                    }
+                                    .foregroundColor(OPSStyle.Colors.primaryAccent)
+                                    .frame(maxWidth: .infinity, minHeight: OPSStyle.Layout.touchTargetMin)
+                                    .padding(.horizontal, OPSStyle.Layout.spacing3)
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                                            .stroke(OPSStyle.Colors.primaryAccent, lineWidth: OPSStyle.Layout.Border.standard)
+                                    )
+                                }
+                                .buttonStyle(.plain)
+                                .disabled(isProjectContactSaving)
+                            } else if isProjectContact {
+                                Text("Used for this project's calls and email.")
+                                    .font(OPSStyle.Typography.smallCaption)
+                                    .foregroundColor(OPSStyle.Colors.secondaryText)
                             }
                         }
                         .padding(.horizontal, OPSStyle.Layout.spacing3)

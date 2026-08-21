@@ -8,6 +8,7 @@
 import SwiftUI
 import SwiftData
 import MapKit
+import Supabase
 
 /// Detail view for displaying contact information for users, team members, and clients
 struct ContactDetailView: View {
@@ -51,6 +52,9 @@ struct ContactDetailView: View {
     @State private var selectedProject: Project? = nil  // For showing project details
     @State private var showingCreateProject = false  // For creating a new project
     @State private var isProjectListExpanded = false  // For expanding project list
+    @State private var projectContactSavingId: String? = nil
+    @State private var projectContactErrorId: String? = nil
+    @State private var projectContactErrorMessage: String? = nil
 
     // Constants for styling
     private let avatarSize: CGFloat = 80
@@ -220,6 +224,18 @@ struct ContactDetailView: View {
                                                             if let emailURL = URL(string: "mailto:\(email)") {
                                                                 openURL(emailURL)
                                                             }
+                                                        }
+                                                    },
+                                                    showsProjectContactControl: project != nil,
+                                                    isProjectContact: project?.primaryProjectContact?.id == subClient.id,
+                                                    canAssignProjectContact: canAssignProjectContact,
+                                                    isProjectContactSaving: projectContactSavingId == subClient.id,
+                                                    projectContactError: projectContactErrorId == subClient.id
+                                                        ? projectContactErrorMessage
+                                                        : nil,
+                                                    onToggleProjectContact: {
+                                                        Task {
+                                                            await toggleProjectContact(subClient)
                                                         }
                                                     }
                                                 )
@@ -1397,6 +1413,16 @@ struct ContactDetailView: View {
         permissionStore.can("clients.edit")
     }
 
+    private var canAssignProjectContact: Bool {
+        guard let project,
+              let userId = dataController.currentUser?.id
+                ?? SupabaseService.shared.currentUserId
+                ?? UserDefaults.standard.string(forKey: "currentUserId") else {
+            return false
+        }
+        return permissionStore.canEditProject(project, userId: userId)
+    }
+
     private var canDeleteClient: Bool {
         permissionStore.can("clients.delete")
     }
@@ -1589,6 +1615,43 @@ struct ContactDetailView: View {
             } catch {
             }
         }
+    }
+
+    @MainActor
+    private func toggleProjectContact(_ subClient: SubClient) async {
+        guard let project,
+              canAssignProjectContact,
+              subClient.deletedAt == nil,
+              subClient.client?.id == project.clientId else {
+            return
+        }
+
+        let previousId = project.primarySubClientId
+        let nextId: String? = previousId == subClient.id ? nil : subClient.id
+        projectContactSavingId = subClient.id
+        projectContactErrorId = nil
+        projectContactErrorMessage = nil
+
+        do {
+            project.primarySubClientId = nextId
+            project.needsSync = true
+            try modelContext.save()
+            try await dataController.updateProjectFields(
+                projectId: project.id,
+                fields: [
+                    "primary_sub_client_id": nextId.map(AnyJSON.string) ?? .null
+                ]
+            )
+            UINotificationFeedbackGenerator().notificationOccurred(.success)
+        } catch {
+            project.primarySubClientId = previousId
+            try? modelContext.save()
+            projectContactErrorId = subClient.id
+            projectContactErrorMessage = "Project contact was not changed. Check your connection and try again."
+            UINotificationFeedbackGenerator().notificationOccurred(.error)
+        }
+
+        projectContactSavingId = nil
     }
     
     /// Format phone number for display (US format)

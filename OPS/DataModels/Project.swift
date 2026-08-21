@@ -28,6 +28,9 @@ final class Project: Identifiable {
     /// Supabase `projects.priority_rank`. Added 2026-06-03.
     var priorityRank: Double?
     var clientId: String? // Store the client ID
+    /// Explicit project-level contact selected from the parent client's active
+    /// sub-contacts. Nil means the project uses the parent client directly.
+    var primarySubClientId: String?
     var allDay: Bool
     var opportunityId: String?  // Supabase Opportunity UUID — links this project to its pipeline deal
 
@@ -42,7 +45,7 @@ final class Project: Identifiable {
     // Relationship to Client object
     @Relationship(deleteRule: .nullify)
     var client: Client?
-    
+
     // Store team member IDs as string
     var teamMemberIdsString: String = ""
     var projectDescription: String?
@@ -108,52 +111,53 @@ final class Project: Identifiable {
         self.teamMembers = []
         self.allDay = false
         self.client = nil
+        self.primarySubClientId = nil
     }
-    
+
     // Computed properties to get client info from Client object if available
     var effectiveClientName: String {
         return client?.name ?? ""
     }
-    
+
+    /// The active sub-contact explicitly selected for this project. A stale,
+    /// deleted, or re-parented selection fails closed to the parent client.
+    var primaryProjectContact: SubClient? {
+        guard let primarySubClientId,
+              let clientId,
+              let contact = client?.subClients.first(where: {
+                  $0.id == primarySubClientId && $0.deletedAt == nil
+              }),
+              contact.client?.id == clientId else {
+            return nil
+        }
+        return contact
+    }
+
+    /// Human contact name for project communication. The parent client's name
+    /// remains `effectiveClientName`; this exposes the selected person without
+    /// replacing the company/client label elsewhere in the app.
+    var effectiveProjectContactName: String {
+        primaryProjectContact?.name ?? effectiveClientName
+    }
+
     var effectiveClientEmail: String? {
-        // First check if client has email
-        if let clientEmail = client?.email, !clientEmail.isEmpty {
-            return clientEmail
-        }
-
-        // Check sub-clients for email
-        if let subClients = client?.subClients {
-            for subClient in subClients {
-                if let email = subClient.email, !email.isEmpty {
-                    return email // Return first available sub-client email
-                }
-            }
-        }
-
-        return nil
+        nonEmpty(primaryProjectContact?.email) ?? nonEmpty(client?.email)
     }
     
     var effectiveClientPhone: String? {
-        // First check if client has phone
-        if let clientPhone = client?.phoneNumber, !clientPhone.isEmpty {
-            return clientPhone
-        }
-
-        // Check sub-clients for phone
-        if let subClients = client?.subClients {
-            for subClient in subClients {
-                if let phone = subClient.phoneNumber, !phone.isEmpty {
-                    return phone // Return first available sub-client phone
-                }
-            }
-        }
-
-        return nil
+        nonEmpty(primaryProjectContact?.phoneNumber) ?? nonEmpty(client?.phoneNumber)
     }
     
     // Check if any contact info is available (including sub-clients)
     var hasAnyClientContactInfo: Bool {
         return effectiveClientEmail != nil || effectiveClientPhone != nil
+    }
+
+    private func nonEmpty(_ value: String?) -> String? {
+        guard let value, !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return nil
+        }
+        return value
     }
     
     // Array accessor methods

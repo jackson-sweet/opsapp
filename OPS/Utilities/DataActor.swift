@@ -1097,7 +1097,7 @@ actor DataActor {
                 entityType: .project,
                 entityId: id,
                 fields: [
-                    "title", "status", "company_id", "client_id", "opportunity_id",
+                    "title", "status", "company_id", "client_id", "primary_sub_client_id", "opportunity_id",
                     "address", "latitude", "longitude",
                     "start_date", "end_date", "duration",
                     "notes", "description", "all_day",
@@ -1114,6 +1114,9 @@ actor DataActor {
             if accept.contains("status") { existing.status = Status(rawValue: dto.status) ?? .rfq }
             if accept.contains("company_id") { existing.companyId = dto.companyId }
             if accept.contains("client_id") { existing.clientId = dto.clientId }
+            if accept.contains("primary_sub_client_id") {
+                existing.primarySubClientId = dto.primarySubClientId
+            }
             if accept.contains("opportunity_id") { existing.opportunityId = dto.opportunityId }
             if accept.contains("address") { existing.address = dto.address }
             if accept.contains("latitude") { existing.latitude = dto.latitude }

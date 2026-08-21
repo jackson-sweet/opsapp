@@ -6458,7 +6458,23 @@ class DataController: ObservableObject {
                     break
                 }
             case "client_id":
-                if case .string(let v) = value { project.clientId = v }
+                switch value {
+                case .string(let v):
+                    project.clientId = v
+                case .null:
+                    project.clientId = nil
+                default:
+                    break
+                }
+            case "primary_sub_client_id":
+                switch value {
+                case .string(let v):
+                    project.primarySubClientId = v
+                case .null:
+                    project.primarySubClientId = nil
+                default:
+                    break
+                }
             default:
                 break
             }

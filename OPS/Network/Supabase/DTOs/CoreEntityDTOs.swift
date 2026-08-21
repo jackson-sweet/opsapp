@@ -213,6 +213,7 @@ struct SupabaseProjectDTO: Codable, Identifiable {
     let bubbleId: String?
     let companyId: String
     let clientId: String?
+    var primarySubClientId: String? = nil
     let opportunityId: String?
     let title: String
     /// Server marker — true when `title` was machine-derived from address/client
@@ -262,6 +263,7 @@ struct SupabaseProjectDTO: Codable, Identifiable {
         case bubbleId       = "bubble_id"
         case companyId      = "company_id"
         case clientId       = "client_id"
+        case primarySubClientId = "primary_sub_client_id"
         case opportunityId  = "opportunity_id"
         case startDate      = "start_date"
         case endDate        = "end_date"

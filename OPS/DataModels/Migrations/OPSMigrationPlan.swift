@@ -170,7 +170,8 @@ enum OPSMigrationPlan: SchemaMigrationPlan {
             OPSSchemaV20.self,
             OPSSchemaV21.self,
             OPSSchemaV22.self,
-            OPSSchemaV23.self
+            OPSSchemaV23.self,
+            OPSSchemaV24.self
         ]
     }
 
@@ -197,9 +198,16 @@ enum OPSMigrationPlan: SchemaMigrationPlan {
             addSiteVisitCloudFieldsV19toV20,
             addActivityEmailIdentityV20toV21,
             addActivitySiteVisitIdV21toV22,
-            addSiteVisitBookingFieldsV22toV23
+            addSiteVisitBookingFieldsV22toV23,
+            addPhaseCAppointmentFieldsV23toV24
         ]
     }
+
+    /// V23 → V24: additive server-owned appointment identity and copy fields.
+    static let addPhaseCAppointmentFieldsV23toV24 = MigrationStage.lightweight(
+        fromVersion: OPSSchemaV23.self,
+        toVersion: OPSSchemaV24.self
+    )
 
     /// V22 → V23: additive server-owned booking fields on `SiteVisit`.
     /// Existing rows receive nil for `bookedAt` and `reminderLeadMinutes`; the

@@ -132,11 +132,17 @@ enum CalendarMirrorContent {
               let start = visit.scheduledAt,
               let opportunityId = visit.opportunityId else { return nil }
 
+        let canonicalTitle = visit.appointmentTitle?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let canonicalLocation = visit.appointmentLocation?.trimmingCharacters(in: .whitespacesAndNewlines)
+
         return MirroredEventPayload(
             opsId: visit.id,
             source: .siteVisit,
-            title: "Site visit — \(leadName)",
-            body: body(address: address, notes: nil),
+            title: canonicalTitle.flatMap { $0.isEmpty ? nil : $0 } ?? "Site visit — \(leadName)",
+            body: body(
+                address: canonicalLocation.flatMap { $0.isEmpty ? nil : $0 } ?? address,
+                notes: nil
+            ),
             url: URL(string: "ops://leads/\(opportunityId)")!,
             isAllDay: false,
             startDate: start,

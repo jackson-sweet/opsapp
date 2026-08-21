@@ -60,6 +60,10 @@ struct SiteVisitDTO: Decodable, Equatable, Identifiable {
     let calendarEventId: String?
     let bookedAt: Date?
     let reminderLeadMinutes: Int?
+    let appointmentHandoffId: String?
+    let appointmentKind: String?
+    let appointmentTitle: String?
+    let appointmentLocation: String?
     let createdBy: String
     let createdAt: Date?
     let updatedAt: Date?
@@ -86,6 +90,10 @@ struct SiteVisitDTO: Decodable, Equatable, Identifiable {
         case calendarEventId = "calendar_event_id"
         case bookedAt = "booked_at"
         case reminderLeadMinutes = "reminder_lead_minutes"
+        case appointmentHandoffId = "appointment_handoff_id"
+        case appointmentKind = "appointment_kind"
+        case appointmentTitle = "appointment_title"
+        case appointmentLocation = "appointment_location"
         case createdBy = "created_by"
         case createdAt = "created_at"
         case updatedAt = "updated_at"
@@ -117,6 +125,13 @@ struct SiteVisitDTO: Decodable, Equatable, Identifiable {
         calendarEventId = try c.decodeIfPresent(String.self, forKey: .calendarEventId)?.lowercased()
         bookedAt = try SiteVisitWire.optionalDate(c, key: .bookedAt)
         reminderLeadMinutes = try c.decodeIfPresent(Int.self, forKey: .reminderLeadMinutes)
+        appointmentHandoffId = try SiteVisitWire.optionalUUID(
+            try c.decodeIfPresent(String.self, forKey: .appointmentHandoffId),
+            key: CodingKeys.appointmentHandoffId
+        )
+        appointmentKind = try c.decodeIfPresent(String.self, forKey: .appointmentKind)
+        appointmentTitle = try c.decodeIfPresent(String.self, forKey: .appointmentTitle)
+        appointmentLocation = try c.decodeIfPresent(String.self, forKey: .appointmentLocation)
         createdBy = try SiteVisitWire.requiredText(try c.decode(String.self, forKey: .createdBy), key: CodingKeys.createdBy).lowercased()
         createdAt = try SiteVisitWire.optionalDate(c, key: .createdAt)
         updatedAt = try SiteVisitWire.optionalDate(c, key: .updatedAt)
@@ -150,6 +165,10 @@ struct SiteVisitDTO: Decodable, Equatable, Identifiable {
             calendarEventId: calendarEventId,
             bookedAt: bookedAt,
             reminderLeadMinutes: reminderLeadMinutes,
+            appointmentHandoffId: appointmentHandoffId,
+            appointmentKind: appointmentKind,
+            appointmentTitle: appointmentTitle,
+            appointmentLocation: appointmentLocation,
             createdBy: createdBy,
             createdAt: createdAt,
             updatedAt: updatedAt,
@@ -178,6 +197,10 @@ struct SiteVisitDTO: Decodable, Equatable, Identifiable {
         calendarEventId: String?,
         bookedAt: Date?,
         reminderLeadMinutes: Int?,
+        appointmentHandoffId: String?,
+        appointmentKind: String?,
+        appointmentTitle: String?,
+        appointmentLocation: String?,
         createdBy: String,
         createdAt: Date?,
         updatedAt: Date?,
@@ -203,6 +226,10 @@ struct SiteVisitDTO: Decodable, Equatable, Identifiable {
         self.calendarEventId = calendarEventId
         self.bookedAt = bookedAt
         self.reminderLeadMinutes = reminderLeadMinutes
+        self.appointmentHandoffId = appointmentHandoffId
+        self.appointmentKind = appointmentKind
+        self.appointmentTitle = appointmentTitle
+        self.appointmentLocation = appointmentLocation
         self.createdBy = createdBy
         self.createdAt = createdAt
         self.updatedAt = updatedAt

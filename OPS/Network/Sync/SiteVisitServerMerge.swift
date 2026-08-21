@@ -307,6 +307,10 @@ enum SiteVisitServerMerge {
                 model.calendarEventId = dto.calendarEventId
                 model.bookedAt = dto.bookedAt
                 model.reminderLeadMinutes = dto.reminderLeadMinutes
+                model.appointmentHandoffId = dto.appointmentHandoffId
+                model.appointmentKind = dto.appointmentKind
+                model.appointmentTitle = dto.appointmentTitle
+                model.appointmentLocation = dto.appointmentLocation
                 model.updatedAt = dto.updatedAt
                 model.deletedAt = dto.deletedAt
                 model.lastSyncedAt = now
@@ -349,6 +353,10 @@ enum SiteVisitServerMerge {
                 existing.loggedActivityId != dto.activityId
                     || existing.bookedAt != dto.bookedAt
                     || existing.reminderLeadMinutes != dto.reminderLeadMinutes
+                    || existing.appointmentHandoffId != dto.appointmentHandoffId
+                    || existing.appointmentKind != dto.appointmentKind
+                    || existing.appointmentTitle != dto.appointmentTitle
+                    || existing.appointmentLocation != dto.appointmentLocation
                     || existing.createdBy != dto.createdBy
                     || (dto.createdAt.map { $0 != existing.createdAt } ?? false)
                     || existing.updatedAt != dto.updatedAt
@@ -386,6 +394,10 @@ enum SiteVisitServerMerge {
                 existing.loggedActivityId = dto.activityId
                 existing.bookedAt = dto.bookedAt
                 existing.reminderLeadMinutes = dto.reminderLeadMinutes
+                existing.appointmentHandoffId = dto.appointmentHandoffId
+                existing.appointmentKind = dto.appointmentKind
+                existing.appointmentTitle = dto.appointmentTitle
+                existing.appointmentLocation = dto.appointmentLocation
                 existing.createdBy = dto.createdBy
                 if let createdAt = dto.createdAt { existing.createdAt = createdAt }
                 existing.updatedAt = dto.updatedAt

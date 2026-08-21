@@ -1633,19 +1633,12 @@ struct ContactDetailView: View {
         projectContactErrorMessage = nil
 
         do {
-            project.primarySubClientId = nextId
-            project.needsSync = true
-            try modelContext.save()
-            try await dataController.updateProjectFields(
-                projectId: project.id,
-                fields: [
-                    "primary_sub_client_id": nextId.map(AnyJSON.string) ?? .null
-                ]
+            try await dataController.updateProjectPrimaryContact(
+                project: project,
+                primarySubClientId: nextId
             )
             UINotificationFeedbackGenerator().notificationOccurred(.success)
         } catch {
-            project.primarySubClientId = previousId
-            try? modelContext.save()
             projectContactErrorId = subClient.id
             projectContactErrorMessage = "Project contact was not changed. Check your connection and try again."
             UINotificationFeedbackGenerator().notificationOccurred(.error)

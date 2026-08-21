@@ -67,6 +67,7 @@ final class SyncCrossEntityDependencyTests: XCTestCase {
     private let projectId = "1ad4822d-2a9f-4e0a-a9c1-2ccfa7b142d1"
     private let deckId = "bff17fb7-af08-457b-9062-822d25270e9a"
     private let clientId = "0a1b2c3d-4e5f-6071-8293-a4b5c6d7e8f9"
+    private let subClientId = "75d5fb33-9f7c-4f4d-9fe8-b8bb2f2a6136"
 
     private let rlsError = "new row violates row-level security policy "
         + "\"assigned_lead_scope_update\" for table \"deck_designs\""
@@ -154,6 +155,41 @@ final class SyncCrossEntityDependencyTests: XCTestCase {
         XCTAssertFalse(
             SyncCrossEntityDependency.isBlockedByUnresolvedCreate(update, in: [update, create]),
             "a completed create means the referenced row exists — nothing to wait for"
+        )
+    }
+
+    func test_projectContactUpdateWaitsForOfflineSubClientCreate() throws {
+        let context = try makeContext()
+        let update = makeOp(
+            entityType: SyncEntityType.project.rawValue,
+            entityId: projectId,
+            operationType: "update",
+            payload: ["primary_sub_client_id": subClientId],
+            in: context
+        )
+        let create = makeOp(
+            entityType: SyncEntityType.subClient.rawValue,
+            entityId: subClientId,
+            operationType: "create",
+            payload: ["id": subClientId, "client_id": clientId],
+            status: "pending",
+            in: context
+        )
+
+        XCTAssertTrue(
+            SyncCrossEntityDependency.isBlockedByUnresolvedCreate(
+                update,
+                in: [update, create]
+            )
+        )
+
+        create.status = "completed"
+
+        XCTAssertFalse(
+            SyncCrossEntityDependency.isBlockedByUnresolvedCreate(
+                update,
+                in: [update, create]
+            )
         )
     }
 
@@ -314,10 +350,11 @@ final class SyncCrossEntityDependencyTests: XCTestCase {
             [
                 "project_id": SyncEntityType.project.rawValue,
                 "client_id": SyncEntityType.client.rawValue,
+                "primary_sub_client_id": SyncEntityType.subClient.rawValue,
                 "company_id": SyncEntityType.company.rawValue,
                 "task_type_id": SyncEntityType.taskType.rawValue
             ],
-            "the barrier arms on exactly these four foreign keys"
+            "the barrier arms on exactly these five foreign keys"
         )
     }
 

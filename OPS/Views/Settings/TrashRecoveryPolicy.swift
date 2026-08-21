@@ -264,6 +264,19 @@ enum TrashRecoveryThumbnailSourceResolver {
     }
 }
 
+/// Quick view deliberately reuses the exact representative media selected for
+/// the ledger row. Inspection can never show a different or older photo than
+/// the record the operator tapped.
+struct TrashRecoveryQuickViewMedia: Equatable {
+    let source: TrashRecoveryThumbnailSource
+    let title: String
+
+    init(descriptor: TrashRecoveryRowDescriptor) {
+        source = descriptor.thumbnail
+        title = descriptor.title
+    }
+}
+
 struct TrashRecoveryDetail: Identifiable, Equatable {
     let label: String
     let value: String

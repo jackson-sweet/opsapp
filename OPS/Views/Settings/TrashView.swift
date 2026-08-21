@@ -371,10 +371,9 @@ private struct TrashRecoveryRow: View {
 private struct TrashRecoveryThumbnailView: View {
     let source: TrashRecoveryThumbnailSource
     let title: String
+    var size: CGFloat = OPSStyle.Layout.touchTargetMin
 
     @State private var image: UIImage?
-
-    private let size = OPSStyle.Layout.touchTargetMin
 
     var body: some View {
         Group {
@@ -514,6 +513,7 @@ struct TrashRecoveryQuickView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing3) {
                 header
+                quickViewMedia
                 detailLedger
                 dependencyState
                 if let errorMessage { restoreError(errorMessage) }
@@ -552,6 +552,20 @@ struct TrashRecoveryQuickView: View {
                         )
                 )
         }
+    }
+
+    private var quickViewMedia: some View {
+        let media = TrashRecoveryQuickViewMedia(descriptor: descriptor)
+        return HStack {
+            TrashRecoveryThumbnailView(
+                source: media.source,
+                title: media.title,
+                size: OPSStyle.Layout.touchTargetLarge
+            )
+            Spacer(minLength: 0)
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Representative image for \(media.title)")
     }
 
     private var detailLedger: some View {

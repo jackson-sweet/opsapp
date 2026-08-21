@@ -21,6 +21,25 @@
 import SwiftUI
 import SwiftData
 
+enum OverdueReviewPresentation {
+    static let failureLabel = "// COULD NOT MARK DONE"
+
+    static func actionLabel(hasError: Bool) -> String {
+        hasError ? "TRY AGAIN" : "MARK DONE"
+    }
+
+    static func stacksAction(for dynamicTypeSize: DynamicTypeSize) -> Bool {
+        dynamicTypeSize.isAccessibilitySize
+    }
+
+    static func isReviewComplete(
+        visibleTaskCount: Int,
+        pendingCompletionCount: Int
+    ) -> Bool {
+        visibleTaskCount == 0 && pendingCompletionCount == 0
+    }
+}
+
 struct OverdueTasksPromptView: View {
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var dataController: DataController
@@ -33,8 +52,9 @@ struct OverdueTasksPromptView: View {
     /// Ids already being completed — removed from the visible list immediately
     /// for a clean fall-away while the async status write lands.
     @State private var completingTaskIds: Set<String> = []
+    @State private var completionErrors: [String: String] = [:]
     @State private var taskToOpen: ProjectTask?
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     // MARK: - Snooze Token
 
@@ -81,6 +101,13 @@ struct OverdueTasksPromptView: View {
         }
     }
 
+    private var reviewComplete: Bool {
+        OverdueReviewPresentation.isReviewComplete(
+            visibleTaskCount: overdueTasks.count,
+            pendingCompletionCount: completingTaskIds.count
+        )
+    }
+
     // MARK: - Body
 
     var body: some View {
@@ -93,14 +120,19 @@ struct OverdueTasksPromptView: View {
                 subtitleRow
 
                 ScrollView {
-                    VStack(spacing: OPSStyle.Layout.spacing2) {
-                        ForEach(overdueTasks, id: \.id) { task in
-                            overdueCard(task)
-                                .transition(reduceMotion
-                                    ? .opacity
-                                    : .move(edge: .leading).combined(with: .opacity))
+                    LazyVStack(spacing: 0) {
+                        ForEach(Array(overdueTasks.enumerated()), id: \.element.id) { index, task in
+                            overdueRow(task)
+                                .transition(.opacity)
+
+                            if index < overdueTasks.count - 1 {
+                                Divider()
+                                    .overlay(OPSStyle.Colors.cardBorder)
+                                    .padding(.leading, OPSStyle.Layout.spacing3)
+                            }
                         }
                     }
+                    .glassSurface()
                     .padding(.horizontal, OPSStyle.Layout.spacing3_5)
                     .padding(.bottom, OPSStyle.Layout.spacing4)
                     .animation(OPSStyle.Animation.standard, value: overdueTasks.map(\.id))
@@ -122,8 +154,11 @@ struct OverdueTasksPromptView: View {
         }
         // If the operator clears every overdue task, the job is done — get out
         // of their way.
-        .onChange(of: overdueTasks.isEmpty) { _, empty in
-            if empty { dismiss() }
+        .onAppear {
+            if reviewComplete { dismiss() }
+        }
+        .onChange(of: reviewComplete) { _, complete in
+            if complete { dismiss() }
         }
     }
 
@@ -169,78 +204,108 @@ struct OverdueTasksPromptView: View {
         .padding(.bottom, OPSStyle.Layout.spacing4)
     }
 
-    // MARK: - Card
+    // MARK: - Recovery ledger
 
-    private func overdueCard(_ task: ProjectTask) -> some View {
-        HStack(spacing: 0) {
-            // Left edge — structural only. Every row shares the one overdue
-            // state, so a per-card brick bar just repeats the alarm down the
-            // list. Neutral, mirroring the sibling CompanySetupPromptView's
-            // not-yet-complete card. (Brick is a border/dot token, not a fill.)
-            RoundedRectangle(cornerRadius: 1.5)
-                .fill(OPSStyle.Colors.cardBorder)
-                .frame(width: 3)
-                .padding(.vertical, OPSStyle.Layout.spacing2)
+    private func overdueRow(_ task: ProjectTask) -> some View {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
+            Button {
+                taskToOpen = task
+            } label: {
+                HStack(alignment: .firstTextBaseline, spacing: OPSStyle.Layout.spacing2) {
+                    VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
+                        Text(task.project?.title ?? "Project")
+                            .font(OPSStyle.Typography.microLabel)
+                            .foregroundColor(OPSStyle.Colors.secondaryText)
+                            .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 1)
+                            .fixedSize(horizontal: false, vertical: true)
 
-            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
-                // Project title
-                Text(task.project?.title ?? "Project")
-                    .font(OPSStyle.Typography.bodyBold)
-                    .foregroundColor(OPSStyle.Colors.primaryText)
-                    .lineLimit(1)
-
-                // Task badge + overdue meta + the close-it-out action, on one
-                // row so the card stays compact and the action reads as a quiet
-                // affordance instead of a full-width bar.
-                HStack(spacing: OPSStyle.Layout.spacing2) {
-                    TaskBadge(
-                        name: task.taskType?.display ?? "Task",
-                        color: Color(hex: task.taskColor) ?? OPSStyle.Colors.primaryAccent,
-                        size: .medium
-                    )
-
-                    // `rose` (#B58289) is the system's overdue/error TEXT token;
-                    // brick (`errorStatus`) is border/dot only.
-                    Text(overdueLabel(for: task))
-                        .font(OPSStyle.Typography.smallCaption)
-                        .foregroundColor(OPSStyle.Colors.rose)
+                        Text(task.displayTitle)
+                            .font(OPSStyle.Typography.bodyBold)
+                            .foregroundColor(OPSStyle.Colors.primaryText)
+                            .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 2)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
 
                     Spacer(minLength: OPSStyle.Layout.spacing2)
 
-                    // Primary action — a quiet accent chip, not a solid
-                    // full-width fill. With one action per card, repeated solid
-                    // accent bars are the loudness; the chip keeps the tap
-                    // obvious (44pt, accent, checkmark) while staying calm.
-                    // Mirrors the sibling's USE MINE / ADD chip vocabulary.
-                    Button(action: { markDone(task) }) {
-                        HStack(spacing: OPSStyle.Layout.spacing1) {
-                            Image(systemName: OPSStyle.Icons.checkmark)
-                                .font(.system(size: OPSStyle.Layout.IconSize.xs, weight: .bold))
-                            Text("MARK DONE")
-                                .font(OPSStyle.Typography.captionBold)
-                        }
-                        .foregroundColor(OPSStyle.Colors.primaryAccent)
-                        .padding(.horizontal, OPSStyle.Layout.spacing3)
-                        .frame(height: OPSStyle.Layout.touchTargetMin)
-                        .background(OPSStyle.Colors.primaryAccent.opacity(0.12))
-                        .cornerRadius(OPSStyle.Layout.cornerRadius)
-                    }
-                    .buttonStyle(PlainButtonStyle())
-                    .accessibilityLabel("Mark done: \(task.project?.title ?? "task")")
+                    Image(systemName: OPSStyle.Icons.chevronRight)
+                        .font(.system(size: OPSStyle.Layout.IconSize.xs, weight: .semibold))
+                        .foregroundColor(OPSStyle.Colors.tertiaryText)
+                }
+                .frame(maxWidth: .infinity, minHeight: OPSStyle.Layout.touchTargetMin, alignment: .leading)
+            }
+            .buttonStyle(.plain)
+
+            if let error = completionErrors[task.id] {
+                VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
+                    Text(OverdueReviewPresentation.failureLabel)
+                        .font(OPSStyle.Typography.microLabel)
+                        .foregroundColor(OPSStyle.Colors.errorText)
+
+                    Text(error)
+                        .font(OPSStyle.Typography.smallCaption)
+                        .foregroundColor(OPSStyle.Colors.secondaryText)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
             }
-            .padding(.horizontal, OPSStyle.Layout.spacing3)
-            .padding(.vertical, OPSStyle.Layout.spacing3)
-            .frame(maxWidth: .infinity, alignment: .leading)
+
+            if OverdueReviewPresentation.stacksAction(for: dynamicTypeSize) {
+                VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
+                    overdueMetadata(task)
+                    completionButton(task, fillsWidth: true)
+                }
+            } else {
+                HStack(spacing: OPSStyle.Layout.spacing2) {
+                    overdueMetadata(task)
+                    Spacer(minLength: OPSStyle.Layout.spacing2)
+                    completionButton(task, fillsWidth: false)
+                }
+            }
         }
-        .glassSurface()
-        .contentShape(Rectangle())
-        // Tap anywhere on the card (outside the button) to open the task for a
-        // fuller review — reschedule, cancel, add a completion note.
-        .onTapGesture { taskToOpen = task }
-        // A bare onTapGesture isn't a VoiceOver action — expose the open-task
-        // path explicitly so it's reachable alongside MARK DONE.
-        .accessibilityAction(named: "Open task") { taskToOpen = task }
+        .padding(OPSStyle.Layout.spacing3)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func overdueMetadata(_ task: ProjectTask) -> some View {
+        HStack(spacing: OPSStyle.Layout.spacing1) {
+            Circle()
+                .fill(OPSStyle.Colors.rose)
+                .frame(width: OPSStyle.Layout.spacing2, height: OPSStyle.Layout.spacing2)
+
+            Text(overdueLabel(for: task))
+                .font(OPSStyle.Typography.smallCaption)
+                .foregroundColor(OPSStyle.Colors.rose)
+        }
+    }
+
+    private func completionButton(_ task: ProjectTask, fillsWidth: Bool) -> some View {
+        let hasError = completionErrors[task.id] != nil
+        return Button(action: { markDone(task) }) {
+            HStack(spacing: OPSStyle.Layout.spacing1) {
+                Image(systemName: OPSStyle.Icons.checkmark)
+                    .font(.system(size: OPSStyle.Layout.IconSize.xs, weight: .bold))
+                Text(OverdueReviewPresentation.actionLabel(hasError: hasError))
+                    .font(OPSStyle.Typography.captionBold)
+            }
+            .foregroundColor(OPSStyle.Colors.primaryAccent)
+            .padding(.horizontal, OPSStyle.Layout.spacing3)
+            .frame(
+                maxWidth: fillsWidth ? .infinity : nil,
+                minHeight: OPSStyle.Layout.touchTargetMin,
+                alignment: .center
+            )
+            .background(OPSStyle.Colors.surfaceInput)
+            .cornerRadius(OPSStyle.Layout.cornerRadius)
+            .overlay(
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                    .strokeBorder(
+                        OPSStyle.Colors.primaryAccent,
+                        lineWidth: OPSStyle.Layout.Border.standard
+                    )
+            )
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("\(OverdueReviewPresentation.actionLabel(hasError: hasError)): \(task.displayTitle)")
     }
 
     // MARK: - Later
@@ -263,19 +328,24 @@ struct OverdueTasksPromptView: View {
     // MARK: - Actions
 
     private func markDone(_ task: ProjectTask) {
-        UINotificationFeedbackGenerator().notificationOccurred(.success)
+        completionErrors[task.id] = nil
         withAnimation(OPSStyle.Animation.standard) {
             _ = completingTaskIds.insert(task.id)
         }
         Task {
             do {
                 try await dataController.updateTaskStatus(task: task, to: .completed)
+                await MainActor.run {
+                    completingTaskIds.remove(task.id)
+                    UINotificationFeedbackGenerator().notificationOccurred(.success)
+                }
             } catch {
                 // Revert the optimistic removal so the operator can retry.
                 await MainActor.run {
                     withAnimation(OPSStyle.Animation.standard) {
                         completingTaskIds.remove(task.id)
                     }
+                    completionErrors[task.id] = "Task stayed open. Check your connection and try again."
                     UINotificationFeedbackGenerator().notificationOccurred(.error)
                 }
             }

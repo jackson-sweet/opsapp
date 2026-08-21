@@ -34,6 +34,16 @@ final class SiteVisitRecoveryVault {
         let capturedItemCount: Int
     }
 
+    struct ReleaseResult: Equatable {
+        let releasedSiteVisitIds: [String]
+        let requeuedOperationIds: [UUID]
+
+        static let empty = ReleaseResult(
+            releasedSiteVisitIds: [],
+            requeuedOperationIds: []
+        )
+    }
+
     enum VaultError: Swift.Error, LocalizedError {
         case invalidKey
         case keychain(OSStatus)
@@ -239,11 +249,11 @@ final class SiteVisitRecoveryVault {
     /// transaction commits.
     ///
     /// Quarantine entries (reason non-nil) are custody, not luggage: they ARE
-    /// the packet PENDING WORK renders, and for `parentDeleted` there is no way
-    /// to re-derive the reason locally after a restore dissolves the entry —
-    /// the packet would vanish silently while its operations sit invisibly
-    /// "quarantined". They leave the vault only through the operator's explicit
-    /// discard (or, for identity-review reasons, the orphan sweep re-recording).
+    /// the packet PENDING WORK renders, and dissolving one during ordinary login
+    /// restore would hide its quarantined operations. They leave only through
+    /// explicit discard, identity-review settlement, or the guarded
+    /// `parentDeleted` release below after a newer inbound merge proves that the
+    /// exact server parent is active again.
     @discardableResult
     func restore(
         into modelContext: ModelContext,
@@ -294,6 +304,86 @@ final class SiteVisitRecoveryVault {
             try fileManager.removeItem(at: entry.directory)
         }
         deleteKeyIfVaultIsEmpty()
+    }
+
+    /// Releases only deleted-parent custody whose exact parent has since been
+    /// restored by an authoritative inbound merge. The local work and media
+    /// remain in place; quarantined operations return to `pending` so the same
+    /// drain can safely land every child before completing the visit again.
+    @discardableResult
+    func releaseRestoredParentQuarantines(
+        in modelContext: ModelContext,
+        userId: String,
+        companyId: String
+    ) throws -> ReleaseResult {
+        let identity = SiteVisitRecoveryIdentity(userId: userId, companyId: companyId)
+        guard !identity.userId.isEmpty, !identity.companyId.isEmpty else {
+            return .empty
+        }
+        let entries = readEntries()
+            .filter {
+                $0.archive.identity == identity
+                    && $0.archive.quarantineReason == .parentDeleted
+            }
+            .sorted { $0.archive.createdAt < $1.archive.createdAt }
+        guard !entries.isEmpty else { return .empty }
+
+        let restoredVisits = try modelContext.fetch(FetchDescriptor<SiteVisit>())
+            .filter {
+                Self.canonical($0.companyId) == identity.companyId
+                    && $0.deletedAt == nil
+                    && !$0.needsSync
+                    && $0.lastSyncedAt != nil
+            }
+        let eligible = entries.filter { entry in
+            let rejectionAt = entry.archive.operations
+                .compactMap(\.lastAttemptedAt)
+                .max() ?? entry.archive.createdAt
+            return restoredVisits.contains { visit in
+                Self.canonical(visit.id) == Self.canonical(entry.archive.siteVisitId)
+                    && (visit.lastSyncedAt ?? .distantPast) >= rejectionAt
+            }
+        }
+        guard !eligible.isEmpty else { return .empty }
+
+        let operations = try modelContext.fetch(FetchDescriptor<SyncOperation>())
+        var releasedVisitIds: [String] = []
+        var requeuedOperationIds: [UUID] = []
+
+        for entry in eligible {
+            let visitId = Self.canonical(entry.archive.siteVisitId)
+            let matching = operations.filter { operation in
+                guard operation.status == "quarantined",
+                      SiteVisitOutboundSync.isSiteVisitOperation(operation),
+                      let payload = try? JSONDecoder().decode(
+                        SiteVisitSyncOperation.Payload.self,
+                        from: operation.payload
+                      ) else { return false }
+                return Self.canonical(payload.companyId) == identity.companyId
+                    && Self.canonical(payload.siteVisitId) == visitId
+            }
+
+            try modelContext.transaction {
+                for operation in matching {
+                    operation.status = "pending"
+                    operation.retryCount = 0
+                    operation.lastAttemptedAt = nil
+                    operation.lastError = nil
+                    operation.completedAt = nil
+                    operation.serverConfirmedAt = nil
+                    requeuedOperationIds.append(operation.id)
+                }
+            }
+            try fileManager.removeItem(at: entry.directory)
+            releasedVisitIds.append(visitId)
+        }
+        deleteKeyIfVaultIsEmpty()
+        return ReleaseResult(
+            releasedSiteVisitIds: releasedVisitIds.sorted(),
+            requeuedOperationIds: requeuedOperationIds.sorted {
+                $0.uuidString < $1.uuidString
+            }
+        )
     }
 
     /// Permanently discards one quarantined orphan after an explicit operator

@@ -1140,6 +1140,13 @@ final class SyncEngine {
         await syncPendingLocalArtifacts()
         await pullDelta()
 
+        // This cycle pushes before it pulls. If the pull restored a parent that
+        // had been in deleted-parent custody, release and drain that exact packet
+        // now instead of waiting for the next periodic trigger.
+        if releaseRestoredParentSiteVisitChains() {
+            await pushPending()
+        }
+
         if !hasError {
             statusText = "Synced"
             kickoffPhotoPrefetch()
@@ -1426,6 +1433,16 @@ final class SyncEngine {
         }
 
         await pushDrainCoordinator.run {
+            // A server-row-missing task update is obsolete only when this phone
+            // holds the exact same-company task as a soft-delete tombstone.
+            // Settle that proven no-op before orphan recovery reads the queue.
+            self.settleDeletedProjectTaskUpdates()
+
+            // If an inbound merge restored a site visit that was previously
+            // deleted, release its protected packet back into the durable queue.
+            // Children and media stay local and drain in this same pass.
+            self.releaseRestoredParentSiteVisitChains()
+
             // Safety net: recover any task whose local edit never produced an
             // outbound op (needsSync set without recordOperation) before reading the
             // pending queue, so a future bypass can't silently drop a write.
@@ -2129,6 +2146,62 @@ final class SyncEngine {
             }
         } catch {
             print("[SYNC_ENGINE] Site-visit orphan sweep failed: \(error)")
+        }
+    }
+
+    @discardableResult
+    func settleDeletedProjectTaskUpdates() -> Bool {
+        guard let modelContext else { return false }
+        let companyId = UserDefaults.standard.string(
+            forKey: "currentUserCompanyId"
+        )?.lowercased() ?? ""
+        guard !companyId.isEmpty else { return false }
+        do {
+            let result = try DeletedProjectTaskOperationSettlement.sweep(
+                in: modelContext,
+                activeCompanyId: companyId
+            )
+            guard !result.settledOperationIds.isEmpty else { return false }
+            print(
+                "[SYNC_ENGINE] Settled \(result.settledOperationIds.count) "
+                    + "obsolete deleted-task update(s)"
+            )
+            refreshPendingCount()
+            return true
+        } catch {
+            print("[SYNC_ENGINE] Deleted-task settlement failed: \(error)")
+            return false
+        }
+    }
+
+    @discardableResult
+    func releaseRestoredParentSiteVisitChains() -> Bool {
+        guard let modelContext else { return false }
+        let companyId = UserDefaults.standard.string(
+            forKey: "currentUserCompanyId"
+        )?.lowercased() ?? ""
+        let userId = UserDefaults.standard.string(
+            forKey: "currentUserId"
+        )?.lowercased() ?? ""
+        guard !companyId.isEmpty, !userId.isEmpty else { return false }
+        do {
+            let result = try SiteVisitRecoveryVault.shared
+                .releaseRestoredParentQuarantines(
+                    in: modelContext,
+                    userId: userId,
+                    companyId: companyId
+                )
+            guard !result.releasedSiteVisitIds.isEmpty else { return false }
+            print(
+                "[SYNC_ENGINE] Released \(result.releasedSiteVisitIds.count) "
+                    + "restored site-visit packet(s); requeued "
+                    + "\(result.requeuedOperationIds.count) operation(s)"
+            )
+            refreshPendingCount()
+            return true
+        } catch {
+            print("[SYNC_ENGINE] Restored-parent release failed: \(error)")
+            return false
         }
     }
 

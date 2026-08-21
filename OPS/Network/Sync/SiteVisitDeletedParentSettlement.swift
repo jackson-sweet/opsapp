@@ -178,6 +178,12 @@ enum SiteVisitDeletedParentSettlement {
                 // orphan-writes sweep re-enqueues a fresh doomed op for the
                 // same deleted visit on the very next drain.
                 for visit in visits where canonical(visit.id) == visitId {
+                    // The typed server rejection is authoritative deletion
+                    // evidence even if the delta pull has not reached this
+                    // phone yet. Keeping the local parent tombstoned prevents
+                    // custody from being released until a later exact inbound
+                    // merge proves the server parent was restored.
+                    visit.deletedAt = visit.deletedAt ?? Date()
                     visit.needsSync = false
                 }
                 for artifact in artifacts where canonical(artifact.siteVisitId) == visitId {

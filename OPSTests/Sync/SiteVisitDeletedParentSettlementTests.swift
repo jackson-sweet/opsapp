@@ -171,6 +171,10 @@ final class SiteVisitDeletedParentSettlementTests: XCTestCase {
             XCTAssertEqual(operation.status, "quarantined")
         }
         XCTAssertFalse(visit.needsSync)
+        XCTAssertNotNil(
+            visit.deletedAt,
+            "The rejection is authoritative deletion evidence until an inbound restore"
+        )
         XCTAssertFalse(artifact.needsSync)
         XCTAssertFalse(answer.needsSync)
         XCTAssertFalse(draft.needsSync)

@@ -302,6 +302,19 @@ class DataController: ObservableObject {
     func setModelContext(_ context: ModelContext) {
         self.modelContext = context
 
+        // Rehydrate the V25 sibling projection before any screen can read the
+        // transient Project convenience property. A missing projection table
+        // is tolerated only by narrow legacy test containers.
+        do {
+            let projects = try context.fetch(FetchDescriptor<Project>())
+            try ProjectPrimaryContactProjection.hydrate(
+                projects: projects,
+                in: context
+            )
+        } catch {
+            print("[DATA_CONTROLLER] Primary-contact projection unavailable: \(error)")
+        }
+
         if taskTypeMutationRollbackCancellable == nil {
             taskTypeMutationRollbackCancellable = NotificationCenter.default
                 .publisher(for: .taskTypeMutationRolledBack)
@@ -4145,7 +4158,7 @@ class DataController: ObservableObject {
         spec: SyncEngine.BulkOperationSpec,
         in context: ModelContext,
         stagingOperationsWith stageOperations: DurableSyncOperationStager,
-        apply: () -> Void,
+        apply: () throws -> Void,
         rematerializeAfterRollback: () -> Void
     ) throws {
         guard let syncEngine else {
@@ -4176,7 +4189,7 @@ class DataController: ObservableObject {
         var stagedOperations: [SyncOperation] = []
         do {
             try context.transaction {
-                apply()
+                try apply()
                 do {
                     stagedOperations = try stageOperations([spec], context)
                 } catch {
@@ -6632,7 +6645,11 @@ class DataController: ObservableObject {
             in: context,
             stagingOperationsWith: stageOperations,
             apply: {
-                project.primarySubClientId = primarySubClientId
+                try ProjectPrimaryContactProjection.upsert(
+                    project: project,
+                    primarySubClientId: primarySubClientId,
+                    in: context
+                )
                 project.needsSync = true
             },
             rematerializeAfterRollback: {
@@ -6640,7 +6657,12 @@ class DataController: ObservableObject {
                 let descriptor = FetchDescriptor<Project>(
                     predicate: #Predicate { $0.id == projectId }
                 )
-                _ = try? context.fetch(descriptor).first
+                if let restored = try? context.fetch(descriptor).first {
+                    try? ProjectPrimaryContactProjection.hydrate(
+                        project: restored,
+                        in: context
+                    )
+                }
             }
         )
     }
@@ -6656,6 +6678,13 @@ class DataController: ObservableObject {
         let descriptor = FetchDescriptor<Project>(predicate: #Predicate { $0.id == projectId })
         if let project = try? context.fetch(descriptor).first {
             applyProjectFieldsLocally(project: project, fields: fields)
+            if let primarySubClientId = projectPrimaryContactValue(in: fields) {
+                try? ProjectPrimaryContactProjection.upsert(
+                    project: project,
+                    primarySubClientId: primarySubClientId,
+                    in: context
+                )
+            }
             project.needsSync = true
             try? context.save()
         }
@@ -6716,6 +6745,19 @@ class DataController: ObservableObject {
             default:
                 break
             }
+        }
+    }
+
+    /// Returns nil when the field is absent and a wrapped optional when the
+    /// caller explicitly sets or clears the selection.
+    private func projectPrimaryContactValue(
+        in fields: [String: AnyJSON]
+    ) -> String?? {
+        guard let value = fields["primary_sub_client_id"] else { return nil }
+        switch value {
+        case .string(let id): return .some(id)
+        case .null: return .some(nil)
+        default: return nil
         }
     }
 

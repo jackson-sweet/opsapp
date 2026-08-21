@@ -1115,7 +1115,13 @@ actor DataActor {
             if accept.contains("company_id") { existing.companyId = dto.companyId }
             if accept.contains("client_id") { existing.clientId = dto.clientId }
             if accept.contains("primary_sub_client_id") {
-                existing.primarySubClientId = dto.primarySubClientId
+                try ProjectPrimaryContactProjection.upsert(
+                    project: existing,
+                    primarySubClientId: dto.primarySubClientId,
+                    sourceProjectUpdatedAt: dto.updatedAt.flatMap { SupabaseDate.parse($0) },
+                    lastSyncedAt: Date(),
+                    in: modelContext
+                )
             }
             if accept.contains("opportunity_id") { existing.opportunityId = dto.opportunityId }
             if accept.contains("address") { existing.address = dto.address }
@@ -1167,6 +1173,13 @@ actor DataActor {
             model.needsSync = false
             modelContext.insert(model)
             modelContext.insert(dto.toVinylOrderMarkerModel())
+            try ProjectPrimaryContactProjection.upsert(
+                project: model,
+                primarySubClientId: dto.primarySubClientId,
+                sourceProjectUpdatedAt: dto.updatedAt.flatMap { SupabaseDate.parse($0) },
+                lastSyncedAt: Date(),
+                in: modelContext
+            )
 
             if model.deletedAt != nil {
                 markSpotlightDeleted(domain: SpotlightDomain.project, id: model.id)
@@ -5970,6 +5983,10 @@ actor DataActor {
                 let clients = try modelContext.fetch(FetchDescriptor<Client>())
                 let taskTypes = try modelContext.fetch(FetchDescriptor<TaskType>())
                 let users = try modelContext.fetch(FetchDescriptor<User>())
+                try ProjectPrimaryContactProjection.hydrate(
+                    projects: projects,
+                    in: modelContext
+                )
 
                 // Build id-lookup dictionaries — last-wins to safely handle duplicates.
                 var clientById: [String: Client] = [:]

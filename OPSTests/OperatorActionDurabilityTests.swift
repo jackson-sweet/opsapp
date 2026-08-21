@@ -71,6 +71,11 @@ final class OperatorActionDurabilityTests: XCTestCase {
 
         XCTAssertEqual(project.primarySubClientId, contact.id)
         XCTAssertTrue(project.needsSync)
+        XCTAssertEqual(
+            try context.fetch(FetchDescriptor<ProjectPrimaryContactSelection>())
+                .first?.primarySubClientId,
+            contact.id
+        )
 
         let operation = try XCTUnwrap(
             context.fetch(FetchDescriptor<SyncOperation>()).first
@@ -112,6 +117,9 @@ final class OperatorActionDurabilityTests: XCTestCase {
 
         XCTAssertNil(project.primarySubClientId)
         XCTAssertFalse(project.needsSync)
+        XCTAssertTrue(
+            try context.fetch(FetchDescriptor<ProjectPrimaryContactSelection>()).isEmpty
+        )
         XCTAssertTrue(
             try context.fetch(FetchDescriptor<SyncOperation>()).isEmpty
         )
@@ -166,7 +174,8 @@ final class OperatorActionDurabilityTests: XCTestCase {
             Client.self,
             SubClient.self,
             SyncOperation.self,
-            ProjectVinylOrderMarker.self
+            ProjectVinylOrderMarker.self,
+            ProjectPrimaryContactSelection.self
         ])
         let configuration = ModelConfiguration(
             schema: schema,

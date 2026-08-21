@@ -1075,7 +1075,13 @@ final class InboundProcessor {
                 wireProjectClient(existing, clientId: dto.clientId, context: context)
             }
             if accept.contains("primary_sub_client_id") {
-                existing.primarySubClientId = dto.primarySubClientId
+                try ProjectPrimaryContactProjection.upsert(
+                    project: existing,
+                    primarySubClientId: dto.primarySubClientId,
+                    sourceProjectUpdatedAt: dto.updatedAt.flatMap { SupabaseDate.parse($0) },
+                    lastSyncedAt: Date(),
+                    in: context
+                )
             }
             if accept.contains("opportunity_id") { existing.opportunityId = dto.opportunityId }
             if accept.contains("address") { existing.address = dto.address }
@@ -1129,6 +1135,13 @@ final class InboundProcessor {
             model.needsSync = false
             context.insert(model)
             context.insert(dto.toVinylOrderMarkerModel())
+            try ProjectPrimaryContactProjection.upsert(
+                project: model,
+                primarySubClientId: dto.primarySubClientId,
+                sourceProjectUpdatedAt: dto.updatedAt.flatMap { SupabaseDate.parse($0) },
+                lastSyncedAt: Date(),
+                in: context
+            )
             // Bug c9b9dd44 — wire the SwiftData relationship inline on
             // first insert too. `dto.toModel()` only sets `clientId`
             // (the scalar foreign key); without the relationship the
@@ -1796,6 +1809,10 @@ final class InboundProcessor {
             clients = try context.fetch(FetchDescriptor<Client>())
             taskTypes = try context.fetch(FetchDescriptor<TaskType>())
             users = try context.fetch(FetchDescriptor<User>())
+            try ProjectPrimaryContactProjection.hydrate(
+                projects: projects,
+                in: context
+            )
         } catch {
             print("[InboundProcessor] ⚠️ Failed to fetch entities for linking: \(error)")
             return

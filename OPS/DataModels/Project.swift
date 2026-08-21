@@ -30,7 +30,12 @@ final class Project: Identifiable {
     var clientId: String? // Store the client ID
     /// Explicit project-level contact selected from the parent client's active
     /// sub-contacts. Nil means the project uses the parent client directly.
-    var primarySubClientId: String?
+    ///
+    /// This value deliberately remains transient on the long-lived Project
+    /// entity. Persisting it here rewrites the fingerprint of every released
+    /// SwiftData schema and makes an installed phone store unrecognizable.
+    /// V25 persists the value in `ProjectPrimaryContactSelection` instead.
+    @Transient var primarySubClientId: String?
     var allDay: Bool
     var opportunityId: String?  // Supabase Opportunity UUID — links this project to its pipeline deal
 
@@ -536,6 +541,91 @@ final class Project: Identifiable {
             print("[PROJECT_TEAM] ❌ Error fetching users: \(error)")
             return false
         }
+    }
+}
+
+/// Offline-readable projection of `projects.primary_sub_client_id`.
+///
+/// Keeping the new server field in its own additive V25 entity preserves the
+/// exact released Project schema while still making the selection durable
+/// across cold launches and offline edits.
+@Model
+final class ProjectPrimaryContactSelection: Identifiable {
+    @Attribute(.unique) var id: String
+    var primarySubClientId: String?
+    var sourceProjectUpdatedAt: Date?
+    var lastSyncedAt: Date?
+
+    init(
+        projectId: String,
+        primarySubClientId: String?,
+        sourceProjectUpdatedAt: Date? = nil,
+        lastSyncedAt: Date? = nil
+    ) {
+        self.id = projectId
+        self.primarySubClientId = primarySubClientId
+        self.sourceProjectUpdatedAt = sourceProjectUpdatedAt
+        self.lastSyncedAt = lastSyncedAt
+    }
+
+    var projectId: String { id }
+}
+
+/// Canonical bridge between the additive persisted projection and Project's
+/// transient convenience property. Callers own the surrounding save or
+/// transaction so the projection can commit atomically with the outbox.
+enum ProjectPrimaryContactProjection {
+    static func upsert(
+        project: Project,
+        primarySubClientId: String?,
+        sourceProjectUpdatedAt: Date? = nil,
+        lastSyncedAt: Date? = nil,
+        in context: ModelContext
+    ) throws {
+        let projectId = project.id
+        let descriptor = FetchDescriptor<ProjectPrimaryContactSelection>(
+            predicate: #Predicate { $0.id == projectId }
+        )
+        let selection: ProjectPrimaryContactSelection
+        if let existing = try context.fetch(descriptor).first {
+            selection = existing
+        } else {
+            selection = ProjectPrimaryContactSelection(
+                projectId: projectId,
+                primarySubClientId: primarySubClientId
+            )
+            context.insert(selection)
+        }
+
+        selection.primarySubClientId = primarySubClientId
+        if let sourceProjectUpdatedAt {
+            selection.sourceProjectUpdatedAt = sourceProjectUpdatedAt
+        }
+        if let lastSyncedAt {
+            selection.lastSyncedAt = lastSyncedAt
+        }
+        project.primarySubClientId = primarySubClientId
+    }
+
+    static func hydrate(projects: [Project], in context: ModelContext) throws {
+        let selections = try context.fetch(
+            FetchDescriptor<ProjectPrimaryContactSelection>()
+        )
+        let byProjectId = Dictionary(
+            selections.map { ($0.projectId, $0.primarySubClientId) },
+            uniquingKeysWith: { _, latest in latest }
+        )
+        for project in projects {
+            project.primarySubClientId = byProjectId[project.id] ?? nil
+        }
+    }
+
+    static func hydrate(project: Project, in context: ModelContext) throws {
+        let projectId = project.id
+        let descriptor = FetchDescriptor<ProjectPrimaryContactSelection>(
+            predicate: #Predicate { $0.id == projectId }
+        )
+        project.primarySubClientId = try context.fetch(descriptor).first?.primarySubClientId
     }
 }
 

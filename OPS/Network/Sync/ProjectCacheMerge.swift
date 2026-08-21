@@ -116,7 +116,13 @@ enum ProjectCacheMerge {
             if !protectedFields.contains("company_id")      { existing.companyId = model.companyId }
             if !protectedFields.contains("client_id")       { existing.clientId = model.clientId }
             if !protectedFields.contains("primary_sub_client_id") {
-                existing.primarySubClientId = model.primarySubClientId
+                try ProjectPrimaryContactProjection.upsert(
+                    project: existing,
+                    primarySubClientId: dto.primarySubClientId,
+                    sourceProjectUpdatedAt: dto.updatedAt.flatMap { SupabaseDate.parse($0) },
+                    lastSyncedAt: Date(),
+                    in: context
+                )
             }
             if !protectedFields.contains("opportunity_id")  { existing.opportunityId = model.opportunityId }
             if !protectedFields.contains("address")         { existing.address = model.address }
@@ -143,6 +149,13 @@ enum ProjectCacheMerge {
             model.lastSyncedAt = Date()
             model.needsSync = false
             context.insert(model)
+            try ProjectPrimaryContactProjection.upsert(
+                project: model,
+                primarySubClientId: dto.primarySubClientId,
+                sourceProjectUpdatedAt: dto.updatedAt.flatMap { SupabaseDate.parse($0) },
+                lastSyncedAt: Date(),
+                in: context
+            )
 
             let marker = dto.toVinylOrderMarkerModel()
             marker.lastSyncedAt = Date()

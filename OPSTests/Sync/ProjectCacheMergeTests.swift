@@ -59,7 +59,8 @@ final class ProjectCacheMergeTests: XCTestCase {
             ProjectNote.self,
             ProjectPhoto.self,
             SyncOperation.self,
-            ProjectVinylOrderMarker.self
+            ProjectVinylOrderMarker.self,
+            ProjectPrimaryContactSelection.self
         ])
         let configuration = ModelConfiguration(
             schema: schema,
@@ -114,6 +115,10 @@ final class ProjectCacheMergeTests: XCTestCase {
         XCTAssertEqual(stored.first?.title, "3998 Holland Ave")
         XCTAssertEqual(stored.first?.opportunityId, "lead-1")
         XCTAssertEqual(stored.first?.primarySubClientId, "contact-1")
+        let selections = try context.fetch(
+            FetchDescriptor<ProjectPrimaryContactSelection>()
+        )
+        XCTAssertEqual(selections.first?.primarySubClientId, "contact-1")
         XCTAssertEqual(merged.id, dto.id)
         XCTAssertFalse(merged.needsSync)
         XCTAssertNotNil(merged.lastSyncedAt)

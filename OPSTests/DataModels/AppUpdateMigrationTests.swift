@@ -108,6 +108,86 @@ final class AppUpdateMigrationTests: XCTestCase {
         )
     }
 
+    func testV25AddsPrimaryContactProjectionWithoutChangingReleasedProject() {
+        XCTAssertTrue(contains(Project.self, in: OPSSchemaV24.self))
+        XCTAssertTrue(
+            contains(ProjectPrimaryContactSelection.self, in: OPSSchemaV25.self),
+            "V25 must add the independent primary-contact projection"
+        )
+        XCTAssertFalse(
+            contains(ProjectPrimaryContactSelection.self, in: OPSSchemaV24.self),
+            "V24 must remain at its released fingerprint"
+        )
+    }
+
+    func testV24StoreMigratesToV25PreservingProjectAndPrimaryContact() throws {
+        try autoreleasepool {
+            let sourceSchema = Schema(versionedSchema: OPSSchemaV24.self)
+            let sourceConfiguration = ModelConfiguration(schema: sourceSchema, url: storeURL)
+            let sourceContainer = try ModelContainer(
+                for: sourceSchema,
+                configurations: sourceConfiguration
+            )
+            let context = ModelContext(sourceContainer)
+
+            let project = Project(
+                id: "project-v24",
+                title: "North deck replacement",
+                status: .inProgress
+            )
+            project.companyId = "company-1"
+            project.clientId = "client-1"
+            project.address = "1100 Maple Ave"
+            project.priorityRank = 1.25
+            project.projectDescription = "Preserve the existing field record"
+            project.teamMemberIdsString = "user-1,user-2"
+            project.needsSync = true
+            context.insert(project)
+            try context.save()
+        }
+
+        let targetSchema = Schema(versionedSchema: OPSSchemaV25.self)
+        let targetConfiguration = ModelConfiguration(schema: targetSchema, url: storeURL)
+        let migratedContainer = try ModelContainer(
+            for: targetSchema,
+            migrationPlan: OPSMigrationPlan.self,
+            configurations: targetConfiguration
+        )
+        let context = ModelContext(migratedContainer)
+
+        let projects = try context.fetch(FetchDescriptor<Project>())
+        XCTAssertEqual(projects.count, 1)
+        let migrated = try XCTUnwrap(projects.first)
+        XCTAssertEqual(migrated.id, "project-v24")
+        XCTAssertEqual(migrated.title, "North deck replacement")
+        XCTAssertEqual(migrated.companyId, "company-1")
+        XCTAssertEqual(migrated.clientId, "client-1")
+        XCTAssertEqual(migrated.address, "1100 Maple Ave")
+        XCTAssertEqual(migrated.priorityRank, 1.25)
+        XCTAssertEqual(migrated.projectDescription, "Preserve the existing field record")
+        XCTAssertEqual(migrated.teamMemberIdsString, "user-1,user-2")
+        XCTAssertTrue(migrated.needsSync)
+        XCTAssertNil(migrated.primarySubClientId)
+
+        try ProjectPrimaryContactProjection.upsert(
+            project: migrated,
+            primarySubClientId: "sub-client-1",
+            in: context
+        )
+        try context.save()
+
+        migrated.primarySubClientId = nil
+        try ProjectPrimaryContactProjection.hydrate(project: migrated, in: context)
+        let reread = migrated
+        XCTAssertEqual(reread.primarySubClientId, "sub-client-1")
+        let projections = try context.fetch(
+            FetchDescriptor<ProjectPrimaryContactSelection>()
+        )
+        XCTAssertEqual(projections.count, 1)
+        XCTAssertEqual(projections.first?.projectId, migrated.id)
+        XCTAssertEqual(projections.first?.primarySubClientId, "sub-client-1")
+    }
+
     func testV22StoreMigratesToV24PreservingSiteVisitAndDefaultingServerFields() throws {
         try autoreleasepool {
             let sourceSchema = Schema(versionedSchema: OPSSchemaV22.self)

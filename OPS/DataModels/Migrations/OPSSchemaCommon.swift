@@ -1451,7 +1451,9 @@ enum OPSSchemaCommon {
         OPSSchemaLegacyCoreModels.SubClient.self
     ]
 
-    /// V4+ core models use the live graph that includes task reminders.
+    /// V4+ core models. Project-level primary contact selection is intentionally
+    /// transient on Project and persists in a separate V25 projection, keeping
+    /// this relationship graph byte-for-byte compatible with installed stores.
     static let v4CoreModels: [any PersistentModel.Type] = [
         User.self,
         Project.self,

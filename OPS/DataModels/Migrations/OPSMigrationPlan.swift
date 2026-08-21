@@ -141,6 +141,11 @@
 //  this boundary — frozen `OPSSchemaLegacyActivityV21` backs V21, the widened
 //  live model backs V22+ — so the V21 fingerprint stays exact.
 //
+//  V24 → V25 stage: project primary sub-contact. Adds an independent local
+//  projection for the server field without changing Project's released
+//  persistent shape. Installed stores therefore remain recognizable and gain
+//  the empty projection table through an adjacent lightweight migration.
+//
 
 import Foundation
 import SwiftData
@@ -171,7 +176,8 @@ enum OPSMigrationPlan: SchemaMigrationPlan {
             OPSSchemaV21.self,
             OPSSchemaV22.self,
             OPSSchemaV23.self,
-            OPSSchemaV24.self
+            OPSSchemaV24.self,
+            OPSSchemaV25.self
         ]
     }
 
@@ -199,9 +205,16 @@ enum OPSMigrationPlan: SchemaMigrationPlan {
             addActivityEmailIdentityV20toV21,
             addActivitySiteVisitIdV21toV22,
             addSiteVisitBookingFieldsV22toV23,
-            addPhaseCAppointmentFieldsV23toV24
+            addPhaseCAppointmentFieldsV23toV24,
+            addProjectPrimarySubClientV24toV25
         ]
     }
+
+    /// V24 → V25: additive project primary-contact projection entity.
+    static let addProjectPrimarySubClientV24toV25 = MigrationStage.lightweight(
+        fromVersion: OPSSchemaV24.self,
+        toVersion: OPSSchemaV25.self
+    )
 
     /// V23 → V24: additive server-owned appointment identity and copy fields.
     static let addPhaseCAppointmentFieldsV23toV24 = MigrationStage.lightweight(

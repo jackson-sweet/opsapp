@@ -39,6 +39,7 @@ final class LeadDispositionFeedbackTests: XCTestCase {
                 .testTraffic,
                 .duplicate,
                 .notAFit,
+                .createdByError,
                 .other,
             ]
         )
@@ -53,9 +54,10 @@ final class LeadDispositionFeedbackTests: XCTestCase {
             .internalMessage: .discarded,
             .platformNotification: .discarded,
             .testTraffic: .discarded,
-            .duplicate: .duplicateReview,
-            .notAFit: .lost,
-            .other: .reviewDeferred,
+            .duplicate: .discarded,
+            .notAFit: .discarded,
+            .createdByError: .discarded,
+            .other: .discarded,
             .legacyUnspecified: .discarded,
         ]
 
@@ -64,9 +66,10 @@ final class LeadDispositionFeedbackTests: XCTestCase {
         }
     }
 
-    func testDuplicateAndOtherNeverChangeLifecycle() {
-        XCTAssertFalse(LeadDispositionReason.duplicate.changesLifecycle)
-        XCTAssertFalse(LeadDispositionReason.other.changesLifecycle)
+    func testEverySelectableDiscardReasonChangesLifecycle() {
+        XCTAssertTrue(LeadDispositionReason.duplicate.changesLifecycle)
+        XCTAssertTrue(LeadDispositionReason.other.changesLifecycle)
+        XCTAssertTrue(LeadDispositionReason.createdByError.changesLifecycle)
         XCTAssertTrue(LeadDispositionReason.spam.changesLifecycle)
         XCTAssertTrue(LeadDispositionReason.notAFit.changesLifecycle)
     }

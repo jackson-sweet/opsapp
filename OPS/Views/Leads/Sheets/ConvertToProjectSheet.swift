@@ -70,11 +70,17 @@ struct ConvertToProjectSheet: View {
     @State private var addressIsFromClient = false
     @State private var prefilledLatitude: Double?
     @State private var prefilledLongitude: Double?
+    /// Exact text the current coordinate pair belongs to. Hand edits clear the
+    /// pair; a MapKit selection establishes a new pair.
+    @State private var resolvedAddress: String?
     /// The lead's linked client, resolved once during preflight. Supplies the
     /// address and contact fallbacks.
     @State private var linkedClient: Client?
     @State private var actualValueText: String = ""
     @State private var closingNotes: String = ""
+    @State private var photoSelection = ConversionPhotoSelectionState()
+    @State private var photoCandidateLoadFailed = false
+    @ObservedObject private var leadImageService = LeadImageService.shared
 
     /// Server-derived base name (`derive_project_name(address, client)`), no
     /// `#N` dedup suffix. Captured from the preflight; used as the live-preview
@@ -146,7 +152,7 @@ struct ConvertToProjectSheet: View {
     }
 
     private var canSubmit: Bool {
-        Self.canCommitConversion(
+        !photoCandidateLoadFailed && Self.canCommitConversion(
             hasLoadedPreflight: hasLoadedPreflight,
             preflightFailed: preflightFailed,
             isSaving: isSaving,
@@ -177,6 +183,30 @@ struct ConvertToProjectSheet: View {
 
     private var totalLaborItems: Int {
         estimateBundles.reduce(0) { $0 + $1.laborItems.count }
+    }
+
+    private var hasQueuedLeadPhotos: Bool {
+        !leadImageService.queuedUploads(for: opportunity.id).isEmpty
+    }
+
+    private var conversionPhotosSection: some View {
+        ConversionPhotoPicker(
+            candidates: photoSelection.candidates,
+            selectedIDs: photoSelection.selectedIDs,
+            hasQueuedPhotos: hasQueuedLeadPhotos,
+            onToggle: { candidate in
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                photoSelection.toggle(candidate)
+            },
+            onAll: {
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                photoSelection.selectAll()
+            },
+            onNone: {
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                photoSelection.selectNone()
+            }
+        )
     }
 
     /// The street line the address resolves to, mirroring the server's
@@ -213,6 +243,9 @@ struct ConvertToProjectSheet: View {
                                 projectLinkSection
                             }
                             formFields
+                            if photoSelection.hasVisibleSection || hasQueuedLeadPhotos {
+                                conversionPhotosSection
+                            }
                             if !estimateBundles.isEmpty {
                                 attachedEstimatesSection
                             }
@@ -771,15 +804,21 @@ struct ConvertToProjectSheet: View {
                 nameField
 
                 LeadField(label: "ADDRESS", hint: addressHint) {
-                    LeadTextInput(
+                    AddressAutocompleteField(
+                        address: $addressText,
                         placeholder: "3185 Fairview Rd",
-                        text: $addressText,
-                        textContentType: .fullStreetAddress
+                        onAddressSelected: { resolved, coordinate in
+                            addressIsFromClient = false
+                            resolvedAddress = resolved
+                            prefilledLatitude = coordinate?.latitude
+                            prefilledLongitude = coordinate?.longitude
+                        }
                     )
+                    .frame(minHeight: OPSStyle.Layout.inputHeight)
                     .onChange(of: addressText) { _, _ in
                         // The tag claims provenance. The moment the operator
                         // edits the value, the claim stops being true.
-                        if addressIsFromClient {
+                        if addressText != resolvedAddress {
                             addressIsFromClient = false
                             prefilledLatitude = nil
                             prefilledLongitude = nil
@@ -1117,7 +1156,7 @@ struct ConvertToProjectSheet: View {
                     .disabled(true)
                 } else if preflightFailed {
                     SheetCTAButton(
-                        label: "RETRY CHECK",
+                        label: photoCandidateLoadFailed ? "RETRY PHOTOS" : "RETRY CHECK",
                         icon: "arrow.clockwise",
                         variant: .primary,
                         isLoading: isSaving,
@@ -1300,6 +1339,16 @@ struct ConvertToProjectSheet: View {
             estimateBundles = []
         }
 
+        do {
+            let candidates = try await service.conversionPhotoCandidates(for: opportunity)
+            photoSelection.refresh(with: candidates)
+            photoCandidateLoadFailed = false
+        } catch {
+            photoCandidateLoadFailed = true
+            preflightFailed = true
+            errorMessage = "COULD NOT LOAD PHOTOS — RETRY"
+        }
+
         hasLoadedPreflight = true
         return false
     }
@@ -1388,6 +1437,9 @@ struct ConvertToProjectSheet: View {
             prefilledLatitude = prefill.latitude
             prefilledLongitude = prefill.longitude
             addressIsFromClient = prefill.isFromClient
+            resolvedAddress = prefill.latitude != nil && prefill.longitude != nil
+                ? prefill.text
+                : nil
         }
     }
 
@@ -1433,7 +1485,8 @@ struct ConvertToProjectSheet: View {
                         : nil,
                     notes: closingNotes.isEmpty ? nil : closingNotes,
                     linkToProjectId: target.linkToProjectId,
-                    userId: dataController.currentUser?.id
+                    userId: dataController.currentUser?.id,
+                    photoSelection: photoSelection.selection
                 )
 
                 switch outcome {
@@ -1758,6 +1811,7 @@ struct ConvertToProjectSheet: View {
         linkCandidates = []
         chipNotice = nil
         candidateLoadFailed = false
+        photoCandidateLoadFailed = false
         hasLoadedPreflight = false
         let recovered = await loadPreflight()
         if !preflightFailed {
@@ -1825,19 +1879,17 @@ struct ConvertToProjectSheet: View {
             // A client-sourced address brings the client's geocode with it —
             // the RPC reads latitude/longitude off the opportunity row, so an
             // address written without them lands a project with no map pin.
-            let carriesClientGeo = addressIsFromClient
+            let carriesResolvedGeo = resolvedAddress == addressText
                 && prefilledLatitude != nil
                 && prefilledLongitude != nil
             _ = try await repo.update(opportunity.id, patch: AddressPatch(
                 address: canonicalAddress,
-                latitude: carriesClientGeo ? prefilledLatitude : nil,
-                longitude: carriesClientGeo ? prefilledLongitude : nil
+                latitude: carriesResolvedGeo ? prefilledLatitude : nil,
+                longitude: carriesResolvedGeo ? prefilledLongitude : nil
             ))
             opportunity.address = canonicalAddress.isEmpty ? nil : canonicalAddress
-            if carriesClientGeo {
-                opportunity.latitude = prefilledLatitude
-                opportunity.longitude = prefilledLongitude
-            }
+            opportunity.latitude = carriesResolvedGeo ? prefilledLatitude : nil
+            opportunity.longitude = carriesResolvedGeo ? prefilledLongitude : nil
         }
 
         linkAnswer = .createNew
@@ -1875,9 +1927,8 @@ struct ConvertToProjectSheet: View {
 
     // MARK: - Helpers
 
-    /// Address write-back patch. Coordinates are OMITTED (never encoded as
-    /// null) unless we actually have a pair to write — a null pair would erase
-    /// an existing geocode.
+    /// Address and its coordinate pair are one fact. Explicit nulls clear a
+    /// stale map pin when the visible text no longer matches a MapKit result.
     private struct AddressPatch: Encodable {
         let address: String
         let latitude: Double?
@@ -1890,8 +1941,8 @@ struct ConvertToProjectSheet: View {
         func encode(to encoder: Encoder) throws {
             var container = encoder.container(keyedBy: CodingKeys.self)
             try container.encode(address, forKey: .address)
-            try container.encodeIfPresent(latitude, forKey: .latitude)
-            try container.encodeIfPresent(longitude, forKey: .longitude)
+            try container.encode(latitude, forKey: .latitude)
+            try container.encode(longitude, forKey: .longitude)
         }
     }
 
@@ -1933,6 +1984,205 @@ struct ConvertToProjectSheet: View {
         return target?.linkToProjectId == nil
             ? "COULD NOT CREATE — TAP TO RETRY"
             : "COULD NOT MATCH — TAP TO RETRY"
+    }
+}
+
+struct ConversionPhotoSelectionState: Equatable {
+    private(set) var candidates: [ConversionPhotoCandidate] = []
+    private(set) var selectedIDs: Set<String> = []
+    private var wasCustomized = false
+
+    var hasVisibleSection: Bool { !candidates.isEmpty }
+
+    var selection: LeadConversionPhotoSelection {
+        LeadConversionPhotoSelection(
+            leadPhotoURLs: candidates.compactMap { candidate in
+                guard candidate.sourceKind == .lead,
+                      selectedIDs.contains(candidate.id) else { return nil }
+                return candidate.selectionKey
+            },
+            emailAttachmentIDs: candidates.compactMap { candidate in
+                guard candidate.sourceKind == .email,
+                      selectedIDs.contains(candidate.id) else { return nil }
+                return candidate.selectionKey
+            }
+        )
+    }
+
+    mutating func refresh(with newCandidates: [ConversionPhotoCandidate]) {
+        var seen: Set<String> = []
+        candidates = newCandidates.filter { seen.insert($0.id).inserted }
+        let available = Set(candidates.map(\.id))
+        selectedIDs = wasCustomized
+            ? selectedIDs.intersection(available)
+            : available
+    }
+
+    mutating func toggle(_ candidate: ConversionPhotoCandidate) {
+        guard candidates.contains(where: { $0.id == candidate.id }) else { return }
+        wasCustomized = true
+        if selectedIDs.contains(candidate.id) {
+            selectedIDs.remove(candidate.id)
+        } else {
+            selectedIDs.insert(candidate.id)
+        }
+    }
+
+    mutating func selectAll() {
+        wasCustomized = true
+        selectedIDs = Set(candidates.map(\.id))
+    }
+
+    mutating func selectNone() {
+        wasCustomized = true
+        selectedIDs.removeAll()
+    }
+}
+
+private struct ConversionPhotoPicker: View {
+    let candidates: [ConversionPhotoCandidate]
+    let selectedIDs: Set<String>
+    let hasQueuedPhotos: Bool
+    let onToggle: (ConversionPhotoCandidate) -> Void
+    let onAll: () -> Void
+    let onNone: () -> Void
+
+    private let tileSize = OPSStyle.Layout.leadPhotoTileSize
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2_5) {
+            HStack(spacing: OPSStyle.Layout.spacing2) {
+                Text("// PHOTOS TO PROJECT")
+                    .font(OPSStyle.Typography.miniLabelBold)
+                    .kerning(OPSStyle.Typography.trackingStandard)
+                    .foregroundColor(OPSStyle.Colors.text3)
+
+                Spacer(minLength: OPSStyle.Layout.spacing2)
+
+                Text(String(format: "[%02d/%02d]", selectedIDs.count, candidates.count))
+                    .font(OPSStyle.Typography.miniLabel)
+                    .monospacedDigit()
+                    .foregroundColor(OPSStyle.Colors.text3)
+
+                Button("ALL", action: onAll)
+                    .disabled(candidates.isEmpty || selectedIDs.count == candidates.count)
+                Button("NONE", action: onNone)
+                    .disabled(selectedIDs.isEmpty)
+            }
+            .buttonStyle(ConversionPhotoPickerActionStyle())
+
+            if !candidates.isEmpty {
+                ScrollView(.horizontal) {
+                    LazyHStack(spacing: OPSStyle.Layout.spacing2_5) {
+                        ForEach(candidates) { candidate in
+                            photoButton(candidate)
+                        }
+                    }
+                }
+                .scrollIndicators(.hidden)
+            }
+
+            if hasQueuedPhotos {
+                Text("PHOTOS STILL SYNCING · NOT INCLUDED")
+                    .font(OPSStyle.Typography.miniLabel)
+                    .kerning(OPSStyle.Typography.trackingStandard)
+                    .foregroundColor(OPSStyle.Colors.textMute)
+            }
+        }
+    }
+
+    private func photoButton(_ candidate: ConversionPhotoCandidate) -> some View {
+        let isSelected = selectedIDs.contains(candidate.id)
+        return Button {
+            onToggle(candidate)
+        } label: {
+            ZStack(alignment: .topTrailing) {
+                candidatePreview(candidate)
+                    .frame(width: tileSize, height: tileSize)
+                    .clipped()
+
+                if isSelected {
+                    Image(systemName: OPSStyle.Icons.checkmark)
+                        .font(.system(size: OPSStyle.Layout.IconSize.xs, weight: .bold))
+                        .foregroundColor(OPSStyle.Colors.oliveTextM)
+                        .frame(
+                            width: OPSStyle.Layout.touchTargetMin,
+                            height: OPSStyle.Layout.touchTargetMin
+                        )
+                        .background(OPSStyle.Colors.oliveFillM)
+                }
+            }
+            .clipShape(
+                RoundedRectangle(
+                    cornerRadius: OPSStyle.Layout.buttonRadius,
+                    style: .continuous
+                )
+            )
+            .overlay(
+                RoundedRectangle(
+                    cornerRadius: OPSStyle.Layout.buttonRadius,
+                    style: .continuous
+                )
+                .strokeBorder(
+                    isSelected ? OPSStyle.Colors.oliveLineM : OPSStyle.Colors.line,
+                    lineWidth: OPSStyle.Layout.Border.standard
+                )
+            )
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(
+            "\(isSelected ? "Remove" : "Add") \(candidate.filename ?? "photo") \(isSelected ? "from" : "to") project"
+        )
+        .accessibilityValue(isSelected ? "Selected" : "Not selected")
+    }
+
+    @ViewBuilder
+    private func candidatePreview(_ candidate: ConversionPhotoCandidate) -> some View {
+        if let attachment = candidate.attachment {
+            LeadAttachmentPreview(
+                attachment: attachment,
+                maxPixelSize: tileSize * UIScreen.main.scale
+            )
+        } else if let sourceURL = candidate.sourceURL,
+                  let url = URL(string: sourceURL) {
+            AsyncImage(url: url) { phase in
+                switch phase {
+                case .success(let image):
+                    image.resizable().scaledToFill()
+                case .failure:
+                    photoPlaceholder
+                default:
+                    ProgressView()
+                        .controlSize(.small)
+                        .tint(OPSStyle.Colors.text3)
+                }
+            }
+        } else {
+            photoPlaceholder
+        }
+    }
+
+    private var photoPlaceholder: some View {
+        ZStack {
+            OPSStyle.Colors.surfaceInput
+            Image(systemName: OPSStyle.Icons.photos)
+                .font(.system(size: OPSStyle.Layout.IconSize.sm))
+                .foregroundColor(OPSStyle.Colors.textMute)
+        }
+    }
+}
+
+private struct ConversionPhotoPickerActionStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(OPSStyle.Typography.miniLabelBold)
+            .kerning(OPSStyle.Typography.trackingStandard)
+            .foregroundColor(OPSStyle.Colors.text2)
+            .frame(minWidth: OPSStyle.Layout.touchTargetMin)
+            .frame(height: OPSStyle.Layout.touchTargetMin)
+            .contentShape(Rectangle())
+            .opacity(configuration.isPressed ? 0.7 : 1)
     }
 }
 

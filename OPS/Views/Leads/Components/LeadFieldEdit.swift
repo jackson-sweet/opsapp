@@ -444,10 +444,10 @@ final class LeadFieldEditController: ObservableObject {
 
 /// Attaches the dossier's hold-to-edit gesture to a field.
 ///
-/// One exclusive gesture, never two competing ones: a successful hold consumes
-/// the release, so editing can never also fire the field's tap action. When the
-/// operator has no edit rights the hold half is not attached AT ALL — they keep
-/// the plain tap they have today rather than a dead affordance that teases.
+/// A real Button owns taps while a simultaneous hold opens editing. The hold
+/// marks its release so the Button cannot also activate. When the operator has
+/// no edit rights the hold is not attached at all — they keep the plain tap
+/// rather than a dead affordance that teases.
 private struct HoldToEditModifier: ViewModifier {
     let field: LeadEditableField
     /// `InfoRowEdit.offersLongPressEdit(...)` — permission AND a value to
@@ -463,6 +463,7 @@ private struct HoldToEditModifier: ViewModifier {
     /// press REVEALS that the field is live — the quietest discovery channel
     /// there is, and it costs no chrome when nobody is touching the screen.
     @GestureState private var isPressing = false
+    @State private var suppressNextActivation = false
 
     private var hasTapAction: Bool { onActivate != nil }
 
@@ -494,30 +495,48 @@ private struct HoldToEditModifier: ViewModifier {
             .animation(OPSStyle.Animation.hover, value: isPressing)
             .contentShape(Rectangle())
 
-        if offersEdit {
-            painted.gesture(editGesture)
+        if offersEdit, hasTapAction {
+            Button(action: activateFromButton) {
+                painted
+            }
+            .buttonStyle(.plain)
+            .simultaneousGesture(longPressGesture)
+        } else if offersEdit {
+            painted.gesture(longPressGesture)
         } else if hasTapAction {
-            painted.gesture(TapGesture().onEnded { perform(.tap) })
+            Button(action: activateFromButton) {
+                painted
+            }
+            .buttonStyle(.plain)
         } else {
             painted
         }
     }
 
-    /// ONE gesture, not two competing ones. `exclusively(before:)` means a
-    /// successful hold consumes the release — the a093d9cc guarantee — so
-    /// opening an editor can never also launch Maps or push the client sheet.
-    private var editGesture: some Gesture {
+    /// A real Button owns ordinary activation. The prior exclusive gesture
+    /// waited on a long-press recognizer before considering the tap and could
+    /// swallow the release entirely on physical devices. The long press now
+    /// runs alongside the Button and suppresses only the activation generated
+    /// by that same completed press.
+    private var longPressGesture: some Gesture {
         LongPressGesture(minimumDuration: OPSStyle.Animation.longPressHold)
-            .exclusively(before: TapGesture())
             .updating($isPressing) { value, state, _ in
-                if case .first(let pressing) = value { state = pressing }
+                state = value
             }
-            .onEnded { result in
-                switch result {
-                case .first:  perform(.hold)
-                case .second: perform(.tap)
+            .onChanged { _ in
+                suppressNextActivation = true
+            }
+            .onEnded { _ in
+                perform(.hold)
+                DispatchQueue.main.async {
+                    suppressNextActivation = false
                 }
             }
+    }
+
+    private func activateFromButton() {
+        guard !suppressNextActivation else { return }
+        perform(.tap)
     }
 
     private func perform(_ gesture: LeadFieldGesture) {

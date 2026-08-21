@@ -220,6 +220,131 @@ final class SiteVisitRecoveryVaultTests: XCTestCase {
     }
 
     @MainActor
+    func test_activeServerSyncedParentReleasesDeletedParentCustodyWithoutDeletingWork() throws {
+        let root = try makeTemporaryDirectory()
+        let mediaRoot = root.appendingPathComponent("media", isDirectory: true)
+        try FileManager.default.createDirectory(at: mediaRoot, withIntermediateDirectories: true)
+        let mediaID = "local://project_images/recovered.jpg"
+        let mediaURL = mediaRoot.appendingPathComponent("recovered.jpg")
+        let media = Data("recovered-field-photo".utf8)
+        try media.write(to: mediaURL)
+        let vault = makeVault(root: root) { $0 == mediaID ? mediaURL : nil }
+        let container = try makeContainer()
+        let context = container.mainContext
+        let visit = SiteVisit(id: visitID, companyId: companyID, createdBy: userID)
+        visit.needsSync = false
+        visit.lastSyncedAt = Date(timeIntervalSince1970: 1_700_000_200)
+        let artifact = SiteVisitCaptureArtifact(
+            siteVisitId: visitID,
+            companyId: companyID,
+            kind: .photo,
+            source: .camera,
+            localAssetURL: mediaID,
+            createdBy: userID
+        )
+        let operation = try makeParentOperation(visit)
+        operation.lastAttemptedAt = Date(timeIntervalSince1970: 1_700_000_100)
+        context.insert(visit)
+        context.insert(artifact)
+        context.insert(operation)
+        try context.save()
+        let quarantine = SiteVisitOrphanQuarantine(
+            id: "site-visit-quarantine:parent_deleted:\(companyID):\(visitID)",
+            userId: userID,
+            companyId: companyID,
+            siteVisitId: visitID,
+            reason: .parentDeleted,
+            childIds: [artifact.id],
+            createdAt: Date(timeIntervalSince1970: 1_700_000_100)
+        )
+        try vault.recordQuarantine(quarantine, from: context)
+        operation.status = "quarantined"
+        operation.retryCount = 7
+        operation.lastError = "Visit was deleted in OPS — work is held on this phone."
+        try context.save()
+
+        let result = try vault.releaseRestoredParentQuarantines(
+            in: context,
+            userId: userID,
+            companyId: companyID
+        )
+
+        XCTAssertEqual(result.releasedSiteVisitIds, [visitID])
+        XCTAssertEqual(result.requeuedOperationIds, [operation.id])
+        XCTAssertEqual(operation.status, "pending")
+        XCTAssertEqual(operation.retryCount, 0)
+        XCTAssertNil(operation.lastError)
+        XCTAssertNil(operation.lastAttemptedAt)
+        XCTAssertEqual(try context.fetchCount(FetchDescriptor<SiteVisit>()), 1)
+        XCTAssertEqual(try context.fetchCount(FetchDescriptor<SiteVisitCaptureArtifact>()), 1)
+        XCTAssertEqual(try Data(contentsOf: mediaURL), media)
+        XCTAssertTrue(vault.summaries(userId: userID, companyId: companyID).isEmpty)
+    }
+
+    @MainActor
+    func test_deletedUnsyncedOrStaleParentCannotReleaseDeletedParentCustody() throws {
+        let root = try makeTemporaryDirectory()
+        let vault = makeVault(root: root) { _ in nil }
+        let container = try makeContainer()
+        let context = container.mainContext
+        let visit = SiteVisit(id: visitID, companyId: companyID, createdBy: userID)
+        visit.deletedAt = Date()
+        visit.needsSync = false
+        visit.lastSyncedAt = Date(timeIntervalSince1970: 1_700_000_000)
+        let operation = try makeParentOperation(visit)
+        operation.lastAttemptedAt = Date(timeIntervalSince1970: 1_700_000_100)
+        context.insert(visit)
+        context.insert(operation)
+        try context.save()
+        let quarantine = SiteVisitOrphanQuarantine(
+            id: "site-visit-quarantine:parent_deleted:\(companyID):\(visitID)",
+            userId: userID,
+            companyId: companyID,
+            siteVisitId: visitID,
+            reason: .parentDeleted,
+            childIds: [],
+            createdAt: Date(timeIntervalSince1970: 1_700_000_100)
+        )
+        try vault.recordQuarantine(quarantine, from: context)
+        operation.status = "quarantined"
+        try context.save()
+
+        let result = try vault.releaseRestoredParentQuarantines(
+            in: context,
+            userId: userID,
+            companyId: companyID
+        )
+
+        XCTAssertTrue(result.releasedSiteVisitIds.isEmpty)
+        XCTAssertTrue(result.requeuedOperationIds.isEmpty)
+        XCTAssertEqual(operation.status, "quarantined")
+        XCTAssertEqual(vault.summaries(userId: userID, companyId: companyID).count, 1)
+
+        visit.deletedAt = nil
+        visit.needsSync = true
+        visit.lastSyncedAt = Date(timeIntervalSince1970: 1_700_000_200)
+        try context.save()
+        let unsyncedResult = try vault.releaseRestoredParentQuarantines(
+            in: context,
+            userId: userID,
+            companyId: companyID
+        )
+        XCTAssertTrue(unsyncedResult.releasedSiteVisitIds.isEmpty)
+
+        visit.needsSync = false
+        visit.lastSyncedAt = Date(timeIntervalSince1970: 1_700_000_000)
+        try context.save()
+        let staleResult = try vault.releaseRestoredParentQuarantines(
+            in: context,
+            userId: userID,
+            companyId: companyID
+        )
+        XCTAssertTrue(staleResult.releasedSiteVisitIds.isEmpty)
+        XCTAssertEqual(operation.status, "quarantined")
+        XCTAssertEqual(vault.summaries(userId: userID, companyId: companyID).count, 1)
+    }
+
+    @MainActor
     func test_explicitQuarantineDiscardRemovesExactOrphanSourceAndMediaButKeepsParent() throws {
         let root = try makeTemporaryDirectory()
         let mediaRoot = root.appendingPathComponent("media", isDirectory: true)

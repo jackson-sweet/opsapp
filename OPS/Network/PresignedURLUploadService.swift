@@ -495,7 +495,10 @@ class PresignedURLUploadService {
             throw UploadError.invalidResponse
         }
         guard (200...299).contains(httpResponse.statusCode) else {
-            throw UploadError.presignError(statusCode: httpResponse.statusCode)
+            throw UploadError.presignFailure(
+                statusCode: httpResponse.statusCode,
+                responseData: responseData
+            )
         }
         let presigned = try JSONDecoder().decode(
             PresignedURLResponse.self,
@@ -636,7 +639,10 @@ class PresignedURLUploadService {
         }
 
         guard (200...299).contains(httpResponse.statusCode) else {
-            throw UploadError.presignError(statusCode: httpResponse.statusCode)
+            throw UploadError.presignFailure(
+                statusCode: httpResponse.statusCode,
+                responseData: data
+            )
         }
 
         return try JSONDecoder().decode(PresignedURLResponse.self, from: data)
@@ -790,8 +796,33 @@ class PresignedURLUploadService {
 enum UploadError: LocalizedError {
     case invalidResponse
     case invalidURL
-    case presignError(statusCode: Int)
+    case presignError(statusCode: Int, message: String?)
     case s3Error(statusCode: Int)
+
+    static func presignFailure(
+        statusCode: Int,
+        responseData: Data
+    ) -> UploadError {
+        struct ErrorEnvelope: Decodable {
+            let error: String
+        }
+        guard let envelope = try? JSONDecoder().decode(
+            ErrorEnvelope.self,
+            from: responseData
+        ) else {
+            return .presignError(statusCode: statusCode, message: nil)
+        }
+        let collapsed = envelope.error
+            .split(whereSeparator: \Character.isWhitespace)
+            .joined(separator: " ")
+        guard !collapsed.isEmpty else {
+            return .presignError(statusCode: statusCode, message: nil)
+        }
+        return .presignError(
+            statusCode: statusCode,
+            message: String(collapsed.prefix(240))
+        )
+    }
 
     var errorDescription: String? {
         switch self {
@@ -799,8 +830,11 @@ enum UploadError: LocalizedError {
             return "Invalid response from server"
         case .invalidURL:
             return "Invalid upload URL"
-        case .presignError(let code):
-            return "Presign request error (status: \(code))"
+        case .presignError(let code, let message):
+            if let message {
+                return "Upload request failed (\(code)): \(message)"
+            }
+            return "Upload request failed (\(code))"
         case .s3Error(let code):
             return "S3 upload error (status: \(code))"
         }

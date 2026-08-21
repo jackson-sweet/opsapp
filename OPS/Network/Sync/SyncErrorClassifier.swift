@@ -101,7 +101,7 @@ enum SyncErrorClassifier {
         // perfectly good photo gets written off.
         if let mediaError = error as? SiteVisitMediaSyncError {
             switch mediaError {
-            case .localFileMissing, .invalidRemoteURL:
+            case .localFileMissing, .invalidRemoteURL, .uploadPreparationFailed:
                 return .permanent
             case .localFileUnreadable:
                 return .transient

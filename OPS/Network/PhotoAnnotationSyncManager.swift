@@ -868,7 +868,7 @@ enum AnnotationClearPlanner {
 /// Why an actor and not a detached task. Two constraints have to hold at once:
 ///
 ///  1. None of this may run on the main actor. A full-resolution flatten plus a
-///     12 MP JPEG encode is tens of milliseconds each, and `preCompositeAnnotations`
+///     bounded JPEG encode is tens of milliseconds each, and `preCompositeAnnotations`
 ///     runs from `onAppear` for every annotated photo on the project.
 ///  2. The durable write must stay serialized. Several mounted photo surfaces
 ///     call `preCompositeAnnotations` concurrently (details screen, photo grid,
@@ -893,8 +893,8 @@ actor PhotoCompositeRenderer {
         case stale
     }
 
-    /// Freshness short-circuit. Re-rendering a full-resolution composite is
-    /// expensive (≈48 MB) and would thrash the budget evictor on every gallery
+    /// Freshness short-circuit. Re-rendering a camera-resolution composite is
+    /// expensive and would thrash the budget evictor on every gallery
     /// open, so a durable composite newer than the annotation's last change is
     /// reused as-is. Local edits delete the composite up front (see
     /// `saveAnnotation`) and remote edits bump `updatedAt`, so a stale composite
@@ -973,12 +973,12 @@ actor PhotoCompositeRenderer {
         // Persist the composite so ANY thumbnail can resolve markup the instant
         // it mounts — independent of NSCache eviction or mount timing. This is
         // the durability tier: the in-memory cache holds barely one
-        // full-resolution composite, so a thumbnail scrolled into view long
-        // after the post fired would otherwise fall back to the raw photo. JPEG
-        // (opaque, quality 0.9) keeps the file ~5-6× smaller than a lossless PNG
-        // of the same 12 MP frame, which matters because every composite counts
-        // against the photo storage budget.
-        guard let jpeg = composited.jpegData(compressionQuality: 0.9) else {
+        // camera-resolution composite, so a thumbnail scrolled into view long
+        // after the post fired would otherwise fall back to the raw photo. The
+        // shared site-visit preparation policy caps the durable JPEG at 2,048 px
+        // and 10 MiB, preventing a rendered markup file from becoming
+        // permanently unsendable while preserving the untouched source photo.
+        guard let jpeg = SiteVisitMediaImagePreparation.jpegData(for: composited) else {
             // No durable copy to write, but the in-memory publish is still only
             // valid if nothing newer has landed.
             return isCurrent(token: token, for: plan.cacheKey) ? composited : nil

@@ -1412,6 +1412,12 @@ class DataController: ObservableObject {
             userId: userId,
             companyId: companyId
         )
+        let released = try SiteVisitRecoveryVault.shared
+            .releaseRestoredParentQuarantines(
+                in: context,
+                userId: userId,
+                companyId: companyId
+            )
         let result = try SiteVisitOrphanRecovery.recover(
             in: context,
             activeUserId: userId,
@@ -1433,6 +1439,7 @@ class DataController: ObservableObject {
         let marker = "site_visit_orphan_recovery_v1:\(userId.lowercased()):\(companyId.lowercased())"
         UserDefaults.standard.set(Date().timeIntervalSince1970, forKey: marker)
         if restored > 0
+            || !released.releasedSiteVisitIds.isEmpty
             || !result.operationIds.isEmpty
             || !settlement.settledOperationIds.isEmpty {
             syncEngine.refreshPendingCount()

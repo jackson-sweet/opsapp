@@ -75,4 +75,3 @@ final class ProjectPrimaryContactTests: XCTestCase {
         store.permissions = [:]
     }
 }
-

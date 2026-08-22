@@ -134,6 +134,43 @@ final class ProjectDetailsLocalFirstTests: XCTestCase {
         XCTAssertEqual(clients.first?.name, "Fresh name")
     }
 
+    /// Assignment-scoped RLS can make an existing project's client readable
+    /// after the project itself is already cached. The targeted details-screen
+    /// fetch must repair the SwiftData relationship as well as insert the newly
+    /// readable client row; otherwise `ClientRow` still sees `project.client ==
+    /// nil` and hides CALL / EMAIL even though the server returned both fields.
+    func test_mergeClientSnapshotReconnectsNewlyReadableClientToCachedProject() async throws {
+        let container = try makeContainer()
+        let clientId = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee"
+        let projectId = "ffffffff-ffff-4fff-8fff-ffffffffffff"
+
+        let seed = ModelContext(container)
+        let project = Project(id: projectId, title: "Assigned project", status: .inProgress)
+        project.companyId = "company-1"
+        project.clientId = clientId
+        XCTAssertNil(project.client, "Precondition: the newly readable client is not cached yet")
+        seed.insert(project)
+        try seed.save()
+
+        let actor = DataActor(modelContainer: container)
+        await actor.configure()
+        try await actor.mergeClientSnapshot(clientDTO(
+            id: clientId,
+            name: "Assigned client",
+            email: "client@example.com",
+            phoneNumber: "+12505550199"
+        ))
+
+        let check = ModelContext(container)
+        let projects = try check.fetch(
+            FetchDescriptor<Project>(predicate: #Predicate { $0.id == projectId })
+        )
+        let hydrated = try XCTUnwrap(projects.first)
+        XCTAssertEqual(hydrated.client?.id, clientId)
+        XCTAssertEqual(hydrated.effectiveClientEmail, "client@example.com")
+        XCTAssertEqual(hydrated.effectiveClientPhone, "+12505550199")
+    }
+
     // MARK: - 2. Local-first notes
 
     /// The activity feed is already on disk. Painting it only after a network
@@ -413,14 +450,19 @@ final class ProjectDetailsLocalFirstTests: XCTestCase {
         return container
     }
 
-    private func clientDTO(id: String, name: String) -> SupabaseClientDTO {
+    private func clientDTO(
+        id: String,
+        name: String,
+        email: String? = nil,
+        phoneNumber: String? = nil
+    ) -> SupabaseClientDTO {
         SupabaseClientDTO(
             id: id,
             bubbleId: nil,
             companyId: "company-1",
             name: name,
-            email: nil,
-            phoneNumber: nil,
+            email: email,
+            phoneNumber: phoneNumber,
             address: nil,
             latitude: nil,
             longitude: nil,

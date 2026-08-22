@@ -686,6 +686,8 @@ final class InboundProcessor {
 
         let dto = try await clientRepo.fetchOne(clientId)
         try mergeClient(dto: dto, context: context)
+        try ProjectClientRelationshipHydrator.attach(clientId: dto.id, context: context)
+        try context.save()
         InboundChangeSignal.post(entityNames: ["Client"])
     }
 

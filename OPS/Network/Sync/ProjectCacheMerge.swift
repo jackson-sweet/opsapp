@@ -203,3 +203,40 @@ enum ProjectCacheMerge {
         marker.lastSyncedAt = Date()
     }
 }
+
+// MARK: - Targeted Client Hydration
+
+/// Repairs the persisted `Project.client` relationship after a single-client
+/// fetch makes that client newly readable.
+///
+/// Assignment-scoped access can change without touching the client row's
+/// `updated_at`, so a delta pull may already have the project while never
+/// receiving its client. The project-details refresh fetches that exact client
+/// by id; once it lands, every cached active project carrying the same
+/// `clientId` must point at the context-resident Client or contact actions stay
+/// hidden even though the email and phone are present locally.
+enum ProjectClientRelationshipHydrator {
+    @discardableResult
+    static func attach(clientId: String, context: ModelContext) throws -> Int {
+        guard !clientId.isEmpty else { return 0 }
+
+        let clientDescriptor = FetchDescriptor<Client>(
+            predicate: #Predicate { $0.id == clientId }
+        )
+        guard let client = try context.fetch(clientDescriptor).first,
+              client.deletedAt == nil else {
+            return 0
+        }
+
+        let projectDescriptor = FetchDescriptor<Project>(
+            predicate: #Predicate { $0.clientId == clientId }
+        )
+        var repairedCount = 0
+        for project in try context.fetch(projectDescriptor)
+        where project.deletedAt == nil && project.client?.id != clientId {
+            project.client = client
+            repairedCount += 1
+        }
+        return repairedCount
+    }
+}

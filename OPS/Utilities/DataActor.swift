@@ -251,6 +251,10 @@ actor DataActor {
     func mergeClientSnapshot(_ dto: SupabaseClientDTO) throws {
         try modelContext.transaction {
             try mergeClient(dto: dto)
+            try ProjectClientRelationshipHydrator.attach(
+                clientId: dto.id,
+                context: modelContext
+            )
         }
         // Snapshot-cache consumers repaint off this, exactly as they do after a
         // realtime client event.

@@ -179,16 +179,14 @@ final class KeepAliveTabContainerTests: XCTestCase {
 
     // MARK: - Real container driver
 
-    /// Selection state the way MainTabView keeps it: `selected`, `previous` and
-    /// the mounted set all move together, in one transaction.
+    /// Selection state the way MainTabView keeps it: destination and mounted
+    /// set move together in one transaction.
     private struct Selection {
         var selected = 0
-        var previous = 0
         var mounted: Set<Int> = [0]
 
         mutating func select(_ index: Int) {
             guard index != selected else { return }
-            previous = selected
             mounted.insert(index)
             selected = index
         }
@@ -201,7 +199,6 @@ final class KeepAliveTabContainerTests: XCTestCase {
     ) -> some View {
         KeepAliveTabContainer(
             selected: selection.selected,
-            previous: selection.previous,
             mounted: selection.mounted.sorted()
         ) { index in
             ProbeSlot(index: index, ledger: ledger)
@@ -210,6 +207,21 @@ final class KeepAliveTabContainerTests: XCTestCase {
     }
 
     // MARK: - 1. Environment
+
+    func testSlotPresentationSwitchesVisibilityWithoutAFullScreenTransition() {
+        let active = TabSlotPresentation(index: 2, selected: 2)
+        let parked = TabSlotPresentation(index: 1, selected: 2)
+
+        XCTAssertEqual(active.opacity, 1)
+        XCTAssertEqual(active.zIndex, 1)
+        XCTAssertTrue(active.allowsHitTesting)
+        XCTAssertFalse(active.accessibilityHidden)
+
+        XCTAssertEqual(parked.opacity, 0)
+        XCTAssertEqual(parked.zIndex, 0)
+        XCTAssertFalse(parked.allowsHitTesting)
+        XCTAssertTrue(parked.accessibilityHidden)
+    }
 
     func testIsActiveTabDefaultsToTrueOutsideTheContainer() throws {
         var observed: Bool?
@@ -332,7 +344,6 @@ final class KeepAliveTabContainerTests: XCTestCase {
         func harness(_ selection: Selection) -> some View {
             KeepAliveTabContainer(
                 selected: selection.selected,
-                previous: selection.previous,
                 mounted: selection.mounted.sorted()
             ) { index in
                 VStack {
@@ -367,7 +378,6 @@ final class KeepAliveTabContainerTests: XCTestCase {
         func harness(_ selection: Selection) -> some View {
             KeepAliveTabContainer(
                 selected: selection.selected,
-                previous: selection.previous,
                 mounted: selection.mounted.sorted()
             ) { index in
                 Color.clear.trackScreen(names[index] ?? "")

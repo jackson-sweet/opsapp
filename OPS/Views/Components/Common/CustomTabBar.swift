@@ -188,9 +188,7 @@ struct CustomTabBar: View {
             isSelected: selectedTab == index,
             cellWidth: cellWidth,
             action: {
-                withAnimation(reduceMotion ? nil : OPSStyle.Animation.panel) {
-                    selectedTab = index
-                }
+                selectedTab = index
             }
         )
     }

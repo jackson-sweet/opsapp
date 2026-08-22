@@ -25,7 +25,6 @@ struct MainTabView: View {
     @State private var selectedTab = 0
     @State private var hasEvaluatedWizards = false
     @State private var needsWizardRetry = false
-    @State private var previousTab = 0
     /// Tabs the operator has visited. A tab mounts on first visit and is never
     /// unmounted: switching must not rebuild Home's Mapbox stack, throw away
     /// Leads' and Books' view models, or drop a scroll position. Deliberate
@@ -318,14 +317,8 @@ struct MainTabView: View {
         return mountedTabs.filter { $0 >= 0 && $0 < count }.sorted()
     }
 
-    /// Tab selection funnels through here so `previousTab` and the mounted-slot
-    /// set land in the SAME transaction as `selectedTab`. Updating them in a
-    /// later `onChange` pass would teleport the outgoing tab off-screen instead
-    /// of sliding it, and would mount an arriving tab a frame too late to
-    /// animate in.
-    /// `nil` animation on purpose: CustomTabBar already wraps its write in its
-    /// own `withAnimation`, and adding a second one here would nest transactions
-    /// and change the tab bar's own timing.
+    /// Tab selection funnels through here so the destination root is mounted
+    /// and selected in the same transaction as the tap.
     private var tabSelection: Binding<Int> {
         Binding(
             get: { selectedTab },
@@ -333,17 +326,13 @@ struct MainTabView: View {
         )
     }
 
-    /// The one implementation of the same-transaction contract, shared with
-    /// `tabSelection`. Pass `nil` to switch without adding an animation.
-    private func selectTab(_ index: Int, with animation: SwiftUI.Animation?) {
+    /// Full-screen tab content always switches immediately. The argument stays
+    /// in the call shape for existing deep-link routes; only local tab-bar
+    /// chrome owns animation now.
+    private func selectTab(_ index: Int, with _: SwiftUI.Animation?) {
         guard index != selectedTab else { return }
-        previousTab = selectedTab
         mountedTabs.insert(index)
-        if let animation {
-            withAnimation(animation) { selectedTab = index }
-        } else {
-            selectedTab = index
-        }
+        selectedTab = index
     }
 
     /// A role or permission change rewrites which tab each index maps to, so a
@@ -353,7 +342,6 @@ struct MainTabView: View {
     private func remapMountedTabs() {
         let target = selectedTab >= tabs.count ? 0 : selectedTab
         if target != selectedTab {
-            previousTab = target
             selectedTab = target
         }
         mountedTabs = [target]
@@ -457,25 +445,20 @@ struct MainTabView: View {
 
     var body: some View {
         ZStack {
-            // Main content structure with sliding transitions
-            // Dynamic content based on tabs array
-            let tabCount = tabs.count
-
+            // Main content structure with retained, instant-switching roots
             // Keep-alive tab container — every visited tab stays mounted and
-            // slides rather than being rebuilt. Geometry lives in the container;
-            // what the indices mean and how one is chosen stays here.
+            // becomes visible immediately rather than being rebuilt. What the
+            // indices mean and how one is chosen stays here.
             KeepAliveTabContainer(
                 selected: selectedTab,
-                previous: previousTab,
                 mounted: mountedTabIndices
             ) { index in
                 tabRoot(for: index)
             }
             .ignoresSafeArea(.all, edges: .bottom)
             // Each tab's AppHeader (search + tab-specific action buttons) lives
-            // inside this sliding container, so the whole header slides as one
-            // unit with the body on a tab switch and every right-side button
-            // stays mutually aligned. No separate persistent overlay.
+            // inside this retained container, so header and body become visible
+            // in the same render transaction. No separate persistent overlay.
             // Pushed detail screens read this to fade the tab bar while on screen.
             .environment(\.tabBarVisibility, tabBarVisibility)
             // The ACTIVE tab's header reports how tall it is, so the status band
@@ -1012,15 +995,8 @@ struct MainTabView: View {
             }
         }
 
-        // Track tab changes for slide transitions and analytics
-        .onChange(of: selectedTab) { oldValue, newValue in
-            // Net, not an alternative: a write that bypassed `tabSelection` /
-            // `selectTab` has already rendered one frame with a stale
-            // `previousTab`, so the outgoing tab teleported instead of sliding
-            // and no later fix-up can recover that frame. This only restores
-            // CONSISTENCY for everything after it. A no-op on the normal path —
-            // the values already match — so it costs no extra render.
-            if previousTab != oldValue { previousTab = oldValue }
+        // Track tab changes for retained roots and analytics.
+        .onChange(of: selectedTab) { _, newValue in
             if !mountedTabs.contains(newValue) { mountedTabs.insert(newValue) }
             let tabName = analyticsTabName(for: newValue)
             AnalyticsManager.shared.trackTabSelected(tabName: tabName)

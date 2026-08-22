@@ -33,6 +33,65 @@ final class LeadNotificationRouteParserTests: XCTestCase {
         XCTAssertTrue(LeadNotificationRouteParser.isLeadNotification(type: "x", deepLinkType: "opportunities"))
     }
 
+    func testUrgentReplyRoleNeededDetectedByInboxDeepLink() {
+        // The live urgent-reply payload uses this overloaded notification type
+        // together with the inbox deep-link contract.
+        XCTAssertTrue(
+            LeadNotificationRouteParser.isLeadNotification(
+                type: "role_needed",
+                deepLinkType: "inbox",
+                actionUrl: "/inbox?thread=\(threadId)&opportunityId=\(oppId)"
+            )
+        )
+    }
+
+    func testUrgentReplyRoleNeededDetectedByValidInboxThreadURLWithoutDeepLink() {
+        XCTAssertTrue(
+            LeadNotificationRouteParser.isLeadNotification(
+                type: "role_needed",
+                deepLinkType: nil,
+                actionUrl: "/inbox?thread=\(threadId)"
+            )
+        )
+    }
+
+    func testTeamRoleNeededDoesNotUseLeadRouting() {
+        XCTAssertFalse(
+            LeadNotificationRouteParser.isLeadNotification(
+                type: "role_needed",
+                deepLinkType: nil,
+                actionUrl: "/team/settings/assignRole"
+            )
+        )
+    }
+
+    func testInboxDeepLinkAloneDoesNotMakeRoleNeededALeadNotification() {
+        XCTAssertFalse(
+            LeadNotificationRouteParser.isLeadNotification(
+                type: "role_needed",
+                deepLinkType: "inbox",
+                actionUrl: nil
+            )
+        )
+        XCTAssertFalse(
+            LeadNotificationRouteParser.isLeadNotification(
+                type: "role_needed",
+                deepLinkType: "inbox",
+                actionUrl: "/settings?thread=\(threadId)"
+            )
+        )
+    }
+
+    func testMalformedInboxRoleNeededDoesNotUseLeadRouting() {
+        XCTAssertFalse(
+            LeadNotificationRouteParser.isLeadNotification(
+                type: "role_needed",
+                deepLinkType: nil,
+                actionUrl: "/inbox?thread=not-a-uuid"
+            )
+        )
+    }
+
     func testLifecycleTypesDetected() {
         for t in ["lead_created", "lead_updated", "lead_follow_up_due", "lead_follow_up_sent",
                   "opportunity_created", "opportunity_updated", "opportunity_follow_up_due",
@@ -147,6 +206,7 @@ final class LeadNotificationRouteParserTests: XCTestCase {
     func testEmailThreadIdNilForNonInboxUrl() {
         XCTAssertNil(LeadNotificationRouteParser.emailThreadId(fromActionUrl: "/pipeline?opportunityId=\(oppId)"))
         XCTAssertNil(LeadNotificationRouteParser.emailThreadId(fromActionUrl: "/settings?tab=integrations"))
+        XCTAssertNil(LeadNotificationRouteParser.emailThreadId(fromActionUrl: "/settings?thread=\(threadId)"))
     }
 
     // MARK: - route() priority

@@ -131,12 +131,19 @@ enum LeadNotificationRouteParser {
     /// True when EITHER the deep-link type OR the notification type marks this
     /// as a lead/opportunity notification. `deep_link_type` is authoritative
     /// when present; `type` is the fallback because lead rows carry a null
-    /// deep-link type.
-    static func isLeadNotification(type: String?, deepLinkType: String?) -> Bool {
+    /// deep-link type. `role_needed` is overloaded by non-lead settings alerts,
+    /// so only a structurally valid inbox thread URL may opt it into lead
+    /// routing; the type and deep-link label alone are not sufficient.
+    static func isLeadNotification(
+        type: String?,
+        deepLinkType: String?,
+        actionUrl: String? = nil
+    ) -> Bool {
         let normalizedDeepLink = normalize(deepLinkType)
         let normalizedType = normalize(type)
         if let normalizedDeepLink, leadRoutingValues.contains(normalizedDeepLink) { return true }
         if let normalizedType, leadRoutingValues.contains(normalizedType) { return true }
+        if normalizedType == "role_needed", emailThreadId(fromActionUrl: actionUrl) != nil { return true }
         return false
     }
 
@@ -217,6 +224,12 @@ enum LeadNotificationRouteParser {
         guard let raw = normalize(actionUrl),
               let components = URLComponents(string: raw) else { return nil }
 
+        // Both supported forms are valid only on the inbox surface. Without
+        // this guard, a settings URL carrying an unrelated `thread` query item
+        // could be mistaken for an email thread.
+        let segments = components.path.split(separator: "/").map(String.init)
+        guard segments.first == "inbox" else { return nil }
+
         // `/inbox?thread=<uuid>`
         if let thread = components.queryItems?.first(where: { $0.name == "thread" })?.value,
            let id = normalize(thread), isUUID(id) {
@@ -225,7 +238,6 @@ enum LeadNotificationRouteParser {
 
         // `/inbox/<uuid>` — only when `inbox` is the leading path component so a
         // stray uuid elsewhere never reads as a thread id.
-        let segments = components.path.split(separator: "/").map(String.init)
         if segments.count >= 2, segments[0] == "inbox", isUUID(segments[1]) {
             return segments[1]
         }
@@ -1157,7 +1169,8 @@ struct NotificationListView: View {
         // the opportunity id from action_url / dedupe_key / email thread.
         if LeadNotificationRouteParser.isLeadNotification(
             type: notification.type,
-            deepLinkType: notification.deepLinkType
+            deepLinkType: notification.deepLinkType,
+            actionUrl: notification.actionUrl
         ) {
             routeToLead(notification)
             return

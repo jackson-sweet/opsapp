@@ -469,7 +469,7 @@ final class DeckDesignSyncTests: XCTestCase {
             modelContext: context,
             syncEngine: syncEngine
         )
-        viewModel.save()
+        viewModel.flushBeforeExit()
 
         let ops = try context.fetch(FetchDescriptor<SyncOperation>())
             .filter { $0.entityType == SyncEntityType.deckDesign.rawValue }
@@ -518,7 +518,7 @@ final class DeckDesignSyncTests: XCTestCase {
             modelContext: context,
             syncEngine: syncEngine
         )
-        viewModel.save()
+        viewModel.flushBeforeExit()
 
         let ops = try context.fetch(FetchDescriptor<SyncOperation>())
             .filter { $0.entityType == SyncEntityType.deckDesign.rawValue }

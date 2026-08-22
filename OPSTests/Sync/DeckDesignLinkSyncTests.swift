@@ -16,7 +16,7 @@
 //    - a one-time backfill sweep heals designs already orphaned server-side.
 //
 //  These tests drive the REAL coalescer (OutboundProcessor.coalesceOperations),
-//  the REAL recorder (DeckBuilderViewModel.enqueueDeckDesignSync via save()), the
+//  the REAL recorder (DeckBuilderViewModel enqueue at the exit boundary), the
 //  REAL routing (OutboundProcessor.executeOperation), and the REAL backfill sweep
 //  (SyncEngine.enqueueDeckDesignLinkBackfillOnce). DataActor mirrors the coalescer
 //  + handler verbatim (its copies are private and unreachable from tests); the
@@ -62,14 +62,14 @@ final class DeckDesignLinkSyncTests: XCTestCase {
             title: "Lead deck",
             drawingDataJSON: DeckDrawingData().toJSON()   // empty → not auto-enqueued at init
         )
-        // lastSyncedAt nil → hasEnqueuedCreate false → save() emits a CREATE.
+        // lastSyncedAt nil → hasEnqueuedCreate false → exit emits a CREATE.
         context.insert(design)
         try context.save()
 
         let syncEngine = SyncEngine()
         syncEngine.configure(modelContext: context, connectivity: ConnectivityManager())
         let vm = DeckBuilderViewModel(deckDesign: design, modelContext: context, syncEngine: syncEngine)
-        vm.save()
+        vm.flushBeforeExit()
 
         let ops = try deckOps(context)
         XCTAssertEqual(ops.count, 1, "a fresh linked deck emits exactly one op — the create")
@@ -96,14 +96,14 @@ final class DeckDesignLinkSyncTests: XCTestCase {
             title: "Lead deck",
             drawingDataJSON: DeckDrawingData().toJSON()
         )
-        design.lastSyncedAt = Date()        // already synced → save() emits an UPDATE
+        design.lastSyncedAt = Date()        // already synced → exit emits an UPDATE
         context.insert(design)
         try context.save()
 
         let syncEngine = SyncEngine()
         syncEngine.configure(modelContext: context, connectivity: ConnectivityManager())
         let vm = DeckBuilderViewModel(deckDesign: design, modelContext: context, syncEngine: syncEngine)
-        vm.save()
+        vm.flushBeforeExit()
 
         let ops = try deckOps(context)
         XCTAssertEqual(ops.count, 2, "a link-bearing update emits the update PLUS a separate linkOpportunity op")
@@ -121,6 +121,50 @@ final class DeckDesignLinkSyncTests: XCTestCase {
         XCTAssertEqual(
             linkPayload["opportunity_id"] as? String, oppId,
             "the lead link travels via the dedicated linkOpportunity op"
+        )
+    }
+
+    func test_activeEditorSavesLocallyWithoutRecordingSyncUntilExit() throws {
+        let container = try makeSyncOperationContainer()
+        let context = container.mainContext
+        let design = DeckDesign(
+            id: "d28a338a-d70d-4135-baf6-c751702c61ba",
+            companyId: companyId,
+            title: "Local working deck",
+            drawingDataJSON: DeckDrawingData().toJSON()
+        )
+        context.insert(design)
+        try context.save()
+
+        let syncEngine = SyncEngine()
+        syncEngine.configure(modelContext: context, connectivity: ConnectivityManager())
+        let vm = DeckBuilderViewModel(deckDesign: design, modelContext: context, syncEngine: syncEngine)
+
+        design.title = "Local edit one"
+        vm.save()
+        design.title = "Local edit two"
+        vm.save()
+
+        XCTAssertTrue(design.needsSync, "ordinary edit saves must remain durable in SwiftData")
+        XCTAssertTrue(try deckOps(context).isEmpty, "an active editor must not create cloud-sync work")
+
+        vm.flushLocallyForInterruption()
+        XCTAssertTrue(
+            try deckOps(context).isEmpty,
+            "locking the phone or backgrounding the app while the editor remains open is local-only"
+        )
+
+        vm.flushBeforeExit()
+        let exitOps = try deckOps(context)
+        XCTAssertEqual(exitOps.filter { $0.operationType == "create" }.count, 1)
+        let payload = try decoded(try XCTUnwrap(exitOps.first).payload)
+        XCTAssertEqual(payload["title"] as? String, "Local edit two")
+
+        vm.flushBeforeExit()
+        XCTAssertEqual(
+            try deckOps(context).count,
+            exitOps.count,
+            "close plus onDisappear must not enqueue the same revision twice"
         )
     }
 

@@ -524,7 +524,7 @@ struct DeckBuilderView: View {
         }
         .onChange(of: scenePhase) { _, phase in
             if phase == .inactive || phase == .background {
-                viewModel.flushBeforeExit()
+                viewModel.flushLocallyForInterruption()
             }
         }
         .onChange(of: taskTypes.count) { _, _ in

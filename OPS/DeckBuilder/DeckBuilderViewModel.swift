@@ -56,12 +56,11 @@ class DeckBuilderViewModel: ObservableObject {
 
     let deckDesign: DeckDesign
     private var modelContext: ModelContext?
-    /// Weak ref to the offline sync queue. When set, every `save()` records a
-    /// pending sync operation so the OutboundProcessor pushes the change to
-    /// Supabase on the next push cycle. Optional so previews / tests can run
-    /// without wiring the network stack — those paths simply behave like the
-    /// pre-fix offline-only build (local saves succeed, nothing pushes).
-    /// Bug ab554b5f.
+    /// Weak ref to the offline sync queue. Active editing never touches it:
+    /// `save()` is strictly a local SwiftData durability boundary. The latest
+    /// local revision is recorded once when the builder exits, then pushed in
+    /// the background after dismissal. Optional so previews / tests can run
+    /// without wiring the network stack.
     private weak var syncEngine: SyncEngine?
     /// Thumbnail work is injectable so exit-save behavior can be proven
     /// without touching the renderer or network. Production defaults preserve
@@ -81,6 +80,12 @@ class DeckBuilderViewModel: ObservableObject {
     /// (whose create stripped the link, leaving a server orphan) self-heals on
     /// its first edit here.
     private var hasEnqueuedLink: Bool = false
+    /// Session-local identity of the revision already handed to the durable
+    /// sync queue. Close, onDisappear, and scene-inactive can all report the
+    /// same exit; only the first boundary may record it.
+    private var lastQueuedSyncPayloadKey: String?
+    /// Coalesces repeated exit signals into one post-dismissal push attempt.
+    private var pendingSyncTriggerTask: Task<Void, Never>?
 
     // MARK: - Drawing State
 
@@ -808,16 +813,10 @@ class DeckBuilderViewModel: ObservableObject {
         // correct per-surface materials in 2D and 3D.
         reconcileSurfaces()
 
-        // Bug ab554b5f — designs that arrive in the builder with geometry but
-        // have NEVER been synced (template / sketch / AR creation paths)
-        // need an immediate enqueue so the upload happens even if the user
-        // dismisses the builder without editing further. The autosave timer
-        // would catch this eventually for new drawings, but a user who opens
-        // a freshly-created template-design and immediately backs out would
-        // otherwise leave the design only on-device.
-        if !self.hasEnqueuedCreate && !self.isNewDrawing {
-            self.enqueueDeckDesignSync()
-        }
+        // Unsynced template / sketch / AR drawings are intentionally NOT
+        // enqueued here. Opening the editor is an interaction boundary, never
+        // a cloud boundary; flushBeforeExit/saveForExit hand the latest local
+        // revision to sync even when the user made no additional edit.
     }
 
     deinit {
@@ -826,6 +825,9 @@ class DeckBuilderViewModel: ObservableObject {
         // owner. Timer.invalidate() is safe to call from any actor context.
         bufferTimer?.invalidate()
         autosaveTimer?.invalidate()
+        // Do not cancel `pendingSyncTriggerTask`: after dismissal the view model
+        // may deallocate before its one-yield background push begins. The task
+        // owns no editor state and must be allowed to drain the durable queue.
         // Set<AnyCancellable> auto-cancels its members on deinit.
     }
 
@@ -876,7 +878,18 @@ class DeckBuilderViewModel: ObservableObject {
         if shouldPersistExitSnapshot {
             save()
         }
-        triggerPendingDeckDesignSync()
+        enqueueLatestDeckDesignIfNeeded()
+        schedulePendingDeckDesignSync()
+    }
+
+    /// Crash-safe local persistence when the app is interrupted while the deck
+    /// editor remains open. Backgrounding or locking the phone is not an editor
+    /// exit and therefore must not create or push cloud work.
+    func flushLocallyForInterruption() {
+        flushPendingSave()
+        if shouldPersistExitSnapshot {
+            save()
+        }
     }
 
     private var shouldPersistExitSnapshot: Bool {
@@ -892,10 +905,17 @@ class DeckBuilderViewModel: ObservableObject {
         return hasPendingSave
     }
 
-    private func triggerPendingDeckDesignSync() {
+    private func schedulePendingDeckDesignSync() {
         guard let syncEngine else { return }
-        Task {
+        pendingSyncTriggerTask?.cancel()
+        pendingSyncTriggerTask = Task { [weak self, weak syncEngine] in
+            // Dismissal and tab rendering get the first turn. The queue record
+            // is already durable locally; network work is never on the editor's
+            // gesture or close path.
+            await Task.yield()
+            guard !Task.isCancelled, let syncEngine else { return }
             await syncEngine.triggerSync()
+            self?.pendingSyncTriggerTask = nil
         }
     }
 
@@ -3861,13 +3881,6 @@ class DeckBuilderViewModel: ObservableObject {
             ToastCenter.shared.present(Toast(label: Feedback.Err.saveFailed, tone: .error))
         }
 
-        // Bug ab554b5f — enqueue the change for the offline sync queue so
-        // OutboundProcessor pushes it to Supabase on the next push cycle.
-        // Without this, the local row's `needsSync` flag flipped on but the
-        // server never learned about the deck design. Idempotent — re-queueing
-        // the same id is fine (OutboundProcessor coalesces).
-        enqueueDeckDesignSync(drawingJSONString: drawingJSONString)
-
         // Bug 2b1f1a9e — first edit on an EXISTING drawing surfaces the
         // autosave prompt (new drawings already auto-enabled it in init).
         // Suppress when called from the autosave timer itself (autosaveEnabled
@@ -3926,8 +3939,10 @@ class DeckBuilderViewModel: ObservableObject {
     /// Safe to call when `syncEngine` is nil (preview / test). The local
     /// SwiftData save still happens — only the network push is skipped.
     /// Bug ab554b5f.
-    private func enqueueDeckDesignSync(drawingJSONString suppliedDrawingJSONString: String? = nil) {
-        guard let syncEngine else { return }
+    private func enqueueDeckDesignSync(
+        drawingJSONString suppliedDrawingJSONString: String? = nil
+    ) -> Bool {
+        guard let syncEngine else { return false }
 
         let nowIso = ISO8601DateFormatter().string(from: Date())
         let createdIso = ISO8601DateFormatter().string(from: deckDesign.createdAt)
@@ -3968,7 +3983,6 @@ class DeckBuilderViewModel: ObservableObject {
             // op this session.
             if let opportunityId = deckDesign.opportunityId, !opportunityId.isEmpty {
                 payload["opportunity_id"] = opportunityId
-                hasEnqueuedLink = true
             }
             if let thumbnail = deckDesign.thumbnailURL, !thumbnail.isEmpty {
                 payload["thumbnail_url"] = thumbnail
@@ -3976,14 +3990,19 @@ class DeckBuilderViewModel: ObservableObject {
             if let createdBy = deckDesign.createdBy, !createdBy.isEmpty {
                 payload["created_by"] = createdBy
             }
-            syncEngine.recordOperation(
+            guard syncEngine.recordOperation(
                 entityType: .deckDesign,
                 entityId: deckDesign.id,
                 operationType: "create",
                 changedFields: payload,
-                priority: 1
-            )
+                priority: 1,
+                deferPush: true
+            ) != nil else { return false }
             hasEnqueuedCreate = true
+            if payload["opportunity_id"] != nil {
+                hasEnqueuedLink = true
+            }
+            return true
         } else {
             // Update path — only push the fields the user actually edits in
             // this session. drawing_data covers every geometry / config / level
@@ -4007,13 +4026,14 @@ class DeckBuilderViewModel: ObservableObject {
             if let thumbnail = deckDesign.thumbnailURL, !thumbnail.isEmpty {
                 payload["thumbnail_url"] = thumbnail
             }
-            syncEngine.recordOperation(
+            guard syncEngine.recordOperation(
                 entityType: .deckDesign,
                 entityId: deckDesign.id,
                 operationType: "update",
                 changedFields: payload,
-                priority: 1
-            )
+                priority: 1,
+                deferPush: true
+            ) != nil else { return false }
 
             // The lead link NEVER rides an update payload — the server's reparent
             // guard trigger rejects any PATCH of opportunity_id (42501). A deck that
@@ -4025,15 +4045,38 @@ class DeckBuilderViewModel: ObservableObject {
             if let opportunityId = deckDesign.opportunityId,
                !opportunityId.isEmpty,
                !hasEnqueuedLink {
-                syncEngine.recordOperation(
+                guard syncEngine.recordOperation(
                     entityType: .deckDesign,
                     entityId: deckDesign.id,
                     operationType: "linkOpportunity",
                     changedFields: ["opportunity_id": opportunityId.lowercased()],
-                    priority: 1
-                )
+                    priority: 1,
+                    deferPush: true
+                ) != nil else { return false }
                 hasEnqueuedLink = true
             }
+            return true
+        }
+    }
+
+    /// Record exactly the latest locally-durable editor revision. This is a
+    /// local queue write only (`deferPush`); cloud I/O is scheduled separately
+    /// after the exit transaction yields.
+    private func enqueueLatestDeckDesignIfNeeded() {
+        guard syncEngine != nil, isLocallySaved else { return }
+        let drawingJSONString = drawingEncoder(drawingData)
+        let payloadKey = [
+            deckDesign.title,
+            drawingJSONString,
+            deckDesign.thumbnailURL ?? "",
+            deckDesign.projectId ?? "",
+            deckDesign.opportunityId ?? "",
+            String(deckDesign.version)
+        ].joined(separator: "\u{1F}")
+
+        guard payloadKey != lastQueuedSyncPayloadKey else { return }
+        if enqueueDeckDesignSync(drawingJSONString: drawingJSONString) {
+            lastQueuedSyncPayloadKey = payloadKey
         }
     }
 
@@ -4094,6 +4137,8 @@ class DeckBuilderViewModel: ObservableObject {
         // best-effort enhancement; thumbnail failure must not block the
         // primary save.
         save()
+        enqueueLatestDeckDesignIfNeeded()
+        schedulePendingDeckDesignSync()
         if hasGeometry {
             ToastCenter.shared.present(Feedback.Deck.designSaved)
         }
@@ -4121,9 +4166,11 @@ class DeckBuilderViewModel: ObservableObject {
             do {
                 let url = try await thumbnailUploader(image, deckDesign)
                 deckDesign.thumbnailURL = url
-                // Re-save so thumbnailURL hits the store and joins the normal
-                // deck-design sync path.
+                // Re-save locally, then hand the new thumbnail revision to the
+                // deferred queue. This work only exists after editor exit.
                 save()
+                enqueueLatestDeckDesignIfNeeded()
+                schedulePendingDeckDesignSync()
 
                 // Insert project_photos row so the deck drawing appears in the project gallery
                 if let projectId = deckDesign.projectId {

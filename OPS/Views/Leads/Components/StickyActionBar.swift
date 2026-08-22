@@ -15,8 +15,9 @@
 //  or earth-tone.
 //
 //  Sits at `bottom + 49pt` above the safe-area inset so the custom tab
-//  bar (49pt) has clearance. The buttons float directly over the document
-//  using MOBILE.md's single sanctioned floating-CTA elevation token.
+//  bar (49pt) has clearance. A transparent-to-solid background floor keeps
+//  scrolling rows legible beneath the buttons, which retain MOBILE.md's single
+//  sanctioned floating-CTA elevation token.
 //
 //  Caller is responsible for hiding this bar when `stage.isTerminal`.
 //
@@ -46,12 +47,25 @@ struct StickyActionBar: View {
         .padding(.horizontal, OPSStyle.Layout.spacing3_5)
         .padding(.top, OPSStyle.Layout.spacing3)
         .padding(.bottom, OPSStyle.Layout.spacing2_5)
+        .background(floorGradient)
         .compositingGroup()
         .shadow(
             color: OPSStyle.Layout.floatingElevation.color,
             radius: OPSStyle.Layout.floatingElevation.radius,
             x: OPSStyle.Layout.floatingElevation.x,
             y: OPSStyle.Layout.floatingElevation.y
+        )
+    }
+
+    private var floorGradient: LinearGradient {
+        LinearGradient(
+            colors: [
+                .clear,
+                OPSStyle.Colors.background.opacity(0.85),
+                OPSStyle.Colors.background
+            ],
+            startPoint: .top,
+            endPoint: .bottom
         )
     }
 

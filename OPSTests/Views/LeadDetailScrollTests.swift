@@ -112,6 +112,75 @@ final class LeadDetailScrollTests: XCTestCase {
         )
     }
 
+    /// c48c69ae — the floating actions need a transparent-to-solid floor so
+    /// dossier rows cannot remain fully visible beneath the commit lane. Pixel
+    /// sampling the unobstructed side gutter rejects both a missing floor and a
+    /// flat opaque replacement.
+    func testStickyActionBarRendersTransparentToSolidFooterFloor() throws {
+        let barHeight = OPSStyle.Layout.spacing3
+            + OPSStyle.Layout.inputHeight
+            + OPSStyle.Layout.spacing2_5
+        let view = ZStack(alignment: .bottom) {
+            Color.white
+            StickyActionBar(
+                canEdit: true,
+                canConvert: true,
+                onEdit: {},
+                onMarkWon: {}
+            )
+        }
+        .environment(\.colorScheme, .dark)
+        .ignoresSafeArea()
+
+        let host = UIHostingController(rootView: view)
+        host.overrideUserInterfaceStyle = .dark
+
+        let window = try AppHostWindow.acquire()
+        let previousRoot = window.rootViewController
+        window.rootViewController = host
+        defer { window.rootViewController = previousRoot }
+
+        window.layoutIfNeeded()
+        settle(window)
+
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1
+        let image = try XCTUnwrap(
+            UIGraphicsImageRenderer(bounds: window.bounds, format: format)
+                .image { _ in
+                    window.drawHierarchy(in: window.bounds, afterScreenUpdates: true)
+                }
+                .cgImage
+        )
+
+        let floorTop = CGFloat(image.height) - barHeight
+        let topLuma = try XCTUnwrap(Self.averageLuma(
+            image,
+            in: CGRect(x: 4, y: floorTop + 2, width: 8, height: 4)
+        ))
+        let middleLuma = try XCTUnwrap(Self.averageLuma(
+            image,
+            in: CGRect(x: 4, y: floorTop + (barHeight * 0.4), width: 8, height: 4)
+        ))
+        let bottomLuma = try XCTUnwrap(Self.averageLuma(
+            image,
+            in: CGRect(x: 4, y: CGFloat(image.height) - 6, width: 8, height: 4)
+        ))
+
+        XCTAssertGreaterThan(
+            topLuma, middleLuma + 60,
+            "the footer floor must begin transparent, not as a flat opaque slab"
+        )
+        XCTAssertGreaterThan(
+            middleLuma, bottomLuma + 40,
+            "the footer floor must darken progressively into the bottom edge"
+        )
+        XCTAssertLessThan(
+            bottomLuma, 25,
+            "the bottom edge must resolve to the solid app background so dossier rows cannot bleed through — c48c69ae is not fixed"
+        )
+    }
+
     // MARK: - Harness
 
     private struct Harness {
@@ -276,6 +345,20 @@ final class LeadDetailScrollTests: XCTestCase {
             if luma > 90 { ink += 1 }
         }
         return Double(ink) / Double(buffer.count / 4)
+    }
+
+    private static func averageLuma(_ image: CGImage, in rect: CGRect) -> Double? {
+        guard let crop = image.cropping(to: rect.integral),
+              let buffer = pixels(crop), !buffer.isEmpty else {
+            return nil
+        }
+        var total = 0
+        for index in stride(from: 0, to: buffer.count, by: 4) {
+            total += (Int(buffer[index]) * 299
+                + Int(buffer[index + 1]) * 587
+                + Int(buffer[index + 2]) * 114) / 1000
+        }
+        return Double(total) / Double(buffer.count / 4)
     }
 }
 #endif

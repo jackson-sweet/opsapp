@@ -259,6 +259,55 @@ final class IOSBugReportRegressionTests: XCTestCase {
     }
 
     @MainActor
+    func testGlobalKeyboardDoneAccessoryUsesRealGlassInsteadOfFlatOpacity() throws {
+        let textField = UITextField()
+        let accessory = OPSKeyboardDoneAccessoryView(editingResponder: textField)
+        accessory.frame = CGRect(
+            x: .zero,
+            y: .zero,
+            width: 320,
+            height: OPSStyle.Layout.keyboardAccessoryHeight
+        )
+
+        let window = try AppHostWindow.acquire()
+        let host = UIView(frame: accessory.bounds)
+        host.addSubview(accessory)
+        window.addSubview(host)
+        defer { host.removeFromSuperview() }
+        host.layoutIfNeeded()
+        accessory.layoutIfNeeded()
+
+        let glassViews = accessory.doneButton.subviews.compactMap {
+            $0 as? UIVisualEffectView
+        }
+        let glassView = try XCTUnwrap(
+            glassViews.first,
+            "DONE must render a real blur-backed glass layer, not a translucent grey fill"
+        )
+
+        XCTAssertEqual(glassViews.count, 1)
+        XCTAssertTrue(glassView.effect is UIBlurEffect)
+        XCTAssertEqual(glassView.frame, accessory.doneButton.bounds)
+        XCTAssertFalse(glassView.isUserInteractionEnabled)
+        XCTAssertTrue(glassView.clipsToBounds)
+        XCTAssertEqual(glassView.layer.cornerRadius, OPSStyle.Layout.buttonRadius)
+        XCTAssertEqual(accessory.doneButton.backgroundColor, .clear)
+        let tintView = try XCTUnwrap(glassView.contentView.subviews.first)
+        XCTAssertEqual(
+            tintView.backgroundColor,
+            UIColor(OPSStyle.Colors.glassApprox)
+        )
+        XCTAssertTrue(
+            tintView.layer.sublayers?.contains { $0 is CAGradientLayer } == true,
+            "DONE glass must retain the canonical top-edge light cue"
+        )
+        XCTAssertEqual(
+            accessory.doneButton.layer.borderColor,
+            UIColor(OPSStyle.Colors.glassBorder).cgColor
+        )
+    }
+
+    @MainActor
     func testGlobalKeyboardDoneAccessoryDoesNotStackOnRepeatedEditing() {
         let notificationCenter = NotificationCenter()
         let coordinator = OPSKeyboardDoneAccessoryCoordinator(

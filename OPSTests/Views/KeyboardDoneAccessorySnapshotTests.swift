@@ -264,9 +264,22 @@ final class KeyboardDoneAccessorySnapshotTests: XCTestCase {
         let bx0 = Int(r.buttonFrame.minX * s), bx1 = Int(r.buttonFrame.maxX * s)
         for y in 0..<Int(r.keyboardTopY * s) {
             var hit = false
-            for x in bx0..<min(bx1, w) where raw[(y * w + x) * 4] > 120 {
-                hit = true
-                break
+            for x in bx0..<min(bx1, w) {
+                let pixel = (y * w + x) * 4
+                let red = raw[pixel]
+                let green = raw[pixel + 1]
+                let blue = raw[pixel + 2]
+                let brightest = max(red, green, blue)
+                let darkest = min(red, green, blue)
+
+                // The button now contains real system material, whose blurred
+                // pixels can be bright in one channel. DONE itself is the only
+                // near-white, neutral element in the button, so require both
+                // luminance and low chroma before treating a pixel as glyph ink.
+                if darkest > 160, brightest - darkest < 20 {
+                    hit = true
+                    break
+                }
             }
             if hit { inkRows.append(y) }
         }

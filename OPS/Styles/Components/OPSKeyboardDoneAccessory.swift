@@ -9,7 +9,53 @@
 //  canonical DONE action everywhere.
 //
 
+import CoreText
 import UIKit
+
+@MainActor
+private final class OPSKeyboardDoneGlassBackdrop: UIVisualEffectView {
+    private let tintView = UIView()
+    private let topEdgeGradient = CAGradientLayer()
+
+    init() {
+        super.init(effect: UIBlurEffect(style: .systemUltraThinMaterialDark))
+
+        translatesAutoresizingMaskIntoConstraints = false
+        isUserInteractionEnabled = false
+        accessibilityElementsHidden = true
+        clipsToBounds = true
+        layer.cornerRadius = OPSStyle.Layout.buttonRadius
+        layer.cornerCurve = .continuous
+
+        tintView.translatesAutoresizingMaskIntoConstraints = false
+        tintView.isUserInteractionEnabled = false
+        tintView.backgroundColor = UIColor(OPSStyle.Colors.glassApprox)
+        contentView.addSubview(tintView)
+        NSLayoutConstraint.activate([
+            tintView.topAnchor.constraint(equalTo: contentView.topAnchor),
+            tintView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
+            tintView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
+            tintView.bottomAnchor.constraint(equalTo: contentView.bottomAnchor)
+        ])
+
+        topEdgeGradient.colors = [
+            UIColor(OPSStyle.Colors.surfaceInput).cgColor,
+            UIColor.clear.cgColor
+        ]
+        topEdgeGradient.startPoint = CGPoint(x: 0.5, y: .zero)
+        topEdgeGradient.endPoint = CGPoint(x: 0.5, y: 1)
+        tintView.layer.addSublayer(topEdgeGradient)
+    }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        topEdgeGradient.frame = tintView.bounds
+    }
+
+    required init?(coder: NSCoder) {
+        return nil
+    }
+}
 
 @MainActor
 final class OPSKeyboardDoneAccessoryView: UIToolbar {
@@ -22,6 +68,22 @@ final class OPSKeyboardDoneAccessoryView: UIToolbar {
             width: UIView.noIntrinsicMetric,
             height: OPSStyle.Layout.keyboardAccessoryHeight
         )
+    }
+
+    private static func opticalBaselineOffset(
+        for text: String,
+        font: UIFont
+    ) -> CGFloat {
+        let line = CTLineCreateWithAttributedString(NSAttributedString(
+            string: text,
+            attributes: [.font: font]
+        ))
+        let glyphBounds = CTLineGetBoundsWithOptions(line, [.useGlyphPathBounds])
+
+        guard !glyphBounds.isNull, !glyphBounds.isEmpty else {
+            return font.capHeight / 2
+        }
+        return glyphBounds.midY
     }
 
     init(editingResponder: UIResponder) {
@@ -57,16 +119,23 @@ final class OPSKeyboardDoneAccessoryView: UIToolbar {
         doneButton.translatesAutoresizingMaskIntoConstraints = false
         doneButton.accessibilityLabel = "Done"
         doneButton.accessibilityIdentifier = "ops.keyboard.done"
-        doneButton.backgroundColor = UIColor(OPSStyle.Colors.surfaceHover)
+        doneButton.backgroundColor = .clear
         doneButton.layer.cornerRadius = OPSStyle.Layout.buttonRadius
         doneButton.layer.cornerCurve = .continuous
         doneButton.layer.borderWidth = OPSStyle.Layout.hairlineWidth
-        doneButton.layer.borderColor = UIColor(OPSStyle.Colors.line).cgColor
+        doneButton.layer.borderColor = UIColor(OPSStyle.Colors.glassBorder).cgColor
         doneButton.addTarget(self, action: #selector(dismissKeyboard), for: .touchUpInside)
 
+        let glassBackdrop = OPSKeyboardDoneGlassBackdrop()
+
         addSubview(doneButton)
+        doneButton.addSubview(glassBackdrop)
         doneButton.addSubview(doneLabel)
         NSLayoutConstraint.activate([
+            glassBackdrop.topAnchor.constraint(equalTo: doneButton.topAnchor),
+            glassBackdrop.leadingAnchor.constraint(equalTo: doneButton.leadingAnchor),
+            glassBackdrop.trailingAnchor.constraint(equalTo: doneButton.trailingAnchor),
+            glassBackdrop.bottomAnchor.constraint(equalTo: doneButton.bottomAnchor),
             // Full-size target, centred in the band so the visible border
             // keeps an equal `spacing1` gutter above and below — the one below
             // being the clearance from the keyboard's top edge.
@@ -81,15 +150,17 @@ final class OPSKeyboardDoneAccessoryView: UIToolbar {
                 equalTo: safeAreaLayoutGuide.trailingAnchor,
                 constant: -OPSStyle.Layout.spacing3
             ),
-            // Optical, not geometric, centring. Centring the label's box would
-            // centre a line box that reserves descender space "DONE" never
-            // uses, leaving the caps visibly low. Pin the BASELINE instead so
-            // the cap-height ink straddles the button's centre exactly; this
-            // needs only `capHeight`, so it retunes itself if the type token
-            // changes.
+            // Optical, not geometric, centring. Cake Mono's declared cap-height
+            // does not match these glyph paths, while centring the label's box
+            // includes line space "DONE" never uses. Pin the baseline using the
+            // rendered glyph bounds so the visible ink straddles the button's
+            // centre and retunes itself with the typography token.
             doneLabel.firstBaselineAnchor.constraint(
                 equalTo: doneButton.centerYAnchor,
-                constant: OPSStyle.Typography.uiButtonLabel.capHeight / 2
+                constant: Self.opticalBaselineOffset(
+                    for: doneLabel.text ?? "",
+                    font: doneLabel.font
+                )
             ),
             doneLabel.leadingAnchor.constraint(
                 equalTo: doneButton.leadingAnchor,

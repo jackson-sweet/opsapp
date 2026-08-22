@@ -29,17 +29,39 @@ extension DataActor {
         weekStart: Date,
         calendar: Calendar = .current
     ) -> CalendarWeekCacheSnapshot {
-        // No date bound, deliberately: a task is admitted to a day by OVERLAP, so a
-        // long job that began before the window still belongs to it. Any lower bound
-        // on startDate would silently drop running work off the canvas.
-        let descriptor = FetchDescriptor<ProjectTask>(
-            predicate: #Predicate<ProjectTask> {
-                $0.deletedAt == nil && $0.startDate != nil
+        let window = CalendarWeekWindow(weekStart: weekStart, calendar: calendar)
+        let start = window.start
+        let endExclusive = window.endExclusive
+        let companyId = scope.companyId ?? ""
+        let distantPast = Date.distantPast
+        let distantFuture = Date.distantFuture
+
+        // Two bounded predicates preserve overlap semantics without asking
+        // SwiftData to translate optional-date coalescing across both cases.
+        // A long-running task is retained when its end reaches the window; a
+        // single-day task with nil end is bounded directly by its start.
+        let rangedDescriptor = FetchDescriptor<ProjectTask>(
+            predicate: #Predicate<ProjectTask> { task in
+                task.deletedAt == nil
+                    && task.companyId == companyId
+                    && (task.startDate ?? distantFuture) < endExclusive
+                    && (task.endDate ?? distantPast) >= start
             }
         )
-        guard let allTasks = try? modelContext.fetch(descriptor) else {
+        let startsInsideDescriptor = FetchDescriptor<ProjectTask>(
+            predicate: #Predicate<ProjectTask> { task in
+                task.deletedAt == nil
+                    && task.companyId == companyId
+                    && (task.startDate ?? distantPast) >= start
+                    && (task.startDate ?? distantFuture) < endExclusive
+            }
+        )
+        guard let rangedTasks = try? modelContext.fetch(rangedDescriptor),
+              let startsInsideTasks = try? modelContext.fetch(startsInsideDescriptor) else {
             return CalendarWeekCacheSnapshot(weekStart: weekStart, taskIdsByDay: [:], countsByDay: [:])
         }
+        let singleDayTasks = startsInsideTasks.filter { $0.endDate == nil }
+        let allTasks = rangedTasks + singleDayTasks
 
         let hiddenProjectIds = CalendarTaskVisibility.hiddenProjectIds(in: modelContext)
         let visible = allTasks.filter {
@@ -48,6 +70,80 @@ extension DataActor {
         }
 
         return CalendarWeekCacheBuilder.snapshot(tasks: visible, weekStart: weekStart, calendar: calendar)
+    }
+
+    /// All sources needed to draw the calendar, prepared in DataActor's private
+    /// context. Only identifiers and value snapshots cross back to the UI.
+    func calendarLoadSnapshot(
+        taskScope: CalendarTaskScope,
+        auxiliaryScope: CalendarAuxiliaryScope,
+        weekStart: Date,
+        centerDate: Date,
+        calendar: Calendar = .current
+    ) -> CalendarLoadSnapshot {
+        CalendarLoadSnapshot(
+            week: calendarWeekCache(scope: taskScope, weekStart: weekStart, calendar: calendar),
+            auxiliary: calendarAuxiliarySnapshot(
+                scope: auxiliaryScope,
+                centerDate: centerDate,
+                calendar: calendar
+            )
+        )
+    }
+
+    /// Date-bounded personal/time-off events and booked visits. The previous
+    /// main-context path fetched every company row, then filtered visibility in
+    /// memory while the app was trying to reveal the Schedule tab.
+    private func calendarAuxiliarySnapshot(
+        scope: CalendarAuxiliaryScope,
+        centerDate: Date,
+        calendar: Calendar
+    ) -> CalendarAuxiliarySnapshot {
+        let window = CalendarAuxiliaryWindow(centerDate: centerDate, calendar: calendar)
+        let companyId = scope.companyId
+        let start = window.start
+        let endExclusive = window.endExclusive
+
+        let eventDescriptor = FetchDescriptor<CalendarUserEvent>(
+            predicate: #Predicate<CalendarUserEvent> { event in
+                event.companyId == companyId
+                    && event.deletedAt == nil
+                    && event.startDate < endExclusive
+                    && event.endDate > start
+            },
+            sortBy: [SortDescriptor(\.startDate)]
+        )
+        let userEvents = ((try? modelContext.fetch(eventDescriptor)) ?? []).filter { event in
+            if scope.canViewAllCalendar { return true }
+            if event.userId == scope.userId { return true }
+            if event.teamMemberIds?.contains(scope.userId) == true { return true }
+            return scope.canApproveTimeOff && event.type == CalendarUserEventType.timeOff.rawValue
+        }
+
+        let unscheduledFloor = Date.distantPast
+        let visitDescriptor = FetchDescriptor<SiteVisit>(
+            predicate: #Predicate<SiteVisit> { visit in
+                visit.companyId == companyId
+                    && visit.bookedAt != nil
+                    && visit.deletedAt == nil
+                    && visit.scheduledAt != nil
+                    && (visit.scheduledAt ?? unscheduledFloor) >= start
+                    && (visit.scheduledAt ?? unscheduledFloor) < endExclusive
+            },
+            sortBy: [SortDescriptor(\.scheduledAt)]
+        )
+        let canonicalUser = scope.userId.lowercased()
+        let visits = ((try? modelContext.fetch(visitDescriptor)) ?? []).filter { visit in
+            guard visit.status == .scheduled || visit.status == .inProgress else { return false }
+            if scope.canViewAllCalendar { return true }
+            return visit.assigneeIds.contains(canonicalUser) || visit.createdBy == canonicalUser
+        }
+
+        return CalendarAuxiliarySnapshot(
+            window: window,
+            userEventIds: userEvents.map(\.id),
+            bookedVisitIds: visits.map(\.id)
+        )
     }
 
     /// The month grid's badge cache for every scheduled task since `cutoff`.

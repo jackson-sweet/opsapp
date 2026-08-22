@@ -39,15 +39,15 @@ final class CalendarFetchPredicationTests: XCTestCase {
     private let companyID = "co-alpha"
     private let operatorID = "user-1"
 
-    // MARK: - Week cache (CalendarViewModel.rebuildWeekCache)
+    // MARK: - Week snapshot
 
     /// The week canvas, day by day across the whole cached window, against the
     /// scope filter it replaced run verbatim over the same store.
-    func test_weekCacheMatchesTheInMemoryFilterItReplaced() throws {
+    func test_weekCacheMatchesTheInMemoryFilterItReplaced() async throws {
         let fixture = try makeFixture()
         defer { fixture.restorePermissions() }
 
-        fixture.viewModel.loadProjectsForDate(fixture.today)
+        await fixture.viewModel.reloadCalendarDataOffMain()
 
         let oracle = try weekCacheOracle(fixture)
         XCTAssertTrue(
@@ -64,15 +64,14 @@ final class CalendarFetchPredicationTests: XCTestCase {
         }
     }
 
-    /// The reason the fetch carries no date bound. The per-day filter admits a
-    /// task by overlap, so work that STARTED before the window still belongs to
-    /// it whenever its endDate reaches in. A lower bound on `startDate` — the
-    /// obvious narrowing — would have dropped this row off the canvas.
-    func test_weekCacheKeepsWorkThatStartedLongBeforeTheWindow() throws {
+    /// The store bound must preserve overlap, so work that STARTED before the
+    /// window still belongs whenever its endDate reaches in. A lower bound on
+    /// startDate alone would drop this row off the canvas.
+    func test_weekCacheKeepsWorkThatStartedLongBeforeTheWindow() async throws {
         let fixture = try makeFixture()
         defer { fixture.restorePermissions() }
 
-        fixture.viewModel.loadProjectsForDate(fixture.today)
+        await fixture.viewModel.reloadCalendarDataOffMain()
 
         XCTAssertTrue(
             fixture.viewModel.scheduledTasks(for: fixture.today).map(\.id).contains("t-long-running"),
@@ -83,7 +82,7 @@ final class CalendarFetchPredicationTests: XCTestCase {
         )
     }
 
-    func test_weekCacheDropsTombstonedAndUndatedRows() throws {
+    func test_weekCacheDropsTombstonedAndUndatedRows() async throws {
         let fixture = try makeFixture()
         defer { fixture.restorePermissions() }
 
@@ -97,7 +96,7 @@ final class CalendarFetchPredicationTests: XCTestCase {
             "Precondition: the store needs an undated row"
         )
 
-        fixture.viewModel.loadProjectsForDate(fixture.today)
+        await fixture.viewModel.reloadCalendarDataOffMain()
 
         let drawn = Set(windowDays(around: fixture.today).flatMap {
             fixture.viewModel.scheduledTasks(for: $0).map(\.id)
@@ -173,8 +172,8 @@ final class CalendarFetchPredicationTests: XCTestCase {
 
     // MARK: - Oracles
 
-    /// `rebuildWeekCache` as it stood before the predicate: every task fetched,
-    /// then gated in memory.
+    /// The pre-actor week-cache behavior: every task fetched, then gated in
+    /// memory. It remains the compatibility oracle for the bounded snapshot.
     ///
     /// Exactly what is and is not independent here: the soft-delete, dated, and
     /// SCOPE gates are reproduced verbatim rather than reached through the view
@@ -225,13 +224,13 @@ final class CalendarFetchPredicationTests: XCTestCase {
 
     // MARK: - Window helpers
 
-    /// The days `rebuildWeekCache` populates: the Monday-anchored week around
-    /// the center date, minus one week and plus two.
+    /// The days the week snapshot populates: the Monday-anchored week around the
+    /// center date, minus one week and plus two.
     ///
     /// Silently coupled to production's `-7..<14` span and Monday anchor. If
     /// that window shrinks and this is not updated, the extra days fall to
     /// `scheduledTasks(for:)`'s cache-miss branch and these tests quietly start
-    /// asserting against the fallback fetch instead of the rebuild.
+    /// asserting against an empty cache miss instead of the actor snapshot.
     private func windowDays(around centerDate: Date) -> [Date] {
         var weekCal = Calendar.current
         weekCal.firstWeekday = 2
@@ -376,7 +375,8 @@ final class CalendarFetchPredicationTests: XCTestCase {
             SubClient.self,
             SyncOperation.self,
             Company.self,
-            CalendarUserEvent.self
+            CalendarUserEvent.self,
+            SiteVisit.self
         ])
         let configuration = ModelConfiguration(
             schema: schema,

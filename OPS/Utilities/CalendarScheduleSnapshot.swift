@@ -2,18 +2,16 @@
 //  CalendarScheduleSnapshot.swift
 //  OPS
 //
-//  The two calendar rebuild passes — the month grid's badge cache and the week
-//  canvas's per-day cache — expressed as pure builders over live models, plus the
-//  Sendable shapes they hand back across an actor boundary.
+//  Calendar cache builders and the Sendable snapshots they hand back across a
+//  DataActor boundary.
 //
 //  Both were O(every live dated task) walks that faulted `project` / `teamMembers`
 //  per row, run on the main actor from `scheduledTasksDidChange`. One reschedule
 //  fired that flag once and both passes ran back to back, which is the freeze in
 //  bug 1bade6dd. The work itself is unavoidable; doing it on the main thread is not.
 //
-//  The bodies here are byte-for-byte the logic that used to live inline in
-//  `MonthGridCache.loadEvents` and `CalendarViewModel.rebuildWeekCache`, so the
-//  DataActor pass and the main-thread fallback cannot disagree.
+//  The pure builders preserve the established visibility and scoping rules while
+//  allowing the week and auxiliary windows to be fetched and assembled off-main.
 //
 
 import Foundation
@@ -27,7 +25,7 @@ enum CalendarDayKey {
     /// Shared across the main actor and the DataActor. `DateFormatter.string(from:)`
     /// is documented thread-safe (iOS 7+) and this instance is never mutated after
     /// construction, so the two rebuild paths can format concurrently.
-    nonisolated(unsafe) private static let formatter: DateFormatter = {
+    private static let formatter: DateFormatter = {
         let f = DateFormatter()
         f.dateFormat = "yyyy-MM-dd"
         return f
@@ -47,6 +45,79 @@ struct CalendarWeekCacheSnapshot: Sendable {
     let taskIdsByDay: [String: [String]]
     /// Day key → count. Same keys as `taskIdsByDay`.
     let countsByDay: [String: Int]
+
+    /// The cached canvas contains the visible week plus both adjacent weeks.
+    /// Navigation can publish any of those weeks immediately while a new
+    /// centered snapshot is prepared off the render thread.
+    func covers(weekStarting candidate: Date, calendar: Calendar = .current) -> Bool {
+        CalendarWeekWindow(weekStart: weekStart, calendar: calendar)
+            .covers(weekStarting: candidate, calendar: calendar)
+    }
+}
+
+/// Exact store-level overlap bounds for the 21-day week cache.
+struct CalendarWeekWindow: Sendable, Equatable {
+    let start: Date
+    let endExclusive: Date
+
+    init(weekStart: Date, calendar: Calendar = .current) {
+        let anchor = calendar.startOfDay(for: weekStart)
+        self.start = calendar.date(byAdding: .day, value: -7, to: anchor) ?? anchor
+        self.endExclusive = calendar.date(byAdding: .day, value: 14, to: anchor) ?? anchor
+    }
+
+    func overlaps(start itemStart: Date, end itemEnd: Date?) -> Bool {
+        itemStart < endExclusive && (itemEnd ?? itemStart) >= start
+    }
+
+    func covers(weekStarting candidate: Date, calendar: Calendar = .current) -> Bool {
+        let candidateStart = calendar.startOfDay(for: candidate)
+        guard let candidateEnd = calendar.date(byAdding: .day, value: 7, to: candidateStart) else {
+            return false
+        }
+        return candidateStart >= start && candidateEnd <= endExclusive
+    }
+}
+
+// MARK: - Calendar auxiliary sources
+
+/// Permission and identity values resolved on the main actor before a calendar
+/// read crosses to DataActor.
+struct CalendarAuxiliaryScope: Sendable, Equatable {
+    let userId: String
+    let companyId: String
+    let canViewAllCalendar: Bool
+    let canApproveTimeOff: Bool
+}
+
+/// A rolling display window for personal events and booked site visits. Three
+/// months is enough for a month grid plus an adjacent swipe in either direction,
+/// without materializing the company's complete calendar history.
+struct CalendarAuxiliaryWindow: Sendable, Equatable {
+    let start: Date
+    let endExclusive: Date
+
+    init(centerDate: Date, calendar: Calendar = .current) {
+        let center = calendar.startOfDay(for: centerDate)
+        self.start = calendar.date(byAdding: .day, value: -45, to: center) ?? center
+        self.endExclusive = calendar.date(byAdding: .day, value: 46, to: center) ?? center
+    }
+
+    func contains(_ date: Date, calendar: Calendar = .current) -> Bool {
+        let day = calendar.startOfDay(for: date)
+        return day >= start && day < endExclusive
+    }
+}
+
+struct CalendarAuxiliarySnapshot: Sendable {
+    let window: CalendarAuxiliaryWindow
+    let userEventIds: [String]
+    let bookedVisitIds: [String]
+}
+
+struct CalendarLoadSnapshot: Sendable {
+    let week: CalendarWeekCacheSnapshot
+    let auxiliary: CalendarAuxiliarySnapshot
 }
 
 enum CalendarWeekCacheBuilder {

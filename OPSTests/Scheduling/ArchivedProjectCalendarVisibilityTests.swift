@@ -194,11 +194,11 @@ final class ArchivedProjectCalendarVisibilityTests: XCTestCase {
     /// `rebuildWeekCache` -> `scheduledTasks(for:)` against a real SwiftData
     /// store. Proves the fix at the surface the operator actually looks at,
     /// not just at the predicate.
-    func testWeekCanvasDropsTasksOnArchivedProjectsEndToEnd() throws {
+    func testWeekCanvasDropsTasksOnArchivedProjectsEndToEnd() async throws {
         let fixture = try makeCalendarFixture()
         defer { fixture.restorePermissions() }
 
-        fixture.viewModel.loadProjectsForDate(fixture.today)
+        await fixture.viewModel.reloadCalendarDataOffMain()
         let visible = fixture.viewModel.scheduledTasks(for: fixture.today)
 
         XCTAssertEqual(
@@ -241,18 +241,18 @@ final class ArchivedProjectCalendarVisibilityTests: XCTestCase {
     /// job on screen until the next sync. `updateProjectStatus` publishes
     /// `scheduledTasksDidChange`, which every calendar surface observes, and
     /// the reload clears `cachedWeekStart` so the week actually re-fetches.
-    func testArchivingRepaintsTheWeekCanvas() throws {
+    func testArchivingRepaintsTheWeekCanvas() async throws {
         let fixture = try makeCalendarFixture()
         defer { fixture.restorePermissions() }
 
-        fixture.viewModel.loadProjectsForDate(fixture.today)
+        await fixture.viewModel.reloadCalendarDataOffMain()
         XCTAssertEqual(fixture.viewModel.scheduledTasks(for: fixture.today).map(\.id), ["task-live"])
 
         fixture.liveProject.status = .archived
         try fixture.context.save()
 
         // What ScheduleView does on the scheduledTasksDidChange signal.
-        fixture.viewModel.reloadCalendarData()
+        await fixture.viewModel.reloadCalendarDataOffMain()
 
         XCTAssertTrue(
             fixture.viewModel.scheduledTasks(for: fixture.today).isEmpty,
@@ -454,7 +454,8 @@ final class ArchivedProjectCalendarVisibilityTests: XCTestCase {
             Client.self,
             SubClient.self,
             SyncOperation.self,
-            CalendarUserEvent.self
+            CalendarUserEvent.self,
+            SiteVisit.self
         ])
         let configuration = ModelConfiguration(
             schema: schema,

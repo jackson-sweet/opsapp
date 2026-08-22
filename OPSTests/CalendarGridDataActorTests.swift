@@ -32,6 +32,31 @@ final class CalendarGridDataActorTests: XCTestCase {
     /// Monday 2026-06-22. Everything below is expressed as an offset from it.
     private var monday: Date { Calendar.current.startOfDay(for: date(2026, 6, 22)) }
 
+    func testWeekSnapshotCoversBothAdjacentWeeksWithoutAnotherFetch() {
+        let snapshot = CalendarWeekCacheSnapshot(
+            weekStart: monday,
+            taskIdsByDay: [:],
+            countsByDay: [:]
+        )
+
+        XCTAssertTrue(snapshot.covers(weekStarting: day(monday, -7)))
+        XCTAssertTrue(snapshot.covers(weekStarting: monday))
+        XCTAssertTrue(snapshot.covers(weekStarting: day(monday, 7)))
+        XCTAssertFalse(snapshot.covers(weekStarting: day(monday, -14)))
+        XCTAssertFalse(snapshot.covers(weekStarting: day(monday, 14)))
+    }
+
+    func testWeekWindowUsesExactOverlapBounds() {
+        let window = CalendarWeekWindow(weekStart: monday)
+
+        XCTAssertEqual(window.start, day(monday, -7))
+        XCTAssertEqual(window.endExclusive, day(monday, 14))
+        XCTAssertTrue(window.overlaps(start: day(monday, -30), end: day(monday, -7)))
+        XCTAssertFalse(window.overlaps(start: day(monday, -30), end: day(monday, -8)))
+        XCTAssertTrue(window.overlaps(start: day(monday, 13), end: nil))
+        XCTAssertFalse(window.overlaps(start: day(monday, 14), end: nil))
+    }
+
     func testWeekCacheScopesFiltersAndBucketsByOverlap() async throws {
         let container = try makeContainer()
         let context = ModelContext(container)
@@ -150,6 +175,86 @@ final class CalendarGridDataActorTests: XCTestCase {
         let snapshot = await actor.calendarWeekCache(scope: scope, weekStart: monday)
 
         XCTAssertEqual(snapshot.taskIdsByDay[key(day(monday, 0))], ["t-theirs"])
+    }
+
+    func testCalendarLoadSnapshotBoundsAndScopesEventsAndBookedVisits() async throws {
+        let container = try makeContainer()
+        let context = ModelContext(container)
+
+        let owned = CalendarUserEvent(
+            id: "event-owned",
+            userId: "user-1",
+            companyId: "company-1",
+            type: .personal,
+            title: "Owned",
+            startDate: day(monday, 1),
+            endDate: day(monday, 2)
+        )
+        let invited = CalendarUserEvent(
+            id: "event-invited",
+            userId: "user-2",
+            companyId: "company-1",
+            type: .personal,
+            title: "Invited",
+            startDate: day(monday, 2),
+            endDate: day(monday, 3),
+            teamMemberIds: ["user-1"]
+        )
+        let privateEvent = CalendarUserEvent(
+            id: "event-private",
+            userId: "user-2",
+            companyId: "company-1",
+            type: .personal,
+            title: "Private",
+            startDate: day(monday, 3),
+            endDate: day(monday, 4)
+        )
+        let farEvent = CalendarUserEvent(
+            id: "event-far",
+            userId: "user-1",
+            companyId: "company-1",
+            type: .personal,
+            title: "Far",
+            startDate: day(monday, 120),
+            endDate: day(monday, 121)
+        )
+        [owned, invited, privateEvent, farEvent].forEach(context.insert)
+
+        let assignedVisit = SiteVisit(
+            id: "visit-assigned",
+            companyId: "company-1",
+            scheduledAt: day(monday, 4),
+            assigneeIds: ["user-1"]
+        )
+        assignedVisit.bookedAt = day(monday, -1)
+        let privateVisit = SiteVisit(
+            id: "visit-private",
+            companyId: "company-1",
+            scheduledAt: day(monday, 5),
+            assigneeIds: ["user-2"]
+        )
+        privateVisit.bookedAt = day(monday, -1)
+        context.insert(assignedVisit)
+        context.insert(privateVisit)
+        try context.save()
+
+        let actor = DataActor(modelContainer: container)
+        await actor.configure()
+        let snapshot = await actor.calendarLoadSnapshot(
+            taskScope: makeScope(mode: .mine, canViewAllCalendar: false, hasFullTaskAccess: false),
+            auxiliaryScope: CalendarAuxiliaryScope(
+                userId: "user-1",
+                companyId: "company-1",
+                canViewAllCalendar: false,
+                canApproveTimeOff: false
+            ),
+            weekStart: monday,
+            centerDate: monday
+        )
+
+        XCTAssertEqual(Set(snapshot.auxiliary.userEventIds), ["event-owned", "event-invited"])
+        XCTAssertEqual(snapshot.auxiliary.bookedVisitIds, ["visit-assigned"])
+        XCTAssertFalse(snapshot.auxiliary.userEventIds.contains("event-far"))
     }
 
     // MARK: - Month grid
@@ -322,7 +427,9 @@ final class CalendarGridDataActorTests: XCTestCase {
             SyncOperation.self,
             Company.self,
             Invoice.self,
-            Estimate.self
+            Estimate.self,
+            CalendarUserEvent.self,
+            SiteVisit.self
         ])
         let configuration = ModelConfiguration(
             schema: schema,

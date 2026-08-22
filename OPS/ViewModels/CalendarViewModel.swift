@@ -87,18 +87,20 @@ class CalendarViewModel: ObservableObject {
     // MARK: - Public Methods
     func setDataController(_ controller: DataController) {
         self.dataController = controller
-        loadTeamMembersIfNeeded()
-        loadProjectsForDate(selectedDate)
-        loadUserEvents()
-        loadBookedVisits()
+        // Reveal the tab first. Every calendar data source is prepared in
+        // DataActor; even the small team-filter lookup yields behind the first
+        // render so tab selection itself never waits on SwiftData.
+        scheduleCalendarLoad(around: selectedDate, force: true)
+        Task { @MainActor [weak self] in
+            await Task.yield()
+            self?.loadTeamMembersIfNeeded()
+        }
     }
 
     /// Force reload of calendar data (called after scheduling changes)
     func reloadCalendarData() {
-        // Clear caches first to force fresh data
         clearProjectCountCache()
-        loadProjectsForDate(selectedDate)
-        loadBookedVisits()
+        scheduleCalendarLoad(around: selectedDate, force: true)
     }
     
     // Check if current user should see team member filter
@@ -112,7 +114,7 @@ class CalendarViewModel: ObservableObject {
         guard shouldShowTeamMemberFilter,
               let dataController = dataController,
               let companyId = dataController.currentUser?.companyId,
-              let company = dataController.getCompany(id: companyId) else {
+              dataController.getCompany(id: companyId) != nil else {
             return
         }
         
@@ -122,15 +124,6 @@ class CalendarViewModel: ObservableObject {
     
     // Used for both programmatic and user-initiated date selection
     func selectDate(_ date: Date, userInitiated: Bool = false) {
-        let calendar = Calendar.current
-        let oldMonth = calendar.component(.month, from: selectedDate)
-        let newMonth = calendar.component(.month, from: date)
-
-        // If month changed, clear the cache
-        if oldMonth != newMonth {
-            clearProjectCountCache()
-        }
-
         // Track if this was a user-initiated selection (tapping a day)
         // or a programmatic selection (changing months, initializing)
         // We need to do this on the main thread since it's a @Published property
@@ -142,9 +135,9 @@ class CalendarViewModel: ObservableObject {
         // Update date immediately for instant UI feedback
         selectedDate = date
 
-        // Load project data for the selected date
-        // This happens synchronously but only queries for ONE date
-        loadProjectsForDate(date)
+        // A cached adjacent week publishes synchronously; any recentering read
+        // happens off-main. No gesture path is allowed to query SwiftData.
+        scheduleCalendarLoad(around: date)
 
         // In month view, ensure visible month is synchronized with selected date
         if viewMode == .month {
@@ -225,37 +218,18 @@ class CalendarViewModel: ObservableObject {
     private var projectCountCache: [String: Int] = [:]
     private var dayTaskCache: [String: [ProjectTask]] = [:]
     private var cachedWeekStart: Date?
+    private var cachedWeekSnapshot: CalendarWeekCacheSnapshot?
+    private var cachedAuxiliaryWindow: CalendarAuxiliaryWindow?
+    private var calendarLoadGeneration: UInt64 = 0
+    private var calendarLoadTask: Task<Void, Never>?
 
     // Get scheduled tasks for a specific date — reads from week cache
     func scheduledTasks(for date: Date) -> [ProjectTask] {
         let dateKey = formatDateKey(date)
 
-        // Return from cache (populated by rebuildWeekCache)
-        if let cached = dayTaskCache[dateKey] {
-            return cached
-        }
-
-        // Cache miss (rare — only for far-off DayCanvasView pages)
-        if let dataController = dataController {
-            var tasks: [ProjectTask]
-            switch scheduleScope {
-            case .all:
-                if shouldShowTeamMemberFilter {
-                    tasks = dataController.getScheduledTasksForCompany(for: date)
-                } else {
-                    tasks = dataController.getScheduledTasksForCurrentUser(for: date)
-                }
-            case .mine:
-                tasks = dataController.getScheduledTasksForCurrentUser(for: date)
-            case .member(let memberId):
-                tasks = dataController.getScheduledTasksForMember(for: date, memberId: memberId)
-            }
-            tasks = applyTaskFilters(to: tasks)
-            dayTaskCache[dateKey] = tasks
-            return tasks
-        }
-
-        return []
+        // Rendering is cache-only. A miss means the off-main snapshot has not
+        // landed yet; querying here would repeat the old hitch once per cell.
+        return dayTaskCache[dateKey] ?? []
     }
     
     func projectCount(for date: Date) -> Int {
@@ -283,17 +257,21 @@ class CalendarViewModel: ObservableObject {
         CalendarDayKey.key(for: date)
     }
     
-    /// Invariant: `cachedWeekStart` guards against rebuilding on same-week
-    /// NAVIGATION only. Every data-change reload must clear it — a task that
-    /// moved, arrived, or was deleted lands inside the week already cached, so
-    /// keeping the guard set would leave the canvas showing stale work. The
-    /// cost of those rebuilds is partially contained by the predicated fetch in
-    /// `rebuildWeekCache` — the per-survivor relationship walk remains — never
-    /// by skipping the rebuild.
+    /// Invariant: `cachedWeekStart` guards against reloading the same week only.
+    /// Every data-change reload must clear it — a task that moved, arrived, or
+    /// was deleted lands inside the week already cached, so keeping the guard
+    /// set would leave the canvas showing stale work. The replacement snapshot
+    /// is bounded and assembled by the DataActor; freshness is never traded for
+    /// a main-thread shortcut.
     func clearProjectCountCache() {
+        calendarLoadGeneration &+= 1
+        calendarLoadTask?.cancel()
+        calendarLoadTask = nil
         projectCountCache = [:]
         dayTaskCache = [:]
         cachedWeekStart = nil
+        cachedWeekSnapshot = nil
+        cachedAuxiliaryWindow = nil
     }
     
     // Update schedule scope (ALL / MINE / specific member)
@@ -366,10 +344,9 @@ class CalendarViewModel: ObservableObject {
     
     // Helper method to apply all filters to scheduled tasks
     ///
-    /// The single chokepoint for the week canvas (`rebuildWeekCache`), the
-    /// per-day cache (`getTasksForDate`), and the month grid
-    /// (`MonthGridCache.loadEvents`) — all three funnel through here, so the
-    /// status cut below lands on every one of them at once.
+    /// The main-actor filter used by selected-day publishing and month-grid
+    /// compatibility paths. The DataActor snapshot uses the same rules through
+    /// `CalendarTaskScoping`, keeping both paths behaviorally aligned.
     func applyTaskFilters(to tasks: [ProjectTask]) -> [ProjectTask] {
         applyTaskFilters(
             to: tasks,
@@ -445,39 +422,7 @@ class CalendarViewModel: ObservableObject {
     
     // MARK: - Private Methods
     func loadProjectsForDate(_ date: Date) {
-        guard let dataController = dataController else {
-            return
-        }
-
-        isLoading = true
-
-        // Rebuild the week cache (single DB fetch for entire week + buffer)
-        rebuildWeekCache(around: date)
-
-        // Get tasks for selected date from cache
-        let dateKey = formatDateKey(date)
-        let scheduledTasks = dayTaskCache[dateKey] ?? []
-
-        // Get unique projects from the scheduled tasks
-        let projectIds = Set(scheduledTasks.compactMap { $0.projectId })
-
-        var projects: [Project] = []
-        for projectId in projectIds {
-            if let project = dataController.getProject(id: projectId) {
-                projects.append(project)
-            }
-        }
-
-        // Force UI update - Store IDs instead of models to avoid invalidation
-        DispatchQueue.main.async { [weak self] in
-            self?.objectWillChange.send()
-            self?.scheduledTaskIdsForSelectedDate = scheduledTasks.map { $0.id }
-            self?.projectIdsForSelectedDate = projects.map { $0.id }
-            self?.isLoading = false
-        }
-
-        // Update the project count cache for this date
-        projectCountCache[dateKey] = scheduledTasks.count
+        scheduleCalendarLoad(around: date, force: true)
     }
 
     // MARK: - Week Cache
@@ -487,62 +432,6 @@ class CalendarViewModel: ObservableObject {
         var weekCal = Calendar.current
         weekCal.firstWeekday = 2 // Monday
         return weekCal.dateInterval(of: .weekOfYear, for: centerDate)?.start
-    }
-
-    /// Fetches all tasks from DB once and distributes them into a per-day cache.
-    /// Covers the current week ± 1 week buffer for smooth DayCanvasView swiping.
-    ///
-    /// Synchronous, on the main context — this is the NAVIGATION path, guarded by
-    /// `cachedWeekStart` so same-week day taps do no work at all. The data-change
-    /// path (`reloadCalendarDataOffMain`) runs the identical scope + filter + bucket
-    /// code on the DataActor instead; both go through `CalendarTaskScoping` and
-    /// `CalendarWeekCacheBuilder`, so they cannot diverge.
-    private func rebuildWeekCache(around centerDate: Date) {
-        guard let dataController = dataController,
-              let context = dataController.modelContext,
-              dataController.currentUser != nil else { return }
-
-        var weekCal = Calendar.current
-        weekCal.firstWeekday = 2 // Monday
-        guard let weekStart = weekCacheAnchor(for: centerDate) else { return }
-
-        // Skip rebuild if same week is already cached
-        if let cached = cachedWeekStart, weekCal.isDate(cached, inSameDayAs: weekStart) {
-            return
-        }
-
-        // One DB hit for the whole window. The soft-delete and dated gates are
-        // `#Predicate`s rather than in-memory filters so a row that fails either is
-        // never materialized just to be dropped.
-        //
-        // No date bound. The per-day filter admits a task by OVERLAP, so a task that
-        // began long before the window still belongs to it whenever its endDate
-        // reaches in. Tasks carry no maximum span, so any lower bound on startDate
-        // would silently drop long-running work off the canvas.
-        let allTasks: [ProjectTask]
-        do {
-            allTasks = try context.fetch(
-                FetchDescriptor<ProjectTask>(
-                    predicate: #Predicate<ProjectTask> {
-                        $0.deletedAt == nil && $0.startDate != nil
-                    }
-                )
-            )
-        } catch {
-            return
-        }
-
-        let scope = currentTaskScope()
-        let hiddenProjectIds = CalendarTaskVisibility.hiddenProjectIds(in: context)
-        let visibleTasks = allTasks.filter {
-            CalendarTaskScoping.admitsForWeekCanvas($0, scope: scope)
-                && CalendarTaskScoping.passesFilters($0, scope: scope, hiddenProjectIds: hiddenProjectIds)
-        }
-
-        applyWeekCache(
-            CalendarWeekCacheBuilder.snapshot(tasks: visibleTasks, weekStart: weekStart),
-            resolving: visibleTasks
-        )
     }
 
     /// Land a rebuilt window. `tasks` supplies the live models for the ids the
@@ -563,49 +452,125 @@ class CalendarViewModel: ObservableObject {
             projectCountCache[dateKey] = count
         }
         cachedWeekStart = snapshot.weekStart
+        cachedWeekSnapshot = snapshot
     }
 
-    /// Reload after a schedule change, with the expensive pass on the DataActor.
-    ///
-    /// Bug 1bade6dd: one reschedule toggles `scheduledTasksDidChange`, and this
-    /// rebuild answered it by walking every live dated task on the main context and
-    /// faulting `project` / `teamMembers` per row — the screen froze for seconds
-    /// right after the toast. The walk still happens; it just no longer happens on
-    /// the thread that draws. Falls back to the synchronous path when there is no
-    /// actor (pre-login, or the DataActor flag is off).
-    @MainActor
-    func reloadCalendarDataOffMain() async {
-        guard let dataController = dataController,
-              let actor = dataController.dataActor,
-              let context = dataController.modelContext,
-              dataController.currentUser != nil,
-              let weekStart = weekCacheAnchor(for: selectedDate) else {
-            reloadCalendarData()
+    /// Schedule a complete, cancellable calendar snapshot. A cached adjacent
+    /// week publishes immediately; recentering and all store work happen in the
+    /// background actor. Rapid swipes cancel stale generations rather than
+    /// letting old results repaint over the user's latest week.
+    private func scheduleCalendarLoad(around date: Date, force: Bool = false) {
+        guard let weekStart = weekCacheAnchor(for: date) else { return }
+        let weekIsReady = cachedWeekSnapshot?.covers(weekStarting: weekStart) == true
+        let auxiliaryIsReady = cachedAuxiliaryWindow?.contains(date) == true
+
+        if weekIsReady {
+            publishSelectedDate()
+        }
+        if !force && weekIsReady && auxiliaryIsReady,
+           Calendar.current.isDate(cachedWeekStart ?? .distantPast, inSameDayAs: weekStart) {
             return
         }
 
-        isLoading = true
-        let snapshot = await actor.calendarWeekCache(scope: currentTaskScope(), weekStart: weekStart)
+        calendarLoadGeneration &+= 1
+        let generation = calendarLoadGeneration
+        calendarLoadTask?.cancel()
+        if !weekIsReady { isLoading = true }
+        calendarLoadTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            await self.performCalendarLoad(
+                around: date,
+                weekStart: weekStart,
+                generation: generation
+            )
+        }
+    }
 
-        // One id-keyed fetch for exactly the rows this window shows — the models the
-        // actor saw belong to its context and can never cross back.
-        let ids = Array(Set(snapshot.taskIdsByDay.values.flatMap { $0 }))
-        let resolved = (try? context.fetch(
-            FetchDescriptor<ProjectTask>(predicate: #Predicate<ProjectTask> { ids.contains($0.id) })
-        )) ?? []
-
-        // Invalidate and land in the same main-actor turn — clearing before the
-        // await would blank the calendar for the whole round trip. Same clear the
-        // synchronous reload does, so counts outside the window cannot go stale.
+    /// Reload after a schedule change. Kept awaitable for refresh flows and
+    /// tests; unlike the old fallback it never executes a full fetch on the main
+    /// context, even when the long-lived DataActor feature flag is disabled.
+    @MainActor
+    func reloadCalendarDataOffMain() async {
         clearProjectCountCache()
-        applyWeekCache(snapshot, resolving: resolved)
+        guard let weekStart = weekCacheAnchor(for: selectedDate) else { return }
+        calendarLoadGeneration &+= 1
+        let generation = calendarLoadGeneration
+        isLoading = true
+        await performCalendarLoad(
+            around: selectedDate,
+            weekStart: weekStart,
+            generation: generation
+        )
+    }
+
+    @MainActor
+    private func performCalendarLoad(
+        around centerDate: Date,
+        weekStart: Date,
+        generation: UInt64
+    ) async {
+        guard let dataController = dataController,
+              let context = dataController.modelContext,
+              let user = dataController.currentUser,
+              let companyId = user.companyId else {
+            isLoading = false
+            return
+        }
+
+        let actor: DataActor
+        if let existing = dataController.dataActor {
+            actor = existing
+        } else {
+            actor = DataActor(modelContainer: context.container)
+            await actor.configure()
+        }
+
+        let taskScope = currentTaskScope()
+        let auxiliaryScope = CalendarAuxiliaryScope(
+            userId: user.id,
+            companyId: companyId,
+            canViewAllCalendar: PermissionStore.shared.can("calendar.view", requiredScope: "all"),
+            canApproveTimeOff: PermissionStore.shared.can("time_off.approve")
+        )
+        let snapshot = await actor.calendarLoadSnapshot(
+            taskScope: taskScope,
+            auxiliaryScope: auxiliaryScope,
+            weekStart: weekStart,
+            centerDate: centerDate
+        )
+        guard !Task.isCancelled, generation == calendarLoadGeneration else { return }
+
+        // Resolve exactly the actor-approved ids into main-context models. No
+        // actor-owned @Model crosses isolation and no unbounded relationship
+        // walk can reach the render thread.
+        let taskIds = Array(Set(snapshot.week.taskIdsByDay.values.flatMap { $0 }))
+        let eventIds = snapshot.auxiliary.userEventIds
+        let visitIds = snapshot.auxiliary.bookedVisitIds
+        let resolvedTasks: [ProjectTask] = taskIds.isEmpty ? [] : ((try? context.fetch(
+            FetchDescriptor<ProjectTask>(predicate: #Predicate<ProjectTask> { taskIds.contains($0.id) })
+        )) ?? [])
+        let resolvedEvents: [CalendarUserEvent] = eventIds.isEmpty ? [] : ((try? context.fetch(
+            FetchDescriptor<CalendarUserEvent>(predicate: #Predicate<CalendarUserEvent> { eventIds.contains($0.id) })
+        )) ?? [])
+        let resolvedVisits: [SiteVisit] = visitIds.isEmpty ? [] : ((try? context.fetch(
+            FetchDescriptor<SiteVisit>(predicate: #Predicate<SiteVisit> { visitIds.contains($0.id) })
+        )) ?? [])
+        guard !Task.isCancelled, generation == calendarLoadGeneration else { return }
+
+        projectCountCache = [:]
+        dayTaskCache = [:]
+        applyWeekCache(snapshot.week, resolving: resolvedTasks)
+        cachedAuxiliaryWindow = snapshot.auxiliary.window
+        userEventsForCurrentPeriod = resolvedEvents.sorted { $0.startDate < $1.startDate }
+        bookedVisitsForCurrentPeriod = resolvedVisits.sorted {
+            ($0.scheduledAt ?? .distantFuture) < ($1.scheduledAt ?? .distantFuture)
+        }
         publishSelectedDate()
-        loadBookedVisits()
+        calendarLoadTask = nil
     }
 
     /// Republish the selected day's task/project ids from the cache. Shared tail of
     /// `loadProjectsForDate` and the off-main reload.
-    @MainActor
     private func publishSelectedDate() {
         guard let dataController = dataController else { return }
         let dateKey = formatDateKey(selectedDate)
@@ -626,48 +591,11 @@ class CalendarViewModel: ObservableObject {
         projectCountCache[dateKey] = scheduledTasks.count
     }
 
-    /// Load CalendarUserEvents visible to the current user from local SwiftData store.
-    /// Own rows always appear; team-invited personal rows appear for assignees;
-    /// users with calendar.view(all) see the company calendar; users with
-    /// time_off.approve see company time off so booked crew absences do not
-    /// disappear after save.
+    /// Refresh personal/time-off events through the same bounded actor snapshot
+    /// as tasks and booked visits. Safe to call repeatedly after sheet saves;
+    /// stale in-flight generations are cancelled.
     func loadUserEvents() {
-        guard let dataController = dataController,
-              let context = dataController.modelContext,
-              let userId = dataController.currentUser?.id,
-              let companyId = dataController.currentUser?.companyId else { return }
-
-        let descriptor = FetchDescriptor<CalendarUserEvent>(
-            predicate: #Predicate { event in
-                event.companyId == companyId && event.deletedAt == nil
-            }
-        )
-        let canViewAllCalendar = PermissionStore.shared.can("calendar.view", requiredScope: "all")
-        let canApproveTimeOff = PermissionStore.shared.can("time_off.approve")
-        let events = ((try? context.fetch(descriptor)) ?? [])
-            .filter { event in
-                isUserEventVisible(
-                    event,
-                    currentUserId: userId,
-                    canViewAllCalendar: canViewAllCalendar,
-                    canApproveTimeOff: canApproveTimeOff
-                )
-            }
-        DispatchQueue.main.async {
-            self.userEventsForCurrentPeriod = events
-        }
-    }
-
-    private func isUserEventVisible(
-        _ event: CalendarUserEvent,
-        currentUserId: String,
-        canViewAllCalendar: Bool,
-        canApproveTimeOff: Bool
-    ) -> Bool {
-        if canViewAllCalendar { return true }
-        if event.userId == currentUserId { return true }
-        if event.teamMemberIds?.contains(currentUserId) == true { return true }
-        return canApproveTimeOff && event.isTimeOff
+        scheduleCalendarLoad(around: selectedDate, force: true)
     }
 
     /// User events overlapping a given date
@@ -712,30 +640,10 @@ class CalendarViewModel: ObservableObject {
             .sorted { ($0.scheduledAt ?? .distantFuture) < ($1.scheduledAt ?? .distantFuture) }
     }
 
-    /// Load booked visits from the local store. Visits are appointments, not
-    /// tasks — they never enter the week task cache, cascade, or auto-schedule.
+    /// Refresh booked visits through the bounded actor snapshot. Visits are
+    /// appointments, not tasks — they never enter the week task cache.
     func loadBookedVisits() {
-        guard let dataController = dataController,
-              let context = dataController.modelContext,
-              let userId = dataController.currentUser?.id,
-              let companyId = dataController.currentUser?.companyId else { return }
-
-        let descriptor = FetchDescriptor<SiteVisit>(
-            predicate: #Predicate { visit in
-                visit.companyId == companyId
-                    && visit.bookedAt != nil
-                    && visit.deletedAt == nil
-            }
-        )
-        let canViewAllCalendar = PermissionStore.shared.can("calendar.view", requiredScope: "all")
-        let visits = Self.visibleBookedVisits(
-            (try? context.fetch(descriptor)) ?? [],
-            currentUserId: userId,
-            canViewAllCalendar: canViewAllCalendar
-        )
-        DispatchQueue.main.async {
-            self.bookedVisitsForCurrentPeriod = visits
-        }
+        scheduleCalendarLoad(around: selectedDate, force: true)
     }
 
     /// Booked visits on a given date, earliest first.
@@ -781,19 +689,10 @@ class CalendarViewModel: ObservableObject {
             }
         }
 
-        // Invalidate ALL snapshot caches AFTER the sync writes land — not just
-        // projectCountCache. dayTaskCache and cachedWeekStart must be cleared
-        // too, otherwise rebuildWeekCache() short-circuits on the still-set
-        // cachedWeekStart and the freshly-synced dates never re-fetch from
-        // SwiftData (the pull-to-refresh stale-calendar bug). Clearing AFTER the
-        // await (not before) also prevents an in-flight repaint from
-        // repopulating cachedWeekStart mid-sync and re-masking the new data.
-        clearProjectCountCache()
-
-        // Reload the task, user-event, and booked-visit layers for the day.
-        loadProjectsForDate(selectedDate)
-        loadUserEvents()
-        loadBookedVisits()
+        // Invalidate and await one coherent actor snapshot after sync writes
+        // land. Tasks, events, and visits can never repaint from different
+        // generations or run three competing fetches on the main context.
+        await reloadCalendarDataOffMain()
 
         // Refresh Phase-C suggestions too (item 63144953). Dormant on empty.
         await loadSuggestedEvents()

@@ -75,7 +75,8 @@ final class SiteVisitRecordSnapshotTests: XCTestCase {
             address: "1100 Maple Ave, Springfield",
             contactName: "Helen Calloway",
             companyName: "Calloway Ltd",
-            deckDesignId: "design-1"
+            deckDesignId: "design-1",
+            recordedByUserId: "recorder-1"
         )
     }
 
@@ -94,13 +95,19 @@ final class SiteVisitRecordSnapshotTests: XCTestCase {
 
     func testFullRecord_financialsPermitted() {
         snapshot("01_record_financials_permitted", height: 1180) {
-            SiteVisitRecordView(record: record(canViewFinancials: true))
+            SiteVisitRecordView(
+                record: record(canViewFinancials: true),
+                onDeckTap: {}
+            )
         }
     }
 
     func testFullRecord_financialsWithheld() {
         snapshot("02_record_financials_withheld", height: 1180) {
-            SiteVisitRecordView(record: record(canViewFinancials: false))
+            SiteVisitRecordView(
+                record: record(canViewFinancials: false),
+                onDeckTap: {}
+            )
         }
     }
 

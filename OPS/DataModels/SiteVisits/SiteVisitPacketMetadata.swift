@@ -77,6 +77,9 @@ struct SiteVisitPacketMetadata: Decodable, Equatable {
     let companyName: String?
     /// Set when the visit produced or continued a deck design. Additive.
     let deckDesignId: String?
+    /// The team member who captured the visit. Additive so legacy packets use
+    /// the packet note author or the linked SiteVisit row as a fallback.
+    let recordedByUserId: String?
 
     enum CodingKeys: String, CodingKey {
         case siteVisitId    = "site_visit_id"
@@ -89,6 +92,7 @@ struct SiteVisitPacketMetadata: Decodable, Equatable {
         case contactName    = "contact_name"
         case companyName    = "company_name"
         case deckDesignId   = "deck_design_id"
+        case recordedByUserId = "recorded_by_user_id"
     }
 
     init(
@@ -101,7 +105,8 @@ struct SiteVisitPacketMetadata: Decodable, Equatable {
         address: String?,
         contactName: String?,
         companyName: String?,
-        deckDesignId: String?
+        deckDesignId: String?,
+        recordedByUserId: String? = nil
     ) {
         self.siteVisitId = siteVisitId
         self.photoCount = photoCount
@@ -113,6 +118,7 @@ struct SiteVisitPacketMetadata: Decodable, Equatable {
         self.contactName = contactName
         self.companyName = companyName
         self.deckDesignId = deckDesignId
+        self.recordedByUserId = recordedByUserId
     }
 
     init(from decoder: Decoder) throws {
@@ -138,6 +144,7 @@ struct SiteVisitPacketMetadata: Decodable, Equatable {
         contactName = try container.decodeIfPresent(String.self, forKey: .contactName)
         companyName = try container.decodeIfPresent(String.self, forKey: .companyName)
         deckDesignId = try container.decodeIfPresent(String.self, forKey: .deckDesignId)
+        recordedByUserId = try container.decodeIfPresent(String.self, forKey: .recordedByUserId)
     }
 
     static func decode(from json: String?) -> SiteVisitPacketMetadata? {

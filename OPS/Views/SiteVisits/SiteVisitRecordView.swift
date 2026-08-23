@@ -164,6 +164,9 @@ struct SiteVisitRecordView: View {
     /// Tapping a thumbnail opens the viewer. Nil disables photo tap-through
     /// (a lead-side record has no project gallery to open into).
     var onPhotoTap: (([String], Int) -> Void)?
+    /// Opens the linked design. The UUID remains an internal lookup key and
+    /// never appears in the record.
+    var onDeckTap: (() -> Void)?
 
     private enum DocumentSection: Int, CaseIterable {
         case site, measurements, deck, checklist, notes, value
@@ -213,26 +216,35 @@ struct SiteVisitRecordView: View {
     // MARK: Header
 
     private var header: some View {
-        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
-            Text("// SITE VISIT")
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
+            Text("// FIELD RECORD")
                 .font(OPSStyle.Typography.panelTitle)
                 .foregroundColor(OPSStyle.Colors.textMute)
 
-            Text(record.operatorName.uppercased())
-                .font(OPSStyle.Typography.section)
+            Text("SITE VISIT")
+                .font(OPSStyle.Typography.screenTitle)
                 .foregroundColor(OPSStyle.Colors.text)
 
             Text(dateLine)
-                .font(OPSStyle.Typography.smallCaption)
+                .font(OPSStyle.Typography.metadata)
                 .foregroundColor(OPSStyle.Colors.text3)
                 .monospacedDigit()
 
             if let summary = record.summaryLine {
                 Text(summary)
-                    .font(OPSStyle.Typography.miniLabel)
+                    .font(OPSStyle.Typography.category)
                     .foregroundColor(OPSStyle.Colors.text2)
-                    .padding(.top, OPSStyle.Layout.spacing1)
             }
+
+            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
+                Text("RECORDED BY")
+                    .font(OPSStyle.Typography.panelTitle)
+                    .foregroundColor(OPSStyle.Colors.text3)
+                Text(record.operatorName.uppercased())
+                    .font(OPSStyle.Typography.section)
+                    .foregroundColor(OPSStyle.Colors.text)
+            }
+            .padding(.top, OPSStyle.Layout.spacing2)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.top, OPSStyle.Layout.spacing3)
@@ -242,7 +254,7 @@ struct SiteVisitRecordView: View {
 
     private func photosSection(metrics: SiteVisitRecordPresentationMetrics) -> some View {
         VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
-            documentLabel("PHOTOS")
+            documentLabel("PHOTO EVIDENCE")
 
             if record.photoURLs.isEmpty {
                 Text("\(record.photoCount) NOT DOWNLOADED")
@@ -253,9 +265,9 @@ struct SiteVisitRecordView: View {
             } else {
                 ScrollView(.horizontal, showsIndicators: false) {
                     LazyHStack(spacing: OPSStyle.Layout.spacing2) {
-                        ForEach(Array(record.photoURLs.enumerated()), id: \.offset) { index, url in
+                        ForEach(Array(record.photos.enumerated()), id: \.offset) { index, photo in
                             photoTile(
-                                url: url,
+                                photo: photo,
                                 index: index,
                                 targetSize: metrics.photoTargetSize
                             )
@@ -275,8 +287,16 @@ struct SiteVisitRecordView: View {
     }
 
     @ViewBuilder
-    private func photoTile(url: String, index: Int, targetSize: CGFloat) -> some View {
-        let thumbnail = PhotoThumbnail(url: url, project: nil, remoteThumbnailURL: nil)
+    private func photoTile(
+        photo: SiteVisitRecord.Photo,
+        index: Int,
+        targetSize: CGFloat
+    ) -> some View {
+        let thumbnail = PhotoThumbnail(
+            url: photo.displayURL,
+            project: nil,
+            remoteThumbnailURL: photo.thumbnailURL
+        )
             .frame(width: targetSize, height: targetSize)
             .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius))
             .overlay(
@@ -401,17 +421,21 @@ struct SiteVisitRecordView: View {
 
     private var deckSection: some View {
         documentSection("DECK DESIGN") {
-            HStack(spacing: OPSStyle.Layout.spacing2) {
-                Image(systemName: OPSStyle.Icons.grid)
-                    .font(.system(size: OPSStyle.Layout.IconSize.sm))
-                    .foregroundColor(OPSStyle.Colors.tanTextM)
-                Text("DESIGN ATTACHED")
-                    .font(OPSStyle.Typography.miniLabel)
+            if let onDeckTap {
+                Button {
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    onDeckTap()
+                } label: {
+                    Label("OPEN DECK DESIGN", systemImage: OPSStyle.Icons.grid)
+                }
+                .buttonStyle(OPSButtonStyle.Primary())
+                .accessibilityHint("Opens the deck builder")
+            } else {
+                Text("DESIGN LINKED")
+                    .font(OPSStyle.Typography.metadata)
                     .foregroundColor(OPSStyle.Colors.text2)
-                Spacer(minLength: .zero)
+                    .frame(minHeight: OPSStyle.Layout.touchTargetMin, alignment: .leading)
             }
-            .frame(minHeight: OPSStyle.Layout.touchTargetMin)
-            .accessibilityElement(children: .combine)
         }
     }
 

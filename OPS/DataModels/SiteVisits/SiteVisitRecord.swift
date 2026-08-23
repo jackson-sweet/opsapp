@@ -34,6 +34,27 @@ import Foundation
 
 struct SiteVisitRecord: Equatable {
 
+    struct Photo: Equatable {
+        let displayURL: String
+        let thumbnailURL: String?
+
+        static func projectPhoto(
+            sourceURL: String,
+            renderedURL: String?,
+            thumbnailURL: String?
+        ) -> Photo {
+            let source = sourceURL.trimmedOrNil ?? sourceURL
+            return Photo(
+                displayURL: renderedURL?.trimmedOrNil ?? source,
+                thumbnailURL: thumbnailURL?.trimmedOrNil
+            )
+        }
+
+        static func local(_ url: String) -> Photo {
+            Photo(displayURL: url, thumbnailURL: nil)
+        }
+    }
+
     struct ChecklistItem: Equatable {
         let fieldId: String?
         let label: String?
@@ -78,16 +99,22 @@ struct SiteVisitRecord: Equatable {
     let photoCount: Int
     /// Every available visit photo, in capture order. Presentation scrolls;
     /// the model never truncates the evidence handed to the full-screen viewer.
-    let photoURLs: [String]
+    let photos: [Photo]
     let measurements: [SiteVisitPacketMetadata.Measurement]
     let checklistItems: [ChecklistItem]
     let notes: [String]
-    let hasDeckDesign: Bool
+    /// Kept internal to the app. The record view exposes an OPEN action, never
+    /// this implementation identifier.
+    let deckDesignId: String?
     /// Already permission-filtered and already formatted. `nil` means the
     /// viewer gets no money line — either none was captured, or they may not
     /// see it. The view layer cannot tell the difference, by design.
     let value: String?
     let sections: Set<Section>
+
+    var photoURLs: [String] { photos.map(\.displayURL) }
+
+    var hasDeckDesign: Bool { deckDesignId != nil }
 
     /// Compatibility for call sites that only need to know whether checklist
     /// evidence exists. New presentation must use `checklistItems` so labels and
@@ -145,13 +172,31 @@ struct SiteVisitRecord: Equatable {
         estimatedValue: Double?,
         canViewFinancials: Bool
     ) -> SiteVisitRecord {
+        assemble(
+            metadata: metadata,
+            photos: photoURLs.map(Photo.local),
+            capturedAt: capturedAt,
+            operatorName: operatorName,
+            estimatedValue: estimatedValue,
+            canViewFinancials: canViewFinancials
+        )
+    }
+
+    static func assemble(
+        metadata: SiteVisitPacketMetadata?,
+        photos: [Photo],
+        capturedAt: Date,
+        operatorName: String,
+        estimatedValue: Double?,
+        canViewFinancials: Bool
+    ) -> SiteVisitRecord {
         let measurements = metadata?.measurements ?? []
         let checklistItems = Self.checklistItems(from: metadata)
         let notes = metadata?.notes ?? []
         // The count is authored at capture and travels in the metadata, so the
         // tally stays honest on a device whose photos have not synced yet.
-        let photoCount = max(metadata?.photoCount ?? photoURLs.count, photoURLs.count)
-        let hasDeck = (metadata?.deckDesignId?.trimmedOrNil) != nil
+        let photoCount = max(metadata?.photoCount ?? photos.count, photos.count)
+        let deckDesignId = metadata?.deckDesignId?.trimmedOrNil
 
         let identityLine = Self.identityLine(
             contactName: metadata?.contactName,
@@ -174,7 +219,7 @@ struct SiteVisitRecord: Equatable {
         if address != nil { sections.insert(.address) }
         if photoCount > 0 { sections.insert(.photos) }
         if !measurements.isEmpty { sections.insert(.measurements) }
-        if hasDeck { sections.insert(.deck) }
+        if deckDesignId != nil { sections.insert(.deck) }
         if !checklistItems.isEmpty { sections.insert(.checklist) }
         if !notes.isEmpty { sections.insert(.notes) }
         if value != nil { sections.insert(.value) }
@@ -185,11 +230,11 @@ struct SiteVisitRecord: Equatable {
             identityLine: identityLine,
             address: address,
             photoCount: photoCount,
-            photoURLs: photoURLs,
+            photos: photos,
             measurements: measurements,
             checklistItems: checklistItems,
             notes: notes,
-            hasDeckDesign: hasDeck,
+            deckDesignId: deckDesignId,
             value: value,
             sections: sections
         )
@@ -232,7 +277,8 @@ struct SiteVisitRecord: Equatable {
             artifacts: artifacts,
             checklistAnswers: checklistAnswers,
             contactName: opportunity?.displayContactName ?? identity?.contactName.trimmedOrNil,
-            companyName: identity?.clientName.trimmedOrNil
+            companyName: identity?.clientName.trimmedOrNil,
+            recordedByUserId: visit.createdBy
         )
 
         guard let packet = SiteVisitPacketNote.build(artifacts: artifacts, payload: payload),
@@ -242,14 +288,15 @@ struct SiteVisitRecord: Equatable {
 
         // The photos are on this device as capture artifacts, so the strip
         // shows the real thumbnails rather than a "not downloaded" tally.
-        let photoURLs = artifacts
+        let photos = artifacts
             .filter { $0.isActive && $0.includedInProjectReview && $0.pipesToProjectPhotos }
             .sorted { $0.capturedAt < $1.capturedAt }
             .compactMap(\.previewAssetURL)
+            .map(Photo.local)
 
         return assemble(
             metadata: metadata,
-            photoURLs: photoURLs,
+            photos: photos,
             capturedAt: capturedAt,
             operatorName: operatorName,
             estimatedValue: opportunity?.estimatedValue,
@@ -270,11 +317,22 @@ struct SiteVisitRecord: Equatable {
         from metadata: SiteVisitPacketMetadata?
     ) -> [ChecklistItem] {
         if let structured = metadata?.checklistItems, !structured.isEmpty {
-            let normalized = structured.compactMap(Self.normalizedChecklistItem)
+            let normalized = structured
+                .filter { item in
+                    guard metadata?.deckDesignId?.trimmedOrNil != nil else { return true }
+                    return item.kind?.trimmedOrNil != SiteVisitFieldKind.deckDesign.rawValue
+                }
+                .compactMap(Self.normalizedChecklistItem)
             if !normalized.isEmpty { return normalized }
         }
 
-        return (metadata?.checklist ?? []).compactMap(Self.legacyChecklistItem)
+        return (metadata?.checklist ?? [])
+            .filter { line in
+                guard metadata?.deckDesignId?.trimmedOrNil != nil else { return true }
+                let normalized = line.lowercased()
+                return !normalized.contains("deck design:")
+            }
+            .compactMap(Self.legacyChecklistItem)
     }
 
     private static func normalizedChecklistItem(

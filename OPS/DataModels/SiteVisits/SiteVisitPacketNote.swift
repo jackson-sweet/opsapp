@@ -55,7 +55,11 @@ struct SiteVisitPacketNote {
         let checklistItems = payload.checklistItems
 
         // Nothing captured — no packet entry at all.
-        if photoCount == 0 && measurements.isEmpty && notes.isEmpty && checklist.isEmpty {
+        if photoCount == 0
+            && measurements.isEmpty
+            && notes.isEmpty
+            && checklist.isEmpty
+            && payload.deckDesignIds.isEmpty {
             return nil
         }
 
@@ -105,6 +109,10 @@ struct SiteVisitPacketNote {
         }
         if let deckDesignId = payload.deckDesignIds.first, !deckDesignId.isEmpty {
             metadata["deck_design_id"] = deckDesignId
+        }
+        if let recordedByUserId = payload.recordedByUserId?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !recordedByUserId.isEmpty {
+            metadata["recorded_by_user_id"] = recordedByUserId
         }
         // NO MONEY. This dictionary becomes `project_notes.content_metadata`,
         // which syncs to OPS-Web and renders there with no financial gate —

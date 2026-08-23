@@ -309,7 +309,7 @@ struct LeadSiteVisitResolver: View {
                                    onCapture: onCapture)
             }
         } else if let completedVisit = completedVisit {
-            LeadSiteVisitRecord(visit: completedVisit)
+            LeadSiteVisitRecord(visit: completedVisit, opportunity: opportunity)
         } else {
             LeadSiteVisitPanel(state: .absent, onCapture: onCapture)
         }
@@ -335,354 +335,79 @@ struct LeadSiteVisitResolver: View {
 /// artifacts here means a lead's visit and a project's visit are described in
 /// one vocabulary (`4 PHOTOS · 2 MEASUREMENTS · NOTES`) by one piece of code.
 ///
-/// `SiteVisitPacketSheet` itself cannot be reused: it is initialized from a
-/// `ProjectNote` and reads its photos from a `@Query<ProjectPhoto>` filtered by
-/// `projectId`. A lead has no project, and its visit photos are still local
-/// files, so the sheet below renders the same sections from the artifacts.
+/// Lead and project records now share one sheet. The assembler supplies local
+/// artifact URLs here and synced project-photo URLs after conversion; the
+/// presentation and deck action cannot drift between the two surfaces.
 private struct LeadSiteVisitRecord: View {
 
     let visit: SiteVisit
+    let opportunity: Opportunity
 
+    @EnvironmentObject private var permissionStore: PermissionStore
     @Query private var artifacts: [SiteVisitCaptureArtifact]
     @Query private var answers: [SiteVisitChecklistAnswer]
+    @Query private var identityDrafts: [SiteVisitIdentityDraft]
+    @Query private var recorders: [TeamMember]
     @State private var showingRecord = false
 
-    init(visit: SiteVisit) {
+    init(visit: SiteVisit, opportunity: Opportunity) {
         self.visit = visit
+        self.opportunity = opportunity
         let visitId = visit.id
+        let recorderId = visit.createdBy ?? ""
         _artifacts = Query(
             filter: #Predicate<SiteVisitCaptureArtifact> { $0.siteVisitId == visitId }
         )
         _answers = Query(
             filter: #Predicate<SiteVisitChecklistAnswer> { $0.siteVisitId == visitId }
         )
+        _identityDrafts = Query(
+            filter: #Predicate<SiteVisitIdentityDraft> { $0.siteVisitId == visitId }
+        )
+        _recorders = Query(filter: #Predicate<TeamMember> { $0.id == recorderId })
+    }
+
+    private var recorder: TeamMember? { recorders.first }
+
+    private var operatorName: String {
+        recorder?.fullName ?? "Team Member"
+    }
+
+    private var record: SiteVisitRecord {
+        SiteVisitRecord.assembleFromLocalCapture(
+            visit: visit,
+            artifacts: artifacts,
+            checklistAnswers: answers,
+            identity: identityDrafts.first,
+            opportunity: opportunity,
+            capturedAt: visit.completedAt ?? visit.createdAt,
+            operatorName: operatorName,
+            canViewFinancials: permissionStore.can("finances.view")
+        ) ?? SiteVisitRecord.assemble(
+            metadata: nil,
+            photoURLs: visit.photos,
+            capturedAt: visit.completedAt ?? visit.createdAt,
+            operatorName: operatorName,
+            estimatedValue: opportunity.estimatedValue,
+            canViewFinancials: permissionStore.can("finances.view")
+        )
     }
 
     var body: some View {
         LeadSiteVisitPanel(
-            state: .completed(token: completedToken, summary: summaryLine),
+            state: .completed(
+                token: DaySheetDateToken.age(visit.completedAt ?? visit.createdAt),
+                summary: record.summaryLine
+            ),
             onOpenRecord: { showingRecord = true }
         )
         .sheet(isPresented: $showingRecord) {
-            LeadSiteVisitRecordSheet(
-                visit: visit,
-                photoArtifacts: photoArtifacts,
-                metadata: metadata
+            SiteVisitRecordSheet(
+                record: record,
+                opportunityId: opportunity.id,
+                companyId: opportunity.companyId,
+                deckTitle: opportunity.deckDesignTitle
             )
-        }
-    }
-
-    private var completedToken: String {
-        DaySheetDateToken.age(visit.completedAt ?? visit.createdAt)
-    }
-
-    /// `SiteVisitRecord` now owns the vocabulary this row wanted from the
-    /// packet (`4 PHOTOS · 2 MEASUREMENTS · DECK`), so the lead card and the
-    /// project activity feed still describe a visit through one piece of code.
-    ///
-    /// The record is assembled with the financial gate CLOSED and no value:
-    /// `summaryLine` counts evidence and never money, so a money line would be
-    /// discarded anyway — closing the gate here means this row cannot leak one
-    /// even if that ever changes.
-    private var summaryLine: String? {
-        SiteVisitRecord.assemble(
-            metadata: metadata,
-            photoURLs: [],
-            capturedAt: visit.completedAt ?? visit.createdAt,
-            operatorName: "",
-            estimatedValue: nil,
-            canViewFinancials: false
-        ).summaryLine
-    }
-
-    /// Re-derived per evaluation rather than cached. The visit's artifacts are
-    /// a handful of local rows and only ONE card is ever open, so a JSON
-    /// round-trip here costs less than a second source of truth for what a
-    /// visit captured.
-    private var metadata: SiteVisitPacketMetadata? {
-        let payload = SiteVisitProjectPayloadBuilder.payload(
-            siteVisitId: visit.id,
-            opportunityId: visit.opportunityId ?? "",
-            address: visit.address,
-            artifacts: artifacts,
-            checklistAnswers: answers
-        )
-        guard let packet = SiteVisitPacketNote.build(artifacts: artifacts, payload: payload)
-        else { return nil }
-        return SiteVisitPacketMetadata.decode(from: packet.metadataJSON)
-    }
-
-    /// The same set the packet counted, in the same order, so the strip and the
-    /// `N PHOTOS` it is labelled with can never disagree.
-    private var photoArtifacts: [SiteVisitCaptureArtifact] {
-        artifacts
-            .filter { $0.isActive && $0.includedInProjectReview && $0.pipesToProjectPhotos }
-            .sorted { $0.capturedAt < $1.capturedAt }
-    }
-}
-
-// MARK: - Record sheet
-
-/// What the visit captured, for a lead that has not become a project yet.
-/// `SiteVisitPacketSheet`'s sections, its order and its labels; the photos come
-/// from the visit's own local assets, because that is where they still live.
-private struct LeadSiteVisitRecordSheet: View {
-
-    let visit: SiteVisit
-    let photoArtifacts: [SiteVisitCaptureArtifact]
-    let metadata: SiteVisitPacketMetadata?
-
-    @State private var preview: PreviewAsset?
-
-    private struct PreviewAsset: Identifiable {
-        let id = UUID()
-        let url: String
-    }
-
-    var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing3) {
-                header
-
-                if !photoArtifacts.isEmpty {
-                    packetSection(title: "// PHOTOS") { photoStrip }
-                }
-
-                if let measurements = metadata?.measurements, !measurements.isEmpty {
-                    packetSection(title: "// MEASUREMENTS") {
-                        measurementList(measurements)
-                    }
-                }
-
-                if let notes = metadata?.notes, !notes.isEmpty {
-                    packetSection(title: "// NOTES") { noteList(notes) }
-                }
-
-                if let checklist = metadata?.checklist, !checklist.isEmpty {
-                    packetSection(title: "// CHECKLIST") { checklistList(checklist) }
-                }
-
-                // A completed visit with nothing left to show (every artifact
-                // deleted) says so, rather than presenting an empty scroll.
-                if isEmptyRecord {
-                    Text("// NOTHING CAPTURED")
-                        .font(OPSStyle.Typography.miniLabel)
-                        .tracking(1.6)
-                        .foregroundColor(OPSStyle.Colors.textMute)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                }
-
-                Spacer(minLength: OPSStyle.Layout.spacing4)
-            }
-            .padding(.horizontal, OPSStyle.Layout.spacing3)
-        }
-        .background(OPSStyle.Colors.background)
-        .preferredColorScheme(.dark)
-        .presentationDetents([.large])
-        .presentationDragIndicator(.visible)
-        .fullScreenCover(item: $preview) { asset in
-            photoViewer(asset)
-        }
-    }
-
-    // MARK: Header
-
-    private var header: some View {
-        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
-            Text("SITE VISIT")
-                .font(OPSStyle.Typography.section)
-                .foregroundColor(OPSStyle.Colors.text)
-            Text(dateLine)
-                .font(OPSStyle.Typography.smallCaption)
-                .foregroundColor(OPSStyle.Colors.text3)
-                .monospacedDigit()
-        }
-        .padding(.top, OPSStyle.Layout.spacing3)
-        .accessibilityElement(children: .combine)
-    }
-
-    private var dateLine: String {
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.dateFormat = "MMM d, yyyy · h:mm a"
-        return formatter.string(from: visit.completedAt ?? visit.createdAt).uppercased()
-    }
-
-    // MARK: Sections
-
-    private var photoStrip: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: OPSStyle.Layout.spacing2) {
-                ForEach(photoArtifacts, id: \.id) { artifact in
-                    Button {
-                        guard let url = artifact.previewAssetURL else { return }
-                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                        preview = PreviewAsset(url: url)
-                    } label: {
-                        LeadSiteVisitArtifactThumbnail(artifact: artifact)
-                    }
-                    .buttonStyle(PlainButtonStyle())
-                    .disabled(artifact.previewAssetURL == nil)
-                    .accessibilityLabel("Site visit photo")
-                }
-            }
-        }
-    }
-
-    private func measurementList(
-        _ measurements: [SiteVisitPacketMetadata.Measurement]
-    ) -> some View {
-        VStack(spacing: 0) {
-            ForEach(Array(measurements.enumerated()), id: \.offset) { index, measurement in
-                HStack(alignment: .firstTextBaseline, spacing: OPSStyle.Layout.spacing2_5) {
-                    Text(measurement.label)
-                        .font(OPSStyle.Typography.cardBody)
-                        .foregroundColor(OPSStyle.Colors.text)
-                    Spacer(minLength: 0)
-                    Text(measurement.value)
-                        .font(OPSStyle.Typography.smallCaption)
-                        .foregroundColor(OPSStyle.Colors.text2)
-                        .multilineTextAlignment(.trailing)
-                        .monospacedDigit()
-                }
-                .padding(.vertical, OPSStyle.Layout.spacing2)
-
-                if index < measurements.count - 1 {
-                    Rectangle()
-                        .fill(OPSStyle.Colors.lineSoft)
-                        .frame(height: OPSStyle.Layout.Border.standard)
-                }
-            }
-        }
-    }
-
-    private func noteList(_ notes: [String]) -> some View {
-        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2_5) {
-            ForEach(Array(notes.enumerated()), id: \.offset) { _, text in
-                Text(text)
-                    .font(OPSStyle.Typography.cardBody)
-                    .foregroundColor(OPSStyle.Colors.text)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            }
-        }
-    }
-
-    private func checklistList(_ checklist: [String]) -> some View {
-        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
-            ForEach(Array(checklist.enumerated()), id: \.offset) { _, line in
-                HStack(alignment: .firstTextBaseline, spacing: OPSStyle.Layout.spacing2) {
-                    Image(systemName: OPSStyle.Icons.checkmark)
-                        .font(.system(size: OPSStyle.Layout.IconSize.xs, weight: .semibold))
-                        .foregroundColor(OPSStyle.Colors.olive)
-                    Text(line)
-                        .font(OPSStyle.Typography.cardBody)
-                        .foregroundColor(OPSStyle.Colors.text)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-            }
-        }
-    }
-
-    private func packetSection<Content: View>(
-        title: String,
-        @ViewBuilder content: () -> Content
-    ) -> some View {
-        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
-            Text(title)
-                .font(OPSStyle.Typography.miniLabelBold)
-                .tracking(1.2)
-                .foregroundColor(OPSStyle.Colors.text3)
-            content()
-        }
-        .padding(OPSStyle.Layout.spacing3)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cardRadius, style: .continuous)
-                .fill(OPSStyle.Colors.surfaceInput)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cardRadius, style: .continuous)
-                .strokeBorder(OPSStyle.Colors.nestedBorder,
-                              lineWidth: OPSStyle.Layout.Border.standard)
-        )
-    }
-
-    // MARK: Photo viewer
-
-    private func photoViewer(_ asset: PreviewAsset) -> some View {
-        ZStack(alignment: .topLeading) {
-            OPSStyle.Colors.background.ignoresSafeArea()
-            ZoomablePhotoView(url: asset.url)
-                .ignoresSafeArea()
-            Button {
-                preview = nil
-            } label: {
-                Text("CLOSE")
-                    .font(OPSStyle.Typography.buttonLabel)
-                    .kerning(0.27)
-                    .textCase(.uppercase)
-                    .foregroundColor(OPSStyle.Colors.text2)
-                    .frame(minWidth: OPSStyle.Layout.touchTargetMin,
-                           minHeight: OPSStyle.Layout.touchTargetMin)
-                    .padding(.horizontal, OPSStyle.Layout.spacing3)
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(PlainButtonStyle())
-        }
-        .preferredColorScheme(.dark)
-    }
-
-    private var isEmptyRecord: Bool {
-        photoArtifacts.isEmpty
-            && (metadata?.measurements?.isEmpty ?? true)
-            && (metadata?.notes?.isEmpty ?? true)
-            && (metadata?.checklist?.isEmpty ?? true)
-    }
-}
-
-// MARK: - Artifact thumbnail
-
-/// A visit photo still living on this device. Loads through the SAME pair the
-/// capture console's own thumbnail uses — composited render first (a photo the
-/// operator marked up shows the markup), raw local asset second.
-private struct LeadSiteVisitArtifactThumbnail: View {
-
-    let artifact: SiteVisitCaptureArtifact
-
-    private static let side: CGFloat = 72
-
-    @State private var image: UIImage?
-
-    var body: some View {
-        ZStack {
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cardRadius, style: .continuous)
-                .fill(OPSStyle.Colors.surfaceHover)
-
-            if let image {
-                Image(uiImage: image)
-                    .resizable()
-                    .scaledToFill()
-            } else {
-                Image(systemName: OPSStyle.Icons.camera)
-                    .font(.system(size: OPSStyle.Layout.IconSize.md, weight: .light))
-                    .foregroundColor(OPSStyle.Colors.textMute)
-            }
-        }
-        .frame(width: Self.side, height: Self.side)
-        .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.cardRadius, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: OPSStyle.Layout.cardRadius, style: .continuous)
-                .strokeBorder(OPSStyle.Colors.nestedBorder,
-                              lineWidth: OPSStyle.Layout.Border.standard)
-        )
-        .task(id: artifact.previewAssetURL ?? artifact.id) {
-            guard let url = artifact.previewAssetURL else {
-                image = nil
-                return
-            }
-            image = ImageFileManager.shared.loadCompositedImage(forURL: url)
-                ?? ImageFileManager.shared.loadImage(localID: url)
         }
     }
 }

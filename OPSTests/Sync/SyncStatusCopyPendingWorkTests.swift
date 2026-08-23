@@ -42,6 +42,7 @@ final class SyncStatusCopyPendingWorkTests: XCTestCase {
 
     func testScreenAndSectionHeaders() {
         XCTAssertEqual(Copy.screenTitle, "PENDING WORK")
+        XCTAssertEqual(Copy.notificationSectionTitle, "PENDING SYNC")
         XCTAssertEqual(Copy.sectionAttention, "// NEEDS ATTENTION")
         XCTAssertEqual(Copy.sectionSending, "// SENDING")
         XCTAssertEqual(Copy.sectionDrafts, "// DRAFTS")

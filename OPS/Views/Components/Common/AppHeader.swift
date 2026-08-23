@@ -16,14 +16,14 @@ import SwiftUI
 // shared two-slot policy in OPSScreenHeader.
 
 /// Measured height of the tab's `AppHeader`, published so app-level overlays can
-/// park BENEATH the header band instead of colliding with it.
+/// park BENEATH the header band instead of colliding with it. On Home this
+/// includes the in-flow recovery-status row when that row is visible.
 ///
-/// `MainTabView` floats the sync attention pill in the top-trailing corner — the
-/// exact rectangle this header's trailing action cluster (search + tab-specific
-/// buttons, or Home's avatar) already occupies. Both are laid out from the top
-/// safe area, so they land on top of each other. Publishing the real measured
-/// height lets the overlay start where the header ends, which also keeps the two
-/// apart when Dynamic Type grows the title block and the header gets taller.
+/// `MainTabView` floats the non-Home sync attention pill beneath each active
+/// header. Publishing the real measured height lets that overlay start where the
+/// header ends at every Dynamic Type size. Home owns the pill inside this header
+/// instead; its measured height then keeps the map filters and global image-sync
+/// progress below the in-flow row.
 ///
 /// Reduced with `max`, which only works because inactive headers stay silent.
 /// MainTabView keeps every visited tab mounted, so several headers are alive and
@@ -156,6 +156,16 @@ struct AppHeader: View {
         VStack(spacing: 0) {
             headerBand
             contextStrip
+
+            // Home owns the recovery indicator in normal map mode. Keeping it
+            // inside this measured VStack reserves the row before map filters
+            // begin and gives ImageSyncProgressView the full header boundary.
+            // Inactive retained Home roots create no monitor or sheet host.
+            if headerType == .home,
+               isActiveTab,
+               !dataController.showSyncRestoredAlert {
+                SyncStatusIndicator(placement: .homeHeader)
+            }
         }
     }
 

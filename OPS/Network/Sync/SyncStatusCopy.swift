@@ -246,6 +246,7 @@ enum SyncStatusCopy {
         // Screen + section headers (UPPERCASE authority; `//` prefix is the
         // section voice).
         static let screenTitle = "PENDING WORK"
+        static let notificationSectionTitle = "PENDING SYNC"
         static let sectionAttention = "// NEEDS ATTENTION"
         static let sectionSending = "// SENDING"
         static let sectionDrafts = "// DRAFTS"

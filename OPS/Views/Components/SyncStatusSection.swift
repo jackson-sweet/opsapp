@@ -11,6 +11,7 @@
 import SwiftUI
 
 struct SyncStatusSection: View {
+    var sectionTitle: String? = nil
     @EnvironmentObject private var dataController: DataController
     @State private var isExpanded: Bool = false
 
@@ -30,15 +31,21 @@ struct SyncStatusSection: View {
         let trackedCount = syncEngine.pendingOperationCount
 
         if !pending.isEmpty || !failed.isEmpty || isSyncing || trackedCount > 0 {
-            SyncStatusPanel(
-                pending: pending,
-                failed: failed,
-                isSyncing: isSyncing,
-                isExpanded: $isExpanded,
-                onRetry: { requeue([$0]) },
-                onRetryAll: { requeue($0) },
-                onDismiss: { syncEngine.cancelOperation($0) }
-            )
+            VStack(spacing: 0) {
+                if let sectionTitle {
+                    SyncStatusSectionHeader(title: sectionTitle)
+                }
+
+                SyncStatusPanel(
+                    pending: pending,
+                    failed: failed,
+                    isSyncing: isSyncing,
+                    isExpanded: $isExpanded,
+                    onRetry: { requeue([$0]) },
+                    onRetryAll: { requeue($0) },
+                    onDismiss: { syncEngine.cancelOperation($0) }
+                )
+            }
         }
     }
 
@@ -46,5 +53,20 @@ struct SyncStatusSection: View {
     private func requeue(_ operations: [SyncOperation]) {
         syncEngine.retryOperations(operations)
         Task { await syncEngine.triggerSync() }
+    }
+}
+
+/// Local title used only when the compact panel sits inside a larger content
+/// rail. The panel keeps its own operation count and status sentence below.
+struct SyncStatusSectionHeader: View {
+    let title: String
+
+    var body: some View {
+        PanelSectionHeader(label: title)
+            .padding(.horizontal, OPSStyle.Layout.spacing3)
+            .padding(.top, OPSStyle.Layout.spacing3_5)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(title)
+            .accessibilityAddTraits(.isHeader)
     }
 }

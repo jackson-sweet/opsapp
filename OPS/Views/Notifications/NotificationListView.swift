@@ -356,11 +356,13 @@ struct NotificationListView: View {
                                     .padding(.bottom, OPSStyle.Layout.spacing2_5)
                             }
 
-                            // Sync status section — shows pending/failed operations.
-                            // VIEW ALL escalates the compact panel to PENDING WORK.
+                            // Compact sync panel with a local section title.
+                            // VIEW ALL escalates the panel to PENDING WORK.
                             VStack(spacing: 0) {
-                                SyncStatusSection()
-                                    .environmentObject(dataController)
+                                SyncStatusSection(
+                                    sectionTitle: SyncStatusCopy.PendingWork.notificationSectionTitle
+                                )
+                                .environmentObject(dataController)
 
                                 if syncHasWork {
                                     pendingWorkViewAllLink

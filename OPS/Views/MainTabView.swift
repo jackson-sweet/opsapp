@@ -12,11 +12,22 @@ import SwiftData
 import Combine
 import MapKit
 
+/// Normal Home renders the recovery indicator inside its measured AppHeader.
+/// Home project mode deliberately yields the top stack to the safety-critical
+/// active-project/navigation controls. Every non-Home root keeps the app-level
+/// fallback below its measured header.
+enum SyncStatusPlacementPolicy {
+    static func showsMainTabOverlay(selectedTab: Int) -> Bool {
+        selectedTab != 0
+    }
+}
+
 struct MainTabView: View {
     @EnvironmentObject private var dataController: DataController
     @EnvironmentObject private var appState: AppState
     @EnvironmentObject private var locationManager: LocationManager
     @EnvironmentObject private var permissionStore: PermissionStore
+    @Environment(\.modelContext) private var modelContext
     @Environment(\.wizardTriggerService) private var wizardTriggerService
     @Environment(\.wizardStateManager) private var wizardStateManager
 
@@ -48,6 +59,10 @@ struct MainTabView: View {
     @State private var inFlightDeepLinkTask: Task<Void, Never>?
     // PermissionChangeOverlay moved to PINGatedView (ContentView.swift) so it sits above all sheets
     @StateObject private var imageSyncProgressManager = ImageSyncProgressManager()
+    /// One durable inventory model/monitor feeds both visual placements. Tab
+    /// switches must never pay the multi-fetch recovery load or drop debounce.
+    @StateObject private var syncStatusIndicatorModel = SyncStatusIndicatorModel()
+    @StateObject private var syncStatusRefreshMonitor = RecoveryRefreshMonitor()
     // Drives the global tab-bar overlay's visibility. Pushed detail screens with a
     // bottom action bar fade the tab bar out via `.hidesGlobalTabBar()` so their
     // primary CTA isn't occluded by the 100pt overlay.
@@ -461,6 +476,7 @@ struct MainTabView: View {
             // in the same render transaction. No separate persistent overlay.
             // Pushed detail screens read this to fade the tab bar while on screen.
             .environment(\.tabBarVisibility, tabBarVisibility)
+            .environmentObject(syncStatusIndicatorModel)
             // The ACTIVE tab's header reports how tall it is, so the status band
             // below can start where that header ends. Every mounted tab's header
             // is alive at once now and the key reduces with `max`, so inactive
@@ -469,8 +485,9 @@ struct MainTabView: View {
             // pin the band for the rest of the session.
             .onPreferenceChange(AppHeaderHeightKey.self) { headerBandHeight = $0 }
 
-            // Image sync progress bar and sync status, banded directly BELOW the
-            // tab's header.
+            // Image sync progress is always banded directly below the active
+            // measured header. Non-Home roots also keep the global sync-status
+            // fallback here; normal Home owns that indicator in-flow instead.
             //
             // This band used to start at the top safe area — the same rectangle
             // the header's trailing action cluster occupies — so the attention
@@ -486,12 +503,17 @@ struct MainTabView: View {
             VStack(spacing: OPSStyle.Layout.spacing2) {
                 ImageSyncProgressView(syncManager: imageSyncProgressManager)
 
-                // Sync status indicator — hidden when sync restored banner is showing
-                if !dataController.showSyncRestoredAlert {
+                // Hidden while the restored banner speaks, and suppressed on
+                // normal Home so there is exactly one in-flow indicator there.
+                if !dataController.showSyncRestoredAlert,
+                   SyncStatusPlacementPolicy.showsMainTabOverlay(
+                       selectedTab: selectedTab
+                   ) {
                     HStack {
                         Spacer()
                         SyncStatusIndicator()
                             .environmentObject(dataController)
+                            .environmentObject(syncStatusIndicatorModel)
                             .padding(.trailing, OPSStyle.Layout.spacing3)
                     }
                 }
@@ -1127,6 +1149,8 @@ struct MainTabView: View {
             }
         }
         .onAppear {
+            syncStatusIndicatorModel.refresh(from: modelContext)
+
             // Clear all pending image syncs on app bootup
             clearPendingImageSyncs()
 
@@ -1168,6 +1192,9 @@ struct MainTabView: View {
             DispatchQueue.main.async {
                 DeepLinkCoordinator.shared.drain(context: "main_tab_appear")
             }
+        }
+        .onReceive(syncStatusRefreshMonitor.output) { _ in
+            syncStatusIndicatorModel.refresh(from: modelContext)
         }
         .onChange(of: selectedTab) { _, newTab in
             NotificationCenter.default.post(

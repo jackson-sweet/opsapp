@@ -102,6 +102,53 @@ final class SyncStatusPanelSnapshotTests: XCTestCase {
         }
     }
 
+    func testNotificationsPendingSyncSection() throws {
+        let context = try makeContext()
+        let seeded = seedReporterScenario(context)
+
+        try fixedSnapshot("notifications-pending-sync-section") {
+            VStack(spacing: 0) {
+                SyncStatusSectionHeader(
+                    title: SyncStatusCopy.PendingWork.notificationSectionTitle
+                )
+                SyncStatusPanel(
+                    pending: seeded.pending,
+                    failed: seeded.failed,
+                    isSyncing: false,
+                    isExpanded: .constant(false),
+                    onRetry: { _ in },
+                    onRetryAll: { _ in },
+                    onDismiss: { _ in }
+                )
+            }
+        }
+    }
+
+    /// The new repair proof uses the canonical AppHostWindow-backed renderer;
+    /// unlike the legacy snapshots below it cannot pass with a blank UIWindow.
+    private func fixedSnapshot<V: View>(
+        _ name: String,
+        @ViewBuilder content: () -> V
+    ) throws {
+        let image = try FixedSizeSnapshot.render(
+            content()
+                .frame(width: deviceWidth, alignment: .top)
+                .background(OPSStyle.Colors.background)
+                .environment(\.colorScheme, .dark),
+            size: CGSize(width: deviceWidth, height: 180)
+        )
+        guard let data = image.pngData() else {
+            XCTFail("Failed to render \(name)")
+            return
+        }
+        let attachment = XCTAttachment(data: data, uniformTypeIdentifier: "public.png")
+        attachment.name = "\(name).png"
+        attachment.lifetime = .keepAlways
+        add(attachment)
+        try data.write(to: outDir.appendingPathComponent("\(name).png"))
+        print("SNAPSHOT \(name) (\(Int(image.size.width))x\(Int(image.size.height))pt)")
+    }
+
     // MARK: - Render harness (drawHierarchy, not ImageRenderer — asset colors)
 
     private func snapshot<V: View>(_ name: String, @ViewBuilder _ content: () -> V) {

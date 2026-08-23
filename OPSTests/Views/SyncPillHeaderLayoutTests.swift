@@ -45,9 +45,9 @@ final class SyncPillHeaderLayoutTests: XCTestCase {
     /// `.home` is deliberately absent: its avatar branch reads
     /// `dataController.syncEngine`, an implicitly-unwrapped property that a bare
     /// `DataController()` leaves nil, so rendering it in a unit-test host traps
-    /// (AppHeader.swift:206). Home is covered by the same structural invariant —
-    /// the band is offset by whatever height the header reports, whichever
-    /// header that is.
+    /// (AppHeader.swift:206). Home now owns an in-flow status row and has its own
+    /// `HomeSyncStatusLayoutTests`; this suite protects the remaining floating
+    /// non-Home placement.
     private let searchHeaders: [(type: AppHeader.HeaderType, name: String)] = [
         (.jobBoard, "jobBoard"),
         (.schedule, "schedule"),

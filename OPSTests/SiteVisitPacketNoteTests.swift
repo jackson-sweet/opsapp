@@ -79,6 +79,22 @@ final class SiteVisitPacketNoteTests: XCTestCase {
         XCTAssertEqual(checklist, ["Power on site — yes"])
     }
 
+    func testPacketCarriesTheVisitRecorderForEveryReceivingDevice() throws {
+        let payload = SiteVisitProjectPayloadBuilder.payload(
+            siteVisitId: "sv-1",
+            opportunityId: "opp-1",
+            address: nil,
+            artifacts: [artifact(kind: .photo)],
+            recordedByUserId: "310fbd03-4ffd-4432-b502-e20aff43d548"
+        )
+        let packet = try XCTUnwrap(
+            SiteVisitPacketNote.build(artifacts: [artifact(kind: .photo)], payload: payload)
+        )
+        let metadata = try XCTUnwrap(SiteVisitPacketMetadata.decode(from: packet.metadataJSON))
+
+        XCTAssertEqual(metadata.recordedByUserId, "310fbd03-4ffd-4432-b502-e20aff43d548")
+    }
+
     func testPhotoOnlyPacketStillBuildsForTheFeedCard() throws {
         // A visit that captured only photos previously produced NO packet note
         // (noteLines empty) — the feed showed nothing about the visit. The
@@ -92,6 +108,27 @@ final class SiteVisitPacketNoteTests: XCTestCase {
         )
         XCTAssertEqual(metadata["photo_count"] as? Int, 1)
         XCTAssertTrue(packet.content.hasPrefix("SITE VISIT PACKET"))
+    }
+
+    func testDeckOnlyPacketStillBuildsForTheRecordAction() throws {
+        let designId = "bff17fb7-af08-457b-9062-822d25270e9a"
+        let deck = SiteVisitCaptureArtifact(
+            siteVisitId: "sv-1",
+            companyId: "c1",
+            kind: .deckDesign,
+            source: .deckBuilder,
+            deckDesignId: designId
+        )
+        let payload = SiteVisitProjectPayloadBuilder.payload(
+            siteVisitId: "sv-1",
+            opportunityId: "opp-1",
+            address: nil,
+            artifacts: [deck]
+        )
+
+        let packet = try XCTUnwrap(SiteVisitPacketNote.build(artifacts: [deck], payload: payload))
+        let metadata = try XCTUnwrap(SiteVisitPacketMetadata.decode(from: packet.metadataJSON))
+        XCTAssertEqual(metadata.deckDesignId, designId)
     }
 
     func testEmptyPacketBuildsNothing() {
@@ -138,7 +175,8 @@ final class SiteVisitPacketNoteTests: XCTestCase {
 
         let permitted: Set<String> = [
             "site_visit_id", "photo_count", "measurements", "notes",
-            "checklist", "checklist_items", "address", "contact_name", "company_name", "deck_design_id"
+            "checklist", "checklist_items", "address", "contact_name", "company_name", "deck_design_id",
+            "recorded_by_user_id"
         ]
         XCTAssertTrue(
             Set(metadata.keys).isSubset(of: permitted),

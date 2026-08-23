@@ -227,6 +227,28 @@ final class SiteVisitRecordTests: XCTestCase {
         XCTAssertEqual(subject.photoURLs, ["a.jpg", "b.jpg", "c.jpg"])
     }
 
+    func test_projectPhotoUsesRenderedEvidenceAndKeepsTheRemoteThumbnail() {
+        let subject = SiteVisitRecord.Photo.projectPhoto(
+            sourceURL: "https://cdn.example.com/raw.heic",
+            renderedURL: " https://cdn.example.com/rendered.jpg ",
+            thumbnailURL: " https://cdn.example.com/thumb.jpg "
+        )
+
+        XCTAssertEqual(subject.displayURL, "https://cdn.example.com/rendered.jpg")
+        XCTAssertEqual(subject.thumbnailURL, "https://cdn.example.com/thumb.jpg")
+    }
+
+    func test_projectPhotoFallsBackToTheSourceWhenNoRenderedAssetExists() {
+        let subject = SiteVisitRecord.Photo.projectPhoto(
+            sourceURL: "https://cdn.example.com/raw.jpg",
+            renderedURL: "  ",
+            thumbnailURL: nil
+        )
+
+        XCTAssertEqual(subject.displayURL, "https://cdn.example.com/raw.jpg")
+        XCTAssertNil(subject.thumbnailURL)
+    }
+
     /// The count comes from the metadata (written at capture, device-independent);
     /// the thumbnails come from synced project photos, which may not have landed
     /// on this device yet. The tally must still be honest.

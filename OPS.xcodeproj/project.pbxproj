@@ -915,7 +915,7 @@
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = OPSShareExtension/OPSShareExtension.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 3.0.3;
+				CURRENT_PROJECT_VERSION = 3.0.5;
 				DEVELOPMENT_TEAM = X47H96M34K;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = OPSShareExtension/Info.plist;
@@ -926,7 +926,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 3.0.3;
+				MARKETING_VERSION = 3.0.5;
 				PRODUCT_BUNDLE_IDENTIFIER = co.opsapp.ops.OPS.ShareExtension;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
@@ -942,7 +942,7 @@
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = OPSShareExtension/OPSShareExtension.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 3.0.3;
+				CURRENT_PROJECT_VERSION = 3.0.5;
 				DEVELOPMENT_TEAM = X47H96M34K;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = OPSShareExtension/Info.plist;
@@ -953,7 +953,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 3.0.3;
+				MARKETING_VERSION = 3.0.5;
 				PRODUCT_BUNDLE_IDENTIFIER = co.opsapp.ops.OPS.ShareExtension;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
@@ -969,7 +969,7 @@
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = OPSCallDirectory/OPSCallDirectory.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 3.0.3;
+				CURRENT_PROJECT_VERSION = 3.0.5;
 				DEVELOPMENT_TEAM = X47H96M34K;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = OPSCallDirectory/Info.plist;
@@ -980,7 +980,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 3.0.3;
+				MARKETING_VERSION = 3.0.5;
 				PRODUCT_BUNDLE_IDENTIFIER = co.opsapp.ops.OPS.CallDirectory;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
@@ -996,7 +996,7 @@
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = OPSCallDirectory/OPSCallDirectory.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 3.0.3;
+				CURRENT_PROJECT_VERSION = 3.0.5;
 				DEVELOPMENT_TEAM = X47H96M34K;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = OPSCallDirectory/Info.plist;
@@ -1007,7 +1007,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 3.0.3;
+				MARKETING_VERSION = 3.0.5;
 				PRODUCT_BUNDLE_IDENTIFIER = co.opsapp.ops.OPS.CallDirectory;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";

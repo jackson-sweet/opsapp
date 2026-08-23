@@ -29,6 +29,7 @@ enum SiteVisitProjectHandoff {
     ) {
         let resolvedSyncEngine = syncEngine ?? dataController?.syncEngine
         let resolvedImageSync = imageSync ?? dataController?.imageSyncManager
+        let recordAuthorId = payload.recordedByUserId ?? userId
 
         let included = artifacts
             .filter { $0.isActive && $0.includedInProjectReview }
@@ -39,7 +40,7 @@ enum SiteVisitProjectHandoff {
             payload: payload,
             projectId: projectId,
             companyId: companyId,
-            userId: userId,
+            userId: recordAuthorId,
             modelContext: modelContext,
             imageSync: resolvedImageSync
         )
@@ -47,7 +48,7 @@ enum SiteVisitProjectHandoff {
             from: included,
             projectId: projectId,
             companyId: companyId,
-            userId: userId,
+            userId: recordAuthorId,
             modelContext: modelContext
         ) || queuedDurableOperation
         queuedDurableOperation = insertProjectNotes(
@@ -55,7 +56,7 @@ enum SiteVisitProjectHandoff {
             payload: payload,
             projectId: projectId,
             companyId: companyId,
-            userId: userId,
+            userId: recordAuthorId,
             modelContext: modelContext
         ) || queuedDurableOperation
         queuedDurableOperation = attachDeckDesigns(
@@ -497,12 +498,16 @@ enum SiteVisitProjectHandoff {
         guard hasEvidence else { return nil }
 
         let primaryVisitId = artifacts.last(where: { $0.isActive })?.siteVisitId ?? ids[ids.count - 1]
+        let recordedByUserId = visits.first(where: {
+            canonicalLocalVisitID($0.id) == canonicalLocalVisitID(primaryVisitId)
+        })?.createdBy
         let payload = SiteVisitProjectPayloadBuilder.payload(
             siteVisitId: primaryVisitId,
             opportunityId: opportunityId,
             address: opportunityAddress,
             artifacts: artifacts,
-            checklistAnswers: answers
+            checklistAnswers: answers,
+            recordedByUserId: recordedByUserId
         )
         return (payload, artifacts)
     }

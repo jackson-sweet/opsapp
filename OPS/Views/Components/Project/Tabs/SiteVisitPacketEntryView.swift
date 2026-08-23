@@ -48,27 +48,139 @@ struct SiteVisitRecordViewerState: Identifiable, Equatable {
 /// it behind the still-open sheet and the thumbnail appears unresponsive.
 struct SiteVisitRecordSheet: View {
     let record: SiteVisitRecord
-    let projectId: String
+    let projectId: String?
+    let opportunityId: String?
+    let companyId: String?
+    let deckTitle: String?
 
     @EnvironmentObject private var dataController: DataController
+    @Environment(\.modelContext) private var modelContext
     @State private var viewerState: SiteVisitRecordViewerState?
+    @State private var deckDesignToOpen: DeckDesign?
+
+    init(
+        record: SiteVisitRecord,
+        projectId: String? = nil,
+        opportunityId: String? = nil,
+        companyId: String? = nil,
+        deckTitle: String? = nil
+    ) {
+        self.record = record
+        self.projectId = projectId
+        self.opportunityId = opportunityId
+        self.companyId = companyId
+        self.deckTitle = deckTitle
+    }
 
     var body: some View {
         SiteVisitRecordView(
             record: record,
             onPhotoTap: { photos, index in
                 viewerState = .selecting(photos: photos, index: index)
-            }
+            },
+            onDeckTap: record.hasDeckDesign ? openDeckDesign : nil
         )
         .fullScreenCover(item: $viewerState) { state in
-            PhotoCommentViewer(
-                photos: state.photos,
-                initialIndex: state.index,
-                onDismiss: { viewerState = nil },
-                projectId: projectId
-            )
-            .environmentObject(dataController)
+            if let projectId {
+                PhotoCommentViewer(
+                    photos: state.photos,
+                    initialIndex: state.index,
+                    onDismiss: { viewerState = nil },
+                    projectId: projectId
+                )
+                .environmentObject(dataController)
+            } else {
+                BasicPhotoViewer(
+                    photos: state.photos,
+                    initialIndex: state.index,
+                    onDismiss: { viewerState = nil }
+                )
+            }
         }
+        .fullScreenCover(item: $deckDesignToOpen) { design in
+            DeckBuilderView(
+                deckDesign: design,
+                modelContext: modelContext,
+                syncEngine: dataController.syncEngine,
+                projectName: deckTitle ?? design.title
+            )
+        }
+    }
+
+    private func openDeckDesign() {
+        Task { @MainActor in
+            guard let designId = record.deckDesignId else { return }
+            if let local = localDeckDesign(id: designId) {
+                deckDesignToOpen = local
+                return
+            }
+
+            await repairDeckDesign(id: designId)
+            if let repaired = localDeckDesign(id: designId) {
+                deckDesignToOpen = repaired
+            } else {
+                ToastCenter.shared.present(Toast(label: "// DECK DESIGN UNAVAILABLE", tone: .error))
+            }
+        }
+    }
+
+    @MainActor
+    private func localDeckDesign(id: String) -> DeckDesign? {
+        let canonicalId = DeckDesign.canonicalUUIDString(id)
+        let descriptor = FetchDescriptor<DeckDesign>(
+            predicate: #Predicate<DeckDesign> { $0.id == canonicalId }
+        )
+        return (try? modelContext.fetch(descriptor))?.first(where: { $0.deletedAt == nil })
+    }
+
+    @MainActor
+    private func repairDeckDesign(id: String) async {
+        guard let effectiveCompanyId else { return }
+        let repository = DeckDesignRepository(companyId: effectiveCompanyId)
+        var dtos: [SupabaseDeckDesignDTO] = []
+
+        if let projectId {
+            dtos.append(contentsOf: (
+                try? await repository.fetchForProject(DeckDesign.canonicalUUIDString(projectId))
+            ) ?? [])
+        }
+        if !dtos.contains(where: { DeckDesign.canonicalUUIDString($0.id) == DeckDesign.canonicalUUIDString(id) }),
+           let opportunityId {
+            dtos.append(contentsOf: (
+                try? await repository.fetchForOpportunity(DeckDesign.canonicalUUIDString(opportunityId))
+            ) ?? [])
+        }
+
+        guard let dto = dtos.first(where: {
+            DeckDesign.canonicalUUIDString($0.id) == DeckDesign.canonicalUUIDString(id)
+        }) else { return }
+
+        let canonicalId = DeckDesign.canonicalUUIDString(dto.id)
+        let descriptor = FetchDescriptor<DeckDesign>(
+            predicate: #Predicate<DeckDesign> { $0.id == canonicalId }
+        )
+        if let existing = (try? modelContext.fetch(descriptor))?.first {
+            existing.applyServerSnapshot(dto, accepting: Set(DeckDesign.serverMergeFields))
+            existing.lastSyncedAt = Date()
+            existing.needsSync = false
+        } else {
+            let model = dto.toModel()
+            model.lastSyncedAt = Date()
+            model.needsSync = false
+            modelContext.insert(model)
+        }
+        try? modelContext.save()
+    }
+
+    private var effectiveCompanyId: String? {
+        [
+            companyId,
+            dataController.currentUser?.companyId,
+            UserDefaults.standard.string(forKey: "currentUserCompanyId"),
+            UserDefaults.standard.string(forKey: "company_id")
+        ]
+            .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .first { !$0.isEmpty }
     }
 }
 
@@ -84,6 +196,8 @@ struct SiteVisitPacketEntryView: View {
     @Query private var projectPhotos: [ProjectPhoto]
     /// The lead this job came from — the only place the visit's value is read.
     @Query private var linkedOpportunities: [Opportunity]
+    @Query private var siteVisits: [SiteVisit]
+    @Query private var teamMembers: [TeamMember]
 
     @State private var showRecord = false
 
@@ -99,6 +213,11 @@ struct SiteVisitPacketEntryView: View {
         _linkedOpportunities = Query(
             filter: #Predicate<Opportunity> { $0.projectId == pid }
         )
+        let cid = note.companyId
+        _siteVisits = Query(filter: #Predicate<SiteVisit> {
+            $0.companyId == cid && $0.deletedAt == nil
+        })
+        _teamMembers = Query()
     }
 
     private var metadata: SiteVisitPacketMetadata? {
@@ -108,13 +227,46 @@ struct SiteVisitPacketEntryView: View {
     /// Photos captured by THIS visit: matched by site_visit_id when the
     /// metadata carries one, else any site-visit-sourced photo on the project
     /// (legacy packets written before ids landed in metadata).
-    private var visitPhotoURLs: [String] {
+    private var visitPhotos: [SiteVisitRecord.Photo] {
         let eligible = projectPhotos.filter { $0.isGalleryEligible }
         if let visitId = metadata?.siteVisitId, !visitId.isEmpty {
             let matched = eligible.filter { $0.siteVisitId == visitId }
-            if !matched.isEmpty { return matched.map(\.url) }
+            if !matched.isEmpty { return matched.map(Self.recordPhoto) }
         }
-        return eligible.filter { $0.source == "site_visit" }.map(\.url)
+        return eligible.filter { $0.source == "site_visit" }.map(Self.recordPhoto)
+    }
+
+    private static func recordPhoto(_ photo: ProjectPhoto) -> SiteVisitRecord.Photo {
+        .projectPhoto(
+            sourceURL: photo.url,
+            renderedURL: photo.renderedURL,
+            thumbnailURL: photo.thumbnailURL
+        )
+    }
+
+    private var recorderUserId: String? {
+        if let recordedByUserId = metadata?.recordedByUserId,
+           !recordedByUserId.isEmpty {
+            return recordedByUserId
+        }
+        if let visitId = metadata?.siteVisitId,
+           let recorder = siteVisits.first(where: {
+               DeckDesign.canonicalUUIDString($0.id) == DeckDesign.canonicalUUIDString(visitId)
+           })?.createdBy {
+            return recorder
+        }
+        return note.authorId
+    }
+
+    private var recorderTeamMember: TeamMember? {
+        guard let recorderUserId else { return teamMember }
+        return teamMembers.first(where: {
+            DeckDesign.canonicalUUIDString($0.id) == DeckDesign.canonicalUUIDString(recorderUserId)
+        }) ?? teamMember
+    }
+
+    private var recorderName: String {
+        recorderTeamMember?.fullName ?? authorName
     }
 
     /// The one place financial visibility is decided for this surface.
@@ -128,9 +280,9 @@ struct SiteVisitPacketEntryView: View {
     private var record: SiteVisitRecord {
         SiteVisitRecord.assemble(
             metadata: metadata,
-            photoURLs: visitPhotoURLs,
+            photos: visitPhotos,
             capturedAt: note.createdAt,
-            operatorName: authorName,
+            operatorName: recorderName,
             estimatedValue: linkedOpportunities.first?.estimatedValue,
             canViewFinancials: permissionStore.can("finances.view")
         )
@@ -139,13 +291,16 @@ struct SiteVisitPacketEntryView: View {
     var body: some View {
         SiteVisitRecordCard(
             record: record,
-            teamMember: teamMember,
+            teamMember: recorderTeamMember,
             onOpen: { showRecord = true }
         )
         .sheet(isPresented: $showRecord) {
             SiteVisitRecordSheet(
                 record: record,
-                projectId: note.projectId
+                projectId: note.projectId,
+                opportunityId: linkedOpportunities.first?.id,
+                companyId: note.companyId,
+                deckTitle: linkedOpportunities.first?.deckDesignTitle
             )
             .environmentObject(dataController)
         }

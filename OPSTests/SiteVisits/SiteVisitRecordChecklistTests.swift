@@ -242,6 +242,44 @@ final class SiteVisitRecordChecklistTests: XCTestCase {
         XCTAssertEqual(items.map(\.value), ["Walkthrough complete", "Original unprefixed answer"])
     }
 
+    func testDeckChecklistKeepsTheIdentifierInternalAndUsesTheDedicatedDeckSection() throws {
+        let deckDesignId = "bff17fb7-af08-457b-9062-822d25270e9a"
+        let deckAnswer = answer(
+            id: "answer-deck",
+            fieldId: "deck-design",
+            label: "Deck design",
+            kind: .deckDesign,
+            sortOrder: 10,
+            value: .deckDesign(deckDesignId)
+        )
+        let deckArtifact = SiteVisitCaptureArtifact(
+            siteVisitId: "visit-1",
+            companyId: "company-1",
+            kind: .deckDesign,
+            source: .deckBuilder,
+            deckDesignId: deckDesignId
+        )
+        let payload = SiteVisitProjectPayloadBuilder.payload(
+            siteVisitId: "visit-1",
+            opportunityId: "lead-1",
+            address: nil,
+            artifacts: [deckArtifact],
+            checklistAnswers: [deckAnswer]
+        )
+
+        XCTAssertEqual(payload.checklistLines, ["CHECKLIST :: Deck design: DESIGN LINKED"])
+        XCTAssertFalse(payload.checklistLines.joined().contains(deckDesignId))
+
+        let packet = try XCTUnwrap(SiteVisitPacketNote.build(artifacts: [deckArtifact], payload: payload))
+        let metadata = try XCTUnwrap(SiteVisitPacketMetadata.decode(from: packet.metadataJSON))
+        let subject = record(from: metadata)
+
+        XCTAssertEqual(subject.deckDesignId, deckDesignId)
+        XCTAssertTrue(subject.hasDeckDesign)
+        XCTAssertTrue(subject.checklistItems.isEmpty, "The deck action owns this field; a duplicate checklist row must not render.")
+        XCTAssertEqual(subject.summaryLine, "DECK")
+    }
+
     func testRecordRetainsEveryPhotoURLForTheViewer() {
         let urls = (1...7).map { "file:///tmp/site-visit-photo-\($0).jpg" }
         let subject = SiteVisitRecord.assemble(

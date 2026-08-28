@@ -7,7 +7,7 @@
 Repair the two screenshot-proven layout defects without changing recovery semantics:
 
 - Notifications gives its existing compact sync card a canonical `PENDING SYNC` section label. The card keeps its operation-specific count and status sentence.
-- Home owns the existing recovery indicator inside its measured header so it reserves space before `TODAY / ACTIVE / ALL`. Non-Home roots keep the global below-header fallback; Home project mode yields the top stack to its safety-critical project/navigation controls.
+- Home owns the existing recovery indicator inside its measured header so it reserves space before `TODAY / ACTIVE / ALL`. Project mode keeps the same control in its dedicated top project stack; non-Home roots keep the global below-header fallback.
 
 The global `N NEED A LOOK` count remains sourced exclusively from `RecoveryInventory.attentionCount`, including parked work.
 
@@ -20,7 +20,7 @@ The global `N NEED A LOOK` count remains sourced exclusively from `RecoveryInven
 ## Implementation
 
 1. Add the tokenized `PENDING SYNC` header inside `SyncStatusSection`'s existing visibility gate; preserve the raw panel, count, expansion, and `VIEW ALL` logic.
-2. Add a Home-header placement to `SyncStatusIndicator`, render it only from the active Home `AppHeader`, and suppress MainTab's second copy across Home. Non-Home roots retain the fallback.
+2. Add in-flow Home placements to `SyncStatusIndicator`: the active Home `AppHeader` owns normal mode and the dedicated top project stack owns project mode. Suppress MainTab's second copy across Home; non-Home roots retain the fallback.
 3. Add focused copy/snapshot proof for Notifications and geometry/placement-policy proof for Home at 390pt, 320pt, and accessibility sizes. The in-flow Home control expands and wraps at accessibility sizes instead of painting outside its header inset.
 4. Run the focused sync tests serially, inspect both snapshots, run a generic iOS build, and run `git diff --check`.
 5. Commit only the assigned files, merge the current local `main` safely into the isolated branch, rerun relevant proof, fast-forward local `main`, verify again, and reconcile only the two claimed Supabase rows with local-only evidence.

@@ -971,7 +971,8 @@ struct PINGatedView: View {
                     autoDismissAfter: 4.0,
                     action: ToastAction(label: SyncStatusCopy.connectionRestoredAction) {
                         showPendingWorkFromToast = true
-                    }
+                    },
+                    suppressesSyncStatusIndicator: true
                 )
             )
             // The toast owns its own lifetime from here; clear the flag so a

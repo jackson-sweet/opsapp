@@ -10,8 +10,10 @@
 //  the same `RecoveryInventory` the recovery screen reads (not raw pending).
 //
 //  Placement: Home owns this as an in-flow row inside its measured AppHeader,
-//  so TODAY / ACTIVE / ALL cannot begin underneath it. Other tabs retain the
-//  app-level band below their measured header. See `SyncPillHeaderLayoutTests`.
+//  so TODAY / ACTIVE / ALL cannot begin underneath it. Project mode keeps the
+//  same control inside the top project stack after AppHeader leaves the screen.
+//  Other tabs retain the app-level band below their measured header. See
+//  `SyncPillHeaderLayoutTests`.
 //
 
 import Combine
@@ -59,6 +61,9 @@ struct SyncAttentionPill: View {
     static let accessibilityID = "sync.attention.pill"
 
     private var tone: Color { isParked ? OPSStyle.Colors.rose : OPSStyle.Colors.tan }
+    private var ink: Color {
+        isParked ? OPSStyle.Colors.roseTextM : OPSStyle.Colors.tanTextM
+    }
     private var layoutStyle: SyncAttentionPillLayoutStyle {
         .resolve(
             adaptsForAccessibility: adaptsForAccessibility,
@@ -145,7 +150,7 @@ struct SyncAttentionPill: View {
     private var statusIcon: some View {
         Image(systemName: isParked ? "exclamationmark.circle.fill" : "exclamationmark.circle")
             .font(.system(size: OPSStyle.Layout.IconSize.xs, weight: .semibold))
-            .foregroundColor(tone)
+            .foregroundColor(ink)
     }
 
     private func statusLabel(
@@ -154,7 +159,7 @@ struct SyncAttentionPill: View {
     ) -> some View {
         Text(SyncStatusCopy.PendingWork.pillBadge(count: count))
             .font(OPSStyle.Typography.smallCaption.weight(.bold))
-            .foregroundColor(tone)
+            .foregroundColor(ink)
             .tracking(0.8)
             .lineLimit(lineLimit)
             .fixedSize(horizontal: fixedHorizontal, vertical: !fixedHorizontal)
@@ -164,6 +169,58 @@ struct SyncAttentionPill: View {
 enum SyncStatusIndicatorPlacement: Equatable {
     case appOverlay
     case homeHeader
+    case projectHeader
+}
+
+enum HomeSyncStatusPlacementPolicy {
+    static func showsProjectModeFallback(
+        isInProjectMode: Bool,
+        isSyncStatusPresentationVisible: Bool
+    ) -> Bool {
+        isInProjectMode && !isSyncStatusPresentationVisible
+    }
+}
+
+enum SyncStatusIndicatorVisibility {
+    static func isVisible(
+        attentionCount: Int,
+        hasPendingSyncs: Bool,
+        isConnected: Bool,
+        isSyncing: Bool,
+        isSyncStatusPresentationVisible: Bool
+    ) -> Bool {
+        guard !isSyncStatusPresentationVisible else { return false }
+        return attentionCount > 0 || (hasPendingSyncs && !isConnected) || isSyncing
+    }
+}
+
+/// SwiftUI can reverse an in-flight transition when project mode changes
+/// quickly. Phase ownership keeps both the incoming and settled host live while
+/// making only a fully departed snapshot inert.
+enum HomeSyncStatusHostOwnership {
+    static func isInteractive(phase: TransitionPhase) -> Bool {
+        phase != .didDisappear
+    }
+}
+
+struct HomeSyncStatusHostTransition: Transition {
+    let reduceMotion: Bool
+
+    @ViewBuilder
+    func body(content: Content, phase: TransitionPhase) -> some View {
+        if reduceMotion {
+            OpacityTransition()
+                .apply(content: content, phase: phase)
+                .allowsHitTesting(HomeSyncStatusHostOwnership.isInteractive(phase: phase))
+                .accessibilityHidden(!HomeSyncStatusHostOwnership.isInteractive(phase: phase))
+        } else {
+            MoveTransition(edge: .top)
+                .combined(with: OpacityTransition())
+                .apply(content: content, phase: phase)
+                .allowsHitTesting(HomeSyncStatusHostOwnership.isInteractive(phase: phase))
+                .accessibilityHidden(!HomeSyncStatusHostOwnership.isInteractive(phase: phase))
+        }
+    }
 }
 
 /// Stable recovery state owned by MainTabView. Visual placement can switch
@@ -212,6 +269,42 @@ struct AppHeaderSyncStatusRow<Content: View>: View {
     }
 }
 
+/// Keeps project recovery status and EXIT PROJECT in one owned header row.
+/// Accessibility sizes stack the two controls so neither truncates, overlaps,
+/// or steals the other's 44pt hit target.
+struct ProjectModeSyncStatusActions<Status: View, ExitAction: View>: View {
+    private let status: Status
+    private let exitAction: ExitAction
+
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
+    init(
+        @ViewBuilder status: () -> Status,
+        @ViewBuilder exitAction: () -> ExitAction
+    ) {
+        self.status = status()
+        self.exitAction = exitAction()
+    }
+
+    var body: some View {
+        Group {
+            if dynamicTypeSize.isAccessibilitySize {
+                VStack(alignment: .trailing, spacing: OPSStyle.Layout.spacing2) {
+                    status
+                        .frame(maxWidth: .infinity, alignment: .trailing)
+                    exitAction
+                }
+            } else {
+                HStack(spacing: OPSStyle.Layout.spacing2) {
+                    status
+                    Spacer(minLength: 0)
+                    exitAction
+                }
+            }
+        }
+    }
+}
+
 /// Compact indicator showing pending / attention sync status. Tap → PENDING WORK.
 struct SyncStatusIndicator: View {
     var placement: SyncStatusIndicatorPlacement = .appOverlay
@@ -223,7 +316,13 @@ struct SyncStatusIndicator: View {
 
     private var showsPending: Bool { dataController.hasPendingSyncs && !dataController.isConnected }
     private var isVisible: Bool {
-        statusModel.attentionCount > 0 || showsPending || dataController.isSyncing
+        SyncStatusIndicatorVisibility.isVisible(
+            attentionCount: statusModel.attentionCount,
+            hasPendingSyncs: dataController.hasPendingSyncs,
+            isConnected: dataController.isConnected,
+            isSyncing: dataController.isSyncing,
+            isSyncStatusPresentationVisible: false
+        )
     }
 
     var body: some View {
@@ -257,6 +356,7 @@ struct SyncStatusIndicator: View {
             minWidth: OPSStyle.Layout.touchTargetMin,
             minHeight: OPSStyle.Layout.touchTargetMin
         )
+        .accessibilityHint("Opens pending work")
     }
 
     @ViewBuilder
@@ -276,7 +376,7 @@ struct SyncStatusIndicator: View {
             count: statusModel.attentionCount,
             isParked: statusModel.anyParked,
             isElevated: placement == .appOverlay,
-            adaptsForAccessibility: placement == .homeHeader
+            adaptsForAccessibility: placement != .appOverlay
         )
     }
 

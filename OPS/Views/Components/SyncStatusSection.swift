@@ -11,35 +11,64 @@
 import SwiftUI
 
 struct SyncStatusSection: View {
+    struct RenderState {
+        let pending: [SyncOperation]
+        let failed: [SyncOperation]
+        let isSyncing: Bool
+        let trackedCount: Int
+    }
+
     var sectionTitle: String? = nil
+    var renderStateOverride: RenderState? = nil
     @EnvironmentObject private var dataController: DataController
     @State private var isExpanded: Bool = false
+
+    static func shouldRender(
+        pendingCount: Int,
+        failedCount: Int,
+        isSyncing: Bool,
+        trackedCount: Int
+    ) -> Bool {
+        pendingCount > 0 || failedCount > 0 || isSyncing || trackedCount > 0
+    }
 
     /// Access sync state from the engine (SyncEngine is @Observable).
     private var syncEngine: SyncEngine {
         dataController.syncEngine
     }
 
+    private var liveRenderState: RenderState {
+        RenderState(
+            pending: syncEngine.getPendingOperations(),
+            failed: syncEngine.getFailedOperations(),
+            isSyncing: syncEngine.isSyncing,
+            trackedCount: syncEngine.pendingOperationCount
+        )
+    }
+
     var body: some View {
         // Read tracked engine state so the view re-renders when sync changes,
         // then fetch the live operation lists for display.
-        let isSyncing = syncEngine.isSyncing
-        let pending = syncEngine.getPendingOperations()
-        let failed = syncEngine.getFailedOperations()
-        // Reading pendingOperationCount keeps the @Observable subscription live
-        // so the panel re-renders as operations move between pending/failed/done.
-        let trackedCount = syncEngine.pendingOperationCount
+        // The override is a narrow visual-test seam; production always takes
+        // this live path. Reading trackedCount keeps @Observable subscribed as
+        // operations move between pending, failed, and done.
+        let state = renderStateOverride ?? liveRenderState
 
-        if !pending.isEmpty || !failed.isEmpty || isSyncing || trackedCount > 0 {
+        if Self.shouldRender(
+            pendingCount: state.pending.count,
+            failedCount: state.failed.count,
+            isSyncing: state.isSyncing,
+            trackedCount: state.trackedCount
+        ) {
             VStack(spacing: 0) {
                 if let sectionTitle {
                     SyncStatusSectionHeader(title: sectionTitle)
                 }
 
                 SyncStatusPanel(
-                    pending: pending,
-                    failed: failed,
-                    isSyncing: isSyncing,
+                    pending: state.pending,
+                    failed: state.failed,
+                    isSyncing: state.isSyncing,
                     isExpanded: $isExpanded,
                     onRetry: { requeue([$0]) },
                     onRetryAll: { requeue($0) },

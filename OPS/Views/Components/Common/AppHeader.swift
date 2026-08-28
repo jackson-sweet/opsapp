@@ -65,6 +65,7 @@ struct AppHeader: View {
     @EnvironmentObject private var dataController: DataController
     @EnvironmentObject private var subscriptionManager: SubscriptionManager
     @EnvironmentObject private var appState: AppState
+    @ObservedObject private var toastCenter = ToastCenter.shared
     /// Only the header in the tab on screen may claim the band height — see
     /// `AppHeaderHeightKey`.
     @Environment(\.isActiveTab) private var isActiveTab
@@ -163,7 +164,8 @@ struct AppHeader: View {
             // Inactive retained Home roots create no monitor or sheet host.
             if headerType == .home,
                isActiveTab,
-               !dataController.showSyncRestoredAlert {
+               !dataController.showSyncRestoredAlert,
+               !toastCenter.isSuppressingSyncStatusIndicator {
                 SyncStatusIndicator(placement: .homeHeader)
             }
         }

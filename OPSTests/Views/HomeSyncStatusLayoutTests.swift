@@ -39,10 +39,78 @@ final class HomeSyncStatusLayoutTests: XCTestCase {
         }
     }
 
+    private struct ExitBoundsKey: PreferenceKey {
+        static let defaultValue: Anchor<CGRect>? = nil
+        static func reduce(value: inout Anchor<CGRect>?, nextValue: () -> Anchor<CGRect>?) {
+            value = nextValue() ?? value
+        }
+    }
+
     private final class Measurements {
         var pill: CGRect?
         var header: CGRect?
         var filters: CGRect?
+        var exitAction: CGRect?
+    }
+
+    /// Uses the production project-mode action row with the real recovery pill.
+    /// The project card itself is intentionally omitted: this isolates the two
+    /// adjacent controls whose hit targets must never overlap.
+    private struct ProjectModeHarness: View {
+        let count: Int
+        var width: CGFloat = 390
+        var typeSize: DynamicTypeSize = .large
+        var sink: Measurements?
+
+        var body: some View {
+            ProjectModeSyncStatusActions {
+                SyncAttentionPill(
+                    count: count,
+                    isParked: false,
+                    isElevated: false,
+                    adaptsForAccessibility: true
+                )
+                .frame(
+                    minWidth: OPSStyle.Layout.touchTargetMin,
+                    minHeight: OPSStyle.Layout.touchTargetMin
+                )
+                .anchorPreference(key: PillBoundsKey.self, value: .bounds) { $0 }
+            } exitAction: {
+                Text("EXIT PROJECT")
+                    .font(OPSStyle.Typography.smallButton)
+                    .foregroundColor(OPSStyle.Colors.cardBackground)
+                    .padding(.horizontal, OPSStyle.Layout.spacing3)
+                    .frame(minHeight: OPSStyle.Layout.touchTargetMin)
+                    .background(OPSStyle.Colors.primaryText)
+                    .clipShape(
+                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                    )
+                    .anchorPreference(key: ExitBoundsKey.self, value: .bounds) { $0 }
+            }
+            .padding(.horizontal, OPSStyle.Layout.spacing3)
+            .frame(width: width, alignment: .top)
+            .background(OPSStyle.Colors.background)
+            .environment(\.colorScheme, .dark)
+            .dynamicTypeSize(typeSize)
+            .overlayPreferenceValue(PillBoundsKey.self) { anchor in
+                GeometryReader { proxy -> Color in
+                    if let sink, let anchor {
+                        sink.pill = proxy[anchor]
+                    }
+                    return Color.clear
+                }
+                .allowsHitTesting(false)
+            }
+            .overlayPreferenceValue(ExitBoundsKey.self) { anchor in
+                GeometryReader { proxy -> Color in
+                    if let sink, let anchor {
+                        sink.exitAction = proxy[anchor]
+                    }
+                    return Color.clear
+                }
+                .allowsHitTesting(false)
+            }
+        }
     }
 
     /// Mirrors Home's production boundary without starting its Mapbox and data
@@ -215,7 +283,7 @@ final class HomeSyncStatusLayoutTests: XCTestCase {
             SyncStatusPlacementPolicy.showsMainTabOverlay(
                 selectedTab: 0
             ),
-            "Home never accepts the free overlay: it owns the in-flow row normally and yields in project mode"
+            "Home never accepts the free overlay: both Home modes own an in-flow status host"
         )
         XCTAssertTrue(
             SyncStatusPlacementPolicy.showsMainTabOverlay(
@@ -223,6 +291,119 @@ final class HomeSyncStatusLayoutTests: XCTestCase {
             ),
             "Non-Home roots must retain the app-level indicator"
         )
+    }
+
+    func testHomeKeepsAnInFlowIndicatorWhenProjectModeRemovesTheHeader() {
+        XCTAssertFalse(
+            HomeSyncStatusPlacementPolicy.showsProjectModeFallback(
+                isInProjectMode: false,
+                isSyncStatusPresentationVisible: false
+            ),
+            "Normal Home owns the indicator in its measured header"
+        )
+        XCTAssertTrue(
+            HomeSyncStatusPlacementPolicy.showsProjectModeFallback(
+                isInProjectMode: true,
+                isSyncStatusPresentationVisible: false
+            ),
+            "Project mode must retain an in-flow indicator when AppHeader is absent"
+        )
+        XCTAssertFalse(
+            HomeSyncStatusPlacementPolicy.showsProjectModeFallback(
+                isInProjectMode: true,
+                isSyncStatusPresentationVisible: true
+            ),
+            "A visible reconnect presentation remains the single sync-status voice"
+        )
+    }
+
+    func testOutgoingHomeStatusHostReleasesInteractionAndAccessibilityOwnership() {
+        XCTAssertTrue(
+            HomeSyncStatusHostOwnership.isInteractive(phase: .willAppear),
+            "A reversing host must recover ownership before it is fully settled"
+        )
+        XCTAssertTrue(
+            HomeSyncStatusHostOwnership.isInteractive(phase: .identity),
+            "The settled host owns interaction and accessibility"
+        )
+        XCTAssertFalse(
+            HomeSyncStatusHostOwnership.isInteractive(phase: .didDisappear),
+            "Only a fully departed transition snapshot is inert"
+        )
+    }
+
+    func testHomeTransitionVisibilityMatchesTheProductionIndicatorStates() {
+        XCTAssertTrue(
+            SyncStatusIndicatorVisibility.isVisible(
+                attentionCount: 1,
+                hasPendingSyncs: false,
+                isConnected: true,
+                isSyncing: false,
+                isSyncStatusPresentationVisible: false
+            )
+        )
+        XCTAssertTrue(
+            SyncStatusIndicatorVisibility.isVisible(
+                attentionCount: 0,
+                hasPendingSyncs: true,
+                isConnected: false,
+                isSyncing: false,
+                isSyncStatusPresentationVisible: false
+            )
+        )
+        XCTAssertTrue(
+            SyncStatusIndicatorVisibility.isVisible(
+                attentionCount: 0,
+                hasPendingSyncs: false,
+                isConnected: true,
+                isSyncing: true,
+                isSyncStatusPresentationVisible: false
+            )
+        )
+        XCTAssertFalse(
+            SyncStatusIndicatorVisibility.isVisible(
+                attentionCount: 1,
+                hasPendingSyncs: true,
+                isConnected: false,
+                isSyncing: true,
+                isSyncStatusPresentationVisible: true
+            )
+        )
+    }
+
+    func testProjectModeStatusAndExitActionsNeverOverlap() throws {
+        let cases: [(width: CGFloat, count: Int, typeSize: DynamicTypeSize)] = [
+            (390, 1, .large),
+            (320, 128, .accessibility5),
+        ]
+
+        for testCase in cases {
+            let sink = Measurements()
+            _ = try FixedSizeSnapshot.render(
+                ProjectModeHarness(
+                    count: testCase.count,
+                    width: testCase.width,
+                    typeSize: testCase.typeSize,
+                    sink: sink
+                ),
+                size: CGSize(width: testCase.width, height: 220)
+            )
+
+            let label = "Project mode @ \(Int(testCase.width))pt count \(testCase.count)"
+            let pill = try XCTUnwrap(sink.pill, "\(label): status was never measured")
+            let exitAction = try XCTUnwrap(
+                sink.exitAction,
+                "\(label): EXIT PROJECT was never measured"
+            )
+
+            XCTAssertFalse(pill.intersects(exitAction), "\(label): action hit targets overlap")
+            XCTAssertGreaterThanOrEqual(pill.minX, 0, "\(label): status escapes screen")
+            XCTAssertLessThanOrEqual(
+                max(pill.maxX, exitAction.maxX),
+                testCase.width,
+                "\(label): project actions escape screen"
+            )
+        }
     }
 
     func testHomePillExpandsInsteadOfOverflowingAtAccessibilitySizes() {
@@ -259,6 +440,11 @@ final class HomeSyncStatusLayoutTests: XCTestCase {
         try snapshot(
             "sync-pill-home-header-a11y5-count-128",
             harness(count: 128, width: 320, typeSize: .accessibility5),
+            width: 320
+        )
+        try snapshot(
+            "sync-pill-project-header-a11y5-count-128",
+            ProjectModeHarness(count: 128, width: 320, typeSize: .accessibility5),
             width: 320
         )
     }

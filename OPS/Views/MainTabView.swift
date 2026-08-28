@@ -13,9 +13,8 @@ import Combine
 import MapKit
 
 /// Normal Home renders the recovery indicator inside its measured AppHeader.
-/// Home project mode deliberately yields the top stack to the safety-critical
-/// active-project/navigation controls. Every non-Home root keeps the app-level
-/// fallback below its measured header.
+/// Home project mode moves the same control into the owned project header stack.
+/// Every non-Home root keeps the app-level fallback below its measured header.
 enum SyncStatusPlacementPolicy {
     static func showsMainTabOverlay(selectedTab: Int) -> Bool {
         selectedTab != 0
@@ -63,6 +62,7 @@ struct MainTabView: View {
     /// switches must never pay the multi-fetch recovery load or drop debounce.
     @StateObject private var syncStatusIndicatorModel = SyncStatusIndicatorModel()
     @StateObject private var syncStatusRefreshMonitor = RecoveryRefreshMonitor()
+    @ObservedObject private var toastCenter = ToastCenter.shared
     // Drives the global tab-bar overlay's visibility. Pushed detail screens with a
     // bottom action bar fade the tab bar out via `.hidesGlobalTabBar()` so their
     // primary CTA isn't occluded by the 100pt overlay.
@@ -504,8 +504,9 @@ struct MainTabView: View {
                 ImageSyncProgressView(syncManager: imageSyncProgressManager)
 
                 // Hidden while the restored banner speaks, and suppressed on
-                // normal Home so there is exactly one in-flow indicator there.
+                // Home because both normal and project modes own an in-flow host.
                 if !dataController.showSyncRestoredAlert,
+                   !toastCenter.isSuppressingSyncStatusIndicator,
                    SyncStatusPlacementPolicy.showsMainTabOverlay(
                        selectedTab: selectedTab
                    ) {

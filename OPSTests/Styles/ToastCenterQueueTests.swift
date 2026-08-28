@@ -3,7 +3,7 @@
 //  OPSTests
 //
 //  Deterministic tests for the ToastCenter FIFO queue: coalescing, advancing,
-//  cap, and manual-hold errors. Drives the queue synchronously (no timer waits).
+//  cap, manual-hold errors, and transition-bound sync-indicator suppression.
 //
 
 import XCTest
@@ -52,6 +52,117 @@ final class ToastCenterQueueTests: XCTestCase {
         XCTAssertEqual(center.current?.label, "// B")
         center.dismiss()
         XCTAssertNil(center.current)
+    }
+
+    func testSyncIndicatorSuppressionFollowsVisibleToastThroughRemoval() async {
+        center.present(Toast(label: "// FIRST", tone: .success, autoDismissAfter: 600))
+        center.present(
+            Toast(
+                label: "// SYNC RESTORED",
+                tone: .success,
+                autoDismissAfter: 600,
+                suppressesSyncStatusIndicator: true
+            )
+        )
+
+        XCTAssertFalse(center.isSuppressingSyncStatusIndicator)
+        center.dismiss()
+        XCTAssertTrue(center.isSuppressingSyncStatusIndicator)
+        center.dismiss()
+        XCTAssertTrue(center.isSuppressingSyncStatusIndicator)
+
+        try? await Task.sleep(
+            nanoseconds: UInt64(
+                (OPSStyle.Animation.durationPanel + 0.1) * 1_000_000_000
+            )
+        )
+        XCTAssertFalse(center.isSuppressingSyncStatusIndicator)
+    }
+
+    func testSyncIndicatorSuppressionSurvivesQueuedToastReplacement() async {
+        center.present(
+            Toast(
+                label: "// SYNC RESTORED",
+                tone: .success,
+                autoDismissAfter: 600,
+                suppressesSyncStatusIndicator: true
+            )
+        )
+        center.present(Toast(label: "// NEXT", tone: .success, autoDismissAfter: 600))
+
+        center.dismiss()
+        XCTAssertEqual(center.current?.label, "// NEXT")
+        XCTAssertTrue(center.isSuppressingSyncStatusIndicator)
+
+        try? await Task.sleep(
+            nanoseconds: UInt64(
+                (OPSStyle.Animation.durationPage + 0.1) * 1_000_000_000
+            )
+        )
+        XCTAssertFalse(center.isSuppressingSyncStatusIndicator)
+    }
+
+    func testNewToastDuringRemovalCannotReleaseOutgoingSyncSuppression() async {
+        center.present(
+            Toast(
+                label: "// SYNC RESTORED",
+                tone: .success,
+                autoDismissAfter: 600,
+                suppressesSyncStatusIndicator: true
+            )
+        )
+        // Let the dedicated toast host render the banner. Without a rendered
+        // transition there is no outgoing visual lifetime to suppress.
+        try? await Task.sleep(nanoseconds: 50_000_000)
+
+        center.dismiss()
+        XCTAssertTrue(center.isSuppressingSyncStatusIndicator)
+        center.present(Toast(label: "// NEXT", tone: .success, autoDismissAfter: 600))
+        XCTAssertEqual(center.current?.label, "// NEXT")
+        XCTAssertTrue(center.isSuppressingSyncStatusIndicator)
+
+        try? await Task.sleep(
+            nanoseconds: UInt64(
+                (OPSStyle.Animation.durationPanel + 0.1) * 1_000_000_000
+            )
+        )
+        XCTAssertFalse(center.isSuppressingSyncStatusIndicator)
+    }
+
+    func testOverlappingDismissalsRetainEarlierSuppressingRemoval() async {
+        center.present(
+            Toast(
+                label: "// SYNC RESTORED",
+                tone: .success,
+                autoDismissAfter: 600,
+                suppressesSyncStatusIndicator: true
+            )
+        )
+        center.present(Toast(label: "// NEXT", tone: .success, autoDismissAfter: 600))
+
+        center.dismiss()
+        XCTAssertEqual(center.current?.label, "// NEXT")
+        XCTAssertTrue(center.isSuppressingSyncStatusIndicator)
+
+        center.dismiss()
+        XCTAssertNil(center.current)
+        XCTAssertTrue(
+            center.isSuppressingSyncStatusIndicator,
+            "The earlier suppressing banner still owns the latch while its removal is visible"
+        )
+
+        try? await Task.sleep(
+            nanoseconds: UInt64(
+                (OPSStyle.Animation.durationPage + 0.1) * 1_000_000_000
+            )
+        )
+        XCTAssertFalse(center.isSuppressingSyncStatusIndicator)
+    }
+
+    func testOutgoingToastReleasesInteractionAndAccessibilityOwnership() {
+        XCTAssertTrue(ToastBannerOwnership.isInteractive(phase: .willAppear))
+        XCTAssertTrue(ToastBannerOwnership.isInteractive(phase: .identity))
+        XCTAssertFalse(ToastBannerOwnership.isInteractive(phase: .didDisappear))
     }
 
     func testQueueCapDropsOldestAutoDismiss() {

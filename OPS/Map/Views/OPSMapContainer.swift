@@ -26,6 +26,9 @@ struct OPSMapContainer: View {
 
     @ObservedObject var appState: AppState
     @ObservedObject var locationManager: LocationManager
+    @EnvironmentObject private var dataController: DataController
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @ObservedObject private var toastCenter = ToastCenter.shared
 
     // ──────────────────────────────────────────────
     // MARK: - Internal State
@@ -477,15 +480,23 @@ struct OPSMapContainer: View {
             // 7. Top project overlay — shown whenever the user is in project mode.
             //    - Routing → NavigationManeuverCard (expandable turn list)
             //    - Not routing → ActiveProjectCard (static project summary)
-            //    - Below either card → right-aligned EXIT PROJECT pill
+            //    - Below either card → recovery status + EXIT PROJECT actions
             // AppHeader is hidden by HomeContentView while in project mode, so
             // this overlay owns the top of the screen. Positioned at the
             // window's top safe area inset + 8pt breathing room.
             if appState.isInProjectMode {
                 VStack(spacing: 10) {
                     topProjectCard
-                    HStack(spacing: 0) {
-                        Spacer(minLength: 0)
+                    ProjectModeSyncStatusActions {
+                        if HomeSyncStatusPlacementPolicy.showsProjectModeFallback(
+                            isInProjectMode: appState.isInProjectMode,
+                            isSyncStatusPresentationVisible:
+                                dataController.showSyncRestoredAlert ||
+                                toastCenter.isSuppressingSyncStatusIndicator
+                        ) {
+                            SyncStatusIndicator(placement: .projectHeader)
+                        }
+                    } exitAction: {
                         exitProjectPill
                     }
                     Spacer(minLength: 0)
@@ -493,7 +504,7 @@ struct OPSMapContainer: View {
                 .padding(.horizontal, OPSStyle.Layout.spacing3)
                 .padding(.top, topSafeAreaInset + 8)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-                .transition(.move(edge: .top).combined(with: .opacity))
+                .transition(HomeSyncStatusHostTransition(reduceMotion: reduceMotion))
                 .animation(OPSStyle.Animation.standard, value: appState.isInProjectMode)
                 .animation(OPSStyle.Animation.spring, value: coordinator.isNavigating)
                 .animation(OPSStyle.Animation.spring, value: isManeuverExpanded)

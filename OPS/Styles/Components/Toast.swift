@@ -114,6 +114,10 @@ struct Toast: Identifiable, Equatable {
     /// the screen and played the shutter, so a buzz on top of that reads as
     /// the app reacting to being watched rather than confirming an action.
     let haptics: Bool
+    /// A visible reconnect toast already communicates sync state and links to
+    /// Pending Work, so the compact sync indicator yields for its real on-screen
+    /// lifetime. Queued toasts do not suppress anything until they become current.
+    let suppressesSyncStatusIndicator: Bool
 
     init(
         id: UUID = UUID(),
@@ -121,7 +125,8 @@ struct Toast: Identifiable, Equatable {
         tone: ToastTone,
         autoDismissAfter: TimeInterval = 3.0,
         action: ToastAction? = nil,
-        haptics: Bool = true
+        haptics: Bool = true,
+        suppressesSyncStatusIndicator: Bool = false
     ) {
         self.id = id
         self.label = label
@@ -129,6 +134,7 @@ struct Toast: Identifiable, Equatable {
         self.autoDismissAfter = autoDismissAfter
         self.action = action
         self.haptics = haptics
+        self.suppressesSyncStatusIndicator = suppressesSyncStatusIndicator
     }
 
     static func == (lhs: Toast, rhs: Toast) -> Bool { lhs.id == rhs.id }
@@ -143,6 +149,7 @@ final class ToastCenter: ObservableObject {
     static let shared = ToastCenter()
 
     @Published private(set) var current: Toast?
+    @Published private(set) var isSuppressingSyncStatusIndicator = false
 
     /// Pending toasts behind `current`, FIFO. Readable for tests.
     private(set) var queue: [Toast] = []
@@ -156,6 +163,11 @@ final class ToastCenter: ObservableObject {
     private let compressedInterval: TimeInterval = 1.2
 
     private var dismissTask: Task<Void, Never>?
+    /// Only `reset()` invalidates transition callbacks. Each suppressing banner
+    /// owns a distinct removal token so overlapping exits cannot release one
+    /// another's indicator latch.
+    private var suppressionResetGeneration = 0
+    private var activeSuppressingRemovalTokens: Set<UUID> = []
 
     private init() {}
 
@@ -169,7 +181,12 @@ final class ToastCenter: ObservableObject {
         ToastWindowController.shared.install()
         if current?.label == toast.label { return }
         if queue.last?.label == toast.label { return }
-        guard current != nil else { show(toast); return }
+        guard current != nil else {
+            withAnimation(presentationAnimation) {
+                show(toast)
+            }
+            return
+        }
         queue.append(toast)
         trimQueue()
     }
@@ -177,22 +194,65 @@ final class ToastCenter: ObservableObject {
     /// Dismiss the visible toast and advance to the next queued one. Called by
     /// tap and by the auto-dismiss timer.
     func dismiss() {
+        guard let outgoing = current else { return }
         dismissTask?.cancel()
         dismissTask = nil
-        if queue.isEmpty { current = nil }
-        else { show(queue.removeFirst()) }
+
+        let incoming = queue.isEmpty ? nil : queue.removeFirst()
+        let resetGeneration = suppressionResetGeneration
+        let removalToken = outgoing.suppressesSyncStatusIndicator ? UUID() : nil
+        if let removalToken {
+            activeSuppressingRemovalTokens.insert(removalToken)
+            refreshSuppression()
+        }
+
+        withAnimation(
+            dismissalAnimation(hasReplacement: incoming != nil),
+            completionCriteria: .removed
+        ) {
+            if let incoming {
+                show(incoming)
+            } else {
+                current = nil
+                refreshSuppression()
+            }
+        } completion: { [weak self] in
+            guard let self,
+                  self.suppressionResetGeneration == resetGeneration else { return }
+            if let removalToken {
+                self.activeSuppressingRemovalTokens.remove(removalToken)
+            }
+            self.refreshSuppression()
+        }
     }
 
     /// Test/teardown hook — clears all state.
     func reset() {
         dismissTask?.cancel()
         dismissTask = nil
+        suppressionResetGeneration += 1
+        activeSuppressingRemovalTokens.removeAll()
         current = nil
         queue.removeAll()
+        refreshSuppression()
+    }
+
+    private var presentationAnimation: Animation {
+        OPSStyle.Animation.reduceMotion
+            ? OPSStyle.Animation.hover
+            : OPSStyle.Animation.standard
+    }
+
+    private func dismissalAnimation(hasReplacement: Bool) -> Animation {
+        if OPSStyle.Animation.reduceMotion {
+            return OPSStyle.Animation.hover
+        }
+        return hasReplacement ? OPSStyle.Animation.standard : OPSStyle.Animation.panel
     }
 
     private func show(_ toast: Toast) {
         current = toast
+        refreshSuppression()
         let base = toast.autoDismissAfter
         guard base > 0 else { return } // manual-dismiss (error + action)
         let interval = queue.isEmpty ? base : compressedInterval
@@ -207,6 +267,12 @@ final class ToastCenter: ObservableObject {
         }
     }
 
+    private func refreshSuppression() {
+        isSuppressingSyncStatusIndicator =
+            current?.suppressesSyncStatusIndicator == true ||
+            !activeSuppressingRemovalTokens.isEmpty
+    }
+
     private func trimQueue() {
         while queue.count > maxQueue {
             if let idx = queue.firstIndex(where: { $0.autoDismissAfter > 0 }) {
@@ -219,6 +285,32 @@ final class ToastCenter: ObservableObject {
 }
 
 // MARK: - Host view (overlay layer)
+
+enum ToastBannerOwnership {
+    static func isInteractive(phase: TransitionPhase) -> Bool {
+        phase != .didDisappear
+    }
+}
+
+struct ToastBannerTransition: Transition {
+    let reduceMotion: Bool
+
+    @ViewBuilder
+    func body(content: Content, phase: TransitionPhase) -> some View {
+        if reduceMotion {
+            OpacityTransition()
+                .apply(content: content, phase: phase)
+                .allowsHitTesting(ToastBannerOwnership.isInteractive(phase: phase))
+                .accessibilityHidden(!ToastBannerOwnership.isInteractive(phase: phase))
+        } else {
+            MoveTransition(edge: .top)
+                .combined(with: OpacityTransition())
+                .apply(content: content, phase: phase)
+                .allowsHitTesting(ToastBannerOwnership.isInteractive(phase: phase))
+                .accessibilityHidden(!ToastBannerOwnership.isInteractive(phase: phase))
+        }
+    }
+}
 
 /// Internal layer that renders the active toast. Mounted via `.toastHost()`.
 struct ToastHostView: View {
@@ -235,34 +327,19 @@ struct ToastHostView: View {
                     }
                     .padding(.horizontal, OPSStyle.Layout.spacing3)
                     .padding(.top, geometry.safeAreaInsets.top + 8)
-                    .transition(transition)
+                    .id(toast.id)
+                    .transition(ToastBannerTransition(reduceMotion: reduceMotion))
                 }
                 Spacer(minLength: 0)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             .ignoresSafeArea(edges: .top)
-            // Single OPS easing curve cubic-bezier(0.22, 1, 0.36, 1) on every
-            // path: enter = .standard (250ms), exit = .panel (200ms),
-            // reduced-motion crossfade = .hover (150ms). Durations are
-            // unchanged; only the curve is corrected — .fast/.faster are legacy
-            // easeInOut/easeOut aliases that violated the single-curve rule.
-            // (review W-9)
-            .animation(
-                reduceMotion
-                    ? OPSStyle.Animation.hover
-                    : (center.current == nil
-                        ? OPSStyle.Animation.panel
-                        : OPSStyle.Animation.standard),
-                value: center.current?.id
-            )
+            // ToastCenter owns the state transaction so reconnect suppression
+            // is released by the same `.removed` completion that retires this
+            // banner. Enter = standard, exit = panel, replacement = standard;
+            // reduced motion keeps the existing 150ms opacity fallback.
         }
         .allowsHitTesting(center.current != nil)
-    }
-
-    private var transition: AnyTransition {
-        reduceMotion
-            ? .opacity
-            : .move(edge: .top).combined(with: .opacity)
     }
 }
 

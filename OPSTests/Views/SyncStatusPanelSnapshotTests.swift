@@ -20,6 +20,12 @@ import SwiftData
 final class SyncStatusPanelSnapshotTests: XCTestCase {
 
     private let deviceWidth: CGFloat = 390
+    private var retainedContainers: [ModelContainer] = []
+
+    override func tearDown() {
+        retainedContainers.removeAll()
+        super.tearDown()
+    }
 
     private var outDir: URL {
         let dir = URL(fileURLWithPath: NSTemporaryDirectory())
@@ -32,7 +38,51 @@ final class SyncStatusPanelSnapshotTests: XCTestCase {
     private func makeContext() throws -> ModelContext {
         let config = ModelConfiguration(isStoredInMemoryOnly: true)
         let container = try ModelContainer(for: SyncOperation.self, configurations: config)
+        retainedContainers.append(container)
         return ModelContext(container)
+    }
+
+    func testNotificationsSectionVisibilityTracksEveryLiveWorkState() {
+        XCTAssertFalse(
+            SyncStatusSection.shouldRender(
+                pendingCount: 0,
+                failedCount: 0,
+                isSyncing: false,
+                trackedCount: 0
+            )
+        )
+        XCTAssertTrue(
+            SyncStatusSection.shouldRender(
+                pendingCount: 1,
+                failedCount: 0,
+                isSyncing: false,
+                trackedCount: 0
+            )
+        )
+        XCTAssertTrue(
+            SyncStatusSection.shouldRender(
+                pendingCount: 0,
+                failedCount: 1,
+                isSyncing: false,
+                trackedCount: 0
+            )
+        )
+        XCTAssertTrue(
+            SyncStatusSection.shouldRender(
+                pendingCount: 0,
+                failedCount: 0,
+                isSyncing: true,
+                trackedCount: 0
+            )
+        )
+        XCTAssertTrue(
+            SyncStatusSection.shouldRender(
+                pendingCount: 0,
+                failedCount: 0,
+                isSyncing: false,
+                trackedCount: 1
+            )
+        )
     }
 
     private func op(
@@ -107,20 +157,15 @@ final class SyncStatusPanelSnapshotTests: XCTestCase {
         let seeded = seedReporterScenario(context)
 
         try fixedSnapshot("notifications-pending-sync-section") {
-            VStack(spacing: 0) {
-                SyncStatusSectionHeader(
-                    title: SyncStatusCopy.PendingWork.notificationSectionTitle
-                )
-                SyncStatusPanel(
+            SyncStatusSection(
+                sectionTitle: SyncStatusCopy.PendingWork.notificationSectionTitle,
+                renderStateOverride: .init(
                     pending: seeded.pending,
                     failed: seeded.failed,
                     isSyncing: false,
-                    isExpanded: .constant(false),
-                    onRetry: { _ in },
-                    onRetryAll: { _ in },
-                    onDismiss: { _ in }
+                    trackedCount: seeded.pending.count + seeded.failed.count
                 )
-            }
+            )
         }
     }
 

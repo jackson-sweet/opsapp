@@ -34,6 +34,7 @@ struct HomeContentView: View {
     @EnvironmentObject private var locationManager: LocationManager
     @EnvironmentObject private var dataController: DataController
     @EnvironmentObject private var permissionStore: PermissionStore
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     // Tutorial environment
     @Environment(\.tutorialMode) private var tutorialMode
@@ -335,10 +336,7 @@ struct HomeContentView: View {
 
     private var headerView: some View {
         AppHeader(headerType: .home)
-            .transition(.asymmetric(
-                insertion: .move(edge: .top).combined(with: .opacity),
-                removal: .move(edge: .top).combined(with: .opacity)
-            ))
+            .transition(HomeSyncStatusHostTransition(reduceMotion: reduceMotion))
     }
     
     private var projectCarouselView: some View {

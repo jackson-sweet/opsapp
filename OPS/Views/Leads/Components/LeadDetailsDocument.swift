@@ -305,11 +305,14 @@ struct LeadDetailsDocument: View {
 
     // MARK: - ADDRESS
 
+    @ViewBuilder
     private var addressRow: some View {
-        DocRow(label: "ADDRESS") {
-            if let fieldEdit, fieldEdit.isEditing(.address) {
+        if let fieldEdit, fieldEdit.isEditing(.address) {
+            DocRow(label: "ADDRESS", layout: .stacked) {
                 LeadAddressInlineEditor(controller: fieldEdit)
-            } else {
+            }
+        } else {
+            DocRow(label: "ADDRESS") {
                 addressValueLine
             }
         }
@@ -574,6 +577,11 @@ struct LeadDetailsDocument: View {
 
 // MARK: - Document row (58pt mono label column)
 
+enum DocRowLayout {
+    case columns
+    case stacked
+}
+
 struct DocRow<Content: View>: View {
     let label: String
 
@@ -583,28 +591,47 @@ struct DocRow<Content: View>: View {
     /// (DESCRIPTION) and passes its own measured width, so one row anatomy can
     /// serve both surfaces without either one wrapping a label.
     var labelWidth: CGFloat = 58
+    /// Editing a control-heavy value sometimes needs the card's full width.
+    /// The read state remains the fixed dossier column; stacked is an explicit
+    /// edit-state escape hatch, not a second document anatomy.
+    var layout: DocRowLayout = .columns
 
     @ViewBuilder var content: () -> Content
 
+    @ViewBuilder
     var body: some View {
-        HStack(alignment: .top, spacing: OPSStyle.Layout.spacing2_5) {
-            Text(label)
-                .font(.custom("JetBrainsMono-Medium", size: 8.5))
-                .tracking(0.9)
-                .textCase(.uppercase)
-                .foregroundColor(OPSStyle.Colors.text3)
-                // A field label is a single mono word by construction. Pinning
-                // it to one line means a label that outgrows its column fails
-                // visibly at the tail instead of silently breaking mid-word —
-                // the way DESCRIPTION once wrapped to DESCRIPTIO / N.
-                .lineLimit(1)
-                .frame(width: labelWidth, alignment: .leading)
-                .padding(.top, 3)
-
-            content()
-                .frame(maxWidth: .infinity, alignment: .leading)
+        Group {
+            switch layout {
+            case .columns:
+                HStack(alignment: .top, spacing: OPSStyle.Layout.spacing2_5) {
+                    labelView(width: labelWidth)
+                    content()
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            case .stacked:
+                VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
+                    labelView(width: nil)
+                    content()
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            }
         }
         .padding(.horizontal, 14)
         .padding(.vertical, OPSStyle.Layout.spacing2_5)
+    }
+
+    private func labelView(width: CGFloat?) -> some View {
+        Text(label)
+            .font(.custom("JetBrainsMono-Medium", size: 8.5))
+            .tracking(0.9)
+            .textCase(.uppercase)
+            .foregroundColor(OPSStyle.Colors.text3)
+            // A field label is a single mono word by construction. Pinning it
+            // to one line means a label that outgrows its column fails visibly
+            // at the tail instead of silently breaking mid-word — the way
+            // DESCRIPTION once wrapped to DESCRIPTIO / N.
+            .lineLimit(1)
+            .frame(width: width, alignment: .leading)
+            .padding(.top, 3)
     }
 }

@@ -21,9 +21,9 @@
 //      // ACTIVITY · N  (one stream, VIEW ALL →)         ← ActivityTimeline
 //      [✎ EDIT]              [MARK WON →]                ← StickyActionBar
 //
-//  Sticky action bar is hidden when `opportunity.stage.isTerminal`. LOST /
-//  ARCHIVE / DISCARD live in the status chip's menu; EDIT / WON closures
-//  route up to LeadsTabView's `.sheet(item:)`.
+//  Sticky action bar is hidden for terminal leads and whenever a dossier fact
+//  is being corrected inline. LOST / ARCHIVE / DISCARD live in the status
+//  chip's menu; EDIT / WON closures route up to LeadsTabView's `.sheet(item:)`.
 //
 //  Spec: docs/superpowers/specs/2026-07-17-leads-tab-redesign-design.md §5
 //
@@ -32,6 +32,17 @@ import SwiftUI
 import SwiftData
 import PhotosUI
 import UIKit
+
+enum LeadDetailActionBarVisibility {
+    static func shouldShow(
+        canEdit: Bool,
+        canConvert: Bool,
+        isTerminal: Bool,
+        activeEditor: LeadEditableField?
+    ) -> Bool {
+        (canEdit || canConvert) && !isTerminal && activeEditor == nil
+    }
+}
 
 private struct PreparedLeadAttachment: Sendable {
     let fileURL: URL
@@ -391,7 +402,12 @@ struct LeadDetailView: View {
                 }
             }
 
-            if (canEdit || canConvert) && !opportunity.stage.isTerminal {
+            if LeadDetailActionBarVisibility.shouldShow(
+                canEdit: canEdit,
+                canConvert: canConvert,
+                isTerminal: opportunity.stage.isTerminal,
+                activeEditor: fieldEdit.editing
+            ) {
                 StickyActionBar(
                     canEdit: canEdit,
                     canConvert: canConvert,

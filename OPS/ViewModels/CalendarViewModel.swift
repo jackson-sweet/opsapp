@@ -21,6 +21,7 @@ class CalendarViewModel: ObservableObject {
     @Published var scheduledTaskIdsForSelectedDate: [String] = []  // Store IDs to avoid invalidation
     @Published var userEventsForCurrentPeriod: [CalendarUserEvent] = []
     @Published var bookedVisitsForCurrentPeriod: [SiteVisit] = []
+    @Published private(set) var siteVisitLeadDetailsByOpportunityId: [String: CalendarSiteVisitLeadDetails] = [:]
     @Published var isMonthExpanded: Bool = false
 
     /// Phase-C "Suggested events" (item 63144953). Detected commitments the
@@ -222,6 +223,8 @@ class CalendarViewModel: ObservableObject {
     private var cachedAuxiliaryWindow: CalendarAuxiliaryWindow?
     private var calendarLoadGeneration: UInt64 = 0
     private var calendarLoadTask: Task<Void, Never>?
+    private var siteVisitLeadScopeKey: String?
+    private let siteVisitLeadResolver = CalendarSiteVisitLeadResolver()
 
     // Get scheduled tasks for a specific date — reads from week cache
     func scheduledTasks(for date: Date) -> [ProjectTask] {
@@ -565,7 +568,27 @@ class CalendarViewModel: ObservableObject {
         bookedVisitsForCurrentPeriod = resolvedVisits.sorted {
             ($0.scheduledAt ?? .distantFuture) < ($1.scheduledAt ?? .distantFuture)
         }
+
+        let leadScopeKey = "\(user.id.lowercased())|\(companyId.lowercased())"
+        if siteVisitLeadScopeKey != leadScopeKey {
+            siteVisitLeadDetailsByOpportunityId = [:]
+            siteVisitLeadScopeKey = leadScopeKey
+        }
+        let visibleOpportunityIds = Set(resolvedVisits.compactMap(\.opportunityId))
+        siteVisitLeadDetailsByOpportunityId = siteVisitLeadDetailsByOpportunityId.filter {
+            visibleOpportunityIds.contains($0.key)
+        }
         publishSelectedDate()
+
+        if !visibleOpportunityIds.isEmpty {
+            let details = await siteVisitLeadResolver.refreshDetails(
+                opportunityIds: Array(visibleOpportunityIds),
+                userId: user.id,
+                companyId: companyId
+            )
+            guard !Task.isCancelled, generation == calendarLoadGeneration else { return }
+            siteVisitLeadDetailsByOpportunityId = details
+        }
         calendarLoadTask = nil
     }
 
@@ -649,6 +672,17 @@ class CalendarViewModel: ObservableObject {
     /// Booked visits on a given date, earliest first.
     func bookedVisits(for date: Date) -> [SiteVisit] {
         Self.bookedVisits(in: bookedVisitsForCurrentPeriod, on: date)
+    }
+
+    /// Calendar-owned lead projection for a booked appointment. Opportunities
+    /// are network-only, so schedule surfaces must never query SwiftData for
+    /// this relationship.
+    func siteVisitPresentation(for visit: SiteVisit) -> CalendarSiteVisitPresentation {
+        let opportunityId = visit.opportunityId?.lowercased()
+        return CalendarSiteVisitPresentation(
+            visit: visit,
+            leadDetails: opportunityId.flatMap { siteVisitLeadDetailsByOpportunityId[$0] }
+        )
     }
 
     /// Calendar refresh, driven by pull-to-refresh on the day list. Runs a

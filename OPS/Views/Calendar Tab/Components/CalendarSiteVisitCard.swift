@@ -16,6 +16,7 @@ import SwiftUI
 struct CalendarSiteVisitCard: View {
     let leadName: String
     let address: String?
+    let detail: String?
     let scheduledAt: Date
     let durationMinutes: Int
     let isInProgress: Bool
@@ -36,16 +37,41 @@ struct CalendarSiteVisitCard: View {
         return "\(start) – \(end)".uppercased()
     }
 
+    private var accessibilitySummary: String {
+        [
+            "Site visit",
+            leadName,
+            windowLine.lowercased(),
+            detail,
+            address
+        ]
+        .compactMap { value in
+            guard let value,
+                  !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            else { return nil }
+            return value
+        }
+        .joined(separator: ", ")
+    }
+
     var body: some View {
         HStack(spacing: OPSStyle.Layout.spacing3) {
             iconTile
 
-            VStack(alignment: .leading, spacing: 5) {
+            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
                 Text(leadName)
                     .font(OPSStyle.Typography.bodyEmphasis)
                     .foregroundColor(OPSStyle.Colors.primaryText)
                     .textCase(.uppercase)
                     .lineLimit(1)
+
+                if let detail, !detail.isEmpty {
+                    Text(detail)
+                        .font(OPSStyle.Typography.smallCaption)
+                        .foregroundColor(OPSStyle.Colors.secondaryText)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                }
 
                 HStack(spacing: OPSStyle.Layout.spacing2) {
                     Text(windowLine)
@@ -67,7 +93,7 @@ struct CalendarSiteVisitCard: View {
         }
         .padding(.horizontal, OPSStyle.Layout.spacing3)
         .padding(.vertical, OPSStyle.Layout.spacing3)
-        .frame(minHeight: 64)
+        .frame(minHeight: OPSStyle.Layout.touchTargetLarge)
         .background(
             RoundedRectangle(cornerRadius: OPSStyle.Layout.progressBarRadius)
                 .fill(OPSStyle.Colors.tanFillM)
@@ -78,14 +104,14 @@ struct CalendarSiteVisitCard: View {
                 .strokeBorder(OPSStyle.Colors.tanLineM, lineWidth: OPSStyle.Layout.Border.standard)
         )
         .padding(.vertical, OPSStyle.Layout.spacing2)
-        .padding(.horizontal)
+        .padding(.horizontal, OPSStyle.Layout.spacing3)
         .contentShape(Rectangle())
         .onTapGesture {
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
             onTap()
         }
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("Site visit, \(leadName), \(windowLine.lowercased())")
+        .accessibilityLabel(accessibilitySummary)
         .accessibilityAddTraits(.isButton)
     }
 
@@ -104,16 +130,19 @@ struct CalendarSiteVisitCard: View {
                 .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .semibold))
                 .foregroundColor(OPSStyle.Colors.tanTextM)
         }
-        .frame(width: 34, height: 34)
+        .frame(
+            width: OPSStyle.Layout.chipMinHeight,
+            height: OPSStyle.Layout.chipMinHeight
+        )
     }
 
     private var statusTag: some View {
         Text(isInProgress ? "ON SITE" : "BOOKED")
             .font(OPSStyle.Typography.miniLabelBold)
-            .tracking(1.2)
+            .tracking(OPSStyle.Typography.trackingStandard)
             .foregroundColor(OPSStyle.Colors.tanTextM)
             .padding(.horizontal, OPSStyle.Layout.spacing2)
-            .padding(.vertical, 3)
+            .padding(.vertical, OPSStyle.Layout.segmentedControlInset)
             .background(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius, style: .continuous)
                     .fill(OPSStyle.Colors.tanFillM)

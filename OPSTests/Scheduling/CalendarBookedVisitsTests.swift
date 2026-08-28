@@ -127,4 +127,74 @@ final class CalendarBookedVisitsTests: XCTestCase {
 
         XCTAssertEqual(dayVisits.map(\.id), [early.id, late.id])
     }
+
+    // MARK: - Calendar presentation regressions
+
+    func testVisitOnlyDayIsPopulatedAndCountsTheVisit() {
+        XCTAssertTrue(
+            CalendarDayContent.hasEvents(
+                taskCount: 0,
+                userEventCount: 0,
+                bookedVisitCount: 1
+            )
+        )
+        XCTAssertEqual(
+            CalendarDayContent.eventCount(
+                taskCount: 0,
+                userEventCount: 0,
+                bookedVisitCount: 1
+            ),
+            1
+        )
+    }
+
+    func testLinkedLeadDetailsSurviveIntoCalendarPresentation() {
+        let bookedVisit = visit(
+            id: "9471b86b-965e-46a0-8104-828251780dae",
+            scheduledAt: Date(timeIntervalSince1970: 1_787_936_400)
+        )
+        bookedVisit.opportunityId = "e9618f88-ca6b-49ee-8c35-6d260b31c131"
+        let details = CalendarSiteVisitLeadDetails(
+            opportunityId: "e9618f88-ca6b-49ee-8c35-6d260b31c131",
+            companyId: companyId,
+            contactName: "Kim Berelliee",
+            title: "Estimate",
+            address: "903 Collinson St, Victoria, BC, Canada",
+            agentSummary: nil,
+            leadDescription: "Remove and replace the damaged front stair rail."
+        )
+
+        let presentation = CalendarSiteVisitPresentation(
+            visit: bookedVisit,
+            leadDetails: details
+        )
+
+        XCTAssertEqual(presentation.title, "Kim Berelliee")
+        XCTAssertEqual(presentation.address, "903 Collinson St, Victoria, BC, Canada")
+        XCTAssertEqual(presentation.detail, "Remove and replace the damaged front stair rail.")
+    }
+
+    func testCanonicalAppointmentFieldsOverrideLeadFallbacks() {
+        let bookedVisit = visit()
+        bookedVisit.appointmentTitle = "Design review"
+        bookedVisit.appointmentLocation = "Microsoft Teams"
+        let details = CalendarSiteVisitLeadDetails(
+            opportunityId: bookedVisit.opportunityId!,
+            companyId: companyId,
+            contactName: "Kim Berelliee",
+            title: nil,
+            address: "903 Collinson St",
+            agentSummary: "Confirm the final rail profile.",
+            leadDescription: nil
+        )
+
+        let presentation = CalendarSiteVisitPresentation(
+            visit: bookedVisit,
+            leadDetails: details
+        )
+
+        XCTAssertEqual(presentation.title, "Design review")
+        XCTAssertEqual(presentation.address, "Microsoft Teams")
+        XCTAssertEqual(presentation.detail, "Confirm the final rail profile.")
+    }
 }

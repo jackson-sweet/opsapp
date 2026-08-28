@@ -119,29 +119,35 @@ enum CalendarMirrorContent {
 
     // MARK: - SiteVisit
 
-    /// A booked appointment on the personal calendar. Lead name and address
-    /// are resolved by the caller (a booking is always lead-attached; the
-    /// visit row itself carries no address). Walk-ups resolve nil — their
-    /// scheduledAt is junk by definition.
+    /// A booked appointment on the personal calendar. The presentation is
+    /// resolved by the calendar-owned network/cache layer because ordinary
+    /// pipeline opportunities intentionally do not live in SwiftData.
+    /// Walk-ups resolve nil — their scheduledAt is junk by definition.
     static func payload(
         for visit: SiteVisit,
-        leadName: String,
-        address: String?
+        presentation: CalendarSiteVisitPresentation
     ) -> MirroredEventPayload? {
         guard visit.isBookedAppointment,
               let start = visit.scheduledAt,
               let opportunityId = visit.opportunityId else { return nil }
 
         let canonicalTitle = visit.appointmentTitle?.trimmingCharacters(in: .whitespacesAndNewlines)
-        let canonicalLocation = visit.appointmentLocation?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let title: String
+        if canonicalTitle?.isEmpty == false {
+            title = presentation.title
+        } else if presentation.title.caseInsensitiveCompare("Site visit") == .orderedSame {
+            title = "Site visit"
+        } else {
+            title = "Site visit — \(presentation.title)"
+        }
 
         return MirroredEventPayload(
             opsId: visit.id,
             source: .siteVisit,
-            title: canonicalTitle.flatMap { $0.isEmpty ? nil : $0 } ?? "Site visit — \(leadName)",
+            title: title,
             body: body(
-                address: canonicalLocation.flatMap { $0.isEmpty ? nil : $0 } ?? address,
-                notes: nil
+                address: presentation.address,
+                notes: presentation.detail
             ),
             url: URL(string: "ops://leads/\(opportunityId)")!,
             isAllDay: false,

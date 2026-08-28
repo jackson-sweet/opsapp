@@ -116,11 +116,11 @@ final class CalendarMirrorContentTests: XCTestCase {
     }
 
     func test_siteVisit_titleCarriesLeadName() throws {
+        let visit = makeBookedVisit()
         let p = try XCTUnwrap(
             CalendarMirrorContent.payload(
-                for: makeBookedVisit(),
-                leadName: "Dana Whitfield",
-                address: "418 Larchmont Ave"
+                for: visit,
+                presentation: makePresentation(for: visit)
             )
         )
         XCTAssertEqual(p.title, "Site visit — Dana Whitfield")
@@ -134,21 +134,23 @@ final class CalendarMirrorContentTests: XCTestCase {
         let payload = try XCTUnwrap(
             CalendarMirrorContent.payload(
                 for: visit,
-                leadName: "Dana Whitfield",
-                address: "418 Larchmont Ave"
+                presentation: makePresentation(for: visit)
             )
         )
         XCTAssertEqual(payload.title, "Call — Dana Whitfield")
-        XCTAssertEqual(payload.body, "Microsoft Teams\n// OPS · view in app")
+        XCTAssertEqual(
+            payload.body,
+            "Microsoft Teams\nConfirm access with the site supervisor.\n// OPS · view in app"
+        )
     }
 
     func test_siteVisit_windowSpansDurationFromScheduledAt() throws {
         let start = Date(timeIntervalSince1970: 1_790_000_000)
+        let visit = makeBookedVisit(scheduledAt: start, duration: 90)
         let p = try XCTUnwrap(
             CalendarMirrorContent.payload(
-                for: makeBookedVisit(scheduledAt: start, duration: 90),
-                leadName: "Dana Whitfield",
-                address: nil
+                for: visit,
+                presentation: makePresentation(for: visit, address: nil)
             )
         )
         XCTAssertEqual(p.startDate, start)
@@ -156,33 +158,82 @@ final class CalendarMirrorContentTests: XCTestCase {
         XCTAssertFalse(p.isAllDay)
     }
 
-    func test_siteVisit_bodyCarriesAddressAndFooter() throws {
+    func test_siteVisit_bodyCarriesAddressDetailsAndFooter() throws {
+        let visit = makeBookedVisit()
         let p = try XCTUnwrap(
             CalendarMirrorContent.payload(
-                for: makeBookedVisit(),
-                leadName: "Dana Whitfield",
-                address: "418 Larchmont Ave"
+                for: visit,
+                presentation: makePresentation(for: visit)
             )
         )
-        XCTAssertEqual(p.body, "418 Larchmont Ave\n// OPS · view in app")
+        XCTAssertEqual(
+            p.body,
+            "418 Larchmont Ave\nConfirm access with the site supervisor.\n// OPS · view in app"
+        )
     }
 
     func test_siteVisit_urlIsLeadDeepLink() throws {
+        let visit = makeBookedVisit()
         let p = try XCTUnwrap(
             CalendarMirrorContent.payload(
-                for: makeBookedVisit(),
-                leadName: "Dana Whitfield",
-                address: nil
+                for: visit,
+                presentation: makePresentation(for: visit, address: nil)
             )
         )
         XCTAssertEqual(p.url.absoluteString, "ops://leads/cccccccc-cccc-4ccc-8ccc-cccccccccccc")
+    }
+
+    func test_siteVisit_hashChangesWhenResolvedDetailChanges() throws {
+        let visit = makeBookedVisit()
+        let first = try XCTUnwrap(
+            CalendarMirrorContent.payload(
+                for: visit,
+                presentation: makePresentation(
+                    for: visit,
+                    detail: "Confirm access with the site supervisor."
+                )
+            )
+        )
+        let second = try XCTUnwrap(
+            CalendarMirrorContent.payload(
+                for: visit,
+                presentation: makePresentation(
+                    for: visit,
+                    detail: "Measure the damaged front stair rail."
+                )
+            )
+        )
+
+        XCTAssertNotEqual(first.canonicalHash, second.canonicalHash)
     }
 
     func test_siteVisit_walkUpResolvesNil() {
         let visit = makeBookedVisit()
         visit.bookedAt = nil
         XCTAssertNil(
-            CalendarMirrorContent.payload(for: visit, leadName: "Dana", address: nil)
+            CalendarMirrorContent.payload(
+                for: visit,
+                presentation: makePresentation(for: visit)
+            )
+        )
+    }
+
+    private func makePresentation(
+        for visit: SiteVisit,
+        address: String? = "418 Larchmont Ave",
+        detail: String? = "Confirm access with the site supervisor."
+    ) -> CalendarSiteVisitPresentation {
+        CalendarSiteVisitPresentation(
+            visit: visit,
+            leadDetails: CalendarSiteVisitLeadDetails(
+                opportunityId: visit.opportunityId!,
+                companyId: visit.companyId,
+                contactName: "Dana Whitfield",
+                title: "Estimate",
+                address: address,
+                agentSummary: detail,
+                leadDescription: nil
+            )
         )
     }
 }

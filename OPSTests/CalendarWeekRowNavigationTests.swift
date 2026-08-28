@@ -39,6 +39,50 @@ final class CalendarWeekRowNavigationTests: XCTestCase {
         XCTAssertEqual(CalendarWeekRowNavigation.activeEdgeWidth(forRowWidth: 800), 44)
     }
 
+    func testBookedVisitGetsFridayWeekBarAndParticipatesInOverflow() {
+        let monday = makeDate(2026, 8, 24)
+        let weekDays = (0..<7).map {
+            calendar.date(byAdding: .day, value: $0, to: monday)!
+        }
+        let friday = calendar.date(bySettingHour: 10, minute: 0, second: 0, of: weekDays[4])!
+        let companyId = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
+        var visitsByDay = Array(repeating: [SiteVisit](), count: 7)
+        visitsByDay[4] = (0..<5).map { index in
+            let visit = SiteVisit(
+                id: "visit-\(index)",
+                opportunityId: "lead-\(index)",
+                companyId: companyId,
+                status: .scheduled,
+                scheduledAt: friday,
+                durationMinutes: 60,
+                assigneeIds: [],
+                createdBy: nil
+            )
+            visit.bookedAt = friday.addingTimeInterval(-3_600)
+            return visit
+        }
+
+        let layout = CalendarWeekBarPlanner.layout(
+            weekDays: weekDays,
+            tasksByDay: Array(repeating: [], count: 7),
+            userEventsByDay: Array(repeating: [], count: 7),
+            bookedVisitsByDay: visitsByDay,
+            calendar: calendar
+        )
+
+        XCTAssertEqual(
+            layout.spans.map(\.id),
+            ["sitevisit:visit-0", "sitevisit:visit-1", "sitevisit:visit-2", "sitevisit:visit-3"]
+        )
+        XCTAssertTrue(
+            layout.spans.allSatisfy {
+                $0.startDayIndex == 4 && $0.endDayIndex == 4
+                    && $0.isFirstSegment && $0.isLastSegment
+            }
+        )
+        XCTAssertEqual(layout.overflowPerDay, [0, 0, 0, 0, 1, 0, 0])
+    }
+
     private func makeDate(_ year: Int, _ month: Int, _ day: Int) -> Date {
         var components = DateComponents()
         components.calendar = calendar

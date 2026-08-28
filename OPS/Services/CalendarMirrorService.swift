@@ -24,6 +24,7 @@ final class CalendarMirrorService: ObservableObject {
     @Published private(set) var authorizationStatus: EKAuthorizationStatus
 
     private let store: EKEventStore
+    private let siteVisitLeadResolver = CalendarSiteVisitLeadResolver()
     private var cancellables = Set<AnyCancellable>()
 
     private let enabledKey = "ops.calendar.mirror.enabled"
@@ -93,6 +94,18 @@ final class CalendarMirrorService: ObservableObject {
     /// Mirror or refresh the EKEvent for an OPS row. No-op when disabled or
     /// when the row is no longer eligible.
     func mirrorEvent(opsId: String, source: MirrorSource) async {
+        await mirrorEvent(
+            opsId: opsId,
+            source: source,
+            prefetchedSiteVisitDetails: nil
+        )
+    }
+
+    private func mirrorEvent(
+        opsId: String,
+        source: MirrorSource,
+        prefetchedSiteVisitDetails: [String: CalendarSiteVisitLeadDetails]?
+    ) async {
         guard isEnabled, authorizationStatus == .fullAccess else { return }
         guard let context = ModelContainerHolder.mainContext else { return }
         guard let currentUserId else { return }
@@ -100,12 +113,18 @@ final class CalendarMirrorService: ObservableObject {
         let calendar: EKCalendar
         do { calendar = try ensureCalendar() } catch { return }
 
-        guard let payload = buildPayload(opsId: opsId, source: source, context: context) else {
+        if !sourceIsEligible(opsId: opsId, source: source, currentUserId: currentUserId, context: context) {
             await unmirrorEvent(opsId: opsId)
             return
         }
 
-        if !sourceIsEligible(opsId: opsId, source: source, currentUserId: currentUserId, context: context) {
+        guard let payload = await buildPayload(
+            opsId: opsId,
+            source: source,
+            currentUserId: currentUserId,
+            prefetchedSiteVisitDetails: prefetchedSiteVisitDetails,
+            context: context
+        ) else {
             await unmirrorEvent(opsId: opsId)
             return
         }
@@ -169,6 +188,21 @@ final class CalendarMirrorService: ObservableObject {
 
         let (lower, upper) = CalendarMirrorEligibility.windowBounds()
 
+        // Opportunities are intentionally REST-backed instead of SwiftData
+        // models. Resolve every eligible appointment in one request per
+        // company, then reuse the result through drift repair and backfill.
+        let visitDescriptor = FetchDescriptor<SiteVisit>(
+            predicate: #Predicate { $0.bookedAt != nil && $0.deletedAt == nil }
+        )
+        let visits = (try? context.fetch(visitDescriptor)) ?? []
+        let eligibleVisits = visits.filter {
+            CalendarMirrorEligibility.isEligible(visit: $0, currentUserId: currentUserId)
+        }
+        let siteVisitDetails = await resolveSiteVisitLeadDetails(
+            for: eligibleVisits,
+            currentUserId: currentUserId
+        )
+
         // 1. Iterate map rows; revert drift, remove stale.
         let allMap = (try? context.fetch(FetchDescriptor<CalendarMirrorMap>())) ?? []
         var liveOpsIds = Set<String>()
@@ -186,7 +220,13 @@ final class CalendarMirrorService: ObservableObject {
                 continue
             }
 
-            guard let payload = buildPayload(opsId: row.opsId, source: source, context: context) else {
+            guard let payload = await buildPayload(
+                opsId: row.opsId,
+                source: source,
+                currentUserId: currentUserId,
+                prefetchedSiteVisitDetails: siteVisitDetails,
+                context: context
+            ) else {
                 if let ek { try? store.remove(ek, span: .thisEvent, commit: true) }
                 context.delete(row)
                 continue
@@ -225,22 +265,28 @@ final class CalendarMirrorService: ObservableObject {
         let userEvents = (try? context.fetch(FetchDescriptor<CalendarUserEvent>())) ?? []
         for e in userEvents where CalendarMirrorEligibility.isEligible(event: e, currentUserId: currentUserId) {
             if liveOpsIds.contains(e.id) { continue }
-            await mirrorEvent(opsId: e.id, source: .calendarUserEvent)
+            await mirrorEvent(
+                opsId: e.id,
+                source: .calendarUserEvent,
+                prefetchedSiteVisitDetails: siteVisitDetails
+            )
         }
         let tasks = (try? context.fetch(FetchDescriptor<ProjectTask>())) ?? []
         for t in tasks where CalendarMirrorEligibility.isEligible(task: t, currentUserId: currentUserId) {
             if liveOpsIds.contains(t.id) { continue }
-            await mirrorEvent(opsId: t.id, source: .projectTask)
+            await mirrorEvent(
+                opsId: t.id,
+                source: .projectTask,
+                prefetchedSiteVisitDetails: siteVisitDetails
+            )
         }
-        // Booked appointments only — the predicate mirrors the calendar's
-        // legacy guard, so walk-up rows (junk scheduledAt) never enumerate.
-        let visitDescriptor = FetchDescriptor<SiteVisit>(
-            predicate: #Predicate { $0.bookedAt != nil && $0.deletedAt == nil }
-        )
-        let visits = (try? context.fetch(visitDescriptor)) ?? []
-        for v in visits where CalendarMirrorEligibility.isEligible(visit: v, currentUserId: currentUserId) {
+        for v in eligibleVisits {
             if liveOpsIds.contains(v.id) { continue }
-            await mirrorEvent(opsId: v.id, source: .siteVisit)
+            await mirrorEvent(
+                opsId: v.id,
+                source: .siteVisit,
+                prefetchedSiteVisitDetails: siteVisitDetails
+            )
         }
 
         // 3. Orphan sweep — events in OPS calendar with no map entry.
@@ -340,7 +386,13 @@ final class CalendarMirrorService: ObservableObject {
         ek.endDate = payload.endDate
     }
 
-    private func buildPayload(opsId: String, source: MirrorSource, context: ModelContext) -> MirroredEventPayload? {
+    private func buildPayload(
+        opsId: String,
+        source: MirrorSource,
+        currentUserId: String,
+        prefetchedSiteVisitDetails: [String: CalendarSiteVisitLeadDetails]?,
+        context: ModelContext
+    ) async -> MirroredEventPayload? {
         switch source {
         case .calendarUserEvent:
             let descriptor = FetchDescriptor<CalendarUserEvent>(predicate: #Predicate { $0.id == opsId })
@@ -361,11 +413,26 @@ final class CalendarMirrorService: ObservableObject {
         case .siteVisit:
             let descriptor = FetchDescriptor<SiteVisit>(predicate: #Predicate { $0.id == opsId })
             guard let visit = try? context.fetch(descriptor).first else { return nil }
-            let lead = visitLead(for: visit, context: context)
+            let leadDetails: CalendarSiteVisitLeadDetails?
+            if let prefetchedSiteVisitDetails {
+                leadDetails = prefetchedSiteVisitDetails[siteVisitLeadKey(for: visit)]
+            } else if let opportunityId = visit.opportunityId {
+                let resolved = await siteVisitLeadResolver.refreshDetails(
+                    opportunityIds: [opportunityId],
+                    userId: currentUserId,
+                    companyId: visit.companyId
+                )
+                leadDetails = resolved[canonicalIdentifier(opportunityId)]
+            } else {
+                leadDetails = nil
+            }
+            let presentation = CalendarSiteVisitPresentation(
+                visit: visit,
+                leadDetails: leadDetails
+            )
             return CalendarMirrorContent.payload(
                 for: visit,
-                leadName: lead?.displayContactName ?? "Site visit",
-                address: lead?.address
+                presentation: presentation
             )
         }
     }
@@ -387,15 +454,51 @@ final class CalendarMirrorService: ObservableObject {
         }
     }
 
-    /// A booking is always lead-attached; the lead supplies title + location.
-    private func visitLead(for visit: SiteVisit, context: ModelContext) -> Opportunity? {
-        guard let opportunityId = visit.opportunityId else { return nil }
-        let lower = opportunityId.lowercased()
-        var descriptor = FetchDescriptor<Opportunity>(
-            predicate: #Predicate { $0.id == lower }
+    private func resolveSiteVisitLeadDetails(
+        for visits: [SiteVisit],
+        currentUserId: String
+    ) async -> [String: CalendarSiteVisitLeadDetails] {
+        let visitsByCompany = Dictionary(grouping: visits) {
+            canonicalIdentifier($0.companyId)
+        }
+        var resolvedByVisitKey: [String: CalendarSiteVisitLeadDetails] = [:]
+
+        for companyId in visitsByCompany.keys.sorted() where !companyId.isEmpty {
+            let companyVisits = visitsByCompany[companyId] ?? []
+            let opportunityIds = Array(Set(companyVisits.compactMap {
+                $0.opportunityId.map(canonicalIdentifier)
+            }.filter { !$0.isEmpty })).sorted()
+            guard !opportunityIds.isEmpty else { continue }
+
+            let companyDetails = await siteVisitLeadResolver.refreshDetails(
+                opportunityIds: opportunityIds,
+                userId: currentUserId,
+                companyId: companyId
+            )
+            for (opportunityId, details) in companyDetails {
+                resolvedByVisitKey[siteVisitLeadKey(
+                    opportunityId: opportunityId,
+                    companyId: companyId
+                )] = details
+            }
+        }
+
+        return resolvedByVisitKey
+    }
+
+    private func siteVisitLeadKey(for visit: SiteVisit) -> String {
+        siteVisitLeadKey(
+            opportunityId: visit.opportunityId ?? "",
+            companyId: visit.companyId
         )
-        descriptor.fetchLimit = 1
-        return try? context.fetch(descriptor).first
+    }
+
+    private func siteVisitLeadKey(opportunityId: String, companyId: String) -> String {
+        "\(canonicalIdentifier(companyId))|\(canonicalIdentifier(opportunityId))"
+    }
+
+    private func canonicalIdentifier(_ raw: String) -> String {
+        raw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
     }
 
     private func projectDisplayLabel(for task: ProjectTask) -> String {

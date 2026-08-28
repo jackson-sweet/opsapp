@@ -847,37 +847,36 @@ struct LeadAddressInlineEditor: View {
     private var isSaving: Bool { controller.isSaving(.address) }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            HStack(alignment: .top, spacing: OPSStyle.Layout.spacing2) {
-                AddressAutocompleteField(
-                    address: $draft,
-                    placeholder: "3185 Fairview Rd",
-                    autofocus: true,
-                    onAddressSelected: { resolved, coordinate in
-                        resolvedAddress = resolved
-                        latitude = coordinate?.latitude
-                        longitude = coordinate?.longitude
-                    }
-                )
-                .frame(minHeight: OPSStyle.Layout.inputHeight)
-                .disabled(isSaving)
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
+            AddressAutocompleteField(
+                address: $draft,
+                placeholder: "3185 Fairview Rd",
+                autofocus: true,
+                onAddressSelected: { resolved, coordinate in
+                    resolvedAddress = resolved
+                    latitude = coordinate?.latitude
+                    longitude = coordinate?.longitude
+                }
+            )
+            .frame(minHeight: OPSStyle.Layout.inputHeight)
+            .disabled(isSaving)
 
-                LeadInlineEditControls(
-                    isSaving: isSaving,
-                    canSave: true,
-                    onCancel: { controller.cancel() },
-                    onSave: { save() }
-                )
-            }
-            .onChange(of: draft) { _, newValue in
-                guard newValue != resolvedAddress else { return }
-                latitude = nil
-                longitude = nil
-            }
+            LeadInlineEditControls(
+                isSaving: isSaving,
+                canSave: true,
+                onCancel: { controller.cancel() },
+                onSave: { save() }
+            )
+            .frame(maxWidth: .infinity, alignment: .trailing)
 
             if let failure = controller.failure(for: .address) {
                 LeadInlineEditError(failure: failure) { save() }
             }
+        }
+        .onChange(of: draft) { _, newValue in
+            guard newValue != resolvedAddress else { return }
+            latitude = nil
+            longitude = nil
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }

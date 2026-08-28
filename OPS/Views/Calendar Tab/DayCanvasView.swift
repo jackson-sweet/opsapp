@@ -278,32 +278,27 @@ struct DayPageView: View {
 
     // MARK: - Site-visit branch actions
 
-    /// Resolve the visit's lead. A booking is always lead-attached; a missing
-    /// local lead row means sync hasn't delivered it yet.
-    private func lead(for visit: SiteVisit) -> Opportunity? {
-        guard let context = dataController.modelContext,
-              let opportunityId = visit.opportunityId else { return nil }
-        let lower = opportunityId.lowercased()
-        var descriptor = FetchDescriptor<Opportunity>(
-            predicate: #Predicate { $0.id == lower }
-        )
-        descriptor.fetchLimit = 1
-        return try? context.fetch(descriptor).first
-    }
-
     private func startVisitFromCalendar(_ visit: SiteVisit) {
-        guard let lead = lead(for: visit) else { return }
+        guard let opportunityId = visit.opportunityId else { return }
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
         // The leads tab owns the ONE capture presentation — relay to it.
         NotificationCenter.default.post(
             name: Notification.Name("StartSiteVisit"),
             object: nil,
-            userInfo: ["leadId": lead.id]
+            userInfo: ["leadId": opportunityId]
         )
     }
 
     private func presentReschedule(_ visit: SiteVisit, snapshot: BookSiteVisitForm.BookingSnapshot) {
-        guard let lead = lead(for: visit) else { return }
+        guard let opportunityId = visit.opportunityId else { return }
+        let presentation = viewModel.siteVisitPresentation(for: visit)
+        let lead = Opportunity(
+            id: opportunityId,
+            companyId: visit.companyId,
+            contactName: presentation.title
+        )
+        lead.address = presentation.address
+        lead.descriptionText = presentation.detail
         visitBookingRequest = BookSiteVisitRequest(lead: lead, existing: snapshot)
     }
 
@@ -320,9 +315,11 @@ struct DayPageView: View {
     @ViewBuilder
     private func siteVisitRow(_ visit: SiteVisit) -> some View {
         if let scheduledAt = visit.scheduledAt {
+            let presentation = viewModel.siteVisitPresentation(for: visit)
             CalendarSiteVisitCard(
-                leadName: lead(for: visit)?.displayContactName ?? "Site visit",
-                address: lead(for: visit)?.address,
+                leadName: presentation.title,
+                address: presentation.address,
+                detail: presentation.detail,
                 scheduledAt: scheduledAt,
                 durationMinutes: visit.durationMinutes,
                 isInProgress: visit.status == .inProgress,
@@ -393,7 +390,11 @@ struct DayPageView: View {
             }
 
             // Scrollable task list
-            if tasksForDate.isEmpty && userEventsForDate.isEmpty {
+            if !CalendarDayContent.hasEvents(
+                taskCount: tasksForDate.count,
+                userEventCount: userEventsForDate.count,
+                bookedVisitCount: bookedVisitsForDate.count
+            ) {
                 // Empty days are pull-to-refreshable too. The centered empty
                 // state has nothing to scroll, so wrap it in a ScrollView sized
                 // to fill the viewport — that exposes the refresh gesture while
@@ -804,7 +805,11 @@ struct DayPageView: View {
 
             Spacer()
 
-            let count = tasksForDate.count + userEventsForDate.count
+            let count = CalendarDayContent.eventCount(
+                taskCount: tasksForDate.count,
+                userEventCount: userEventsForDate.count,
+                bookedVisitCount: bookedVisitsForDate.count
+            )
             if count > 0 {
                 Text("[ EVENTS — \(count) ]")
                     .font(OPSStyle.Typography.smallCaption)

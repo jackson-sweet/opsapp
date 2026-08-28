@@ -91,6 +91,28 @@ class OpportunityRepository {
             .value
     }
 
+    /// Fetches the exact active opportunities requested by an id-based
+    /// consumer in one company-scoped round trip. Calendar uses this instead
+    /// of issuing one request per booked visit; canonicalization keeps an
+    /// uppercase/local duplicate from widening the query.
+    func fetchByIds(_ opportunityIds: [String]) async throws -> [OpportunityDTO] {
+        let ids = Array(Set(
+            opportunityIds
+                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() }
+                .filter { !$0.isEmpty }
+        )).sorted()
+        guard !ids.isEmpty else { return [] }
+
+        return try await client
+            .from("opportunities")
+            .select()
+            .eq("company_id", value: companyId)
+            .in("id", values: ids)
+            .is("deleted_at", value: nil)
+            .execute()
+            .value
+    }
+
     /// Returns an existing active opportunity linked to a client, if one
     /// exists. Client-lead delivery calls this before insert so an ambiguous
     /// timeout cannot create a duplicate lead on retry.

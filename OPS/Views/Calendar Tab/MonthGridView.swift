@@ -1497,18 +1497,6 @@ struct DayDetailsSheet: View {
         scheduledTasks.count + dayUserEvents.count + dayBookedVisits.count
     }
 
-    /// A booking is always lead-attached; the name is the card's identity.
-    private func visitLead(_ visit: SiteVisit) -> Opportunity? {
-        guard let context = dataController.modelContext,
-              let opportunityId = visit.opportunityId else { return nil }
-        let lower = opportunityId.lowercased()
-        var descriptor = FetchDescriptor<Opportunity>(
-            predicate: #Predicate { $0.id == lower }
-        )
-        descriptor.fetchLimit = 1
-        return try? context.fetch(descriptor).first
-    }
-
     // Separate new and ongoing tasks (matching week view)
     private var newTasks: [ProjectTask] {
         scheduledTasks.filter { task in
@@ -1634,9 +1622,11 @@ struct DayDetailsSheet: View {
                     VStack(spacing: OPSStyle.Layout.spacing2) {
                         ForEach(dayBookedVisits, id: \.id) { visit in
                             if let scheduledAt = visit.scheduledAt {
+                                let presentation = viewModel.siteVisitPresentation(for: visit)
                                 CalendarSiteVisitCard(
-                                    leadName: visitLead(visit)?.displayContactName ?? "Site visit",
-                                    address: visitLead(visit)?.address,
+                                    leadName: presentation.title,
+                                    address: presentation.address,
+                                    detail: presentation.detail,
                                     scheduledAt: scheduledAt,
                                     durationMinutes: visit.durationMinutes,
                                     isInProgress: visit.status == .inProgress,

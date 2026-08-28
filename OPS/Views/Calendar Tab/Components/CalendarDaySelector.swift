@@ -74,6 +74,199 @@ enum CalendarWeekRowCaption {
     }
 }
 
+enum CalendarWeekBarPlanner {
+    struct Span: Identifiable {
+        let id: String
+        let color: Color
+        let startDayIndex: Int
+        let endDayIndex: Int
+        let row: Int
+        let isFirstSegment: Bool
+        let isLastSegment: Bool
+    }
+
+    struct Layout {
+        let spans: [Span]
+        let overflowPerDay: [Int]
+    }
+
+    private struct Candidate {
+        let id: String
+        let color: Color
+        let startDayIndex: Int
+        let endDayIndex: Int
+        let isFirstSegment: Bool
+        let isLastSegment: Bool
+        let discoveryOrder: Int
+    }
+
+    /// Plans the visible week bars without consulting view state. The caller
+    /// supplies the already-filtered sources for each day, which keeps row
+    /// assignment deterministic and independently testable.
+    static func layout(
+        weekDays: [Date],
+        tasksByDay: [[ProjectTask]],
+        userEventsByDay: [[CalendarUserEvent]],
+        bookedVisitsByDay: [[SiteVisit]],
+        calendar: Calendar
+    ) -> Layout {
+        guard !weekDays.isEmpty else {
+            return Layout(spans: [], overflowPerDay: [])
+        }
+
+        let dayStarts = weekDays.map { calendar.startOfDay(for: $0) }
+        var candidates: [Candidate] = []
+        var discoveryOrder = 0
+
+        func appendCandidate(
+            id: String,
+            color: Color,
+            startDate: Date,
+            endDate: Date,
+            fallbackDayIndex: Int
+        ) {
+            var startDayIndex = fallbackDayIndex
+            var endDayIndex = fallbackDayIndex
+
+            for dayIndex in weekDays.indices {
+                let dayStart = dayStarts[dayIndex]
+                if dayStart >= startDate && dayStart <= endDate {
+                    startDayIndex = min(startDayIndex, dayIndex)
+                    endDayIndex = max(endDayIndex, dayIndex)
+                }
+            }
+
+            candidates.append(Candidate(
+                id: id,
+                color: color,
+                startDayIndex: startDayIndex,
+                endDayIndex: endDayIndex,
+                isFirstSegment: dayStarts[startDayIndex] == startDate,
+                isLastSegment: dayStarts[endDayIndex] == endDate,
+                discoveryOrder: discoveryOrder
+            ))
+            discoveryOrder += 1
+        }
+
+        var processedTaskIds = Set<String>()
+        for dayIndex in weekDays.indices where dayIndex < tasksByDay.count {
+            for task in tasksByDay[dayIndex] {
+                guard processedTaskIds.insert(task.id).inserted else { continue }
+
+                appendCandidate(
+                    id: task.id,
+                    color: task.swiftUIColor,
+                    startDate: calendar.startOfDay(for: task.startDate ?? weekDays[dayIndex]),
+                    endDate: calendar.startOfDay(for: task.endDate ?? weekDays[dayIndex]),
+                    fallbackDayIndex: dayIndex
+                )
+            }
+        }
+
+        var processedUserEventIds = Set<String>()
+        for dayIndex in weekDays.indices where dayIndex < userEventsByDay.count {
+            for event in userEventsByDay[dayIndex] {
+                guard processedUserEventIds.insert(event.id).inserted else { continue }
+
+                appendCandidate(
+                    id: "userevent:\(event.id)",
+                    color: event.isTimeOff ? OPSStyle.Colors.tanTextM : OPSStyle.Colors.secondaryText,
+                    startDate: calendar.startOfDay(for: event.startDate),
+                    endDate: calendar.startOfDay(for: event.endDate),
+                    fallbackDayIndex: dayIndex
+                )
+            }
+        }
+
+        var processedSiteVisitIds = Set<String>()
+        for dayIndex in weekDays.indices where dayIndex < bookedVisitsByDay.count {
+            for visit in bookedVisitsByDay[dayIndex] {
+                guard processedSiteVisitIds.insert(visit.id).inserted else { continue }
+
+                candidates.append(Candidate(
+                    id: "sitevisit:\(visit.id)",
+                    color: OPSStyle.Colors.tanTextM,
+                    startDayIndex: dayIndex,
+                    endDayIndex: dayIndex,
+                    isFirstSegment: true,
+                    isLastSegment: true,
+                    discoveryOrder: discoveryOrder
+                ))
+                discoveryOrder += 1
+            }
+        }
+
+        // Wider spans retain priority. Equal spans keep their source discovery
+        // order so packing is deterministic without changing established bars.
+        candidates.sort { lhs, rhs in
+            let lhsWidth = lhs.endDayIndex - lhs.startDayIndex
+            let rhsWidth = rhs.endDayIndex - rhs.startDayIndex
+            if lhsWidth != rhsWidth { return lhsWidth > rhsWidth }
+            if lhs.startDayIndex != rhs.startDayIndex {
+                return lhs.startDayIndex < rhs.startDayIndex
+            }
+            return lhs.discoveryOrder < rhs.discoveryOrder
+        }
+
+        let maxRows = 4
+        var occupiedSlots = Array(
+            repeating: Array(repeating: false, count: maxRows),
+            count: weekDays.count
+        )
+        var spans: [Span] = []
+        var assignedIds = Set<String>()
+
+        for candidate in candidates {
+            var assignedRow: Int?
+
+            for row in 0..<maxRows {
+                let isAvailable = (candidate.startDayIndex...candidate.endDayIndex).allSatisfy {
+                    !occupiedSlots[$0][row]
+                }
+                guard isAvailable else { continue }
+
+                assignedRow = row
+                for dayIndex in candidate.startDayIndex...candidate.endDayIndex {
+                    occupiedSlots[dayIndex][row] = true
+                }
+                break
+            }
+
+            guard let assignedRow else { continue }
+
+            assignedIds.insert(candidate.id)
+            spans.append(Span(
+                id: candidate.id,
+                color: candidate.color,
+                startDayIndex: candidate.startDayIndex,
+                endDayIndex: candidate.endDayIndex,
+                row: assignedRow,
+                isFirstSegment: candidate.isFirstSegment,
+                isLastSegment: candidate.isLastSegment
+            ))
+        }
+
+        var overflowPerDay = Array(repeating: 0, count: weekDays.count)
+        for dayIndex in weekDays.indices {
+            var uniqueIds = Set<String>()
+            if dayIndex < tasksByDay.count {
+                uniqueIds.formUnion(tasksByDay[dayIndex].map(\.id))
+            }
+            if dayIndex < userEventsByDay.count {
+                uniqueIds.formUnion(userEventsByDay[dayIndex].map { "userevent:\($0.id)" })
+            }
+            if dayIndex < bookedVisitsByDay.count {
+                uniqueIds.formUnion(bookedVisitsByDay[dayIndex].map { "sitevisit:\($0.id)" })
+            }
+
+            let displayedCount = uniqueIds.intersection(assignedIds).count
+            overflowPerDay[dayIndex] = max(0, uniqueIds.count - displayedCount)
+        }
+
+        return Layout(spans: spans, overflowPerDay: overflowPerDay)
+    }
+}
+
 struct WeekRowEdgeDropDelegate: DropDelegate {
     let direction: CalendarWeekRowEdgeDirection
     let fallbackDay: Date
@@ -364,177 +557,20 @@ struct CalendarDaySelector: View {
 
     // MARK: - Week spanning bars
 
-    private struct WeekBarSpan: Identifiable {
-        let id: String
-        let color: Color
-        let startDayIndex: Int
-        let endDayIndex: Int
-        let row: Int
-        let isFirstSegment: Bool
-        let isLastSegment: Bool
-    }
-
-    private struct WeekBarLayout {
-        let spans: [WeekBarSpan]
-        let overflowPerDay: [Int]
-    }
-
     /// Compute spanning bars for the visible week, sorted multi-day first for stable row assignment.
     /// Returns both the bar spans and a per-day overflow count for "+N" indicators.
-    private func computeWeekBarLayout(weekDays: [Date]) -> WeekBarLayout {
-        let cal = Calendar.current
-        var processedIds = Set<String>()
+    private func computeWeekBarLayout(weekDays: [Date]) -> CalendarWeekBarPlanner.Layout {
+        let tasksByDay = weekDays.map { viewModel.scheduledTasks(for: $0) }
+        let userEventsByDay = weekDays.map { viewModel.userEvents(for: $0) }
+        let bookedVisitsByDay = weekDays.map { viewModel.bookedVisits(for: $0) }
 
-        // Gather all tasks for every day this week
-        var tasksByDay: [[ProjectTask]] = []
-        for date in weekDays {
-            tasksByDay.append(viewModel.scheduledTasks(for: date))
-        }
-
-        // Collect unique tasks with their span info
-        struct RawSpan {
-            let taskId: String
-            let color: Color
-            let startIdx: Int
-            let endIdx: Int
-            let isFirstSegment: Bool
-            let isLastSegment: Bool
-        }
-
-        var rawSpans: [RawSpan] = []
-
-        for dayIndex in 0..<weekDays.count {
-            for task in tasksByDay[dayIndex] {
-                guard !processedIds.contains(task.id) else { continue }
-                processedIds.insert(task.id)
-
-                let taskStart = cal.startOfDay(for: task.startDate ?? weekDays[dayIndex])
-                let taskEnd = cal.startOfDay(for: task.endDate ?? weekDays[dayIndex])
-
-                var startIdx = dayIndex
-                var endIdx = dayIndex
-                for i in 0..<weekDays.count {
-                    let dayStart = cal.startOfDay(for: weekDays[i])
-                    if dayStart >= taskStart && dayStart <= taskEnd {
-                        if i < startIdx { startIdx = i }
-                        if i > endIdx { endIdx = i }
-                    }
-                }
-
-                let isFirst = cal.startOfDay(for: weekDays[startIdx]) == taskStart
-                let isLast = cal.startOfDay(for: weekDays[endIdx]) == taskEnd
-
-                rawSpans.append(RawSpan(
-                    taskId: task.id,
-                    color: task.swiftUIColor,
-                    startIdx: startIdx,
-                    endIdx: endIdx,
-                    isFirstSegment: isFirst,
-                    isLastSegment: isLast
-                ))
-            }
-        }
-
-        // Bug 1 — Include user events (time off + personal) so the week strip
-        // shows their span bars alongside project tasks.
-        let timeOffColor = OPSStyle.Colors.tanTextM
-        let personalColor = OPSStyle.Colors.secondaryText
-        var processedUserEventIds = Set<String>()
-        for dayIndex in 0..<weekDays.count {
-            let events = viewModel.userEvents(for: weekDays[dayIndex])
-            for event in events {
-                guard !processedUserEventIds.contains(event.id) else { continue }
-                processedUserEventIds.insert(event.id)
-
-                let evStart = cal.startOfDay(for: event.startDate)
-                let evEnd = cal.startOfDay(for: event.endDate)
-                var startIdx = dayIndex
-                var endIdx = dayIndex
-                for i in 0..<weekDays.count {
-                    let dayStart = cal.startOfDay(for: weekDays[i])
-                    if dayStart >= evStart && dayStart <= evEnd {
-                        if i < startIdx { startIdx = i }
-                        if i > endIdx { endIdx = i }
-                    }
-                }
-
-                let isFirst = cal.startOfDay(for: weekDays[startIdx]) == evStart
-                let isLast = cal.startOfDay(for: weekDays[endIdx]) == evEnd
-
-                rawSpans.append(RawSpan(
-                    taskId: "userevent:\(event.id)",
-                    color: event.isTimeOff ? timeOffColor : personalColor,
-                    startIdx: startIdx,
-                    endIdx: endIdx,
-                    isFirstSegment: isFirst,
-                    isLastSegment: isLast
-                ))
-            }
-        }
-
-        // Sort: multi-day first (wider spans first), then by start index
-        rawSpans.sort { a, b in
-            let aSpan = a.endIdx - a.startIdx
-            let bSpan = b.endIdx - b.startIdx
-            if aSpan != bSpan { return aSpan > bSpan }
-            return a.startIdx < b.startIdx
-        }
-
-        // Assign rows (slot packing)
-        let maxRows = 4
-        var occupiedSlots: [[Bool]] = Array(repeating: Array(repeating: false, count: maxRows), count: weekDays.count)
-        var result: [WeekBarSpan] = []
-        var assignedTaskIds = Set<String>()
-
-        for raw in rawSpans {
-            var assignedRow = -1
-            for row in 0..<maxRows {
-                var available = true
-                for dayIdx in raw.startIdx...raw.endIdx {
-                    if occupiedSlots[dayIdx][row] {
-                        available = false
-                        break
-                    }
-                }
-                if available {
-                    assignedRow = row
-                    for dayIdx in raw.startIdx...raw.endIdx {
-                        occupiedSlots[dayIdx][row] = true
-                    }
-                    break
-                }
-            }
-
-            guard assignedRow >= 0 else { continue }
-
-            assignedTaskIds.insert(raw.taskId)
-            result.append(WeekBarSpan(
-                id: raw.taskId,
-                color: raw.color,
-                startDayIndex: raw.startIdx,
-                endDayIndex: raw.endIdx,
-                row: assignedRow,
-                isFirstSegment: raw.isFirstSegment,
-                isLastSegment: raw.isLastSegment
-            ))
-        }
-
-        // Compute per-day overflow: tasks on that day that didn't get a bar
-        var overflowPerDay = Array(repeating: 0, count: weekDays.count)
-        for dayIdx in 0..<weekDays.count {
-            var uniqueIds = Set<String>()
-            for task in tasksByDay[dayIdx] {
-                uniqueIds.insert(task.id)
-            }
-            // Include user events in overflow accounting (Bug 1)
-            for event in viewModel.userEvents(for: weekDays[dayIdx]) {
-                uniqueIds.insert("userevent:\(event.id)")
-            }
-            let displayedOnDay = uniqueIds.intersection(assignedTaskIds).count
-            overflowPerDay[dayIdx] = max(0, uniqueIds.count - displayedOnDay)
-        }
-
-        return WeekBarLayout(spans: result, overflowPerDay: overflowPerDay)
+        return CalendarWeekBarPlanner.layout(
+            weekDays: weekDays,
+            tasksByDay: tasksByDay,
+            userEventsByDay: userEventsByDay,
+            bookedVisitsByDay: bookedVisitsByDay,
+            calendar: .current
+        )
     }
 
     /// Overlay view rendering spanning event bars at the bottom of the week cell area

@@ -686,16 +686,15 @@ class ExpenseViewModel: ObservableObject {
             }
             _ = try? await notifier.notifyExpenseBatchDecision(
                 batchId: batchId, decision: decision, count: sentBackCount)
+            // The companion push carries the rail row's own copy, so the
+            // decision alone picks the row type to match.
             switch notice {
             case .approved:
-                try? await OneSignalService.shared.notifyBatchApproved(
-                    userId: submitterId, batchNumber: batchNumber, batchId: batchId)
-            case .sentBack(let count):
-                try? await OneSignalService.shared.notifyBatchSentBack(
-                    userId: submitterId, batchNumber: batchNumber, batchId: batchId, flaggedCount: count)
+                try? await OneSignalService.shared.notifyBatchApproved(userId: submitterId)
+            case .sentBack:
+                try? await OneSignalService.shared.notifyBatchSentBack(userId: submitterId)
             case .paid:
-                try? await OneSignalService.shared.notifyBatchPaid(
-                    userId: submitterId, batchNumber: batchNumber, batchId: batchId)
+                try? await OneSignalService.shared.notifyBatchPaid(userId: submitterId)
             }
         }
     }

@@ -393,33 +393,15 @@ enum CalendarUserEventOutboundSync {
     /// The rail is the server's: `notify_time_off_requested` reads the event
     /// row this operation just delivered and writes the requester's receipt,
     /// the on-behalf target's row, and one row per `time_off.approve` holder —
-    /// recipients are never computed on this phone. The push wording below is
-    /// verbatim from the two sheets this moved out of, and it reaches exactly
-    /// the approvers the server reports as having received NEW rows.
+    /// recipients are never computed on this phone. The companion push carries
+    /// each rail row's own server-rendered copy and reaches exactly the
+    /// approvers the server reports as having received NEW rows.
     private static func notifyApproversOfRequest(
         _ notification: TimeOffNotification,
         eventId: String
     ) async {
-        let dateRange = dateRange(
-            startDate: notification.startDate,
-            endDate: notification.endDate
-        )
-        let isSelfRequest = notification.requesterId == notification.targetUserId
-        let approvalBody = isSelfRequest
-            ? "\(notification.requesterName) requested time off: \(dateRange)"
-            : "\(notification.requesterName) requested time off for \(notification.targetName): \(dateRange)"
-
         let pushed = await TimeOffRequestNotificationDispatcher.dispatchRequested(
-            eventId: eventId,
-            push: .init(
-                title: "Time Off Request",
-                body: approvalBody,
-                data: [
-                    "type": "time_off_requested",
-                    "eventId": eventId,
-                    "screen": "schedule"
-                ]
-            )
+            eventId: eventId
         )
 
         print(
@@ -430,35 +412,19 @@ enum CalendarUserEventOutboundSync {
 
     /// The rail is the server's: `notify_time_off_booked` reads the event row
     /// this operation just delivered, confirms the recorded 'approved' state,
-    /// and writes the target's row. The push wording stays the sheets' own and
-    /// fires only when the server actually created a new row for someone other
-    /// than the booker.
+    /// and writes the target's row. The companion push carries that row's own
+    /// server-rendered copy and fires only when the server actually created a
+    /// new row for someone other than the booker.
     private static func notifyBooked(
         _ notification: TimeOffNotification,
         eventId: String
     ) async {
-        let dateRange = dateRange(
-            startDate: notification.startDate,
-            endDate: notification.endDate
-        )
         let isSelfBooking = notification.requesterId == notification.targetUserId
-        let body = isSelfBooking
-            ? "Your time off for \(dateRange) is on the schedule."
-            : "\(notification.requesterName) booked you off for \(dateRange)."
 
         _ = await TimeOffRequestNotificationDispatcher.dispatchBooked(
             eventId: eventId,
             targetUserId: notification.targetUserId,
-            targetIsSelf: isSelfBooking,
-            push: .init(
-                title: "Time Off Booked",
-                body: body,
-                data: [
-                    "type": "time_off_booked",
-                    "eventId": eventId,
-                    "screen": "schedule"
-                ]
-            )
+            targetIsSelf: isSelfBooking
         )
 
         print("[CalendarUserEventOutboundSync] Time off booked for \(notification.targetName)")

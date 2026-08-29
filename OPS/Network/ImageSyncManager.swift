@@ -395,15 +395,9 @@ class ImageSyncManager: ObservableObject {
     func notifyCrewOfAddedPhotos(project: Project, uploaderId: String, photoCount: Int, firstURL: String?) -> Task<Void, Never>? {
         guard photoCount > 0 else { return nil }
         let projectId = project.id
-        let projectTitle = project.title
 
-        // Resolve the uploader's display name from the local roster.
-        let uploaderName: String = {
-            guard let context = modelContext, !uploaderId.isEmpty else { return "A teammate" }
-            let descriptor = FetchDescriptor<TeamMember>(predicate: #Predicate { $0.id == uploaderId })
-            return (try? context.fetch(descriptor).first?.fullName) ?? "A teammate"
-        }()
-
+        // No display name or title is resolved here any more: the companion
+        // push carries the rail row's own server-rendered copy.
         let syncer = photosAddedSyncer
 
         return Task {
@@ -423,16 +417,9 @@ class ImageSyncManager: ObservableObject {
             guard !created.isEmpty else { return }
 
             do {
-                try await OneSignalService.shared.notifyPhotosAdded(
-                    userIds: created,
-                    uploaderName: uploaderName,
-                    photoCount: photoCount,
-                    projectName: projectTitle,
-                    projectId: projectId,
-                    imageUrl: firstURL
-                )
+                try await OneSignalService.shared.notifyPhotosAdded(userIds: created)
             } catch {
-                print("[IMAGE_SYNC] Failed to send photos-added push: \(error)")
+                print("[IMAGE_SYNC] Failed to send photos-added companion push: \(error)")
             }
         }
     }

@@ -689,9 +689,7 @@ class AppState: ObservableObject {
             // IS push dedupe, so the two surfaces can never disagree.
             try? await OneSignalService.shared.sendToUsers(
                 userIds: createdRecipients,
-                title: "Overdue Invoices",
-                body: "\(overdueCount) invoice\(overdueCount == 1 ? "" : "s") overdue totalling \(formattedTotal)",
-                data: ["type": "invoice_overdue", "screen": "expenses"]
+                rowType: "invoice_overdue"
             )
             print("[OVERDUE_CHECK] 📬 Invoice overdue notification sent to \(createdRecipients.count) recipients (\(overdueCount) invoices, \(formattedTotal))")
         }

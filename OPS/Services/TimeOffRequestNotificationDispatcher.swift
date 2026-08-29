@@ -49,18 +49,14 @@ extension NotificationRepository: TimeOffRequestNotifying {}
 protocol TimeOffRequestPushing {
     func sendToUser(
         userId: String,
-        title: String,
-        body: String,
-        data: [String: Any]?,
-        imageUrl: String?
+        rowType: String,
+        dedupeKey: String?
     ) async throws
 
     func sendToUsers(
         userIds: [String],
-        title: String,
-        body: String,
-        data: [String: Any]?,
-        imageUrl: String?
+        rowType: String,
+        dedupeKey: String?
     ) async throws
 }
 
@@ -71,14 +67,6 @@ enum TimeOffRequestNotificationDispatcher {
     /// The server's verdict when it wrote a new rail row. Anything else means
     /// the row was already there.
     static let createdVerdict = "created"
-
-    /// Push wording, built by the calling sheet. Rail copy is the server's;
-    /// this is the phone's lock screen, which has always been client-side.
-    struct PushCopy {
-        let title: String
-        let body: String
-        let data: [String: Any]
-    }
 
     // MARK: - Booked
 
@@ -95,7 +83,6 @@ enum TimeOffRequestNotificationDispatcher {
         eventId: String,
         targetUserId: String,
         targetIsSelf: Bool,
-        push: PushCopy,
         railSyncer: TimeOffRequestNotifying = NotificationRepository.shared,
         pushSender: TimeOffRequestPushing = OneSignalService.shared
     ) async -> String? {
@@ -112,10 +99,8 @@ enum TimeOffRequestNotificationDispatcher {
         do {
             try await pushSender.sendToUser(
                 userId: targetUserId,
-                title: push.title,
-                body: push.body,
-                data: push.data,
-                imageUrl: nil
+                rowType: "time_off_booked",
+                dedupeKey: nil
             )
         } catch {
             print("[TIME_OFF_REQUEST] Booked push failed: \(error)")
@@ -136,7 +121,6 @@ enum TimeOffRequestNotificationDispatcher {
     @discardableResult
     static func dispatchRequested(
         eventId: String,
-        push: PushCopy,
         railSyncer: TimeOffRequestNotifying = NotificationRepository.shared,
         pushSender: TimeOffRequestPushing = OneSignalService.shared
     ) async -> [String] {
@@ -154,10 +138,8 @@ enum TimeOffRequestNotificationDispatcher {
         do {
             try await pushSender.sendToUsers(
                 userIds: approverIds,
-                title: push.title,
-                body: push.body,
-                data: push.data,
-                imageUrl: nil
+                rowType: "time_off_requested",
+                dedupeKey: nil
             )
         } catch {
             print("[TIME_OFF_REQUEST] Request push failed: \(error)")

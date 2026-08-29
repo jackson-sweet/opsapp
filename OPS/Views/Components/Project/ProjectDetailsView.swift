@@ -47,6 +47,7 @@ struct ProjectDetailsView: View {
     @State private var selectedTeamMemberIds: Set<String> = []
     @State private var allTeamMembers: [TeamMember] = []
     @State private var showingClientPicker = false
+    @State private var showingContactPicker = false
     /// Bug a3c4e216 — the project side of lead matching.
     @State private var showingLeadMatchPicker = false
     @Query private var companyLeads: [Opportunity]
@@ -194,6 +195,10 @@ struct ProjectDetailsView: View {
                             }
                         )
                         .environmentObject(dataController)
+                    }
+                    .sheet(isPresented: $showingContactPicker) {
+                        ProjectContactPickerSheet(project: project)
+                            .environmentObject(dataController)
                     }
                     .sheet(isPresented: $showingLeadMatchPicker) {
                         ProjectLeadMatchSheet(
@@ -989,6 +994,7 @@ struct ProjectDetailsView: View {
                     viewModel.showingTaskDeleteConfirmation = true
                 },
                 onClientLongPress: { showingClientPicker = true },
+                onChangeContact: canOfferContactChange ? { showingContactPicker = true } : nil,
                 onChangeStatus: { showingStatusPicker = true },
                 leadRowPresentation: leadRowPresentation,
                 onOpenLead: openLinkedLead,
@@ -1138,6 +1144,13 @@ struct ProjectDetailsView: View {
     }
 
     @ViewBuilder
+    /// Whether the CLIENT row may offer `Change contact`. A client with no
+    /// people to choose from gets no menu item rather than a picker that opens
+    /// on an empty list — the way to add people is the client page, not here.
+    private var canOfferContactChange: Bool {
+        project.client?.subClients.contains { $0.deletedAt == nil } ?? false
+    }
+
     private var clientContactSheet: some View {
         if let client = project.client {
             ContactDetailView(client: client, project: project)

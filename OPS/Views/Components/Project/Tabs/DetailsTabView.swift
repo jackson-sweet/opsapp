@@ -54,6 +54,11 @@ struct DetailsTabView: View {
     var onDuplicateTask: ((ProjectTask) -> Void)? = nil
     var onDeleteTask: ((ProjectTask) -> Void)? = nil
     var onClientLongPress: (() -> Void)? = nil
+    /// Opens `ProjectContactPickerSheet` (wired in ProjectDetailsView). Bug
+    /// 2c65fcb8 — the only way to point a job at one of the client's people was
+    /// to open the client and dig into a sub-contact row. Supplied only when
+    /// the client actually has assignable people.
+    var onChangeContact: (() -> Void)? = nil
     /// Opens the existing `ProjectStatusChangeSheet` (wired in
     /// ProjectDetailsView via `showingStatusPicker`). Bug f3a300f7 — the
     /// Details surface previously had no affordance to reach that sheet.
@@ -244,7 +249,8 @@ struct DetailsTabView: View {
                         onContactTap: onClientTap,
                         onCall: { if let p = project.effectiveClientPhone { viewModel.callPhone(p) } },
                         onEmail: { if let e = project.effectiveClientEmail { viewModel.sendEmail(e) } },
-                        onAssignClient: onClientLongPress
+                        onAssignClient: onClientLongPress,
+                        onChangeContact: onChangeContact
                     )
                 }
 
@@ -527,6 +533,27 @@ private struct ProjectStatusRow: View {
 /// narrower than the old full-width row, and two trailing icon buttons crowded
 /// the name they were meant to serve. A channel the client does not have is not
 /// a dimmed button — it is simply absent.
+/// What the CLIENT row shows. Person-first when a project contact is assigned:
+/// the row names who you actually call — the CALL and EMAIL chips beneath it
+/// already dial the contact, so naming the parent client there made the row say
+/// one name and dial another. The client becomes the metadata line, which is
+/// the honest hierarchy: you are calling Maya, at Northline. No contact
+/// assigned, and the row is the client name alone, exactly as before.
+struct ClientRowPresentation: Equatable {
+    let primary: String
+    let secondary: String?
+
+    static func make(project: Project) -> ClientRowPresentation {
+        if let contact = project.primaryProjectContact {
+            return ClientRowPresentation(
+                primary: contact.name,
+                secondary: project.effectiveClientName.uppercased()
+            )
+        }
+        return ClientRowPresentation(primary: project.effectiveClientName, secondary: nil)
+    }
+}
+
 private struct ClientRow: View {
     let project: Project
     let canEdit: Bool
@@ -534,10 +561,40 @@ private struct ClientRow: View {
     let onCall: () -> Void
     let onEmail: () -> Void
     var onAssignClient: (() -> Void)? = nil
+    var onChangeContact: (() -> Void)? = nil
 
     private var hasClient: Bool { project.client != nil }
     private var hasPhone: Bool { !(project.effectiveClientPhone ?? "").isEmpty }
     private var hasEmail: Bool { !(project.effectiveClientEmail ?? "").isEmpty }
+    private var presentation: ClientRowPresentation { ClientRowPresentation.make(project: project) }
+
+    /// The row opens the client either way; the label names the person it is
+    /// currently reading out so the two never diverge for a screen-reader.
+    private var accessibilityLabel: String {
+        let base = "Open client \(project.effectiveClientName)"
+        guard let contact = project.primaryProjectContact else { return base }
+        return base + ", contact \(contact.name)"
+    }
+
+    /// Long-press menu items, in frequency order: the contact changes often,
+    /// the client almost never. Only offered when the caller supplied a way to
+    /// perform them — no dead affordances.
+    private var editMenuItems: [RowEditMenuItem] {
+        var items: [RowEditMenuItem] = []
+        if let changeContact = onChangeContact {
+            items.append(RowEditMenuItem(title: "Change contact") {
+                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                changeContact()
+            })
+        }
+        if let assign = onAssignClient {
+            items.append(RowEditMenuItem(title: "Change client") {
+                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                assign()
+            })
+        }
+        return items
+    }
 
     var body: some View {
         DocRow(label: "CLIENT", labelWidth: ProjectInfoDoc.labelColumnWidth) {
@@ -545,11 +602,20 @@ private struct ClientRow: View {
                 VStack(alignment: .leading, spacing: 6) {
                     Button(action: onContactTap) {
                         HStack(spacing: OPSStyle.Layout.spacing2) {
-                            Text(project.effectiveClientName)
-                                .font(ProjectInfoDoc.valueFont)
-                                .foregroundColor(OPSStyle.Colors.text)
-                                .lineLimit(1)
-                                .truncationMode(.tail)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(presentation.primary)
+                                    .font(ProjectInfoDoc.valueFont)
+                                    .foregroundColor(OPSStyle.Colors.text)
+                                    .lineLimit(1)
+                                    .truncationMode(.tail)
+                                if let secondary = presentation.secondary {
+                                    Text(secondary)
+                                        .font(ProjectInfoDoc.metaFont)
+                                        .foregroundColor(OPSStyle.Colors.text3)
+                                        .lineLimit(1)
+                                        .truncationMode(.tail)
+                                }
+                            }
                             Spacer(minLength: 0)
                             Image(systemName: OPSStyle.Icons.chevronRight)
                                 .font(.system(size: 11, weight: .regular))
@@ -558,7 +624,7 @@ private struct ClientRow: View {
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(PlainButtonStyle())
-                    .accessibilityLabel("Open client \(project.effectiveClientName)")
+                    .accessibilityLabel(accessibilityLabel)
 
                     if hasPhone || hasEmail {
                         HStack(spacing: 6) {
@@ -594,15 +660,10 @@ private struct ClientRow: View {
                 }
             }
         }
-        .rowEditAction(
+        .rowEditActions(
             isEnabled: InfoRowEdit.offersLongPressEdit(canEdit: canEdit, hasValue: hasClient),
-            title: "Change client"
-        ) {
-            if let assign = onAssignClient {
-                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                assign()
-            }
-        }
+            items: editMenuItems
+        )
     }
 }
 
@@ -1750,5 +1811,57 @@ private extension View {
         action: @escaping () -> Void
     ) -> some View {
         modifier(RowEditAction(isEnabled: isEnabled, title: title, action: action))
+    }
+}
+
+/// One named long-press action for a filled info row.
+struct RowEditMenuItem: Identifiable {
+    let id = UUID()
+    let title: String
+    let action: () -> Void
+}
+
+/// Multi-action variant of `RowEditAction` — same `.contextMenu` grammar, same
+/// entitlement rule (`InfoRowEdit`), several named actions. A row with two ways
+/// to edit it (the CLIENT row: its contact and its client) keeps both behind
+/// the one gesture every other row already uses, rather than growing a second
+/// affordance in the scan surface.
+private struct RowEditActions: ViewModifier {
+    let isEnabled: Bool
+    let items: [RowEditMenuItem]
+
+    /// Two items is this row's ceiling, so the accessibility chain is written
+    /// out per arity rather than folded over the array — it stays legible and
+    /// it type-checks in a fraction of the time in this very large file.
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if isEnabled && items.count > 1 {
+            decorated(content)
+                .accessibilityAction(named: Text(items[1].title), items[1].action)
+        } else if isEnabled && items.count == 1 {
+            decorated(content)
+        } else {
+            content
+        }
+    }
+
+    /// The context menu plus the first item's accessibility action. Only ever
+    /// called with a non-empty `items`.
+    private func decorated(_ content: Content) -> some View {
+        content
+            .contextMenu {
+                ForEach(items) { item in
+                    Button(action: item.action) {
+                        Label(item.title, systemImage: OPSStyle.Icons.pencil)
+                    }
+                }
+            }
+            .accessibilityAction(named: Text(items[0].title), items[0].action)
+    }
+}
+
+private extension View {
+    func rowEditActions(isEnabled: Bool, items: [RowEditMenuItem]) -> some View {
+        modifier(RowEditActions(isEnabled: isEnabled, items: items))
     }
 }

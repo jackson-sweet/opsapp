@@ -19,6 +19,7 @@
 
 import SwiftUI
 import SwiftData
+import Combine
 
 struct LeadDeckSection: View {
     let opportunity: Opportunity

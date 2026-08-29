@@ -59,6 +59,10 @@ struct SyncOpSnapshot: Identifiable, Equatable {
     /// Durable packet routing decoded from the operation envelope. Nil for all
     /// legacy/non-site-visit work.
     let siteVisitId: String?
+    /// Human name of the entity this operation writes (project title, client
+    /// name…), resolved at load time. Nil when the entity is not on device or
+    /// its type has no display name.
+    let entityDisplayName: String?
 
     init(
         id: UUID,
@@ -70,7 +74,8 @@ struct SyncOpSnapshot: Identifiable, Equatable {
         lastAttemptedAt: Date?,
         lastError: String?,
         createdAt: Date,
-        siteVisitId: String? = nil
+        siteVisitId: String? = nil,
+        entityDisplayName: String? = nil
     ) {
         self.id = id
         self.entityType = entityType
@@ -82,9 +87,18 @@ struct SyncOpSnapshot: Identifiable, Equatable {
         self.lastError = lastError
         self.createdAt = createdAt
         self.siteVisitId = siteVisitId?.lowercased()
+        self.entityDisplayName = entityDisplayName
     }
 
     init(from operation: SyncOperation) {
+        self.init(from: operation, entityDisplayName: nil)
+    }
+
+    /// Same mapping as `init(from:)`, carrying the display name the live load
+    /// resolved for this operation's entity (bug a3f7cca8). Kept here rather
+    /// than at the call site because `siteVisitId(from:)` is private to this
+    /// type — the envelope decode must stay in one place.
+    init(from operation: SyncOperation, entityDisplayName: String?) {
         self.init(
             id: operation.id,
             entityType: operation.entityType,
@@ -95,7 +109,8 @@ struct SyncOpSnapshot: Identifiable, Equatable {
             lastAttemptedAt: operation.lastAttemptedAt,
             lastError: operation.lastError,
             createdAt: operation.createdAt,
-            siteVisitId: Self.siteVisitId(from: operation)
+            siteVisitId: Self.siteVisitId(from: operation),
+            entityDisplayName: entityDisplayName
         )
     }
 
@@ -1125,6 +1140,9 @@ extension RecoveryInventory {
             }
         )
         let opModels = (try? modelContext.fetch(opDescriptor)) ?? []
+        // Names for the records these operations write, so a row can say WHICH
+        // project it is holding rather than a bare "Project update" (a3f7cca8).
+        let entityNames = entityDisplayNames(for: opModels, in: modelContext)
         let ops = opModels.filter { operation in
             guard SiteVisitOutboundSync.isSiteVisitOperation(operation) else { return true }
             guard let payload = try? JSONDecoder().decode(
@@ -1132,7 +1150,14 @@ extension RecoveryInventory {
                 from: operation.payload
             ) else { return false }
             return payload.companyId.lowercased() == activeCompanyId
-        }.map(SyncOpSnapshot.init(from:))
+        }.map { operation in
+            SyncOpSnapshot(
+                from: operation,
+                entityDisplayName: entityNames[
+                    "\(operation.entityType):\(operation.entityId.lowercased())"
+                ]
+            )
+        }
 
         // Autocreates: both parked and still-draining requests.
         let autocreates = (queue.parkedRequests + queue.activeRequests).map(AutocreateSnapshot.init(from:))
@@ -1241,6 +1266,153 @@ extension RecoveryInventory {
             visits: visits,
             now: now
         )
+    }
+
+    /// Resolves display names for the entity types that have one, fetching each
+    /// involved table at most once. Fetches are predicate-free where casing of
+    /// stored ids varies (UUID().uuidString is uppercase, Postgres is lowercase)
+    /// — ids compare lowercased in memory, the same rule as captureSnapshots.
+    ///
+    /// A table is touched only when a queued operation of that type exists this
+    /// pass, mirroring the guarded capture fetches above. Entity types with no
+    /// human-readable name stay unresolved by design — the row keeps its bare
+    /// action title rather than inventing a label (bug a3f7cca8).
+    @MainActor
+    static func entityDisplayNames(
+        for ops: [SyncOperation],
+        in modelContext: ModelContext
+    ) -> [String: String] {   // key: "\(entityType):\(entityId.lowercased())"
+        var names: [String: String] = [:]
+        let wanted = Dictionary(grouping: ops, by: \.entityType)
+            .mapValues { Set($0.map { $0.entityId.lowercased() }) }
+
+        func harvest<T>(_ type: String, _ fetch: () -> [T], id: (T) -> String, name: (T) -> String?) {
+            guard let ids = wanted[type], !ids.isEmpty else { return }
+            for row in fetch() where ids.contains(id(row).lowercased()) {
+                if let resolved = Self.condensed(name(row)) {
+                    names["\(type):\(id(row).lowercased())"] = resolved
+                }
+            }
+        }
+
+        harvest(
+            SyncEntityType.project.rawValue,
+            { (try? modelContext.fetch(FetchDescriptor<Project>())) ?? [] },
+            id: { $0.id },
+            name: { $0.title }
+        )
+        harvest(
+            SyncEntityType.client.rawValue,
+            { (try? modelContext.fetch(FetchDescriptor<Client>())) ?? [] },
+            id: { $0.id },
+            name: { $0.name }
+        )
+        harvest(
+            SyncEntityType.projectTask.rawValue,
+            { (try? modelContext.fetch(FetchDescriptor<ProjectTask>())) ?? [] },
+            id: { $0.id },
+            name: { $0.displayTitle }
+        )
+        harvest(
+            SyncEntityType.deckDesign.rawValue,
+            { (try? modelContext.fetch(FetchDescriptor<DeckDesign>())) ?? [] },
+            id: { $0.id },
+            name: { $0.title }
+        )
+        harvest(
+            SyncEntityType.subClient.rawValue,
+            { (try? modelContext.fetch(FetchDescriptor<SubClient>())) ?? [] },
+            id: { $0.id },
+            name: { $0.name }
+        )
+        harvest(
+            SyncEntityType.company.rawValue,
+            { (try? modelContext.fetch(FetchDescriptor<Company>())) ?? [] },
+            id: { $0.id },
+            name: { $0.name }
+        )
+        harvest(
+            SyncEntityType.user.rawValue,
+            { (try? modelContext.fetch(FetchDescriptor<User>())) ?? [] },
+            id: { $0.id },
+            name: { $0.fullName }
+        )
+        harvest(
+            SyncEntityType.taskType.rawValue,
+            { (try? modelContext.fetch(FetchDescriptor<TaskType>())) ?? [] },
+            id: { $0.id },
+            name: { $0.display }
+        )
+        harvest(
+            SyncEntityType.taskStatusOption.rawValue,
+            { (try? modelContext.fetch(FetchDescriptor<TaskStatusOption>())) ?? [] },
+            id: { $0.id },
+            name: { $0.display }
+        )
+        // A note has no title — its body IS its identity. `condensed` folds the
+        // newlines so the row stays one line.
+        harvest(
+            SyncEntityType.projectNote.rawValue,
+            { (try? modelContext.fetch(FetchDescriptor<ProjectNote>())) ?? [] },
+            id: { $0.id },
+            name: { $0.content }
+        )
+        harvest(
+            SyncEntityType.calendarUserEvent.rawValue,
+            { (try? modelContext.fetch(FetchDescriptor<CalendarUserEvent>())) ?? [] },
+            id: { $0.id },
+            name: { $0.title }
+        )
+        harvest(
+            SyncEntityType.timeEntry.rawValue,
+            { (try? modelContext.fetch(FetchDescriptor<TimeEntry>())) ?? [] },
+            id: { $0.id },
+            name: { $0.notes }
+        )
+        // An estimate/invoice always has its number; the optional title is the
+        // friendlier label when the operator gave it one.
+        harvest(
+            SyncEntityType.estimate.rawValue,
+            { (try? modelContext.fetch(FetchDescriptor<Estimate>())) ?? [] },
+            id: { $0.id },
+            name: { estimate in Self.condensed(estimate.title) ?? estimate.estimateNumber }
+        )
+        harvest(
+            SyncEntityType.invoice.rawValue,
+            { (try? modelContext.fetch(FetchDescriptor<Invoice>())) ?? [] },
+            id: { $0.id },
+            name: { invoice in Self.condensed(invoice.title) ?? invoice.invoiceNumber }
+        )
+        harvest(
+            SyncEntityType.catalogItem.rawValue,
+            { (try? modelContext.fetch(FetchDescriptor<CatalogItem>())) ?? [] },
+            id: { $0.id },
+            name: { $0.name }
+        )
+        harvest(
+            SyncEntityType.product.rawValue,
+            { (try? modelContext.fetch(FetchDescriptor<Product>())) ?? [] },
+            id: { $0.id },
+            name: { $0.name }
+        )
+        harvest(
+            SyncEntityType.inventoryItem.rawValue,
+            { (try? modelContext.fetch(FetchDescriptor<InventoryItem>())) ?? [] },
+            id: { $0.id },
+            name: { $0.name }
+        )
+        return names
+    }
+
+    /// One-line, trimmed rendering of a stored name. A note's body is its only
+    /// identity and can carry newlines; a row is one line, so internal
+    /// whitespace runs collapse to single spaces. Empty resolves to nil.
+    private static func condensed(_ value: String?) -> String? {
+        guard let value else { return nil }
+        let collapsed = value
+            .split(whereSeparator: { $0.isWhitespace || $0.isNewline })
+            .joined(separator: " ")
+        return collapsed.isEmpty ? nil : collapsed
     }
 
     /// Capture snapshots for the visit ids a draft or a durable packet operation

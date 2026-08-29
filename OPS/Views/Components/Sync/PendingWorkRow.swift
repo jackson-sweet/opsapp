@@ -143,10 +143,13 @@ enum PendingWorkVisuals {
     static func title(for item: RecoveryItem) -> String {
         switch item {
         case .op(let snapshot, _, _):
-            return SyncStatusCopy.title(
-                entityType: snapshot.entityType,
-                operationType: snapshot.operationType,
-                changedFields: []
+            return SyncStatusCopy.PendingWork.titleWithEntity(
+                SyncStatusCopy.title(
+                    entityType: snapshot.entityType,
+                    operationType: snapshot.operationType,
+                    changedFields: []
+                ),
+                name: snapshot.entityDisplayName
             )
         case .autocreate(let snapshot, _, _):
             return SyncStatusCopy.PendingWork.leadTitle(name: snapshot.name)

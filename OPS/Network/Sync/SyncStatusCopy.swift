@@ -206,6 +206,8 @@ enum SyncStatusCopy {
         case "siteVisitArtifact": return "Site Visit Capture"
         case "siteVisitChecklistAnswer": return "Site Visit Checklist"
         case "siteVisitIdentityDraft": return "Site Visit Identity"
+        case "deckDesign": return "Deck design"
+        case "opportunity": return "Lead"
         default: return entityType.capitalized
         }
     }
@@ -491,6 +493,12 @@ enum SyncStatusCopy {
 
         // Row titles — the piece of WORK, named like a human action. The name
         // is data; the prefix is the copy (chokepoint rule).
+
+        /// Title + the record's own name. Em-dash join; the row ellipsizes.
+        static func titleWithEntity(_ base: String, name: String?) -> String {
+            guard let name, !name.isEmpty else { return base }
+            return "\(base) — \(name)"
+        }
 
         /// Loose lead-delivery row — "Lead · <name>" (falls back to "New lead"
         /// when the client carries no name).

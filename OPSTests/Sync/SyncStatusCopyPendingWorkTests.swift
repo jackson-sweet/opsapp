@@ -339,6 +339,32 @@ final class SyncStatusCopyPendingWorkTests: XCTestCase {
         )
     }
 
+    // MARK: - Naming the record (bug a3f7cca8)
+
+    func testTitleWithEntityJoinsOnAnEmDashAndFallsBackCleanly() {
+        XCTAssertEqual(
+            Copy.titleWithEntity("Project update", name: "Cedar deck rebuild"),
+            "Project update — Cedar deck rebuild"
+        )
+        XCTAssertEqual(Copy.titleWithEntity("Project update", name: nil), "Project update")
+        XCTAssertEqual(Copy.titleWithEntity("Project update", name: ""), "Project update")
+    }
+
+    /// The screenshot said "Deckdesign update" — the `capitalized` fallback
+    /// mangling a camelCase entity type. Both new names are explicit.
+    func testEntityNamesCoverDeckDesignsAndLeads() {
+        XCTAssertEqual(SyncStatusCopy.entityName("deckDesign"), "Deck design")
+        XCTAssertEqual(SyncStatusCopy.entityName("opportunity"), "Lead")
+        XCTAssertEqual(
+            SyncStatusCopy.title(entityType: "deckDesign", operationType: "update", changedFields: []),
+            "Deck design update"
+        )
+        XCTAssertEqual(
+            SyncStatusCopy.title(entityType: "deckDesign", operationType: "create", changedFields: []),
+            "New deck design"
+        )
+    }
+
     // MARK: - Helpers
 
     /// `SyncStatusTone` is a plain enum used via pattern-match, not `==`; name it

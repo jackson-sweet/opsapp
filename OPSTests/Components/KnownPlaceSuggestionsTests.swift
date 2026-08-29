@@ -38,7 +38,7 @@ final class KnownPlaceSuggestionsTests: XCTestCase {
 
         let candidates = KnownPlaceSuggestions.candidates(in: context)
 
-        XCTAssertEqual(candidates.map(\.id), ["project-1"])
+        XCTAssertEqual(candidates.map(\.id), ["project-project-1"])
     }
 
     /// A client and one of their jobs sharing an address is the common case,
@@ -84,7 +84,7 @@ final class KnownPlaceSuggestionsTests: XCTestCase {
         context.insert(trashedClient)
         try context.save()
 
-        XCTAssertEqual(KnownPlaceSuggestions.candidates(in: context).map(\.id), ["project-live"])
+        XCTAssertEqual(KnownPlaceSuggestions.candidates(in: context).map(\.id), ["project-project-live"])
     }
 
     /// The client's stored coordinate rides along, so selecting an

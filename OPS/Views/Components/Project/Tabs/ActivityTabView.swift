@@ -923,14 +923,7 @@ private struct ProjectPhotosCarousel: View {
         // to a user id must read as unmatchable, not as missing, or the gate
         // hands it the unattributed fallback and offers a delete the trigger
         // rejects. URLs with no row at all fall through to `.unattributed`.
-        let uploaderByURL: [String: ProjectPhotoUploaderAttribution] = Dictionary(
-            syncedPhotos.map { photo -> (String, ProjectPhotoUploaderAttribution) in
-                (photo.url, ProjectPhotoUploaderAttribution(rawUploadedBy: photo.uploadedBy))
-            },
-            // One statement soft-deletes every row on the URL, so the trigger
-            // must accept them all — rows that disagree are undeletable.
-            uniquingKeysWith: { lhs, rhs in lhs == rhs ? lhs : .unmatchable }
-        )
+        let uploaderByURL = ProjectPhotoUploaderAttribution.byURL(Array(syncedPhotos))
         let pending = imageSyncManager.currentInFlightUploads(for: project.id)
         // Split in-flight tiles into actively-uploading vs failed. The
         // UPLOADING badge counts only the spinners; failed tiles show

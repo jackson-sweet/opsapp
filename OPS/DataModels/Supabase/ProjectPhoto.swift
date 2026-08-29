@@ -119,6 +119,25 @@ enum ProjectPhotoUploaderAttribution: Equatable {
         }
         self = .known(canonicalID)
     }
+
+    /// Attribution per photo URL for a set of live `project_photos` rows — the
+    /// ownership half of every delete gate, built one way for every surface.
+    ///
+    /// EVERY row is represented: a row whose `uploaded_by` cannot resolve to a
+    /// user id must read as `.unmatchable`, not as missing, or the gate hands it
+    /// the `.unattributed` fallback and offers a delete the trigger rejects.
+    /// URLs with no row at all are simply absent, and callers fall back to
+    /// `.unattributed` — those are the device's own optimistic gallery appends.
+    ///
+    /// Rows on one URL that disagree collapse to `.unmatchable`: a single
+    /// statement soft-deletes every row on the URL, so the trigger must accept
+    /// them all — rows that disagree are undeletable.
+    static func byURL(_ photos: [ProjectPhoto]) -> [String: ProjectPhotoUploaderAttribution] {
+        Dictionary(
+            photos.map { ($0.url, ProjectPhotoUploaderAttribution(rawUploadedBy: $0.uploadedBy)) },
+            uniquingKeysWith: { lhs, rhs in lhs == rhs ? lhs : .unmatchable }
+        )
+    }
 }
 
 /// Who may remove a project photo.

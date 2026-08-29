@@ -136,9 +136,10 @@ struct LeadDeckSection: View {
     // MARK: - Remote self-repair
 
     /// Cold-device path: no local design for this lead → one fetch by
-    /// opportunity_id, inserting rows we don't have (mirrors DeckTabView's
-    /// self-repair; existing rows go through the normal inbound merge, not
-    /// this shortcut).
+    /// opportunity_id, merged through `DeckDesignServerMerge` — the SAME
+    /// inbound rule the deck viewport's repair uses, so a pending local edit
+    /// survives the repair and a case-variant id can never duplicate a row
+    /// (bug 2fa645a8).
     private func selfRepairFetchIfNeeded() async {
         guard candidate == nil, !remoteFetchAttempted else { return }
         remoteFetchAttempted = true
@@ -146,20 +147,10 @@ struct LeadDeckSection: View {
         let repo = DeckDesignRepository(companyId: opportunity.companyId)
         guard let dtos = try? await repo.fetchForOpportunity(opportunity.id) else { return }
 
-        for dto in dtos {
-            let designId = DeckDesign.canonicalUUIDString(dto.id)
-            let descriptor = FetchDescriptor<DeckDesign>(
-                predicate: #Predicate<DeckDesign> { $0.id == designId }
-            )
-            if let existing = (try? modelContext.fetch(descriptor))?.first {
-                existing.applyServerSnapshot(dto, accepting: Set(DeckDesign.serverMergeFields))
-            } else {
-                let model = dto.toModel()
-                model.lastSyncedAt = Date()
-                model.needsSync = false
-                modelContext.insert(model)
-            }
+        do {
+            try DeckDesignServerMerge.merge(dtos, into: modelContext)
+        } catch {
+            print("[LeadDeckSection] Deck design repair merge failed for \(opportunity.id): \(error)")
         }
-        try? modelContext.save()
     }
 }

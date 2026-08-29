@@ -528,8 +528,10 @@ enum RecoveryItem: Identifiable, Equatable {
     }
 }
 
-/// Age is a review signal only. Pending work is never expired or removed by
-/// this policy, including at the exact 30-day boundary.
+/// Age is a review signal only — this state removes nothing, ever. Removal is
+/// `PendingWorkExpiryPolicy`'s decision alone, and it spares everything that
+/// carries the only copy of real work. The two share one 30-day constant, so
+/// the tag now marks exactly the spared items: the operator's review queue.
 enum RecoveryReviewState: Equatable {
     case current
     case stale30Days
@@ -590,10 +592,10 @@ enum RecoveryDiscardPolicy: Equatable {
 }
 
 extension RecoveryItem {
-    private static let staleReviewInterval: TimeInterval = 30 * 24 * 60 * 60
-
+    /// The STALE · 30D tag and the 30-day expiry share ONE number by
+    /// construction — the tag now marks exactly the work the expiry spared.
     func reviewState(now: Date) -> RecoveryReviewState {
-        now.timeIntervalSince(sortDate) >= Self.staleReviewInterval
+        now.timeIntervalSince(sortDate) >= PendingWorkExpiryPolicy.expiryInterval
             ? .stale30Days
             : .current
     }

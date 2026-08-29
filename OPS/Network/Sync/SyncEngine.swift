@@ -221,6 +221,7 @@ final class SyncEngine {
                 connectivity: connectivity
             )
             self?.cleanupCompletedOperations()
+            self?.purgeExpiredPendingWork()
         }
         self.backgroundScheduler = scheduler
 
@@ -281,6 +282,10 @@ final class SyncEngine {
         // pushPending, which the 180s timer also drives). parked ops stay parked.
         if !hasSweptRecoverableThisLaunch {
             hasSweptRecoverableThisLaunch = true
+            // BEFORE the re-enqueue, never after: re-enqueue flips failed →
+            // pending, which drops the tone to waiting and would shield
+            // 30-day-dead work from expiry for another whole session.
+            purgeExpiredPendingWork()
             reenqueueRecoverableOperations()
             // Calendar rows left dirty by the old fire-and-forget writes have
             // nothing queued to push them — no operation exists to revive. Give
@@ -2849,6 +2854,108 @@ final class SyncEngine {
     }
 
     // MARK: - Cleanup
+
+    /// Bug f71113a3 — auto-delete stalled pending work after 30 days.
+    /// Reads the same inventory the PENDING WORK screen renders, asks the pure
+    /// policy, and applies only the three sanctioned scopes. Never touches
+    /// pending/inProgress work, creates, photos, drafts, designs, or custody
+    /// packets — see PendingWorkExpiryPolicy.
+    @MainActor
+    func purgeExpiredPendingWork(now: Date = Date()) {
+        guard let modelContext else { return }
+        let queue = ClientLeadAutocreateQueue.shared
+        let inventory = RecoveryInventory.load(from: modelContext, queue: queue, now: now)
+        let outcome = applyPendingWorkExpiry(
+            inventory: inventory,
+            now: now,
+            in: modelContext,
+            queue: queue
+        )
+        guard outcome.total > 0 else { return }
+
+        refreshPendingCount()
+        AnalyticsService.shared.track(
+            eventType: .lifecycle,
+            eventName: "pending_work_expired",
+            properties: [
+                "operations": outcome.expiredOperations,
+                "lead_requests": outcome.expiredLeadRequests,
+                "empty_visit_bundles": outcome.expiredEmptyBundles
+            ]
+        )
+        print(
+            "[SYNC_ENGINE] Expired 30-day pending work — "
+                + "ops: \(outcome.expiredOperations), "
+                + "leads: \(outcome.expiredLeadRequests), "
+                + "empty bundles: \(outcome.expiredEmptyBundles)"
+        )
+    }
+
+    /// The acting half of the 30-day expiry, split out so the ONE place that
+    /// destroys anything is directly testable against a real store — the load
+    /// above is a thin adapter over the same inventory the screen renders.
+    ///
+    /// Applies only the three sanctioned scopes and nothing else. Returns what
+    /// it removed; an empty outcome means nothing was written and nothing saved.
+    @MainActor
+    @discardableResult
+    func applyPendingWorkExpiry(
+        inventory: RecoveryInventory,
+        now: Date,
+        in modelContext: ModelContext,
+        queue: ClientLeadAutocreateQueue
+    ) -> PendingWorkExpiryOutcome {
+        // Predicate-free by rule (see ClientLeadAutocreateQueue.syncOperations):
+        // a #Predicate fetch of SyncOperation traps on a never-populated table.
+        let allOperations = (try? modelContext.fetch(FetchDescriptor<SyncOperation>())) ?? []
+        let clientCreateIds = Set(
+            allOperations
+                .filter { $0.entityType == SyncEntityType.client.rawValue && $0.operationType == "create" }
+                .map { $0.entityId.lowercased() }
+        )
+
+        var outcome = PendingWorkExpiryOutcome.none
+        for item in inventory.attention {
+            let decision = PendingWorkExpiryPolicy.decision(
+                for: item,
+                now: now,
+                clientCreateOpExists: { clientCreateIds.contains($0) }
+            )
+            guard case .expire(let scope) = decision else { continue }
+            switch scope {
+            case .deleteOperations(let ids):
+                // Re-check the LIVE row status: a retry between the inventory
+                // build and this loop must not have its fresh attempt deleted.
+                let targets = allOperations.filter {
+                    ids.contains($0.id) && ($0.status == "failed" || $0.status == "parked")
+                }
+                guard !targets.isEmpty else { continue }
+                targets.forEach { modelContext.delete($0) }
+                outcome.expiredOperations += targets.count
+            case .removeLeadRequest(let clientId):
+                queue.removeRequest(clientId: clientId)
+                outcome.expiredLeadRequests += 1
+            case .declineBundleSends(let bundle):
+                // Declined, never deleted: the decline-sticks contract requires
+                // the terminal row to stay so orphan recovery cannot re-derive
+                // the send. PendingWorkDecline refuses an in-flight unit itself,
+                // and saves the context on success.
+                if PendingWorkDecline.queuedSends(bundle, in: modelContext) {
+                    outcome.expiredEmptyBundles += 1
+                }
+            }
+        }
+
+        guard outcome.total > 0 else { return .none }
+        do {
+            try modelContext.save()
+        } catch {
+            modelContext.rollback()
+            print("[SYNC_ENGINE] 30-day expiry save failed: \(error)")
+            return .none
+        }
+        return outcome
+    }
 
     /// Deletes completed sync operations that are older than 24 hours.
     func cleanupCompletedOperations() {

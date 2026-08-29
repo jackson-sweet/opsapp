@@ -608,6 +608,11 @@ struct PendingWorkScreen: View {
         .preferredColorScheme(.dark)
         .onAppear {
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            // Before the first read, so the screen never shows a row that is
+            // already past its 30-day expiry (bug f71113a3). Deliberately NOT
+            // on the 2s tick below — destructive maintenance does not belong on
+            // a render cadence.
+            dataController.syncEngine.purgeExpiredPendingWork()
             refresh()
         }
         .onReceive(clockTimer) { _ in

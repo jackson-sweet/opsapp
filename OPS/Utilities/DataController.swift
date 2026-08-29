@@ -5373,6 +5373,16 @@ class DataController: ObservableObject {
             operationType: "create",
             changedFields: changedFields
         )
+
+        // Bug 0969bc8a — a system-event note written through this door (the
+        // vinyl order record, and anything else that bypasses
+        // ProjectNotesViewModel) was invisible to an already-mounted Activity
+        // feed until its next full reload: the feed only reloads on
+        // `.projectNoteReceived`, which RealtimeProcessor posts for OTHER
+        // devices' writes. Local writes announce themselves the same way.
+        // ProjectNoteChangeSignal hops to the main queue itself, so this is
+        // safe from any calling context.
+        ProjectNoteChangeSignal.post(projectId: note.projectId)
     }
 
     /// Replace a project note's content and authoritative mentions locally,

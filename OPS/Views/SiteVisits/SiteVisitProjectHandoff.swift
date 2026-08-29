@@ -271,6 +271,10 @@ enum SiteVisitProjectHandoff {
         note.contentMetadataJSON = packet.metadataJSON
         note.needsSync = true
         modelContext.insert(note)
+        // Bug 0969bc8a — announce the local write so an already-mounted
+        // Activity feed picks the packet up immediately (it only reloads on
+        // `.projectNoteReceived`, which otherwise arrives for remote writes).
+        ProjectNoteChangeSignal.post(projectId: projectId)
         return ensureOperation(
             entityType: .projectNote,
             entityId: note.id,

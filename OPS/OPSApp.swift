@@ -45,6 +45,13 @@ struct OPSApp: App {
     /// fires after we've already resubscribed and silently kills a live channel.
     @State private var realtimeStopTask: Task<Void, Never>?
 
+    /// Bug 2fa645a8: the deck-open canary is read exactly ONCE per process, on
+    /// the first `.active`. A later `.inactive → .active` bounce (Control
+    /// Centre, a call banner, the app switcher) is not a relaunch, and reading
+    /// the marker there would file a bug against a deck open that is still on
+    /// screen and perfectly healthy.
+    @State private var deckCanaryEvidenceChecked = false
+
     // Create the model container for SwiftData.
     // Schema is driven by the LATEST VersionedSchema (currently `OPSSchemaV25`)
     // and the container runs `OPSMigrationPlan` on launch so stores written by
@@ -317,6 +324,28 @@ struct OPSApp: App {
                         // users on resume, not only on a full relaunch.
                         Task { await updateGate.refresh(userRole: dataController.currentUser?.role, force: false) }
 
+                        // Bug 2fa645a8 evidence: a previous DECK open that
+                        // never settled files itself. AutoBugReporter dedupes
+                        // client- and server-side, so repeats collapse.
+                        if !deckCanaryEvidenceChecked {
+                            deckCanaryEvidenceChecked = true
+                            if let evidence = DeckOpenCanary.takeEvidenceAtLaunch() {
+                                Task {
+                                    await AutoBugReporter.shared.report(
+                                        screen: "Leads.LeadDeckScreen",
+                                        suspectedFile: "LeadDeckScreen.swift",
+                                        errorCode: "deck-open-never-settled-\(evidence.phase.rawValue)",
+                                        summary: "DECK open did not settle: the app stopped between '\(evidence.phase.rawValue)' and settle. Ref bug 2fa645a8.",
+                                        metadata: [
+                                            "leadId": evidence.leadId,
+                                            "phase": evidence.phase.rawValue,
+                                            "armedAt": ISO8601DateFormatter().string(from: evidence.armedAt)
+                                        ]
+                                    )
+                                }
+                            }
+                        }
+
                         // Foreground is another deterministic retry boundary for
                         // a client lead queued before the app was suspended.
                         Task { await ClientLeadAutocreateQueue.shared.drain() }
@@ -348,6 +377,9 @@ struct OPSApp: App {
                             Task { await dataController.syncEngine?.triggerSync() }
                         }
                     case .background:
+                        // Backgrounding is not a crash — a jetsam kill must not
+                        // arm a false canary (bug 2fa645a8).
+                        DeckOpenCanary.disarm()
                         // Schedule background sync tasks
                         dataController.syncEngine?.scheduleBackgroundSync()
                         // Stop realtime after a grace delay — but keep the handle so

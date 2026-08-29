@@ -96,6 +96,18 @@ struct LeadDeckScreen: View {
         // the terminus of the pull-up gesture that expands it — the exact
         // occlusion `.hidesGlobalTabBar()` exists for. Back is the header's job.
         .hidesGlobalTabBar()
+        .trackScreen("Leads.LeadDeckScreen")
+        .task {
+            DeckOpenCanary.advance(.screenAppeared)
+            // Settled = alive this long after first commit. If the main thread
+            // is hung, this continuation never runs and the canary stays armed
+            // through the watchdog kill — which is exactly the signal.
+            try? await Task.sleep(nanoseconds: UInt64(DeckOpenCanary.settleDelay * 1_000_000_000))
+            DeckOpenCanary.disarm()
+        }
+        .onDisappear {
+            DeckOpenCanary.disarm()
+        }
         .sheet(isPresented: $showingDeckCreationPicker) {
             deckCreationPicker
         }
@@ -129,7 +141,10 @@ struct LeadDeckScreen: View {
                     onEditDeckDesign: { deckDesignToOpen = $0 },
                     viewMode: $deckViewMode,
                     onRequestFullscreen: { presentDeckFullscreen() },
-                    onDesignChange: { displayedDeckDesign = $0 }
+                    onDesignChange: { design in
+                        displayedDeckDesign = design
+                        DeckOpenCanary.advance(.designResolved)
+                    }
                 )
                 .padding(.top, OPSStyle.Layout.spacing2_5)
 

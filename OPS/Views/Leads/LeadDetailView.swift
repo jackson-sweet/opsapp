@@ -349,7 +349,10 @@ struct LeadDetailView: View {
                                             UIImpactFeedbackGenerator(style: .light).impactOccurred()
                                             onMarkWon()
                                         },
-                                        onOpenDeck: { showingDeckScreen = true },
+                                        onOpenDeck: {
+                                            DeckOpenCanary.arm(leadId: opportunity.id)
+                                            showingDeckScreen = true
+                                        },
                                         onCreateDeck: { showingDeckCreationPicker = true },
                                         importingPhotoIDs: importingPhotoIDs,
                                         onAddPhotos: { showingAddPhotoDialog = true },
@@ -418,6 +421,10 @@ struct LeadDetailView: View {
             }
         }
         .navigationBarHidden(true)
+        // Every bug filed from this dossier used to say `currentScreen: "Leads"`
+        // — the tab root was the only surface tracking. Naming the pushed screen
+        // is what makes a report from here diagnosable (bug 2fa645a8).
+        .trackScreen("Leads.LeadDetailView")
         .leadArchiveFlow(
             target: $archiveTarget,
             onCompleted: { _ in dismiss() }

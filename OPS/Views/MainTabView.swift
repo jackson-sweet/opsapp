@@ -141,6 +141,11 @@ struct MainTabView: View {
     private let startSiteVisitObserver = NotificationCenter.default
         .publisher(for: Notification.Name("StartSiteVisit"))
 
+    // Lead-family notification with no resolvable opportunity. Lands on the
+    // LEADS tab rather than the Job Board — the surface the row is about.
+    private let openLeadsTabObserver = NotificationCenter.default
+        .publisher(for: Notification.Name("OpenLeadsTab"))
+
     private let openNotificationsObserver = NotificationCenter.default
         .publisher(for: Notification.Name("OpenNotifications"))
 
@@ -845,6 +850,11 @@ struct MainTabView: View {
         .onReceive(startSiteVisitObserver) { notification in
             guard let leadId = notification.userInfo?["leadId"] as? String, !leadId.isEmpty else { return }
             appState.clearNavigationOccluders()
+            // Cold-launch / PIN-unlock drain: clear the stash so a START intent
+            // cannot re-fire on a later drain, mirroring the lead handler.
+            if notification.userInfo?[DeepLinkCoordinator.deepLinkIdUserInfoKey] != nil {
+                DeepLinkCoordinator.shared.clear()
+            }
             guard hasLeadsAccess, let idx = leadsTabIndex else {
                 print("[PUSH_NAVIGATION] START visit for \(leadId) without pipeline access — access denied")
                 appState.presentAccessDenied(message: "This lead is no longer available.")
@@ -888,6 +898,20 @@ struct MainTabView: View {
         .onReceive(openJobBoardObserver) { _ in
             print("[PUSH_NAVIGATION] Opening job board")
             selectTab(jobBoardTabIndex, with: OPSStyle.Animation.fast)
+        }
+
+        // Lead-family notification with no resolvable lead: land on the LEADS
+        // tab (the surface the row is about). Users without pipeline access get
+        // the Job Board — an actionable surface, never a dead tap.
+        .onReceive(openLeadsTabObserver) { _ in
+            appState.clearNavigationOccluders()
+            if hasLeadsAccess, let idx = leadsTabIndex {
+                print("[PUSH_NAVIGATION] Opening leads tab")
+                selectTab(idx, with: OPSStyle.Animation.fast)
+            } else {
+                print("[PUSH_NAVIGATION] Leads tab unavailable — falling back to job board")
+                selectTab(jobBoardTabIndex, with: OPSStyle.Animation.fast)
+            }
         }
 
         // Handle opening catalog from notification rail / deep link

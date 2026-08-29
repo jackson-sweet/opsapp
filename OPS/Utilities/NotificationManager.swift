@@ -1105,8 +1105,27 @@ extension NotificationManager: UNUserNotificationCenterDelegate {
         let leadId = (userInfo["leadId"] as? String) ?? (userInfo["opportunityId"] as? String)
         let screen = userInfo["screen"] as? String
         let type = userInfo["type"] as? String
+        let deepLinkType = userInfo["deep_link_type"] as? String
 
         print("[NOTIFICATIONS] Handling remote notification response - screen: \(screen ?? "none"), type: \(type ?? "none"), lead: \(leadId ?? "none")")
+
+        // Site-visit prompts arrive on this path with a deep_link_type and NO
+        // `type` key, so routeByType's site-visit cases were unreachable and a
+        // START push fell through to the bare-leadId branch — opening the lead
+        // instead of capture. Mirror AppDelegate.onClick, coordinator-backed so
+        // a cold launch cannot drop the intent (bug c2946efc).
+        if deepLinkType == "site_visit_start", let leadId = leadId {
+            Task { @MainActor in
+                DeepLinkCoordinator.shared.receive(entity: "site-visit-start", id: leadId, scheme: "push")
+            }
+            return
+        }
+        if deepLinkType == "site_visit_heads_up", let leadId = leadId {
+            Task { @MainActor in
+                DeepLinkCoordinator.shared.receive(entity: "leads", id: leadId, scheme: "push")
+            }
+            return
+        }
 
         // Route based on screen or type (same logic as AppDelegate)
         if let screen = screen {

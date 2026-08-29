@@ -402,6 +402,31 @@ final class LeadNotificationRouteParserTests: XCTestCase {
             .opportunity(oppId))
     }
 
+    @MainActor
+    func testSiteVisitStartCoordinatorEntityDispatchesStartSiteVisit() {
+        // A START-visit push tapped on a cold launch has no StartSiteVisit
+        // listener until MainTabView mounts, so the intent rides the
+        // coordinator's stash/drain exactly like a lead does.
+        let coordinator = DeepLinkCoordinator.shared
+        coordinator.clear()
+        defer { coordinator.clear() }
+
+        let dispatched = expectation(
+            forNotification: Notification.Name("StartSiteVisit"),
+            object: nil
+        ) { notification in
+            XCTAssertEqual(notification.userInfo?["leadId"] as? String, self.oppId)
+            XCTAssertNotNil(
+                notification.userInfo?[DeepLinkCoordinator.deepLinkIdUserInfoKey] as? String
+            )
+            return true
+        }
+
+        coordinator.receive(entity: "site-visit-start", id: oppId, scheme: "push")
+
+        wait(for: [dispatched], timeout: 1.0)
+    }
+
     func testEmailOpportunityEventRouteResolvesFirstUuid() {
         // "Possible deal won": no id in the url, opportunity in the dedupe key.
         XCTAssertEqual(

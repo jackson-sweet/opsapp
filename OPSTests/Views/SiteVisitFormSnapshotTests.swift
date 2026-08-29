@@ -5,9 +5,11 @@
 //  Visual proof for the site-visit form overhaul (site-visit report):
 //  the numbered, sequential layout (1 · LEAD → LEAD SUMMARY → 2 · CHECKLIST
 //  → 3 · NOTES) and the per-field REQUIRED → DONE markers. Renders the real
-//  SiteVisitCaptureView against the current in-memory schema with a
-//  bound name-only lead and a deliberately long summary, so narrow-width
-//  wrapping, the read-only band, and both requirement states are visible.
+//  SiteVisitCaptureView against the current in-memory schema (the console
+//  inserts live @Models, so the container must register `OPSSchemaCurrent`)
+//  with a bound name-only lead and a deliberately long summary, so
+//  narrow-width wrapping, the read-only band, and both requirement states
+//  are visible.
 //
 //  Run:  xcodebuild test -scheme OPS \
 //          -destination 'platform=iOS Simulator,name=iPhone 17,OS=26.5' \
@@ -31,7 +33,7 @@ final class SiteVisitFormSnapshotTests: XCTestCase {
     }
 
     private func inMemoryContainer() throws -> ModelContainer {
-        let schema = Schema(versionedSchema: OPSSchemaV22.self)
+        let schema = Schema(versionedSchema: OPSSchemaCurrent.self)
         let config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true, allowsSave: true)
         return try ModelContainer(for: schema, configurations: [config])
     }
@@ -51,14 +53,14 @@ final class SiteVisitFormSnapshotTests: XCTestCase {
             .environmentObject(DataController())
             .modelContainer(container)
 
-        snapshot(
+        try snapshot(
             "01_lead_form_summary_320_accessibility",
             width: 320,
             height: 1_800,
             settle: 3.0,
             sizeCategory: .accessibilityExtraLarge
         ) { view }
-        snapshot(
+        try snapshot(
             "02_lead_form_summary_390",
             width: 390,
             height: 1_800,
@@ -66,6 +68,11 @@ final class SiteVisitFormSnapshotTests: XCTestCase {
         ) { view }
     }
 
+    /// Renders via FixedSizeSnapshot (app-hosted window) — never a test-created
+    /// UIWindow, which full-suite runs can render blank once the host drops out
+    /// of the foreground pipeline. `settle` is the async view-model floor: the
+    /// view shows a spinner until its `.task` finishes loading, and only then
+    /// does the quiescence capture start counting.
     private func snapshot<V: View>(
         _ name: String,
         width: CGFloat,
@@ -73,50 +80,24 @@ final class SiteVisitFormSnapshotTests: XCTestCase {
         settle: TimeInterval,
         sizeCategory: ContentSizeCategory = .large,
         @ViewBuilder _ content: () -> V
-    ) {
-        let size = CGSize(width: width, height: height)
-        let host = UIHostingController(
-            rootView: content()
-                .frame(width: width, height: height)
+    ) throws {
+        let image = try FixedSizeSnapshot.render(
+            content()
                 .environment(\.colorScheme, .dark)
-                .environment(\.sizeCategory, sizeCategory)
+                .environment(\.sizeCategory, sizeCategory),
+            size: CGSize(width: width, height: height),
+            minimumSettle: settle,
+            settleDeadline: 3
         )
-        host.view.backgroundColor = .black
-
-        let window: UIWindow
-        let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
-        if let scene = scenes.first(where: { $0.activationState == .foregroundActive }) ?? scenes.first {
-            window = UIWindow(windowScene: scene)
-            window.frame = CGRect(origin: .zero, size: size)
-        } else {
-            window = UIWindow(frame: CGRect(origin: .zero, size: size))
-        }
-        window.rootViewController = host
-        window.makeKeyAndVisible()
-        host.view.layoutIfNeeded()
-
-        // The view builds its view-model in an async .task and shows a spinner
-        // until it's ready — give it room to load and lay out.
-        RunLoop.main.run(until: Date().addingTimeInterval(settle))
-        host.view.setNeedsLayout()
-        host.view.layoutIfNeeded()
-
-        let format = UIGraphicsImageRendererFormat()
-        format.scale = 3
-        let renderer = UIGraphicsImageRenderer(bounds: window.bounds, format: format)
-        let image = renderer.image { _ in
-            window.drawHierarchy(in: window.bounds, afterScreenUpdates: true)
-        }
         guard let data = image.pngData() else {
             XCTFail("Failed to render \(name)")
             return
         }
         let attachment = XCTAttachment(data: data, uniformTypeIdentifier: "public.png")
-        attachment.name = "\(name)@3x.png"
+        attachment.name = "\(name).png"
         attachment.lifetime = .keepAlways
         add(attachment)
-        try? data.write(to: outDir.appendingPathComponent("\(name)@3x.png"))
-        window.isHidden = true
+        try? data.write(to: outDir.appendingPathComponent("\(name).png"))
         print("📸 SNAPSHOT \(name)")
     }
 }

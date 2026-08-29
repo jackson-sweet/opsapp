@@ -24,7 +24,19 @@ enum FixedSizeSnapshot {
     /// Hosts `view` at exactly `size` in the app host's window, waits for
     /// layout quiescence (bounded), draws it, restores the app's UI, and
     /// returns the image.
-    static func render<V: View>(_ view: V, size: CGSize) throws -> UIImage {
+    ///
+    /// `minimumSettle` runs the run loop for at least that long BEFORE the
+    /// quiescence polls begin — required for views that load a view-model in an
+    /// async `.task`, because a placeholder spinner animates on the presentation
+    /// layer while the model-layer frames (all the fingerprint sees) sit
+    /// perfectly still, so quiescence alone would capture the spinner.
+    /// `settleDeadline` bounds the quiescence phase that follows.
+    static func render<V: View>(
+        _ view: V,
+        size: CGSize,
+        minimumSettle: TimeInterval = 0,
+        settleDeadline: TimeInterval = 2
+    ) throws -> UIImage {
         let window = try AppHostWindow.acquire()
         let originalRoot = window.rootViewController
         defer {
@@ -54,12 +66,16 @@ enum FixedSizeSnapshot {
         window.rootViewController = container
         window.layoutIfNeeded()
 
-        // Settle on geometry quiescence — three consecutive stable layer-tree
-        // polls — never a fixed sleep. Bounded so a perpetually animating view
+        // Async view-model floor first (see the doc comment), then settle on
+        // geometry quiescence — three consecutive stable layer-tree polls —
+        // never an unbounded wait. Bounded so a perpetually animating view
         // still captures instead of hanging the suite.
+        if minimumSettle > 0 {
+            RunLoop.main.run(until: Date(timeIntervalSinceNow: minimumSettle))
+        }
         var stable = 0
         var lastFingerprint = ""
-        let deadline = Date(timeIntervalSinceNow: 2)
+        let deadline = Date(timeIntervalSinceNow: settleDeadline)
         while stable < 3, Date() < deadline {
             RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.05))
             let fingerprint = Self.fingerprint(of: host.view.layer)

@@ -330,6 +330,7 @@ struct ClientSheet: View {
                                     AddressAutocompleteField(
                                         address: $session.address,
                                         placeholder: "Client Address",
+                                        knownPlaces: true,
                                         onAddressSelected: { fullAddress, _ in
                                             address = fullAddress
                                         }

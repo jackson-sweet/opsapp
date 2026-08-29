@@ -807,6 +807,7 @@ struct ConvertToProjectSheet: View {
                     AddressAutocompleteField(
                         address: $addressText,
                         placeholder: "3185 Fairview Rd",
+                        knownPlaces: true,
                         onAddressSelected: { resolved, coordinate in
                             addressIsFromClient = false
                             resolvedAddress = resolved

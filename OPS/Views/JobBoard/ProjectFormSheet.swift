@@ -1601,6 +1601,7 @@ struct ProjectFormSheet: View {
             AddressAutocompleteField(
                 address: $address,
                 placeholder: "Enter project address",
+                knownPlaces: true,
                 onAddressSelected: { fullAddress, coordinates in
                     address = fullAddress
                     if let coords = coordinates {

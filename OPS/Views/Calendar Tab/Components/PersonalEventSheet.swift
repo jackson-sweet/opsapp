@@ -88,25 +88,18 @@ struct PersonalEventSheet: View {
                         .padding(.horizontal, OPSStyle.Layout.spacing3_5)
                         .padding(.bottom, OPSStyle.Layout.spacing3_5)
 
-                        // Address
+                        // Address — the shared field, so a personal event on
+                        // the calendar autocompletes like every other address
+                        // in the app and offers the jobs and clients OPS
+                        // already knows. It brings its own input surface.
                         sectionLabel("ADDRESS (OPTIONAL)")
-                        TextField("", text: $address)
-                            .font(OPSStyle.Typography.body)
-                            .foregroundColor(OPSStyle.Colors.primaryText)
-                            .placeholder(when: address.isEmpty) {
-                                Text("ADDRESS")
-                                    .font(OPSStyle.Typography.body)
-                                    .foregroundColor(OPSStyle.Colors.tertiaryText)
-                            }
-                            .padding(14)
-                            .background(OPSStyle.Colors.surfaceInput)
-                            .cornerRadius(OPSStyle.Layout.cornerRadius)
-                            .overlay(
-                                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                                    .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: OPSStyle.Layout.Border.standard)
-                            )
-                            .padding(.horizontal, OPSStyle.Layout.spacing3_5)
-                            .padding(.bottom, OPSStyle.Layout.spacing3_5)
+                        AddressAutocompleteField(
+                            address: $address,
+                            placeholder: "ADDRESS",
+                            knownPlaces: true
+                        )
+                        .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+                        .padding(.bottom, OPSStyle.Layout.spacing3_5)
 
                         // Team assignment
                         sectionLabel("TEAM (OPTIONAL)")

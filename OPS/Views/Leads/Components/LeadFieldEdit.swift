@@ -852,6 +852,7 @@ struct LeadAddressInlineEditor: View {
                 address: $draft,
                 placeholder: "3185 Fairview Rd",
                 autofocus: true,
+                knownPlaces: true,
                 onAddressSelected: { resolved, coordinate in
                     resolvedAddress = resolved
                     latitude = coordinate?.latitude

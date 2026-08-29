@@ -180,6 +180,7 @@ struct LeadFormView: View {
                 AddressAutocompleteField(
                     address: $form.address,
                     placeholder: "3185 Fairview Rd",
+                    knownPlaces: true,
                     onAddressSelected: { resolved, coordinate in
                         form.addressResolved(
                             resolved,

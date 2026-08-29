@@ -1313,6 +1313,7 @@ private struct SiteVisitIdentityPanel: View {
                         AddressAutocompleteField(
                             address: $address,
                             placeholder: "SITE ADDRESS",
+                            knownPlaces: true,
                             onAddressSelected: { selected, coordinate in
                                 viewModel.applySelectedSiteAddress(selected, coordinate: coordinate)
                             }

@@ -142,6 +142,12 @@ struct FloatingActionMenu: View {
     @State private var activeSiteVisitLead: Opportunity?
     @State private var activeSiteVisitType: SiteVisitType?
     @State private var siteVisitConvertLead: Opportunity?
+    // Book-site-visit branch (bug 9c1e2916): the FAB entry raises the same
+    // NOW/BOOK grammar as every lead surface; LATER routes through a
+    // leads-only picker because the FAB carries no lead context.
+    @State private var showingVisitBranch = false
+    @State private var showingVisitLeadPicker = false
+    @State private var fabBookingRequest: BookSiteVisitRequest?
     @State private var showingPrioritize = false
 
     // BOOKS FAB state — adapts MONEY group ordering based on selected segment in
@@ -341,15 +347,13 @@ struct FloatingActionMenu: View {
                 FABMenuItem(
                     id: "site-visit",
                     icon: "camera.viewfinder",
-                    label: "Site Visit",
+                    label: "Book Site Visit",
                     permission: "pipeline.convert",
                     authorization: { permissionStore.leadAccessPolicy.canConvertAny },
                     disabledInTutorial: true,
                     action: {
                         showCreateMenu = false
-                        activeSiteVisitLead = nil
-                        activeSiteVisitType = nil
-                        showingSiteVisitCapture = true
+                        showingVisitBranch = true
                     }
                 )
             )
@@ -895,6 +899,51 @@ struct FloatingActionMenu: View {
                 activeSiteVisitType = nil
             }
         }
+        // NOW/BOOK branch — identical labels to LeadsTabView's dialog so the
+        // grammar is one thing everywhere. START NOW is the shipped walk-up
+        // capture (leadless — the capture view owns lead search); BOOK A
+        // VISIT picks the lead first, then opens the booking sheet
+        // state-aware (an already-booked lead opens its booking to move it —
+        // the one-open-booking boundary, never two stacked offers).
+        .confirmationDialog(
+            "SITE VISIT",
+            isPresented: $showingVisitBranch,
+            titleVisibility: .visible
+        ) {
+            Button("START NOW") {
+                activeSiteVisitLead = nil
+                activeSiteVisitType = nil
+                showingSiteVisitCapture = true
+            }
+            Button("BOOK A VISIT") {
+                showingVisitLeadPicker = true
+            }
+            Button("CANCEL", role: .cancel) {}
+        }
+        .sheet(isPresented: $showingVisitLeadPicker) {
+            NavigationView {
+                ActivityTargetPickerView(
+                    companyId: dataController.currentUser?.companyId ?? "",
+                    onSelect: { target in
+                        if case .opportunity(let lead) = target {
+                            presentVisitBooking(for: lead)
+                        }
+                    },
+                    sources: .leadsOnly
+                )
+                .standardSheetToolbar(
+                    title: "BOOK VISIT",
+                    actionText: "",
+                    onCancel: { showingVisitLeadPicker = false },
+                    onAction: {}
+                )
+            }
+            .colorScheme(.dark)
+        }
+        .sheet(item: $fabBookingRequest) { request in
+            BookSiteVisitSheet(request: request)
+                .environmentObject(dataController)
+        }
         .fullScreenCover(isPresented: $showingPrioritize) {
             PriorityQueueView(displayMode: .fullScreen, dataController: dataController) {
                 showingPrioritize = false
@@ -1174,6 +1223,27 @@ struct FloatingActionMenu: View {
             }
         }
         .padding(.leading, OPSStyle.Layout.spacing3_5)
+    }
+
+    // MARK: - Site Visit Booking
+
+    /// The picker dismisses itself on select; present the booking sheet after
+    /// the dismissal settles (the FAB's shipped 0.3s chained-present pattern).
+    /// State-aware: an open booking opens in reschedule mode.
+    @MainActor
+    private func presentVisitBooking(for lead: Opportunity) {
+        showingVisitLeadPicker = false
+        let existing: BookSiteVisitForm.BookingSnapshot? = {
+            guard let context = dataController.modelContext,
+                  let booking = SiteVisitBookingLookup.openBooking(
+                    forOpportunityId: lead.id,
+                    in: context
+                  ) else { return nil }
+            return SiteVisitBookingLookup.snapshot(of: booking)
+        }()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+            fabBookingRequest = BookSiteVisitRequest(lead: lead, existing: existing)
+        }
     }
 
     // MARK: - Menu Actions

@@ -24,6 +24,57 @@
 //
 import SwiftUI
 
+/// What the NEXT TOUCH cell prints. A booked visit outranks the follow-up
+/// nudge — a standing appointment IS the next touch (bug a218009e); the
+/// moment the visit completes or cancels, the cell falls back to the
+/// follow-up date with zero bookkeeping.
+enum LeadNextTouchPresentation: Equatable {
+    case unset
+    case followUp(day: String, date: String)
+    case visit(day: String, time: String)
+
+    static func resolve(
+        nextFollowUpAt: Date?,
+        bookedVisitAt: Date?,
+        now: Date = Date(),
+        calendar: Calendar = .current
+    ) -> LeadNextTouchPresentation {
+        if let visitAt = bookedVisitAt {
+            return .visit(
+                day: DaySheetDateToken.day(visitAt, now: now, calendar: calendar),
+                time: timeFormatter.string(from: visitAt).uppercased()
+            )
+        }
+        guard let due = nextFollowUpAt else { return .unset }
+        return .followUp(
+            day: dayFormatter.string(from: due).uppercased(),
+            date: dateFormatter.string(from: due).uppercased()
+        )
+    }
+
+    // en_US_POSIX — OPS labels, not localized dates (DaySheetDateToken's rule).
+    private static let timeFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "h:mma"
+        return formatter
+    }()
+
+    private static let dayFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "EEE"
+        return formatter
+    }()
+
+    private static let dateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "MMM d"
+        return formatter
+    }()
+}
+
 struct DetailHero: View {
     let opportunity: Opportunity
     /// Resolved client name (LeadDetailViewModel.client) — nil until loaded

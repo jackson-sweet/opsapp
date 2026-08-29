@@ -16,7 +16,7 @@ struct CatalogSetupQALocalHost: View {
     @State private var isReady = false
 
     private static let modelContainer: ModelContainer = {
-        let schema = Schema(versionedSchema: OPSSchemaV8.self)
+        let schema = Schema(versionedSchema: OPSSchemaCurrent.self)
         let configuration = ModelConfiguration(
             schema: schema,
             isStoredInMemoryOnly: true,

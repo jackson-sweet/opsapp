@@ -41,16 +41,24 @@ struct BookSiteVisitSheet: View {
 
     @State private var form: BookSiteVisitForm?
 
+    // WHEN-surface context: other booked visits, resolved names, and the
+    // resolver that fetches them. Test seam mirrors initialForm.
+    @State private var contextVisits: [BookingDayVisit]
+    @State private var contextNamesByOpportunityId: [String: String] = [:]
+    private let leadResolver = CalendarSiteVisitLeadResolver()
+
     /// Snapshot/preview seam — a preseeded form renders the full field stack
     /// without a signed-in DataController. Production callers omit it.
     init(
         request: BookSiteVisitRequest,
         service: SiteVisitBookingService? = nil,
-        initialForm: BookSiteVisitForm? = nil
+        initialForm: BookSiteVisitForm? = nil,
+        initialContextVisits: [BookingDayVisit] = []
     ) {
         self.request = request
         self.service = service
         _form = State(initialValue: initialForm)
+        _contextVisits = State(initialValue: initialContextVisits)
     }
     @State private var isSaving = false
     @State private var errorMessage: String?
@@ -70,8 +78,23 @@ struct BookSiteVisitSheet: View {
                             leadHeader
 
                             VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing3) {
-                                dateRow(form)
+                                SiteVisitWeekRail(
+                                    selectedDate: form.mergedDate(),
+                                    visitCountsByDay: SiteVisitBookingDayContext.countsByDay(contextVisits),
+                                    onSelect: { day in
+                                        self.form?.setDateAndTime(
+                                            SiteVisitBookingDayContext.merging(
+                                                day: day,
+                                                timeOfDayFrom: form.mergedDate()
+                                            )
+                                        )
+                                    }
+                                )
+
+                                bookedThatDaySection(form)
+
                                 timeRow(form)
+                                windowCaption(form)
                                 if !form.isValid(now: Date()) {
                                     Text("PICK A FUTURE TIME")
                                         .font(OPSStyle.Typography.nanoLabel)
@@ -137,6 +160,11 @@ struct BookSiteVisitSheet: View {
             }
         }
         .opsConfirm($cancelConfirm)
+        .onReceive(
+            NotificationCenter.default.publisher(for: Notification.Name("SiteVisitBookingChanged"))
+        ) { _ in
+            loadContext()
+        }
         .animation(OPSStyle.Animation.standard, value: errorMessage)
     }
 
@@ -167,6 +195,7 @@ struct BookSiteVisitSheet: View {
                 startingAt: Self.defaultStart()
             )
         }
+        await loadContext()
         let defaultLead = await fetchDefaultHeadsUp()
         await MainActor.run {
             form?.seedDefaultHeadsUp(defaultLead)
@@ -382,21 +411,6 @@ struct BookSiteVisitSheet: View {
 
     // MARK: - Field rows
 
-    private func dateRow(_ form: BookSiteVisitForm) -> some View {
-        pickerRow(label: "DATE") {
-            DatePicker(
-                "",
-                selection: dateBinding,
-                in: Calendar.current.startOfDay(for: Date())...,
-                displayedComponents: .date
-            )
-            .datePickerStyle(.compact)
-            .labelsHidden()
-            .colorScheme(.dark)
-            .tint(OPSStyle.Colors.text)
-        }
-    }
-
     private func timeRow(_ form: BookSiteVisitForm) -> some View {
         pickerRow(label: "TIME") {
             DatePicker(
@@ -408,6 +422,167 @@ struct BookSiteVisitSheet: View {
             .labelsHidden()
             .colorScheme(.dark)
             .tint(OPSStyle.Colors.text)
+        }
+    }
+
+    // MARK: - WHEN context (other booked visits)
+
+    /// The selected day's already-booked visits — the scheduler sheet's
+    /// day-panel idea at appointment scale. Informational, never blocking:
+    /// the operator books over it if they know better.
+    @ViewBuilder
+    private func bookedThatDaySection(_ form: BookSiteVisitForm) -> some View {
+        let dayVisits = SiteVisitBookingDayContext.visits(contextVisits, on: form.mergedDate())
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
+            Text("BOOKED — \(DaySheetDateToken.day(form.mergedDate()))")
+                .font(OPSStyle.Typography.captionBold)
+                .foregroundColor(OPSStyle.Colors.secondaryText)
+
+            VStack(alignment: .leading, spacing: 0) {
+                if dayVisits.isEmpty {
+                    Text("—")
+                        .font(OPSStyle.Typography.metadata)
+                        .foregroundColor(OPSStyle.Colors.textMute)
+                        .padding(.vertical, OPSStyle.Layout.spacing2)
+                        .padding(.horizontal, OPSStyle.Layout.spacing2_5)
+                        .accessibilityLabel("Nothing booked that day")
+                } else {
+                    ForEach(Array(dayVisits.enumerated()), id: \.element.id) { index, visit in
+                        contextVisitRow(visit)
+                        if index < dayVisits.count - 1 {
+                            Rectangle()
+                                .fill(OPSStyle.Colors.fillNeutralDim)
+                                .frame(height: OPSStyle.Layout.Border.standard)
+                        }
+                    }
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .nestedCard()
+        }
+    }
+
+    private func contextVisitRow(_ visit: BookingDayVisit) -> some View {
+        HStack(spacing: OPSStyle.Layout.spacing2_5) {
+            Text(Self.windowText(start: visit.start, durationMinutes: visit.durationMinutes))
+                .font(OPSStyle.Typography.smallCaption)
+                .foregroundColor(OPSStyle.Colors.secondaryText)
+                .monospacedDigit()
+
+            Text(contextName(for: visit))
+                .font(OPSStyle.Typography.body)
+                .foregroundColor(OPSStyle.Colors.secondaryText)
+                .lineLimit(1)
+                .truncationMode(.tail)
+
+            Spacer(minLength: 0)
+        }
+        .padding(.vertical, OPSStyle.Layout.spacing2)
+        .padding(.horizontal, OPSStyle.Layout.spacing2_5)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(
+            "\(contextName(for: visit)), \(Self.windowText(start: visit.start, durationMinutes: visit.durationMinutes))"
+        )
+    }
+
+    private func contextName(for visit: BookingDayVisit) -> String {
+        guard let opportunityId = visit.opportunityId else { return "Site visit" }
+        return contextNamesByOpportunityId[opportunityId.lowercased()] ?? "Site visit"
+    }
+
+    /// "ENDS 11:30 AM", plus a tan non-blocking collision note when the
+    /// chosen window intersects an existing visit (scheduler philosophy:
+    /// signals inform, they never overrule).
+    @ViewBuilder
+    private func windowCaption(_ form: BookSiteVisitForm) -> some View {
+        let dayVisits = SiteVisitBookingDayContext.visits(contextVisits, on: form.mergedDate())
+        let end = form.mergedDate().addingTimeInterval(TimeInterval(form.durationMinutes * 60))
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
+            Text("ENDS \(Self.timeText(end))")
+                .font(OPSStyle.Typography.nanoLabel)
+                .tracking(0.8)
+                .foregroundColor(OPSStyle.Colors.tertiaryText)
+                .monospacedDigit()
+
+            if let clash = SiteVisitBookingDayContext.overlap(
+                chosenStart: form.mergedDate(),
+                durationMinutes: form.durationMinutes,
+                against: dayVisits
+            ) {
+                Text("OVERLAPS — \(contextName(for: clash).uppercased()) · \(Self.windowText(start: clash.start, durationMinutes: clash.durationMinutes))")
+                    .font(OPSStyle.Typography.nanoLabel)
+                    .tracking(0.8)
+                    .foregroundColor(OPSStyle.Colors.tanTextM)
+                    .monospacedDigit()
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+            }
+        }
+    }
+
+    private static func windowText(start: Date, durationMinutes: Int) -> String {
+        let end = start.addingTimeInterval(TimeInterval(durationMinutes * 60))
+        return "\(timeText(start)) – \(timeText(end))"
+    }
+
+    private static func timeText(_ date: Date) -> String {
+        contextTimeFormatter.string(from: date).uppercased()
+    }
+
+    private static let contextTimeFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "h:mm a"
+        return formatter
+    }()
+
+    // MARK: - Context loading
+
+    /// Booked appointments from the local store (synced company-wide), scoped
+    /// by the operator's calendar visibility, excluding the booking being
+    /// moved. Works offline — the store is the source; names then fall back
+    /// to the resolver's last-good cache or "Site visit".
+    @MainActor
+    private func loadContext() {
+        guard let context = dataController.modelContext,
+              let user = dataController.currentUser else { return }
+        // Company id is stored lowercased on every SiteVisit row (model init
+        // and SiteVisitWire both normalize), so match in that canonical form.
+        let companyId = request.lead.companyId.lowercased()
+        let todayStart = Calendar.current.startOfDay(for: Date())
+        // The predicate carries only the shape SwiftData translates reliably
+        // (SiteVisitBookingLookup's house rule); booking, window, and status
+        // are decided in Swift — a company holds a modest number of visits.
+        let descriptor = FetchDescriptor<SiteVisit>(
+            predicate: #Predicate<SiteVisit> { $0.companyId == companyId && $0.deletedAt == nil }
+        )
+        let stored = ((try? context.fetch(descriptor)) ?? []).filter { visit in
+            guard visit.bookedAt != nil, let scheduledAt = visit.scheduledAt else { return false }
+            return scheduledAt >= todayStart
+        }
+        contextVisits = SiteVisitBookingDayContext.contextVisits(
+            in: stored,
+            currentUserId: user.id,
+            canViewAllCalendar: PermissionStore.shared.can("calendar.view", requiredScope: "all"),
+            excluding: request.existing?.siteVisitId
+        )
+        resolveContextNames()
+    }
+
+    private func resolveContextNames() {
+        guard let user = dataController.currentUser,
+              let companyId = user.companyId else { return }
+        let ids = Array(Set(contextVisits.compactMap { $0.opportunityId?.lowercased() }))
+        guard !ids.isEmpty else { return }
+        Task {
+            let details = await leadResolver.refreshDetails(
+                opportunityIds: ids,
+                userId: user.id,
+                companyId: companyId
+            )
+            await MainActor.run {
+                contextNamesByOpportunityId = details.mapValues { $0.displayName }
+            }
         }
     }
 

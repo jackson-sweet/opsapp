@@ -62,6 +62,12 @@ final class BookSiteVisitSheetSnapshotTests: XCTestCase {
         attach(image, name: "book-visit-sheet-reschedule")
     }
 
+    func testCreateModeShowsBookedThatDayContext() throws {
+        let image = try FixedSizeSnapshot.render(sheetHost(existing: nil), size: frameSize)
+        XCTAssertGreaterThan(image.size.width, 0)
+        attach(image, name: "book-visit-sheet-context-strip")
+    }
+
     // MARK: - Host builder
 
     private func sheetHost(existing: BookSiteVisitForm.BookingSnapshot?) -> some View {
@@ -85,9 +91,28 @@ final class BookSiteVisitSheetSnapshotTests: XCTestCase {
                 startingAt: Date(timeIntervalSince1970: 1_790_000_000)
             )
         }
+        // Deterministic WHEN-surface context so the rail markers and the
+        // BOOKED — <DAY> strip appear in the proof PNGs without a store: one
+        // visit before the chosen window, one after (the second nameless, to
+        // prove the "Site visit" fallback).
+        let seededVisits = [
+            BookingDayVisit(
+                id: "11111111-1111-4111-8111-111111111111",
+                opportunityId: "22222222-2222-4222-8222-222222222222",
+                start: Date(timeIntervalSince1970: 1_790_000_000 - 7_200),
+                durationMinutes: 60
+            ),
+            BookingDayVisit(
+                id: "33333333-3333-4333-8333-333333333333",
+                opportunityId: nil,
+                start: Date(timeIntervalSince1970: 1_790_000_000 + 5_400),
+                durationMinutes: 90
+            ),
+        ]
         return BookSiteVisitSheet(
             request: BookSiteVisitRequest(lead: lead, existing: existing),
-            initialForm: form
+            initialForm: form,
+            initialContextVisits: seededVisits
         )
         .environmentObject(controller)
     }

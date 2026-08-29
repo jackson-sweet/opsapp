@@ -4265,7 +4265,7 @@ class DataController: ObservableObject {
 
         if shouldUpdateToInProgress {
             do {
-                try await updateProjectStatus(project: project, to: .inProgress)
+                try await updateProjectStatus(project: project, to: .inProgress, source: .automatic)
                 print("[PROJECT_STATUS] ✅ Project '\(project.title)' status updated to inProgress")
             } catch {
                 print("[PROJECT_STATUS] ❌ Failed to update project status: \(error)")
@@ -4296,7 +4296,7 @@ class DataController: ObservableObject {
 
         if shouldUpdateToInProgress {
             do {
-                try await updateProjectStatus(project: project, to: .inProgress)
+                try await updateProjectStatus(project: project, to: .inProgress, source: .automatic)
                 print("[PROJECT_STATUS] ✅ Project '\(project.title)' status updated to inProgress")
             } catch {
                 print("[PROJECT_STATUS] ❌ Failed to update project status: \(error)")
@@ -4330,7 +4330,7 @@ class DataController: ObservableObject {
 
             print("[PROJECT_STATUS] '\(project.title)' accepted → inProgress (past-dated task found)")
             do {
-                try await updateProjectStatus(project: project, to: .inProgress)
+                try await updateProjectStatus(project: project, to: .inProgress, source: .automatic)
                 print("[PROJECT_STATUS] ✅ '\(project.title)' status updated to inProgress")
             } catch {
                 print("[PROJECT_STATUS] ❌ Failed to advance '\(project.title)': \(error)")
@@ -4338,12 +4338,26 @@ class DataController: ObservableObject {
         }
     }
 
+    /// Who moved the status. Task-driven auto-advance must never raise the
+    /// lead-won prompt: the actor there is a crew member starting work, not an
+    /// operator making a pipeline decision (D3 — machines and side effects
+    /// never win leads; leftover un-won leads are the D4 queue's job).
+    enum ProjectStatusChangeSource {
+        case humanAction
+        case automatic
+    }
+
     /// Update a project's status - SINGLE SOURCE OF TRUTH for project status updates
     /// - Parameters:
     ///   - project: The project to update
     ///   - newStatus: The new status to set
+    ///   - source: Whether a human chose this status or a task auto-advanced it
     @MainActor
-    func updateProjectStatus(project: Project, to newStatus: Status) async throws {
+    func updateProjectStatus(
+        project: Project,
+        to newStatus: Status,
+        source: ProjectStatusChangeSource = .humanAction
+    ) async throws {
         // Capture previous status to detect completion
         let previousStatus = project.status
 
@@ -4411,6 +4425,19 @@ class DataController: ObservableObject {
         }
 
         notifyReviewSourcesChanged()
+
+        // Bug 9a89b951 / D3 — a lead-linked project reaching an active status
+        // PROPOSES winning its lead. The database trigger used to do this
+        // silently, with a forged manual flag and no actor; now a human is
+        // asked and a human is recorded. Evaluation and presentation both live
+        // in LeadWonPromptCenter, which no-ops for an unlinked project.
+        if source == .humanAction {
+            LeadWonPromptCenter.shared.propose(
+                project: project,
+                newStatus: newStatus,
+                dataController: self
+            )
+        }
     }
 
     // MARK: - Task Schedule Operations

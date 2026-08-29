@@ -571,6 +571,12 @@ struct MainTabView: View {
         // ZStack (and therefore above PushInMessage at zIndex 2).
         .toastHost()
         .leadsToastSubscriber()
+        // Bug 9a89b951 / D3 — the mark-lead-won ask is mounted at the app root
+        // for the same reason the toasts are: the operator can change a
+        // project's status from the job board, the project document, or the
+        // completion checklist, and the question has to survive whichever one
+        // dismisses itself behind them.
+        .leadWonPromptHost()
         .sheet(isPresented: $appState.showingUniversalSearch) {
             UniversalSearchSheet()
                 .environmentObject(dataController)

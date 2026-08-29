@@ -602,7 +602,7 @@ private struct ClientRow: View {
                 VStack(alignment: .leading, spacing: 6) {
                     Button(action: onContactTap) {
                         HStack(spacing: OPSStyle.Layout.spacing2) {
-                            VStack(alignment: .leading, spacing: 2) {
+                            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
                                 Text(presentation.primary)
                                     .font(ProjectInfoDoc.valueFont)
                                     .foregroundColor(OPSStyle.Colors.text)

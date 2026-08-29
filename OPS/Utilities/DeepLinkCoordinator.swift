@@ -296,6 +296,11 @@ final class DeepLinkCoordinator: ObservableObject {
             // Both entity spellings resolve to the same LEADS-tab detail; the
             // OpenLeadDetails observer in MainTabView reads `leadId`.
             return (Notification.Name("OpenLeadDetails"), "leadId")
+        case "site-visit-start":
+            // START-visit push tapped on a cold launch: the StartSiteVisit relay
+            // has no listener until MainTabView mounts, so the intent rides the
+            // same stash/drain as leads (MainTabView clears it on receipt).
+            return (Notification.Name("StartSiteVisit"), "leadId")
         case "tasks":
             return (Notification.Name("OpenTaskDetails"), "taskId")
         case "notifications":

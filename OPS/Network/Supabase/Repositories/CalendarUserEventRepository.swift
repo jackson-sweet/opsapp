@@ -116,15 +116,10 @@ class CalendarUserEventRepository {
         // only run once this write has landed.
         try await updateStatus(eventId, status: status, reviewedBy: reviewedBy)
 
-        // Push copy, built client-side from the reviewer and title the caller
-        // already resolved for the UI. The in-app rail row below renders its
-        // own copy server-side from the same recorded decision.
-        let isApproved = status == .approved
-        let notificationType = isApproved ? "time_off_approved" : "time_off_denied"
-        let title = isApproved ? "Time Off Approved" : "Time Off Denied"
-        let body = isApproved
-            ? "\(reviewerName) approved your time off request: \(eventTitle)"
-            : "\(reviewerName) denied your time off request: \(eventTitle)"
+        // The decision picks which rail row the companion push should match;
+        // the copy is the row's own, rendered server-side from the same
+        // recorded decision.
+        let rowType = status == .approved ? "time_off_approved" : "time_off_denied"
 
         // Create in-app notification
         await dispatchDecisionNotification(eventId: eventId)
@@ -132,9 +127,7 @@ class CalendarUserEventRepository {
         // Send push
         try? await OneSignalService.shared.sendToUser(
             userId: userId,
-            title: title,
-            body: body,
-            data: ["type": notificationType, "screen": "schedule"]
+            rowType: rowType
         )
     }
 

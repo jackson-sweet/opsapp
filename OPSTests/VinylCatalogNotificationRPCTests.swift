@@ -481,9 +481,7 @@ final class VinylCatalogNotificationRPCTests: XCTestCase {
 
         let notified = await InventoryThresholdNotificationDispatcher.dispatch(
             itemId: "a417a994-6b21-4f0c-9e83-7d5c2b64af10",
-            title: "Critical Stock Alert",
-            body: "2x4 Lumber 8ft is critically low (3 remaining)",
-            type: "inventory_critical",
+            rowType: "inventory_critical",
             syncer: spy,
             push: { recorder.record($0) }
         )
@@ -492,12 +490,7 @@ final class VinylCatalogNotificationRPCTests: XCTestCase {
         XCTAssertEqual(notified, ["manager-a", "manager-c"])
         XCTAssertEqual(
             recorder.payloads,
-            [.init(
-                userIds: ["manager-a", "manager-c"],
-                title: "Critical Stock Alert",
-                body: "2x4 Lumber 8ft is critically low (3 remaining)",
-                data: ["type": "inventory_critical", "screen": "inventory"]
-            )],
+            [.init(userIds: ["manager-a", "manager-c"], rowType: "inventory_critical")],
             "The push reaches exactly the people the server gave a new rail row — never a locally guessed permission list"
         )
     }
@@ -511,9 +504,7 @@ final class VinylCatalogNotificationRPCTests: XCTestCase {
 
         let notified = await InventoryThresholdNotificationDispatcher.dispatch(
             itemId: "item-healthy",
-            title: "Low Stock Warning",
-            body: "Deck screws is running low (40 remaining)",
-            type: "inventory_warning",
+            rowType: "inventory_warning",
             syncer: spy,
             push: { recorder.record($0) }
         )
@@ -534,9 +525,7 @@ final class VinylCatalogNotificationRPCTests: XCTestCase {
 
         let notified = await InventoryThresholdNotificationDispatcher.dispatch(
             itemId: "item-offline",
-            title: "Critical Stock Alert",
-            body: "Anchors is critically low (0 remaining)",
-            type: "inventory_critical",
+            rowType: "inventory_critical",
             syncer: spy,
             push: { recorder.record($0) }
         )

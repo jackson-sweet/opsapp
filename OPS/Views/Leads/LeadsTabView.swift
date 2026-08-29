@@ -830,6 +830,12 @@ struct LeadsTabView: View {
         guard let leadId = appState.pendingSiteVisitStartLeadId, !leadId.isEmpty else { return }
         appState.pendingSiteVisitStartLeadId = nil
 
+        // Never stomp an in-progress capture: a START tap for visit B while
+        // visit A's capture cover is open drops the intent (the crew member is
+        // mid-visit; the next visit's card is still pinned on the tab when they
+        // finish). The stash is already cleared above — exactly one clear.
+        guard activeSiteVisitLead == nil else { return }
+
         if let lead = viewModel.allOpportunities.first(where: { $0.id == leadId }) {
             activeSiteVisitLead = lead
             return

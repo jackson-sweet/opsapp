@@ -69,7 +69,10 @@ enum SyncStatusCopy {
             return "\(total) \(changeWord(total)) \(needWord(total)) a look"
         }
         if isSyncing {
-            return "Saving \(total) \(changeWord(total))…"
+            // A drain can outlive its queue for a beat — "Saving 0 changes…" is
+            // a nonsense state (seen in bug c2946efc's screenshot). Zero pending
+            // and still syncing reads as plain "Saving…".
+            return total == 0 ? "Saving…" : "Saving \(total) \(changeWord(total))…"
         }
         return "\(total) \(changeWord(total)) waiting to sync"
     }

@@ -971,9 +971,7 @@ struct ManageTeamView: View {
             await TeamNotificationDispatcher.dispatchRoleAssigned(memberId: member.id) {
                 try? await OneSignalService.shared.sendToUser(
                     userId: member.id,
-                    title: "Role Updated",
-                    body: "You've been assigned the \(newRole.displayName) role",
-                    data: ["type": "role_assigned", "screen": "settings"]
+                    rowType: "role_assigned"
                 )
             }
 

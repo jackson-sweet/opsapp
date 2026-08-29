@@ -134,19 +134,6 @@ class NotificationManager: NSObject, ObservableObject {
             options: .foreground
         )
         
-        // For schedule notifications, allow accept/decline actions
-        let acceptAction = UNNotificationAction(
-            identifier: NotificationAction.accept.rawValue,
-            title: "Accept",
-            options: .foreground
-        )
-        
-        let declineAction = UNNotificationAction(
-            identifier: NotificationAction.decline.rawValue,
-            title: "Decline",
-            options: .destructive
-        )
-        
         // Create categories with the actions
         let projectCategory = UNNotificationCategory(
             identifier: NotificationCategory.project.rawValue,
@@ -155,9 +142,12 @@ class NotificationManager: NSObject, ObservableObject {
             options: []
         )
         
+        // No ACCEPT / DECLINE buttons: their handlers posted events nothing in
+        // the app listens for, so the buttons did nothing. A control that lies
+        // is worse than no control — the tap opens the day's schedule instead.
         let scheduleCategory = UNNotificationCategory(
             identifier: NotificationCategory.schedule.rawValue,
-            actions: [acceptAction, declineAction],
+            actions: [],
             intentIdentifiers: [],
             options: []
         )
@@ -1056,7 +1046,7 @@ extension NotificationManager: UNUserNotificationCenterDelegate {
             case NotificationCategory.billableThisWeek.rawValue:
                 DispatchQueue.main.async {
                     NotificationCenter.default.post(
-                        name: Notification.Name("NavigateToMap"),
+                        name: Notification.Name("NavigateToMapView"),
                         object: nil
                     )
                 }
@@ -1105,8 +1095,27 @@ extension NotificationManager: UNUserNotificationCenterDelegate {
         let leadId = (userInfo["leadId"] as? String) ?? (userInfo["opportunityId"] as? String)
         let screen = userInfo["screen"] as? String
         let type = userInfo["type"] as? String
+        let deepLinkType = userInfo["deep_link_type"] as? String
 
         print("[NOTIFICATIONS] Handling remote notification response - screen: \(screen ?? "none"), type: \(type ?? "none"), lead: \(leadId ?? "none")")
+
+        // Site-visit prompts arrive on this path with a deep_link_type and NO
+        // `type` key, so routeByType's site-visit cases were unreachable and a
+        // START push fell through to the bare-leadId branch — opening the lead
+        // instead of capture. Mirror AppDelegate.onClick, coordinator-backed so
+        // a cold launch cannot drop the intent (bug c2946efc).
+        if deepLinkType == "site_visit_start", let leadId = leadId {
+            Task { @MainActor in
+                DeepLinkCoordinator.shared.receive(entity: "site-visit-start", id: leadId, scheme: "push")
+            }
+            return
+        }
+        if deepLinkType == "site_visit_heads_up", let leadId = leadId {
+            Task { @MainActor in
+                DeepLinkCoordinator.shared.receive(entity: "leads", id: leadId, scheme: "push")
+            }
+            return
+        }
 
         // Route based on screen or type (same logic as AppDelegate)
         if let screen = screen {
@@ -1308,22 +1317,6 @@ extension NotificationManager: UNUserNotificationCenterDelegate {
         
         
         switch actionIdentifier {
-        case NotificationAction.accept.rawValue:
-            // Post notification to acknowledge schedule
-            NotificationCenter.default.post(
-                name: Notification.Name("ScheduleAccepted"),
-                object: nil,
-                userInfo: ["date": dateString]
-            )
-            
-        case NotificationAction.decline.rawValue:
-            // Post notification to decline schedule
-            NotificationCenter.default.post(
-                name: Notification.Name("ScheduleDeclined"),
-                object: nil,
-                userInfo: ["date": dateString]
-            )
-            
         case UNNotificationDefaultActionIdentifier:
             // Post notification to open schedule for the day
             NotificationCenter.default.post(
@@ -1343,22 +1336,19 @@ extension NotificationManager: UNUserNotificationCenterDelegate {
         }
         
         
+        print("[NOTIFICATIONS] Team notification tapped for member \(teamMemberId)")
+
         switch actionIdentifier {
-        case NotificationAction.view.rawValue:
-            // Post notification to open team member details
-            NotificationCenter.default.post(
-                name: Notification.Name("OpenTeamMemberDetails"),
-                object: nil,
-                userInfo: ["teamMemberId": teamMemberId]
-            )
-            
-        case UNNotificationDefaultActionIdentifier:
-            // Post notification to open team member details
-            NotificationCenter.default.post(
-                name: Notification.Name("OpenTeamMemberDetails"),
-                object: nil,
-                userInfo: ["teamMemberId": teamMemberId]
-            )
+        case NotificationAction.view.rawValue, UNNotificationDefaultActionIdentifier:
+            // OpenTeamMemberDetails had no listener — iOS has no per-member
+            // detail screen. Land on Settings → Manage Team, the same relay the
+            // wizard and the rail's `team` deep link use.
+            DispatchQueue.main.async {
+                NotificationCenter.default.post(name: Notification.Name("OpenSettings"), object: nil)
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+                    NotificationCenter.default.post(name: Notification.Name("SettingsOpenManageTeam"), object: nil)
+                }
+            }
             
         default:
             break
@@ -1372,16 +1362,19 @@ extension NotificationManager: UNUserNotificationCenterDelegate {
 
         print("[NOTIFICATIONS] Expense notification tapped - batch: \(batchId ?? "none"), expense: \(expenseId ?? "none")")
 
-        var deepLinkInfo: [String: Any] = [:]
-        if let batchId { deepLinkInfo["batchId"] = batchId }
-        if let expenseId { deepLinkInfo["expenseId"] = expenseId }
-
+        // OpenExpenseDetail had no listener. Use the batch-aware pair every
+        // other expense route already posts: the specific batch when the push
+        // names one, the Expenses list otherwise.
         DispatchQueue.main.async {
-            NotificationCenter.default.post(
-                name: Notification.Name("OpenExpenseDetail"),
-                object: nil,
-                userInfo: deepLinkInfo
-            )
+            if let batchId, !batchId.isEmpty {
+                NotificationCenter.default.post(
+                    name: Notification.Name("OpenExpenseBatch"),
+                    object: nil,
+                    userInfo: ["batchId": batchId]
+                )
+            } else {
+                NotificationCenter.default.post(name: Notification.Name("OpenExpenses"), object: nil)
+            }
         }
     }
 

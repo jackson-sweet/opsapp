@@ -1452,13 +1452,7 @@ class OnboardingManager: ObservableObject {
             // DB RPC cannot deliver — stays on the client.
             do {
                 let notifyIds = joinResult.adminIds ?? companyDTO.adminIds ?? []
-                let memberName = "\(state.userData.firstName) \(state.userData.lastName)"
-                try await OneSignalService.shared.notifyTeamJoin(
-                    adminUserIds: notifyIds,
-                    newMemberName: memberName,
-                    newMemberUserId: userId,
-                    companyId: companyId
-                )
+                try await OneSignalService.shared.notifyTeamJoin(adminUserIds: notifyIds)
             } catch {
                 print("[ONBOARDING_MANAGER] ⚠️ Failed to send team join push: \(error)")
             }
@@ -1724,13 +1718,7 @@ class OnboardingManager: ObservableObject {
             // DB RPC cannot deliver — stays on the client.
             do {
                 let notifyIds = joinResult.adminIds ?? companyDTO.adminIds ?? []
-                let memberName = "\(state.userData.firstName) \(state.userData.lastName)"
-                try await OneSignalService.shared.notifyTeamJoin(
-                    adminUserIds: notifyIds,
-                    newMemberName: memberName,
-                    newMemberUserId: userId,
-                    companyId: companyId
-                )
+                try await OneSignalService.shared.notifyTeamJoin(adminUserIds: notifyIds)
             } catch {
                 print("[ONBOARDING_MANAGER] ⚠️ Failed to send team join push: \(error)")
             }

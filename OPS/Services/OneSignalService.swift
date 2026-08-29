@@ -30,122 +30,64 @@ class OneSignalService {
 
     // MARK: - Send Notification Methods
 
-    /// Send notification to a specific user by their user ID
+    /// Ask ops-web to push the companion for rail rows this device just caused
+    /// a narrow SECURITY DEFINER RPC to write. `rowType` is the `type` those
+    /// rows carry — the server reads their own copy, so nothing about the
+    /// message originates here.
     func sendToUser(
         userId: String,
-        title: String,
-        body: String,
-        data: [String: Any]? = nil,
-        imageUrl: String? = nil
+        rowType: String,
+        dedupeKey: String? = nil
     ) async throws {
         try await sendViaOpsWeb(
             recipientUserIds: [userId],
-            title: title,
-            body: body,
-            data: data,
-            imageUrl: imageUrl
+            rowType: rowType,
+            dedupeKey: dedupeKey
         )
     }
 
-    /// Send notification to multiple users by their user IDs
+    /// Multi-recipient form of `sendToUser`.
     func sendToUsers(
         userIds: [String],
-        title: String,
-        body: String,
-        data: [String: Any]? = nil,
-        imageUrl: String? = nil
+        rowType: String,
+        dedupeKey: String? = nil
     ) async throws {
         guard !userIds.isEmpty else { return }
         try await sendViaOpsWeb(
             recipientUserIds: userIds,
-            title: title,
-            body: body,
-            data: data,
-            imageUrl: imageUrl
+            rowType: rowType,
+            dedupeKey: dedupeKey
         )
     }
 
-    // MARK: - App Event Notifications
+    // MARK: - Server-owned notification kinds (no client push)
 
-    /// Notify a user they've been assigned to a task
+    // Task and project lifecycle notifications were re-homed onto
+    // `/api/notifications/dispatch` (P1-17): the server writes the rail rows AND
+    // sends the push in one authorized call, and the repository methods that
+    // feed these wrappers now return empty recipient lists, so every call site
+    // short-circuits before reaching them. They remain only so those legacy
+    // call sites compile. Sending from here would double-push what the server
+    // already delivered — hence deliberate no-ops, not companion sends.
+
     func notifyTaskAssignment(
         userId: String,
         taskName: String,
         projectName: String,
         taskId: String,
         projectId: String
-    ) async throws {
-        if userId == UserDefaults.standard.string(forKey: "currentUserId") {
-            print("[ONESIGNAL SERVICE] Skipping self-notification for task assignment")
-            return
-        }
+    ) async throws {}
 
-        try await sendToUser(
-            userId: userId,
-            title: "New Task Assignment",
-            body: "You've been assigned to \"\(taskName)\" on \(projectName)",
-            data: [
-                "type": "taskAssignment",
-                "taskId": taskId,
-                "projectId": projectId,
-                "screen": "taskDetails"
-            ]
-        )
-        print("[ONESIGNAL SERVICE] Task assignment notification sent to user: \(userId)")
-    }
-
-    /// Notify users of a schedule change
     func notifyScheduleChange(
         userIds: [String],
         taskName: String,
         projectName: String,
         taskId: String,
         projectId: String
-    ) async throws {
-        let currentUserId = UserDefaults.standard.string(forKey: "currentUserId")
-        let filteredUserIds = userIds.filter { $0 != currentUserId }
+    ) async throws {}
 
-        guard !filteredUserIds.isEmpty else {
-            print("[ONESIGNAL SERVICE] No users to notify for schedule change (all filtered)")
-            return
-        }
+    func notifyScheduleBatchUpdate(userMoveCounts: [String: Int]) async {}
 
-        try await sendToUsers(
-            userIds: filteredUserIds,
-            title: "Schedule Update",
-            body: "\"\(taskName)\" on \(projectName) has been rescheduled",
-            data: [
-                "type": "scheduleChange",
-                "taskId": taskId,
-                "projectId": projectId,
-                "screen": "taskDetails"
-            ]
-        )
-        print("[ONESIGNAL SERVICE] Schedule change notification sent to \(filteredUserIds.count) users")
-    }
-
-    /// One summary push per crew member after a bulk auto-schedule run — replaces
-    /// the per-task push (one per task per member) that flooded the connection.
-    /// Each member gets a single push carrying their own moved-task count.
-    func notifyScheduleBatchUpdate(userMoveCounts: [String: Int]) async {
-        let currentUserId = UserDefaults.standard.string(forKey: "currentUserId")
-        for (userId, count) in userMoveCounts where userId != currentUserId && count > 0 {
-            let body = count == 1
-                ? "1 of your tasks was rescheduled"
-                : "\(count) of your tasks were rescheduled"
-            try? await sendToUsers(
-                userIds: [userId],
-                title: "Schedule updated",
-                body: body,
-                data: [
-                    "type": "scheduleChange",
-                    "screen": "jobBoard"
-                ]
-            )
-        }
-    }
-
-    /// Notify project team when a task is completed (workflow handoff)
     func notifyTaskCompletion(
         userIds: [String],
         taskName: String,
@@ -153,241 +95,20 @@ class OneSignalService {
         taskId: String,
         projectId: String,
         completedByName: String?
-    ) async throws {
-        let currentUserId = UserDefaults.standard.string(forKey: "currentUserId")
-        let filteredUserIds = userIds.filter { $0 != currentUserId }
+    ) async throws {}
 
-        guard !filteredUserIds.isEmpty else {
-            print("[ONESIGNAL SERVICE] No users to notify for task completion (all filtered)")
-            return
-        }
-
-        let completedBy = completedByName ?? "A team member"
-        try await sendToUsers(
-            userIds: filteredUserIds,
-            title: "Task Completed",
-            body: "\(completedBy) completed \"\(taskName)\" on \(projectName)",
-            data: [
-                "type": "taskCompletion",
-                "taskId": taskId,
-                "projectId": projectId,
-                "screen": "projectDetails"
-            ]
-        )
-        print("[ONESIGNAL SERVICE] Task completion notification sent to \(filteredUserIds.count) project team members")
-    }
-
-    /// Notify users of project completion
     func notifyProjectCompletion(
         userIds: [String],
         projectName: String,
         projectId: String
-    ) async throws {
-        let currentUserId = UserDefaults.standard.string(forKey: "currentUserId")
-        let filteredUserIds = userIds.filter { $0 != currentUserId }
+    ) async throws {}
 
-        guard !filteredUserIds.isEmpty else {
-            print("[ONESIGNAL SERVICE] No users to notify for project completion (all filtered)")
-            return
-        }
-
-        try await sendToUsers(
-            userIds: filteredUserIds,
-            title: "Project Completed",
-            body: "\"\(projectName)\" has been marked as completed",
-            data: [
-                "type": "projectCompletion",
-                "projectId": projectId,
-                "screen": "projectDetails"
-            ]
-        )
-        print("[ONESIGNAL SERVICE] Project completion notification sent to \(filteredUserIds.count) users")
-    }
-
-    /// Notify a user they've been added to a project team
     func notifyProjectAssignment(
         userId: String,
         projectName: String,
         projectId: String
-    ) async throws {
-        if userId == UserDefaults.standard.string(forKey: "currentUserId") {
-            print("[ONESIGNAL SERVICE] Skipping self-notification for project assignment")
-            return
-        }
+    ) async throws {}
 
-        try await sendToUser(
-            userId: userId,
-            title: "Added to Project",
-            body: "You've been added to \"\(projectName)\"",
-            data: [
-                "type": "projectAssignment",
-                "projectId": projectId,
-                "screen": "projectDetails"
-            ]
-        )
-        print("[ONESIGNAL SERVICE] Project assignment notification sent to user: \(userId)")
-    }
-
-    /// Notify a user they've been mentioned in a project note
-    func notifyProjectNoteMention(
-        userId: String,
-        authorName: String,
-        notePreview: String,
-        projectName: String,
-        projectId: String,
-        noteId: String,
-        imageUrl: String? = nil
-    ) async throws {
-        if userId == UserDefaults.standard.string(forKey: "currentUserId") {
-            print("[ONESIGNAL SERVICE] Skipping self-notification for note mention")
-            return
-        }
-
-        let preview = notePreview.count > 80 ? String(notePreview.prefix(80)) + "..." : notePreview
-        try await sendToUser(
-            userId: userId,
-            title: "\(authorName) mentioned you",
-            body: preview.isEmpty ? "on \(projectName)" : "\"\(preview)\" on \(projectName)",
-            data: [
-                "type": "projectNoteMention",
-                "projectId": projectId,
-                "noteId": noteId,
-                "screen": "projectNotes"
-            ],
-            imageUrl: imageUrl
-        )
-        print("[ONESIGNAL SERVICE] Note mention notification sent to user: \(userId)")
-    }
-
-    /// Notify project team members when a note is added (excludes author and @mentioned users)
-    func notifyProjectNoteAdded(
-        userIds: [String],
-        authorName: String,
-        notePreview: String,
-        photoCount: Int = 0,
-        projectName: String,
-        projectId: String,
-        noteId: String,
-        imageUrl: String? = nil
-    ) async throws {
-        guard !userIds.isEmpty else { return }
-
-        let trimmed = notePreview.trimmingCharacters(in: .whitespacesAndNewlines)
-        let preview = trimmed.count > 80 ? String(trimmed.prefix(80)) + "..." : trimmed
-        // Photo-only posts read "added a photo"; any caption is carried in the
-        // body, which never renders empty quotes.
-        let action = photoCount > 0
-            ? (photoCount == 1 ? "added a photo" : "added \(photoCount) photos")
-            : "added a note"
-        try await sendToUsers(
-            userIds: userIds,
-            title: "\(authorName) \(action)",
-            body: preview.isEmpty ? "on \(projectName)" : "\"\(preview)\" on \(projectName)",
-            data: [
-                "type": "projectNoteAdded",
-                "projectId": projectId,
-                "noteId": noteId,
-                "screen": "projectNotes"
-            ],
-            imageUrl: imageUrl
-        )
-        print("[ONESIGNAL SERVICE] Note-added notification sent to \(userIds.count) team member(s)")
-    }
-
-    /// Notify project team members when photos are added to the project
-    /// (excludes the uploader). Mirrors `notifyProjectNoteAdded` but for the
-    /// gallery "add photos" action. The note-attachment path opts out via
-    /// `ImageSyncManager.saveImages(notifyCrew:)`, so a photo-bearing note
-    /// never double-notifies.
-    func notifyPhotosAdded(
-        userIds: [String],
-        uploaderName: String,
-        photoCount: Int,
-        projectName: String,
-        projectId: String,
-        imageUrl: String? = nil
-    ) async throws {
-        let currentUserId = UserDefaults.standard.string(forKey: "currentUserId")
-        let filtered = userIds.filter { $0 != currentUserId }
-        guard !filtered.isEmpty else { return }
-
-        let title = photoCount == 1 ? "\(uploaderName) added a photo" : "\(uploaderName) added photos"
-        let body = photoCount == 1 ? "1 photo on \(projectName)" : "\(photoCount) photos on \(projectName)"
-        try await sendToUsers(
-            userIds: filtered,
-            title: title,
-            body: body,
-            data: [
-                "type": "photo_uploaded",
-                "projectId": projectId,
-                "screen": "projectNotes"
-            ],
-            imageUrl: imageUrl
-        )
-        print("[ONESIGNAL SERVICE] Photos-added notification sent to \(filtered.count) team member(s)")
-    }
-
-    /// Notify the uploader of a photo when someone else comments on it.
-    func notifyPhotoComment(
-        userId: String,
-        authorName: String,
-        notePreview: String,
-        projectName: String,
-        projectId: String,
-        noteId: String,
-        imageUrl: String? = nil
-    ) async throws {
-        if userId == UserDefaults.standard.string(forKey: "currentUserId") {
-            print("[ONESIGNAL SERVICE] Skipping self-notification for photo comment")
-            return
-        }
-
-        let preview = notePreview.count > 80 ? String(notePreview.prefix(80)) + "..." : notePreview
-        try await sendToUser(
-            userId: userId,
-            title: "\(authorName) commented on your photo",
-            body: preview.isEmpty ? "on \(projectName)" : "\"\(preview)\" on \(projectName)",
-            data: [
-                "type": "photo_comment",
-                "projectId": projectId,
-                "noteId": noteId,
-                "screen": "projectNotes"
-            ],
-            imageUrl: imageUrl
-        )
-        print("[ONESIGNAL SERVICE] Photo-comment notification sent to user: \(userId)")
-    }
-
-    /// Notify admins when a new team member joins via crew code
-    func notifyTeamJoin(
-        adminUserIds: [String],
-        newMemberName: String,
-        newMemberUserId: String,
-        companyId: String
-    ) async throws {
-        let currentUserId = UserDefaults.standard.string(forKey: "currentUserId")
-        let filtered = adminUserIds.filter { $0 != currentUserId }
-
-        guard !filtered.isEmpty else {
-            print("[ONESIGNAL SERVICE] No admins to notify for team join (all filtered)")
-            return
-        }
-
-        try await sendToUsers(
-            userIds: filtered,
-            title: "New Team Member",
-            body: "\(newMemberName) joined as Crew. Tap to set their role.",
-            data: [
-                "type": "teamJoin",
-                "userId": newMemberUserId,
-                "companyId": companyId,
-                "screen": "manageTeam"
-            ]
-        )
-        print("[ONESIGNAL SERVICE] Team join notification sent to \(filtered.count) admins")
-    }
-
-    /// Notify team members that a dependency has been completed and their task is ready to start
     func notifyDependencyCompleted(
         completedTaskTitle: String,
         dependentTaskTitle: String,
@@ -395,109 +116,93 @@ class OneSignalService {
         recipientUserIds: [String],
         projectId: String,
         dependentTaskId: String
-    ) async throws {
+    ) async throws {}
+
+    // MARK: - Companion pushes for iOS-written rail rows
+
+    /// Mention rows written by `notify_note_created`.
+    func notifyProjectNoteMention(userIds: [String]) async throws {
         let currentUserId = UserDefaults.standard.string(forKey: "currentUserId")
-        let filteredUserIds = recipientUserIds.filter { $0 != currentUserId }
+        let filtered = userIds.filter { $0 != currentUserId }
+        guard !filtered.isEmpty else { return }
 
-        guard !filteredUserIds.isEmpty else {
-            print("[ONESIGNAL SERVICE] No users to notify for dependency completion (all filtered)")
-            return
-        }
-
-        try await sendToUsers(
-            userIds: filteredUserIds,
-            title: "Ready to start",
-            body: "\(dependentTaskTitle) on \(projectTitle) — \(completedTaskTitle) is complete",
-            data: [
-                "type": "dependencyCompleted",
-                "screen": "taskDetails",
-                "projectId": projectId,
-                "taskId": dependentTaskId
-            ]
-        )
-        print("[ONESIGNAL SERVICE] Dependency completion notification sent to \(filteredUserIds.count) users")
+        try await sendToUsers(userIds: filtered, rowType: "mention")
+        print("[ONESIGNAL SERVICE] Mention companion sent to \(filtered.count) user(s)")
     }
 
-    /// Notify a crew member that their expense batch was approved.
-    func notifyBatchApproved(
-        userId: String,
-        batchNumber: String,
-        batchId: String
-    ) async throws {
-        if userId == UserDefaults.standard.string(forKey: "currentUserId") {
-            return
-        }
+    /// Plain-note broadcast rows written by `notify_note_created`.
+    func notifyProjectNoteAdded(userIds: [String]) async throws {
+        let currentUserId = UserDefaults.standard.string(forKey: "currentUserId")
+        let filtered = userIds.filter { $0 != currentUserId }
+        guard !filtered.isEmpty else { return }
 
-        try await sendToUser(
-            userId: userId,
-            title: "Expenses Approved",
-            body: "Your batch \(batchNumber) was approved",
-            data: [
-                "type": "expense_approved",
-                "batchId": batchId,
-                "screen": "expenses"
-            ]
-        )
-        print("[ONESIGNAL SERVICE] Batch approved notification sent to user: \(userId)")
+        try await sendToUsers(userIds: filtered, rowType: "project_note")
+        print("[ONESIGNAL SERVICE] Note-added companion sent to \(filtered.count) user(s)")
     }
 
-    /// Notify a crew member that flagged lines on their batch were sent back.
-    func notifyBatchSentBack(
-        userId: String,
-        batchNumber: String,
-        batchId: String,
-        flaggedCount: Int
-    ) async throws {
-        if userId == UserDefaults.standard.string(forKey: "currentUserId") {
-            return
-        }
+    /// Gallery upload rows written by `notify_project_photos_added`.
+    func notifyPhotosAdded(userIds: [String]) async throws {
+        let currentUserId = UserDefaults.standard.string(forKey: "currentUserId")
+        let filtered = userIds.filter { $0 != currentUserId }
+        guard !filtered.isEmpty else { return }
 
-        try await sendToUser(
-            userId: userId,
-            title: "Expenses Sent Back",
-            body: "\(flaggedCount) expense\(flaggedCount == 1 ? "" : "s") on \(batchNumber) need\(flaggedCount == 1 ? "s" : "") fixes",
-            data: [
-                "type": "expense_rejected",
-                "batchId": batchId,
-                "screen": "expenses"
-            ]
-        )
-        print("[ONESIGNAL SERVICE] Batch sent-back notification sent to user: \(userId)")
+        try await sendToUsers(userIds: filtered, rowType: "photo_uploaded")
+        print("[ONESIGNAL SERVICE] Photos-added companion sent to \(filtered.count) user(s)")
     }
 
-    /// Notify a crew member that their approved batch was paid out.
-    /// Copy matches the OPS-Web dispatch exactly.
-    func notifyBatchPaid(
-        userId: String,
-        batchNumber: String,
-        batchId: String
-    ) async throws {
-        if userId == UserDefaults.standard.string(forKey: "currentUserId") {
-            return
-        }
+    /// Photo-comment rows written by `notify_note_created`.
+    func notifyPhotoComment(userIds: [String]) async throws {
+        let currentUserId = UserDefaults.standard.string(forKey: "currentUserId")
+        let filtered = userIds.filter { $0 != currentUserId }
+        guard !filtered.isEmpty else { return }
 
-        try await sendToUser(
-            userId: userId,
-            title: "Expenses Paid Out",
-            body: "Your expense batch \(batchNumber) has been paid out",
-            data: [
-                "type": "expense_paid",
-                "batchId": batchId,
-                "screen": "expenses"
-            ]
-        )
-        print("[ONESIGNAL SERVICE] Batch paid notification sent to user: \(userId)")
+        try await sendToUsers(userIds: filtered, rowType: "photo_comment")
+        print("[ONESIGNAL SERVICE] Photo-comment companion sent to \(filtered.count) user(s)")
+    }
+
+    /// Admin rows written by `join_user_to_company` when a member joins by crew
+    /// code. That RPC writes ONE `role_needed` row per admin (deduped) — there
+    /// is no `notify_team_join` RPC and no `team_join` row to match; the web
+    /// join-company route writes the same `role_needed` type.
+    func notifyTeamJoin(adminUserIds: [String]) async throws {
+        let currentUserId = UserDefaults.standard.string(forKey: "currentUserId")
+        let filtered = adminUserIds.filter { $0 != currentUserId }
+        guard !filtered.isEmpty else { return }
+
+        try await sendToUsers(userIds: filtered, rowType: "role_needed")
+        print("[ONESIGNAL SERVICE] Team-join companion sent to \(filtered.count) admin(s)")
+    }
+
+    /// Expense envelope decision rows written by `notify_expense_batch_decision`.
+    func notifyBatchApproved(userId: String) async throws {
+        guard userId != UserDefaults.standard.string(forKey: "currentUserId") else { return }
+        try await sendToUser(userId: userId, rowType: "expense_approved")
+    }
+
+    func notifyBatchSentBack(userId: String) async throws {
+        guard userId != UserDefaults.standard.string(forKey: "currentUserId") else { return }
+        try await sendToUser(userId: userId, rowType: "expense_rejected")
+    }
+
+    func notifyBatchPaid(userId: String) async throws {
+        guard userId != UserDefaults.standard.string(forKey: "currentUserId") else { return }
+        try await sendToUser(userId: userId, rowType: "expense_paid")
     }
 
     // MARK: - Private Implementation
 
-    /// Send notification via ops-web backend route
+    /// Ask ops-web to push the companion for rail rows of `rowType` that this
+    /// company wrote in the last few minutes for `recipientUserIds`.
+    ///
+    /// Replaces `/api/notifications/send`, retired as a 404 on 2026-07-16 — every
+    /// call from this service silently failed between then and 2026-08-28. The
+    /// replacement takes no copy and no arbitrary targeting: the server matches
+    /// the durable rail rows and pushes their own server-rendered copy, gated on
+    /// the recipient's push preference, channel preference and quiet hours.
     private func sendViaOpsWeb(
         recipientUserIds: [String],
-        title: String,
-        body: String,
-        data: [String: Any]? = nil,
-        imageUrl: String? = nil
+        rowType: String,
+        dedupeKey: String? = nil
     ) async throws {
         let idToken: String
         do {
@@ -507,7 +212,8 @@ class OneSignalService {
             throw OneSignalError.notAuthenticated
         }
 
-        let url = AppConfiguration.apiBaseURL.appendingPathComponent("/api/notifications/send")
+        let url = AppConfiguration.apiBaseURL
+            .appendingPathComponent("/api/notifications/push-companion")
 
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
@@ -515,17 +221,11 @@ class OneSignalService {
         request.setValue("Bearer \(idToken)", forHTTPHeaderField: "Authorization")
 
         var payload: [String: Any] = [
-            "recipientUserIds": recipientUserIds,
-            "title": title,
-            "body": body
+            "notificationType": rowType,
+            "recipientUserIds": recipientUserIds
         ]
-
-        if let data = data {
-            payload["data"] = data
-        }
-
-        if let imageUrl = imageUrl {
-            payload["imageUrl"] = imageUrl
+        if let dedupeKey = dedupeKey {
+            payload["dedupeKey"] = dedupeKey
         }
 
         request.httpBody = try JSONSerialization.data(withJSONObject: payload)
@@ -543,8 +243,7 @@ class OneSignalService {
             throw OneSignalError.apiError(statusCode: httpResponse.statusCode, message: responseBody)
         }
 
-        print("[ONESIGNAL SERVICE] ✅ Response (\(httpResponse.statusCode)): \(responseBody)")
-        print("[ONESIGNAL SERVICE] Sent to user IDs: \(recipientUserIds)")
+        print("[ONESIGNAL SERVICE] ✅ Companion \(rowType) (\(httpResponse.statusCode)): \(responseBody)")
     }
 }
 

@@ -380,6 +380,24 @@ class AppState: ObservableObject {
         self.activeProjectID = nil
         self.activeTaskID = nil // Clear active task ID
     }
+
+    /// Dismiss presentation-only chrome that would cover an incoming deep-link
+    /// destination (bug 4d2e91a9: a push-tapped lead opened UNDER the still-
+    /// presented notifications rail / project-details sheet). Passive viewers
+    /// only — never a mid-task modal: plan selection, an active site-visit
+    /// capture, deck editor, and form sheets are owned by their surfaces and are
+    /// not touched here. Project MODE (crew actively on a job) survives; only
+    /// the view-only details sheet is dismissed.
+    @MainActor
+    func clearNavigationOccluders() {
+        showingNotifications = false
+        showingUniversalSearch = false
+        if isViewingDetailsOnly {
+            showProjectDetails = false
+            isViewingDetailsOnly = false
+            activeProjectID = nil
+        }
+    }
     
     // Reset all state on logout to prevent stale references
     func resetForLogout() {
@@ -671,9 +689,7 @@ class AppState: ObservableObject {
             // IS push dedupe, so the two surfaces can never disagree.
             try? await OneSignalService.shared.sendToUsers(
                 userIds: createdRecipients,
-                title: "Overdue Invoices",
-                body: "\(overdueCount) invoice\(overdueCount == 1 ? "" : "s") overdue totalling \(formattedTotal)",
-                data: ["type": "invoice_overdue", "screen": "expenses"]
+                rowType: "invoice_overdue"
             )
             print("[OVERDUE_CHECK] 📬 Invoice overdue notification sent to \(createdRecipients.count) recipients (\(overdueCount) invoices, \(formattedTotal))")
         }

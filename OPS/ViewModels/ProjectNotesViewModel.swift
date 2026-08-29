@@ -904,50 +904,26 @@ class ProjectNotesViewModel: ObservableObject {
         let plan = ProjectNotePushPlan(fanout: fanout)
         guard !plan.isEmpty else { return }
 
-        // Push copy only — the rail's own copy is rendered server-side.
-        let authorName = currentUserId.flatMap { id in
-            allTeamMembers.first(where: { $0.id == id })?.fullName
-        } ?? "A team member"
-        let projectName: String
-        if let context = modelContext {
-            let pid = projectId
-            let descriptor = FetchDescriptor<Project>(predicate: #Predicate { $0.id == pid })
-            projectName = (try? context.fetch(descriptor).first?.title) ?? "a project"
-        } else {
-            projectName = "a project"
-        }
-        let firstImageUrl = attachmentURLs.first
-
-        for userId in plan.mentionUserIds {
+        // No copy is built here any more: the companion route pushes each rail
+        // row's own server-rendered title and body, so the client only names
+        // the row type and the recipients the RPC reported.
+        if !plan.mentionUserIds.isEmpty {
             do {
                 try await OneSignalService.shared.notifyProjectNoteMention(
-                    userId: userId,
-                    authorName: authorName,
-                    notePreview: noteText,
-                    projectName: projectName,
-                    projectId: projectId,
-                    noteId: noteId,
-                    imageUrl: firstImageUrl
+                    userIds: plan.mentionUserIds
                 )
             } catch {
-                print("[PROJECT NOTES] Failed to send push mention notification to \(userId): \(error)")
+                print("[PROJECT NOTES] Failed to send mention companion push: \(error)")
             }
         }
 
         guard !plan.teamUserIds.isEmpty else { return }
         do {
             try await OneSignalService.shared.notifyProjectNoteAdded(
-                userIds: plan.teamUserIds,
-                authorName: authorName,
-                notePreview: noteText,
-                photoCount: attachmentURLs.count,
-                projectName: projectName,
-                projectId: projectId,
-                noteId: noteId,
-                imageUrl: firstImageUrl
+                userIds: plan.teamUserIds
             )
         } catch {
-            print("[PROJECT NOTES] Failed to send push note-added notification: \(error)")
+            print("[PROJECT NOTES] Failed to send note-added companion push: \(error)")
         }
     }
 }

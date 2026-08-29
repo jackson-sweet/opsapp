@@ -15,8 +15,10 @@
 //  `TimeOffRequestNotificationDispatcher`. The server owns recipients and rail
 //  copy — it reads the `calendar_user_events` row the sheet just created and
 //  derives the target, the requester, and the approver set from it. The client
-//  keeps exactly one job: the OneSignal push, whose copy it still builds, aimed
-//  at exactly the ids the server reports as having received NEW rows.
+//  keeps exactly one job: asking ops-web to push the companion for those rows,
+//  aimed at exactly the ids the server reports as having received NEW rows.
+//  Since 2026-08-28 the copy is the row's own too — the client names the row
+//  type and nothing else.
 //
 //  What these tests pin:
 //    1. The event id crosses each seam verbatim. The server resolves everything
@@ -77,51 +79,30 @@ final class TimeOffRequestNotificationTests: XCTestCase {
         }
     }
 
-    /// Records every push the dispatcher sends. `data` is `[String: Any]`, so
-    /// the payload is flattened to the three keys the sheets actually set.
+    /// Records every companion push the dispatcher asks for. There is no copy
+    /// to record any more — the row type is the whole client-side payload.
     private final class TimeOffRequestPushSpy: TimeOffRequestPushing {
         struct Send: Equatable {
             let userIds: [String]
-            let title: String
-            let body: String
-            let type: String?
-            let eventId: String?
-            let screen: String?
+            let rowType: String
         }
 
         private(set) var sends: [Send] = []
 
         func sendToUser(
             userId: String,
-            title: String,
-            body: String,
-            data: [String: Any]?,
-            imageUrl: String?
+            rowType: String,
+            dedupeKey: String?
         ) async throws {
-            record(userIds: [userId], title: title, body: body, data: data)
+            sends.append(Send(userIds: [userId], rowType: rowType))
         }
 
         func sendToUsers(
             userIds: [String],
-            title: String,
-            body: String,
-            data: [String: Any]?,
-            imageUrl: String?
+            rowType: String,
+            dedupeKey: String?
         ) async throws {
-            record(userIds: userIds, title: title, body: body, data: data)
-        }
-
-        private func record(userIds: [String], title: String, body: String, data: [String: Any]?) {
-            sends.append(
-                Send(
-                    userIds: userIds,
-                    title: title,
-                    body: body,
-                    type: data?["type"] as? String,
-                    eventId: data?["eventId"] as? String,
-                    screen: data?["screen"] as? String
-                )
-            )
+            sends.append(Send(userIds: userIds, rowType: rowType))
         }
     }
 
@@ -129,30 +110,6 @@ final class TimeOffRequestNotificationTests: XCTestCase {
 
     private let eventId = "8c31889e-4f2a-4b71-9d33-0a17c5be6d42"
     private let targetUserId = "d2bc7743-91e5-4c06-a1f7-6b8093ee2a58"
-
-    private func bookedPush(eventId: String) -> TimeOffRequestNotificationDispatcher.PushCopy {
-        TimeOffRequestNotificationDispatcher.PushCopy(
-            title: "Time Off Booked",
-            body: "Marcus Hale booked you off for Aug 17 – Aug 19.",
-            data: [
-                "type": "time_off_booked",
-                "eventId": eventId,
-                "screen": "schedule"
-            ]
-        )
-    }
-
-    private func requestPush(eventId: String) -> TimeOffRequestNotificationDispatcher.PushCopy {
-        TimeOffRequestNotificationDispatcher.PushCopy(
-            title: "Time Off Request",
-            body: "Marcus Hale requested time off: Aug 17 – Aug 19",
-            data: [
-                "type": "time_off_requested",
-                "eventId": eventId,
-                "screen": "schedule"
-            ]
-        )
-    }
 
     // MARK: - 1. Booked — id forwarded verbatim, push aimed at the event's target
 
@@ -165,7 +122,6 @@ final class TimeOffRequestNotificationTests: XCTestCase {
             eventId: eventId,
             targetUserId: targetUserId,
             targetIsSelf: false,
-            push: bookedPush(eventId: eventId),
             railSyncer: rail,
             pushSender: push
         )
@@ -178,17 +134,8 @@ final class TimeOffRequestNotificationTests: XCTestCase {
         )
         XCTAssertEqual(
             push.sends,
-            [
-                .init(
-                    userIds: [targetUserId],
-                    title: "Time Off Booked",
-                    body: "Marcus Hale booked you off for Aug 17 – Aug 19.",
-                    type: "time_off_booked",
-                    eventId: eventId,
-                    screen: "schedule"
-                )
-            ],
-            "The push goes to the person the time off belongs to, carrying the sheet's copy untouched"
+            [.init(userIds: [targetUserId], rowType: "time_off_booked")],
+            "The push goes to the person the time off belongs to, naming the row type whose server-rendered copy it carries"
         )
     }
 
@@ -203,7 +150,6 @@ final class TimeOffRequestNotificationTests: XCTestCase {
             eventId: eventId,
             targetUserId: targetUserId,
             targetIsSelf: false,
-            push: bookedPush(eventId: eventId),
             railSyncer: rail,
             pushSender: push
         )
@@ -225,7 +171,6 @@ final class TimeOffRequestNotificationTests: XCTestCase {
             eventId: eventId,
             targetUserId: targetUserId,
             targetIsSelf: true,
-            push: bookedPush(eventId: eventId),
             railSyncer: rail,
             pushSender: push
         )
@@ -252,7 +197,6 @@ final class TimeOffRequestNotificationTests: XCTestCase {
             eventId: eventId,
             targetUserId: targetUserId,
             targetIsSelf: false,
-            push: bookedPush(eventId: eventId),
             railSyncer: rail,
             pushSender: push
         )
@@ -268,7 +212,6 @@ final class TimeOffRequestNotificationTests: XCTestCase {
             eventId: recovered,
             targetUserId: targetUserId,
             targetIsSelf: false,
-            push: bookedPush(eventId: recovered),
             railSyncer: rail,
             pushSender: push
         )
@@ -280,7 +223,7 @@ final class TimeOffRequestNotificationTests: XCTestCase {
             "The throw is swallowed at the seam: the next booking still dispatches"
         )
         XCTAssertEqual(push.sends.count, 1, "Only the recovered booking pushed")
-        XCTAssertEqual(push.sends.first?.eventId, recovered)
+        XCTAssertEqual(push.sends.first?.rowType, "time_off_booked")
     }
 
     // MARK: - 4. Requested — the push targets exactly the ids the server returned
@@ -295,7 +238,6 @@ final class TimeOffRequestNotificationTests: XCTestCase {
 
         let pushed = await TimeOffRequestNotificationDispatcher.dispatchRequested(
             eventId: eventId,
-            push: requestPush(eventId: eventId),
             railSyncer: rail,
             pushSender: push
         )
@@ -312,16 +254,7 @@ final class TimeOffRequestNotificationTests: XCTestCase {
         )
         XCTAssertEqual(
             push.sends,
-            [
-                .init(
-                    userIds: ["approver-a", "approver-c"],
-                    title: "Time Off Request",
-                    body: "Marcus Hale requested time off: Aug 17 – Aug 19",
-                    type: "time_off_requested",
-                    eventId: eventId,
-                    screen: "schedule"
-                )
-            ],
+            [.init(userIds: ["approver-a", "approver-c"], rowType: "time_off_requested")],
             "Push targets are the server's returned ids verbatim — never a client-computed approver lookup — and the on-behalf target, whose row the server wrote, is not among them"
         )
     }
@@ -338,7 +271,6 @@ final class TimeOffRequestNotificationTests: XCTestCase {
 
         let pushed = await TimeOffRequestNotificationDispatcher.dispatchRequested(
             eventId: eventId,
-            push: requestPush(eventId: eventId),
             railSyncer: rail,
             pushSender: push
         )
@@ -362,7 +294,6 @@ final class TimeOffRequestNotificationTests: XCTestCase {
 
         let failedPush = await TimeOffRequestNotificationDispatcher.dispatchRequested(
             eventId: eventId,
-            push: requestPush(eventId: eventId),
             railSyncer: rail,
             pushSender: push
         )
@@ -373,7 +304,6 @@ final class TimeOffRequestNotificationTests: XCTestCase {
         rail.failure = nil
         let recoveredPush = await TimeOffRequestNotificationDispatcher.dispatchRequested(
             eventId: recovered,
-            push: requestPush(eventId: recovered),
             railSyncer: rail,
             pushSender: push
         )

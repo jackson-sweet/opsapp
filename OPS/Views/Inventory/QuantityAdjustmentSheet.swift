@@ -29,27 +29,22 @@ extension NotificationRepository: InventoryThresholdNotifying {}
 enum InventoryThresholdNotificationDispatcher {
     /// What the push lane would send. Modelled as a value so the send can be
     /// substituted in tests — `OneSignalService` is a singleton with no seam.
+    /// Copy is no longer carried: the companion push uses the rail row's own.
     struct PushPayload: Equatable {
         let userIds: [String]
-        let title: String
-        let body: String
-        let data: [String: String]
+        let rowType: String
     }
 
     /// Returns the ids the server reported as newly notified.
     @discardableResult
     static func dispatch(
         itemId: String,
-        title: String,
-        body: String,
-        type: String,
+        rowType: String,
         syncer: InventoryThresholdNotifying = NotificationRepository.shared,
         push: (PushPayload) async -> Void = { payload in
             try? await OneSignalService.shared.sendToUsers(
                 userIds: payload.userIds,
-                title: payload.title,
-                body: payload.body,
-                data: payload.data
+                rowType: payload.rowType
             )
         }
     ) async -> [String] {
@@ -66,14 +61,7 @@ enum InventoryThresholdNotificationDispatcher {
         // nobody's phone should buzz.
         guard !notified.isEmpty else { return [] }
 
-        await push(
-            PushPayload(
-                userIds: notified,
-                title: title,
-                body: body,
-                data: ["type": type, "screen": "inventory"]
-            )
-        )
+        await push(PushPayload(userIds: notified, rowType: rowType))
         return notified
     }
 }
@@ -448,9 +436,7 @@ struct QuantityAdjustmentSheet: View {
                     let isCritical = status == .critical
                     let notified = await InventoryThresholdNotificationDispatcher.dispatch(
                         itemId: item.id,
-                        title: isCritical ? "Critical Stock Alert" : "Low Stock Warning",
-                        body: "\(item.name) is \(isCritical ? "critically low" : "running low") (\(Int(item.quantity)) remaining)",
-                        type: isCritical ? "inventory_critical" : "inventory_warning"
+                        rowType: isCritical ? "inventory_critical" : "inventory_warning"
                     )
                     if !notified.isEmpty {
                         print("[QUANTITY_ADJUST] 📬 threshold notification sent to \(notified.count) recipients")

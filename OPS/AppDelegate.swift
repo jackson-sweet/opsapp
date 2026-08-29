@@ -170,19 +170,11 @@ class AppDelegate: NSObject, UIApplicationDelegate, OSNotificationLifecycleListe
             // otherwise swallow both into a plain lead open.
             let siteVisitLink = (additionalData?["deep_link_type"] as? String) ?? notificationType
             if siteVisitLink == "site_visit_start", let leadId = leadId {
-                NotificationCenter.default.post(
-                    name: Notification.Name("StartSiteVisit"),
-                    object: nil,
-                    userInfo: ["leadId": leadId]
-                )
+                self.startSiteVisitViaCoordinator(leadId)
                 return
             }
             if siteVisitLink == "site_visit_heads_up", let leadId = leadId {
-                NotificationCenter.default.post(
-                    name: Notification.Name("OpenLeadDetails"),
-                    object: nil,
-                    userInfo: ["leadId": leadId]
-                )
+                self.openLeadViaCoordinator(leadId)
                 return
             }
 
@@ -215,11 +207,7 @@ class AppDelegate: NSObject, UIApplicationDelegate, OSNotificationLifecycleListe
             // MainTabView's OpenLeadDetails handler enforces pipeline.view and
             // the LEADS-tab swap.
             if let leadId = leadId {
-                NotificationCenter.default.post(
-                    name: Notification.Name("OpenLeadDetails"),
-                    object: nil,
-                    userInfo: ["leadId": leadId]
-                )
+                self.openLeadViaCoordinator(leadId)
                 return
             }
 
@@ -539,6 +527,23 @@ class AppDelegate: NSObject, UIApplicationDelegate, OSNotificationLifecycleListe
         }
     }
 
+    /// Lead/opportunity push taps ride the same durable handoff as projects.
+    /// Posting straight to NotificationCenter dropped the intent on a cold
+    /// launch — nothing is mounted 0.5 s in, so nobody heard the event. The
+    /// coordinator stashes it until MainTabView drains it (bug c2946efc).
+    private func openLeadViaCoordinator(_ leadId: String) {
+        Task { @MainActor in
+            DeepLinkCoordinator.shared.receive(entity: "leads", id: leadId, scheme: "push")
+        }
+    }
+
+    /// START-visit push taps: same durable handoff, straight into capture.
+    private func startSiteVisitViaCoordinator(_ leadId: String) {
+        Task { @MainActor in
+            DeepLinkCoordinator.shared.receive(entity: "site-visit-start", id: leadId, scheme: "push")
+        }
+    }
+
     /// Open the existing notification rail through the same durable in-memory
     /// handoff used by project deep links. The sentinel id exists only because
     /// DeepLinkCoordinator models every destination as an entity/id pair.
@@ -686,7 +691,7 @@ class AppDelegate: NSObject, UIApplicationDelegate, OSNotificationLifecycleListe
             )
         case "billable_this_week":
             NotificationCenter.default.post(
-                name: Notification.Name("NavigateToMap"),
+                name: Notification.Name("NavigateToMapView"),
                 object: nil
             )
         case "role_assigned":
@@ -695,8 +700,9 @@ class AppDelegate: NSObject, UIApplicationDelegate, OSNotificationLifecycleListe
                 object: nil
             )
         case "inventory_warning", "inventory_critical":
+            // Stock lives in the Catalog tab — OpenInventory had no listener.
             NotificationCenter.default.post(
-                name: Notification.Name("OpenInventory"),
+                name: Notification.Name("OpenCatalog"),
                 object: nil
             )
         case "time_off_approved", "time_off_denied":

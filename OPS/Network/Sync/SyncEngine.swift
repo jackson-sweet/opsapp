@@ -2402,6 +2402,24 @@ final class SyncEngine {
             print("[SYNC_ENGINE] Re-enqueue sweep: \(revivedInProgress) stranded in-flight + \(revivedFailed) failed → pending (parked untouched)")
             refreshPendingCount()
         }
+
+        // Ops that parked BEFORE the reconcilers existed are invisible to the
+        // sweep above — parked is deliberately terminal — but some are now
+        // resolvable against server state: a site-visit photo the conversion RPC
+        // already inserted transactionally, a task the server has since deleted.
+        // Resolve those on the active outbound driver so PENDING WORK empties
+        // itself with no user action (bug ba75732a). Best-effort, and off the
+        // sweep's critical path — every other parked class stays parked.
+        guard connectivity?.shouldAttemptSync == true else { return }
+        Task { [weak self] in
+            guard let self else { return }
+            if FeatureFlags.useDataActor, let actor = self.dataActor {
+                await actor.resolveReconcilableParkedOperations()
+            } else if let processor = self.outboundProcessor {
+                await processor.resolveReconcilableParkedOperations(context: modelContext)
+            }
+            self.refreshPendingCount()
+        }
     }
 
     /// Reconciles queued offline project-status writes after a separate

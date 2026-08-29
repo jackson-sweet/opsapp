@@ -594,8 +594,14 @@ class ProjectNotesViewModel: ObservableObject {
             predicate: #Predicate { $0.projectId == pid && $0.deletedAt == nil }
         )
         let localPhotos = (try? context.fetch(descriptor)) ?? []
-        for photo in localPhotos where prunable.contains(photo.url) {
+        let prunedRows = localPhotos.filter { prunable.contains($0.url) }
+        for photo in prunedRows {
             photo.deletedAt = Date()
+            // Armed for `ImageSyncManager.drainPendingPhotoSoftDeletes`: if the
+            // remote soft-delete below fails (offline, transient), the flag is
+            // what gets the tombstone delivered on a later pass instead of the
+            // photo resurrecting on the next inbound sync (bug 1154fe67).
+            photo.needsSync = true
         }
 
         try? context.save()
@@ -615,9 +621,14 @@ class ProjectNotesViewModel: ObservableObject {
         }
 
         // 4) Soft-delete the remote project_photos rows (web portal + other
-        //    devices). Best-effort per URL.
+        //    devices). First attempt happens here because a pruned URL may have
+        //    no local row at all; anything that fails stays `needsSync = true`
+        //    and `ImageSyncManager.drainPendingPhotoSoftDeletes` re-pushes it
+        //    until the server accepts (it also files the bug if the rejection is
+        //    permanent, so no second reporter is needed here).
         struct ProjectPhotoSoftDelete: Encodable { let deleted_at: String }
         let nowISO = ISO8601DateFormatter().string(from: Date())
+        var confirmed = false
         for url in prunable {
             do {
                 try await SupabaseService.shared.client
@@ -626,9 +637,20 @@ class ProjectNotesViewModel: ObservableObject {
                     .eq("project_id", value: projectId)
                     .eq("url", value: url)
                     .execute()
+                for photo in prunedRows where photo.url == url && photo.needsSync {
+                    photo.needsSync = false
+                    confirmed = true
+                }
             } catch {
-                print("[NOTES] Failed to soft-delete remote project_photos for \(url): \(error)")
+                DebugLogger.shared.log(
+                    "project_photos note-prune soft-delete failed for \(url): \(error)",
+                    level: .error,
+                    category: "ProjectNotesViewModel"
+                )
             }
+        }
+        if confirmed {
+            try? context.save()
         }
     }
 

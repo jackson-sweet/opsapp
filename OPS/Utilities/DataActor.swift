@@ -5051,30 +5051,6 @@ actor DataActor {
                     payload: payloadDict
                 )
             }
-
-            let completedAt = Date()
-            try modelContext.transaction {
-                operation.status = "completed"
-                operation.completedAt = completedAt
-                try TaskTypeMutationSync.completeProtectionOperations(
-                    for: operation,
-                    in: modelContext,
-                    completedAt: completedAt
-                )
-                // Confirmed server success is the ONLY thing that clears a
-                // calendar row's dirty flag — and it commits with the
-                // completion, because that flag is what keeps the inbound merge
-                // off a locally-edited row (bug ef5a69e6).
-                try CalendarUserEventOutboundSync.clearNeedsSyncOnCompletion(
-                    for: operation,
-                    in: modelContext
-                )
-            }
-            print("[DataActor] Completed \(operation.entityType) \(operation.entityId)")
-            if operation.entityType == SyncEntityType.projectTask.rawValue {
-                print("[DUPE_TRACE] ACTOR.outbound.completed id=\(operation.entityId) op=\(operation.operationType)")
-            }
-
         } catch {
             let classified = classifySyncError(error)
 
@@ -5096,6 +5072,27 @@ actor DataActor {
                 if operation.entityType == SyncEntityType.projectTask.rawValue {
                     print("[DUPE_TRACE] ACTOR.outbound.completed.pkConflict id=\(operation.entityId) op=\(operation.operationType)")
                 }
+                return
+            }
+
+            // Idempotency, natural-key form (bug ba75732a). Two failures prove
+            // the server already holds the intended end state, and parking them
+            // strands real work forever:
+            //   * a site-visit photo create that hits the
+            //     (company_id, project_id, site_visit_id, url) dedupe index —
+            //     the opportunity-conversion RPC inserted that photo
+            //     transactionally under a server-generated id;
+            //   * a task update refused with task_not_found against a task the
+            //     server has soft-deleted — the tombstone is the newer truth.
+            // MUST run before disposition routing: both classify permanent.
+            // Both descriptions are searched: `classified` is what gets stored in
+            // `lastError` (and therefore what the parked sweep re-reads), while
+            // the raw error is what the live path holds.
+            if let reconciliation = SyncOperationReconcilers.kind(
+                operationType: operation.operationType,
+                entityType: operation.entityType,
+                errorDescription: "\(error.localizedDescription) \(classified.localizedDescription)"
+            ), await reconcile(operation, as: reconciliation) {
                 return
             }
 
@@ -5247,6 +5244,181 @@ actor DataActor {
             }
 
             throw error
+        }
+
+        // Push confirmed. Persisting the confirmation is a LOCAL concern: it sits
+        // outside the push's `do` so a store throw can never be classified as a
+        // server rejection, consume retry budget, or park an operation the server
+        // already accepted (bug ba75732a class). If it throws, the op stays
+        // `inProgress` and `SyncEngine.reenqueueRecoverableOperations` revives it
+        // — the idempotency and reconciler paths absorb the re-push.
+        do {
+            let completedAt = Date()
+            try modelContext.transaction {
+                operation.status = "completed"
+                operation.completedAt = completedAt
+                try TaskTypeMutationSync.completeProtectionOperations(
+                    for: operation,
+                    in: modelContext,
+                    completedAt: completedAt
+                )
+                // Confirmed server success is the ONLY thing that clears a
+                // calendar row's dirty flag — and it commits with the
+                // completion, because that flag is what keeps the inbound merge
+                // off a locally-edited row (bug ef5a69e6).
+                try CalendarUserEventOutboundSync.clearNeedsSyncOnCompletion(
+                    for: operation,
+                    in: modelContext
+                )
+            }
+            print("[DataActor] Completed \(operation.entityType) \(operation.entityId)")
+            if operation.entityType == SyncEntityType.projectTask.rawValue {
+                print("[DUPE_TRACE] ACTOR.outbound.completed id=\(operation.entityId) op=\(operation.operationType)")
+            }
+        } catch {
+            DebugLogger.shared.log(
+                "outbound \(operation.entityType) \(operation.entityId) pushed but completion could not be persisted — left inProgress for the stale sweep: \(error)",
+                level: .error,
+                category: "DataActor"
+            )
+        }
+    }
+
+    // MARK: - Terminal-failure reconciliation (bug ba75732a)
+
+    /// Routes a reconcilable failure to its handler. `false` falls through to
+    /// normal disposition — a genuinely unexplained refusal still parks.
+    private func reconcile(
+        _ operation: SyncOperation,
+        as kind: SyncOperationReconcilers.Kind
+    ) async -> Bool {
+        switch kind {
+        case .duplicatePhotoCreate:
+            return await reconcileDuplicateProjectPhotoCreate(operation)
+        case .taskTombstone:
+            return await reconcileTaskUpdateAgainstTombstone(operation)
+        }
+    }
+
+    /// Resolves a projectPhoto create that lost the dedupe race: finds the
+    /// server row by its natural key, heals the local store onto the server id,
+    /// back-fills the metadata the conversion RPC does not carry, and completes
+    /// the operation. Returns false when no server row matches the natural key
+    /// (then the failure is real and disposition should run).
+    private func reconcileDuplicateProjectPhotoCreate(
+        _ operation: SyncOperation
+    ) async -> Bool {
+        guard let payload = decodePayload(operation.payload),
+              let projectId = payload["project_id"] as? String,
+              let url = payload["url"] as? String else { return false }
+        let siteVisitId = payload["site_visit_id"] as? String
+
+        do {
+            var query = SupabaseService.shared.client
+                .from("project_photos")
+                .select("id, caption, taken_at, thumbnail_url, rendered_url")
+                .eq("project_id", value: projectId)
+                .eq("url", value: url)
+                .is("deleted_at", value: nil)
+            if let siteVisitId {
+                query = query.eq("site_visit_id", value: siteVisitId)
+            }
+            let rows: [SyncOperationReconcilers.ServerPhotoRow] = try await query
+                .limit(1)
+                .execute()
+                .value
+            guard let server = rows.first else { return false }
+
+            let serverId = server.id.lowercased()
+            var patch: [String: String] = [:]
+            try modelContext.transaction {
+                patch = try SyncOperationReconcilers.adoptServerPhotoRow(
+                    localId: operation.entityId,
+                    server: server,
+                    in: modelContext
+                )
+                SyncOperationReconcilers.markResolved(operation)
+            }
+
+            // Best-effort metadata back-fill. The columns are client-granted by
+            // project_photos_client_update_grant, but the write guard can refuse
+            // for a non-uploader — acceptable, the operation is already resolved
+            // and the photo is already safe.
+            if !patch.isEmpty {
+                try? await SupabaseService.shared.client
+                    .from("project_photos")
+                    .update(patch)
+                    .eq("id", value: serverId)
+                    .execute()
+            }
+            print("[DataActor] projectPhoto create \(operation.entityId) reconciled to server row \(serverId) (dedupe-index conflict)")
+            return true
+        } catch {
+            print("[DataActor] projectPhoto duplicate reconciliation failed for \(operation.entityId): \(error)")
+            return false
+        }
+    }
+
+    /// Returns true when the server task exists but is soft-deleted: the local
+    /// task is tombstoned to match and the op completes. A live or absent server
+    /// task returns false — parking is correct for a refusal we cannot explain.
+    private func reconcileTaskUpdateAgainstTombstone(
+        _ operation: SyncOperation
+    ) async -> Bool {
+        struct ServerTaskRow: Decodable {
+            let id: String
+            let deleted_at: String?
+        }
+        do {
+            let rows: [ServerTaskRow] = try await SupabaseService.shared.client
+                .from("project_tasks")
+                .select("id, deleted_at")
+                .eq("id", value: operation.entityId.lowercased())
+                .execute()
+                .value
+            guard let server = rows.first,
+                  let deletedAtRaw = server.deleted_at,
+                  let deletedAt = SupabaseDate.parse(deletedAtRaw) else { return false }
+
+            try modelContext.transaction {
+                _ = try SyncOperationReconcilers.applyTaskTombstone(
+                    taskId: operation.entityId,
+                    deletedAt: deletedAt,
+                    in: modelContext
+                )
+                SyncOperationReconcilers.markResolved(operation)
+            }
+            print("[DataActor] projectTask update \(operation.entityId) resolved against server tombstone")
+            print("[DUPE_TRACE] ACTOR.outbound.completed.tombstone id=\(operation.entityId) op=\(operation.operationType)")
+            return true
+        } catch {
+            print("[DataActor] task tombstone reconciliation failed for \(operation.entityId): \(error)")
+            return false
+        }
+    }
+
+    /// Resolves operations that parked BEFORE the reconcilers existed: site-visit
+    /// photo creates parked on the dedupe index, and task updates parked on
+    /// task_not_found. Parked ops are excluded from execution by the claim gate,
+    /// so without this sweep a device in the field keeps them forever.
+    ///
+    /// Runs at launch / reconnect, is idempotent, and touches nothing else —
+    /// parked stays a terminal state for every other class. Resolved ops leave
+    /// `parked`, so the PENDING WORK screen empties itself with no user action.
+    ///
+    /// Fetches predicate-free and filters in Swift: a `#Predicate` fetch of
+    /// SyncOperation traps against a table that has never held a row.
+    func resolveReconcilableParkedOperations() async {
+        let all = (try? modelContext.fetch(FetchDescriptor<SyncOperation>())) ?? []
+        let parked = all.filter { $0.status == "parked" }
+        guard !parked.isEmpty else { return }
+        var resolved = 0
+        for operation in parked {
+            guard let kind = SyncOperationReconcilers.parkedKind(for: operation) else { continue }
+            if await reconcile(operation, as: kind) { resolved += 1 }
+        }
+        if resolved > 0 {
+            print("[DataActor] Parked-op sweep: \(resolved) reconciled against server state")
         }
     }
 

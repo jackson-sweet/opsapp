@@ -90,7 +90,7 @@ final class ShareUploadCoordinator: NSObject {
 
     @MainActor
     private func drainPass() async {
-        let jobs = ShareUploadManifestStore.recoverableJobs()
+        var jobs = ShareUploadManifestStore.recoverableJobs()
         guard !jobs.isEmpty else { return }
 
         // Rebuild the mutable fast-path from the immutable recovery ledger. This
@@ -101,6 +101,29 @@ final class ShareUploadCoordinator: NSObject {
             log.error(
                 "drain: mutable manifest index remains unavailable; recovery ledger stays authoritative"
             )
+        }
+
+        // One-time heal (create-barrier fix, 2026-08-28, bug c3486912): jobs
+        // parked BEFORE the hold-behind-create barrier existed burned their whole
+        // budget against a project whose create had not landed yet — the endpoint
+        // 404s for a project with no server row, and a 404 is correctly permanent.
+        // Those projects exist server-side now, so one fresh budget under the
+        // fixed barrier delivers them with no operator action. Jobs that still
+        // fail simply re-park. Versioned + one-shot, per the deckDesignLinkBackfill
+        // precedent; the attempt reset is durable, so it survives an offline pass.
+        let parkedRetryFlag = "shareParkedRetry.v1"
+        if !UserDefaults.standard.bool(forKey: parkedRetryFlag) {
+            var resetAny = false
+            for job in jobs where Self.actionForAttemptCount(job.attempts) != .upload {
+                resetAny = ShareUploadManifestStore.update(id: job.id) { $0.attempts = 0 } || resetAny
+            }
+            UserDefaults.standard.set(true, forKey: parkedRetryFlag)
+            if resetAny {
+                log.info("drain: one-time parked-share retry granted under the create barrier")
+                // Re-read: the store vends value copies, so the in-hand jobs
+                // still carry their spent attempt counts.
+                jobs = ShareUploadManifestStore.recoverableJobs()
+            }
         }
 
         // Offline → leave everything queued; the connectivity-restored hook

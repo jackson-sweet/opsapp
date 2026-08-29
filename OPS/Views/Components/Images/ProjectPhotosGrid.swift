@@ -25,6 +25,12 @@ struct ProjectPhotosGrid: View {
     @State private var dimensionedURLs: Set<String> = []
     @State private var renderedURLsBySource: [String: String] = [:]
     @State private var renderedDeliverableURLs: [String] = []
+    /// Uploader attribution per source URL — the ownership half of the delete
+    /// gate. Loaded from the synced `project_photos` rows; until it has loaded
+    /// the gate fails closed, because an empty map reads every photo as
+    /// unattributed and would hand a crew member a delete on a teammate's photo.
+    @State private var uploaderByURL: [String: ProjectPhotoUploaderAttribution] = [:]
+    @State private var uploadersLoaded = false
     @EnvironmentObject private var dataController: DataController
     
     // Three-column grid with minimal spacing
@@ -34,6 +40,49 @@ struct ProjectPhotosGrid: View {
         GridItem(.flexible(), spacing: 2)
     ]
     
+    // MARK: - Delete authorization
+
+    /// Delete on ANY photo in the company gallery. Mirrors the `projects.edit`
+    /// at scope `all` half of the server's `project_photos` write guard.
+    private var canDeleteAnyPhoto: Bool {
+        PermissionStore.shared.hasFullAccess("projects.edit")
+    }
+
+    /// The project-edit grant. Only decides photos whose uploader this device
+    /// does not know yet. Deliberately spelled the same way `ActivityTabView`
+    /// spells it — two surfaces asking the same question must ask it
+    /// identically, or one of them offers a delete the other hides.
+    private var canEditProject: Bool {
+        PermissionStore.shared.can("projects.edit")
+    }
+
+    /// This operator's id, normalized the same way `project_photos.uploaded_by`
+    /// is (TEXT column, inconsistent UUID casing).
+    private var currentUploaderID: String? {
+        ProjectPhotoUploaderIdentity.canonicalUserID(dataController.currentUser?.id)
+    }
+
+    /// Whether this operator may delete THIS photo — the one rule, asked the
+    /// same way every other photo surface asks it.
+    ///
+    /// `ProjectPhotoDeleteAuthorization` is the client mirror of
+    /// `trg_project_photos_00_write_guard`: uploader-self, or `projects.edit` at
+    /// scope `all` (Jackson's 2026-07-29 call — crews delete their own photos,
+    /// admins delete any). This grid previously offered a long-press delete on
+    /// every tile with no check at all.
+    private func canDelete(_ sourceURL: String) -> Bool {
+        // Fail closed until attribution has loaded: an empty map reads as
+        // `.unattributed`, which the authorization deliberately grants to any
+        // project editor.
+        guard uploadersLoaded else { return false }
+        return ProjectPhotoDeleteAuthorization.allows(
+            uploader: uploaderByURL[sourceURL] ?? .unattributed,
+            currentUserID: currentUploaderID,
+            hasFullProjectEdit: canDeleteAnyPhoto,
+            hasAnyProjectEdit: canEditProject
+        )
+    }
+
     var body: some View {
         NavigationView {
             ZStack {
@@ -50,6 +99,11 @@ struct ProjectPhotosGrid: View {
                         ScrollView {
                             LazyVGrid(columns: columns, spacing: 2) {
                                 ForEach(Array(photoItems.enumerated()), id: \.element.id) { index, item in
+                                    // Whether THIS operator may remove THIS
+                                    // photo. Gates the long-press entirely, so
+                                    // an ineligible tile never enters delete
+                                    // mode and never shows the trash overlay.
+                                    let deletable = canDelete(item.sourceURL)
                                     ZStack(alignment: .topLeading) {
                                         PhotoThumbnail(
                                             url: item.displayURL,
@@ -89,18 +143,24 @@ struct ProjectPhotosGrid: View {
                                         selectedPhotoIndex = index
                                     }
                                     .onLongPressGesture(minimumDuration: 0.5) {
+                                        guard deletable else { return }
                                         // Long press action
                                         let impactFeedback = UIImpactFeedbackGenerator(style: .medium)
                                         impactFeedback.prepare()
                                         impactFeedback.impactOccurred()
-                                        
+
                                         // Reset visual state
                                         longPressingPhotoIndex = nil
-                                        
+
                                         // Show delete confirmation
                                         photoDeleteTarget = item.deleteTarget
                                         showingDeleteConfirmation = true
                                     } onPressingChanged: { isPressing in
+                                        // A tile this operator cannot delete
+                                        // never takes the pressed state, so no
+                                        // scale-down and no trash overlay: the
+                                        // affordance is absent, not disabled.
+                                        guard deletable else { return }
                                         // Visual feedback while pressing - happens immediately
                                         withAnimation(OPSStyle.Animation.fast) {
                                             longPressingPhotoIndex = isPressing ? index : nil
@@ -152,6 +212,7 @@ struct ProjectPhotosGrid: View {
             .navigationBarTitle("Project Photos", displayMode: .inline)
             .navigationBarItems(trailing: Button("Done") { dismiss() })
             .task(id: project.id) {
+                refreshPhotoUploaders()
                 await refreshDimensionedURLs()
                 // Re-composite on the grid's own appearance. ProjectDetailsView
                 // pre-composites when the project opens, but full-resolution
@@ -773,6 +834,27 @@ extension ProjectPhotosGrid {
         )
     }
 
+    /// Loads uploader attribution for this project's synced photos — the
+    /// ownership half of the delete gate.
+    ///
+    /// EVERY live row is represented: a row whose `uploaded_by` cannot resolve
+    /// to a user id must read as `.unmatchable`, not as missing, or the gate
+    /// hands it the unattributed fallback and offers a delete the trigger
+    /// rejects. URLs with no row at all fall through to `.unattributed`, which
+    /// is correct — those are this device's own optimistic gallery appends.
+    @MainActor
+    fileprivate func refreshPhotoUploaders() {
+        let projectId = project.id
+        let descriptor = FetchDescriptor<ProjectPhoto>(
+            predicate: #Predicate<ProjectPhoto> {
+                $0.projectId == projectId && $0.deletedAt == nil
+            }
+        )
+        guard let rows = try? modelContext.fetch(descriptor) else { return }
+        uploaderByURL = ProjectPhotoUploaderAttribution.byURL(rows)
+        uploadersLoaded = true
+    }
+
     /// Phase F — pulls `PhotoAnnotation` rows with non-null dimensions for this
     /// project and converts them into the URL set consumed by `PhotoThumbnail`.
     @MainActor
@@ -820,6 +902,14 @@ extension ProjectPhotosGrid {
 
     /// Delete a single photo from the project
     private func deletePhoto(_ target: ProjectPhotoDeleteTarget) {
+        // Belt over the server's suspenders, and over the affordance gate: the
+        // confirmation alert is driven by state that outlives the tile it came
+        // from, so the commit re-asks the question rather than trusting that it
+        // was asked.
+        guard canDelete(target.sourceURL) else {
+            photoDeleteTarget = nil
+            return
+        }
         Task {
             switch target {
             case .projectImage(let sourceURL):

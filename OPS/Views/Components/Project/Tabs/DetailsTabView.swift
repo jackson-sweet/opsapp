@@ -1583,6 +1583,7 @@ private struct ClientVisibilityButton: View {
                 await MainActor.run {
                     project.setImageClientVisible(url, visible: !newVisible)
                     try? dataController.modelContext?.save()
+                    UINotificationFeedbackGenerator().notificationOccurred(.error)
                 }
                 print("[CLIENT_VISIBILITY] Failed to sync for \(url): \(error)")
             }

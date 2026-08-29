@@ -24,6 +24,18 @@ protocol ProjectPhotosAddedNotifying {
 
 extension NotificationRepository: ProjectPhotosAddedNotifying {}
 
+/// One undelivered photo tombstone: the (project, url) pair a `project_photos`
+/// soft-delete statement targets. A single statement covers every row on the
+/// pair, so the drain works pairs, not rows.
+struct PendingPhotoSoftDelete: Equatable {
+    let projectId: String
+    let url: String
+
+    /// Dedupe key. `url` cannot contain the separator in any form this app
+    /// produces (S3/HTTPS URLs percent-encode it), so collision is not a risk.
+    var key: String { "\(projectId)|\(url)" }
+}
+
 /// Manager for handling image synchronization between local storage, S3, and Supabase
 @MainActor
 class ImageSyncManager: ObservableObject {
@@ -1006,10 +1018,14 @@ class ImageSyncManager: ObservableObject {
     }
 
     /// Soft-delete the `project_photos` row(s) for a URL by stamping
-    /// `deleted_at`. Best-effort: a failure logs but does not surface — the
-    /// local row is already soft-deleted and the CSV push removes it from the
-    /// uploader's legacy list, so the photo is gone from the app regardless.
-    private func softDeleteProjectPhotoRow(url: String, projectId: String) async {
+    /// `deleted_at`. Returns whether the server accepted the write. On failure
+    /// the local rows keep `needsSync = true`, and `drainPendingPhotoSoftDeletes`
+    /// re-pushes them on every sync pass until the server accepts — a photo the
+    /// operator deleted must never resurrect because the delete raced a dead
+    /// spot. Permanent rejections auto-file so a policy regression is loud
+    /// (May-12 class: silent RLS swallow).
+    @discardableResult
+    private func softDeleteProjectPhotoRow(url: String, projectId: String) async -> Bool {
         struct ProjectPhotoSoftDelete: Codable { let deleted_at: String }
         do {
             try await SupabaseService.shared.client
@@ -1019,12 +1035,93 @@ class ImageSyncManager: ObservableObject {
                 .eq("url", value: url)
                 .is("deleted_at", value: nil)
                 .execute()
+            markPhotoSoftDeleteSynced(url: url, projectId: projectId)
+            return true
         } catch {
+            let kind = await AutoBugReporter.shared.reportIfPermanent(
+                error,
+                screen: "ImageSyncManager.softDeleteProjectPhotoRow",
+                suspectedFile: "ImageSyncManager.swift",
+                summary: "project_photos soft-delete failed for \(projectId): \(error.localizedDescription)",
+                metadata: [
+                    "project_id": projectId,
+                    "url": url
+                ]
+            )
             DebugLogger.shared.log(
-                "project_photos soft-delete failed for \(url): \(error)",
-                level: .warning,
+                "project_photos soft-delete failed (\(kind)) for \(url): \(error)",
+                level: .error,
                 category: "ImageSyncManager"
             )
+            return false
+        }
+    }
+
+    /// Clears the retry flag on the local rows a confirmed remote soft-delete
+    /// covered.
+    private func markPhotoSoftDeleteSynced(url: String, projectId: String) {
+        guard let modelContext else { return }
+        Self.clearPendingSoftDelete(url: url, projectId: projectId, in: modelContext)
+    }
+
+    /// The flag-clearing half of a confirmed soft-delete, as a plain store
+    /// operation so it is provable without a network seam.
+    ///
+    /// Scoped to rows already tombstoned locally: a live row on the same URL is
+    /// a different photo's business and keeps whatever pending state it has.
+    static func clearPendingSoftDelete(url: String, projectId: String, in context: ModelContext) {
+        let descriptor = FetchDescriptor<ProjectPhoto>(
+            predicate: #Predicate<ProjectPhoto> {
+                $0.projectId == projectId && $0.url == url
+            }
+        )
+        guard let rows = try? context.fetch(descriptor) else { return }
+        var changed = false
+        for row in rows where row.deletedAt != nil && row.needsSync {
+            row.needsSync = false
+            changed = true
+        }
+        if changed {
+            try? context.save()
+        }
+    }
+
+    /// Every (project, url) pair whose local tombstone the server has not
+    /// confirmed — the drain's work list.
+    ///
+    /// Fetches on the single `deletedAt` clause and filters `needsSync` in
+    /// Swift: the compound `#Predicate` is a type-check budget risk, and the
+    /// tombstoned set is tiny. One UPDATE statement covers every row on a
+    /// (project, url) pair, so pairs are deduped before the network sees them.
+    static func pendingSoftDeleteTargets(in context: ModelContext) -> [PendingPhotoSoftDelete] {
+        let descriptor = FetchDescriptor<ProjectPhoto>(
+            predicate: #Predicate<ProjectPhoto> { $0.deletedAt != nil }
+        )
+        guard let tombstoned = try? context.fetch(descriptor) else { return [] }
+        var seen = Set<String>()
+        var targets: [PendingPhotoSoftDelete] = []
+        for row in tombstoned where row.needsSync {
+            let target = PendingPhotoSoftDelete(projectId: row.projectId, url: row.url)
+            guard seen.insert(target.key).inserted else { continue }
+            targets.append(target)
+        }
+        return targets
+    }
+
+    /// Re-pushes locally soft-deleted photo rows whose remote soft-delete has
+    /// not been confirmed (`deletedAt != nil && needsSync`). Runs on every
+    /// drain pass (startup, reconnect, retry timer) — cheap when empty.
+    ///
+    /// Without this, an offline or otherwise failed delete lost the remote
+    /// soft-delete forever and the photo resurrected on the next inbound sync:
+    /// `deleteProjectPhoto` already stamped `deletedAt`/`needsSync` on the local
+    /// row, but nothing ever drained that flag (bug 1154fe67).
+    private func drainPendingPhotoSoftDeletes() async {
+        guard let modelContext, connectivity.isConnected else { return }
+        let targets = Self.pendingSoftDeleteTargets(in: modelContext)
+        guard !targets.isEmpty else { return }
+        for target in targets {
+            _ = await softDeleteProjectPhotoRow(url: target.url, projectId: target.projectId)
         }
     }
 
@@ -1043,6 +1140,12 @@ class ImageSyncManager: ObservableObject {
         // retry timer) BEFORE the empty-queue check — a launch with an empty
         // queue but stranded local:// rows must still pick them up.
         reconcileStrandedProjectPhotos()
+
+        // Unconfirmed soft-deletes drain on the same schedule and for the same
+        // reason: a delete that raced a dead spot must not leave the photo alive
+        // on the server. Runs BEFORE the empty-queue check — a launch with no
+        // pending uploads but an undelivered tombstone must still push it.
+        await drainPendingPhotoSoftDeletes()
 
         if pendingUploads.isEmpty {
             return

@@ -36,6 +36,16 @@ final class SyncStatusCopyTests: XCTestCase {
         )
     }
 
+    func testHeaderSyncingWithNothingQueuedDropsTheCount() {
+        // Bug c2946efc: a drain can outlive its queue for a beat, and the panel
+        // rendered "Saving 0 changes…" — a count that says nothing is happening
+        // attached to a verb that says something is.
+        XCTAssertEqual(
+            SyncStatusCopy.header(pendingCount: 0, failedCount: 0, isSyncing: true),
+            "Saving…"
+        )
+    }
+
     func testHeaderFailuresOutrankSyncing() {
         // Any failure surfaces (singular grammar) even mid-sync.
         XCTAssertEqual(

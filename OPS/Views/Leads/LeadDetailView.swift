@@ -349,7 +349,10 @@ struct LeadDetailView: View {
                                             UIImpactFeedbackGenerator(style: .light).impactOccurred()
                                             onMarkWon()
                                         },
-                                        onOpenDeck: { showingDeckScreen = true },
+                                        onOpenDeck: {
+                                            DeckOpenCanary.arm(leadId: opportunity.id)
+                                            showingDeckScreen = true
+                                        },
                                         onCreateDeck: { showingDeckCreationPicker = true },
                                         importingPhotoIDs: importingPhotoIDs,
                                         onAddPhotos: { showingAddPhotoDialog = true },
@@ -415,9 +418,25 @@ struct LeadDetailView: View {
                     onMarkWon:  onMarkWon
                 )
                 .padding(.bottom, 49)   // clears the custom tab bar (49pt)
+                // The bar's own floor resolves to solid at ITS bottom edge,
+                // 49pt + the home-indicator inset above the physical bottom.
+                // Between there and the tab bar's scrim, dossier rows showed
+                // through at half strength (c48c69ae). Below a solid floor the
+                // canonical state is solid canvas — continue it to the edge.
+                .background(alignment: .bottom) {
+                    OPSStyle.Colors.background
+                        .frame(height: 49)
+                        .frame(maxWidth: .infinity)
+                        .ignoresSafeArea(edges: .bottom)
+                        .allowsHitTesting(false)
+                }
             }
         }
         .navigationBarHidden(true)
+        // Every bug filed from this dossier used to say `currentScreen: "Leads"`
+        // — the tab root was the only surface tracking. Naming the pushed screen
+        // is what makes a report from here diagnosable (bug 2fa645a8).
+        .trackScreen("Leads.LeadDetailView")
         .leadArchiveFlow(
             target: $archiveTarget,
             onCompleted: { _ in dismiss() }
@@ -840,14 +859,22 @@ struct LeadDetailView: View {
                 ),
                 cornerRadius: OPSStyle.Layout.buttonRadius,
                 onEdit: { fieldEdit.begin(.contact) },
-                onActivate: {
-                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                    if contactHasValue {
-                        showingContactDialog = true
-                    } else if canEdit {
-                        fieldEdit.begin(.contact)
+                // A viewer on a lead with no phone and no email has nothing
+                // behind this control and no right to fill it. Handing the
+                // modifier a nil activation routes that case to its inert
+                // painted state — no button trait, no dead tap — instead of a
+                // control that answers a finger with nothing (b1d30fe8). Same
+                // shape the CLIENT row already uses for its empty case.
+                onActivate: (contactHasValue || canEdit)
+                    ? {
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        if contactHasValue {
+                            showingContactDialog = true
+                        } else {
+                            fieldEdit.begin(.contact)
+                        }
                     }
-                }
+                    : nil
             )
             .accessibilityLabel(
                 contactInvitesAdd

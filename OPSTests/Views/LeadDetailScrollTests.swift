@@ -181,6 +181,68 @@ final class LeadDetailScrollTests: XCTestCase {
         )
     }
 
+    /// c48c69ae remainder — the floor stopped 83pt above the physical bottom.
+    ///
+    /// `LeadDetailView` lifts the bar 49pt to clear the custom tab bar, so the
+    /// bar's own wash resolves to solid at ITS bottom edge and everything below
+    /// belonged to the tab bar's scrim, which only reaches full opacity 70pt up.
+    /// Dossier rows stayed half-visible in the band between. Below a solid floor
+    /// the canonical state is solid canvas, so the composition continues it to
+    /// the edge — this samples inside the 49pt clearance strip, which is white
+    /// (255) without the continuation.
+    func testFooterFloorContinuesSolidBeneathTheBar() throws {
+        let view = ZStack(alignment: .bottom) {
+            Color.white
+            StickyActionBar(
+                canEdit: true,
+                canConvert: true,
+                onEdit: {},
+                onMarkWon: {}
+            )
+            .padding(.bottom, 49)
+            .background(alignment: .bottom) {
+                OPSStyle.Colors.background
+                    .frame(height: 49)
+                    .frame(maxWidth: .infinity)
+                    .ignoresSafeArea(edges: .bottom)
+                    .allowsHitTesting(false)
+            }
+        }
+        .environment(\.colorScheme, .dark)
+        .ignoresSafeArea()
+
+        let host = UIHostingController(rootView: view)
+        host.overrideUserInterfaceStyle = .dark
+
+        let window = try AppHostWindow.acquire()
+        let previousRoot = window.rootViewController
+        window.rootViewController = host
+        defer { window.rootViewController = previousRoot }
+
+        window.layoutIfNeeded()
+        settle(window)
+
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1
+        let image = try XCTUnwrap(
+            UIGraphicsImageRenderer(bounds: window.bounds, format: format)
+                .image { _ in
+                    window.drawHierarchy(in: window.bounds, afterScreenUpdates: true)
+                }
+                .cgImage
+        )
+
+        let clearanceLuma = try XCTUnwrap(Self.averageLuma(
+            image,
+            in: CGRect(x: 4, y: CGFloat(image.height) - 20, width: 8, height: 4)
+        ))
+
+        XCTAssertLessThan(
+            clearanceLuma, 25,
+            "content shows through the band between the bar's floor and the tab bar — c48c69ae is not fully fixed"
+        )
+    }
+
     // MARK: - Harness
 
     private struct Harness {

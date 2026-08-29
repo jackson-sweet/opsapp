@@ -15,9 +15,13 @@
 //  or earth-tone.
 //
 //  Sits at `bottom + 49pt` above the safe-area inset so the custom tab
-//  bar (49pt) has clearance. A transparent-to-solid background floor keeps
-//  scrolling rows legible beneath the buttons, which retain MOBILE.md's single
-//  sanctioned floating-CTA elevation token.
+//  bar (49pt) has clearance. The floor behind the buttons is the shared
+//  `OPSStyle.Layout.Gradients.footerFloor` preset — the ONE sanctioned
+//  transparent-to-solid wash for a bottom-anchored CTA lane, also used by the
+//  ADD / EDIT LEAD sheets (c48c69ae) — and the buttons retain MOBILE.md's
+//  single sanctioned floating-CTA elevation token. The host is responsible for
+//  continuing solid canvas below the bar when it lifts it off the bottom edge
+//  (`LeadDetailView` clears the tab bar that way).
 //
 //  Caller is responsible for hiding this bar when `stage.isTerminal`.
 //
@@ -47,25 +51,13 @@ struct StickyActionBar: View {
         .padding(.horizontal, OPSStyle.Layout.spacing3_5)
         .padding(.top, OPSStyle.Layout.spacing3)
         .padding(.bottom, OPSStyle.Layout.spacing2_5)
-        .background(floorGradient)
+        .background(OPSStyle.Layout.Gradients.footerFloor)
         .compositingGroup()
         .shadow(
             color: OPSStyle.Layout.floatingElevation.color,
             radius: OPSStyle.Layout.floatingElevation.radius,
             x: OPSStyle.Layout.floatingElevation.x,
             y: OPSStyle.Layout.floatingElevation.y
-        )
-    }
-
-    private var floorGradient: LinearGradient {
-        LinearGradient(
-            colors: [
-                .clear,
-                OPSStyle.Colors.background.opacity(0.85),
-                OPSStyle.Colors.background
-            ],
-            startPoint: .top,
-            endPoint: .bottom
         )
     }
 

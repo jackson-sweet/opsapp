@@ -798,6 +798,11 @@ enum OPSStyle {
             y: 8.0
         )
 
+        /// Height of the canonical floating-footer floor (Gradients.footerFloor)
+        /// when pinned to the screen's bottom edge — the lead sheets' shipped
+        /// dimension, promoted to a token (c48c69ae).
+        static let footerFloorHeight: CGFloat = 160.0
+
         // Gradient presets
         enum Gradients {
             // Header fade: opaque to transparent (used by HomeContentView header)
@@ -824,6 +829,30 @@ enum OPSStyle {
             // Page indicator fade: transparent to dark to opaque (used by JobBoardDashboard page indicators)
             static let pageIndicatorFade = LinearGradient(
                 colors: [Color.clear, Color.black.opacity(0.8), Color.black],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+
+            // Floating-footer floor: the single sanctioned wash behind
+            // bottom-anchored CTA lanes (MOBILE.md §8). Transparent at the top
+            // so scrolling rows dissolve, resolved to solid canvas at the
+            // bottom so nothing bleeds through the commit lane. Adopted by the
+            // lead sheets' footers and the dossier's StickyActionBar
+            // (c48c69ae) — add new floating footers with THIS, never a
+            // hand-rolled gradient.
+            //
+            // The midpoint is the profile StickyActionBar shipped and that
+            // `LeadDetailScrollTests.testStickyActionBarRendersTransparentToSolidFooterFloor`
+            // pixel-pins (that test samples 40% down the bar, where the bar's
+            // own floating shadow also darkens the sample). On the pure-black
+            // canvas the difference from the sheets' former 0.95 is not
+            // perceptible at either 76pt or 160pt.
+            static let footerFloor = LinearGradient(
+                gradient: Gradient(stops: [
+                    .init(color: OPSStyle.Colors.background.opacity(0), location: 0),
+                    .init(color: OPSStyle.Colors.background.opacity(0.85), location: 0.5),
+                    .init(color: OPSStyle.Colors.background, location: 1.0)
+                ]),
                 startPoint: .top,
                 endPoint: .bottom
             )

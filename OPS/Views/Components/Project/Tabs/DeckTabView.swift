@@ -883,69 +883,14 @@ struct DeckTabView: View {
             .first { !$0.isEmpty }
     }
 
+    /// Inbound merge for the repair fetch. The rule itself lives in
+    /// `DeckDesignServerMerge` so the lead dossier's DECK row repairs
+    /// identically — and so the pending-work lookup stays predicate-free
+    /// (a `#Predicate` fetch of `SyncOperation` traps against a store whose
+    /// operation table has never held a row — bug 2fa645a8).
     @MainActor
     private func mergeRemoteDeckDesigns(_ dtos: [SupabaseDeckDesignDTO]) throws {
-        for dto in dtos {
-            let pendingFields = pendingDeckFields(for: dto.id)
-            let acceptedFields = Set(DeckDesign.serverMergeFields).subtracting(pendingFields)
-
-            if let existing = try localDeckDesign(matching: dto.id) {
-                existing.applyServerSnapshot(dto, accepting: acceptedFields)
-                existing.lastSyncedAt = Date()
-                existing.needsSync = !pendingFields.isEmpty
-            } else {
-                let model = dto.toModel()
-                model.lastSyncedAt = Date()
-                model.needsSync = false
-                modelContext.insert(model)
-            }
-        }
-
-        try modelContext.save()
-    }
-
-    @MainActor
-    private func localDeckDesign(matching id: String) throws -> DeckDesign? {
-        let canonicalId = DeckDesign.canonicalUUIDString(id)
-        let lowercasedId = canonicalId.lowercased()
-        let uppercasedId = canonicalId.uppercased()
-        let exactDescriptor = FetchDescriptor<DeckDesign>(
-            predicate: #Predicate {
-                $0.id == canonicalId || $0.id == lowercasedId || $0.id == uppercasedId
-            }
-        )
-
-        if let exactMatch = try modelContext.fetch(exactDescriptor).first {
-            return exactMatch
-        }
-
-        let allDescriptor = FetchDescriptor<DeckDesign>()
-        return try modelContext.fetch(allDescriptor).first {
-            DeckDesign.canonicalUUIDString($0.id) == canonicalId
-        }
-    }
-
-    @MainActor
-    private func pendingDeckFields(for id: String) -> Set<String> {
-        let entityType = SyncEntityType.deckDesign.rawValue
-        let canonicalId = DeckDesign.canonicalUUIDString(id)
-        let lowercasedId = canonicalId.lowercased()
-        let uppercasedId = canonicalId.uppercased()
-        let descriptor = FetchDescriptor<SyncOperation>(
-            predicate: #Predicate {
-                $0.entityType == entityType &&
-                ($0.entityId == canonicalId || $0.entityId == lowercasedId || $0.entityId == uppercasedId) &&
-                $0.status == "pending"
-            }
-        )
-
-        guard let operations = try? modelContext.fetch(descriptor) else { return [] }
-
-        var fields = Set<String>()
-        for operation in operations {
-            fields.formUnion(operation.getChangedFields())
-        }
-        return fields
+        try DeckDesignServerMerge.merge(dtos, into: modelContext)
     }
 }
 

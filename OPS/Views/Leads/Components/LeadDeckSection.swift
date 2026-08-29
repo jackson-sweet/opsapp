@@ -8,13 +8,18 @@
 //  whole display); empty state is one quiet START row, feature-flagged with the
 //  builder and gated on pipeline.manage.
 //
-//  Data flow mirrors DeckTabView: @Query for live local designs (SwiftData
-//  invalidates on builder saves), plus a one-shot remote self-repair fetch so
-//  a cold device pulls lead decks drawn elsewhere before the next full sync.
+//  Data flow mirrors DeckTabView: an owner-scoped did-save feed resolves the
+//  live local design — NOT a broad `@Query`, which SwiftData invalidates for
+//  every DeckDesign save anywhere in the company and which re-fetched the whole
+//  table on the main thread while the operator stood on this dossier (bug
+//  2fa645a8, the same churn family removed from DeckTabView) — plus a one-shot
+//  remote self-repair fetch so a cold device pulls lead decks drawn elsewhere
+//  before the next full sync.
 //
 
 import SwiftUI
 import SwiftData
+import Combine
 
 struct LeadDeckSection: View {
     let opportunity: Opportunity
@@ -27,7 +32,15 @@ struct LeadDeckSection: View {
 
     @Environment(\.modelContext) private var modelContext
     @EnvironmentObject private var permissionStore: PermissionStore
-    @Query private var allDesigns: [DeckDesign]
+
+    /// The lead's display-candidate design. A broad `@Query` used to own this
+    /// value, but SwiftData invalidates a filtered query for every save of the
+    /// entity type — realtime deck traffic elsewhere in the company then
+    /// re-fetched the full table and re-evaluated this row on the main thread
+    /// while the operator stood on the dossier (the 2fa645a8 churn family;
+    /// same repair as DeckTabView). The targeted did-save feed below refreshes
+    /// only when a changed persistent identifier is a DeckDesign.
+    @State private var candidate: DeckDesign?
 
     @State private var remoteFetchAttempted = false
 
@@ -37,10 +50,6 @@ struct LeadDeckSection: View {
     /// race. The env store is the surface's source of truth for gating.
     private var featureEnabled: Bool {
         permissionStore.isFeatureEnabled("deck_builder")
-    }
-
-    private var candidate: DeckDesign? {
-        DeckDesign.displayCandidate(in: allDesigns, forOpportunityId: opportunity.id)
     }
 
     /// Document-row form (Leads redesign spec §5.9): the DECK row's content
@@ -62,9 +71,110 @@ struct LeadDeckSection: View {
                     .foregroundColor(OPSStyle.Colors.textMute)
             }
         }
-        .task(id: opportunity.id) {
-            await selfRepairFetchIfNeeded()
+        .onAppear {
+            refreshCandidate()
         }
+        .onReceive(
+            NotificationCenter.default.publisher(for: ModelContext.didSave, object: modelContext)
+                .receive(on: DispatchQueue.main)
+        ) { notification in
+            refreshCandidate(ifAffectedBy: notification)
+        }
+        .onReceive(
+            NotificationCenter.default.publisher(
+                for: .dataActorMainContextDidRefresh,
+                object: modelContext
+            )
+                .receive(on: DispatchQueue.main)
+        ) { notification in
+            refreshCandidate(ifAffectedBy: notification)
+        }
+        .task(id: opportunity.id) {
+            // Establish local truth before deciding whether the remote repair
+            // fetch is necessary (do not depend on onAppear/task ordering —
+            // DeckTabView's rule).
+            refreshCandidate()
+            await selfRepairFetchIfNeeded()
+            refreshCandidate()
+        }
+    }
+
+    // MARK: - Targeted local design feed (mirrors DeckTabView, bug 2fa645a8)
+
+    @MainActor
+    private func refreshCandidate() {
+        let candidates: [DeckDesign]
+        do {
+            let canonical: String? = DeckDesign.canonicalUUIDString(opportunity.id)
+            let lowercased: String? = canonical?.lowercased()
+            let uppercased: String? = canonical?.uppercased()
+            let descriptor = FetchDescriptor<DeckDesign>(
+                predicate: #Predicate {
+                    $0.opportunityId == canonical
+                        || $0.opportunityId == lowercased
+                        || $0.opportunityId == uppercased
+                }
+            )
+            candidates = try modelContext.fetch(descriptor)
+        } catch {
+            print("[LeadDeckSection] Local deck fetch failed for \(opportunity.id): \(error)")
+            return
+        }
+
+        let resolved = DeckDesign.displayCandidate(
+            in: candidates,
+            forOpportunityId: opportunity.id
+        )
+
+        // Same-identity writes are dropped: even a same-value @State write
+        // invalidates the SwiftUI graph. Field mutations on the current
+        // @Model are observed by SwiftUI directly.
+        guard candidate?.persistentModelID != resolved?.persistentModelID else { return }
+        candidate = resolved
+    }
+
+    @MainActor
+    private func refreshCandidate(ifAffectedBy notification: Notification) {
+        let info = notification.userInfo ?? [:]
+        let inserted = persistentIdentifiers(in: info, key: .insertedIdentifiers, rebroadcastKey: "inserted")
+        let updated = persistentIdentifiers(in: info, key: .updatedIdentifiers, rebroadcastKey: "updated")
+        let deleted = persistentIdentifiers(in: info, key: .deletedIdentifiers, rebroadcastKey: "deleted")
+
+        let invalidatedAll =
+            (info[ModelContext.NotificationKey.invalidatedAllIdentifiers.rawValue] as? Bool) == true
+            || ((info[ModelContext.NotificationKey.invalidatedAllIdentifiers.rawValue]
+                as? [PersistentIdentifier])?.isEmpty == false)
+        if info.isEmpty || invalidatedAll {
+            refreshCandidate()
+            return
+        }
+
+        let currentIdentifier = candidate?.persistentModelID
+        if deleted.contains(where: { $0 == currentIdentifier }) {
+            refreshCandidate()
+            return
+        }
+
+        // Never touch modelContext.model(for:) with an inserted identifier —
+        // it may already be deleted and the fault traps. A scoped fetch,
+        // identity-gated before the state write, is the safe re-evaluation.
+        if (inserted + updated).contains(where: isDeckDesignIdentifier) {
+            refreshCandidate()
+        }
+    }
+
+    private func persistentIdentifiers(
+        in info: [AnyHashable: Any],
+        key: ModelContext.NotificationKey,
+        rebroadcastKey: String
+    ) -> [PersistentIdentifier] {
+        (info[key.rawValue] as? [PersistentIdentifier])
+            ?? (info[rebroadcastKey] as? [PersistentIdentifier])
+            ?? []
+    }
+
+    private func isDeckDesignIdentifier(_ identifier: PersistentIdentifier) -> Bool {
+        identifier.entityName == String(describing: DeckDesign.self)
     }
 
     // MARK: - Compact design row
@@ -136,9 +246,10 @@ struct LeadDeckSection: View {
     // MARK: - Remote self-repair
 
     /// Cold-device path: no local design for this lead → one fetch by
-    /// opportunity_id, inserting rows we don't have (mirrors DeckTabView's
-    /// self-repair; existing rows go through the normal inbound merge, not
-    /// this shortcut).
+    /// opportunity_id, merged through `DeckDesignServerMerge` — the SAME
+    /// inbound rule the deck viewport's repair uses, so a pending local edit
+    /// survives the repair and a case-variant id can never duplicate a row
+    /// (bug 2fa645a8).
     private func selfRepairFetchIfNeeded() async {
         guard candidate == nil, !remoteFetchAttempted else { return }
         remoteFetchAttempted = true
@@ -146,20 +257,10 @@ struct LeadDeckSection: View {
         let repo = DeckDesignRepository(companyId: opportunity.companyId)
         guard let dtos = try? await repo.fetchForOpportunity(opportunity.id) else { return }
 
-        for dto in dtos {
-            let designId = DeckDesign.canonicalUUIDString(dto.id)
-            let descriptor = FetchDescriptor<DeckDesign>(
-                predicate: #Predicate<DeckDesign> { $0.id == designId }
-            )
-            if let existing = (try? modelContext.fetch(descriptor))?.first {
-                existing.applyServerSnapshot(dto, accepting: Set(DeckDesign.serverMergeFields))
-            } else {
-                let model = dto.toModel()
-                model.lastSyncedAt = Date()
-                model.needsSync = false
-                modelContext.insert(model)
-            }
+        do {
+            try DeckDesignServerMerge.merge(dtos, into: modelContext)
+        } catch {
+            print("[LeadDeckSection] Deck design repair merge failed for \(opportunity.id): \(error)")
         }
-        try? modelContext.save()
     }
 }

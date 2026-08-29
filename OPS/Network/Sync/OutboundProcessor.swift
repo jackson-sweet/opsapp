@@ -810,6 +810,19 @@ final class OutboundProcessor {
                 .eq("id", value: operation.entityId.lowercased())
                 .execute()
                 .value
+            if rows.isEmpty {
+                // The task read policy hides soft-deleted rows entirely, so the
+                // tombstone this op parked on can never become visible here. The
+                // RPC raised task_not_found under the caller's own RLS — the task
+                // is gone from this caller's world and a retry can never succeed.
+                // Retire the operation; leave local task data untouched so a
+                // permission eclipse (not a deletion) self-corrects on later pulls.
+                try context.transaction {
+                    SyncOperationReconcilers.markResolved(operation)
+                }
+                print("[OutboundProcessor] projectTask update \(operation.entityId) retired: server row invisible after task_not_found")
+                return true
+            }
             guard let server = rows.first,
                   let deletedAtRaw = server.deleted_at,
                   let deletedAt = SupabaseDate.parse(deletedAtRaw) else { return false }

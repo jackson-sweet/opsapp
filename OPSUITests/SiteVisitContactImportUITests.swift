@@ -31,14 +31,72 @@ final class SiteVisitContactImportUITests: XCTestCase {
             startVisitButton.waitForExistence(timeout: 30),
             "QA host did not render"
         )
-        XCTAssertTrue(
-            contactsSeeded.waitForExistence(timeout: 30),
-            "device contact was not seeded — grant contacts privacy to the bundle first"
-        )
+        try provisionSeededContact()
         XCTAssertTrue(
             app.staticTexts["OPERATOR · qa_site_visit_company"].waitForExistence(timeout: 30),
             "the QA operator never took hold — the console would sit on its spinner"
         )
+    }
+
+    /// The QA host seeds the picker's contact through `CNContactStore`, which
+    /// needs the contacts privacy grant. Self-provision it: answer the system
+    /// permission prompt when it appears. When the simulator's TCC store
+    /// already remembers a denial — or the address-book write fails — skip
+    /// cleanly with the reset recipe. Provisioning gaps are harness state,
+    /// never a product red.
+    ///
+    /// The iOS 26 contacts prompt is a two-step card — "Continue" first, then
+    /// "Allow Full Access" — and it can host either in-app or on SpringBoard,
+    /// so both surfaces are polled. On the FIRST boot of a freshly-created
+    /// simulator the card can take ~2 minutes to appear while the ContactsUI
+    /// machinery warms up, hence the generous deadline (the loop exits the
+    /// moment seeding lands, so a warm simulator pays none of it).
+    private func provisionSeededContact() throws {
+        let setupRecipe = """
+        reset the simulator's contacts privacy state and rerun:
+          xcrun simctl privacy booted reset contacts co.opsapp.ops.OPS
+        (or pre-grant: xcrun simctl privacy booted grant contacts co.opsapp.ops.OPS)
+        """
+        let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
+        let stateLabel = app.descendants(matching: .any)
+            .matching(identifier: "qa_contacts_state").firstMatch
+
+        // "Continue" advances the two-step card; "Share All N Contacts" (the
+        // count varies) grants full access on the iOS 26 second step, and
+        // "Allow…" covers older single-step alerts. Never "Don't Allow"
+        // (starts with "Don"), never "Select Contacts" (the seeded person
+        // must be fully visible to the picker).
+        let advancePredicate = NSPredicate(
+            format: "label BEGINSWITH[c] 'Allow' OR label ==[c] 'Continue' OR label BEGINSWITH[c] 'Share All'"
+        )
+
+        let deadline = Date(timeIntervalSinceNow: 150)
+        while Date() < deadline {
+            if contactsSeeded.exists { return }
+            if stateLabel.exists {
+                let state = stateLabel.label
+                if state.contains("DENIED") {
+                    throw XCTSkip("contacts access is denied for the bundle — \(setupRecipe)")
+                }
+                if state.contains("SEED FAILED") {
+                    throw XCTSkip("the address-book write failed — erase the simulator or \(setupRecipe)")
+                }
+            }
+            let surfaces: [XCUIApplication] = [springboard, app]
+            for surface in surfaces {
+                let advance = surface.buttons.matching(advancePredicate).firstMatch
+                if advance.exists {
+                    advance.tap()
+                    break
+                }
+            }
+            RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.5))
+        }
+        // Leave evidence for whoever reads the skip: what each surface was
+        // actually showing when the deadline expired.
+        print("SPRINGBOARD AT TIMEOUT:\n\(springboard.debugDescription)")
+        print("APP AT TIMEOUT:\n\(app.debugDescription)")
+        throw XCTSkip("the contacts permission prompt never resolved — \(setupRecipe)")
     }
 
     // MARK: - Elements

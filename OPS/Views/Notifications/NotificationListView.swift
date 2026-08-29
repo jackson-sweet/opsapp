@@ -128,6 +128,12 @@ enum LeadNotificationRouteParser {
         "opportunity_created", "opportunity_updated", "opportunity_follow_up_due"
     ]
 
+    /// Deep-link values that mark a row lead-routable in addition to the
+    /// type/deep-link vocabulary above. Site-visit prompts route to the lead
+    /// (heads-up) or into capture via the lead (START); both resolve ids the
+    /// same way, so detection is shared and the caller picks the destination.
+    static let siteVisitDeepLinks: Set<String> = ["site_visit_heads_up", "site_visit_start"]
+
     /// True when EITHER the deep-link type OR the notification type marks this
     /// as a lead/opportunity notification. `deep_link_type` is authoritative
     /// when present; `type` is the fallback because lead rows carry a null
@@ -137,13 +143,24 @@ enum LeadNotificationRouteParser {
     static func isLeadNotification(
         type: String?,
         deepLinkType: String?,
-        actionUrl: String? = nil
+        actionUrl: String? = nil,
+        dedupeKey: String? = nil
     ) -> Bool {
         let normalizedDeepLink = normalize(deepLinkType)
         let normalizedType = normalize(type)
         if let normalizedDeepLink, leadRoutingValues.contains(normalizedDeepLink) { return true }
+        if let normalizedDeepLink, siteVisitDeepLinks.contains(normalizedDeepLink) { return true }
         if let normalizedType, leadRoutingValues.contains(normalizedType) { return true }
         if normalizedType == "role_needed", emailThreadId(fromActionUrl: actionUrl) != nil { return true }
+        // Email-engine rows land as generic `system` / `inbox`. Claim them for
+        // lead routing only when a lead is actually recoverable — an opportunity
+        // id in the payload or an inbox-thread id to resolve. A system row with
+        // no lead signal stays in the ordinary switch (bug c2946efc).
+        if normalizedType == "system" || normalizedDeepLink == "inbox" {
+            if opportunityId(fromActionUrl: actionUrl) != nil { return true }
+            if opportunityId(fromDedupeKey: dedupeKey) != nil { return true }
+            if emailThreadId(fromActionUrl: actionUrl) != nil { return true }
+        }
         return false
     }
 
@@ -203,13 +220,21 @@ enum LeadNotificationRouteParser {
         return nil
     }
 
-    /// Opportunity id embedded in a lead-lifecycle dedupe key. Keys look like
+    /// Dedupe-key prefixes that embed an opportunity id as a UUID token.
+    /// `lead_lifecycle:…` (web lifecycle builders) and
+    /// `email-opportunity-event:<kind>:<opportunity>:<event>:<n>` ("Possible deal
+    /// won" review rows — the FIRST UUID token is the opportunity; the second is
+    /// the event id and must not win).
+    private static let opportunityDedupePrefixes = ["lead_lifecycle:", "email-opportunity-event:"]
+
+    /// Opportunity id embedded in a lead-bearing dedupe key. Keys look like
     /// `lead_lifecycle:operator_follow_up_miss:<opp-uuid>` (id is the trailing
     /// token) but also `lead_lifecycle:destructive_candidate:<opp-uuid>:<note>`
     /// (id is interior). We therefore scan ALL colon-separated tokens and
-    /// return the first UUID-shaped one — only lead-lifecycle keys carry one.
+    /// return the first UUID-shaped one — only the prefixes above carry one.
     static func opportunityId(fromDedupeKey dedupeKey: String?) -> String? {
-        guard let raw = normalize(dedupeKey), raw.hasPrefix("lead_lifecycle:") else { return nil }
+        guard let raw = normalize(dedupeKey),
+              opportunityDedupePrefixes.contains(where: { raw.hasPrefix($0) }) else { return nil }
         for token in raw.split(separator: ":") {
             let candidate = String(token)
             if isUUID(candidate) { return candidate }
@@ -1172,7 +1197,8 @@ struct NotificationListView: View {
         if LeadNotificationRouteParser.isLeadNotification(
             type: notification.type,
             deepLinkType: notification.deepLinkType,
-            actionUrl: notification.actionUrl
+            actionUrl: notification.actionUrl,
+            dedupeKey: notification.dedupeKey
         ) {
             routeToLead(notification)
             return

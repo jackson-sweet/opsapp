@@ -354,4 +354,40 @@ final class LeadNotificationRouteParserTests: XCTestCase {
 
         wait(for: [dispatched], timeout: 1.0)
     }
+
+    // MARK: - Cluster A (2026-08-28) — site-visit, email-opportunity-event, pipeline-path routing
+
+    func testSiteVisitDeepLinkTypesAreLeadNotifications() {
+        XCTAssertTrue(LeadNotificationRouteParser.isLeadNotification(
+            type: "site_visit_reminder", deepLinkType: "site_visit_heads_up",
+            actionUrl: "/pipeline?opportunityId=b96f8f6b-fd75-43f6-8e31-a81bde01d24f"))
+        XCTAssertTrue(LeadNotificationRouteParser.isLeadNotification(
+            type: "site_visit_reminder", deepLinkType: "site_visit_start",
+            actionUrl: "/pipeline?opportunityId=b96f8f6b-fd75-43f6-8e31-a81bde01d24f"))
+    }
+
+    func testEmailOpportunityEventDedupeKeyResolvesOpportunity() {
+        // "Possible deal won" production shape: action_url has no id; the id is the
+        // first UUID token of the email-opportunity-event dedupe key.
+        XCTAssertEqual(
+            LeadNotificationRouteParser.opportunityId(
+                fromDedupeKey: "email-opportunity-event:accept_review_won:9a0f52dd-024b-41f5-ba6a-c42dd1cb2f13:24b69b80-c86d-4080-8775-26cb39e78eaf:1"),
+            "9a0f52dd-024b-41f5-ba6a-c42dd1cb2f13")
+        XCTAssertTrue(LeadNotificationRouteParser.isLeadNotification(
+            type: "system", deepLinkType: "inbox", actionUrl: "/pipeline",
+            dedupeKey: "email-opportunity-event:accept_review_won:9a0f52dd-024b-41f5-ba6a-c42dd1cb2f13:24b69b80-c86d-4080-8775-26cb39e78eaf:1"))
+    }
+
+    func testSystemInboxThreadRowIsLeadNotification() {
+        // "Email files need review": resolvable only through the thread id.
+        XCTAssertTrue(LeadNotificationRouteParser.isLeadNotification(
+            type: "system", deepLinkType: "inbox",
+            actionUrl: "/inbox?thread=16046085-5d23-4d22-8be2-f83f85840f4e"))
+    }
+
+    func testPlainSystemRowIsNotClaimed() {
+        // A system row with no lead signal must not be hijacked into lead routing.
+        XCTAssertFalse(LeadNotificationRouteParser.isLeadNotification(
+            type: "system", deepLinkType: nil, actionUrl: nil, dedupeKey: "photo-upload-recovery:x"))
+    }
 }

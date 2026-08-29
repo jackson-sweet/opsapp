@@ -355,6 +355,32 @@ enum RecoveryTone: Int, Comparable {
     }
 }
 
+/// What a piece of pending work actually carries. Drives the manifest line and
+/// the criticality verdict: captured content is irreplaceable; queue metadata
+/// is not.
+struct RecoveryContentManifest: Equatable {
+    let photoCount: Int        // photo + annotated_photo + dimensioned_photo artifacts
+    let deckCount: Int         // distinct deck designs drawn on the visit
+    let noteCount: Int         // note + transcript artifacts
+    let measurementCount: Int  // measurement artifacts
+    let answerCount: Int       // checklist answers
+
+    static let empty = RecoveryContentManifest(
+        photoCount: 0, deckCount: 0, noteCount: 0, measurementCount: 0, answerCount: 0
+    )
+    var totalCount: Int { photoCount + deckCount + noteCount + measurementCount + answerCount }
+}
+
+/// How much it matters if this item never lands (bug a3f7cca8): an empty failed
+/// visit is noise; one carrying photos / a deck / answers is critical.
+enum RecoveryCriticality: Equatable {
+    case critical   // carries content that exists nowhere else, or is the only
+                    // path for a whole record to reach the server (create ops,
+                    // failed local photos, content-bearing visit packets)
+    case routine    // queue metadata — a lost send is recoverable/re-derivable
+    case empty      // a visit packet with zero captured items
+}
+
 /// The role a member plays inside a site-visit bundle — drives the member strip
 /// glyph label (CLIENT / LEAD / DECK / PHOTOS).
 enum RecoveryMemberRole: Equatable {
@@ -413,6 +439,9 @@ struct SiteVisitBundle: Identifiable, Equatable {
     let draft: DraftSnapshot
     let siteVisitId: String
     let capturedItemCount: Int
+    /// What the packet is actually carrying, broken out by kind. `capturedItemCount`
+    /// stays the flat total every existing consumer already reads.
+    let manifest: RecoveryContentManifest
     let blockedStage: SiteVisitBlockedStage
     /// Every queue record in the work unit. Retry and discard operate on this
     /// complete set so grouped packet stages never strand hidden siblings.
@@ -567,6 +596,23 @@ extension RecoveryItem {
         now.timeIntervalSince(sortDate) >= Self.staleReviewInterval
             ? .stale30Days
             : .current
+    }
+
+    /// How much it costs if this never lands. The tag, and the 30-day expiry
+    /// policy, both read this one verdict (bug a3f7cca8 / f71113a3).
+    var criticality: RecoveryCriticality {
+        switch self {
+        case .bundle(let bundle):
+            return bundle.capturedItemCount > 0 ? .critical : .empty
+        case .photos:
+            return .critical                 // the phone holds the only copy
+        case .op(let snapshot, _, _):
+            return snapshot.operationType == "create" ? .critical : .routine
+        case .autocreate:
+            return .routine                  // the customer record itself is safe locally
+        case .draft, .orphanDesign, .quarantinedVisit:
+            return .critical                 // content / custody surfaces
+        }
     }
 
     var discardPolicy: RecoveryDiscardPolicy {
@@ -764,6 +810,12 @@ extension RecoveryInventory {
                         artifacts: artifacts,
                         answers: answers
                     ),
+                    manifest: contentManifest(
+                        siteVisitId: normalizedSiteVisitId,
+                        packetOps: packetOps,
+                        artifacts: artifacts,
+                        answers: answers
+                    ),
                     blockedStage: blockedStage(for: packetOps),
                     syncOperationIds: sortedUniqueOperationIds(
                         members.compactMap(\.syncOpId) + packetOps.map(\.id)
@@ -820,6 +872,12 @@ extension RecoveryInventory {
                 draft: syntheticDraft,
                 siteVisitId: siteVisitId,
                 capturedItemCount: capturedItemCount(
+                    siteVisitId: siteVisitId,
+                    packetOps: packetOps,
+                    artifacts: artifacts,
+                    answers: answers
+                ),
+                manifest: contentManifest(
                     siteVisitId: siteVisitId,
                     packetOps: packetOps,
                     artifacts: artifacts,
@@ -1104,6 +1162,75 @@ extension RecoveryInventory {
             }
         }
         return ids.count
+    }
+
+    /// The same set `capturedItemCount` totals, classified by kind so the row
+    /// can say WHAT is held rather than just how much (bug a3f7cca8).
+    ///
+    /// Matching and the queue-derived fallback follow `capturedItemCount`
+    /// exactly: ids compare lowercased, and a tombstoned artifact still counts
+    /// through its packet op. A fallback artifact whose row is gone counts as a
+    /// photo — the honest majority kind for a site-visit capture.
+    private static func contentManifest(
+        siteVisitId: String,
+        packetOps: [SyncOpSnapshot],
+        artifacts: [ArtifactSnapshot],
+        answers: [ChecklistAnswerSnapshot]
+    ) -> RecoveryContentManifest {
+        var photoIds = Set<String>()
+        var deckKeys = Set<String>()
+        var noteIds = Set<String>()
+        var measurementIds = Set<String>()
+        var answerIds = Set<String>()
+        var classifiedArtifactIds = Set<String>()
+
+        for artifact in artifacts where artifact.siteVisitId.lowercased() == siteVisitId {
+            let artifactId = artifact.id.lowercased()
+            classifiedArtifactIds.insert(artifactId)
+            switch artifact.kind {
+            case SiteVisitCaptureArtifactKind.photo.rawValue,
+                 SiteVisitCaptureArtifactKind.annotatedPhoto.rawValue,
+                 SiteVisitCaptureArtifactKind.dimensionedPhoto.rawValue:
+                photoIds.insert(artifactId)
+            case SiteVisitCaptureArtifactKind.deckDesign.rawValue:
+                // Two artifacts pointing at one design are one deck.
+                deckKeys.insert(artifact.deckDesignId?.lowercased() ?? artifactId)
+            case SiteVisitCaptureArtifactKind.note.rawValue,
+                 SiteVisitCaptureArtifactKind.transcript.rawValue:
+                noteIds.insert(artifactId)
+            case SiteVisitCaptureArtifactKind.measurement.rawValue:
+                measurementIds.insert(artifactId)
+            default:
+                // An unrecognized kind is still captured work — count it as a
+                // photo rather than losing it from the manifest entirely.
+                photoIds.insert(artifactId)
+            }
+        }
+
+        for answer in answers where answer.siteVisitId.lowercased() == siteVisitId {
+            answerIds.insert(answer.id.lowercased())
+        }
+
+        for op in packetOps {
+            switch op.entityType {
+            case SyncEntityType.siteVisitArtifact.rawValue:
+                let artifactId = op.entityId.lowercased()
+                guard !classifiedArtifactIds.contains(artifactId) else { continue }
+                photoIds.insert(artifactId)
+            case SyncEntityType.siteVisitChecklistAnswer.rawValue:
+                answerIds.insert(op.entityId.lowercased())
+            default:
+                break
+            }
+        }
+
+        return RecoveryContentManifest(
+            photoCount: photoIds.count,
+            deckCount: deckKeys.count,
+            noteCount: noteIds.count,
+            measurementCount: measurementIds.count,
+            answerCount: answerIds.count
+        )
     }
 }
 

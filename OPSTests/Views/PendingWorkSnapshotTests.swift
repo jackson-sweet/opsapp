@@ -223,6 +223,154 @@ final class PendingWorkSnapshotTests: XCTestCase {
         )
     }
 
+    // MARK: - Criticality + manifest (bug a3f7cca8)
+
+    /// A failed CREATE is the only path a whole record has to the server, so it
+    /// wears the tan CRITICAL chip; a failed UPDATE is queue metadata and wears
+    /// nothing. The chip must change the bitmap without displacing the row.
+    func testCriticalChipMarksACreateAndLeavesAnUpdateBare() {
+        let critical = RecoveryInventory(
+            attention: [looseOpItem(operationType: "create", status: "failed", tone: .attention)],
+            sending: [], drafts: [], unlinked: []
+        )
+        let routine = RecoveryInventory(
+            attention: [looseOpItem(operationType: "update", status: "failed", tone: .attention)],
+            sending: [], drafts: [], unlinked: []
+        )
+
+        XCTAssertEqual(critical.attention[0].criticality, .critical)
+        XCTAssertEqual(routine.attention[0].criticality, .routine)
+
+        let criticalImage = renderAndAttach("pending-work-critical-tan", inventory: critical)
+        let routineImage = render(routine)
+        XCTAssertNotEqual(
+            rgbaBytes(criticalImage), rgbaBytes(routineImage),
+            "the CRITICAL chip must be visible on the create row and absent on the update row"
+        )
+    }
+
+    /// A parked row's chip follows the row's own hue — rose, not tan. One hue
+    /// per row: the chip must never introduce a second semantic colour.
+    func testParkedCriticalChipFollowsTheRowsRoseTone() {
+        let parked = RecoveryInventory(
+            attention: [looseOpItem(operationType: "create", status: "parked", tone: .parked)],
+            sending: [], drafts: [], unlinked: []
+        )
+        let attention = RecoveryInventory(
+            attention: [looseOpItem(operationType: "create", status: "failed", tone: .attention)],
+            sending: [], drafts: [], unlinked: []
+        )
+
+        let parkedImage = renderAndAttach("pending-work-critical-rose", inventory: parked)
+        XCTAssertNotEqual(
+            rgbaBytes(parkedImage), rgbaBytes(render(attention)),
+            "a parked row's chip must render in rose, not the attention row's tan"
+        )
+    }
+
+    /// A progressing row is not a decision — announcing criticality in SENDING
+    /// would be noise, so the chip stays off there.
+    func testSendingRowsNeverWearTheCriticalChip() {
+        let sending = RecoveryInventory(
+            attention: [],
+            sending: [looseOpItem(operationType: "create", status: "pending", tone: .waiting)],
+            drafts: [], unlinked: []
+        )
+        XCTAssertEqual(sending.sending[0].criticality, .critical)
+        XCTAssertLessThan(sending.sending[0].tone, .attention)
+
+        let image = renderAndAttach("pending-work-sending-no-chip", inventory: sending)
+        assertContentRendered(image, context: "sending-no-chip")
+    }
+
+    /// A packet carrying real work says what it carries; an empty one says
+    /// NOTHING CAPTURED, quietly, in text3 rather than the tone colour.
+    func testPacketManifestLineDistinguishesLoadedFromEmptyVisits() throws {
+        let loaded = packetInventory(
+            artifacts: [
+                ArtifactSnapshot(id: "a1", siteVisitId: "v9", deckDesignId: nil, kind: "photo"),
+                ArtifactSnapshot(id: "a2", siteVisitId: "v9", deckDesignId: nil, kind: "photo"),
+                ArtifactSnapshot(id: "a3", siteVisitId: "v9", deckDesignId: "d9", kind: "deck_design"),
+            ]
+        )
+        let empty = packetInventory(artifacts: [])
+
+        let loadedBundle = try XCTUnwrap(firstBundle(loaded))
+        let emptyBundle = try XCTUnwrap(firstBundle(empty))
+        XCTAssertEqual(
+            SyncStatusCopy.PendingWork.manifestSummary(loadedBundle.manifest),
+            "2 PHOTOS · 1 DECK"
+        )
+        XCTAssertEqual(
+            SyncStatusCopy.PendingWork.manifestSummary(emptyBundle.manifest),
+            "NOTHING CAPTURED"
+        )
+
+        let loadedImage = renderAndAttach("pending-work-packet-manifest", inventory: loaded)
+        let emptyImage = renderAndAttach("pending-work-packet-nothing-captured", inventory: empty)
+        XCTAssertNotEqual(
+            rgbaBytes(loadedImage), rgbaBytes(emptyImage),
+            "the manifest line must read differently for a loaded and an empty packet"
+        )
+    }
+
+    // MARK: - Criticality fixtures
+
+    private func looseOpItem(
+        operationType: String,
+        status: String,
+        tone: RecoveryTone
+    ) -> RecoveryItem {
+        .op(
+            SyncOpSnapshot(
+                id: UUID(uuidString: "CCCCCCCC-CCCC-4CCC-8CCC-CCCCCCCCCCCC")!,
+                entityType: "project",
+                entityId: "project-critical",
+                operationType: operationType,
+                status: status,
+                retryCount: 4,
+                lastAttemptedAt: ago(60),
+                lastError: "server rejected",
+                createdAt: ago(3600),
+                siteVisitId: nil,
+                entityDisplayName: "Cedar deck rebuild"
+            ),
+            tone: tone,
+            nextEligibleAt: nil
+        )
+    }
+
+    /// A failed durable site-visit packet, with whatever captures are handed in.
+    private func packetInventory(artifacts: [ArtifactSnapshot]) -> RecoveryInventory {
+        let draft = DraftSnapshot(
+            id: "d9", siteVisitId: "v9", clientId: nil, opportunityId: nil,
+            displayName: "Site visit — Elm St", createdAt: ago(7200), lastCommittedAt: nil
+        )
+        let packet = SyncOpSnapshot(
+            id: UUID(uuidString: "DDDDDDDD-DDDD-4DDD-8DDD-DDDDDDDDDDDD")!,
+            entityType: SyncEntityType.siteVisit.rawValue,
+            entityId: "v9",
+            operationType: "create",
+            status: "failed",
+            retryCount: 6,
+            lastAttemptedAt: ago(120),
+            lastError: "server rejected",
+            createdAt: ago(7200),
+            siteVisitId: "v9"
+        )
+        return RecoveryInventory.build(
+            ops: [packet], autocreates: [], photos: [], drafts: [draft],
+            artifacts: artifacts, orphans: [], now: now
+        )
+    }
+
+    private func firstBundle(_ inventory: RecoveryInventory) -> SiteVisitBundle? {
+        for item in inventory.attention + inventory.sending {
+            if case .bundle(let bundle) = item { return bundle }
+        }
+        return nil
+    }
+
     // MARK: - Render harness (drawHierarchy, not ImageRenderer — asset colours)
 
     /// Renders the pure view full-screen and returns the image (no attachment).

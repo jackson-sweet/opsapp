@@ -365,6 +365,99 @@ final class SyncStatusCopyPendingWorkTests: XCTestCase {
         )
     }
 
+    // MARK: - Content manifest + criticality (bug a3f7cca8)
+
+    func testManifestSummaryListsOnlyWhatIsActuallyCarried() {
+        XCTAssertEqual(
+            Copy.manifestSummary(
+                RecoveryContentManifest(
+                    photoCount: 6,
+                    deckCount: 1,
+                    noteCount: 0,
+                    measurementCount: 0,
+                    answerCount: 4
+                )
+            ),
+            "6 PHOTOS · 1 DECK · 4 ANSWERS"
+        )
+    }
+
+    func testManifestSummarySingularAndPluralAndZero() {
+        XCTAssertEqual(
+            Copy.manifestSummary(
+                RecoveryContentManifest(
+                    photoCount: 1,
+                    deckCount: 0,
+                    noteCount: 1,
+                    measurementCount: 1,
+                    answerCount: 1
+                )
+            ),
+            "1 PHOTO · 1 NOTE · 1 MEASUREMENT · 1 ANSWER"
+        )
+        XCTAssertEqual(
+            Copy.manifestSummary(
+                RecoveryContentManifest(
+                    photoCount: 2,
+                    deckCount: 2,
+                    noteCount: 2,
+                    measurementCount: 2,
+                    answerCount: 2
+                )
+            ),
+            "2 PHOTOS · 2 DECKS · 2 NOTES · 2 MEASUREMENTS · 2 ANSWERS"
+        )
+        XCTAssertEqual(Copy.manifestSummary(.empty), "NOTHING CAPTURED")
+        XCTAssertEqual(Copy.nothingCaptured, "NOTHING CAPTURED")
+    }
+
+    func testCriticalTagCopyIsExact() {
+        XCTAssertEqual(Copy.criticalTag, "CRITICAL")
+        XCTAssertEqual(
+            Copy.criticalAccessibility,
+            "Critical. Carries work that exists only on this phone."
+        )
+    }
+
+    /// The manifest-aware packet summary keeps the blocked-stage clause verbatim
+    /// so the count-based and manifest-based lines cannot drift apart.
+    func testPacketSummaryKeepsItsBlockedStageClause() {
+        XCTAssertEqual(
+            Copy.siteVisitPacketSummary(capturedItemCount: 4, blockedStage: .media),
+            "4 CAPTURED · MEDIA"
+        )
+        XCTAssertEqual(
+            Copy.siteVisitPacketSummary(
+                manifest: RecoveryContentManifest(
+                    photoCount: 4,
+                    deckCount: 0,
+                    noteCount: 0,
+                    measurementCount: 0,
+                    answerCount: 0
+                ),
+                blockedStage: .media
+            ),
+            "4 PHOTOS · MEDIA"
+        )
+        XCTAssertEqual(
+            Copy.siteVisitPacketSummary(manifest: .empty, blockedStage: .visit),
+            "NOTHING CAPTURED · VISIT"
+        )
+        XCTAssertEqual(
+            Copy.siteVisitPacketSummary(manifest: .empty, blockedStage: .completion),
+            "NOTHING CAPTURED · COMPLETION"
+        )
+    }
+
+    func testMetadataLedgerLabelsAndEmptyValue() {
+        XCTAssertEqual(Copy.ledgerEntityLabel, "ENTITY")
+        XCTAssertEqual(Copy.ledgerActionLabel, "ACTION")
+        XCTAssertEqual(Copy.ledgerQueuedLabel, "QUEUED")
+        XCTAssertEqual(Copy.ledgerTriesLabel, "TRIES")
+        XCTAssertEqual(Copy.ledgerCarryingLabel, "CARRYING")
+        XCTAssertEqual(Copy.ledgerEmptyValue, "—", "empty is an em dash, never N/A")
+    }
+
     // MARK: - Helpers
 
     /// `SyncStatusTone` is a plain enum used via pattern-match, not `==`; name it

@@ -236,6 +236,41 @@ struct PendingWorkRetryGlyph: View {
     }
 }
 
+/// The criticality chip (bug a3f7cca8). It appears only where it changes a
+/// decision: on a row that already needs a look, carrying work that exists
+/// nowhere else. A progressing row never wears it — announcing criticality on
+/// something that is saving fine is noise.
+///
+/// The chip's hue FOLLOWS the row's tone family — a tan attention row wears a
+/// tan chip, a parked row a rose one. One hue per row; never a second semantic
+/// colour competing with the status line.
+struct PendingWorkCriticalTag: View {
+    let item: RecoveryItem
+
+    @ViewBuilder
+    var body: some View {
+        if shouldRender {
+            ToneTag(
+                SyncStatusCopy.PendingWork.criticalTag,
+                tone: item.tone == .parked ? .rose : .tan
+            )
+            .accessibilityLabel(SyncStatusCopy.PendingWork.criticalAccessibility)
+        }
+    }
+
+    /// Drafts, unlinked designs, and custody packets are excluded by rule, not
+    /// by accident: their own sections (DRAFTS / NOT LINKED) already say the
+    /// work is held here. Repeating it on the row would be the second voice.
+    private var shouldRender: Bool {
+        switch item {
+        case .draft, .orphanDesign, .quarantinedVisit:
+            return false
+        case .bundle, .op, .autocreate, .photos:
+            return item.tone >= .attention && item.criticality == .critical
+        }
+    }
+}
+
 /// Thirty days is a review threshold, never an expiry. The tag is deliberately
 /// quiet and non-interactive so RETRY / OPEN / LINK remain the row's clear move.
 struct PendingWorkReviewTag: View {
@@ -298,6 +333,8 @@ struct PendingWorkEntryRow: View {
 
             Spacer(minLength: OPSStyle.Layout.spacing1)
 
+            PendingWorkCriticalTag(item: item)
+
             PendingWorkReviewTag(item: item, now: now)
 
             Text(PendingWorkVisuals.relativeTime(from: item.sortDate, now: now))
@@ -330,13 +367,23 @@ struct PendingWorkBundleCard: View {
     let onRetry: () -> Void
     var feedback: PendingWorkRetryFeedback? = nil
 
+    private var item: RecoveryItem { .bundle(bundle) }
+
     private var payload: RecoveryStatusPayload {
-        PendingWorkVisuals.displayStatus(for: .bundle(bundle))
+        PendingWorkVisuals.displayStatus(for: item)
     }
 
     private var statusLine: (text: String, tone: SyncStatusTone) {
         feedback.map(PendingWorkVisuals.feedbackStatusLine)
-            ?? PendingWorkVisuals.statusLine(for: .bundle(bundle), now: now)
+            ?? PendingWorkVisuals.statusLine(for: item, now: now)
+    }
+
+    /// An empty packet reads quietly. `NOTHING CAPTURED` in the tone colour
+    /// would shout about a row that costs the operator nothing to lose.
+    private var packetSummaryColor: Color {
+        bundle.capturedItemCount == 0
+            ? OPSStyle.Colors.text3
+            : PendingWorkVisuals.toneColor(bundle.tone)
     }
 
     var body: some View {
@@ -356,7 +403,9 @@ struct PendingWorkBundleCard: View {
 
                     Spacer(minLength: OPSStyle.Layout.spacing1)
 
-                    PendingWorkReviewTag(item: .bundle(bundle), now: now)
+                    PendingWorkCriticalTag(item: item)
+
+                    PendingWorkReviewTag(item: item, now: now)
 
                     Text(PendingWorkVisuals.relativeTime(from: bundle.createdAt, now: now))
                         .font(OPSStyle.Typography.metadata)
@@ -367,12 +416,12 @@ struct PendingWorkBundleCard: View {
                     memberStrip
                 } else {
                     Text(SyncStatusCopy.PendingWork.siteVisitPacketSummary(
-                        capturedItemCount: bundle.capturedItemCount,
+                        manifest: bundle.manifest,
                         blockedStage: bundle.blockedStage
                     ))
                     .font(OPSStyle.Typography.nanoLabel)
                     .tracking(0.8)
-                    .foregroundColor(PendingWorkVisuals.toneColor(bundle.tone))
+                    .foregroundColor(packetSummaryColor)
                 }
 
                 Text(statusLine.text)

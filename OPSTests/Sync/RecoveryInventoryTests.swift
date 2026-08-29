@@ -886,6 +886,184 @@ final class RecoveryInventoryTests: XCTestCase {
         XCTAssertEqual(build(ops: ops), build(ops: ops))
     }
 
+    // MARK: - Content manifest + criticality (bug a3f7cca8)
+
+    func testBundleManifestCountsEachCapturedKind() throws {
+        let draft = draftSnap(siteVisitId: "visit", clientId: nil)
+        let packet = opSnap(
+            entityType: SyncEntityType.siteVisit.rawValue,
+            entityId: "visit",
+            operationType: "create",
+            status: "failed",
+            siteVisitId: "visit"
+        )
+        let inventory = RecoveryInventory.build(
+            ops: [packet],
+            autocreates: [],
+            photos: [],
+            drafts: [draft],
+            artifacts: [
+                artifactSnap(id: "a1", siteVisitId: "visit", deckDesignId: nil, kind: "photo"),
+                artifactSnap(id: "a2", siteVisitId: "visit", deckDesignId: nil, kind: "annotated_photo"),
+                artifactSnap(id: "a3", siteVisitId: "visit", deckDesignId: "d1", kind: "deck_design"),
+                artifactSnap(id: "a4", siteVisitId: "visit", deckDesignId: nil, kind: "note"),
+                artifactSnap(id: "a5", siteVisitId: "visit", deckDesignId: nil, kind: "measurement"),
+            ],
+            answers: [
+                ChecklistAnswerSnapshot(id: "ans1", siteVisitId: "visit"),
+                ChecklistAnswerSnapshot(id: "ans2", siteVisitId: "visit"),
+                ChecklistAnswerSnapshot(id: "ans3", siteVisitId: "visit"),
+            ],
+            orphans: [],
+            now: now
+        )
+
+        let bundle = try XCTUnwrap(bundles(inventory.attention).first)
+        XCTAssertEqual(bundle.manifest.photoCount, 2)
+        XCTAssertEqual(bundle.manifest.deckCount, 1)
+        XCTAssertEqual(bundle.manifest.noteCount, 1)
+        XCTAssertEqual(bundle.manifest.measurementCount, 1)
+        XCTAssertEqual(bundle.manifest.answerCount, 3)
+        XCTAssertEqual(bundle.manifest.totalCount, 8)
+    }
+
+    /// Two artifacts drawn against one design are one deck, not two.
+    func testBundleManifestCollapsesArtifactsSharingADeckDesign() throws {
+        let draft = draftSnap(siteVisitId: "visit", clientId: nil)
+        let packet = opSnap(
+            entityType: SyncEntityType.siteVisit.rawValue,
+            entityId: "visit",
+            operationType: "create",
+            status: "failed",
+            siteVisitId: "visit"
+        )
+        let inventory = RecoveryInventory.build(
+            ops: [packet],
+            autocreates: [],
+            photos: [],
+            drafts: [draft],
+            artifacts: [
+                artifactSnap(id: "a1", siteVisitId: "visit", deckDesignId: "d1", kind: "deck_design"),
+                artifactSnap(id: "a2", siteVisitId: "visit", deckDesignId: "D1", kind: "deck_design"),
+                artifactSnap(id: "a3", siteVisitId: "visit", deckDesignId: nil, kind: "deck_design"),
+            ],
+            orphans: [],
+            now: now
+        )
+
+        let bundle = try XCTUnwrap(bundles(inventory.attention).first)
+        XCTAssertEqual(bundle.manifest.deckCount, 2, "one shared design + one design-less artifact")
+    }
+
+    func testEmptyPacketCarriesNothingAndIsNotCritical() throws {
+        let draft = draftSnap(siteVisitId: "visit", clientId: nil)
+        let packet = opSnap(
+            entityType: SyncEntityType.siteVisit.rawValue,
+            entityId: "visit",
+            operationType: "create",
+            status: "failed",
+            siteVisitId: "visit"
+        )
+        let inventory = build(ops: [packet], drafts: [draft])
+
+        let item = try XCTUnwrap(inventory.attention.first)
+        let bundle = try XCTUnwrap(bundles(inventory.attention).first)
+        XCTAssertEqual(bundle.capturedItemCount, 0)
+        XCTAssertEqual(bundle.manifest, .empty)
+        XCTAssertEqual(item.criticality, .empty)
+        XCTAssertEqual(
+            SyncStatusCopy.PendingWork.manifestSummary(bundle.manifest),
+            "NOTHING CAPTURED"
+        )
+    }
+
+    func testCriticalitySeparatesIrreplaceableWorkFromQueueMetadata() {
+        XCTAssertEqual(
+            RecoveryItem.op(
+                opSnap(entityType: "project", operationType: "create", status: "failed"),
+                tone: .attention,
+                nextEligibleAt: nil
+            ).criticality,
+            .critical
+        )
+        XCTAssertEqual(
+            RecoveryItem.op(
+                opSnap(entityType: "project", operationType: "update", status: "failed"),
+                tone: .attention,
+                nextEligibleAt: nil
+            ).criticality,
+            .routine
+        )
+        XCTAssertEqual(
+            RecoveryItem.photos(grouped: [photoSnap(status: "failed")], tone: .attention).criticality,
+            .critical
+        )
+        XCTAssertEqual(
+            RecoveryItem.autocreate(autocreateSnap(), tone: .attention, nextEligibleAt: nil).criticality,
+            .routine
+        )
+        XCTAssertEqual(RecoveryItem.draft(draftSnap()).criticality, .critical)
+        XCTAssertEqual(RecoveryItem.orphanDesign(orphanSnap()).criticality, .critical)
+    }
+
+    func testContentBearingPacketIsCritical() throws {
+        let draft = draftSnap(siteVisitId: "visit", clientId: nil)
+        let packet = opSnap(
+            entityType: SyncEntityType.siteVisit.rawValue,
+            entityId: "visit",
+            operationType: "create",
+            status: "failed",
+            siteVisitId: "visit"
+        )
+        let inventory = RecoveryInventory.build(
+            ops: [packet],
+            autocreates: [],
+            photos: [],
+            drafts: [draft],
+            artifacts: [
+                artifactSnap(id: "a1", siteVisitId: "visit", deckDesignId: nil, kind: "photo"),
+            ],
+            orphans: [],
+            now: now
+        )
+
+        let item = try XCTUnwrap(inventory.attention.first)
+        XCTAssertEqual(item.criticality, .critical)
+    }
+
+    /// A tombstoned artifact whose row is gone still counts through its packet
+    /// op — the honest majority kind for a site-visit capture is a photo.
+    func testManifestFallsBackToTheQueueWhenAnArtifactRowIsGone() throws {
+        let draft = draftSnap(siteVisitId: "visit", clientId: nil)
+        let packet = opSnap(
+            entityType: SyncEntityType.siteVisit.rawValue,
+            entityId: "visit",
+            operationType: "create",
+            status: "failed",
+            siteVisitId: "visit"
+        )
+        let orphanedArtifactOp = opSnap(
+            entityType: SyncEntityType.siteVisitArtifact.rawValue,
+            entityId: "a-gone",
+            operationType: "delete",
+            status: "failed",
+            siteVisitId: "visit"
+        )
+        let inventory = RecoveryInventory.build(
+            ops: [packet, orphanedArtifactOp],
+            autocreates: [],
+            photos: [],
+            drafts: [draft],
+            artifacts: [],
+            orphans: [],
+            now: now
+        )
+
+        let bundle = try XCTUnwrap(bundles(inventory.attention).first)
+        XCTAssertEqual(bundle.manifest.photoCount, 1)
+        XCTAssertEqual(bundle.capturedItemCount, 1)
+    }
+
     // MARK: - Entity display names (bug a3f7cca8)
 
     func testDisplayNamesResolveTheRecordBehindEachOperation() throws {

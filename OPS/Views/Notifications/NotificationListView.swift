@@ -933,8 +933,12 @@ struct NotificationListView: View {
                         default: return false
                         }
                     }()
+                    // Deep links that only exist on the web app (settings /
+                    // email-signature surfaces). No button — an inert control is
+                    // worse than none; the row's title still says what to do.
+                    let webOnlyDeepLinks: Set<String> = ["settings", "email_signature"]
                     let hasDeepLink = (notification.projectId != nil && !(notification.projectId?.isEmpty ?? true))
-                        || (notification.deepLinkType != nil && !(notification.deepLinkType?.isEmpty ?? true))
+                        || (notification.deepLinkType.map { !$0.isEmpty && !webOnlyDeepLinks.contains($0) } ?? false)
                         || catalogSetupRoute != nil
                         || typeImpliesDeepLink
                     if hasDeepLink {
@@ -991,6 +995,11 @@ struct NotificationListView: View {
                             case "billableThisWeek":               return notification.actionLabel ?? "OPEN HOME"
                             case "inbox", "email_sync_complete":   return "VIEW DETAILS"
                             case "cashflow":                       return notification.actionLabel ?? "REVIEW FORECAST"
+                            case "task", "taskDetails":            return notification.actionLabel ?? "VIEW PROJECT"
+                            case "project", "projectDetails",
+                                 "project_note", "projectNotes":   return notification.actionLabel ?? "VIEW PROJECT"
+                            case "team":                           return notification.actionLabel ?? "MANAGE TEAM"
+                            case "cashflow_forecast":              return notification.actionLabel ?? "REVIEW FORECAST"
                             default:                               return notification.actionLabel ?? "OPEN"
                             }
                         }()
@@ -1358,6 +1367,34 @@ struct NotificationListView: View {
             // Cashflow forecast dip / cleared notification. Switch to Books,
             // then post OpenCashflowForecast so BooksTabView presents the
             // forecast screen after the tab swap has settled.
+            dismiss()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                NotificationCenter.default.post(name: Notification.Name("OpenBooks"), object: nil)
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+                    NotificationCenter.default.post(name: Notification.Name("OpenCashflowForecast"), object: nil)
+                }
+            }
+        case "task", "taskDetails", "project", "projectDetails", "project_note", "projectNotes":
+            // Task/project rows carry no task id (verified: the notifications
+            // table has none) — the project is the deepest honest destination.
+            if let projectId = notification.projectId, !projectId.isEmpty {
+                dismiss()
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                    appState.viewProjectDetailsById(projectId)
+                }
+            }
+        case "team":
+            // team_invite_sent + role_needed (team shape): Settings → Manage Team,
+            // the same relay the wizard uses (MainTabView listens for both names).
+            dismiss()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                NotificationCenter.default.post(name: Notification.Name("OpenSettings"), object: nil)
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+                    NotificationCenter.default.post(name: Notification.Name("SettingsOpenManageTeam"), object: nil)
+                }
+            }
+        case "cashflow_forecast":
+            // Bible §14.3.2 names this value; iOS shipped only "cashflow". Alias.
             dismiss()
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
                 NotificationCenter.default.post(name: Notification.Name("OpenBooks"), object: nil)

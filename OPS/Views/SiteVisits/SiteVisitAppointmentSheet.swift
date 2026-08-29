@@ -34,7 +34,7 @@ struct SiteVisitAppointmentSheet: View {
             OPSStyle.Colors.background.ignoresSafeArea()
 
             if let snapshot {
-                TimelineView(.periodic(from: .now, by: 60)) { timeline in
+                SwiftUI.TimelineView(.periodic(from: .now, by: 60)) { timeline in
                     SiteVisitAppointmentContent(
                         leadName: lead.displayContactName,
                         address: lead.address,

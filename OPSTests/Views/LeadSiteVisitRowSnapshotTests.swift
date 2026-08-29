@@ -130,8 +130,11 @@ final class LeadSiteVisitRowSnapshotTests: XCTestCase {
     // MARK: - Harness
 
     private func snapshotTimeline(_ name: String, seedVisit: Bool) throws {
+        // Must be the current schema: the resolved shot inserts the LIVE
+        // SiteVisit class, and historical versions register frozen legacy
+        // classes for the entity instead (insert would trap).
         let container = try ModelContainer(
-            for: Schema(versionedSchema: OPSSchemaV22.self),
+            for: Schema(versionedSchema: OPSSchemaCurrent.self),
             configurations: ModelConfiguration(isStoredInMemoryOnly: true)
         )
         if seedVisit { seedLocalVisit(into: container.mainContext) }

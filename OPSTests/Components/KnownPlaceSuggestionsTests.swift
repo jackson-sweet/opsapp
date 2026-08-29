@@ -183,7 +183,7 @@ final class KnownPlaceSuggestionsTests: XCTestCase {
     }
 
     private func makeContainer() throws -> ModelContainer {
-        let schema = Schema(versionedSchema: OPSSchemaV25.self)
+        let schema = Schema(versionedSchema: OPSSchemaCurrent.self)
         let configuration = ModelConfiguration(
             schema: schema,
             isStoredInMemoryOnly: true,

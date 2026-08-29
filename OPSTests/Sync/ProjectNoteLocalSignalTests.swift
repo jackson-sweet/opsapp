@@ -103,7 +103,7 @@ final class ProjectNoteLocalSignalTests: XCTestCase {
     /// against a table that has never held a row, so no test here is green by
     /// luck of ordering.
     private func makeContainer() throws -> ModelContainer {
-        let schema = Schema(versionedSchema: OPSSchemaV25.self)
+        let schema = Schema(versionedSchema: OPSSchemaCurrent.self)
         let configuration = ModelConfiguration(
             schema: schema,
             isStoredInMemoryOnly: true,

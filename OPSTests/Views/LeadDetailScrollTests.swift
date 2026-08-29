@@ -255,7 +255,7 @@ final class LeadDetailScrollTests: XCTestCase {
         sizeCategory: ContentSizeCategory = .large
     ) throws -> Harness {
         let container = try ModelContainer(
-            for: Schema(versionedSchema: OPSSchemaV22.self),
+            for: Schema(versionedSchema: OPSSchemaCurrent.self),
             configurations: ModelConfiguration(isStoredInMemoryOnly: true)
         )
         let permissions = PermissionStore()

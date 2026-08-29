@@ -206,6 +206,8 @@ enum SyncStatusCopy {
         case "siteVisitArtifact": return "Site Visit Capture"
         case "siteVisitChecklistAnswer": return "Site Visit Checklist"
         case "siteVisitIdentityDraft": return "Site Visit Identity"
+        case "deckDesign": return "Deck design"
+        case "opportunity": return "Lead"
         default: return entityType.capitalized
         }
     }
@@ -492,6 +494,12 @@ enum SyncStatusCopy {
         // Row titles — the piece of WORK, named like a human action. The name
         // is data; the prefix is the copy (chokepoint rule).
 
+        /// Title + the record's own name. Em-dash join; the row ellipsizes.
+        static func titleWithEntity(_ base: String, name: String?) -> String {
+            guard let name, !name.isEmpty else { return base }
+            return "\(base) — \(name)"
+        }
+
         /// Loose lead-delivery row — "Lead · <name>" (falls back to "New lead"
         /// when the client carries no name).
         static func leadTitle(name: String) -> String {
@@ -518,13 +526,63 @@ enum SyncStatusCopy {
             capturedItemCount: Int,
             blockedStage: SiteVisitBlockedStage
         ) -> String {
-            let stage: String
+            "\(capturedItemCount) CAPTURED · \(stageLabel(blockedStage))"
+        }
+
+        /// The same summary, said in what the packet actually carries. A number
+        /// tells the operator how much is stuck; the manifest tells them what —
+        /// which is the difference between shrugging and driving back (a3f7cca8).
+        static func siteVisitPacketSummary(
+            manifest: RecoveryContentManifest,
+            blockedStage: SiteVisitBlockedStage
+        ) -> String {
+            "\(manifestSummary(manifest)) · \(stageLabel(blockedStage))"
+        }
+
+        private static func stageLabel(_ blockedStage: SiteVisitBlockedStage) -> String {
             switch blockedStage {
-            case .visit: stage = "VISIT"
-            case .media: stage = "MEDIA"
-            case .completion: stage = "COMPLETION"
+            case .visit: return "VISIT"
+            case .media: return "MEDIA"
+            case .completion: return "COMPLETION"
             }
-            return "\(capturedItemCount) CAPTURED · \(stage)"
+        }
+
+        // MARK: - Criticality (bug a3f7cca8)
+
+        static let criticalTag = "CRITICAL"
+        static let criticalAccessibility = "Critical. Carries work that exists only on this phone."
+        static let nothingCaptured = "NOTHING CAPTURED"
+
+        /// "6 PHOTOS · 1 DECK · 4 ANSWERS" — non-zero parts only, JBM-nano at the
+        /// call site. Zero content reads NOTHING CAPTURED.
+        static func manifestSummary(_ m: RecoveryContentManifest) -> String {
+            var parts: [String] = []
+            func add(_ count: Int, _ singular: String) {
+                guard count > 0 else { return }
+                parts.append("\(count) \(singular)\(count == 1 ? "" : "S")")
+            }
+            add(m.photoCount, "PHOTO")
+            add(m.deckCount, "DECK")
+            add(m.noteCount, "NOTE")
+            add(m.measurementCount, "MEASUREMENT")
+            add(m.answerCount, "ANSWER")
+            return parts.isEmpty ? nothingCaptured : parts.joined(separator: " · ")
+        }
+
+        // MARK: - Detail-sheet metadata ledger
+
+        static let ledgerEntityLabel = "ENTITY"
+        static let ledgerActionLabel = "ACTION"
+        static let ledgerQueuedLabel = "QUEUED"
+        static let ledgerTriesLabel = "TRIES"
+        static let ledgerCarryingLabel = "CARRYING"
+        /// Empty is an em dash, never "N/A".
+        static let ledgerEmptyValue = "—"
+
+        /// Absolute queue time — a relative "2h" answers "how long", an absolute
+        /// stamp answers "since when", which is the question a stalled row raises.
+        static func ledgerQueuedValue(_ date: Date) -> String {
+            date.formatted(.dateTime.month(.abbreviated).day().hour().minute()).uppercased()
         }
 
         /// Orphan deck-design title — the design's title, or "Deck design".

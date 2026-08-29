@@ -76,7 +76,48 @@ final class TrashSnapshotTests: XCTestCase {
         attach("trash-parent-required-quick-view", image: image)
     }
 
+    /// Bug 3f5bca5f — deciding whether to restore a deleted project means
+    /// seeing what it held. The rail leads with the row's own thumbnail.
+    func testQuickViewShowsThePhotoRailForAProjectWithAGallery() {
+        let descriptor = makeGalleryProjectDescriptor()
+        XCTAssertEqual(descriptor.galleryURLs.count, 3)
+
+        let image = render(width: 390, height: 520) {
+            TrashRecoveryQuickView(
+                descriptor: descriptor,
+                isRestoring: false,
+                errorMessage: nil,
+                onRestore: {}
+            )
+        }
+
+        attach("trash-quick-view-photo-rail", image: image)
+    }
+
     // MARK: - Fixture
+
+    /// A deleted project carrying three gallery photos. URLs are unreachable by
+    /// design — the rail must render its truthful fallback tiles, proving the
+    /// layout without a network round trip.
+    private func makeGalleryProjectDescriptor() -> TrashRecoveryRowDescriptor {
+        let project = Project(id: "project-gallery", title: "Cedar deck and railing rebuild", status: .accepted)
+        project.companyId = "company-1"
+        project.address = "101 Cedar Street, Victoria"
+        project.deletedAt = now.addingTimeInterval(-86_400)
+
+        let photos = (1...3).map { index in
+            ProjectPhoto(
+                id: "photo-\(index)",
+                projectId: project.id,
+                companyId: "company-1",
+                url: "https://example.com/cedar-\(index).jpg",
+                uploadedBy: "00000000-0000-4000-8000-000000000001",
+                createdAt: now.addingTimeInterval(TimeInterval(-60 * index))
+            )
+        }
+
+        return .project(project, syncedPhotos: photos, now: now)
+    }
 
     private func makeFixture() -> [TrashRecoveryRowDescriptor] {
         let client = Client(

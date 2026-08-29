@@ -59,6 +59,10 @@ struct SyncOpSnapshot: Identifiable, Equatable {
     /// Durable packet routing decoded from the operation envelope. Nil for all
     /// legacy/non-site-visit work.
     let siteVisitId: String?
+    /// Human name of the entity this operation writes (project title, client
+    /// name…), resolved at load time. Nil when the entity is not on device or
+    /// its type has no display name.
+    let entityDisplayName: String?
 
     init(
         id: UUID,
@@ -70,7 +74,8 @@ struct SyncOpSnapshot: Identifiable, Equatable {
         lastAttemptedAt: Date?,
         lastError: String?,
         createdAt: Date,
-        siteVisitId: String? = nil
+        siteVisitId: String? = nil,
+        entityDisplayName: String? = nil
     ) {
         self.id = id
         self.entityType = entityType
@@ -82,9 +87,18 @@ struct SyncOpSnapshot: Identifiable, Equatable {
         self.lastError = lastError
         self.createdAt = createdAt
         self.siteVisitId = siteVisitId?.lowercased()
+        self.entityDisplayName = entityDisplayName
     }
 
     init(from operation: SyncOperation) {
+        self.init(from: operation, entityDisplayName: nil)
+    }
+
+    /// Same mapping as `init(from:)`, carrying the display name the live load
+    /// resolved for this operation's entity (bug a3f7cca8). Kept here rather
+    /// than at the call site because `siteVisitId(from:)` is private to this
+    /// type — the envelope decode must stay in one place.
+    init(from operation: SyncOperation, entityDisplayName: String?) {
         self.init(
             id: operation.id,
             entityType: operation.entityType,
@@ -95,7 +109,8 @@ struct SyncOpSnapshot: Identifiable, Equatable {
             lastAttemptedAt: operation.lastAttemptedAt,
             lastError: operation.lastError,
             createdAt: operation.createdAt,
-            siteVisitId: Self.siteVisitId(from: operation)
+            siteVisitId: Self.siteVisitId(from: operation),
+            entityDisplayName: entityDisplayName
         )
     }
 
@@ -340,6 +355,32 @@ enum RecoveryTone: Int, Comparable {
     }
 }
 
+/// What a piece of pending work actually carries. Drives the manifest line and
+/// the criticality verdict: captured content is irreplaceable; queue metadata
+/// is not.
+struct RecoveryContentManifest: Equatable {
+    let photoCount: Int        // photo + annotated_photo + dimensioned_photo artifacts
+    let deckCount: Int         // distinct deck designs drawn on the visit
+    let noteCount: Int         // note + transcript artifacts
+    let measurementCount: Int  // measurement artifacts
+    let answerCount: Int       // checklist answers
+
+    static let empty = RecoveryContentManifest(
+        photoCount: 0, deckCount: 0, noteCount: 0, measurementCount: 0, answerCount: 0
+    )
+    var totalCount: Int { photoCount + deckCount + noteCount + measurementCount + answerCount }
+}
+
+/// How much it matters if this item never lands (bug a3f7cca8): an empty failed
+/// visit is noise; one carrying photos / a deck / answers is critical.
+enum RecoveryCriticality: Equatable {
+    case critical   // carries content that exists nowhere else, or is the only
+                    // path for a whole record to reach the server (create ops,
+                    // failed local photos, content-bearing visit packets)
+    case routine    // queue metadata — a lost send is recoverable/re-derivable
+    case empty      // a visit packet with zero captured items
+}
+
 /// The role a member plays inside a site-visit bundle — drives the member strip
 /// glyph label (CLIENT / LEAD / DECK / PHOTOS).
 enum RecoveryMemberRole: Equatable {
@@ -398,6 +439,9 @@ struct SiteVisitBundle: Identifiable, Equatable {
     let draft: DraftSnapshot
     let siteVisitId: String
     let capturedItemCount: Int
+    /// What the packet is actually carrying, broken out by kind. `capturedItemCount`
+    /// stays the flat total every existing consumer already reads.
+    let manifest: RecoveryContentManifest
     let blockedStage: SiteVisitBlockedStage
     /// Every queue record in the work unit. Retry and discard operate on this
     /// complete set so grouped packet stages never strand hidden siblings.
@@ -484,8 +528,10 @@ enum RecoveryItem: Identifiable, Equatable {
     }
 }
 
-/// Age is a review signal only. Pending work is never expired or removed by
-/// this policy, including at the exact 30-day boundary.
+/// Age is a review signal only — this state removes nothing, ever. Removal is
+/// `PendingWorkExpiryPolicy`'s decision alone, and it spares everything that
+/// carries the only copy of real work. The two share one 30-day constant, so
+/// the tag now marks exactly the spared items: the operator's review queue.
 enum RecoveryReviewState: Equatable {
     case current
     case stale30Days
@@ -546,12 +592,29 @@ enum RecoveryDiscardPolicy: Equatable {
 }
 
 extension RecoveryItem {
-    private static let staleReviewInterval: TimeInterval = 30 * 24 * 60 * 60
-
+    /// The STALE · 30D tag and the 30-day expiry share ONE number by
+    /// construction — the tag now marks exactly the work the expiry spared.
     func reviewState(now: Date) -> RecoveryReviewState {
-        now.timeIntervalSince(sortDate) >= Self.staleReviewInterval
+        now.timeIntervalSince(sortDate) >= PendingWorkExpiryPolicy.expiryInterval
             ? .stale30Days
             : .current
+    }
+
+    /// How much it costs if this never lands. The tag, and the 30-day expiry
+    /// policy, both read this one verdict (bug a3f7cca8 / f71113a3).
+    var criticality: RecoveryCriticality {
+        switch self {
+        case .bundle(let bundle):
+            return bundle.capturedItemCount > 0 ? .critical : .empty
+        case .photos:
+            return .critical                 // the phone holds the only copy
+        case .op(let snapshot, _, _):
+            return snapshot.operationType == "create" ? .critical : .routine
+        case .autocreate:
+            return .routine                  // the customer record itself is safe locally
+        case .draft, .orphanDesign, .quarantinedVisit:
+            return .critical                 // content / custody surfaces
+        }
     }
 
     var discardPolicy: RecoveryDiscardPolicy {
@@ -749,6 +812,12 @@ extension RecoveryInventory {
                         artifacts: artifacts,
                         answers: answers
                     ),
+                    manifest: contentManifest(
+                        siteVisitId: normalizedSiteVisitId,
+                        packetOps: packetOps,
+                        artifacts: artifacts,
+                        answers: answers
+                    ),
                     blockedStage: blockedStage(for: packetOps),
                     syncOperationIds: sortedUniqueOperationIds(
                         members.compactMap(\.syncOpId) + packetOps.map(\.id)
@@ -805,6 +874,12 @@ extension RecoveryInventory {
                 draft: syntheticDraft,
                 siteVisitId: siteVisitId,
                 capturedItemCount: capturedItemCount(
+                    siteVisitId: siteVisitId,
+                    packetOps: packetOps,
+                    artifacts: artifacts,
+                    answers: answers
+                ),
+                manifest: contentManifest(
                     siteVisitId: siteVisitId,
                     packetOps: packetOps,
                     artifacts: artifacts,
@@ -1090,6 +1165,75 @@ extension RecoveryInventory {
         }
         return ids.count
     }
+
+    /// The same set `capturedItemCount` totals, classified by kind so the row
+    /// can say WHAT is held rather than just how much (bug a3f7cca8).
+    ///
+    /// Matching and the queue-derived fallback follow `capturedItemCount`
+    /// exactly: ids compare lowercased, and a tombstoned artifact still counts
+    /// through its packet op. A fallback artifact whose row is gone counts as a
+    /// photo — the honest majority kind for a site-visit capture.
+    private static func contentManifest(
+        siteVisitId: String,
+        packetOps: [SyncOpSnapshot],
+        artifacts: [ArtifactSnapshot],
+        answers: [ChecklistAnswerSnapshot]
+    ) -> RecoveryContentManifest {
+        var photoIds = Set<String>()
+        var deckKeys = Set<String>()
+        var noteIds = Set<String>()
+        var measurementIds = Set<String>()
+        var answerIds = Set<String>()
+        var classifiedArtifactIds = Set<String>()
+
+        for artifact in artifacts where artifact.siteVisitId.lowercased() == siteVisitId {
+            let artifactId = artifact.id.lowercased()
+            classifiedArtifactIds.insert(artifactId)
+            switch artifact.kind {
+            case SiteVisitCaptureArtifactKind.photo.rawValue,
+                 SiteVisitCaptureArtifactKind.annotatedPhoto.rawValue,
+                 SiteVisitCaptureArtifactKind.dimensionedPhoto.rawValue:
+                photoIds.insert(artifactId)
+            case SiteVisitCaptureArtifactKind.deckDesign.rawValue:
+                // Two artifacts pointing at one design are one deck.
+                deckKeys.insert(artifact.deckDesignId?.lowercased() ?? artifactId)
+            case SiteVisitCaptureArtifactKind.note.rawValue,
+                 SiteVisitCaptureArtifactKind.transcript.rawValue:
+                noteIds.insert(artifactId)
+            case SiteVisitCaptureArtifactKind.measurement.rawValue:
+                measurementIds.insert(artifactId)
+            default:
+                // An unrecognized kind is still captured work — count it as a
+                // photo rather than losing it from the manifest entirely.
+                photoIds.insert(artifactId)
+            }
+        }
+
+        for answer in answers where answer.siteVisitId.lowercased() == siteVisitId {
+            answerIds.insert(answer.id.lowercased())
+        }
+
+        for op in packetOps {
+            switch op.entityType {
+            case SyncEntityType.siteVisitArtifact.rawValue:
+                let artifactId = op.entityId.lowercased()
+                guard !classifiedArtifactIds.contains(artifactId) else { continue }
+                photoIds.insert(artifactId)
+            case SyncEntityType.siteVisitChecklistAnswer.rawValue:
+                answerIds.insert(op.entityId.lowercased())
+            default:
+                break
+            }
+        }
+
+        return RecoveryContentManifest(
+            photoCount: photoIds.count,
+            deckCount: deckKeys.count,
+            noteCount: noteIds.count,
+            measurementCount: measurementIds.count,
+            answerCount: answerIds.count
+        )
+    }
 }
 
 // MARK: - Live load
@@ -1125,6 +1269,9 @@ extension RecoveryInventory {
             }
         )
         let opModels = (try? modelContext.fetch(opDescriptor)) ?? []
+        // Names for the records these operations write, so a row can say WHICH
+        // project it is holding rather than a bare "Project update" (a3f7cca8).
+        let entityNames = entityDisplayNames(for: opModels, in: modelContext)
         let ops = opModels.filter { operation in
             guard SiteVisitOutboundSync.isSiteVisitOperation(operation) else { return true }
             guard let payload = try? JSONDecoder().decode(
@@ -1132,7 +1279,14 @@ extension RecoveryInventory {
                 from: operation.payload
             ) else { return false }
             return payload.companyId.lowercased() == activeCompanyId
-        }.map(SyncOpSnapshot.init(from:))
+        }.map { operation in
+            SyncOpSnapshot(
+                from: operation,
+                entityDisplayName: entityNames[
+                    "\(operation.entityType):\(operation.entityId.lowercased())"
+                ]
+            )
+        }
 
         // Autocreates: both parked and still-draining requests.
         let autocreates = (queue.parkedRequests + queue.activeRequests).map(AutocreateSnapshot.init(from:))
@@ -1241,6 +1395,153 @@ extension RecoveryInventory {
             visits: visits,
             now: now
         )
+    }
+
+    /// Resolves display names for the entity types that have one, fetching each
+    /// involved table at most once. Fetches are predicate-free where casing of
+    /// stored ids varies (UUID().uuidString is uppercase, Postgres is lowercase)
+    /// — ids compare lowercased in memory, the same rule as captureSnapshots.
+    ///
+    /// A table is touched only when a queued operation of that type exists this
+    /// pass, mirroring the guarded capture fetches above. Entity types with no
+    /// human-readable name stay unresolved by design — the row keeps its bare
+    /// action title rather than inventing a label (bug a3f7cca8).
+    @MainActor
+    static func entityDisplayNames(
+        for ops: [SyncOperation],
+        in modelContext: ModelContext
+    ) -> [String: String] {   // key: "\(entityType):\(entityId.lowercased())"
+        var names: [String: String] = [:]
+        let wanted = Dictionary(grouping: ops, by: \.entityType)
+            .mapValues { Set($0.map { $0.entityId.lowercased() }) }
+
+        func harvest<T>(_ type: String, _ fetch: () -> [T], id: (T) -> String, name: (T) -> String?) {
+            guard let ids = wanted[type], !ids.isEmpty else { return }
+            for row in fetch() where ids.contains(id(row).lowercased()) {
+                if let resolved = Self.condensed(name(row)) {
+                    names["\(type):\(id(row).lowercased())"] = resolved
+                }
+            }
+        }
+
+        harvest(
+            SyncEntityType.project.rawValue,
+            { (try? modelContext.fetch(FetchDescriptor<Project>())) ?? [] },
+            id: { $0.id },
+            name: { $0.title }
+        )
+        harvest(
+            SyncEntityType.client.rawValue,
+            { (try? modelContext.fetch(FetchDescriptor<Client>())) ?? [] },
+            id: { $0.id },
+            name: { $0.name }
+        )
+        harvest(
+            SyncEntityType.projectTask.rawValue,
+            { (try? modelContext.fetch(FetchDescriptor<ProjectTask>())) ?? [] },
+            id: { $0.id },
+            name: { $0.displayTitle }
+        )
+        harvest(
+            SyncEntityType.deckDesign.rawValue,
+            { (try? modelContext.fetch(FetchDescriptor<DeckDesign>())) ?? [] },
+            id: { $0.id },
+            name: { $0.title }
+        )
+        harvest(
+            SyncEntityType.subClient.rawValue,
+            { (try? modelContext.fetch(FetchDescriptor<SubClient>())) ?? [] },
+            id: { $0.id },
+            name: { $0.name }
+        )
+        harvest(
+            SyncEntityType.company.rawValue,
+            { (try? modelContext.fetch(FetchDescriptor<Company>())) ?? [] },
+            id: { $0.id },
+            name: { $0.name }
+        )
+        harvest(
+            SyncEntityType.user.rawValue,
+            { (try? modelContext.fetch(FetchDescriptor<User>())) ?? [] },
+            id: { $0.id },
+            name: { $0.fullName }
+        )
+        harvest(
+            SyncEntityType.taskType.rawValue,
+            { (try? modelContext.fetch(FetchDescriptor<TaskType>())) ?? [] },
+            id: { $0.id },
+            name: { $0.display }
+        )
+        harvest(
+            SyncEntityType.taskStatusOption.rawValue,
+            { (try? modelContext.fetch(FetchDescriptor<TaskStatusOption>())) ?? [] },
+            id: { $0.id },
+            name: { $0.display }
+        )
+        // A note has no title — its body IS its identity. `condensed` folds the
+        // newlines so the row stays one line.
+        harvest(
+            SyncEntityType.projectNote.rawValue,
+            { (try? modelContext.fetch(FetchDescriptor<ProjectNote>())) ?? [] },
+            id: { $0.id },
+            name: { $0.content }
+        )
+        harvest(
+            SyncEntityType.calendarUserEvent.rawValue,
+            { (try? modelContext.fetch(FetchDescriptor<CalendarUserEvent>())) ?? [] },
+            id: { $0.id },
+            name: { $0.title }
+        )
+        harvest(
+            SyncEntityType.timeEntry.rawValue,
+            { (try? modelContext.fetch(FetchDescriptor<TimeEntry>())) ?? [] },
+            id: { $0.id },
+            name: { $0.notes }
+        )
+        // An estimate/invoice always has its number; the optional title is the
+        // friendlier label when the operator gave it one.
+        harvest(
+            SyncEntityType.estimate.rawValue,
+            { (try? modelContext.fetch(FetchDescriptor<Estimate>())) ?? [] },
+            id: { $0.id },
+            name: { estimate in Self.condensed(estimate.title) ?? estimate.estimateNumber }
+        )
+        harvest(
+            SyncEntityType.invoice.rawValue,
+            { (try? modelContext.fetch(FetchDescriptor<Invoice>())) ?? [] },
+            id: { $0.id },
+            name: { invoice in Self.condensed(invoice.title) ?? invoice.invoiceNumber }
+        )
+        harvest(
+            SyncEntityType.catalogItem.rawValue,
+            { (try? modelContext.fetch(FetchDescriptor<CatalogItem>())) ?? [] },
+            id: { $0.id },
+            name: { $0.name }
+        )
+        harvest(
+            SyncEntityType.product.rawValue,
+            { (try? modelContext.fetch(FetchDescriptor<Product>())) ?? [] },
+            id: { $0.id },
+            name: { $0.name }
+        )
+        harvest(
+            SyncEntityType.inventoryItem.rawValue,
+            { (try? modelContext.fetch(FetchDescriptor<InventoryItem>())) ?? [] },
+            id: { $0.id },
+            name: { $0.name }
+        )
+        return names
+    }
+
+    /// One-line, trimmed rendering of a stored name. A note's body is its only
+    /// identity and can carry newlines; a row is one line, so internal
+    /// whitespace runs collapse to single spaces. Empty resolves to nil.
+    private static func condensed(_ value: String?) -> String? {
+        guard let value else { return nil }
+        let collapsed = value
+            .split(whereSeparator: { $0.isWhitespace || $0.isNewline })
+            .joined(separator: " ")
+        return collapsed.isEmpty ? nil : collapsed
     }
 
     /// Capture snapshots for the visit ids a draft or a durable packet operation

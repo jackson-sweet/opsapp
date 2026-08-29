@@ -35,18 +35,28 @@ struct PendingWorkDetailSheet: View {
         VStack(alignment: .leading, spacing: 0) {
             handle
 
-            Text(PendingWorkVisuals.title(for: item))
-                .font(OPSStyle.Typography.section)
-                .textCase(.uppercase)
-                .foregroundColor(OPSStyle.Colors.text)
-                .lineLimit(1)
-                .minimumScaleFactor(0.7)
-                .padding(.horizontal, OPSStyle.Layout.spacing3_5)
-                .padding(.top, OPSStyle.Layout.spacing3_5)
+            HStack(alignment: .firstTextBaseline, spacing: OPSStyle.Layout.spacing2) {
+                Text(PendingWorkVisuals.title(for: item))
+                    .font(OPSStyle.Typography.section)
+                    .textCase(.uppercase)
+                    .foregroundColor(OPSStyle.Colors.text)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+
+                PendingWorkCriticalTag(item: item)
+
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+            .padding(.top, OPSStyle.Layout.spacing3_5)
 
             ScrollView {
                 VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2_5) {
                     memberList
+
+                    if !metadataRows.isEmpty {
+                        metadataLedger
+                    }
 
                     if isParked {
                         parkedBlock
@@ -117,6 +127,118 @@ struct PendingWorkDetailSheet: View {
                 .lineLimit(1)
         }
         .padding(.vertical, OPSStyle.Layout.spacing2)
+    }
+
+    // MARK: - Metadata ledger (bug a3f7cca8)
+    //
+    // The sheet used to answer "what state is this in?" and nothing else. An
+    // operator staring at a stuck row also needs "which record, what change,
+    // since when, how many tries" — the facts that turn a mystery into a
+    // decision. Same label/value ledger the Trash quick view uses, so the two
+    // inspection surfaces read as one component.
+
+    private struct MetadataRow: Identifiable {
+        let label: String
+        let value: String
+
+        var id: String { label }
+    }
+
+    private var metadataRows: [MetadataRow] {
+        let copy = SyncStatusCopy.PendingWork.self
+        switch item {
+        case .op(let snapshot, _, _):
+            return [
+                MetadataRow(
+                    label: copy.ledgerEntityLabel,
+                    value: snapshot.entityDisplayName ?? copy.ledgerEmptyValue
+                ),
+                MetadataRow(
+                    label: copy.ledgerActionLabel,
+                    value: SyncStatusCopy.title(
+                        entityType: snapshot.entityType,
+                        operationType: snapshot.operationType,
+                        changedFields: []
+                    )
+                ),
+                MetadataRow(
+                    label: copy.ledgerQueuedLabel,
+                    value: copy.ledgerQueuedValue(snapshot.createdAt)
+                ),
+                MetadataRow(
+                    label: copy.ledgerTriesLabel,
+                    value: "\(snapshot.retryCount)"
+                ),
+            ]
+        case .bundle(let bundle):
+            return [
+                MetadataRow(
+                    label: copy.ledgerCarryingLabel,
+                    value: copy.manifestSummary(bundle.manifest)
+                ),
+                MetadataRow(
+                    label: copy.ledgerQueuedLabel,
+                    value: copy.ledgerQueuedValue(bundle.createdAt)
+                ),
+            ]
+        case .photos(let grouped, _):
+            let manifest = RecoveryContentManifest(
+                photoCount: grouped.count,
+                deckCount: 0,
+                noteCount: 0,
+                measurementCount: 0,
+                answerCount: 0
+            )
+            return [
+                MetadataRow(
+                    label: copy.ledgerCarryingLabel,
+                    value: copy.manifestSummary(manifest)
+                ),
+                MetadataRow(
+                    label: copy.ledgerQueuedLabel,
+                    value: copy.ledgerQueuedValue(item.sortDate)
+                ),
+            ]
+        case .autocreate, .draft, .orphanDesign, .quarantinedVisit:
+            // These rows carry their whole story in the member list and their
+            // own recovery path. A ledger here would restate, not inform.
+            return []
+        }
+    }
+
+    private var metadataLedger: some View {
+        VStack(spacing: 0) {
+            ForEach(Array(metadataRows.enumerated()), id: \.element.id) { index, row in
+                HStack(alignment: .firstTextBaseline, spacing: OPSStyle.Layout.spacing3) {
+                    Text(row.label)
+                        .font(OPSStyle.Typography.metadata)
+                        .tracking(OPSStyle.Typography.trackingCompact)
+                        .foregroundColor(OPSStyle.Colors.text3)
+                        .frame(
+                            minWidth: OPSStyle.Layout.touchTargetLarge,
+                            alignment: .leading
+                        )
+
+                    Text(row.value)
+                        .font(OPSStyle.Typography.body)
+                        .monospacedDigit()
+                        .foregroundColor(OPSStyle.Colors.text)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .accessibilityLabel("\(row.label), \(row.value)")
+                }
+                .padding(.horizontal, OPSStyle.Layout.spacing3)
+                .padding(.vertical, OPSStyle.Layout.spacing2_5)
+
+                if index < metadataRows.count - 1 {
+                    Rectangle()
+                        .fill(OPSStyle.Colors.lineSoft)
+                        .frame(height: OPSStyle.Layout.Border.standard)
+                        .padding(.leading, OPSStyle.Layout.spacing3)
+                }
+            }
+        }
+        .glassSurface()
     }
 
     // MARK: - Parked block

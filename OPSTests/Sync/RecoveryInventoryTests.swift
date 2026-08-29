@@ -16,6 +16,7 @@
 //  order-independence of the output for a fixed `now`.
 //
 
+import SwiftData
 import XCTest
 @testable import OPS
 
@@ -884,4 +885,396 @@ final class RecoveryInventoryTests: XCTestCase {
         let ops = [opSnap(entityId: "a", status: "parked"), opSnap(entityId: "b", status: "pending")]
         XCTAssertEqual(build(ops: ops), build(ops: ops))
     }
+
+    // MARK: - Content manifest + criticality (bug a3f7cca8)
+
+    func testBundleManifestCountsEachCapturedKind() throws {
+        let draft = draftSnap(siteVisitId: "visit", clientId: nil)
+        let packet = opSnap(
+            entityType: SyncEntityType.siteVisit.rawValue,
+            entityId: "visit",
+            operationType: "create",
+            status: "failed",
+            siteVisitId: "visit"
+        )
+        let inventory = RecoveryInventory.build(
+            ops: [packet],
+            autocreates: [],
+            photos: [],
+            drafts: [draft],
+            artifacts: [
+                artifactSnap(id: "a1", siteVisitId: "visit", deckDesignId: nil, kind: "photo"),
+                artifactSnap(id: "a2", siteVisitId: "visit", deckDesignId: nil, kind: "annotated_photo"),
+                artifactSnap(id: "a3", siteVisitId: "visit", deckDesignId: "d1", kind: "deck_design"),
+                artifactSnap(id: "a4", siteVisitId: "visit", deckDesignId: nil, kind: "note"),
+                artifactSnap(id: "a5", siteVisitId: "visit", deckDesignId: nil, kind: "measurement"),
+            ],
+            answers: [
+                ChecklistAnswerSnapshot(id: "ans1", siteVisitId: "visit"),
+                ChecklistAnswerSnapshot(id: "ans2", siteVisitId: "visit"),
+                ChecklistAnswerSnapshot(id: "ans3", siteVisitId: "visit"),
+            ],
+            orphans: [],
+            now: now
+        )
+
+        let bundle = try XCTUnwrap(bundles(inventory.attention).first)
+        XCTAssertEqual(bundle.manifest.photoCount, 2)
+        XCTAssertEqual(bundle.manifest.deckCount, 1)
+        XCTAssertEqual(bundle.manifest.noteCount, 1)
+        XCTAssertEqual(bundle.manifest.measurementCount, 1)
+        XCTAssertEqual(bundle.manifest.answerCount, 3)
+        XCTAssertEqual(bundle.manifest.totalCount, 8)
+    }
+
+    /// Two artifacts drawn against one design are one deck, not two.
+    func testBundleManifestCollapsesArtifactsSharingADeckDesign() throws {
+        let draft = draftSnap(siteVisitId: "visit", clientId: nil)
+        let packet = opSnap(
+            entityType: SyncEntityType.siteVisit.rawValue,
+            entityId: "visit",
+            operationType: "create",
+            status: "failed",
+            siteVisitId: "visit"
+        )
+        let inventory = RecoveryInventory.build(
+            ops: [packet],
+            autocreates: [],
+            photos: [],
+            drafts: [draft],
+            artifacts: [
+                artifactSnap(id: "a1", siteVisitId: "visit", deckDesignId: "d1", kind: "deck_design"),
+                artifactSnap(id: "a2", siteVisitId: "visit", deckDesignId: "D1", kind: "deck_design"),
+                artifactSnap(id: "a3", siteVisitId: "visit", deckDesignId: nil, kind: "deck_design"),
+            ],
+            orphans: [],
+            now: now
+        )
+
+        let bundle = try XCTUnwrap(bundles(inventory.attention).first)
+        XCTAssertEqual(bundle.manifest.deckCount, 2, "one shared design + one design-less artifact")
+    }
+
+    func testEmptyPacketCarriesNothingAndIsNotCritical() throws {
+        let draft = draftSnap(siteVisitId: "visit", clientId: nil)
+        let packet = opSnap(
+            entityType: SyncEntityType.siteVisit.rawValue,
+            entityId: "visit",
+            operationType: "create",
+            status: "failed",
+            siteVisitId: "visit"
+        )
+        let inventory = build(ops: [packet], drafts: [draft])
+
+        let item = try XCTUnwrap(inventory.attention.first)
+        let bundle = try XCTUnwrap(bundles(inventory.attention).first)
+        XCTAssertEqual(bundle.capturedItemCount, 0)
+        XCTAssertEqual(bundle.manifest, .empty)
+        XCTAssertEqual(item.criticality, .empty)
+        XCTAssertEqual(
+            SyncStatusCopy.PendingWork.manifestSummary(bundle.manifest),
+            "NOTHING CAPTURED"
+        )
+    }
+
+    func testCriticalitySeparatesIrreplaceableWorkFromQueueMetadata() {
+        XCTAssertEqual(
+            RecoveryItem.op(
+                opSnap(entityType: "project", operationType: "create", status: "failed"),
+                tone: .attention,
+                nextEligibleAt: nil
+            ).criticality,
+            .critical
+        )
+        XCTAssertEqual(
+            RecoveryItem.op(
+                opSnap(entityType: "project", operationType: "update", status: "failed"),
+                tone: .attention,
+                nextEligibleAt: nil
+            ).criticality,
+            .routine
+        )
+        XCTAssertEqual(
+            RecoveryItem.photos(grouped: [photoSnap(status: "failed")], tone: .attention).criticality,
+            .critical
+        )
+        XCTAssertEqual(
+            RecoveryItem.autocreate(autocreateSnap(), tone: .attention, nextEligibleAt: nil).criticality,
+            .routine
+        )
+        XCTAssertEqual(RecoveryItem.draft(draftSnap()).criticality, .critical)
+        XCTAssertEqual(RecoveryItem.orphanDesign(orphanSnap()).criticality, .critical)
+    }
+
+    func testContentBearingPacketIsCritical() throws {
+        let draft = draftSnap(siteVisitId: "visit", clientId: nil)
+        let packet = opSnap(
+            entityType: SyncEntityType.siteVisit.rawValue,
+            entityId: "visit",
+            operationType: "create",
+            status: "failed",
+            siteVisitId: "visit"
+        )
+        let inventory = RecoveryInventory.build(
+            ops: [packet],
+            autocreates: [],
+            photos: [],
+            drafts: [draft],
+            artifacts: [
+                artifactSnap(id: "a1", siteVisitId: "visit", deckDesignId: nil, kind: "photo"),
+            ],
+            orphans: [],
+            now: now
+        )
+
+        let item = try XCTUnwrap(inventory.attention.first)
+        XCTAssertEqual(item.criticality, .critical)
+    }
+
+    /// A tombstoned artifact whose row is gone still counts through its packet
+    /// op — the honest majority kind for a site-visit capture is a photo.
+    func testManifestFallsBackToTheQueueWhenAnArtifactRowIsGone() throws {
+        let draft = draftSnap(siteVisitId: "visit", clientId: nil)
+        let packet = opSnap(
+            entityType: SyncEntityType.siteVisit.rawValue,
+            entityId: "visit",
+            operationType: "create",
+            status: "failed",
+            siteVisitId: "visit"
+        )
+        let orphanedArtifactOp = opSnap(
+            entityType: SyncEntityType.siteVisitArtifact.rawValue,
+            entityId: "a-gone",
+            operationType: "delete",
+            status: "failed",
+            siteVisitId: "visit"
+        )
+        let inventory = RecoveryInventory.build(
+            ops: [packet, orphanedArtifactOp],
+            autocreates: [],
+            photos: [],
+            drafts: [draft],
+            artifacts: [],
+            orphans: [],
+            now: now
+        )
+
+        let bundle = try XCTUnwrap(bundles(inventory.attention).first)
+        XCTAssertEqual(bundle.manifest.photoCount, 1)
+        XCTAssertEqual(bundle.capturedItemCount, 1)
+    }
+
+    // MARK: - Entity display names (bug a3f7cca8)
+
+    func testDisplayNamesResolveTheRecordBehindEachOperation() throws {
+        let container = try makeNameContainer()
+        let context = ModelContext(container)
+
+        let project = Project(id: "project-1", title: "Cedar deck rebuild", status: .accepted)
+        project.companyId = "company-1"
+        context.insert(project)
+
+        let client = Client(id: "client-1", name: "Morgan Lee", companyId: "company-1")
+        context.insert(client)
+
+        let design = DeckDesign(id: "design-1", companyId: "company-1", title: "Back deck v3")
+        context.insert(design)
+        try context.save()
+
+        let names = RecoveryInventory.entityDisplayNames(
+            for: [
+                nameOp(entityType: "project", entityId: "project-1"),
+                nameOp(entityType: "client", entityId: "client-1"),
+                nameOp(entityType: "deckDesign", entityId: "design-1"),
+            ],
+            in: context
+        )
+
+        XCTAssertEqual(names["project:project-1"], "Cedar deck rebuild")
+        XCTAssertEqual(names["client:client-1"], "Morgan Lee")
+        XCTAssertEqual(names["deckDesign:design-1"], "Back deck v3")
+    }
+
+    /// `UUID().uuidString` is uppercase while Postgres writes lowercase, so the
+    /// stored id casing depends on which side created the row. The resolver
+    /// compares lowercased — a mismatch would silently drop every name.
+    func testDisplayNamesMatchAcrossIdCasing() throws {
+        let container = try makeNameContainer()
+        let context = ModelContext(container)
+
+        let project = Project(
+            id: "AAAAAAAA-BBBB-4CCC-8DDD-EEEEEEEEEEEE",
+            title: "Uppercase id project",
+            status: .accepted
+        )
+        project.companyId = "company-1"
+        context.insert(project)
+        try context.save()
+
+        let names = RecoveryInventory.entityDisplayNames(
+            for: [nameOp(entityType: "project", entityId: "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee")],
+            in: context
+        )
+
+        XCTAssertEqual(names["project:aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee"], "Uppercase id project")
+    }
+
+    /// An entity deleted locally after its op queued has no name left to show.
+    /// The row falls back to its bare action title rather than inventing one.
+    func testDisplayNamesOmitEntitiesNotOnDeviceAndBlankTitles() throws {
+        let container = try makeNameContainer()
+        let context = ModelContext(container)
+
+        let blank = Project(id: "project-blank", title: "   ", status: .accepted)
+        blank.companyId = "company-1"
+        context.insert(blank)
+        try context.save()
+
+        let names = RecoveryInventory.entityDisplayNames(
+            for: [
+                nameOp(entityType: "project", entityId: "project-blank"),
+                nameOp(entityType: "project", entityId: "project-missing"),
+            ],
+            in: context
+        )
+
+        XCTAssertNil(names["project:project-blank"])
+        XCTAssertNil(names["project:project-missing"])
+    }
+
+    /// A note carries no title — its body is its identity, folded to one line.
+    func testDisplayNameForANoteFoldsItsBodyToOneLine() throws {
+        let container = try makeNameContainer()
+        let context = ModelContext(container)
+
+        let note = ProjectNote(
+            id: "note-1",
+            projectId: "project-1",
+            companyId: "company-1",
+            authorId: "user-1",
+            content: "Client wants\nthe railing\n\nmoved north"
+        )
+        context.insert(note)
+        try context.save()
+
+        let names = RecoveryInventory.entityDisplayNames(
+            for: [nameOp(entityType: "projectNote", entityId: "note-1")],
+            in: context
+        )
+
+        XCTAssertEqual(names["projectNote:note-1"], "Client wants the railing moved north")
+    }
+
+    func testRowTitleNamesTheRecordAndFallsBackWhenItCannot() {
+        let named = opSnapWithName(
+            entityType: "project",
+            operationType: "update",
+            displayName: "Cedar deck rebuild"
+        )
+        XCTAssertEqual(
+            PendingWorkVisuals.title(for: .op(named, tone: .attention, nextEligibleAt: nil)),
+            "Project update — Cedar deck rebuild"
+        )
+
+        let anonymous = opSnapWithName(
+            entityType: "project",
+            operationType: "update",
+            displayName: nil
+        )
+        XCTAssertEqual(
+            PendingWorkVisuals.title(for: .op(anonymous, tone: .attention, nextEligibleAt: nil)),
+            "Project update"
+        )
+    }
+
+    /// The screenshot read "Deckdesign update" — the default `capitalized`
+    /// fallback mangling a camelCase entity type.
+    func testDeckDesignRowsReadAsADeckDesign() {
+        let named = opSnapWithName(
+            entityType: "deckDesign",
+            operationType: "update",
+            displayName: "Back deck v3"
+        )
+        XCTAssertEqual(
+            PendingWorkVisuals.title(for: .op(named, tone: .attention, nextEligibleAt: nil)),
+            "Deck design update — Back deck v3"
+        )
+    }
+
+    // MARK: - Display-name fixtures
+
+    private func opSnapWithName(
+        entityType: String,
+        operationType: String,
+        displayName: String?
+    ) -> SyncOpSnapshot {
+        SyncOpSnapshot(
+            id: UUID(),
+            entityType: entityType,
+            entityId: "entity-1",
+            operationType: operationType,
+            status: "failed",
+            retryCount: 1,
+            lastAttemptedAt: nil,
+            lastError: nil,
+            createdAt: base,
+            siteVisitId: nil,
+            entityDisplayName: displayName
+        )
+    }
+
+    private func nameOp(entityType: String, entityId: String) -> SyncOperation {
+        SyncOperation(
+            entityType: entityType,
+            entityId: entityId,
+            operationType: "update",
+            payload: Data("{}".utf8),
+            changedFields: []
+        )
+    }
+
+    /// Container for the display-name resolver. Held for the case's lifetime by
+    /// the caller's `let` — a `ModelContext` does not retain its container, and
+    /// `makeContainer().mainContext` in one expression traps on the next insert.
+    /// The inert warm-up `SyncOperation` materializes that table so any
+    /// `#Predicate` fetch of it cannot trap on a never-populated store.
+    private func makeNameContainer() throws -> ModelContainer {
+        let schema = Schema([
+            Project.self,
+            ProjectTask.self,
+            TaskType.self,
+            TaskTypeReminder.self,
+            TaskReminder.self,
+            User.self,
+            Client.self,
+            SubClient.self,
+            ProjectPhoto.self,
+            ProjectNote.self,
+            DeckDesign.self,
+            SyncOperation.self,
+        ])
+        let configuration = ModelConfiguration(
+            schema: schema,
+            isStoredInMemoryOnly: true,
+            allowsSave: true
+        )
+        let container = try ModelContainer(for: schema, configurations: [configuration])
+        retainedNameContainers.append(container)
+
+        let warmup = ModelContext(container)
+        warmup.insert(
+            SyncOperation(
+                entityType: "displayNameWarmup",
+                entityId: "displayNameWarmup",
+                operationType: "update",
+                payload: Data("{}".utf8),
+                changedFields: []
+            )
+        )
+        try warmup.save()
+
+        return container
+    }
+
+    private var retainedNameContainers: [ModelContainer] = []
 }

@@ -859,14 +859,22 @@ struct LeadDetailView: View {
                 ),
                 cornerRadius: OPSStyle.Layout.buttonRadius,
                 onEdit: { fieldEdit.begin(.contact) },
-                onActivate: {
-                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                    if contactHasValue {
-                        showingContactDialog = true
-                    } else if canEdit {
-                        fieldEdit.begin(.contact)
+                // A viewer on a lead with no phone and no email has nothing
+                // behind this control and no right to fill it. Handing the
+                // modifier a nil activation routes that case to its inert
+                // painted state — no button trait, no dead tap — instead of a
+                // control that answers a finger with nothing (b1d30fe8). Same
+                // shape the CLIENT row already uses for its empty case.
+                onActivate: (contactHasValue || canEdit)
+                    ? {
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        if contactHasValue {
+                            showingContactDialog = true
+                        } else {
+                            fieldEdit.begin(.contact)
+                        }
                     }
-                }
+                    : nil
             )
             .accessibilityLabel(
                 contactInvitesAdd

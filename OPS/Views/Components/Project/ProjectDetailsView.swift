@@ -1143,7 +1143,6 @@ struct ProjectDetailsView: View {
         .environmentObject(dataController)
     }
 
-    @ViewBuilder
     /// Whether the CLIENT row may offer `Change contact`. A client with no
     /// people to choose from gets no menu item rather than a picker that opens
     /// on an empty list — the way to add people is the client page, not here.
@@ -1151,6 +1150,7 @@ struct ProjectDetailsView: View {
         project.client?.subClients.contains { $0.deletedAt == nil } ?? false
     }
 
+    @ViewBuilder
     private var clientContactSheet: some View {
         if let client = project.client {
             ContactDetailView(client: client, project: project)

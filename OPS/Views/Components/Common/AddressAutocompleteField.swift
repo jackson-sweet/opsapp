@@ -11,6 +11,7 @@ import SwiftUI
 import MapKit
 import Combine
 import CoreLocation
+import SwiftData
 
 struct AddressAutocompleteField: View {
     @Binding var address: String
@@ -22,6 +23,16 @@ struct AddressAutocompleteField: View {
     /// so making the operator tap the field they just held would be the app
     /// forgetting what it was just asked to do.
     let autofocus: Bool
+    /// Suggest addresses OPS already knows — jobs, clients, sub-contacts —
+    /// above the MapKit rows. Opt-in, and only ever on for a CUSTOMER SITE:
+    /// on the operator's own home address or the company's own address, every
+    /// customer's address is noise. Bug 29b75dce.
+    let knownPlaces: Bool
+
+    /// The tag column of a known row. A fixed label column, not a spacing
+    /// value — the same idea as `ProjectInfoDoc.labelColumnWidth`: JOB and
+    /// CLIENT share one left edge so the addresses beside them line up.
+    private static let tagColumnWidth: CGFloat = 44
 
     @State private var searchText = ""
     @State private var searchResults: [MKLocalSearchCompletion] = []
@@ -34,13 +45,22 @@ struct AddressAutocompleteField: View {
     @State private var locationTimeoutTask: Task<Void, Never>?
     @FocusState private var isFocused: Bool
 
+    @Environment(\.modelContext) private var modelContext
+    /// Snapshotted once per field mount — the store does not change under a
+    /// field being typed into, and a fetch per keystroke would be the latency
+    /// this feature exists to remove.
+    @State private var knownCandidates: [KnownPlace] = []
+    @State private var knownMatches: [KnownPlace] = []
+
     init(address: Binding<String>,
          placeholder: String = "Enter Address",
          autofocus: Bool = false,
+         knownPlaces: Bool = false,
          onAddressSelected: ((String, CLLocationCoordinate2D?) -> Void)? = nil) {
         self._address = address
         self.placeholder = placeholder
         self.autofocus = autofocus
+        self.knownPlaces = knownPlaces
         self.onAddressSelected = onAddressSelected
     }
 
@@ -70,8 +90,15 @@ struct AddressAutocompleteField: View {
                         }
                         if newValue.isEmpty {
                             searchResults = []
+                            knownMatches = []
                             showingResults = false
                         } else {
+                            // Known places match synchronously — no debounce,
+                            // no network. Two characters and the field already
+                            // knows the business. MapKit keeps its debounce.
+                            knownMatches = knownPlaces
+                                ? KnownPlaceSuggestions.match(newValue, in: knownCandidates)
+                                : []
                             showingResults = true
                             // Send to debouncer instead of immediate search
                             searchDebouncer.send(newValue)
@@ -107,6 +134,7 @@ struct AddressAutocompleteField: View {
                         searchText = ""
                         address = ""
                         searchResults = []
+                        knownMatches = []
                         showingResults = false
                     }) {
                         Image(systemName: "xmark.circle.fill")
@@ -135,9 +163,48 @@ struct AddressAutocompleteField: View {
                     )
             )
 
-            // Search results
-            if showingResults && !searchResults.isEmpty {
+            // Search results — what OPS already knows, then the world.
+            if showingResults && (!knownMatches.isEmpty || !searchResults.isEmpty) {
                 VStack(alignment: .leading, spacing: 0) {
+                    ForEach(knownMatches) { place in
+                        Button(action: {
+                            selectKnownPlace(place)
+                        }) {
+                            HStack(alignment: .firstTextBaseline, spacing: OPSStyle.Layout.spacing2) {
+                                Text(place.kind.rawValue)
+                                    .font(OPSStyle.Typography.microLabel)
+                                    .foregroundColor(OPSStyle.Colors.secondaryText)
+                                    .frame(width: Self.tagColumnWidth, alignment: .leading)
+
+                                VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
+                                    Text(place.address)
+                                        .font(OPSStyle.Typography.body)
+                                        .foregroundColor(OPSStyle.Colors.primaryText)
+                                        .lineLimit(1)
+
+                                    Text(place.context)
+                                        .font(OPSStyle.Typography.caption)
+                                        .foregroundColor(OPSStyle.Colors.secondaryText)
+                                        .lineLimit(1)
+                                }
+                            }
+                            .padding(.horizontal, OPSStyle.Layout.spacing3)
+                            .padding(.vertical, OPSStyle.Layout.spacing2_5)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                        .accessibilityLabel("\(place.address), \(place.context)")
+
+                        if place.id != knownMatches.last?.id {
+                            Divider()
+                                .background(OPSStyle.Colors.line)
+                        }
+                    }
+
+                    if !knownMatches.isEmpty && !searchResults.isEmpty {
+                        Divider()
+                            .background(OPSStyle.Colors.line)
+                    }
+
                     ForEach(searchResults.prefix(5), id: \.self) { result in
                         Button(action: {
                             selectAddress(result)
@@ -172,6 +239,9 @@ struct AddressAutocompleteField: View {
         }
         .onAppear {
             setupCompleter()
+            if knownPlaces {
+                knownCandidates = KnownPlaceSuggestions.candidates(in: modelContext)
+            }
             // Initialize with current address if available
             if !address.isEmpty {
                 searchText = address
@@ -223,6 +293,23 @@ struct AddressAutocompleteField: View {
         }
     }
 
+    /// Selecting a known place is identical to a hand-typed address that
+    /// happens to be right: the stored string goes straight in, and the stored
+    /// coordinate rides with it when the source has one. No MapKit round trip
+    /// for a string OPS is already the authority on.
+    private func selectKnownPlace(_ place: KnownPlace) {
+        searchText = place.address
+        address = place.address
+        showingResults = false
+        searchResults = []
+        knownMatches = []
+
+        onAddressSelected?(place.address, place.coordinate)
+
+        // Dismiss keyboard
+        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+    }
+
     private func selectAddress(_ result: MKLocalSearchCompletion) {
         // Update the search text and bound address
         let fullAddress = result.title + (result.subtitle.isEmpty ? "" : ", " + result.subtitle)
@@ -230,6 +317,7 @@ struct AddressAutocompleteField: View {
         address = fullAddress
         showingResults = false
         searchResults = []
+        knownMatches = []
 
         // Try to get coordinates for the selected address
         geocodeAddress(result) { coordinate in
@@ -348,6 +436,7 @@ struct AddressAutocompleteField: View {
                 address = fullAddress
                 showingResults = false
                 searchResults = []
+                knownMatches = []
                 onAddressSelected?(fullAddress, location.coordinate)
             }
         }

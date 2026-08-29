@@ -1273,6 +1273,7 @@ private struct AddressRow: View {
     @State private var draft = ""
     @StateObject private var completer = InlineAddressCompleter()
     @FocusState private var fieldFocused: Bool
+    @Environment(\.modelContext) private var modelContext
 
     private var writtenAddress: String {
         address ?? ""
@@ -1350,8 +1351,48 @@ private struct AddressRow: View {
             // Suggestions expand inside the content region, under the field
             // that produced them — not across the card, which would break the
             // label column the rest of the document is read by.
-            if !completer.results.isEmpty {
+            if !completer.knownMatches.isEmpty || !completer.results.isEmpty {
                 VStack(spacing: 0) {
+                    ForEach(completer.knownMatches) { place in
+                        if place.id != completer.knownMatches.first?.id {
+                            Rectangle()
+                                .fill(OPSStyle.Colors.lineSoft)
+                                .frame(height: 1)
+                        }
+
+                        Button(action: { selectKnownPlace(place) }) {
+                            HStack(spacing: OPSStyle.Layout.spacing2) {
+                                Text(place.kind.rawValue)
+                                    .font(OPSStyle.Typography.microLabel)
+                                    .foregroundColor(OPSStyle.Colors.text3)
+
+                                VStack(alignment: .leading, spacing: 1) {
+                                    Text(place.address)
+                                        .font(ProjectInfoDoc.valueFont)
+                                        .foregroundColor(OPSStyle.Colors.text)
+                                        .lineLimit(1)
+                                    Text(place.context)
+                                        .font(OPSStyle.Typography.smallCaption)
+                                        .foregroundColor(OPSStyle.Colors.text3)
+                                        .lineLimit(1)
+                                }
+
+                                Spacer(minLength: 0)
+                            }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.vertical, OPSStyle.Layout.spacing2)
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(PlainButtonStyle())
+                        .accessibilityLabel("\(place.address), \(place.context)")
+                    }
+
+                    if !completer.knownMatches.isEmpty && !completer.results.isEmpty {
+                        Rectangle()
+                            .fill(OPSStyle.Colors.lineSoft)
+                            .frame(height: 1)
+                    }
+
                     ForEach(completer.results, id: \.self) { result in
                         if result != completer.results.first {
                             Rectangle()
@@ -1363,7 +1404,7 @@ private struct AddressRow: View {
                             HStack(spacing: OPSStyle.Layout.spacing2) {
                                 Image(systemName: "location.fill")
                                     .font(.system(size: OPSStyle.Layout.IconSize.xs))
-                                    .foregroundColor(OPSStyle.Colors.primaryAccent)
+                                    .foregroundColor(OPSStyle.Colors.secondaryText)
 
                                 VStack(alignment: .leading, spacing: 1) {
                                     Text(result.title)
@@ -1393,6 +1434,10 @@ private struct AddressRow: View {
 
     private func startEditing() {
         draft = address ?? ""
+        // Bug 29b75dce — snapshot once per edit session. The addresses OPS
+        // already knows lead the suggestions here exactly as they do in the
+        // shared field.
+        completer.knownCandidates = KnownPlaceSuggestions.candidates(in: modelContext)
         isEditing = true
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
             fieldFocused = true
@@ -1409,6 +1454,13 @@ private struct AddressRow: View {
     private func cancelEdit() {
         completer.clear()
         withAnimation { isEditing = false }
+    }
+
+    /// Fills the draft; SAVE still commits it, exactly like `selectResult`.
+    /// No geocode: the string is already OPS-canonical.
+    private func selectKnownPlace(_ place: KnownPlace) {
+        draft = place.address
+        completer.clear()
     }
 
     private func selectResult(_ result: MKLocalSearchCompletion) {
@@ -1437,6 +1489,10 @@ private struct AddressRow: View {
 
 private class InlineAddressCompleter: NSObject, ObservableObject, MKLocalSearchCompleterDelegate {
     @Published var results: [MKLocalSearchCompletion] = []
+    /// Bug 29b75dce — addresses OPS already knows, matched synchronously ahead
+    /// of the MapKit results. Seeded once when the editor opens.
+    @Published var knownMatches: [KnownPlace] = []
+    var knownCandidates: [KnownPlace] = []
     private let completer = MKLocalSearchCompleter()
 
     override init() {
@@ -1447,6 +1503,9 @@ private class InlineAddressCompleter: NSObject, ObservableObject, MKLocalSearchC
 
     func search(_ query: String) {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        // Known places answer from the first character; MapKit still waits for
+        // three, because a two-letter fragment fetches the world.
+        knownMatches = KnownPlaceSuggestions.match(trimmed, in: knownCandidates)
         if trimmed.count < 3 {
             results = []
             return
@@ -1456,6 +1515,7 @@ private class InlineAddressCompleter: NSObject, ObservableObject, MKLocalSearchC
 
     func clear() {
         results = []
+        knownMatches = []
     }
 
     func completerDidUpdateResults(_ completer: MKLocalSearchCompleter) {

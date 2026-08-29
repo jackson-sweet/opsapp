@@ -195,7 +195,9 @@ struct BookSiteVisitSheet: View {
                 startingAt: Self.defaultStart()
             )
         }
-        await loadContext()
+        // Same hop the heads-up seed below uses — the WHEN surface reads the
+        // SwiftData main context, so it must land on the main actor.
+        await MainActor.run { loadContext() }
         let defaultLead = await fetchDefaultHeadsUp()
         await MainActor.run {
             form?.seedDefaultHeadsUp(defaultLead)

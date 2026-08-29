@@ -130,10 +130,10 @@ struct CalendarSiteVisitCard: View {
                 .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .semibold))
                 .foregroundColor(OPSStyle.Colors.tanTextM)
         }
-        .frame(
-            width: OPSStyle.Layout.chipMinHeight,
-            height: OPSStyle.Layout.chipMinHeight
-        )
+        // 34pt — CalendarUserEventCard.iconTile's exact frame. The tile is
+        // identity, not a touch target; chipMinHeight (36) is a control size
+        // and drifted this 2pt off its sibling.
+        .frame(width: 34, height: 34)
     }
 
     private var statusTag: some View {

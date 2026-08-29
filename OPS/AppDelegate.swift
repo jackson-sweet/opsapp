@@ -691,7 +691,7 @@ class AppDelegate: NSObject, UIApplicationDelegate, OSNotificationLifecycleListe
             )
         case "billable_this_week":
             NotificationCenter.default.post(
-                name: Notification.Name("NavigateToMap"),
+                name: Notification.Name("NavigateToMapView"),
                 object: nil
             )
         case "role_assigned":
@@ -700,8 +700,9 @@ class AppDelegate: NSObject, UIApplicationDelegate, OSNotificationLifecycleListe
                 object: nil
             )
         case "inventory_warning", "inventory_critical":
+            // Stock lives in the Catalog tab — OpenInventory had no listener.
             NotificationCenter.default.post(
-                name: Notification.Name("OpenInventory"),
+                name: Notification.Name("OpenCatalog"),
                 object: nil
             )
         case "time_off_approved", "time_off_denied":

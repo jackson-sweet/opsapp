@@ -1370,7 +1370,7 @@ struct NotificationListView: View {
         case "billableThisWeek":
             dismiss()
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                NotificationCenter.default.post(name: Notification.Name("NavigateToMap"), object: nil)
+                NotificationCenter.default.post(name: Notification.Name("NavigateToMapView"), object: nil)
             }
         case "inbox", "email_sync_complete":
             // Email-sync notifications come from the web sync engine. iOS
@@ -1455,7 +1455,7 @@ struct NotificationListView: View {
             case "billable_this_week":
                 dismiss()
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                    NotificationCenter.default.post(name: Notification.Name("NavigateToMap"), object: nil)
+                    NotificationCenter.default.post(name: Notification.Name("NavigateToMapView"), object: nil)
                 }
             case "lead_converted":
                 // A won lead is now a project — land the operator on that

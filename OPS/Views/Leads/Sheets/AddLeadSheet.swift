@@ -146,17 +146,9 @@ struct AddLeadSheet: View {
             .padding(.bottom, 28)
         }
         .background(
-            LinearGradient(
-                colors: [
-                    Color.black.opacity(0),
-                    Color.black.opacity(0.95),
-                    .black,
-                ],
-                startPoint: .top,
-                endPoint: .bottom
-            )
-            .frame(height: 160)
-            .allowsHitTesting(false),
+            OPSStyle.Layout.Gradients.footerFloor
+                .frame(height: OPSStyle.Layout.footerFloorHeight)
+                .allowsHitTesting(false),
             alignment: .bottom
         )
         .ignoresSafeArea(edges: .bottom)

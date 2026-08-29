@@ -418,6 +418,18 @@ struct LeadDetailView: View {
                     onMarkWon:  onMarkWon
                 )
                 .padding(.bottom, 49)   // clears the custom tab bar (49pt)
+                // The bar's own floor resolves to solid at ITS bottom edge,
+                // 49pt + the home-indicator inset above the physical bottom.
+                // Between there and the tab bar's scrim, dossier rows showed
+                // through at half strength (c48c69ae). Below a solid floor the
+                // canonical state is solid canvas — continue it to the edge.
+                .background(alignment: .bottom) {
+                    OPSStyle.Colors.background
+                        .frame(height: 49)
+                        .frame(maxWidth: .infinity)
+                        .ignoresSafeArea(edges: .bottom)
+                        .allowsHitTesting(false)
+                }
             }
         }
         .navigationBarHidden(true)

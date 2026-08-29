@@ -212,7 +212,7 @@ struct PendingWorkDetailSheet: View {
                 HStack(alignment: .firstTextBaseline, spacing: OPSStyle.Layout.spacing3) {
                     Text(row.label)
                         .font(OPSStyle.Typography.metadata)
-                        .tracking(0.8)
+                        .tracking(OPSStyle.Typography.trackingCompact)
                         .foregroundColor(OPSStyle.Colors.text3)
                         .frame(
                             minWidth: OPSStyle.Layout.touchTargetLarge,

@@ -1143,6 +1143,35 @@ struct NotificationListView: View {
                 return ("ruler", OPSStyle.Colors.errorStatus)
             case "update":
                 return (OPSStyle.Icons.sync, OPSStyle.Colors.secondaryText)
+            // Shipped-but-unregistered row types. Each fell to the default bell,
+            // which reads as "unknown system noise" for rows the operator acts
+            // on daily. Semantic tones only — no new colors (bug c2946efc).
+            case "task_assigned":
+                return ("person.badge.plus", OPSStyle.Colors.successStatus)          // twin of task_assignment
+            case "task_completed":
+                return ("checkmark.circle.fill", OPSStyle.Colors.successStatus)      // twin of task_completion
+            case "project_status_change":
+                return ("arrow.right.circle", OPSStyle.Colors.primaryAccent.opacity(0.8))
+            case "site_visit_reminder":
+                return ("calendar.badge.clock", OPSStyle.Colors.warningStatus)       // attention/tan semantics
+            case "phase_c_appointment_booked":
+                return ("calendar.badge.checkmark", OPSStyle.Colors.successStatus)
+            case "phase_c_appointment_review":
+                return ("calendar.badge.exclamationmark", OPSStyle.Colors.warningStatus)
+            case "leads_waiting":
+                return ("arrowshape.turn.up.left", OPSStyle.Colors.warningStatus)    // a reply is owed
+            case "role_needed":
+                return ("person.text.rectangle", OPSStyle.Colors.warningStatus)
+            case "lead_stage_advanced":
+                return ("arrow.up.right", OPSStyle.Colors.primaryAccent)
+            case "system_alert":
+                return ("exclamationmark.triangle", OPSStyle.Colors.warningStatus)
+            case "duplicates_found":
+                return ("doc.on.doc", OPSStyle.Colors.warningStatus)
+            case "team_invite_sent":
+                return ("person.badge.plus", OPSStyle.Colors.primaryAccent)
+            case "time_off_booked":
+                return ("calendar.badge.checkmark", OPSStyle.Colors.primaryAccent)
             default:
                 return (OPSStyle.Icons.bell, OPSStyle.Colors.secondaryText)
             }

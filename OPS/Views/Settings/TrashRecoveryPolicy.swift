@@ -291,9 +291,26 @@ struct TrashRecoveryRowDescriptor: Identifiable, Equatable {
     let metadataLines: [String]
     let details: [TrashRecoveryDetail]
     let thumbnail: TrashRecoveryThumbnailSource
+    /// Up to six gallery URLs for the quick-view photo rail. First entry always
+    /// matches `thumbnail` when that thumbnail is a real photo, so inspection
+    /// can never lead with different media than the row the operator tapped.
+    let galleryURLs: [String]
     let plan: TrashRecoveryPlan
 
     var segment: TrashSegment { kind.segment }
+
+    /// Newest-first gallery for a project, capped at the rail's six tiles.
+    /// Same merge the row thumbnail resolves from, so tile one always matches.
+    private static func gallery(
+        for project: Project,
+        syncedPhotos: [ProjectPhoto]
+    ) -> [String] {
+        Array(
+            project.mergedGalleryImageURLs(syncedPhotos: syncedPhotos.filter { $0.projectId == project.id })
+                .filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+                .prefix(6)
+        )
+    }
 
     static func project(
         _ project: Project,
@@ -324,6 +341,7 @@ struct TrashRecoveryRowDescriptor: Identifiable, Equatable {
             metadataLines: [firstLine, secondLine],
             details: details,
             thumbnail: TrashRecoveryThumbnailSourceResolver.project(project, syncedPhotos: syncedPhotos),
+            galleryURLs: gallery(for: project, syncedPhotos: syncedPhotos),
             plan: plan
         )
     }
@@ -354,6 +372,8 @@ struct TrashRecoveryRowDescriptor: Identifiable, Equatable {
             metadataLines: [contact, secondLine],
             details: details,
             thumbnail: TrashRecoveryThumbnailSourceResolver.client(client),
+            // A client has no gallery — the profile image is the whole record.
+            galleryURLs: [],
             plan: plan
         )
     }
@@ -393,6 +413,9 @@ struct TrashRecoveryRowDescriptor: Identifiable, Equatable {
                 projects: projects,
                 syncedPhotos: syncedPhotos
             ),
+            // A task inherits its parent project's gallery — the same photos its
+            // row thumbnail already resolves from. No parent, no rail.
+            galleryURLs: project.map { gallery(for: $0, syncedPhotos: syncedPhotos) } ?? [],
             plan: plan
         )
     }

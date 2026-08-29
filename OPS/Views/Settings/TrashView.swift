@@ -556,16 +556,36 @@ struct TrashRecoveryQuickView: View {
 
     private var quickViewMedia: some View {
         let media = TrashRecoveryQuickViewMedia(descriptor: descriptor)
-        return HStack {
-            TrashRecoveryThumbnailView(
-                source: media.source,
-                title: media.title,
-                size: OPSStyle.Layout.touchTargetLarge
-            )
-            Spacer(minLength: 0)
+        let rail = railSources(primary: media.source, gallery: descriptor.galleryURLs)
+        return ScrollView(.horizontal) {
+            HStack(spacing: OPSStyle.Layout.spacing2) {
+                ForEach(Array(rail.enumerated()), id: \.offset) { _, source in
+                    TrashRecoveryThumbnailView(
+                        source: source,
+                        title: media.title,
+                        size: OPSStyle.Layout.touchTargetLarge
+                    )
+                }
+            }
         }
+        .scrollIndicators(.hidden)
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("Representative image for \(media.title)")
+        .accessibilityLabel("Photos for \(media.title), \(rail.count) shown")
+    }
+
+    /// Representative media first, then the rest of the gallery, deduped.
+    /// A record with no gallery keeps its single representative tile.
+    private func railSources(
+        primary: TrashRecoveryThumbnailSource,
+        gallery: [String]
+    ) -> [TrashRecoveryThumbnailSource] {
+        var sources: [TrashRecoveryThumbnailSource] = [primary]
+        var seen: Set<String> = primary.urlString.map { [$0] } ?? []
+        for url in gallery where !seen.contains(url) {
+            seen.insert(url)
+            sources.append(.projectPhoto(url))
+        }
+        return sources
     }
 
     private var detailLedger: some View {

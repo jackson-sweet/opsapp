@@ -107,6 +107,136 @@ final class TrashRecoveryTests: XCTestCase {
         XCTAssertEqual(descriptor.metadataLines.count, 2)
     }
 
+    // MARK: - Quick-view photo rail (bug 3f5bca5f)
+
+    func testProjectDescriptorCarriesItsWholeGalleryLedByTheRowThumbnail() {
+        let project = makeProject(id: "project-gallery", title: "Cedar deck")
+        let synced = (1...3).map { index in
+            makePhoto(
+                id: "photo-\(index)",
+                projectId: project.id,
+                url: "https://example.com/photo-\(index).jpg",
+                createdAt: now.addingTimeInterval(TimeInterval(-60 * index))
+            )
+        }
+
+        let descriptor = TrashRecoveryRowDescriptor.project(
+            project,
+            syncedPhotos: synced,
+            now: now
+        )
+
+        XCTAssertEqual(descriptor.galleryURLs.count, 3)
+        XCTAssertEqual(descriptor.galleryURLs.first, descriptor.thumbnail.urlString)
+        XCTAssertEqual(descriptor.galleryURLs.first, "https://example.com/photo-1.jpg")
+    }
+
+    func testProjectGalleryStopsAtSixTilesEvenWithATallerGallery() {
+        let project = makeProject(id: "project-many", title: "Cedar deck")
+        let synced = (1...10).map { index in
+            makePhoto(
+                id: "photo-\(index)",
+                projectId: project.id,
+                url: "https://example.com/many-\(index).jpg",
+                createdAt: now.addingTimeInterval(TimeInterval(-60 * index))
+            )
+        }
+
+        let descriptor = TrashRecoveryRowDescriptor.project(
+            project,
+            syncedPhotos: synced,
+            now: now
+        )
+
+        XCTAssertEqual(descriptor.galleryURLs.count, 6)
+        XCTAssertEqual(descriptor.galleryURLs.first, "https://example.com/many-1.jpg")
+        XCTAssertEqual(descriptor.galleryURLs.last, "https://example.com/many-6.jpg")
+    }
+
+    func testProjectGalleryIgnoresPhotosBelongingToOtherProjects() {
+        let project = makeProject(id: "project-scoped", title: "Cedar deck")
+        let mine = makePhoto(
+            id: "photo-mine",
+            projectId: project.id,
+            url: "https://example.com/mine.jpg",
+            createdAt: now.addingTimeInterval(-60)
+        )
+        let theirs = makePhoto(
+            id: "photo-theirs",
+            projectId: "another-project",
+            url: "https://example.com/theirs.jpg",
+            createdAt: now.addingTimeInterval(-30)
+        )
+
+        let descriptor = TrashRecoveryRowDescriptor.project(
+            project,
+            syncedPhotos: [mine, theirs],
+            now: now
+        )
+
+        XCTAssertEqual(descriptor.galleryURLs, ["https://example.com/mine.jpg"])
+    }
+
+    func testClientDescriptorHasNoGalleryRail() {
+        let client = Client(
+            id: "client-gallery",
+            name: "Morgan Lee",
+            email: "morgan@example.com",
+            companyId: "company-1"
+        )
+        client.profileImageURL = "https://example.com/morgan.jpg"
+        client.deletedAt = now.addingTimeInterval(-3_600)
+
+        let descriptor = TrashRecoveryRowDescriptor.client(client, now: now)
+
+        XCTAssertTrue(descriptor.galleryURLs.isEmpty)
+    }
+
+    func testTaskDescriptorInheritsItsProjectGallery() {
+        let project = makeProject(id: "project-parent", title: "Cedar deck", deleted: false)
+        let synced = (1...2).map { index in
+            makePhoto(
+                id: "photo-task-\(index)",
+                projectId: project.id,
+                url: "https://example.com/task-\(index).jpg",
+                createdAt: now.addingTimeInterval(TimeInterval(-60 * index))
+            )
+        }
+        let task = makeTask(id: "task-gallery", project: project)
+
+        let descriptor = TrashRecoveryRowDescriptor.task(
+            task,
+            projects: [project],
+            syncedPhotos: synced,
+            now: now
+        )
+
+        XCTAssertEqual(
+            descriptor.galleryURLs,
+            ["https://example.com/task-1.jpg", "https://example.com/task-2.jpg"]
+        )
+    }
+
+    func testTaskDescriptorWithoutAProjectOnDeviceHasNoGallery() {
+        let orphan = ProjectTask(
+            id: "task-orphan",
+            projectId: "project-not-on-device",
+            taskTypeId: "task-type-1",
+            companyId: "company-1"
+        )
+        orphan.customTitle = "Layout"
+        orphan.deletedAt = now.addingTimeInterval(-3_600)
+
+        let descriptor = TrashRecoveryRowDescriptor.task(
+            orphan,
+            projects: [],
+            syncedPhotos: [],
+            now: now
+        )
+
+        XCTAssertTrue(descriptor.galleryURLs.isEmpty)
+    }
+
     func testDeletedTaskWithActiveProjectIsReadyForInlineRestore() {
         let project = makeProject(id: "project-1", title: "Cedar deck", deleted: false)
         let task = makeTask(id: "task-1", project: project)
@@ -370,6 +500,22 @@ final class TrashRecoveryTests: XCTestCase {
         project.address = "101 Cedar Street"
         project.deletedAt = deleted ? now.addingTimeInterval(-86_400) : nil
         return project
+    }
+
+    private func makePhoto(
+        id: String,
+        projectId: String,
+        url: String,
+        createdAt: Date
+    ) -> ProjectPhoto {
+        ProjectPhoto(
+            id: id,
+            projectId: projectId,
+            companyId: "company-1",
+            url: url,
+            uploadedBy: "00000000-0000-4000-8000-000000000001",
+            createdAt: createdAt
+        )
     }
 
     private func makeTask(id: String, project: Project) -> ProjectTask {

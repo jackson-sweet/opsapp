@@ -19,16 +19,26 @@ struct PendingWorkRetryReconciliation: Equatable {
     let succeededIDs: [String]
     let failedIDs: [String]
     let expiredSuccessIDs: [String]
+    /// Attempts whose failure flash has run its course. The row keeps its place
+    /// in the list; only the generic retry feedback is dropped, so the status
+    /// line falls back to the item's own true cause (bug b8312e21).
+    let expiredFailureIDs: [String]
 }
 
 struct PendingWorkRetryTracker {
     static let successReceiptDuration: TimeInterval = 2
+    /// A failed retry FLASHES, then the row tells the truth again. Four seconds
+    /// — long enough to read at arm's length, and twice the success receipt
+    /// because bad news must not be missable. After it, the generic
+    /// "Retry failed — still here" gives way to the row's real error line,
+    /// which used to be masked forever (bug b8312e21).
+    static let failureFlashDuration: TimeInterval = 4
 
     private enum AttemptState {
         case armed
         case retrying
         case succeeded(at: Date)
-        case failed
+        case failed(at: Date)
     }
 
     private struct Attempt {
@@ -75,6 +85,7 @@ struct PendingWorkRetryTracker {
         var succeededIDs: [String] = []
         var failedIDs: [String] = []
         var expiredSuccessIDs: [String] = []
+        var expiredFailureIDs: [String] = []
 
         for id in attemptsByID.keys.sorted() {
             guard var attempt = attemptsByID[id] else { continue }
@@ -85,12 +96,12 @@ struct PendingWorkRetryTracker {
                     attempt.state = .retrying
                 } else {
                     // Absence is not success until in-flight evidence has existed.
-                    attempt.state = .failed
+                    attempt.state = .failed(at: now)
                     failedIDs.append(id)
                 }
             case .retrying:
                 if attentionIDs.contains(id) {
-                    attempt.state = .failed
+                    attempt.state = .failed(at: now)
                     failedIDs.append(id)
                 } else if !sendingIDs.contains(id) {
                     attempt.state = .succeeded(at: now)
@@ -102,8 +113,12 @@ struct PendingWorkRetryTracker {
                     expiredSuccessIDs.append(id)
                     continue
                 }
-            case .failed:
-                break
+            case .failed(let flashedAt):
+                if now.timeIntervalSince(flashedAt) >= Self.failureFlashDuration {
+                    attemptsByID[id] = nil
+                    expiredFailureIDs.append(id)
+                    continue
+                }
             }
 
             attemptsByID[id] = attempt
@@ -112,7 +127,8 @@ struct PendingWorkRetryTracker {
         return PendingWorkRetryReconciliation(
             succeededIDs: succeededIDs,
             failedIDs: failedIDs,
-            expiredSuccessIDs: expiredSuccessIDs
+            expiredSuccessIDs: expiredSuccessIDs,
+            expiredFailureIDs: expiredFailureIDs
         )
     }
 }

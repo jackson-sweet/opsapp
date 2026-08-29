@@ -1,9 +1,14 @@
 // OPSTests/DeckBuilder/VinylOrderScaleResolverTests.swift
 //
 // Parity coverage for the scale-resolution logic extracted out of
-// DeckBuilderViewModel into the pure `VinylOrderScaleResolver`. Locks the four
-// resolution branches (stale-block → scaleFactor → prescale-fallback → inferred)
-// so the read-only deck-tab materials list resolves identically to the editor.
+// DeckBuilderViewModel into the pure `VinylOrderScaleResolver`. Locks the
+// three resolution branches (scaleFactor → inferred-median → prescale
+// fallback) so the read-only deck-tab materials list resolves identically to
+// the editor — and locks that resolution can NEVER answer "no scale" (bug
+// 59d7f468: the old nil answer surfaced as a CONFIRM ONE EDGE LENGTH blocker
+// that named no edge and stopped a placeable order). A dragged-away dimension
+// is a per-edge fact surfaced by `DeckStaleDimensionPresenter`, not a reason
+// to block resolution.
 
 import CoreGraphics
 import XCTest
@@ -51,14 +56,15 @@ final class VinylOrderScaleResolverTests: XCTestCase {
         ]
     }
 
-    // 1. Any stale edge blocks the order outright.
-    func testStaleEdgeReturnsNil() {
+    // 1. A stale edge no longer blocks the order — the calibrated scale still
+    //    answers, and the staleness is surfaced on the edge itself instead.
+    func testStaleEdgeDoesNotBlockResolution() {
         let verts = square(100)
         var data = DeckDrawingData()
         data.scaleFactor = 2.0
         data.vertices = verts
         data.edges = squareEdges(verts, dim: 50, source: .manual, staleFirst: true)
-        XCTAssertNil(VinylOrderScaleResolver.resolve(data))
+        XCTAssertEqual(VinylOrderScaleResolver.resolve(data), 2.0)
     }
 
     // 2. A persisted scaleFactor wins over everything (even dims implying 4.0).
@@ -92,8 +98,10 @@ final class VinylOrderScaleResolverTests: XCTestCase {
         XCTAssertEqual(VinylOrderScaleResolver.resolve(data), 2.0)
     }
 
-    // 5. One dim disagreeing beyond tolerance → nil (drawing untrustworthy).
-    func testDisagreeingDimensionReturnsNil() {
+    // 5. One edge dragged away from its typed value (implying 2.5 against
+    //    three at 2.0) cannot drag the drawing — the median holds at 2.0
+    //    instead of blocking the order.
+    func testMedianDefusesSingleDraggedDimension() {
         let verts = square(100)
         var data = DeckDrawingData()
         data.vertices = verts
@@ -101,8 +109,8 @@ final class VinylOrderScaleResolverTests: XCTestCase {
             edge(verts[0], verts[1], dim: 50, source: .manual),
             edge(verts[1], verts[2], dim: 50, source: .manual),
             edge(verts[2], verts[3], dim: 50, source: .manual),
-            edge(verts[3], verts[0], dim: 40, source: .manual) // 100pt / 40" = 2.5, off by 10"
+            edge(verts[3], verts[0], dim: 40, source: .manual, stale: true) // 100pt / 40" = 2.5
         ]
-        XCTAssertNil(VinylOrderScaleResolver.resolve(data))
+        XCTAssertEqual(VinylOrderScaleResolver.resolve(data), 2.0)
     }
 }

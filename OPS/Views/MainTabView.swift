@@ -818,6 +818,10 @@ struct MainTabView: View {
         // launch, rail tap from another tab).
         .onReceive(openLeadDetailsObserver) { notification in
             guard let leadId = notification.userInfo?["leadId"] as? String, !leadId.isEmpty else { return }
+            // Bug 4d2e91a9 — a push tapped while the rail (or a view-only
+            // project sheet) is presented used to open the lead UNDERNEATH it.
+            // Clear the passive occluders before navigating.
+            appState.clearNavigationOccluders()
             // When this link came from the DeepLinkCoordinator (cold-launch /
             // PIN-unlock drain) it carries a deepLinkId — clear the stash so it
             // can't re-fire on a later drain, mirroring the project path.
@@ -840,6 +844,7 @@ struct MainTabView: View {
         // posture as OpenLeadDetails: no pipeline access → access-denied rail.
         .onReceive(startSiteVisitObserver) { notification in
             guard let leadId = notification.userInfo?["leadId"] as? String, !leadId.isEmpty else { return }
+            appState.clearNavigationOccluders()
             guard hasLeadsAccess, let idx = leadsTabIndex else {
                 print("[PUSH_NAVIGATION] START visit for \(leadId) without pipeline access — access denied")
                 appState.presentAccessDenied(message: "This lead is no longer available.")

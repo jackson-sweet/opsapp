@@ -19,9 +19,19 @@
 import SwiftUI
 import SwiftData
 
+/// Which target sources the picker offers. `.all` is the activity logger's
+/// original behavior; `.leadsOnly` serves affordances that can only act on
+/// a lead (visit booking).
+enum ActivityTargetPickerSources: Equatable {
+    case all
+    case leadsOnly
+}
+
 struct ActivityTargetPickerView: View {
     let companyId: String
     let onSelect: (ActivityTarget) -> Void
+    /// Defaulted so the activity logger's existing call site is untouched.
+    var sources: ActivityTargetPickerSources = .all
 
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
@@ -45,7 +55,10 @@ struct ActivityTargetPickerView: View {
                     .foregroundColor(OPSStyle.Colors.secondaryText)
                     .font(.system(size: 16))
 
-                TextField("Search leads, clients, jobs...", text: $searchText)
+                TextField(
+                    sources == .leadsOnly ? "Search leads..." : "Search leads, clients, jobs...",
+                    text: $searchText
+                )
                     .font(OPSStyle.Typography.body)
                     .foregroundColor(OPSStyle.Colors.primaryText)
                     .autocorrectionDisabled()
@@ -98,7 +111,14 @@ struct ActivityTargetPickerView: View {
     // MARK: - Data
 
     private func loadTargets() {
-        allTargets = ActivityTargetLoader.load(companyId: companyId, modelContext: modelContext)
+        var loaded = ActivityTargetLoader.load(companyId: companyId, modelContext: modelContext)
+        if case .leadsOnly = sources {
+            loaded = loaded.filter {
+                if case .opportunity = $0 { return true }
+                return false
+            }
+        }
+        allTargets = loaded
     }
 
     /// Multi-field lowercase-contains across name/subtitle/source badge,
@@ -120,7 +140,9 @@ struct ActivityTargetPickerView: View {
             Text("—")
                 .font(OPSStyle.Typography.title)
                 .foregroundColor(OPSStyle.Colors.tertiaryText)
-            Text(searchText.isEmpty ? "NO LEADS, CLIENTS, OR JOBS" : "NO MATCHES")
+            Text(searchText.isEmpty
+                 ? (sources == .leadsOnly ? "NO OPEN LEADS" : "NO LEADS, CLIENTS, OR JOBS")
+                 : "NO MATCHES")
                 .font(OPSStyle.Typography.smallCaption)
                 .foregroundColor(OPSStyle.Colors.tertiaryText)
         }

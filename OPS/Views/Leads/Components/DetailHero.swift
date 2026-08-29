@@ -24,6 +24,57 @@
 //
 import SwiftUI
 
+/// What the NEXT TOUCH cell prints. A booked visit outranks the follow-up
+/// nudge — a standing appointment IS the next touch (bug a218009e); the
+/// moment the visit completes or cancels, the cell falls back to the
+/// follow-up date with zero bookkeeping.
+enum LeadNextTouchPresentation: Equatable {
+    case unset
+    case followUp(day: String, date: String)
+    case visit(day: String, time: String)
+
+    static func resolve(
+        nextFollowUpAt: Date?,
+        bookedVisitAt: Date?,
+        now: Date = Date(),
+        calendar: Calendar = .current
+    ) -> LeadNextTouchPresentation {
+        if let visitAt = bookedVisitAt {
+            return .visit(
+                day: DaySheetDateToken.day(visitAt, now: now, calendar: calendar),
+                time: timeFormatter.string(from: visitAt).uppercased()
+            )
+        }
+        guard let due = nextFollowUpAt else { return .unset }
+        return .followUp(
+            day: dayFormatter.string(from: due).uppercased(),
+            date: dateFormatter.string(from: due).uppercased()
+        )
+    }
+
+    // en_US_POSIX — OPS labels, not localized dates (DaySheetDateToken's rule).
+    private static let timeFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "h:mma"
+        return formatter
+    }()
+
+    private static let dayFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "EEE"
+        return formatter
+    }()
+
+    private static let dateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "MMM d"
+        return formatter
+    }()
+}
+
 struct DetailHero: View {
     let opportunity: Opportunity
     /// Resolved client name (LeadDetailViewModel.client) — nil until loaded
@@ -38,6 +89,12 @@ struct DetailHero: View {
     let canEditValue: Bool
     var fieldEdit: LeadFieldEditController? = nil
 
+    /// The lead's open booked visit, when one exists — flips NEXT TOUCH to
+    /// the appointment (a218009e). Nil = the follow-up date behavior.
+    var openVisitAt: Date? = nil
+    /// Opens the appointment sheet. Nil leaves the cell inert.
+    var onVisitTap: (() -> Void)? = nil
+
     init(
         opportunity: Opportunity,
         clientName: String? = nil,
@@ -45,6 +102,8 @@ struct DetailHero: View {
         canChangeAssignee: Bool = false,
         canEditValue: Bool = false,
         fieldEdit: LeadFieldEditController? = nil,
+        openVisitAt: Date? = nil,
+        onVisitTap: (() -> Void)? = nil,
         onAssigneeTap: @escaping () -> Void = {}
     ) {
         self.opportunity = opportunity
@@ -53,6 +112,8 @@ struct DetailHero: View {
         self.canChangeAssignee = canChangeAssignee
         self.canEditValue = canEditValue
         self.fieldEdit = fieldEdit
+        self.openVisitAt = openVisitAt
+        self.onVisitTap = onVisitTap
         self.onAssigneeTap = onAssigneeTap
     }
 
@@ -157,12 +218,7 @@ struct DetailHero: View {
 
             KpiDivider()
 
-            KvCell(
-                label: "NEXT TOUCH",
-                value: nextTouch.day,
-                sub: nextTouch.date,
-                useMono: false
-            )
+            nextTouchCell
 
             KpiDivider()
 
@@ -227,17 +283,44 @@ struct DetailHero: View {
         }
     }
 
-    // MARK: - Derived
-
-    /// NEXT TOUCH cell — weekday short on top, MMM d under, `—` when unset.
-    private var nextTouch: (day: String, date: String) {
-        guard let due = opportunity.nextFollowUpAt else { return ("—", "—") }
-        let dayF = DateFormatter()
-        dayF.dateFormat = "EEE"
-        let dateF = DateFormatter()
-        dateF.dateFormat = "MMM d"
-        return (dayF.string(from: due).uppercased(), dateF.string(from: due).uppercased())
+    /// NEXT TOUCH — the follow-up date, unless a visit is booked: a standing
+    /// appointment IS the next touch. The visit variant is tappable (opens
+    /// the appointment sheet); the date variant stays inert.
+    @ViewBuilder
+    private var nextTouchCell: some View {
+        switch LeadNextTouchPresentation.resolve(
+            nextFollowUpAt: opportunity.nextFollowUpAt,
+            bookedVisitAt: openVisitAt
+        ) {
+        case .visit(let day, let time):
+            let cell = KvCell(
+                label: "NEXT TOUCH",
+                value: day,
+                sub: "VISIT · \(time)",
+                useMono: false,
+                subColor: OPSStyle.Colors.tanTextM
+            )
+            if let onVisitTap {
+                Button {
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    onVisitTap()
+                } label: {
+                    cell
+                }
+                .buttonStyle(PlainButtonStyle())
+                .accessibilityLabel("Next touch, site visit \(day.lowercased()) \(time.lowercased()). Opens visit details")
+            } else {
+                cell
+                    .accessibilityLabel("Next touch, site visit \(day.lowercased()) \(time.lowercased())")
+            }
+        case .followUp(let day, let date):
+            KvCell(label: "NEXT TOUCH", value: day, sub: date, useMono: false)
+        case .unset:
+            KvCell(label: "NEXT TOUCH", value: "—", sub: "—", useMono: false)
+        }
     }
+
+    // MARK: - Derived
 
     private var displayIdShort: String {
         opportunity.shortIdSuffix
@@ -450,6 +533,10 @@ private struct KvCell: View {
     let value: String
     let sub: String
     var useMono: Bool = false
+    /// Overrides the sub-line color; nil keeps textMute. The NEXT TOUCH cell
+    /// passes tan when the touch is a booked site visit — tan is the design
+    /// system's site-visit semantic, so the color says what the row IS.
+    var subColor: Color? = nil
     /// Stands in place of the value line when the field is blank and this
     /// operator can fill it. A hidden gesture on an em dash is undiscoverable,
     /// so the blank carries a named way in instead — the project document's
@@ -492,7 +579,7 @@ private struct KvCell: View {
                 .font(OPSStyle.Typography.nanoLabel)
                 .fontWeight(.semibold)
                 .kerning(1.02)
-                .foregroundColor(OPSStyle.Colors.textMute)
+                .foregroundColor(subColor ?? OPSStyle.Colors.textMute)
                 .textCase(.uppercase)
                 .lineLimit(1)
                 .truncationMode(.tail)

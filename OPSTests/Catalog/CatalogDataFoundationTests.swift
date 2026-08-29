@@ -193,13 +193,31 @@ final class CatalogDataFoundationTests: XCTestCase {
             targetSchema: OPSSchemaV22.self,
             plan: V21ToV22OnlyMigrationPlan.self
         )
+        try assertMigrates(
+            name: "V22->V23",
+            sourceSchema: OPSSchemaV22.self,
+            targetSchema: OPSSchemaV23.self,
+            plan: V22ToV23OnlyMigrationPlan.self
+        )
+        try assertMigrates(
+            name: "V23->V24",
+            sourceSchema: OPSSchemaV23.self,
+            targetSchema: OPSSchemaV24.self,
+            plan: V23ToV24OnlyMigrationPlan.self
+        )
+        try assertMigrates(
+            name: "V24->V25",
+            sourceSchema: OPSSchemaV24.self,
+            targetSchema: OPSSchemaV25.self,
+            plan: V24ToV25OnlyMigrationPlan.self
+        )
     }
 
     func testMigrationPlanStagesHaveModelSetDeltasAcrossAllVersions() {
         let schemas = OPSMigrationPlan.schemas
         // One migration stage per adjacent schema pair — the plan currently spans
-        // V1…V22 (21 stages). Keep in lockstep as new schema versions are added.
-        XCTAssertEqual(OPSMigrationPlan.stages.count, 21)
+        // V1…V25 (24 stages). Keep in lockstep as new schema versions are added.
+        XCTAssertEqual(OPSMigrationPlan.stages.count, 24)
 
         let versionIdentifiers = schemas.map { String(describing: $0.versionIdentifier) }
         XCTAssertEqual(versionIdentifiers, [
@@ -224,7 +242,10 @@ final class CatalogDataFoundationTests: XCTestCase {
             "19.0.0",
             "20.0.0",
             "21.0.0",
-            "22.0.0"
+            "22.0.0",
+            "23.0.0",
+            "24.0.0",
+            "25.0.0"
         ])
 
         for pair in zip(schemas, schemas.dropFirst()) {
@@ -1763,7 +1784,7 @@ final class CatalogDataFoundationTests: XCTestCase {
         let sourceConfiguration = ModelConfiguration(schema: source, url: storeURL, allowsSave: true)
         _ = try ModelContainer(for: source, configurations: [sourceConfiguration])
 
-        let current = Schema(versionedSchema: OPSSchemaV22.self)
+        let current = Schema(versionedSchema: OPSSchemaCurrent.self)
         let currentConfiguration = ModelConfiguration(schema: current, url: storeURL, allowsSave: true)
 
         do {
@@ -1885,5 +1906,35 @@ private enum V21ToV22OnlyMigrationPlan: SchemaMigrationPlan {
 
     static var stages: [MigrationStage] {
         [OPSMigrationPlan.addActivitySiteVisitIdV21toV22]
+    }
+}
+
+private enum V22ToV23OnlyMigrationPlan: SchemaMigrationPlan {
+    static var schemas: [any VersionedSchema.Type] {
+        [OPSSchemaV22.self, OPSSchemaV23.self]
+    }
+
+    static var stages: [MigrationStage] {
+        [OPSMigrationPlan.addSiteVisitBookingFieldsV22toV23]
+    }
+}
+
+private enum V23ToV24OnlyMigrationPlan: SchemaMigrationPlan {
+    static var schemas: [any VersionedSchema.Type] {
+        [OPSSchemaV23.self, OPSSchemaV24.self]
+    }
+
+    static var stages: [MigrationStage] {
+        [OPSMigrationPlan.addPhaseCAppointmentFieldsV23toV24]
+    }
+}
+
+private enum V24ToV25OnlyMigrationPlan: SchemaMigrationPlan {
+    static var schemas: [any VersionedSchema.Type] {
+        [OPSSchemaV24.self, OPSSchemaV25.self]
+    }
+
+    static var stages: [MigrationStage] {
+        [OPSMigrationPlan.addProjectPrimarySubClientV24toV25]
     }
 }

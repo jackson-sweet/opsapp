@@ -454,7 +454,7 @@ final class AppUpdateMigrationTests: XCTestCase {
             )
         }
 
-        let currentSchema = Schema(versionedSchema: OPSSchemaV22.self)
+        let currentSchema = Schema(versionedSchema: OPSSchemaCurrent.self)
         let currentConfiguration = ModelConfiguration(schema: currentSchema, url: storeURL)
         let migrated = try ModelContainer(
             for: currentSchema,
@@ -553,7 +553,7 @@ final class AppUpdateMigrationTests: XCTestCase {
             try context.save()
         }
 
-        let currentSchema = Schema(versionedSchema: OPSSchemaV22.self)
+        let currentSchema = Schema(versionedSchema: OPSSchemaCurrent.self)
         let currentConfiguration = ModelConfiguration(schema: currentSchema, url: storeURL)
         let migratedContainer = try ModelContainer(
             for: currentSchema,

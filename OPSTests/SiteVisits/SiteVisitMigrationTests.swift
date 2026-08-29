@@ -2,16 +2,23 @@
 //  SiteVisitMigrationTests.swift
 //  OPSTests
 //
-//  Proves the staged migration is safe for the `SiteVisit.opportunityId`
-//  required→optional relaxation. A real shipped store sits at V10 with a NOT NULL
-//  `opportunityId`; this test stands up that exact on-disk shape (the frozen
-//  `OPSSchemaLegacySiteVisit.SiteVisit`), then reopens the same file with the
-//  full migration plan and the current (V22) schema and asserts the row survives
-//  with its `opportunityId` intact — and that the migrated store can now persist
-//  an unlinked visit with a nil `opportunityId`. (The migrated store must be
-//  opened at the CURRENT schema so the live `SiteVisit` type — which V15+
-//  registers, and V11–V14 do NOT after the loggedActivityId version-scoping — is
-//  the queryable entity.)
+//  Proves the staged migration is safe for every `SiteVisit` widening a real
+//  shipped store can encounter. A real store sits at V10 with a NOT NULL
+//  `opportunityId`; these tests stand up that exact on-disk shape (the frozen
+//  `OPSSchemaLegacySiteVisit.SiteVisit`), reopen the same file through the full
+//  migration plan, and assert the rows survive.
+//
+//  Fetch-type discipline: the queryable entity class depends on the schema the
+//  migrated store is OPENED at. `SiteVisit` is version-scoped — V11–V14
+//  register `OPSSchemaLegacySiteVisitV11`, V15–V19 register
+//  `OPSSchemaLegacySiteVisitV19`, V20–V22 register
+//  `OPSSchemaLegacySiteVisitV22`, V23 registers `OPSSchemaLegacySiteVisitV23`,
+//  and only V24+ register the live `SiteVisit` — so a stage-isolation test
+//  that stops at a historical version must fetch that version's frozen class,
+//  and "current" tests must open at `OPSSchemaCurrent` (fetching a live
+//  `@Model` from a container whose schema registers a frozen class for that
+//  entity traps with an uncatchable EXC_BREAKPOINT; that is how this suite
+//  broke when V23–V25 landed against tests pinned to a V22 "current").
 //
 
 import XCTest
@@ -56,13 +63,14 @@ final class SiteVisitMigrationTests: XCTestCase {
             try context.save()
         }
 
-        // 2. Reopen the SAME file with the full migration plan + CURRENT (V22)
-        //    schema. This drives V10 → V11 (opportunityId becomes optional) → V12
-        //    → V13 → V14 → V15 (adds loggedActivityId) → … → V20 (cloud fields) →
-        //    V21 → V22. Opening at V22 means the live `SiteVisit` type is the
-        //    registered entity (V11–V14 register the frozen
-        //    `OPSSchemaLegacySiteVisitV11.SiteVisit` after version-scoping).
-        let currentSchema = Schema(versionedSchema: OPSSchemaV22.self)
+        // 2. Reopen the SAME file with the full migration plan + CURRENT schema.
+        //    This drives V10 → V11 (opportunityId becomes optional) → V12 → V13
+        //    → V14 → V15 (adds loggedActivityId) → … → V20 (cloud fields) → V23
+        //    (booking) → V24 (appointment metadata) → V25. Opening at the
+        //    current head means the live `SiteVisit` type is the registered,
+        //    queryable entity (every historical version V11–V23 registers one
+        //    of the frozen legacy classes instead).
+        let currentSchema = Schema(versionedSchema: OPSSchemaCurrent.self)
         let currentConfig = ModelConfiguration(schema: currentSchema, url: storeURL)
         let migrated = try ModelContainer(
             for: currentSchema,
@@ -153,19 +161,41 @@ final class SiteVisitMigrationTests: XCTestCase {
     }
 
     func test_v19StoreMigratesToV20_preservingEntireVisitPacketAndDefaultingCloudFields() throws {
-        try assertV19PacketSurvivesMigration(openingAt: OPSSchemaV20.self)
+        // Stops at V20, so the queryable SiteVisit entity is the frozen
+        // V20–V22 class — see the fetch-type discipline note in the header.
+        try assertV19PacketSurvivesMigration(
+            openingAt: OPSSchemaV20.self,
+            readingVisitsAs: OPSSchemaLegacySiteVisitV22.SiteVisit.self
+        )
     }
 
     /// The same released V19 packet opened directly at the CURRENT schema, so
-    /// the two activity-feed widenings stacked above the cloud boundary are
-    /// proven not to disturb a site-visit store on the way through.
+    /// every widening stacked above the cloud boundary — the V21/V22 activity
+    /// columns, V23 booking, V24 appointment metadata, V25's projection entity
+    /// — is proven not to disturb a site-visit store on the way through.
     func test_v19StoreMigratesStraightToCurrent_preservingEntireVisitPacket() throws {
-        try assertV19PacketSurvivesMigration(openingAt: OPSSchemaV22.self)
+        let migrated = try assertV19PacketSurvivesMigration(
+            openingAt: OPSSchemaCurrent.self,
+            readingVisitsAs: SiteVisit.self
+        )
+
+        // The head-only columns (V23 booking, V24 appointment metadata) must
+        // default clean for a historical row.
+        let context = ModelContext(migrated)
+        let visit = try XCTUnwrap(try context.fetch(FetchDescriptor<SiteVisit>()).first)
+        XCTAssertNil(visit.bookedAt)
+        XCTAssertNil(visit.reminderLeadMinutes)
+        XCTAssertNil(visit.appointmentHandoffId)
+        XCTAssertNil(visit.appointmentKind)
+        XCTAssertNil(visit.appointmentTitle)
+        XCTAssertNil(visit.appointmentLocation)
     }
 
-    private func assertV19PacketSurvivesMigration(
-        openingAt targetVersion: any VersionedSchema.Type
-    ) throws {
+    @discardableResult
+    private func assertV19PacketSurvivesMigration<VisitModel: SiteVisitPacketReading>(
+        openingAt targetVersion: any VersionedSchema.Type,
+        readingVisitsAs _: VisitModel.Type
+    ) throws -> ModelContainer {
         let target = "opened at \(targetVersion.versionIdentifier)"
         let visitID = "AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAAA"
         let artifactID = "BBBBBBBB-BBBB-4BBB-8BBB-BBBBBBBBBBBB"
@@ -262,7 +292,7 @@ final class SiteVisitMigrationTests: XCTestCase {
         )
         let context = ModelContext(migratedContainer)
 
-        let visit = try XCTUnwrap(try context.fetch(FetchDescriptor<SiteVisit>()).first, target)
+        let visit = try XCTUnwrap(try context.fetch(FetchDescriptor<VisitModel>()).first, target)
         XCTAssertEqual(visit.id, visitID, "Migration must preserve historical uppercase ids; recovery canonicalizes them later — \(target)")
         XCTAssertEqual(visit.notes, "Existing visit notes", target)
         XCTAssertEqual(visit.loggedActivityId, "11111111-1111-4111-8111-111111111111", target)
@@ -293,5 +323,29 @@ final class SiteVisitMigrationTests: XCTestCase {
         XCTAssertFalse(draft.needsSync, target)
         XCTAssertNil(draft.lastSyncedAt, target)
         XCTAssertNil(draft.deletedAt, target)
+
+        return migratedContainer
     }
 }
+
+/// The site-visit packet fields shared by the live `SiteVisit` and the frozen
+/// V20–V22 legacy shape, so `assertV19PacketSurvivesMigration` can read
+/// whichever class the target schema actually registers.
+private protocol SiteVisitPacketReading: PersistentModel {
+    var id: String { get }
+    var notes: String? { get }
+    var loggedActivityId: String? { get }
+    var projectId: String? { get }
+    var projectRef: String? { get }
+    var clientId: String? { get }
+    var clientRef: String? { get }
+    var durationMinutes: Int { get }
+    var assigneeIds: [String] { get }
+    var photos: [String] { get }
+    var needsSync: Bool { get }
+    var lastSyncedAt: Date? { get }
+    var deletedAt: Date? { get }
+}
+
+extension SiteVisit: SiteVisitPacketReading {}
+extension OPSSchemaLegacySiteVisitV22.SiteVisit: SiteVisitPacketReading {}

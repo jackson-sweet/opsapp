@@ -34,7 +34,10 @@ final class SiteVisitCloudModelTests: XCTestCase {
     }
 
     func testVisitPersistsServerBackedFieldsAndExistingActivitySlot() throws {
-        let schema = Schema(versionedSchema: OPSSchemaV22.self)
+        // Must be the current schema: this test inserts the LIVE SiteVisit
+        // class, and historical versions register frozen legacy classes for
+        // the entity instead (insert would trap).
+        let schema = Schema(versionedSchema: OPSSchemaCurrent.self)
         let configuration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
         let container = try ModelContainer(for: schema, configurations: configuration)
         let context = ModelContext(container)

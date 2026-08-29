@@ -37,6 +37,14 @@ struct OPSConfirmConfig: Identifiable {
     let message: String      // "It leaves the queue. Restore any time from the by-stage list."
     let verb: String         // "ARCHIVE"
     let isDestructive: Bool  // Button(role: .destructive)
+    /// The decline button's words. Defaults to CANCEL — right when declining
+    /// means "never mind, I did not want this dialog". A confirm whose two
+    /// answers are both real decisions names them both: KEEP OPEN is not
+    /// cancelling, it is choosing.
+    let cancelLabel: String
+    /// Fires when the operator declines. Most confirms have nothing to do on
+    /// the way out; one that RECORDS the decline does.
+    let onCancel: (() -> Void)?
     let onConfirm: () -> Void
 
     init(
@@ -44,12 +52,16 @@ struct OPSConfirmConfig: Identifiable {
         message: String,
         verb: String,
         isDestructive: Bool = false,
+        cancelLabel: String = "CANCEL",
+        onCancel: (() -> Void)? = nil,
         onConfirm: @escaping () -> Void
     ) {
         self.title = title
         self.message = message
         self.verb = verb
         self.isDestructive = isDestructive
+        self.cancelLabel = cancelLabel
+        self.onCancel = onCancel
         self.onConfirm = onConfirm
     }
 }
@@ -66,7 +78,9 @@ private struct OPSConfirmModifier: ViewModifier {
             ),
             presenting: config
         ) { cfg in
-            Button("CANCEL", role: .cancel) {}
+            Button(cfg.cancelLabel, role: .cancel) {
+                cfg.onCancel?()
+            }
             Button(cfg.verb, role: cfg.isDestructive ? .destructive : nil) {
                 // Medium impact — a guarded exit is a commit moment (spec §10).
                 UIImpactFeedbackGenerator(style: .medium).impactOccurred()

@@ -114,6 +114,12 @@ struct OpportunityDTO: Codable, Identifiable {
     let aiSummary: String?
     let aiSummaryUpdatedAt: String?
 
+    /// Non-null once the operator has declined the mark-lead-won proposal for
+    /// this lead. The prompt reads it and never asks a second time (D3, bug
+    /// 9a89b951). Optional, so a build that reaches a database without the
+    /// column simply decodes nil and never prompts.
+    let wonPromptDeclinedAt: String?
+
     let createdAt: String
     let updatedAt: String
 
@@ -162,6 +168,7 @@ struct OpportunityDTO: Codable, Identifiable {
         case operatorActionRequiredAt = "operator_action_required_at"
         case aiSummary            = "ai_summary"
         case aiSummaryUpdatedAt   = "ai_summary_updated_at"
+        case wonPromptDeclinedAt  = "won_prompt_declined_at"
         case createdAt            = "created_at"
         case updatedAt            = "updated_at"
     }
@@ -315,6 +322,10 @@ struct UpdateOpportunityDTO: Encodable {
     var quoteDeliveryMethod: String?
     var archivedAt: String?
     var deletedAt: String?
+    /// D3 decline record (bug 9a89b951). Written only by
+    /// `OpportunityRepository.declineWonPrompt`.
+    var wonPromptDeclinedAt: String?
+    var wonPromptDeclinedBy: String?
 
     enum CodingKeys: String, CodingKey {
         case title
@@ -336,6 +347,8 @@ struct UpdateOpportunityDTO: Encodable {
         case quoteDeliveryMethod  = "quote_delivery_method"
         case archivedAt           = "archived_at"
         case deletedAt            = "deleted_at"
+        case wonPromptDeclinedAt  = "won_prompt_declined_at"
+        case wonPromptDeclinedBy  = "won_prompt_declined_by"
     }
 }
 

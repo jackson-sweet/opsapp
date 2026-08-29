@@ -1386,13 +1386,29 @@ struct VinylOrderSheet: View {
                     // requires the normal review + frozen snapshot flow.
                     throw DeckMaterialsOrderError.vinylPlanChanged
                 }
+                let orderedAt = Date()
                 try await dataController.updateProjectFields(
                     projectId: projectId,
                     fields: [
                         ProjectVinylOrderFields.status: .string(ProjectVinylOrderStatus.ordered.rawValue),
-                        ProjectVinylOrderFields.orderedAt: .string(SupabaseDate.format(Date())),
+                        ProjectVinylOrderFields.orderedAt: .string(SupabaseDate.format(orderedAt)),
                         ProjectVinylOrderFields.orderedBy: .string(userId)
                     ]
+                )
+                // Bug 0969bc8a — the plain marker is still an act worth logging.
+                // Same builder as the snapshot path; the degenerate record
+                // renders "Vinyl marked ordered."
+                VinylOrderActivityRecorder.record(
+                    projectId: projectId,
+                    companyId: companyId,
+                    authorId: userId,
+                    record: VinylOrderActivityNote.Record(
+                        disposition: .supplier,
+                        vinylLines: [],
+                        consumables: [],
+                        orderedAt: orderedAt
+                    ),
+                    dataController: dataController
                 )
                 isUpdatingProjectMarker = false
                 statusMessage = "VINYL MARKED ORDERED"

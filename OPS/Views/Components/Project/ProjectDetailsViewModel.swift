@@ -640,13 +640,30 @@ class ProjectDetailsViewModel: ObservableObject {
                         }
                         throw DeckMaterialsOrderError.vinylPlanChanged
                     }
+                    let orderedAt = Date()
                     try await dataController.updateProjectFields(
                         projectId: project.id,
                         fields: [
                             ProjectVinylOrderFields.status: .string(ProjectVinylOrderStatus.ordered.rawValue),
-                            ProjectVinylOrderFields.orderedAt: .string(SupabaseDate.format(Date())),
+                            ProjectVinylOrderFields.orderedAt: .string(SupabaseDate.format(orderedAt)),
                             ProjectVinylOrderFields.orderedBy: .string(userId)
                         ]
+                    )
+                    // Bug 0969bc8a — a job with no deck materials still gets
+                    // its feed entry. Same builder as every other MARK ORDERED
+                    // path; the degenerate record renders "Vinyl marked
+                    // ordered." The act is the event; the feed logs the acts.
+                    VinylOrderActivityRecorder.record(
+                        projectId: project.id,
+                        companyId: project.companyId,
+                        authorId: userId,
+                        record: VinylOrderActivityNote.Record(
+                            disposition: .supplier,
+                            vinylLines: [],
+                            consumables: [],
+                            orderedAt: orderedAt
+                        ),
+                        dataController: dataController
                     )
                 } else {
                     try await service.clearOrdered(

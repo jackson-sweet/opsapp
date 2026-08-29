@@ -416,6 +416,52 @@ class OpportunityRepository {
             .value
     }
 
+    /// Win a lead that is ALREADY LINKED to the given project — the commit
+    /// behind the D3 won-authority prompt. This is the one deliberate door
+    /// around `validateDirectStageMutation`'s `.won` rejection, and it is safe
+    /// for the reason that rejection exists: the server RPC re-verifies the
+    /// link under a row lock (`opportunity_not_linked_to_project` otherwise),
+    /// so it structurally cannot mint a won-without-project orphan, and it
+    /// records the human actor in `stage_transitions`. Idempotent when the lead
+    /// is already won; refuses to revive a lost or discarded one.
+    func winLinkedOpportunity(
+        opportunityId: String,
+        projectId: String,
+        userId: String
+    ) async throws -> OpportunityDTO {
+        struct RpcParams: Codable {
+            let p_opportunity_id: String
+            let p_project_id: String
+            let p_user_id: String
+        }
+        return try await client
+            .rpc(
+                "win_linked_opportunity",
+                params: RpcParams(
+                    // UUID().uuidString is uppercase; Postgres uuid columns are
+                    // lowercase. Normalize on the way out.
+                    p_opportunity_id: opportunityId.lowercased(),
+                    p_project_id: projectId.lowercased(),
+                    p_user_id: userId.lowercased()
+                )
+            )
+            .single()
+            .execute()
+            .value
+    }
+
+    /// Record that the operator declined the won proposal for this lead. A
+    /// non-null `won_prompt_declined_at` suppresses every future prompt for it —
+    /// asked once, answered once.
+    func declineWonPrompt(opportunityId: String, userId: String) async throws -> OpportunityDTO {
+        var fields = UpdateOpportunityDTO()
+        // The full timestamp variant — this is a timestamptz, not the date-only
+        // column `formatDate` serves.
+        fields.wonPromptDeclinedAt = SupabaseDate.format(Date())
+        fields.wonPromptDeclinedBy = userId.lowercased()
+        return try await update(opportunityId, fields: fields)
+    }
+
     /// The won transition is authorization-sensitive: it creates or links the
     /// project and pins the assignment version in one guarded transaction.
     /// Keeping this rejection at the repository boundary prevents a future UI

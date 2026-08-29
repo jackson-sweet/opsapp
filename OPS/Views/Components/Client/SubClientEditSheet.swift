@@ -170,7 +170,11 @@ struct SubClientEditSheet: View {
                                         .font(OPSStyle.Typography.smallCaption)
                                         .foregroundColor(OPSStyle.Colors.secondaryText)
 
-                                    AddressSearchField(address: $viewModel.address, placeholder: "Enter address")
+                                    AddressAutocompleteField(
+                                        address: $viewModel.address,
+                                        placeholder: "Enter address",
+                                        knownPlaces: true
+                                    )
                                 }
                             }
                         }

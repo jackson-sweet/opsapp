@@ -35,7 +35,10 @@ struct SiteVisitCaptureQAHost: View {
     private static let userId = "qa_site_visit_user"
 
     private static let modelContainer: ModelContainer = {
-        let schema = Schema(versionedSchema: OPSSchemaV19.self)
+        // The capture console inserts LIVE @Models (SiteVisit, drafts) — the
+        // container must register the current schema, never a historical one
+        // whose SiteVisit entity is a frozen legacy class (insert would trap).
+        let schema = Schema(versionedSchema: OPSSchemaCurrent.self)
         let configuration = ModelConfiguration(
             schema: schema,
             isStoredInMemoryOnly: true,
@@ -149,8 +152,9 @@ struct SiteVisitCaptureQAHost: View {
     }
 
     /// Puts a known person in the simulator's address book so the real picker
-    /// has something to pick. Requires the contacts privacy grant
-    /// (`xcrun simctl privacy <udid> grant contacts co.ops.app`).
+    /// has something to pick. Requires the contacts privacy grant — either
+    /// answer the system prompt (the UI test taps it itself), or pre-grant:
+    /// `xcrun simctl privacy <udid> grant contacts co.opsapp.ops.OPS`.
     private func seedDeviceContact() async -> String {
         let store = CNContactStore()
         let granted = await withCheckedContinuation { continuation in

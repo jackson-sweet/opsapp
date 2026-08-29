@@ -53,11 +53,12 @@ struct OPSApp: App {
     @State private var deckCanaryEvidenceChecked = false
 
     // Create the model container for SwiftData.
-    // Schema is driven by the LATEST VersionedSchema (currently `OPSSchemaV25`)
-    // and the container runs `OPSMigrationPlan` on launch so stores written by
-    // earlier builds (e.g. pre-`WizardState.id`, pre-catalog, pre-reminders)
-    // are migrated in place. **When you add a new VersionedSchema (V7, V8, …),
-    // bump this reference to the new latest** — leaving it stale produces the
+    // Schema is driven by the LATEST VersionedSchema via the `OPSSchemaCurrent`
+    // alias (OPSSchemaCurrent.swift — the single head declaration every
+    // current-schema surface shares) and the container runs `OPSMigrationPlan`
+    // on launch so stores written by earlier builds (e.g. pre-`WizardState.id`,
+    // pre-catalog, pre-reminders) are migrated in place. **When you add a new
+    // VersionedSchema, repoint the alias** — leaving it stale produces the
     // "Duplicate version checksums across stages detected" runtime crash
     // because the migration plan validates from-version/to-version pairs that
     // overshoot the declared schema. Released schemas are immutable: adding a
@@ -72,7 +73,7 @@ struct OPSApp: App {
     // unsynced data, so startup must preserve it and fail visibly rather than
     // attempting destructive recovery.
     var sharedModelContainer: ModelContainer = {
-        let schema = Schema(versionedSchema: OPSSchemaV25.self)
+        let schema = Schema(versionedSchema: OPSSchemaCurrent.self)
 
         let isHostedXCTest = ProcessInfo.processInfo.environment["XCTestBundlePath"] != nil
         #if DEBUG

@@ -122,7 +122,7 @@ final class VinylOffcutInventoryTests: XCTestCase {
         }
         UserDefaults.standard.set(false, forKey: key)
 
-        let schema = Schema(versionedSchema: OPSSchemaV10.self)
+        let schema = Schema(versionedSchema: OPSSchemaCurrent.self)
         let container = try ModelContainer(
             for: schema,
             configurations: [ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)]

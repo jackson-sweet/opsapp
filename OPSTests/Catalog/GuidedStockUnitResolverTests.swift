@@ -19,7 +19,7 @@ final class GuidedStockUnitResolverTests: XCTestCase {
     // MARK: - Helpers
 
     private func makeInMemoryContext() throws -> ModelContext {
-        let schema = Schema(versionedSchema: OPSSchemaV8.self)
+        let schema = Schema(versionedSchema: OPSSchemaCurrent.self)
         let configuration = ModelConfiguration(
             schema: schema,
             isStoredInMemoryOnly: true,

@@ -429,7 +429,7 @@ final class ProjectDetailsLocalFirstTests: XCTestCase {
     /// Seeding here rather than per test means no test is green by luck of
     /// ordering. Same remedy as CatalogMergeDiffGateTests.makeContainer.
     private func makeContainer() throws -> ModelContainer {
-        let schema = Schema(versionedSchema: OPSSchemaV19.self)
+        let schema = Schema(versionedSchema: OPSSchemaCurrent.self)
         let configuration = ModelConfiguration(
             schema: schema,
             isStoredInMemoryOnly: true,

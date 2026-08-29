@@ -80,6 +80,11 @@ struct LeadDetailView: View {
     /// BOOK A VISIT / RESCHEDULE from the workflow menu (spec §4.1) — the
     /// menu itself is the NOW/BOOK branch here, so no extra dialog hop.
     @State private var bookingRequest: BookSiteVisitRequest?
+    @State private var showingAppointmentSheet = false
+    /// NEXT TOUCH's booking read. Refreshed on appear and on every
+    /// SiteVisitBookingChanged — SwiftData writes don't re-render this view
+    /// on their own (openBookingSnapshot is a lazy computed read).
+    @State private var openVisitAt: Date?
     @State private var showingAssignmentPicker = false
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var dataController: DataController
@@ -202,6 +207,12 @@ struct LeadDetailView: View {
               ) else { return nil }
         return SiteVisitBookingLookup.snapshot(of: booking)
     }
+
+    @MainActor
+    private func refreshOpenVisit() {
+        openVisitAt = openBookingSnapshot?.scheduledAt
+    }
+
     private var canChangeAssignee: Bool {
         guard leadAccessPolicy.can(.assign, assignedTo: opportunity.assignedTo),
               let scope = leadAccessPolicy.scope(for: .assign) else {
@@ -285,6 +296,8 @@ struct LeadDetailView: View {
                                         canChangeAssignee: canChangeAssignee,
                                         canEditValue: canEdit,
                                         fieldEdit: fieldEdit,
+                                        openVisitAt: openVisitAt,
+                                        onVisitTap: { showingAppointmentSheet = true },
                                         onAssigneeTap: {
                                             UIImpactFeedbackGenerator(style: .light).impactOccurred()
                                             showingAssignmentPicker = true
@@ -474,6 +487,7 @@ struct LeadDetailView: View {
             await vm.loadAll()
         }
         .onAppear {
+            refreshOpenVisit()
             if let context = dataController.modelContext {
                 LeadImageService.shared.configure(modelContext: context)
             }
@@ -524,6 +538,25 @@ struct LeadDetailView: View {
         .sheet(item: $bookingRequest) { request in
             BookSiteVisitSheet(request: request)
                 .environmentObject(dataController)
+        }
+        .sheet(isPresented: $showingAppointmentSheet) {
+            SiteVisitAppointmentSheet(
+                lead: opportunity,
+                canManage: canConvert && !opportunity.stage.isTerminal,
+                onStartNow: {
+                    showingAppointmentSheet = false
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                        showingSiteVisitCapture = true
+                    }
+                }
+            )
+            .environmentObject(dataController)
+            .opsSheet(detents: [.medium])
+        }
+        .onReceive(
+            NotificationCenter.default.publisher(for: Notification.Name("SiteVisitBookingChanged"))
+        ) { _ in
+            refreshOpenVisit()
         }
         .confirmationDialog(
             "ADD PHOTOS",

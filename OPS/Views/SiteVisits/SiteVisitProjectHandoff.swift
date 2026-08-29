@@ -335,6 +335,11 @@ enum SiteVisitProjectHandoff {
 
     private static func projectPhotoCreatePayload(_ photo: ProjectPhoto) -> [String: Any] {
         var payload: [String: Any] = [
+            // `genericTablePush` injects the op's entityId at send time, so the
+            // wire has carried this all along — but the STORED payload did not,
+            // and the 08-28 forensics burned an hour proving that mismatch was
+            // cosmetic. The stored payload is the forensic record; it matches.
+            "id": photo.id,
             "project_id": photo.projectId,
             "company_id": photo.companyId,
             "url": photo.url,

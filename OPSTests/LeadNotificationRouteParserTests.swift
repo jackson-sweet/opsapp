@@ -390,4 +390,24 @@ final class LeadNotificationRouteParserTests: XCTestCase {
         XCTAssertFalse(LeadNotificationRouteParser.isLeadNotification(
             type: "system", deepLinkType: nil, actionUrl: nil, dedupeKey: "photo-upload-recovery:x"))
     }
+
+    func testUrgentReplyThreadUrlResolvesToItsOpportunity() {
+        // Bug 8dc71fa9's production shape: the thread url also carries the
+        // opportunity id, so the row must resolve to the lead — never the
+        // Job Board — without a network round trip.
+        XCTAssertEqual(
+            LeadNotificationRouteParser.route(
+                actionUrl: "/inbox?thread=\(threadId)&opportunityId=\(oppId)",
+                dedupeKey: nil),
+            .opportunity(oppId))
+    }
+
+    func testEmailOpportunityEventRouteResolvesFirstUuid() {
+        // "Possible deal won": no id in the url, opportunity in the dedupe key.
+        XCTAssertEqual(
+            LeadNotificationRouteParser.route(
+                actionUrl: "/pipeline",
+                dedupeKey: "email-opportunity-event:accept_review_won:9a0f52dd-024b-41f5-ba6a-c42dd1cb2f13:24b69b80-c86d-4080-8775-26cb39e78eaf:1"),
+            .opportunity("9a0f52dd-024b-41f5-ba6a-c42dd1cb2f13"))
+    }
 }

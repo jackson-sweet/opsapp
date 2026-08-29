@@ -939,6 +939,22 @@ struct NotificationListView: View {
                         || typeImpliesDeepLink
                     if hasDeepLink {
                         let actionLabel: String = {
+                            // Rows the lead router will claim navigate to the
+                            // lead — say so. The server's action_label wins when
+                            // it matches the destination (OPEN LEAD / START
+                            // VISIT); web-only verbs like "Mark as Won" would lie
+                            // about what the button does on iOS.
+                            if LeadNotificationRouteParser.siteVisitDeepLinks.contains(notification.deepLinkType ?? "") {
+                                return notification.actionLabel ?? "OPEN LEAD"
+                            }
+                            if LeadNotificationRouteParser.isLeadNotification(
+                                type: notification.type,
+                                deepLinkType: notification.deepLinkType,
+                                actionUrl: notification.actionUrl,
+                                dedupeKey: notification.dedupeKey
+                            ) {
+                                return "OPEN LEAD"
+                            }
                             // When deep_link_type is set, use the type-specific
                             // label (handled below). Project-id-only rows show
                             // VIEW PROJECT.
@@ -1189,6 +1205,31 @@ struct NotificationListView: View {
             return
         }
 
+        // Site-visit prompts: heads-up opens the lead, START goes straight into
+        // capture via the leads tab's StartSiteVisit relay — the same split the
+        // push path makes in AppDelegate.onClick. Both need the opportunity id
+        // from the action URL (bug c2946efc: these rows previously matched no
+        // case at all and the button did nothing).
+        let normalizedDeepLink = deepLink.trimmingCharacters(in: .whitespacesAndNewlines)
+        if LeadNotificationRouteParser.siteVisitDeepLinks.contains(normalizedDeepLink) {
+            if normalizedDeepLink == "site_visit_start",
+               let opportunityId = LeadNotificationRouteParser.opportunityId(fromActionUrl: notification.actionUrl) {
+                dismiss()
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                    NotificationCenter.default.post(
+                        name: Notification.Name("StartSiteVisit"),
+                        object: nil,
+                        userInfo: ["leadId": opportunityId]
+                    )
+                }
+            } else {
+                // heads_up — or a START row whose id didn't resolve: the lead is
+                // still the right landing.
+                routeToLead(notification)
+            }
+            return
+        }
+
         // Lead/opportunity notifications route here BEFORE the deep-link switch
         // because the dominant production lead row (`type=leads_waiting`) carries
         // `deep_link_type = NULL` — switching on deepLink alone would dead-tap.
@@ -1296,19 +1337,17 @@ struct NotificationListView: View {
         case "inbox", "email_sync_complete":
             // Email-sync notifications come from the web sync engine. iOS
             // has no inbox surface yet — route to the project if the matched
-            // email was attached to one (`projectId` set). Otherwise fall
-            // back to JobBoard so the user lands on actionable surface
-            // rather than a dead tap.
+            // email was attached to one (`projectId` set). Otherwise land on
+            // the LEADS tab: rows reaching this case carry no lead signal (the
+            // parser claims every resolvable one), and email-engine content
+            // belongs to the pipeline surface, not the Job Board.
             if let projectId = notification.projectId, !projectId.isEmpty {
                 dismiss()
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
                     appState.viewProjectDetailsById(projectId)
                 }
             } else {
-                dismiss()
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                    NotificationCenter.default.post(name: Notification.Name("OpenJobBoard"), object: nil)
-                }
+                openLeadsTabFallback()
             }
         case "invoice_detail":
             // Legacy alias — old expense_submitted rows landed here by mistake.
@@ -1407,8 +1446,7 @@ struct NotificationListView: View {
     /// On success the rail dismisses and posts `OpenLeadDetails`, which
     /// MainTabView gates on `pipeline.view` + the `pipeline` feature before
     /// switching to the LEADS tab. On a final nil we land the operator on the
-    /// Job Board rather than dropping the tap — mirroring the inbox/email
-    /// fallback above.
+    /// LEADS tab rather than dropping the tap — the surface the row is about.
     private func routeToLead(_ notification: NotificationDTO) {
         switch LeadNotificationRouteParser.route(
             actionUrl: notification.actionUrl,
@@ -1430,12 +1468,12 @@ struct NotificationListView: View {
                     if let resolvedId, !resolvedId.isEmpty {
                         openLead(opportunityId: resolvedId)
                     } else {
-                        openJobBoardFallback()
+                        openLeadsTabFallback()
                     }
                 }
             }
         case .none:
-            openJobBoardFallback()
+            openLeadsTabFallback()
         }
     }
 
@@ -1452,14 +1490,16 @@ struct NotificationListView: View {
         }
     }
 
-    /// Graceful fallback for a lead notification we can't resolve to a live
-    /// opportunity (e.g. an inbox thread with no linked lead, or an archived
-    /// destructive-candidate row). Lands on the Job Board — an actionable
-    /// surface — instead of a dead tap.
-    private func openJobBoardFallback() {
+    /// Graceful fallback for a lead-family notification we cannot resolve to a
+    /// live opportunity (inbox thread with no linked lead, archived candidate,
+    /// settings-shaped lifecycle rows). Lands on the LEADS tab — the surface the
+    /// notification is about — never the Job Board (bug 8dc71fa9 follow-through).
+    /// MainTabView's OpenLeadsTab observer enforces pipeline access and falls
+    /// back to the Job Board only for users with no pipeline at all.
+    private func openLeadsTabFallback() {
         dismiss()
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-            NotificationCenter.default.post(name: Notification.Name("OpenJobBoard"), object: nil)
+            NotificationCenter.default.post(name: Notification.Name("OpenLeadsTab"), object: nil)
         }
     }
 

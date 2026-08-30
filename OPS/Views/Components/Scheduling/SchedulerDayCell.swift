@@ -7,8 +7,10 @@
 //  The cell carries four independent readings without ever becoming a chart:
 //
 //    • DAY NUMBER  — mono, top-left. Today wears the accent (number + hairline
-//      ring); the accent is a focus marker here, not a CTA. Inside a
-//      selection it wears whichever ink survives the ground beneath it.
+//      ring); a statutory holiday wears tan plus a flag. The accent is a focus
+//      marker here, not a CTA. Inside a selection the number wears whichever
+//      ink survives the ground beneath it while the flag remains the holiday's
+//      non-colour cue.
 //    • SIGNAL BARS — up to three 3pt bars along the bottom. White = this
 //      project. Tan = the crew is booked. Tan + 45° hatch = the crew is off
 //      (the hatch is a second, non-colour cue so the day still reads for a
@@ -31,6 +33,14 @@
 //
 
 import SwiftUI
+
+/// A holiday's tan flag always sits on the canvas token. The backing disappears
+/// into an unselected cell and becomes its own high-contrast island over every
+/// possible selection gradient, so the cue never has to guess at local fill.
+enum SchedulerHolidayMarkerPalette {
+    static let icon = OPSStyle.Colors.tanTextM
+    static let backing = OPSStyle.Colors.background
+}
 
 struct SchedulerDayCell: View {
     let date: Date
@@ -73,22 +83,43 @@ struct SchedulerDayCell: View {
                         .font(OPSStyle.Typography.dataValue)
                         .monospacedDigit()
                         .foregroundColor(numberColor)
-                    Spacer(minLength: 0)
-                    if signals.otherCount > 0 {
-                        Circle()
-                            .fill(OPSStyle.Colors.tertiaryText)
+                        .opacity(contextOpacity)
+                    if signals.holiday != nil {
+                        Image(systemName: OPSStyle.Icons.holiday)
+                            .font(.system(size: OPSStyle.Layout.IconSize.xs, weight: .semibold))
+                            .foregroundColor(SchedulerHolidayMarkerPalette.icon)
                             .frame(
-                                width: OPSStyle.Layout.Indicator.dotSM,
-                                height: OPSStyle.Layout.Indicator.dotSM
+                                width: OPSStyle.Layout.IconSize.sm,
+                                height: OPSStyle.Layout.IconSize.sm
                             )
+                            .background(
+                                Circle().fill(SchedulerHolidayMarkerPalette.backing)
+                            )
+                            .accessibilityHidden(true)
                     }
+                    Spacer(minLength: 0)
                 }
                 Spacer(minLength: 0)
                 signalBars
+                    .opacity(contextOpacity)
             }
             .padding(.horizontal, OPSStyle.Layout.spacing1)
             .padding(.vertical, OPSStyle.Layout.spacing1)
-            .opacity(signals.isPreFloor ? OPSStyle.Layout.schedulerPreFloorOpacity : 1)
+
+            // Density is independent of the date + holiday pair. Keeping it
+            // out of that HStack preserves a two-digit day on compact phones.
+            if signals.otherCount > 0 {
+                Circle()
+                    .fill(OPSStyle.Colors.tertiaryText)
+                    .frame(
+                        width: OPSStyle.Layout.Indicator.dotSM,
+                        height: OPSStyle.Layout.Indicator.dotSM
+                    )
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+                    .padding(.horizontal, OPSStyle.Layout.spacing1)
+                    .padding(.vertical, OPSStyle.Layout.spacing1)
+                    .opacity(contextOpacity)
+            }
         }
         .frame(maxWidth: .infinity)
         .frame(height: OPSStyle.Layout.schedulerDayCellHeight)
@@ -97,6 +128,7 @@ struct SchedulerDayCell: View {
         .onLongPressGesture(minimumDuration: OPSStyle.Animation.longPressHold) { onLongPress() }
         .animation(reduceMotion ? nil : OPSStyle.Animation.faster, value: role)
         .accessibilityElement(children: .combine)
+        .accessibilityValue(holidayAccessibilityValue)
         .accessibilityAddTraits(.isButton)
     }
 
@@ -235,8 +267,25 @@ struct SchedulerDayCell: View {
                 ? OPSStyle.Colors.invertedText
                 : OPSStyle.Colors.primaryText
         case .none:
-            return isToday ? OPSStyle.Colors.primaryAccent : OPSStyle.Colors.primaryText
+            if isToday { return OPSStyle.Colors.primaryAccent }
+            return signals.holiday == nil
+                ? OPSStyle.Colors.primaryText
+                : OPSStyle.Colors.tanTextM
         }
+    }
+
+    /// The flag keeps the cue independent of colour on screen; VoiceOver gets
+    /// the full legal name and the same jurisdiction badge the calendar card
+    /// exposes. Empty on ordinary days so existing day-cell speech is unchanged.
+    private var holidayAccessibilityValue: String {
+        guard let holiday = signals.holiday else { return "" }
+        return "\(holiday.name), \(holiday.jurisdiction.badge)"
+    }
+
+    /// Dependency-floor context recedes as before; the statutory-holiday flag
+    /// stays fully legible because the date's legal status does not weaken.
+    private var contextOpacity: Double {
+        signals.isPreFloor ? OPSStyle.Layout.schedulerPreFloorOpacity : 1
     }
 
     /// Whether the ground under the day number carries more of the cap's fill

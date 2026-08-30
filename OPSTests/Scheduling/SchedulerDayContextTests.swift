@@ -180,6 +180,29 @@ final class SchedulerDayContextTests: XCTestCase {
         XCTAssertEqual(signals.otherCount, 1)
     }
 
+    /// A statutory holiday is context the scheduler must disclose, never a
+    /// manufactured crew conflict or a date the operator cannot choose.
+    func testStatutoryHolidayFlowsThroughDayAndRangeContextWithoutBlockingThePick() throws {
+        let context = makeContext(item: item(crewIds: ["marcus"]))
+        let canadaDay = day(2026, 7, 1)
+
+        let signals = context.signals(for: canadaDay)
+        let holiday = try XCTUnwrap(signals.holiday)
+        XCTAssertEqual(holiday.name, "Canada Day")
+        XCTAssertEqual(holiday.jurisdiction, .britishColumbia)
+        XCTAssertFalse(signals.crewBusy)
+        XCTAssertFalse(signals.crewTimeOff)
+        XCTAssertFalse(signals.isEmpty)
+
+        let review = context.rangeReview(
+            start: day(2026, 6, 30),
+            end: day(2026, 7, 2)
+        )
+        XCTAssertEqual(review.holidays.map(\.name), ["Canada Day"])
+        XCTAssertEqual(review.conflictCount, 0)
+        XCTAssertTrue(SchedulerSelection.range(canadaDay, canadaDay).isCommittable)
+    }
+
     func testTheTaskBeingRescheduledNeverCountsAgainstItself() {
         let context = makeContext(
             item: item(selfTaskId: "task-self", projectId: "project-1", crewIds: ["marcus"]),

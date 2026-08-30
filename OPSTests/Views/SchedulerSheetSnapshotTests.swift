@@ -253,6 +253,19 @@ final class SchedulerSheetSnapshotTests: XCTestCase {
         }
     }
 
+    /// A statutory holiday in the real picker, inside the brightest possible
+    /// range interior: high-contrast flag in the scan grid, then the full name,
+    /// jurisdiction, and date in the range panel. Compare its amber context
+    /// with the olive SUGGESTED chip in 01.
+    func testHolidayContextInPicker() throws {
+        let world = try World()
+        let start = calendar.date(byAdding: .day, value: -1, to: world.holidayDay)!
+        let end = calendar.date(byAdding: .day, value: 2, to: world.holidayDay)!
+        snapshot("20_holiday_context", size: phone) {
+            world.sheet(start: start, end: end)
+        }
+    }
+
     /// The footer in all three of its states, side by side.
     func testFooterStates() {
         let day = calendar.startOfDay(for: Date())
@@ -293,6 +306,7 @@ final class SchedulerSheetSnapshotTests: XCTestCase {
         let scheduledStart: Date
         let scheduledEnd: Date
         let timeOffDay: Date
+        let holidayDay: Date
 
         private let calendar = Calendar.current
 
@@ -324,6 +338,12 @@ final class SchedulerSheetSnapshotTests: XCTestCase {
             while calendar.component(.weekday, from: monday) != 2 {
                 monday = calendar.date(byAdding: .day, value: 1, to: monday)!
             }
+            let holidaySearchEnd = calendar.date(byAdding: .year, value: 1, to: monday)!
+            let searchCalendar = calendar
+            holidayDay = StatutoryHolidays
+                .holidays(in: monday...holidaySearchEnd, calendar: searchCalendar)
+                .first { searchCalendar.component(.day, from: $0.date) >= 10 }!
+                .date
 
             let marcus = User(id: "user-marcus", firstName: "Marcus", lastName: "Hale", role: .crew, companyId: "company-1")
             let dana = User(id: "user-dana", firstName: "Dana", lastName: "Reid", role: .crew, companyId: "company-1")
@@ -393,6 +413,20 @@ final class SchedulerSheetSnapshotTests: XCTestCase {
             )
             off.status = CalendarUserEventStatus.approved.rawValue
             context.insert(off)
+
+            // Unrelated work on the holiday proves the compact day cell can
+            // carry both its statutory marker and the top-trailing density dot.
+            let holidayElsewhere = CalendarUserEvent(
+                id: "event-holiday-elsewhere",
+                userId: "user-elsewhere",
+                companyId: "company-1",
+                type: .personal,
+                title: "Elsewhere",
+                startDate: holidayDay,
+                endDate: holidayDay
+            )
+            holidayElsewhere.status = CalendarUserEventStatus.approved.rawValue
+            context.insert(holidayElsewhere)
 
             // The job being scheduled.
             item = ProjectTask(id: "task-decking", projectId: harbour.id, taskTypeId: deckingType.id, companyId: "company-1")

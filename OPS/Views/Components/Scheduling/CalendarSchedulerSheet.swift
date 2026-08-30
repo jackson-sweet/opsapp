@@ -31,6 +31,15 @@
 import SwiftUI
 import SwiftData
 
+/// Positive guidance has its own semantic palette. Keeping this named prevents
+/// a future suggestion from quietly drifting back onto the warning/time-off
+/// tan used inside the same calendar.
+enum SchedulerSuggestionPalette {
+    static let label = OPSStyle.Colors.oliveTextM
+    static let fill = OPSStyle.Colors.oliveFillM
+    static let border = OPSStyle.Colors.oliveLineM
+}
+
 struct CalendarSchedulerSheet: View {
     // MARK: - Properties
     @Binding var isPresented: Bool
@@ -389,7 +398,7 @@ struct CalendarSchedulerSheet: View {
             HStack(spacing: OPSStyle.Layout.spacing2) {
                 Text("SUGGESTED")
                     .font(OPSStyle.Typography.metadata)
-                    .foregroundColor(OPSStyle.Colors.tanTextM)
+                    .foregroundColor(SchedulerSuggestionPalette.label)
                 Text(suggestionDetail(suggested))
                     .font(OPSStyle.Typography.metadata)
                     .foregroundColor(OPSStyle.Colors.secondaryText)
@@ -401,11 +410,11 @@ struct CalendarSchedulerSheet: View {
             .frame(maxWidth: .infinity)
             .background(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius)
-                    .fill(OPSStyle.Colors.tanFillM)
+                    .fill(SchedulerSuggestionPalette.fill)
             )
             .overlay(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius)
-                    .strokeBorder(OPSStyle.Colors.tanLineM, lineWidth: OPSStyle.Layout.Border.standard)
+                    .strokeBorder(SchedulerSuggestionPalette.border, lineWidth: OPSStyle.Layout.Border.standard)
             )
             .contentShape(Rectangle())
         }
@@ -574,13 +583,20 @@ struct CalendarSchedulerSheet: View {
     @ViewBuilder
     private func dayRows(for day: Date) -> some View {
         let split = dayContext.events(on: day)
-        if split.relevant.isEmpty {
+        let holiday = dayContext.holiday(on: day)
+        if split.relevant.isEmpty && holiday == nil {
             emptyDayLine
         } else {
             fadedScroll {
                 VStack(spacing: OPSStyle.Layout.spacing2) {
+                    if let holiday {
+                        SchedulerHolidayRow(holiday: holiday)
+                    }
                     ForEach(split.relevant) { event in
                         eventRow(event)
+                    }
+                    if split.relevant.isEmpty {
+                        emptyDayLine
                     }
                 }
             }
@@ -589,11 +605,14 @@ struct CalendarSchedulerSheet: View {
 
     @ViewBuilder
     private func rangeRows(_ review: SchedulerDayContext.RangeReview) -> some View {
-        if review.rows.isEmpty && review.floorViolation == nil {
+        if review.rows.isEmpty && review.floorViolation == nil && review.holidays.isEmpty {
             emptyDayLine
         } else {
             fadedScroll {
                 VStack(spacing: OPSStyle.Layout.spacing2) {
+                    ForEach(review.holidays) { holiday in
+                        SchedulerHolidayRow(holiday: holiday, showsDate: true)
+                    }
                     if let floor = review.floorViolation,
                        let prerequisite = dayContext.floorPrerequisiteTitle {
                         dependencyNoteRow(prerequisite: prerequisite, floor: floor)

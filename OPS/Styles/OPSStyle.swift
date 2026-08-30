@@ -1003,6 +1003,7 @@ enum OPSStyle {
 
         // Scheduling & Time
         static let schedule = "calendar.badge.clock"        // THE icon for Scheduling
+        static let holiday = "flag.fill"                    // THE icon for statutory-holiday context
         static let deadline = "calendar.badge.exclamationmark" // THE icon for Deadlines
         static let duration = "clock.fill"                  // THE icon for Duration/Time
         static let schedulePush = "arrow.right"             // Move a schedule span forward

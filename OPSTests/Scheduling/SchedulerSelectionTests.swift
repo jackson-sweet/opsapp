@@ -28,7 +28,67 @@ final class SchedulerSelectionTests: XCTestCase {
         calendar.date(from: DateComponents(year: year, month: month, day: dayOfMonth))!
     }
 
+    private func rgba(_ color: Color) -> (red: CGFloat, green: CGFloat, blue: CGFloat, alpha: CGFloat) {
+        let resolved = UIColor(color).resolvedColor(
+            with: UITraitCollection(userInterfaceStyle: .dark)
+        )
+        var red: CGFloat = 0
+        var green: CGFloat = 0
+        var blue: CGFloat = 0
+        var alpha: CGFloat = 0
+        resolved.getRed(&red, green: &green, blue: &blue, alpha: &alpha)
+        return (red, green, blue, alpha)
+    }
+
+    private func assertSameColor(
+        _ actual: Color,
+        _ expected: Color,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        let actualRGBA = rgba(actual)
+        let expectedRGBA = rgba(expected)
+        XCTAssertEqual(actualRGBA.red, expectedRGBA.red, accuracy: 0.001, file: file, line: line)
+        XCTAssertEqual(actualRGBA.green, expectedRGBA.green, accuracy: 0.001, file: file, line: line)
+        XCTAssertEqual(actualRGBA.blue, expectedRGBA.blue, accuracy: 0.001, file: file, line: line)
+        XCTAssertEqual(actualRGBA.alpha, expectedRGBA.alpha, accuracy: 0.001, file: file, line: line)
+    }
+
+    private func colorLuminance(_ color: Color) -> Double {
+        let components = rgba(color)
+        func linear(_ component: CGFloat) -> Double {
+            let value = Double(component)
+            return value <= 0.04045
+                ? value / 12.92
+                : pow((value + 0.055) / 1.055, 2.4)
+        }
+        return 0.2126 * linear(components.red)
+            + 0.7152 * linear(components.green)
+            + 0.0722 * linear(components.blue)
+    }
+
+    private func colorContrast(_ first: Color, _ second: Color) -> Double {
+        let firstLuminance = colorLuminance(first) + 0.05
+        let secondLuminance = colorLuminance(second) + 0.05
+        return max(firstLuminance, secondLuminance) / min(firstLuminance, secondLuminance)
+    }
+
     // MARK: - Transitions
+
+    func testSuggestedProposalUsesThePositiveOlivePalette() {
+        assertSameColor(SchedulerSuggestionPalette.label, OPSStyle.Colors.oliveTextM)
+        assertSameColor(SchedulerSuggestionPalette.fill, OPSStyle.Colors.oliveFillM)
+        assertSameColor(SchedulerSuggestionPalette.border, OPSStyle.Colors.oliveLineM)
+    }
+
+    func testHolidayMarkerUsesAStableHighContrastCanvasBacking() {
+        assertSameColor(SchedulerHolidayMarkerPalette.icon, OPSStyle.Colors.tanTextM)
+        assertSameColor(SchedulerHolidayMarkerPalette.backing, OPSStyle.Colors.background)
+        XCTAssertGreaterThanOrEqual(
+            colorContrast(SchedulerHolidayMarkerPalette.icon, SchedulerHolidayMarkerPalette.backing),
+            3
+        )
+    }
 
     func testFirstTapStartsAndSecondTapCompletesARange() {
         var selection = SchedulerSelection.none
@@ -741,6 +801,38 @@ final class SchedulerSelectionTests: XCTestCase {
 
         let states: [State] = [
             State(name: "clear"),
+            State(
+                name: "holiday",
+                signals: .init(
+                    holiday: StatutoryHolidays.holiday(on: day(2026, 7, 1), calendar: calendar)
+                )
+            ),
+            State(
+                name: "holiday_interior_near_start",
+                signals: .init(
+                    holiday: StatutoryHolidays.holiday(on: day(2026, 7, 1), calendar: calendar)
+                ),
+                role: .interior,
+                spanPosition: (index: 1, count: 4),
+                spanEdge: .open
+            ),
+            State(
+                name: "holiday_interior_near_end",
+                signals: .init(
+                    holiday: StatutoryHolidays.holiday(on: day(2026, 7, 1), calendar: calendar)
+                ),
+                role: .interior,
+                spanPosition: (index: 2, count: 4),
+                spanEdge: .open
+            ),
+            State(
+                name: "holiday_pre_floor_with_density",
+                signals: .init(
+                    otherCount: 2,
+                    isPreFloor: true,
+                    holiday: StatutoryHolidays.holiday(on: day(2026, 7, 1), calendar: calendar)
+                )
+            ),
             State(name: "this_project", signals: .init(thisProject: true)),
             State(name: "crew_busy", signals: .init(crewBusy: true)),
             State(name: "crew_off", signals: .init(crewTimeOff: true)),

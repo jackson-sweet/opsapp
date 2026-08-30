@@ -301,9 +301,11 @@ struct SchedulerDayContext {
         var otherCount = 0
         /// Strictly before the dependency floor. Dims; never blocks.
         var isPreFloor = false
+        /// A statutory holiday is named context, not a conflict or a gate.
+        var holiday: StatutoryHoliday?
 
         var isEmpty: Bool {
-            !thisProject && !crewBusy && !crewTimeOff && otherCount == 0
+            !thisProject && !crewBusy && !crewTimeOff && otherCount == 0 && holiday == nil
         }
     }
 
@@ -339,6 +341,9 @@ struct SchedulerDayContext {
         /// The floor date when the picked start lands before it. Advisory —
         /// SAVE stays enabled.
         let floorViolation: Date?
+        /// Statutory holidays inside the pick, oldest first. Context only —
+        /// they never increment `conflictCount` or make the range invalid.
+        let holidays: [StatutoryHoliday]
     }
 
     // MARK: Stored
@@ -423,9 +428,13 @@ struct SchedulerDayContext {
 
     // MARK: Day signals
 
+    func holiday(on day: Date) -> StatutoryHoliday? {
+        StatutoryHolidays.holiday(on: day, calendar: calendar)
+    }
+
     func signals(for day: Date) -> DaySignals {
         let key = calendar.startOfDay(for: day)
-        var signals = DaySignals()
+        var signals = DaySignals(holiday: holiday(on: key))
 
         for event in eventsByDay[key] ?? [] {
             let crewOverlap = intersectsItemCrew(event)
@@ -487,7 +496,12 @@ struct SchedulerDayContext {
         var violation: Date?
         if let floor = dependencyFloor, lower < floor { violation = floor }
 
-        return RangeReview(rows: ordered, conflictCount: conflicts, floorViolation: violation)
+        return RangeReview(
+            rows: ordered,
+            conflictCount: conflicts,
+            floorViolation: violation,
+            holidays: StatutoryHolidays.holidays(in: lower...upper, calendar: calendar)
+        )
     }
 
     /// True when this commitment double-books the item's crew — the only thing

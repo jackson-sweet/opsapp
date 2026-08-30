@@ -54,19 +54,21 @@ enum StatutoryHolidays {
 
     /// The statutory holiday falling on `date`, or nil. Day-granular.
     static func holiday(on date: Date, calendar: Calendar = .current) -> StatutoryHoliday? {
-        let day = calendar.startOfDay(for: date)
-        let year = calendar.component(.year, from: day)
-        return holidays(inYear: year, calendar: calendar).first { $0.date == day }
+        let civilCalendar = canadianCivilCalendar(matching: calendar)
+        let day = civilCalendar.startOfDay(for: date)
+        let year = civilCalendar.component(.year, from: day)
+        return holidays(inYear: year, calendar: civilCalendar).first { $0.date == day }
     }
 
     /// Every statutory holiday in a closed date range, oldest first.
     static func holidays(in range: ClosedRange<Date>, calendar: Calendar = .current) -> [StatutoryHoliday] {
-        let firstYear = calendar.component(.year, from: range.lowerBound)
-        let lastYear = calendar.component(.year, from: range.upperBound)
-        let lower = calendar.startOfDay(for: range.lowerBound)
-        let upper = calendar.startOfDay(for: range.upperBound)
+        let civilCalendar = canadianCivilCalendar(matching: calendar)
+        let firstYear = civilCalendar.component(.year, from: range.lowerBound)
+        let lastYear = civilCalendar.component(.year, from: range.upperBound)
+        let lower = civilCalendar.startOfDay(for: range.lowerBound)
+        let upper = civilCalendar.startOfDay(for: range.upperBound)
         return (firstYear...lastYear)
-            .flatMap { holidays(inYear: $0, calendar: calendar) }
+            .flatMap { holidays(inYear: $0, calendar: civilCalendar) }
             .filter { $0.date >= lower && $0.date <= upper }
             .sorted { $0.date < $1.date }
     }
@@ -74,16 +76,27 @@ enum StatutoryHolidays {
     /// Every statutory holiday in a calendar year, oldest first. Memoized —
     /// a month grid asks this question once per visible cell.
     static func holidays(inYear year: Int, calendar: Calendar = .current) -> [StatutoryHoliday] {
-        let key = CacheKey(year: year, timeZone: calendar.timeZone.identifier)
+        let civilCalendar = canadianCivilCalendar(matching: calendar)
+        let key = CacheKey(year: year, timeZone: civilCalendar.timeZone.identifier)
         cacheLock.lock()
         defer { cacheLock.unlock() }
         if let cached = cache[key] { return cached }
-        let computed = compute(year: year, calendar: calendar)
+        let computed = compute(year: year, calendar: civilCalendar)
         cache[key] = computed
         return computed
     }
 
     // MARK: - Derivation
+
+    /// Canadian statutory dates are defined in the Gregorian civil calendar.
+    /// A system-calendar preference must not reinterpret 2026 as a Buddhist,
+    /// Hebrew, Islamic, or Japanese calendar year; only its local timezone is
+    /// relevant to where the operator's day begins.
+    private static func canadianCivilCalendar(matching calendar: Calendar) -> Calendar {
+        var civilCalendar = Calendar(identifier: .gregorian)
+        civilCalendar.timeZone = calendar.timeZone
+        return civilCalendar
+    }
 
     private static func compute(year: Int, calendar: Calendar) -> [StatutoryHoliday] {
         var holidays: [StatutoryHoliday] = []

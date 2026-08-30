@@ -98,4 +98,23 @@ final class StatutoryHolidayTests: XCTestCase {
             .map(\.name)
         XCTAssertEqual(names, ["Christmas Day", "Boxing Day", "New Year's Day"])
     }
+
+    /// Canadian statutory dates are Gregorian law dates even when the operator
+    /// uses another system calendar. Preserve local midnight, never reinterpret
+    /// the holiday formula in Buddhist/Hebrew/Islamic calendar years.
+    func testHolidayMathRemainsGregorianForANonGregorianSystemCalendar() {
+        var buddhist = Calendar(identifier: .buddhist)
+        buddhist.timeZone = calendar.timeZone
+
+        XCTAssertEqual(
+            StatutoryHolidays.holiday(on: day(2026, 4, 3), calendar: buddhist)?.name,
+            "Good Friday"
+        )
+        XCTAssertEqual(
+            StatutoryHolidays.holidays(inYear: 2026, calendar: buddhist)
+                .first { $0.name == "Canada Day" }?
+                .date,
+            day(2026, 7, 1)
+        )
+    }
 }

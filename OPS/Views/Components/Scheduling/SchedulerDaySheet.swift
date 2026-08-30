@@ -48,6 +48,10 @@ struct SchedulerDaySheet: View {
                 VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
                     let events = split
 
+                    if let holiday = context.holiday(on: day) {
+                        SchedulerHolidayRow(holiday: holiday)
+                    }
+
                     if events.relevant.isEmpty && events.elsewhere.isEmpty {
                         emptyLine
                     }
@@ -168,5 +172,58 @@ struct SchedulerDaySheet: View {
         }
         .padding(.horizontal, OPSStyle.Layout.spacing3_5)
         .padding(.bottom, OPSStyle.Layout.spacing3)
+    }
+}
+
+/// Compact statutory-holiday context shared by the selected-day panel and the
+/// long-press inspector. It is deliberately inert: a holiday is a fact about
+/// the day, never a scheduler action or a conflict.
+struct SchedulerHolidayRow: View {
+    let holiday: StatutoryHoliday
+    var showsDate = false
+
+    var body: some View {
+        HStack(spacing: OPSStyle.Layout.spacing2) {
+            Image(systemName: OPSStyle.Icons.holiday)
+                .font(.system(size: OPSStyle.Layout.IconSize.xs, weight: .semibold))
+                .foregroundColor(OPSStyle.Colors.tanTextM)
+
+            Text(holiday.name)
+                .font(OPSStyle.Typography.metadata)
+                .foregroundColor(OPSStyle.Colors.primaryText)
+                .textCase(.uppercase)
+                .lineLimit(2)
+                .fixedSize(horizontal: false, vertical: true)
+
+            Spacer(minLength: 0)
+
+            Text(detail)
+                .font(OPSStyle.Typography.miniLabel)
+                .foregroundColor(OPSStyle.Colors.tanTextM)
+                .monospacedDigit()
+                .lineLimit(1)
+                .fixedSize(horizontal: true, vertical: false)
+                .layoutPriority(1)
+        }
+        .padding(.horizontal, OPSStyle.Layout.spacing2)
+        .frame(minHeight: OPSStyle.Layout.chipMinHeight)
+        .background(
+            RoundedRectangle(cornerRadius: OPSStyle.Layout.smallCornerRadius)
+                .fill(OPSStyle.Colors.surfaceInput)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: OPSStyle.Layout.smallCornerRadius)
+                .strokeBorder(
+                    OPSStyle.Colors.tanLineM,
+                    lineWidth: OPSStyle.Layout.Border.standard
+                )
+        )
+        .accessibilityElement(children: .combine)
+    }
+
+    private var detail: String {
+        guard showsDate else { return holiday.jurisdiction.badge }
+        let date = SchedulerDayContext.shortDate(holiday.date).uppercased()
+        return "\(holiday.jurisdiction.badge) · \(date)"
     }
 }

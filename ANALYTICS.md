@@ -2,6 +2,8 @@
 
 OPS separates business truth, product behaviour, and Google conversion signals. No single analytics destination is allowed to claim all three.
 
+**Release state — August 30, 2026:** this contract is implemented and verified on the local analytics-hardening branch. It is not customer-live until the iOS build is released through the App Store and live event readback succeeds. The production Firebase key-event configuration is a separate Google-admin state.
+
 ## Source ownership
 
 | Signal | Destination | Purpose |
@@ -15,7 +17,7 @@ Client events never define whether a company activated or paid. Those milestones
 
 ## Firebase conversion allowlist
 
-`AnalyticsManager` may emit only:
+The release-candidate `AnalyticsManager` may emit only:
 
 1. `sign_up`
 2. `begin_trial`
@@ -29,7 +31,7 @@ Firebase user properties are limited to conversion segmentation: `user_type`, `s
 
 ## Supabase event contract
 
-`AnalyticsService` creates a stable UUID for every product event and queues it durably in `UserDefaults`. The queue preserves order, caps itself at 1,000 events, retries transient failures, and drops permanent poison events so one bad payload cannot block the stream.
+The release-candidate `AnalyticsService` creates a stable UUID for every product event and queues it durably in `UserDefaults`. The queue preserves order, caps itself at 1,000 events, retries transient failures, and drops permanent poison events so one bad payload cannot block the stream.
 
 Each event carries:
 
@@ -63,6 +65,14 @@ Counts, booleans, stable enum values, status transitions, and coarse UI context 
 ## Logging
 
 Analytics diagnostics compile only in debug builds and contain event categories or counts, never user IDs or raw payloads. Release builds do not print analytics identifiers or property bodies.
+
+## Business milestones and source health
+
+iOS conversion/product events cannot define trial, activation, first value, paid, or revenue membership. Those metrics are derived on the server from company, project, task, and billing records under the shared growth measurement contract.
+
+The app notification rail recognizes the staged persistent type `analytics_source_failed`. It uses the design-system alert icon and error status colour. Creation, deduplication, and automatic resolution are server-owned; the iOS client only renders the notification returned by the existing notification API.
+
+The registered iOS Firebase/GA property is `514229717`. It is conversion QA only. Search Console, the two web GA properties, and App Store Connect facts are owned and health-checked by OPS-Web.
 
 ## Adding telemetry
 

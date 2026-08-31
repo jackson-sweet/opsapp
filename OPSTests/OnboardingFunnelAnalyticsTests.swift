@@ -25,6 +25,46 @@ import XCTest
 
 final class OnboardingFunnelAnalyticsTests: XCTestCase {
 
+    // MARK: - Self-reported acquisition parity
+
+    func testReferralSourceSlugsMatchTheWebRegistry() {
+        XCTAssertEqual(
+            ReferralSource.allCases.map(\.slug),
+            [
+                "instagram",
+                "facebook",
+                "youtube",
+                "google",
+                "app_store",
+                "word_of_mouth",
+                "other"
+            ]
+        )
+    }
+
+    func testReferralSourceLabelsMatchTheWebRegistry() {
+        XCTAssertEqual(
+            ReferralSource.allCases.map(\.label),
+            [
+                "Instagram",
+                "Facebook",
+                "YouTube",
+                "Google",
+                "App Store",
+                "Someone told me",
+                "Other"
+            ]
+        )
+    }
+
+    func testReferralSourceParserKeepsLegacyAndSkippedAnswersExplicit() {
+        XCTAssertNil(ReferralSource.from(slug: nil))
+        XCTAssertNil(ReferralSource.from(slug: ""))
+        XCTAssertNil(ReferralSource.from(slug: "Instagram"))
+        XCTAssertNil(ReferralSource.from(slug: "Internet Advertisement"))
+        XCTAssertEqual(ReferralSource.from(slug: "google"), .google)
+    }
+
     // MARK: - step.analyticsId (stable, parameter-free)
 
     func testAnalyticsIdForEverySimpleStep() {

@@ -12,12 +12,14 @@ import SwiftData
 import Combine
 import MapKit
 
-/// Normal Home renders the recovery indicator inside its measured AppHeader.
-/// Home project mode moves the same control into the owned project header stack.
-/// Every non-Home root keeps the app-level fallback below its measured header.
+/// Every root floats the recovery pill in the app-level band below its
+/// measured header — including normal Home (bug 417aac7b: the pill must
+/// never displace Home content; it overlays it, pinned to the header's
+/// lower edge). The one exception is Home project mode, whose owned
+/// project stack hosts the same control after AppHeader leaves the screen.
 enum SyncStatusPlacementPolicy {
-    static func showsMainTabOverlay(selectedTab: Int) -> Bool {
-        selectedTab != 0
+    static func showsMainTabOverlay(selectedTab: Int, isInProjectMode: Bool) -> Bool {
+        selectedTab != 0 || !isInProjectMode
     }
 }
 
@@ -491,8 +493,9 @@ struct MainTabView: View {
             .onPreferenceChange(AppHeaderHeightKey.self) { headerBandHeight = $0 }
 
             // Image sync progress is always banded directly below the active
-            // measured header. Non-Home roots also keep the global sync-status
-            // fallback here; normal Home owns that indicator in-flow instead.
+            // measured header. Every root — including normal Home (bug
+            // 417aac7b) — floats the sync-status pill here; Home project mode
+            // hosts it in the project stack instead.
             //
             // This band used to start at the top safe area — the same rectangle
             // the header's trailing action cluster occupies — so the attention
@@ -508,20 +511,24 @@ struct MainTabView: View {
             VStack(spacing: OPSStyle.Layout.spacing2) {
                 ImageSyncProgressView(syncManager: imageSyncProgressManager)
 
-                // Hidden while the restored banner speaks, and suppressed on
-                // Home because both normal and project modes own an in-flow host.
+                // Hidden while the restored banner speaks, and suppressed only
+                // in Home project mode, whose project stack owns an in-flow host.
                 if !dataController.showSyncRestoredAlert,
                    !toastCenter.isSuppressingSyncStatusIndicator,
                    SyncStatusPlacementPolicy.showsMainTabOverlay(
-                       selectedTab: selectedTab
+                       selectedTab: selectedTab,
+                       isInProjectMode: appState.isInProjectMode
                    ) {
+                    // Trailing-aligned compact pill; the full-width expanded
+                    // variant that accessibility sizes select gets a leading
+                    // inset here instead of touching the screen edge.
                     HStack {
-                        Spacer()
+                        Spacer(minLength: 0)
                         SyncStatusIndicator()
                             .environmentObject(dataController)
                             .environmentObject(syncStatusIndicatorModel)
-                            .padding(.trailing, OPSStyle.Layout.spacing3)
                     }
+                    .padding(.horizontal, OPSStyle.Layout.spacing3)
                 }
 
                 Spacer()

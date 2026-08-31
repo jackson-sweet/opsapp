@@ -42,12 +42,13 @@ final class SyncPillHeaderLayoutTests: XCTestCase {
     /// Every header type that carries the circular search button in its trailing
     /// cluster — the surfaces the bug was reported on.
     ///
-    /// `.home` is deliberately absent: its avatar branch reads
-    /// `dataController.syncEngine`, an implicitly-unwrapped property that a bare
-    /// `DataController()` leaves nil, so rendering it in a unit-test host traps
-    /// (AppHeader.swift:206). Home now owns an in-flow status row and has its own
-    /// `HomeSyncStatusLayoutTests`; this suite protects the remaining floating
-    /// non-Home placement.
+    /// `.home` takes the same floating band as of bug 417aac7b, but it is still
+    /// absent here for a harness reason, not a design one: its avatar branch
+    /// reads `dataController.syncEngine`, an implicitly-unwrapped property that a
+    /// bare `DataController()` leaves nil, so rendering `AppHeader(.home)` in a
+    /// unit-test host traps. Home's identical clearance invariant is proven in
+    /// `HomeSyncStatusLayoutTests`, which rebuilds the same header band from the
+    /// primitives `AppHeader` composes.
     private let searchHeaders: [(type: AppHeader.HeaderType, name: String)] = [
         (.jobBoard, "jobBoard"),
         (.schedule, "schedule"),
@@ -102,12 +103,19 @@ final class SyncPillHeaderLayoutTests: XCTestCase {
                 VStack(spacing: OPSStyle.Layout.spacing2) {
                     HStack {
                         Spacer(minLength: 0)
-                        SyncAttentionPill(count: count, isParked: isParked)
-                            .anchorPreference(key: PillBoundsKey.self, value: .bounds) {
-                                ["pill": $0]
-                            }
-                            .padding(.trailing, OPSStyle.Layout.spacing3)
+                        // Mirrors the production band exactly: accessibility
+                        // sizes get the full-width expanded variant, inset on
+                        // both edges rather than trailing-only (bug 417aac7b).
+                        SyncAttentionPill(
+                            count: count,
+                            isParked: isParked,
+                            adaptsForAccessibility: true
+                        )
+                        .anchorPreference(key: PillBoundsKey.self, value: .bounds) {
+                            ["pill": $0]
+                        }
                     }
+                    .padding(.horizontal, OPSStyle.Layout.spacing3)
                     Spacer(minLength: 0)
                 }
                 .padding(.top, headerBandHeight)

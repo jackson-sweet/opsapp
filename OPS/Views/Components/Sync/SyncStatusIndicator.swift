@@ -9,11 +9,12 @@
 //  precedence over the existing pending/syncing states, and its count comes from
 //  the same `RecoveryInventory` the recovery screen reads (not raw pending).
 //
-//  Placement: Home owns this as an in-flow row inside its measured AppHeader,
-//  so TODAY / ACTIVE / ALL cannot begin underneath it. Project mode keeps the
-//  same control inside the top project stack after AppHeader leaves the screen.
-//  Other tabs retain the app-level band below their measured header. See
-//  `SyncPillHeaderLayoutTests`.
+//  Placement: every root floats this in the app-level band below its measured
+//  header — Home included (bug 417aac7b: the pill overlays Home's content
+//  instead of displacing it; it no longer owns an in-flow header row). Home
+//  project mode is the sole exception and keeps the same control inside the top
+//  project stack after AppHeader leaves the screen. See
+//  `SyncPillHeaderLayoutTests` and `HomeSyncStatusLayoutTests`.
 //
 
 import Combine
@@ -168,7 +169,6 @@ struct SyncAttentionPill: View {
 
 enum SyncStatusIndicatorPlacement: Equatable {
     case appOverlay
-    case homeHeader
     case projectHeader
 }
 
@@ -241,34 +241,6 @@ final class SyncStatusIndicatorModel: ObservableObject {
     }
 }
 
-/// Trailing row reserved inside Home's measured header. It is constructed only
-/// while the indicator is visible, so the zero state adds no empty band.
-struct AppHeaderSyncStatusRow<Content: View>: View {
-    private let content: Content
-
-    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
-
-    init(@ViewBuilder content: () -> Content) {
-        self.content = content()
-    }
-
-    var body: some View {
-        Group {
-            if dynamicTypeSize.isAccessibilitySize {
-                content
-                    .frame(maxWidth: .infinity, alignment: .trailing)
-            } else {
-                HStack {
-                    Spacer(minLength: 0)
-                    content
-                }
-            }
-        }
-        .padding(.horizontal, OPSStyle.Layout.spacing3_5)
-        .padding(.bottom, OPSStyle.Layout.spacing2)
-    }
-}
-
 /// Keeps project recovery status and EXIT PROJECT in one owned header row.
 /// Accessibility sizes stack the two controls so neither truncates, overlaps,
 /// or steals the other's 44pt hit target.
@@ -328,13 +300,7 @@ struct SyncStatusIndicator: View {
     var body: some View {
         Group {
             if isVisible {
-                if placement == .homeHeader {
-                    AppHeaderSyncStatusRow {
-                        indicatorButton
-                    }
-                } else {
-                    indicatorButton
-                }
+                indicatorButton
             }
         }
         .fullScreenCover(isPresented: $showPendingWork) {
@@ -371,12 +337,18 @@ struct SyncStatusIndicator: View {
     }
 
     /// NEW — needs-a-look state. Tan, or rose when a permanent rejection is parked.
+    ///
+    /// Every placement adapts for accessibility now that the floating band is
+    /// the pill's only normal-mode home (bug 417aac7b): at accessibility sizes
+    /// it renders the full-width `expandedPill`, wrapping its label inside the
+    /// band's insets instead of painting past the screen edge. The floating
+    /// shadow stays band-only — MOBILE.md §8's single documented exception.
     private var attentionPill: some View {
         SyncAttentionPill(
             count: statusModel.attentionCount,
             isParked: statusModel.anyParked,
             isElevated: placement == .appOverlay,
-            adaptsForAccessibility: placement != .appOverlay
+            adaptsForAccessibility: true
         )
     }
 

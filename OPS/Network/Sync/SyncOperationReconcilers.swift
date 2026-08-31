@@ -42,6 +42,15 @@ enum SyncOperationReconcilers {
             && errorDescription.contains("project_photos_active_site_visit_url")
     }
 
+    /// True when a create failed only because the active-(project_id, url)
+    /// arbiter already holds the row (project_photos_active_project_url_uidx,
+    /// migration cluster_j_01). Same doctrine as the site-visit matcher: the
+    /// constraint NAME is the contract; an unrelated 23505 still parks.
+    static func isActiveProjectPhotoURLDuplicate(_ errorDescription: String) -> Bool {
+        errorDescription.contains("duplicate key value violates unique constraint")
+            && errorDescription.contains("project_photos_active_project_url")
+    }
+
     /// True when a projectTask update was refused because the server task is
     /// gone (complete_project_task and its kin raise task_not_found).
     static func isTaskNotFound(_ errorDescription: String) -> Bool {
@@ -64,7 +73,8 @@ enum SyncOperationReconcilers {
     ) -> Kind? {
         if operationType == "create",
            entityType == SyncEntityType.projectPhoto.rawValue,
-           isSiteVisitPhotoDuplicate(errorDescription) {
+           isSiteVisitPhotoDuplicate(errorDescription)
+            || isActiveProjectPhotoURLDuplicate(errorDescription) {
             return .duplicatePhotoCreate
         }
         if operationType == "update",
@@ -220,6 +230,38 @@ enum SyncOperationReconcilers {
         task.deletedAt = deletedAt
         // The deletion is the newer truth; there is nothing left to push.
         task.needsSync = false
+        return true
+    }
+
+    // MARK: - Project update: the tombstone wins
+
+    /// Applies the server's project tombstone locally. The deletion is the newer
+    /// truth; the project moves to trash on this phone and nothing is left to
+    /// push.
+    ///
+    /// Returns whether a live local project was tombstoned. `false` is still a
+    /// successful reconciliation — the device may hold no row, or already hold
+    /// the tombstone. An existing tombstone is never restamped: the first
+    /// deletion time this phone learned is the honest one.
+    ///
+    /// `#Predicate` on `Project` is safe. The documented SwiftData trap is
+    /// specific to `SyncOperation` against a table that has never held a row.
+    @discardableResult
+    static func applyProjectTombstone(
+        projectId: String,
+        deletedAt: Date,
+        in context: ModelContext
+    ) throws -> Bool {
+        let descriptor = FetchDescriptor<Project>(
+            predicate: #Predicate<Project> { $0.id == projectId }
+        )
+        guard let project = try context.fetch(descriptor).first,
+              project.deletedAt == nil else {
+            return false
+        }
+        project.deletedAt = deletedAt
+        // The deletion is the newer truth; there is nothing left to push.
+        project.needsSync = false
         return true
     }
 

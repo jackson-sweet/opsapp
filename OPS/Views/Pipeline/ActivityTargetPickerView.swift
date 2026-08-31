@@ -322,15 +322,18 @@ struct ActivityTargetPickerView: View {
         newLeadError = nil
 
         let repository = OpportunityRepository(companyId: companyId)
-        let dto = CreateOpportunityDTO(
-            contactName: newLeadName.trimmingCharacters(in: .whitespaces),
-            contactEmail: newLeadEmail.isEmpty ? nil : newLeadEmail,
-            contactPhone: newLeadPhone.isEmpty ? nil : newLeadPhone,
-            description: nil,
-            estimatedValue: nil,
-            source: "log_activity",
-            quoteDeliveryMethod: nil
-        )
+        // Built through the one factory that owns the schema vocabulary. This
+        // form used to send source: "log_activity", which
+        // opportunities_source_check has never permitted — so every lead
+        // created here failed (bug 44db2ea4).
+        guard let dto = ClientLeadAutocreate.makeInlineLeadDTO(
+            name: newLeadName,
+            email: newLeadEmail,
+            phone: newLeadPhone
+        ) else {
+            isSavingNewLead = false
+            return
+        }
 
         do {
             let created = try await repository.create(dto)
@@ -343,7 +346,15 @@ struct ActivityTargetPickerView: View {
             dismiss()
         } catch {
             isSavingNewLead = false
-            newLeadError = error.localizedDescription
+            // A field user never sees a raw database error (the standing rule in
+            // SyncStatusCopy). This form printed the constraint violation
+            // verbatim into the sheet; the cause travels in the log instead.
+            newLeadError = "Lead didn't save. Try again."
+            DebugLogger.shared.log(
+                "Inline lead create failed: \(error)",
+                level: .error,
+                category: "ActivityTargetPicker"
+            )
         }
     }
 }

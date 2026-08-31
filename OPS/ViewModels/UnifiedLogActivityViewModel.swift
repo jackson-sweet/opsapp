@@ -571,15 +571,16 @@ final class UnifiedLogActivityViewModel: ObservableObject {
         }
         let resolvedPhone = isCreatingNewLead ? newLeadPhone : phoneNumber
         let resolvedEmail = isCreatingNewLead ? newLeadEmail : ""
-        let dto = CreateOpportunityDTO(
-            contactName: trimmedName,
-            contactEmail: resolvedEmail.isEmpty ? nil : resolvedEmail,
-            contactPhone: resolvedPhone.isEmpty ? nil : resolvedPhone,
-            description: nil,
-            estimatedValue: nil,
-            source: newLeadSource,
-            quoteDeliveryMethod: nil
-        )
+        // Through the one factory that owns the schema vocabulary (bug
+        // 44db2ea4) — the source is conformed there, never trusted from here.
+        guard let dto = ClientLeadAutocreate.makeInlineLeadDTO(
+            name: trimmedName,
+            email: resolvedEmail,
+            phone: resolvedPhone,
+            source: newLeadSource
+        ) else {
+            throw ActivityLogError.noResolvableTarget
+        }
         let created = try await repo.create(dto)
         let model = created.toModel()
         modelContext?.insert(model)
@@ -595,10 +596,19 @@ final class UnifiedLogActivityViewModel: ObservableObject {
 
     /// `source` tag stamped on an inline-created lead — distinguishes a
     /// phone-dial-driven create from a voice/typed one for later analysis.
-    private var newLeadSource: String {
+    ///
+    /// Every value here must be in `ClientLeadAutocreate.permittedSources`. The
+    /// default branch used to return `"log_activity"`, which
+    /// opportunities_source_check has never permitted, so every lead created
+    /// this way failed (bug 44db2ea4). `other` is the standing contract for a
+    /// client-created lead; `phone` is legal and truthful for the dial paths.
+    ///
+    /// Internal for tests — the regression that would have caught this is
+    /// simply "every case this returns is a source the database accepts".
+    var newLeadSource: String {
         switch entry {
         case .capture, .postCall: return "phone"
-        default: return "log_activity"
+        default: return ClientLeadAutocreate.schemaAllowedSource
         }
     }
 

@@ -2,8 +2,8 @@
 //  AnalyticsService.swift
 //  OPS
 //
-//  Unified analytics service. Tracks events to Supabase analytics_events table
-//  with offline queue support. Separate from AnalyticsManager (Firebase/Google Ads).
+//  Durable first-party product analytics. Firebase conversion tracking is
+//  intentionally isolated in AnalyticsManager.
 //
 
 import Foundation
@@ -11,10 +11,10 @@ import UIKit
 
 enum AnalyticsEventType: String {
     case screenView = "screen_view"
-    case action = "action"
+    case action
     case featureUse = "feature_use"
-    case lifecycle = "lifecycle"
-    case error = "error"
+    case lifecycle
+    case error
 }
 
 @MainActor
@@ -26,66 +26,64 @@ final class AnalyticsService {
     private let session = AnalyticsSession.shared
     private var flushTimer: Timer?
     private var isFlushing = false
+    private var hasStarted = false
 
     private init() {}
 
-    // MARK: - Setup
-
-    /// Call once from OPSApp.init to start the flush timer and lifecycle observers.
     func start() {
+        guard !hasStarted else { return }
+        hasStarted = true
         startFlushTimer()
         observeAppLifecycle()
         observeConnectivity()
-
-        // Track app open
         track(eventType: .lifecycle, eventName: "app_open", properties: ["launch_type": "cold"])
-
-        // Flush any events queued from previous session (offline)
         Task { await flush() }
-
-        print("[ANALYTICS] ✅ AnalyticsService started — session \(session.sessionId.uuidString.prefix(8))")
+        debugLog("service_started")
     }
 
-    // MARK: - Public API
-
-    /// Track an event. Property values must be String, Int, Double, or Bool.
+    @discardableResult
     func track(
         eventType: AnalyticsEventType,
         eventName: String,
         properties: [String: Any] = [:],
         durationMs: Int? = nil
-    ) {
+    ) -> Bool {
+        guard AnalyticsEventContract.isValidEventName(eventName) else {
+            debugLog("event_rejected_invalid_name")
+            return false
+        }
+        if let durationMs, !(0...(24 * 60 * 60 * 1_000)).contains(durationMs) {
+            debugLog("event_rejected_invalid_duration")
+            return false
+        }
+        let subject = SupabaseService.shared.currentUserId
+
         let event = QueuedAnalyticsEvent(
+            expected_subject: subject,
+            is_preauth: subject == nil,
             id: UUID().uuidString,
-            user_id: UserDefaults.standard.string(forKey: "user_id"),
-            company_id: UserDefaults.standard.string(forKey: "company_id"),
-            role: UserDefaults.standard.string(forKey: "user_role"),
-            plan: UserDefaults.standard.string(forKey: "subscription_plan"),
             event_type: eventType.rawValue,
             event_name: eventName,
-            platform: "ios",
-            app_version: session.appVersion,
-            device_type: session.deviceType,
-            os_version: session.osVersion,
+            app_version: boundedContext(session.appVersion),
+            device_type: boundedContext(session.deviceType),
+            os_version: boundedContext(session.osVersion),
             session_id: session.sessionId.uuidString,
-            properties: properties.mapValues { encodeValue($0) },
+            properties: AnalyticsEventContract.sanitizeProperties(properties),
             duration_ms: durationMs,
+            schema_version: AnalyticsEventContract.schemaVersion,
+            environment: AnalyticsEventContract.environment,
             created_at: ISO8601DateFormatter().string(from: Date())
         )
-
         queue.enqueue(event)
-
-        print("[ANALYTICS] 📊 Tracked \(eventType.rawValue)/\(eventName)" +
-              (durationMs.map { " (\($0)ms)" } ?? ""))
+        debugLog("event_queued")
+        return true
     }
 
-    /// Track a screen view. Call from .onAppear.
     func trackScreenView(screenName: String, properties: [String: Any] = [:]) {
         session.screenDidAppear(screenName)
         track(eventType: .screenView, eventName: screenName, properties: properties)
     }
 
-    /// End a screen view. Call from .onDisappear. Records duration_ms.
     func endScreenView(screenName: String) {
         guard let durationMs = session.screenDidDisappear(screenName) else { return }
         track(
@@ -95,96 +93,94 @@ final class AnalyticsService {
         )
     }
 
-    // MARK: - Flush
+    // MARK: - Durable delivery
 
-    /// Flush queued events to Supabase in batches.
-    ///
-    /// Two rules make the dam impossible by construction (bug 088d82dc):
-    ///
-    ///  1. **Plain insert, minimal return.** The old call was
-    ///     `.upsert(onConflict: "id", ignoreDuplicates: true)`, and upsert
-    ///     defaults to returning a representation. `ON CONFLICT` needs SELECT on
-    ///     the conflict column and a representation needs SELECT on the row —
-    ///     but `analytics_events` grants the app INSERT and nothing else, on
-    ///     purpose. Every batch therefore 403'd, retried every 30 seconds
-    ///     forever, and dammed the queue behind it until the 1,000-event cap
-    ///     started dropping the oldest events. The idempotency the upsert was
-    ///     reaching for (bug 08d1f969) is preserved without any new grant:
-    ///     a duplicate key means the batch already landed, and
-    ///     `AnalyticsFlushPolicy` reads that as success.
-    ///  2. **A poison batch is dropped, never re-queued.** A permanently
-    ///     rejected batch cannot become deliverable by waiting, so requeueing it
-    ///     blocks every later event behind data that will never send. Analytics
-    ///     are the one payload in this app that is cheaper to lose than to dam.
+    /// The server RPC provides the only identity boundary: it resolves the
+    /// signed Firebase subject to the canonical user/company/role/plan, stamps
+    /// platform=iOS, validates the contract, and inserts UUIDs idempotently.
+    /// Permanent poison events are dropped; transient failures return to the
+    /// front of the queue without changing their IDs or order.
     func flush() async {
         guard !isFlushing else { return }
+        guard let subject = SupabaseService.shared.currentUserId else { return }
         isFlushing = true
         defer { isFlushing = false }
 
         while true {
-            let batch = queue.dequeueBatch(size: 50)
-            guard !batch.isEmpty else { break }
+            let dequeued = queue.dequeueBatch(size: 50)
+            guard !dequeued.isEmpty else { break }
+
+            let batch = dequeued.compactMap { event -> QueuedAnalyticsEvent? in
+                if event.expected_subject == subject {
+                    return event
+                }
+                if event.is_preauth {
+                    return event.claimed(by: subject)
+                }
+                return nil
+            }
+            let discardedCount = dequeued.count - batch.count
+            if discardedCount > 0 {
+                // Never attribute an old or legacy queue to a different login.
+                debugLog("discarded_stale_identity_events", count: discardedCount)
+            }
+            guard !batch.isEmpty else { continue }
 
             do {
-                try await insert(batch)
-                print("[ANALYTICS] ✅ Flushed \(batch.count) events")
+                try await insert(batch, expectedSubject: subject)
+                debugLog("batch_flushed", count: batch.count)
             } catch {
                 switch AnalyticsFlushPolicy.outcome(for: error) {
                 case .splitBatch:
-                    // A duplicate key means at least one event in this batch is
-                    // already on the server — and a Postgres INSERT is
-                    // all-or-nothing, so the ones that are NOT would be lost if
-                    // this were simply called delivered. A re-queued batch
-                    // re-forms with newer events behind it, so a mixed batch is
-                    // ordinary, not exotic. Retry event by event.
-                    let unresolved = await insertIndividually(batch)
+                    let unresolved = await insertIndividually(
+                        batch,
+                        expectedSubject: subject
+                    )
                     guard unresolved.isEmpty else {
                         queue.requeue(unresolved)
-                        print("[ANALYTICS] ⚠️ \(unresolved.count) of \(batch.count) events requeued after a per-event retry")
+                        debugLog("batch_partially_requeued", count: unresolved.count)
                         return
                     }
-
                 case .retry:
                     queue.requeue(batch)
-                    print("[ANALYTICS] ⚠️ Flush failed, requeued \(batch.count) events: \(error.localizedDescription)")
-                    return  // Transient — the next trigger tries again
-
+                    debugLog("batch_requeued", count: batch.count)
+                    return
                 case .drop:
-                    // Quarantine by dropping. Keeping it would wedge the queue.
-                    print("[ANALYTICS] ⛔️ Dropped \(batch.count) events the server permanently rejected: \(error.localizedDescription)")
+                    debugLog("batch_dropped", count: batch.count)
                 }
             }
         }
     }
 
-    /// One batch, one INSERT, nothing returned.
-    private func insert(_ batch: [QueuedAnalyticsEvent]) async throws {
+    private func insert(
+        _ batch: [QueuedAnalyticsEvent],
+        expectedSubject: String
+    ) async throws {
         try await SupabaseService.shared.client
-            .from("analytics_events")
-            .insert(batch, returning: .minimal)
+            .rpc(
+                "append_analytics_events",
+                params: AnalyticsAppendRPCParams(
+                    p_events: batch,
+                    p_expected_subject: expectedSubject,
+                    p_schema_version: AnalyticsEventContract.schemaVersion,
+                    p_environment: AnalyticsEventContract.environment
+                )
+            )
             .execute()
     }
 
-    /// Sends a duplicate-poisoned batch one event at a time and returns only the
-    /// events that are genuinely still undelivered.
-    ///
-    /// A per-event duplicate is a success: the event is on the server, which is
-    /// exactly what at-least-once delivery asks for. A permanently rejected
-    /// event is dropped — one malformed row must not hold back the rest of the
-    /// batch, let alone the queue behind it.
     private func insertIndividually(
-        _ batch: [QueuedAnalyticsEvent]
+        _ batch: [QueuedAnalyticsEvent],
+        expectedSubject: String
     ) async -> [QueuedAnalyticsEvent] {
         var unresolved: [QueuedAnalyticsEvent] = []
         for event in batch {
             do {
-                try await insert([event])
+                try await insert([event], expectedSubject: expectedSubject)
             } catch {
                 switch AnalyticsFlushPolicy.outcome(for: error) {
-                case .splitBatch:
-                    continue    // already on the server
-                case .drop:
-                    print("[ANALYTICS] ⛔️ Dropped 1 permanently rejected event: \(error.localizedDescription)")
+                case .splitBatch, .drop:
+                    continue
                 case .retry:
                     unresolved.append(event)
                 }
@@ -193,15 +189,13 @@ final class AnalyticsService {
         return unresolved
     }
 
-    // MARK: - Flush Triggers
+    // MARK: - Flush triggers
 
     private func startFlushTimer() {
         flushTimer?.invalidate()
         flushTimer = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in
             guard let self else { return }
-            Task { @MainActor in
-                await self.flush()
-            }
+            Task { @MainActor in await self.flush() }
         }
     }
 
@@ -213,13 +207,11 @@ final class AnalyticsService {
         ) { [weak self] _ in
             guard let self else { return }
             Task { @MainActor in
-                // Track app close with session duration
                 self.track(
                     eventType: .lifecycle,
                     eventName: "app_close",
                     properties: ["session_duration_ms": self.session.sessionDurationMs]
                 )
-                // Best-effort flush before backgrounding
                 await self.flush()
             }
         }
@@ -230,10 +222,7 @@ final class AnalyticsService {
             queue: .main
         ) { [weak self] _ in
             guard let self else { return }
-            // Flush queued events on return to foreground
-            Task { @MainActor in
-                await self.flush()
-            }
+            Task { @MainActor in await self.flush() }
         }
     }
 
@@ -243,26 +232,22 @@ final class AnalyticsService {
             object: nil,
             queue: .main
         ) { [weak self] notification in
-            guard let self else { return }
-            // Flush when connectivity is restored
-            if let state = notification.userInfo?["state"] as? ConnectionState,
-               state.status != .offline {
-                Task { @MainActor in
-                    await self.flush()
-                }
-            }
+            guard let self,
+                  let state = notification.userInfo?["state"] as? ConnectionState,
+                  state.status != .offline else { return }
+            Task { @MainActor in await self.flush() }
         }
     }
 
-    // MARK: - Helpers
+    private func boundedContext(_ value: String?) -> String? {
+        guard let value else { return nil }
+        return String(value.prefix(128))
+    }
 
-    private func encodeValue(_ value: Any) -> AnyCodableValue {
-        switch value {
-        case let val as Bool: return .bool(val)
-        case let val as Int: return .int(val)
-        case let val as Double: return .double(val)
-        case let val as String: return .string(val)
-        default: return .string(String(describing: value))
-        }
+    private func debugLog(_ message: String, count: Int? = nil) {
+        #if DEBUG
+        let suffix = count.map { " count=\($0)" } ?? ""
+        print("[ANALYTICS] \(message)\(suffix)")
+        #endif
     }
 }

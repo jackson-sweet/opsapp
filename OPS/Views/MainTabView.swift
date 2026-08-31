@@ -1023,7 +1023,6 @@ struct MainTabView: View {
             if previousTab != oldValue { previousTab = oldValue }
             if !mountedTabs.contains(newValue) { mountedTabs.insert(newValue) }
             let tabName = analyticsTabName(for: newValue)
-            AnalyticsManager.shared.trackTabSelected(tabName: tabName)
             AnalyticsService.shared.track(
                 eventType: .action,
                 eventName: "tab_selected",

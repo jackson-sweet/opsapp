@@ -364,7 +364,6 @@ struct InventoryView: View {
                 .environmentObject(dataController)
         }
         .onAppear {
-            AnalyticsManager.shared.trackScreenView(screenName: .inventory)
             AnalyticsService.shared.trackScreenView(screenName: "inventory")
             // Set default sort mode: by tag if tags exist, otherwise by name
             if allTags.isEmpty && sortMode == .tag {

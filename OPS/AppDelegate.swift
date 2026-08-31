@@ -9,7 +9,6 @@ import UIKit
 import UserNotifications
 import GoogleSignIn
 import FirebaseCore
-import FirebaseAnalytics
 import OneSignalFramework
 import BackgroundTasks
 

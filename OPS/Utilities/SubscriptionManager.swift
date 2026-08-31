@@ -115,13 +115,13 @@ class SubscriptionManager: ObservableObject {
     /// Track subscription purchase for Google Ads conversion
     @MainActor
     private func trackSubscriptionPurchase() {
-        guard let company = dataController?.getCurrentUserCompany() else { return }
+        guard dataController?.getCurrentUserCompany() != nil else { return }
 
         let planName = subscriptionPlan.displayName
         let price = Double(subscriptionPlan.monthlyPrice) // Use monthly price as base
         let userType = dataController?.currentUser?.userType
 
-        AnalyticsManager.shared.trackSubscribe(
+        AnalyticsManager.shared.trackPurchase(
             planName: planName,
             price: price,
             currency: "USD",
@@ -682,4 +682,3 @@ extension Notification.Name {
     static let criticalError = Notification.Name("criticalError")
     static let forceLogout = Notification.Name("forceLogout")
 }
-

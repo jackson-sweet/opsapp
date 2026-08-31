@@ -290,7 +290,6 @@ struct HomeView: View {
     /// concerns: they start when Home comes on screen and stop when it leaves,
     /// exactly as they did when a tab switch tore the view down.
     private func beginVisit() {
-        AnalyticsManager.shared.trackScreenView(screenName: .home, screenClass: "HomeView")
         AnalyticsService.shared.trackScreenView(screenName: "home")
         if appState.isInProjectMode {
             startRouteRefreshTimer()

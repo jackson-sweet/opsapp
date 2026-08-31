@@ -787,8 +787,6 @@ class DataController: ObservableObject {
                 if let user = currentUser {
                     UserDefaults.standard.set(user.hasCompletedAppOnboarding, forKey: "onboarding_completed")
 
-                    // Track login conversion for Google Ads
-                    AnalyticsManager.shared.trackLogin(userType: user.userType, method: .email)
                     AnalyticsService.shared.track(eventType: .lifecycle, eventName: "login", properties: ["method": "email"])
                     AnalyticsManager.shared.setUserType(user.userType)
                     AnalyticsManager.shared.setUserId(userId)
@@ -933,7 +931,6 @@ class DataController: ObservableObject {
                     AnalyticsManager.shared.trackSignUp(userType: user.userType, method: .apple)
                     AnalyticsService.shared.track(eventType: .lifecycle, eventName: "sign_up", properties: ["method": "apple"])
                 } else {
-                    AnalyticsManager.shared.trackLogin(userType: user.userType, method: .apple)
                     AnalyticsService.shared.track(eventType: .lifecycle, eventName: "login", properties: ["method": "apple"])
                 }
                 AnalyticsManager.shared.setUserType(user.userType)
@@ -1054,7 +1051,6 @@ class DataController: ObservableObject {
                     AnalyticsManager.shared.trackSignUp(userType: user.userType, method: .google)
                     AnalyticsService.shared.track(eventType: .lifecycle, eventName: "sign_up", properties: ["method": "google"])
                 } else {
-                    AnalyticsManager.shared.trackLogin(userType: user.userType, method: .google)
                     AnalyticsService.shared.track(eventType: .lifecycle, eventName: "login", properties: ["method": "google"])
                 }
                 AnalyticsManager.shared.setUserType(user.userType)
@@ -4092,11 +4088,7 @@ class DataController: ObservableObject {
             await cascadeCancelToPaired(predecessorId: predecessorId)
         }
 
-        // Track task status change for analytics
-        AnalyticsManager.shared.trackTaskStatusChanged(
-            oldStatus: oldStatus.rawValue,
-            newStatus: newStatus.rawValue
-        )
+        // Track task status change in first-party product analytics.
         AnalyticsService.shared.track(
             eventType: .action,
             eventName: "task_status_changed",
@@ -4108,7 +4100,6 @@ class DataController: ObservableObject {
 
         // Track task completion as high-value event
         if newStatus == .completed {
-            AnalyticsManager.shared.trackTaskCompleted(taskType: task.taskType?.display)
             AnalyticsService.shared.track(
                 eventType: .action,
                 eventName: "task_completed",
@@ -4382,11 +4373,7 @@ class DataController: ObservableObject {
             changedFields: changedFields
         )
 
-        // Track project status change for analytics
-        AnalyticsManager.shared.trackProjectStatusChanged(
-            oldStatus: previousStatus.rawValue,
-            newStatus: newStatus.rawValue
-        )
+        // Track project status change in first-party product analytics.
         AnalyticsService.shared.track(
             eventType: .action,
             eventName: "project_status_changed",

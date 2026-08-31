@@ -486,8 +486,7 @@ struct ClientSheet: View {
                 )
             }
             .onAppear {
-                // Track screen view for analytics
-                AnalyticsManager.shared.trackScreenView(screenName: .clientForm, screenClass: "ClientSheet")
+                // Track screen view in first-party analytics.
                 AnalyticsService.shared.trackScreenView(screenName: "client_form")
             }
             .onDisappear {
@@ -656,13 +655,7 @@ struct ClientSheet: View {
                         let generator = UINotificationFeedbackGenerator()
                         generator.notificationOccurred(.success)
 
-                        // Track client creation for analytics
-                        AnalyticsManager.shared.trackClientCreated(
-                            hasEmail: !email.isEmpty,
-                            hasPhone: !phone.isEmpty,
-                            hasAddress: !address.isEmpty,
-                            importMethod: .manual
-                        )
+                        // Track client creation in first-party analytics.
                         AnalyticsService.shared.track(
                             eventType: .action,
                             eventName: "client_created",
@@ -720,8 +713,10 @@ struct ClientSheet: View {
 
                         ToastCenter.shared.present(Feedback.JobBoard.clientUpdated)
 
-                        // Track client edit for analytics
-                        AnalyticsManager.shared.trackClientEdited(clientId: client.id)
+                        AnalyticsService.shared.track(
+                            eventType: .action,
+                            eventName: "client_edited"
+                        )
 
                         onSave(client)
 

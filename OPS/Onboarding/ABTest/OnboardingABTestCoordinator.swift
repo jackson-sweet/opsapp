@@ -125,9 +125,13 @@ struct OnboardingABTestCoordinator: View {
                     variant: variantManager.variant,
                     onGetStarted: {
                         OnboardingSupabaseAnalytics.shared.trackStepComplete("splash")
-                        AnalyticsManager.shared.trackOnboardingStarted(
-                            variant: variantManager.variant.rawValue,
-                            entryPoint: "get_started"
+                        AnalyticsService.shared.track(
+                            eventType: .lifecycle,
+                            eventName: "onboarding_started",
+                            properties: [
+                                "variant": variantManager.variant.rawValue,
+                                "entry_point": "get_started"
+                            ]
                         )
                         withAnimation { flowStep = .typeSelection }
                     },
@@ -509,7 +513,11 @@ struct OnboardingABTestCoordinator: View {
             // Track variant
             if !hasTrackedVariant {
                 hasTrackedVariant = true
-                AnalyticsManager.shared.trackVariantAssigned(variant: variantManager.variant.rawValue)
+                AnalyticsService.shared.track(
+                    eventType: .lifecycle,
+                    eventName: "variant_assigned",
+                    properties: ["variant": variantManager.variant.rawValue]
+                )
             }
 
             // Resume logic: check if we should skip ahead

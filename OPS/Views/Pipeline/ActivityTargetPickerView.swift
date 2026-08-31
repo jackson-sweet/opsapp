@@ -451,6 +451,12 @@ struct ActivityTargetPickerView: View {
     /// written, so a partly typed form survives an import. Opens the
     /// disclosure if it somehow fired while closed, so the filled values are
     /// never invisible.
+    ///
+    /// `@MainActor` because `ContactLeadFill.from` composes through the
+    /// main-actor-isolated `PhoneContactImporter`. The ContactPicker closure
+    /// that calls this is written inside `body` and inherits that isolation,
+    /// so the call site needs no hop.
+    @MainActor
     private func applyImportedContact(_ contact: CNContact) {
         let fill = ContactLeadFill.from(contact)
         if !isCreatingNewLead {
@@ -571,8 +577,10 @@ struct ActivityTargetPickerView: View {
             let created = try await repository.create(dto)
             isSavingNewLead = false
             // Upsert-by-id rather than a blind insert: the create can echo a
-            // row this device already holds.
-            finishSelection(with: created.toModel())
+            // row this device already holds. `await` because this function is
+            // nonisolated and finishSelection is @MainActor (SwiftData writes
+            // and dismissal belong on main).
+            await finishSelection(with: created.toModel())
         } catch {
             isSavingNewLead = false
             newLeadError = error.localizedDescription

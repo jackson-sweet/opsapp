@@ -35,3 +35,23 @@ enum ProjectVisitBookingGate {
         return policy.can(.convert, assignedTo: lead.assignedTo)
     }
 }
+
+/// The entry's verb and icon once the gate has said yes. State-aware and
+/// single: the server enforces one open booking per lead, so a lead that
+/// already holds one gets the MOVE verb instead of a second BOOK offer.
+///
+/// REBOOK is the app's existing move-a-booking verb
+/// (`SiteVisitAppointmentSheet`), so the bar introduces no new vocabulary —
+/// and it cannot collide with the bar's task-scoped RESCHEDULE entry, which
+/// only appears when a task is selected and moves a TASK, not a visit.
+///
+/// Pure, so the flip is provable without rendering the bar.
+enum ProjectVisitBookingEntry {
+    static func label(hasOpenBooking: Bool) -> String {
+        hasOpenBooking ? "REBOOK" : "BOOK VISIT"
+    }
+
+    static func icon(hasOpenBooking: Bool) -> String {
+        hasOpenBooking ? "calendar" : "calendar.badge.plus"
+    }
+}

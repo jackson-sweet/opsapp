@@ -54,6 +54,10 @@ struct ProjectDetailsView: View {
     @State private var dismissDragOffset: CGFloat = 0
     @State private var isKeyboardVisible = false
     @State private var shareSource: ProjectShareItemSource?
+    /// Bug 7d94c9f3 — the project-side visit booking. `.sheet(item:)` on the
+    /// request (never a bare isPresented flag) so the sheet always opens with
+    /// the resolved lead and, when one exists, that lead's open booking.
+    @State private var visitBookingRequest: BookSiteVisitRequest?
     @State private var isPreparingShare = false
 
     // Deck fullscreen viewer — overscroll-to-expand focus mode.
@@ -206,6 +210,10 @@ struct ProjectDetailsView: View {
                             candidates: leadMatchCandidates
                         )
                         .environmentObject(dataController)
+                    }
+                    .sheet(item: $visitBookingRequest) { request in
+                        BookSiteVisitSheet(request: request)
+                            .environmentObject(dataController)
                     }
                     .sheet(item: $selectedTeamMember) { member in
                         ContactDetailView(user: member)
@@ -576,6 +584,12 @@ struct ProjectDetailsView: View {
                             showingMeasureCapture = true
                         } : nil,
                         onShare: { shareProject() },
+                        // Mention-only check is belt-and-suspenders: the bar's
+                        // isMentionOnly branch already collapses to NOTE-only.
+                        onBookVisit: (viewModel.canBookSiteVisit && !viewModel.isMentionOnlyAccess)
+                            ? { presentVisitBooking() }
+                            : nil,
+                        hasOpenVisitBooking: viewModel.linkedLeadOpenBooking != nil,
                         onPhotoLibrary: {
                             // Bug 1b7e59f7 — open the existing image picker
                             // sheet (which wraps PhotosPicker). The selected
@@ -603,6 +617,12 @@ struct ProjectDetailsView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in
             withAnimation(OPSStyle.Animation.fast) { isKeyboardVisible = false }
+        }
+        .task { await viewModel.resolveLinkedLead() }
+        .onReceive(
+            NotificationCenter.default.publisher(for: Notification.Name("SiteVisitBookingChanged"))
+        ) { _ in
+            viewModel.refreshLinkedLeadOpenBooking()
         }
         .offset(y: dismissDragOffset)
         .opacity(
@@ -1337,6 +1357,20 @@ struct ProjectDetailsView: View {
 
     private func openNewExpenseSheet() {
         showNewExpenseSheet = true
+    }
+
+    /// Bug 7d94c9f3 — the project bar's BOOK VISIT / REBOOK entry.
+    /// State-aware: an open booking opens ITSELF (reschedule + cancel live
+    /// in the same sheet), matching every other booking entry point. The
+    /// guard is defensive — the bar receives nil for the handler whenever
+    /// the gate found no linked lead, so this cannot normally fire empty.
+    private func presentVisitBooking() {
+        guard let lead = viewModel.linkedLead else { return }
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        visitBookingRequest = BookSiteVisitRequest(
+            lead: lead,
+            existing: viewModel.linkedLeadOpenBooking
+        )
     }
 
     /// Builds a project deep link and presents the system share sheet with a

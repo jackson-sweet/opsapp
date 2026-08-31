@@ -95,7 +95,7 @@ enum DeckSelectionReadout {
         var edgeTotals: [String: Double] = [:]
         var edgeOrder: [String] = []
         var stairCount = 0
-        var stairRunInches: Double = 0
+        var stairLengthInches: Double = 0
         let vertexPositionsById = drawingData.geometrySnapshot.allVertexPositionsById
         for edge in edges(in: drawingData) where selectedEdgeIds.contains(edge.id) {
             let length = edgeLengthInches(edge, positionsById: vertexPositionsById, scale: scale) ?? 0
@@ -104,8 +104,15 @@ enum DeckSelectionReadout {
             edgeTotals[label, default: 0] += length
             if let stair = edge.stairConfig {
                 stairCount += 1
-                let tc = stair.treadCount ?? StairConfig.calculateTreadCount(totalRise: stair.totalRiseInches ?? 0, risePerStep: stair.risePerStep)
-                stairRunInches += Double(tc) * stair.runPerTread
+                // Sloped length from the shared source (rise over run — what
+                // every canvas chip prints); horizontal fall-back only when no
+                // rise is resolvable anywhere (bug 5104d2d5).
+                if let info = drawingData.stairRailInfo(for: edge) {
+                    stairLengthInches += info.railRunInches
+                } else {
+                    let tc = stair.treadCount ?? StairConfig.calculateTreadCount(totalRise: stair.totalRiseInches ?? 0, risePerStep: stair.risePerStep)
+                    stairLengthInches += Double(tc) * stair.runPerTread
+                }
             }
         }
         let edgeGroups = edgeOrder.map {
@@ -117,7 +124,7 @@ enum DeckSelectionReadout {
             ? Group(
                 id: "stairs",
                 label: stairCount == 1 ? "STAIRS" : "STAIRS ×\(stairCount)",
-                value: "RUN \(DimensionEngine.format(stairRunInches, system: system))"
+                value: "LENGTH \(DimensionEngine.format(stairLengthInches, system: system))"
               )
             : nil
 

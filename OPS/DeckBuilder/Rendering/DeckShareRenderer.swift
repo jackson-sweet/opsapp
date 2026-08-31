@@ -431,7 +431,7 @@ struct DeckShareRenderer {
 
         let railInfo = drawingData.stairRailInfo(for: connection)
         let labelText = railInfo.map {
-            "\($0.treadCount) treads · \(DimensionEngine.format($0.railRunInches, system: drawingData.config.measurementSystem)) rail"
+            "\($0.treadCount) treads · \(DimensionEngine.format($0.railRunInches, system: drawingData.config.measurementSystem)) length"
         } ?? "\(plan.treadCount) treads"
         let label = labelText as NSString
         let attrs: [NSAttributedString.Key: Any] = [

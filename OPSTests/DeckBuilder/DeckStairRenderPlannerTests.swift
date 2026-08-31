@@ -236,7 +236,7 @@ final class DeckStairRenderPlannerTests: XCTestCase {
         XCTAssertTrue(plan.adjacentEdgeLabels.isEmpty)
     }
 
-    func testPlanAddsReadableWidthAndRunLabelsForEdgeStairs() {
+    func testPlanAddsOnlyTheWidthLabelWhenRiseIsUnknown() {
         let plan = DeckStairRenderPlanner.plan(
             edgeStart: CGPoint(x: 0, y: 0),
             edgeEnd: CGPoint(x: 120, y: 0),
@@ -254,15 +254,18 @@ final class DeckStairRenderPlannerTests: XCTestCase {
 
         XCTAssertEqual(plan?.outline.count, 4)
         XCTAssertEqual(plan?.treadLines.count, 3)
+        // No rise, no LENGTH: a stair on no level has no sloped measurement
+        // to state, and the horizontal RUN chip is retired (bug 5104d2d5).
         XCTAssertEqual(
             plan?.dimensionLabels.map(\.text),
-            ["WIDTH 4'", "RUN 3' 4\""]
+            ["WIDTH 4'"]
         )
     }
 
-    func testPlanAddsRailLabelWhenRiseIsKnown() {
+    func testPlanAddsLengthLabelWhenRiseIsKnown() {
         // 30" rise over 4 treads × 10" run = 40" → 30-40-50 triangle: the
-        // rail run (hypotenuse — what a stair railing follows) is exactly 50".
+        // sloped length (hypotenuse — what a stair railing follows) is
+        // exactly 50".
         let plan = DeckStairRenderPlanner.plan(
             edgeStart: CGPoint(x: 0, y: 0),
             edgeEnd: CGPoint(x: 120, y: 0),
@@ -281,13 +284,48 @@ final class DeckStairRenderPlannerTests: XCTestCase {
 
         XCTAssertEqual(
             plan?.dimensionLabels.map(\.text),
-            ["WIDTH 4'", "RUN 3' 4\"", "RAIL 4' 2\""]
+            ["WIDTH 4'", "LENGTH 4' 2\""]
         )
-        XCTAssertEqual(plan?.dimensionLabels.last?.kind, .rail)
-        // The rail chip's position is part of the frame so zoom-to-fit never
+        XCTAssertEqual(plan?.dimensionLabels.last?.kind, .length)
+        // The length chip's position is part of the frame so zoom-to-fit never
         // crops it.
         if let plan {
             XCTAssertTrue(plan.framePoints.contains(where: { $0 == plan.dimensionLabels.last?.position }))
+        }
+    }
+
+    /// The retirement itself, pinned across both variants of the plan: no
+    /// canvas chip may ever say RUN or RAIL again (bug 5104d2d5).
+    func testNoLabelEverSaysRunOrRail() {
+        for rise in [nil, 30.0] as [Double?] {
+            let plan = DeckStairRenderPlanner.plan(
+                edgeStart: CGPoint(x: 0, y: 0),
+                edgeEnd: CGPoint(x: 120, y: 0),
+                polygonVertices: [
+                    CGPoint(x: 0, y: 0),
+                    CGPoint(x: 120, y: 0),
+                    CGPoint(x: 120, y: 96),
+                    CGPoint(x: 0, y: 96)
+                ],
+                config: StairConfig(width: 48, runPerTread: 10, treadCount: 4),
+                treadCount: 4,
+                scaleFactor: 1,
+                measurementSystem: .imperial,
+                totalRiseInches: rise
+            )
+
+            let labels = (plan?.dimensionLabels ?? []) + (plan?.adjacentEdgeLabels ?? [])
+            XCTAssertFalse(labels.isEmpty, "rise \(String(describing: rise)): no plan was produced")
+            for label in labels {
+                XCTAssertFalse(
+                    label.text.hasPrefix("RUN"),
+                    "The RUN chip is retired (bug 5104d2d5): \(label.text)"
+                )
+                XCTAssertFalse(
+                    label.text.hasPrefix("RAIL"),
+                    "The user-facing word is LENGTH (bug 5104d2d5): \(label.text)"
+                )
+            }
         }
     }
 

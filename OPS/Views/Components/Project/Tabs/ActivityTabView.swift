@@ -88,37 +88,13 @@ struct ActivityTabView: View {
         return trimmed.isEmpty ? nil : trimmed
     }
 
-    /// Standing instructions written on this project's tasks. They are the
-    /// brief the crew re-reads on every visit, not an event that happened
-    /// once — so they are pinned above the chronology rather than sunk into
-    /// it (bugs f1346d3d / f3c4a2ca). Terminal work sorts last and reads
-    /// faded: its instruction is history, but hiding it would look like data
-    /// loss to the person who wrote it.
+    /// Standing instructions written on this project's tasks — the brief the
+    /// crew re-reads on every visit, pinned above the chronology rather than
+    /// sunk into it (bugs f1346d3d / f3c4a2ca). Completed work stays, faded
+    /// and last; cancelled work leaves the brief entirely (bug 6854b7b8) —
+    /// see PinnedTaskNotesBuilder for the full ruling.
     private var pinnedTaskNotes: [PinnedTaskNote] {
-        let annotated = project.tasks
-            .filter { $0.deletedAt == nil }
-            .compactMap { (task: ProjectTask) -> (task: ProjectTask, notes: String)? in
-                let trimmed = (task.taskNotes ?? "")
-                    .trimmingCharacters(in: .whitespacesAndNewlines)
-                guard !trimmed.isEmpty else { return nil }
-                return (task: task, notes: trimmed)
-            }
-            .sorted { lhs, rhs in
-                if lhs.task.status.isTerminal != rhs.task.status.isTerminal {
-                    return !lhs.task.status.isTerminal
-                }
-                return lhs.task.displayOrder < rhs.task.displayOrder
-            }
-
-        return annotated.map { entry in
-            PinnedTaskNote(
-                id: entry.task.id,
-                title: entry.task.displayTitle,
-                color: Color(hex: entry.task.effectiveColor) ?? OPSStyle.Colors.primaryAccent,
-                status: entry.task.status,
-                notes: entry.notes
-            )
-        }
+        PinnedTaskNotesBuilder.entries(from: project.tasks)
     }
 
     /// Comment count per photo URL for the carousel badge (bug e1f073ed).
@@ -566,7 +542,7 @@ private struct ProjectDescriptionPinnedEntryView: View {
 
 /// One task's standing instruction, flattened out of SwiftData so the card
 /// below never re-reads the model while the feed scrolls.
-private struct PinnedTaskNote: Identifiable {
+struct PinnedTaskNote: Identifiable {
     let id: String
     let title: String
     let color: Color
@@ -582,6 +558,46 @@ private struct PinnedTaskNote: Identifiable {
         case .active:    return nil
         case .completed: return "COMPLETE"
         case .cancelled: return "CANCELLED"
+        }
+    }
+}
+
+/// Derives the standing brief from the project's task rows. Pure and
+/// stored nowhere: pinning is a READING of task state, which is why a
+/// cancelled task unpins on every device with no sync surface, and a
+/// reactivated one re-pins by itself (bug 6854b7b8).
+enum PinnedTaskNotesBuilder {
+    /// Cancelled work has no standing instruction — the note text survives
+    /// on the task itself and stays readable in the task's own detail
+    /// surface; only the pin releases (bug 6854b7b8). Completed work keeps
+    /// its pin, faded and sorted last: hiding finished work's instruction
+    /// reads as data loss to the person who wrote it (bugs f1346d3d /
+    /// f3c4a2ca). Reactivating a cancelled task re-pins it with no
+    /// ceremony, because nothing was ever destroyed to unpin it.
+    static func entries(from tasks: [ProjectTask]) -> [PinnedTaskNote] {
+        let annotated = tasks
+            .filter { $0.deletedAt == nil && $0.status != .cancelled }
+            .compactMap { (task: ProjectTask) -> (task: ProjectTask, notes: String)? in
+                let trimmed = (task.taskNotes ?? "")
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !trimmed.isEmpty else { return nil }
+                return (task: task, notes: trimmed)
+            }
+            .sorted { lhs, rhs in
+                if lhs.task.status.isTerminal != rhs.task.status.isTerminal {
+                    return !lhs.task.status.isTerminal
+                }
+                return lhs.task.displayOrder < rhs.task.displayOrder
+            }
+
+        return annotated.map { entry in
+            PinnedTaskNote(
+                id: entry.task.id,
+                title: entry.task.displayTitle,
+                color: Color(hex: entry.task.effectiveColor) ?? OPSStyle.Colors.primaryAccent,
+                status: entry.task.status,
+                notes: entry.notes
+            )
         }
     }
 }

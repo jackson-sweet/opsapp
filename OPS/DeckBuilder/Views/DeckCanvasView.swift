@@ -945,14 +945,14 @@ struct DeckCanvasView: View {
             context.stroke(hp, with: .color(OPSStyle.Colors.warningStatus.opacity(0.25)), lineWidth: treadStroke)
         }
 
-        // Tread count + rail run from the shared source: rise derives from
-        // the two levels' resolved heights, so the label tracks height edits
-        // exactly like the rendered stair does.
+        // Tread count + length (the rail run) from the shared source: rise
+        // derives from the two levels' resolved heights, so the label tracks
+        // height edits exactly like the rendered stair does.
         let railInfo = viewModel.drawingData.stairRailInfo(for: connection)
         let labelFont = scaledSize(9, min: 7, max: 14)
         let labelText: String
         if let railInfo {
-            labelText = "\(railInfo.treadCount) treads · \(DimensionEngine.format(railInfo.railRunInches, system: viewModel.drawingData.config.measurementSystem)) rail"
+            labelText = "\(railInfo.treadCount) treads · \(DimensionEngine.format(railInfo.railRunInches, system: viewModel.drawingData.config.measurementSystem)) length"
         } else {
             labelText = "\(plan.treadCount) treads"
         }
@@ -1115,11 +1115,12 @@ struct DeckCanvasView: View {
             }
         }
 
-        // Label: tread count + rail run. The rail figure is the stair
+        // Label: tread count + length (the rail run). That figure is the stair
         // triangle's hypotenuse (rise over horizontal run) — the length a
         // stair railing follows — via the shared DeckStairRailInfo source so
-        // every 2D surface prints the same number. Falls back to the
-        // horizontal run only if rail info can't resolve (no rise anywhere).
+        // every 2D surface prints the same number. Falls back to the bare
+        // horizontal figure only if rail info can't resolve (no rise
+        // anywhere), which is why that branch names no measurement at all.
         let labelX: CGFloat
         let labelY: CGFloat
         if !plan.boundaryMarkers.isEmpty {
@@ -1133,7 +1134,7 @@ struct DeckCanvasView: View {
         let measurementSystem = viewModel.drawingData.config.measurementSystem
         let labelText: String
         if let railInfo = viewModel.drawingData.stairRailInfo(for: edge) {
-            labelText = "\(railInfo.treadCount) treads · \(DimensionEngine.format(railInfo.railRunInches, system: measurementSystem)) rail"
+            labelText = "\(railInfo.treadCount) treads · \(DimensionEngine.format(railInfo.railRunInches, system: measurementSystem)) length"
         } else {
             let totalRunInches = Double(treadCount) * config.runPerTread
             labelText = "\(treadCount) treads · \(DimensionEngine.format(totalRunInches, system: measurementSystem))"

@@ -65,7 +65,6 @@ struct AppHeader: View {
     @EnvironmentObject private var dataController: DataController
     @EnvironmentObject private var subscriptionManager: SubscriptionManager
     @EnvironmentObject private var appState: AppState
-    @ObservedObject private var toastCenter = ToastCenter.shared
     /// Only the header in the tab on screen may claim the band height — see
     /// `AppHeaderHeightKey`.
     @Environment(\.isActiveTab) private var isActiveTab
@@ -153,21 +152,15 @@ struct AppHeader: View {
             }
     }
 
+    /// No header hosts the recovery pill in flow. Home used to reserve a row
+    /// here, which pushed TODAY / ACTIVE / ALL and the map down the moment an
+    /// attention item existed (bug 417aac7b); every root now floats the pill in
+    /// the app-level band below this measured boundary. Home project mode is
+    /// the sole exception and hosts it in its own project stack.
     private var headerContent: some View {
         VStack(spacing: 0) {
             headerBand
             contextStrip
-
-            // Home owns the recovery indicator in normal map mode. Keeping it
-            // inside this measured VStack reserves the row before map filters
-            // begin and gives ImageSyncProgressView the full header boundary.
-            // Inactive retained Home roots create no monitor or sheet host.
-            if headerType == .home,
-               isActiveTab,
-               !dataController.showSyncRestoredAlert,
-               !toastCenter.isSuppressingSyncStatusIndicator {
-                SyncStatusIndicator(placement: .homeHeader)
-            }
         }
     }
 

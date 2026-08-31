@@ -2,8 +2,20 @@
 //  HomeSyncStatusLayoutTests.swift
 //  OPSTests
 //
-//  Regression proof for cf07df64: the recovery pill must be owned by Home's
-//  measured header instead of floating over TODAY / ACTIVE / ALL.
+//  Regression proof for 417aac7b: the recovery pill must FLOAT over Home,
+//  never displace it. Home used to own an in-flow row inside its measured
+//  AppHeader (the cf07df64 design), so the moment an attention item existed
+//  the header grew and TODAY / ACTIVE / ALL — and the map under them — were
+//  pushed down. Normal Home now joins the same app-level band every other root
+//  uses: pinned just below the measured header, trailing-aligned, expanding to
+//  the full-width variant at accessibility sizes.
+//
+//  The band deliberately overlays the content beneath it — that is what
+//  "floating" means, and it is the behavior every non-Home root already ships.
+//  What is asserted here is the regression surface: the header measures the
+//  same with and without the pill, the filter strip starts at the same place
+//  either way, and the pill lands inside the band rather than inside the
+//  header.
 //
 
 #if DEBUG
@@ -51,6 +63,7 @@ final class HomeSyncStatusLayoutTests: XCTestCase {
         var header: CGRect?
         var filters: CGRect?
         var exitAction: CGRect?
+        var bandOffset: CGFloat?
     }
 
     /// Uses the production project-mode action row with the real recovery pill.
@@ -114,59 +127,91 @@ final class HomeSyncStatusLayoutTests: XCTestCase {
     }
 
     /// Mirrors Home's production boundary without starting its Mapbox and data
-    /// stack: one measured title/context/status header, then the real map chips.
+    /// stack: one measured title/context header publishing `AppHeaderHeightKey`,
+    /// the real map chips below it, and the app-level status band floating on
+    /// top — offset by that published height exactly as `MainTabView` composes
+    /// it. `AppHeader` itself cannot be rendered for `.home` in a unit host (its
+    /// avatar branch dereferences `dataController.syncEngine`, which a bare
+    /// `DataController()` leaves nil), so the header band is reproduced from the
+    /// same primitives it uses.
     private struct Harness: View {
         let count: Int
         var width: CGFloat = 390
         var isParked = false
         var typeSize: DynamicTypeSize = .large
+        /// The zero-attention state: no pill is constructed at all, which is
+        /// what the header height must be identical to.
+        var showsPill = true
         var sink: Measurements?
 
         @State private var filterMode: MapFilterMode = .today
+        @State private var headerBandHeight: CGFloat = AppHeaderHeightKey.defaultValue
 
         var body: some View {
-            VStack(spacing: 0) {
+            ZStack(alignment: .top) {
                 VStack(spacing: 0) {
-                    OPSScreenHeader("GOOD AFTERNOON, JACKSON", trailing: {
-                        Circle()
-                            .fill(OPSStyle.Colors.cardBackgroundDark)
-                            .frame(
-                                width: OPSStyle.Layout.IconSize.lg,
-                                height: OPSStyle.Layout.IconSize.lg
-                            )
-                    })
+                    VStack(spacing: 0) {
+                        OPSScreenHeader("GOOD AFTERNOON, JACKSON", trailing: {
+                            Circle()
+                                .fill(OPSStyle.Colors.cardBackgroundDark)
+                                .frame(
+                                    width: OPSStyle.Layout.IconSize.lg,
+                                    height: OPSStyle.Layout.IconSize.lg
+                                )
+                        })
 
-                    HStack {
-                        Text("OPS LTD")
-                            .font(OPSStyle.Typography.caption)
-                            .foregroundColor(OPSStyle.Colors.secondaryText)
-                        Spacer(minLength: 0)
+                        HStack {
+                            Text("OPS LTD")
+                                .font(OPSStyle.Typography.caption)
+                                .foregroundColor(OPSStyle.Colors.secondaryText)
+                            Spacer(minLength: 0)
+                        }
+                        .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+                        .padding(.bottom, OPSStyle.Layout.spacing2)
                     }
-                    .padding(.horizontal, OPSStyle.Layout.spacing3_5)
-                    .padding(.bottom, OPSStyle.Layout.spacing2)
+                    .background(
+                        GeometryReader { proxy in
+                            Color.clear.preference(
+                                key: AppHeaderHeightKey.self,
+                                value: proxy.size.height
+                            )
+                        }
+                    )
+                    .anchorPreference(key: HeaderBoundsKey.self, value: .bounds) { $0 }
 
-                    AppHeaderSyncStatusRow {
-                        SyncAttentionPill(
-                            count: count,
-                            isParked: isParked,
-                            isElevated: false,
-                            adaptsForAccessibility: true
-                        )
+                    MapFilterChips(filterMode: $filterMode)
+                        .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+                        .padding(.top, OPSStyle.Layout.spacing1)
+                        .anchorPreference(key: FilterBoundsKey.self, value: .bounds) { $0 }
+
+                    Spacer(minLength: 0)
+                }
+                .onPreferenceChange(AppHeaderHeightKey.self) { headerBandHeight = $0 }
+
+                // The app-level band, composed exactly as MainTabView does.
+                VStack(spacing: OPSStyle.Layout.spacing2) {
+                    if showsPill {
+                        HStack {
+                            Spacer(minLength: 0)
+                            SyncAttentionPill(
+                                count: count,
+                                isParked: isParked,
+                                isElevated: true,
+                                adaptsForAccessibility: true
+                            )
                             .frame(
                                 minWidth: OPSStyle.Layout.touchTargetMin,
                                 minHeight: OPSStyle.Layout.touchTargetMin
                             )
                             .anchorPreference(key: PillBoundsKey.self, value: .bounds) { $0 }
+                        }
+                        .padding(.horizontal, OPSStyle.Layout.spacing3)
                     }
+
+                    Spacer(minLength: 0)
                 }
-                .anchorPreference(key: HeaderBoundsKey.self, value: .bounds) { $0 }
-
-                MapFilterChips(filterMode: $filterMode)
-                    .padding(.horizontal, OPSStyle.Layout.spacing3_5)
-                    .padding(.top, OPSStyle.Layout.spacing1)
-                    .anchorPreference(key: FilterBoundsKey.self, value: .bounds) { $0 }
-
-                Spacer(minLength: 0)
+                .padding(.top, headerBandHeight)
+                .zIndex(1)
             }
             .frame(width: width, alignment: .top)
             .background(OPSStyle.Colors.background)
@@ -185,6 +230,7 @@ final class HomeSyncStatusLayoutTests: XCTestCase {
                 GeometryReader { proxy -> Color in
                     if let sink, let anchor {
                         sink.header = proxy[anchor]
+                        sink.bandOffset = headerBandHeight
                     }
                     return Color.clear
                 }
@@ -207,6 +253,7 @@ final class HomeSyncStatusLayoutTests: XCTestCase {
         width: CGFloat = 390,
         isParked: Bool = false,
         typeSize: DynamicTypeSize = .large,
+        showsPill: Bool = true,
         sink: Measurements? = nil
     ) -> some View {
         Harness(
@@ -214,6 +261,7 @@ final class HomeSyncStatusLayoutTests: XCTestCase {
             width: width,
             isParked: isParked,
             typeSize: typeSize,
+            showsPill: showsPill,
             sink: sink
         )
     }
@@ -221,17 +269,28 @@ final class HomeSyncStatusLayoutTests: XCTestCase {
     private func measure(
         count: Int,
         width: CGFloat,
-        typeSize: DynamicTypeSize = .large
+        typeSize: DynamicTypeSize = .large,
+        showsPill: Bool = true
     ) throws -> Measurements {
         let sink = Measurements()
         _ = try FixedSizeSnapshot.render(
-            harness(count: count, width: width, typeSize: typeSize, sink: sink),
+            harness(
+                count: count,
+                width: width,
+                typeSize: typeSize,
+                showsPill: showsPill,
+                sink: sink
+            ),
             size: CGSize(width: width, height: captureHeight)
         )
         return sink
     }
 
-    func testStatusRowReservesSpaceBeforeMapFilters() throws {
+    /// The bug itself: an attention item must cost Home zero layout. The header
+    /// measures the same with and without the pill, the filter strip begins at
+    /// the same y either way, and the pill lands in the floating band below the
+    /// header instead of inside it.
+    func testHomeHeaderReservesNoRowForTheStatusPill() throws {
         let cases: [(width: CGFloat, count: Int, typeSize: DynamicTypeSize)] = [
             (390, 1, .large),
             (320, 99, .accessibility3),
@@ -239,57 +298,95 @@ final class HomeSyncStatusLayoutTests: XCTestCase {
         ]
 
         for testCase in cases {
-            let measured = try measure(
+            let label = "Home @ \(Int(testCase.width))pt count \(testCase.count)"
+
+            let withPill = try measure(
                 count: testCase.count,
                 width: testCase.width,
                 typeSize: testCase.typeSize
             )
-            let label = "Home @ \(Int(testCase.width))pt count \(testCase.count)"
-            let pill = try XCTUnwrap(measured.pill, "\(label): pill was never measured")
-            let header = try XCTUnwrap(measured.header, "\(label): header was never measured")
-            let filters = try XCTUnwrap(measured.filters, "\(label): filters were never measured")
+            let withoutPill = try measure(
+                count: testCase.count,
+                width: testCase.width,
+                typeSize: testCase.typeSize,
+                showsPill: false
+            )
 
+            let header = try XCTUnwrap(withPill.header, "\(label): header was never measured")
+            let quietHeader = try XCTUnwrap(
+                withoutPill.header, "\(label): quiet header was never measured"
+            )
+            let filters = try XCTUnwrap(withPill.filters, "\(label): filters were never measured")
+            let quietFilters = try XCTUnwrap(
+                withoutPill.filters, "\(label): quiet filters were never measured"
+            )
+            let pill = try XCTUnwrap(withPill.pill, "\(label): pill was never measured")
+            let bandOffset = try XCTUnwrap(
+                withPill.bandOffset, "\(label): the header never published its band height"
+            )
+
+            XCTAssertEqual(
+                header.height, quietHeader.height, accuracy: 0.5,
+                "\(label): the header grew a row for the pill — that is bug 417aac7b"
+            )
+            XCTAssertEqual(
+                filters.minY, quietFilters.minY, accuracy: 0.5,
+                "\(label): TODAY / ACTIVE / ALL moved when an attention item appeared"
+            )
+            XCTAssertNil(
+                withoutPill.pill,
+                "\(label): the zero-attention state must construct no pill at all"
+            )
+
+            XCTAssertGreaterThan(
+                bandOffset, 0,
+                "\(label): header reported zero height — the band would collapse onto it"
+            )
+            XCTAssertGreaterThanOrEqual(
+                pill.minY, header.maxY - 0.5,
+                "\(label): the pill is inside the measured header instead of the floating band"
+            )
             XCTAssertGreaterThanOrEqual(
                 pill.minX,
-                OPSStyle.Layout.spacing3_5 - 0.5,
-                "\(label): pill escapes Home's leading header inset"
+                OPSStyle.Layout.spacing3 - 0.5,
+                "\(label): pill escapes the band's leading inset"
             )
             XCTAssertLessThanOrEqual(
                 pill.maxX,
-                testCase.width - OPSStyle.Layout.spacing3_5 + 0.5,
-                "\(label): pill escapes Home's trailing header inset"
-            )
-            XCTAssertLessThanOrEqual(
-                pill.maxY,
-                filters.minY,
-                "\(label): recovery pill covers TODAY / ACTIVE / ALL"
-            )
-            XCTAssertLessThanOrEqual(
-                header.maxY,
-                filters.minY,
-                "\(label): map filters started inside the measured header"
-            )
-            XCTAssertFalse(pill.intersects(filters), "\(label): pill steals filter taps")
-            XCTAssertLessThanOrEqual(
-                filters.maxY,
-                captureHeight,
-                "\(label): map filters are cropped out of the proof viewport"
+                testCase.width - OPSStyle.Layout.spacing3 + 0.5,
+                "\(label): pill escapes the band's trailing inset"
             )
         }
     }
 
-    func testMainTabDoesNotRenderASecondIndicatorOverHome() {
+    func testMainTabOverlayHostsThePillOnNormalHome() {
+        XCTAssertTrue(
+            SyncStatusPlacementPolicy.showsMainTabOverlay(
+                selectedTab: 0,
+                isInProjectMode: false
+            ),
+            "Normal Home floats the pill in the app-level band like every other root"
+        )
         XCTAssertFalse(
             SyncStatusPlacementPolicy.showsMainTabOverlay(
-                selectedTab: 0
+                selectedTab: 0,
+                isInProjectMode: true
             ),
-            "Home never accepts the free overlay: both Home modes own an in-flow status host"
+            "Home project mode owns the control in its project stack — no second pill"
         )
         XCTAssertTrue(
             SyncStatusPlacementPolicy.showsMainTabOverlay(
-                selectedTab: 1
+                selectedTab: 2,
+                isInProjectMode: false
             ),
             "Non-Home roots must retain the app-level indicator"
+        )
+        XCTAssertTrue(
+            SyncStatusPlacementPolicy.showsMainTabOverlay(
+                selectedTab: 2,
+                isInProjectMode: true
+            ),
+            "Project mode only suppresses the band on Home — other roots are unaffected"
         )
     }
 
@@ -299,7 +396,7 @@ final class HomeSyncStatusLayoutTests: XCTestCase {
                 isInProjectMode: false,
                 isSyncStatusPresentationVisible: false
             ),
-            "Normal Home owns the indicator in its measured header"
+            "Normal Home takes the app-level band, not an in-flow host"
         )
         XCTAssertTrue(
             HomeSyncStatusPlacementPolicy.showsProjectModeFallback(
@@ -406,13 +503,24 @@ final class HomeSyncStatusLayoutTests: XCTestCase {
         }
     }
 
-    func testHomePillExpandsInsteadOfOverflowingAtAccessibilitySizes() {
+    /// The floating band is now the pill's only normal-mode home, so the
+    /// expanded variant must engage there too — at accessibility sizes the pill
+    /// wraps inside the band's insets instead of painting past the screen edge.
+    func testHomePillExpandsInsteadOfOverflowingAtAccessibilitySizes() throws {
         XCTAssertEqual(
             SyncAttentionPillLayoutStyle.resolve(
                 adaptsForAccessibility: true,
                 dynamicTypeSize: .large
             ),
             .compact
+        )
+        XCTAssertEqual(
+            SyncAttentionPillLayoutStyle.resolve(
+                adaptsForAccessibility: true,
+                dynamicTypeSize: .accessibility3
+            ),
+            .expanded,
+            "The band-hosted pill adapts from the first accessibility size"
         )
         XCTAssertEqual(
             SyncAttentionPillLayoutStyle.resolve(
@@ -427,20 +535,43 @@ final class HomeSyncStatusLayoutTests: XCTestCase {
                 dynamicTypeSize: .accessibility5
             ),
             .compact,
-            "The untouched non-Home floating presentation keeps its existing contract"
+            "Opting out still pins the compact capsule — the flag is the only switch"
         )
+
+        // And the band-hosted pill genuinely fits the width it is offered.
+        for typeSize in [DynamicTypeSize.accessibility3, .accessibility5] {
+            let measured = try measure(count: 128, width: 320, typeSize: typeSize)
+            let pill = try XCTUnwrap(measured.pill, "\(typeSize): pill was never measured")
+
+            XCTAssertGreaterThanOrEqual(
+                pill.minX,
+                OPSStyle.Layout.spacing3 - 0.5,
+                "\(typeSize): expanded pill runs off the leading edge"
+            )
+            XCTAssertLessThanOrEqual(
+                pill.maxX,
+                320 - OPSStyle.Layout.spacing3 + 0.5,
+                "\(typeSize): expanded pill runs off the trailing edge"
+            )
+            XCTAssertGreaterThan(pill.height, 0, "\(typeSize): expanded pill has no height")
+        }
     }
 
     func testSnapshots() throws {
         try snapshot(
-            "sync-pill-home-header-count-1",
+            "sync-pill-home-band-count-1",
             harness(count: 1),
             width: 390
         )
         try snapshot(
-            "sync-pill-home-header-a11y5-count-128",
+            "sync-pill-home-band-a11y5-count-128",
             harness(count: 128, width: 320, typeSize: .accessibility5),
             width: 320
+        )
+        try snapshot(
+            "sync-pill-home-band-quiet-no-pill",
+            harness(count: 0, showsPill: false),
+            width: 390
         )
         try snapshot(
             "sync-pill-project-header-a11y5-count-128",

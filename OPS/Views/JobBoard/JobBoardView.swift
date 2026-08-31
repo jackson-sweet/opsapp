@@ -957,7 +957,7 @@ struct JobBoardTasksView: View {
 
                         // Completed and Cancelled section buttons
                         if !sections.completed.isEmpty || !sections.cancelled.isEmpty {
-                            HStack(spacing: OPSStyle.Layout.spacing2_5) {
+                            SectionButtonPair {
                                 if !sections.completed.isEmpty {
                                     SectionButton(
                                         title: "COMPLETED",

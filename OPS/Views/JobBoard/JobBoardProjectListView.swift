@@ -216,7 +216,7 @@ struct JobBoardProjectListView: View {
 
                         // Closed and Archived section buttons
                         if !sections.closed.isEmpty || !sections.archived.isEmpty {
-                            HStack(spacing: OPSStyle.Layout.spacing2_5) {
+                            SectionButtonPair {
                                 if !sections.closed.isEmpty {
                                     SectionButton(
                                         title: "CLOSED",
@@ -830,6 +830,22 @@ struct CollapsibleSection<Content: View>: View {
 }
 
 // MARK: - Section Button
+/// Section buttons live in pairs at the foot of a list. Side by side while
+/// both labels genuinely fit one line each; stacked full-width rows the
+/// moment they would not (long labels, 3-digit counts, accessibility type).
+/// Buttons never wrap and never truncate — the pair adapts instead
+/// (bug 4c8a95f0).
+struct SectionButtonPair<Content: View>: View {
+    @ViewBuilder let content: Content
+
+    var body: some View {
+        ViewThatFits(in: .horizontal) {
+            HStackLayout(spacing: OPSStyle.Layout.spacing2_5) { content }
+            VStackLayout(spacing: OPSStyle.Layout.spacing2_5) { content }
+        }
+    }
+}
+
 /// Button that opens a sheet containing items (used for Closed/Archived sections)
 struct SectionButton: View {
     let title: String
@@ -847,10 +863,14 @@ struct SectionButton: View {
                 Text(title)
                     .font(OPSStyle.Typography.captionBold)
                     .foregroundColor(OPSStyle.Colors.secondaryText)
+                    .lineLimit(1)
+                    .fixedSize()
 
                 Text("(\(count))")
                     .font(OPSStyle.Typography.caption)
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
+                    .lineLimit(1)
+                    .fixedSize()
 
                 Image(systemName: OPSStyle.Icons.chevronRight)
                     .font(.system(size: OPSStyle.Layout.IconSize.xs, weight: .semibold))

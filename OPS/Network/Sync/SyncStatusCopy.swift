@@ -56,6 +56,13 @@ enum SyncStatusCopy {
         /// and where the photo is; never imply it was lost.
         static let projectMissing =
             "That job isn't in OPS any more. The photo is safe on this phone."
+
+        /// The job is alive and well in OPS, but this account is no longer on
+        /// it — an assignment change between capture and save. Different fact
+        /// from `projectMissing`, so it gets different words: nothing is gone,
+        /// and the operator is not at fault.
+        static let notShared =
+            "This job is no longer shared with you. The photo is safe on this phone."
     }
 
     // MARK: - Collapsed header

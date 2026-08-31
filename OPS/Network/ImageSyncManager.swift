@@ -24,6 +24,113 @@ protocol ProjectPhotosAddedNotifying {
 
 extension NotificationRepository: ProjectPhotosAddedNotifying {}
 
+/// One canonical portal row, as PostgREST takes it. Hoisted to file scope so
+/// the insert can travel through a seam instead of being welded to
+/// `SupabaseService.shared` — a wrong verdict on this write is what filed a
+/// false bug at a customer (bug 16d487c4), so it has to be provable.
+struct ProjectPhotoMirrorRow: Codable, Equatable {
+    let project_id: String
+    let company_id: String
+    let url: String
+    let source: String
+    let uploaded_by: String
+    let is_client_visible: Bool
+    let taken_at: String
+}
+
+/// Seam for the canonical `project_photos` insert. Production talks to
+/// PostgREST; tests substitute a recorder.
+protocol ProjectPhotoMirrorInserting {
+    /// Throws on any rejection. The classification — and the decision to file
+    /// anything — belongs to the caller's single chokepoint, never here.
+    func insertProjectPhotoRows(_ rows: [ProjectPhotoMirrorRow]) async throws
+}
+
+/// Seam for the two truth-probes run behind a permanent mirror rejection.
+///
+/// This exists because the client used to INFER absence from a failed write and
+/// was wrong about a live job (bug 16d487c4). Absence is now something the
+/// server states, and a stub can prove every branch of that statement without a
+/// network.
+protocol ProjectServerStateProbing {
+    /// Whether the projects row is SELECT-able by this account. The read policy
+    /// exposes only live rows, so `true` means live AND visible.
+    func isProjectVisible(projectId: String) async throws -> Bool
+
+    /// The company-scoped verdict for a row this account cannot see, from the
+    /// `public.project_server_state` RPC. `nil` when the answer is
+    /// unrecognizable — the caller then concludes nothing.
+    func projectServerState(
+        projectId: String
+    ) async throws -> SyncOperationReconcilers.ProjectServerState?
+}
+
+/// Seam for the auto-bug filings the portal-mirror chokepoint makes.
+///
+/// Filing is a real server write against the live triage queue, so it needs a
+/// seam for the same reason the probes do: the tests that prove WHEN a bug is
+/// filed must not file one. It also makes "filed exactly once, with this code"
+/// directly assertable, which is the property that regressed in bug 16d487c4.
+protocol PortalMirrorIncidentReporting {
+    func reportPortalMirrorIncident(
+        errorCode: String,
+        summary: String,
+        metadata: [String: Any]
+    ) async
+}
+
+/// Production filing: one screen, one suspected file, server-side dedupe.
+struct LivePortalMirrorIncidentReporter: PortalMirrorIncidentReporting {
+    func reportPortalMirrorIncident(
+        errorCode: String,
+        summary: String,
+        metadata: [String: Any]
+    ) async {
+        await AutoBugReporter.shared.report(
+            screen: "ImageSyncManager.deliverPortalMirror",
+            suspectedFile: "ImageSyncManager.swift",
+            errorCode: errorCode,
+            summary: summary,
+            metadata: metadata
+        )
+    }
+}
+
+/// The production ports. Ids travel lowercased: `UUID().uuidString` is
+/// uppercase and Postgres uuid text is lowercase, so an un-normalized id
+/// silently matches nothing.
+struct LiveProjectPortalMirrorPort: ProjectPhotoMirrorInserting, ProjectServerStateProbing {
+
+    func insertProjectPhotoRows(_ rows: [ProjectPhotoMirrorRow]) async throws {
+        try await SupabaseService.shared.client
+            .from("project_photos")
+            .insert(rows)
+            .execute()
+    }
+
+    func isProjectVisible(projectId: String) async throws -> Bool {
+        struct ServerProjectRow: Decodable {
+            let id: String
+        }
+        let rows: [ServerProjectRow] = try await SupabaseService.shared.client
+            .from("projects")
+            .select("id")
+            .eq("id", value: projectId.lowercased())
+            .execute()
+            .value
+        return !rows.isEmpty
+    }
+
+    func projectServerState(
+        projectId: String
+    ) async throws -> SyncOperationReconcilers.ProjectServerState? {
+        let response = try await SupabaseService.shared.client
+            .rpc("project_server_state", params: ["p_project_id": projectId.lowercased()])
+            .execute()
+        return SyncOperationReconcilers.projectServerState(from: response.data)
+    }
+}
+
 /// One undelivered photo tombstone: the (project, url) pair a `project_photos`
 /// soft-delete statement targets. A single statement covers every row on the
 /// pair, so the drain works pairs, not rows.
@@ -47,6 +154,15 @@ class ImageSyncManager: ObservableObject {
     /// Creator of the crew photos-added rail rows. Production talks to the
     /// narrow server RPC; tests substitute a spy.
     var photosAddedSyncer: ProjectPhotosAddedNotifying = NotificationRepository.shared
+
+    /// The canonical portal insert and the two truth-probes behind a permanent
+    /// rejection. Both default to PostgREST; tests substitute recorders.
+    var portalMirrorInserter: ProjectPhotoMirrorInserting = LiveProjectPortalMirrorPort()
+    var projectServerStateProbe: ProjectServerStateProbing = LiveProjectPortalMirrorPort()
+
+    /// Filer for the two portal-mirror incidents. Production writes real
+    /// bug_reports rows; tests substitute a recorder.
+    var portalMirrorReporter: PortalMirrorIncidentReporting = LivePortalMirrorIncidentReporter()
 
     // In-memory queue of pending image uploads
     private var pendingUploads: [PendingImageUpload] = []
@@ -188,9 +304,9 @@ class ImageSyncManager: ObservableObject {
         // they take the SAME path because they have the same answer: there is
         // no signal, or the job it belongs to has not reached the server yet
         // (its create is queued, retrying, or parked). Sending in the second
-        // case is not a failed send — it is a guaranteed RLS rejection for the
-        // portal row plus a 0-row PATCH that reports success for the gallery
-        // mirror, which is how photos went missing in bug ca26fd7a.
+        // case is not a failed send — the portal insert's RLS policy opens with
+        // EXISTS (SELECT 1 FROM projects …), so it is a guaranteed rejection
+        // against a project the server has never seen (bug ca26fd7a).
         //
         // Held is not failed: the photo is on disk, renders in the carousel via
         // its local:// URL, sits in `pendingUploads`, and the retry timer
@@ -219,11 +335,7 @@ class ImageSyncManager: ObservableObject {
         let outcomes = await presignedURLService.uploadProjectImages(images, for: project, companyId: companyId)
         let successURLs = outcomes.compactMap { $0.url }
         let uploaderId = UserDefaults.standard.string(forKey: "currentUserId") ?? ""
-        var portalMirrorSucceeded = true
-        // What a failed tile says when the portal mirror doesn't land. Defaults
-        // to the retryable case; the missing-project branch below swaps it for
-        // copy that names what actually happened.
-        var portalMirrorMessage = SyncStatusCopy.Photo.portalMirrorPending
+        var mirrorOutcome: PortalMirrorOutcome = .delivered
 
         // 1) Record the photos that DID upload — immediately. Their S3 bytes are
         //    real; a sibling photo's failure must never drop them.
@@ -234,79 +346,25 @@ class ImageSyncManager: ObservableObject {
             currentImages.append(contentsOf: successURLs)
             project.setProjectImageURLs(currentImages)
 
-            // Legacy projects.project_images CSV mirror — best effort. The
-            // canonical cross-device + portal store is project_photos (below),
-            // so a failure here only delays the legacy CSV; the photo isn't lost.
+            // Canonical-first (bug 16d487c4). There is deliberately NO client
+            // PATCH of the legacy projects.project_images CSV here any more.
             //
-            // Guarded by `SupabaseWriteGuard` (bug ca26fd7a): PostgREST answers a
-            // PATCH that matches no row with 200 and an empty body, so this used
-            // to clear `needsSync` after writing to nothing at all. The barrier
-            // above removes the common cause (a create still queued); a PATCH
-            // that STILL matches nothing means the project row is genuinely not
-            // addressable — deleted server-side, or invisible to this operator
-            // under RLS. Both are permanent, and both mean the portal insert
-            // below would be a certain 42501, so it is skipped rather than fired
-            // into a rejection whose auto-bug names the wrong cause.
-            let imagesPayload: [String: AnyJSON] = [
-                "project_images": .array(currentImages.map { .string($0) })
-            ]
-            var projectRowMissing = false
-            do {
-                let response = try await SupabaseService.shared.client
-                    .from("projects")
-                    .update(imagesPayload)
-                    .eq("id", value: project.id)
-                    .select("id")
-                    .execute()
-                try SupabaseWriteGuard.requireAffectedRow(
-                    response: response.data,
-                    table: "projects",
-                    id: project.id,
-                    fields: imagesPayload
-                )
-                project.needsSync = false
-            } catch {
-                // Leave needsSync set so the project's normal sync re-pushes it.
-                project.needsSync = true
-                if let syncError = error as? SyncError,
-                   case .serverRowMissing = syncError {
-                    projectRowMissing = true
-                }
-            }
-
-            if projectRowMissing {
-                // Never silent: the operator gets a failed tile that says where
-                // the photo is, and we file the precise cause rather than the
-                // downstream RLS symptom.
-                portalMirrorSucceeded = false
-                portalMirrorMessage = SyncStatusCopy.Photo.projectMissing
-                DebugLogger.shared.log(
-                    "saveImages: project \(project.id) has no server row — portal mirror skipped for \(successURLs.count) photo(s)",
-                    level: .error,
-                    category: "ImageSyncManager"
-                )
-                await AutoBugReporter.shared.report(
-                    screen: "ImageSyncManager.saveImages",
-                    suspectedFile: "ImageSyncManager.swift",
-                    errorCode: "PROJECT_ROW_MISSING",
-                    summary: "projects row \(project.id) is absent server-side; \(successURLs.count) uploaded photo(s) kept on device and not mirrored to the portal.",
-                    metadata: [
-                        "project_id": project.id,
-                        "company_id": companyId,
-                        "url_count": successURLs.count
-                    ]
-                )
-            } else {
-                // Bug 7b43be32 — project_photos rows so the web client portal sees
-                // the photos. insertProjectPhotoRows auto-bugs on a permanent reject.
-                portalMirrorSucceeded = await insertProjectPhotoRows(
-                    urls: successURLs,
-                    projectId: project.id,
-                    companyId: companyId,
-                    uploadedBy: uploaderId,
-                    source: "in_progress"
-                )
-            }
+            // That PATCH was gated on `projects.edit`, which a crew member does
+            // not have, so it matched 0 rows — and the client read that as "the
+            // project is gone", skipped the canonical insert (gated only on
+            // project VIEW, which crew DO have), filed a false absence bug, and
+            // left the photo recorded nowhere but this phone. The CSV is now a
+            // server-side projection of project_photos (migration
+            // cluster_j_02), so delivering a photo never requires edit rights,
+            // and the projection travels back to every device on the project
+            // row's normal updated_at/realtime path. The local append above is
+            // still made, so the carousel shows the photo this run loop.
+            mirrorOutcome = await deliverPortalMirror(
+                urls: successURLs,
+                project: project,
+                uploadedBy: uploaderId,
+                source: "in_progress"
+            )
 
             project.lastSyncedAt = Date()
             if let modelContext = modelContext {
@@ -315,7 +373,7 @@ class ImageSyncManager: ObservableObject {
 
             // Notify assigned crew. notifyCrew:false on the note-attachment path
             // so a photo-bearing note doesn't fire a second notification.
-            if notifyCrew && portalMirrorSucceeded {
+            if notifyCrew && mirrorOutcome.isDelivered {
                 notifyCrewOfAddedPhotos(
                     project: project,
                     uploaderId: uploaderId,
@@ -332,16 +390,22 @@ class ImageSyncManager: ObservableObject {
             let tileId = placeholders[index].id
             switch outcome {
             case .success:
-                if portalMirrorSucceeded {
-                    endInFlightUploads([tileId], for: project.id)
-                } else {
-                    // S3 + gallery succeeded but the portal row insert failed —
-                    // keep a failed tile so the crew knows it isn't in the portal.
+                if let failureMessage = mirrorOutcome.failedTileMessage {
+                    // S3 + gallery took the photo but the portal cannot have it
+                    // and no retry will change that — say which, and say where
+                    // the photo is.
                     markInFlightUploadsFailed(
                         ids: [tileId],
                         for: project.id,
-                        lastError: portalMirrorMessage
+                        lastError: failureMessage
                     )
+                } else {
+                    // Delivered, already mirrored, or queued for retry. A queued
+                    // mirror clears its tile on purpose: the photo renders from
+                    // its own S3 URL and delivery is now durable, so there is
+                    // nothing for the operator to do — the same doctrine the
+                    // offline hold path follows.
+                    endInFlightUploads([tileId], for: project.id)
                 }
             case .failure(let image, _, let kind, let message):
                 if case .permanent = kind {
@@ -436,42 +500,80 @@ class ImageSyncManager: ObservableObject {
         }
     }
 
-    /// Bug 7b43be32 — insert a project_photos row for each newly uploaded
-    /// URL so the web client portal can render the photo. Best-effort: a
-    /// failure here doesn't block the upload (the file is already in S3
-    /// and on the project row), it just means the photo won't appear in
-    /// the portal until the next reconciliation pass. We default
-    /// `is_client_visible` to false to match the column default; the crew
-    /// opts each photo in via the per-photo toggle.
-    ///
-    /// Returns whether the insert succeeded so the caller can drive the
-    /// in-flight tile state (May-12 follow-up).
-    @discardableResult
-    private func insertProjectPhotoRows(
-        urls: [String],
-        projectId: String,
-        companyId: String,
-        uploadedBy: String,
-        source: String
-    ) async -> Bool {
-        guard !urls.isEmpty else { return true }
+    // MARK: - Portal mirror (bug 16d487c4)
 
-        struct ProjectPhotoInsert: Codable {
-            let project_id: String
-            let company_id: String
-            let url: String
-            let source: String
-            let uploaded_by: String
-            let is_client_visible: Bool
-            let taken_at: String
+    /// What became of a batch's client-portal delivery. Every value is a
+    /// statement about where the photo now IS — never a guess about why a write
+    /// failed, which is the class of error this type exists to end.
+    enum PortalMirrorOutcome: Equatable {
+        /// The canonical rows are on the server.
+        case delivered
+        /// The server already held them — the repair, another device, or an
+        /// earlier attempt got there first. Indistinguishable from delivered as
+        /// far as the operator is concerned.
+        case alreadyMirrored
+        /// Not delivered yet, and durably queued. Nothing to tell anyone.
+        case retryQueued
+        /// The job is live in OPS but is no longer shared with this account.
+        /// A permission state, not a defect: no bug is filed.
+        case heldNotShared
+        /// The job was deleted in OPS. Normal lifecycle: the photos stay on the
+        /// phone inside the now-trashed job.
+        case heldProjectDeleted
+        /// The server confirms no such row, and no create is queued for it.
+        case heldProjectAbsent
+
+        /// Delivered in the only sense the crew notification cares about: the
+        /// portal can render the photos right now.
+        var isDelivered: Bool {
+            self == .delivered || self == .alreadyMirrored
         }
 
-        // Single ISO8601 timestamp for the whole batch keeps the rows
-        // grouped chronologically without needing to invent per-photo EXIF.
-        let timestamp = ISO8601DateFormatter().string(from: Date())
+        /// The failed-tile line for this outcome, or nil when the tile should
+        /// simply clear. Held states earn a tile because no retry will fix
+        /// them; a queued mirror does not, because it needs nothing from anyone.
+        var failedTileMessage: String? {
+            switch self {
+            case .delivered, .alreadyMirrored, .retryQueued:
+                return nil
+            case .heldNotShared:
+                return SyncStatusCopy.Photo.notShared
+            case .heldProjectDeleted, .heldProjectAbsent:
+                return SyncStatusCopy.Photo.projectMissing
+            }
+        }
+    }
 
+    /// The single place a photo becomes visible in the client portal, and the
+    /// single place a delivery failure is classified or filed.
+    ///
+    /// Canonical-first by design. `project_photos` is the cross-device + portal
+    /// store, and its INSERT policy asks only for company membership, the
+    /// uploader's own identity, and project VIEW — everything a crew member
+    /// holds. The legacy CSV is a server-side projection of these rows now
+    /// (migration cluster_j_02), so no client needs `projects.edit` to deliver
+    /// a photo.
+    ///
+    /// Nothing here is inferred. A permanent rejection is handed to the truth
+    /// probes, and an absence is only ever claimed after the server has stated
+    /// it — the two things whose absence made bug 16d487c4 file a false report
+    /// against a job that was live the whole time.
+    @discardableResult
+    func deliverPortalMirror(
+        urls: [String],
+        project: Project,
+        uploadedBy: String,
+        source: String
+    ) async -> PortalMirrorOutcome {
+        guard !urls.isEmpty else { return .delivered }
+        let projectId = project.id
+        let companyId = project.companyId
+
+        // Single ISO8601 timestamp for the whole batch keeps the rows grouped
+        // chronologically without needing to invent per-photo EXIF.
+        let timestamp = ISO8601DateFormatter().string(from: Date())
         let rows = urls.map { url in
-            ProjectPhotoInsert(
+            ProjectPhotoMirrorRow(
                 project_id: projectId,
                 company_id: companyId,
                 url: url,
@@ -483,22 +585,152 @@ class ImageSyncManager: ObservableObject {
         }
 
         do {
-            try await SupabaseService.shared.client
-                .from("project_photos")
-                .insert(rows)
-                .execute()
-            return true
+            try await portalMirrorInserter.insertProjectPhotoRows(rows)
+            return .delivered
         } catch {
-            // May-12 outage site. Was: `print(error)` and continue silently,
-            // which let an RLS tightening on project_photos.INSERT swallow
-            // 3 days of Crew/Unassigned uploads with zero signal. Now:
-            // classify, auto-bug if permanent, return false so the carousel
-            // can render a failed tile.
-            let kind = await AutoBugReporter.shared.reportIfPermanent(
-                error,
-                screen: "ImageSyncManager.insertProjectPhotoRows",
-                suspectedFile: "ImageSyncManager.swift",
-                summary: "project_photos INSERT failed for project \(projectId): \(error.localizedDescription)",
+            // Both spellings are searched: the raw error carries the Postgres
+            // text, the localized description is what string-only surfaces see.
+            let description = "\(error) \(error.localizedDescription)"
+
+            // The active-(project_id, url) arbiter already holds these rows.
+            // Same doctrine as the outbound reconcilers: the constraint NAME is
+            // the contract, so an unrelated 23505 falls through to be classified.
+            if SyncOperationReconcilers.isActiveProjectPhotoURLDuplicate(description) {
+                DebugLogger.shared.log(
+                    "portal mirror for \(projectId) already held server-side (\(urls.count) url(s))",
+                    level: .info,
+                    category: "ImageSyncManager"
+                )
+                return .alreadyMirrored
+            }
+
+            guard SyncErrorClassifier.disposition(for: error) == .permanent else {
+                DebugLogger.shared.log(
+                    "portal mirror transient failure for \(projectId) — queued: \(error)",
+                    level: .warning,
+                    category: "ImageSyncManager"
+                )
+                return .retryQueued
+            }
+
+            return await classifyPermanentMirrorRejection(
+                error: error,
+                urls: urls,
+                project: project,
+                source: source
+            )
+        }
+    }
+
+    /// Turns a permanent portal-mirror rejection into a verdict the server
+    /// actually stated. A probe that does not answer yields `.retryQueued` —
+    /// never a conclusion, because concluding from a failed write is the bug.
+    private func classifyPermanentMirrorRejection(
+        error: Error,
+        urls: [String],
+        project: Project,
+        source: String
+    ) async -> PortalMirrorOutcome {
+        let projectId = project.id
+        let companyId = project.companyId
+
+        let isVisible: Bool
+        do {
+            isVisible = try await projectServerStateProbe.isProjectVisible(projectId: projectId)
+        } catch {
+            DebugLogger.shared.log(
+                "portal mirror visibility probe failed for \(projectId) — queued: \(error)",
+                level: .warning,
+                category: "ImageSyncManager"
+            )
+            return .retryQueued
+        }
+
+        if isVisible {
+            // Unexpected, and therefore loud. The insert policy needs company +
+            // uploader identity + project view, and view is proven right here —
+            // so something else refused it and a human must see the raw cause.
+            DebugLogger.shared.log(
+                "portal mirror refused for VISIBLE project \(projectId): \(error)",
+                level: .error,
+                category: "ImageSyncManager"
+            )
+            await portalMirrorReporter.reportPortalMirrorIncident(
+                errorCode: "PHOTO_PORTAL_INSERT_REFUSED",
+                summary: "project_photos INSERT was refused for project \(projectId) although the row is visible to this account; \(urls.count) uploaded photo(s) queued for retry.",
+                metadata: [
+                    "project_id": projectId,
+                    "company_id": companyId,
+                    "url_count": urls.count,
+                    "source": source,
+                    "error": "\(error)"
+                ]
+            )
+            return .retryQueued
+        }
+
+        let state: SyncOperationReconcilers.ProjectServerState?
+        do {
+            state = try await projectServerStateProbe.projectServerState(projectId: projectId)
+        } catch {
+            DebugLogger.shared.log(
+                "project_server_state probe failed for \(projectId) — queued: \(error)",
+                level: .warning,
+                category: "ImageSyncManager"
+            )
+            return .retryQueued
+        }
+
+        switch state {
+        case .active:
+            // The job is live for the company; this account's view scope no
+            // longer reaches it. Assignment changes are routine — no bug — and
+            // visibility can come back, so the mirror stays queued.
+            DebugLogger.shared.log(
+                "portal mirror held for \(projectId) — job is live but no longer shared with this account",
+                level: .info,
+                category: "ImageSyncManager"
+            )
+            return .heldNotShared
+
+        case .deleted:
+            // Normal lifecycle. Trash the job locally so this phone stops
+            // showing a job OPS no longer has; the photos ride along inside it.
+            if let modelContext {
+                try? SyncOperationReconcilers.applyProjectTombstone(
+                    projectId: projectId,
+                    deletedAt: Date(),
+                    in: modelContext
+                )
+                try? modelContext.save()
+            }
+            DebugLogger.shared.log(
+                "portal mirror held for \(projectId) — the job was deleted in OPS; tombstoned locally",
+                level: .info,
+                category: "ImageSyncManager"
+            )
+            return .heldProjectDeleted
+
+        case .absent:
+            // The create barrier is the last thing standing between "the server
+            // says absent" and a filed claim: a project whose own create is
+            // still queued is not missing, it simply has not been sent yet.
+            if projectAwaitsItsOwnCreate(projectId) {
+                DebugLogger.shared.log(
+                    "portal mirror queued for \(projectId) — its own create has not landed yet",
+                    level: .info,
+                    category: "ImageSyncManager"
+                )
+                return .retryQueued
+            }
+            DebugLogger.shared.log(
+                "portal mirror held for \(projectId) — server confirms the project row is absent",
+                level: .error,
+                category: "ImageSyncManager"
+            )
+            await portalMirrorReporter.reportPortalMirrorIncident(
+                errorCode: "PROJECT_ROW_MISSING",
+                summary: "projects row \(projectId) is confirmed absent server-side (no create queued); \(urls.count) uploaded photo(s) kept on device.",
                 metadata: [
                     "project_id": projectId,
                     "company_id": companyId,
@@ -506,12 +738,17 @@ class ImageSyncManager: ObservableObject {
                     "source": source
                 ]
             )
+            return .heldProjectAbsent
+
+        case nil:
+            // The RPC answered something this build does not recognize. Not
+            // evidence of anything — queue it.
             DebugLogger.shared.log(
-                "project_photos insert failed (\(kind)) for \(projectId): \(error)",
-                level: .error,
+                "project_server_state returned an unrecognized verdict for \(projectId) — queued",
+                level: .warning,
                 category: "ImageSyncManager"
             )
-            return false
+            return .retryQueued
         }
     }
 
@@ -1254,12 +1491,12 @@ class ImageSyncManager: ObservableObject {
                 project.needsSync = true
             }
 
-            // Bug 7b43be32 — project_photos rows for the newly landed URLs.
+            // Canonical portal rows for the newly landed URLs, through the same
+            // classification chokepoint the online path uses.
             let uploaderId = UserDefaults.standard.string(forKey: "currentUserId") ?? ""
-            await insertProjectPhotoRows(
+            await deliverPortalMirror(
                 urls: reconciled.newRemoteURLs,
-                projectId: project.id,
-                companyId: companyId,
+                project: project,
                 uploadedBy: uploaderId,
                 source: "in_progress"
             )

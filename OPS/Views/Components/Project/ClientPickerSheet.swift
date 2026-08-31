@@ -22,8 +22,21 @@ struct ClientPickerSheet: View {
     @EnvironmentObject var dataController: DataController
     @Query private var allClients: [Client]
 
+    /// What the pick is for. `.projectReassign` is the historical
+    /// behavior. `.leadSeed` (AddLeadSheet's USE EXISTING CLIENT) lists
+    /// ONLY existing OPS clients: the phone-contact lane and the create
+    /// row both create a client immediately and auto-queue its pipeline
+    /// lead (ClientLeadAutocreateQueue), which would duplicate the very
+    /// lead the operator is composing. Import and brand-new-person live
+    /// on the AddLeadSheet itself.
+    enum Context: Equatable {
+        case projectReassign
+        case leadSeed
+    }
+
     let currentClientId: String?
     let companyId: String
+    let context: Context
     let onSelect: (Client) -> Void
 
     @State private var searchText: String
@@ -44,10 +57,12 @@ struct ClientPickerSheet: View {
         currentClientId: String?,
         companyId: String,
         searchText: String = "",
+        context: Context = .projectReassign,
         onSelect: @escaping (Client) -> Void
     ) {
         self.currentClientId = currentClientId
         self.companyId = companyId
+        self.context = context
         self.onSelect = onSelect
         _searchText = State(initialValue: searchText)
     }
@@ -71,7 +86,11 @@ struct ClientPickerSheet: View {
     /// while searching — an empty field lists existing clients, not the whole
     /// address book.
     private var phoneContactMatches: [PhoneContactSuggestion] {
-        guard phoneContacts.canRead, !searchText.isEmpty else { return [] }
+        guard Self.showsPhoneContacts(
+            context: context,
+            canRead: phoneContacts.canRead,
+            searchEmpty: searchText.isEmpty
+        ) else { return [] }
         let matches = PhoneContactSearch.matching(phoneContacts.suggestions, query: searchText)
         guard !matches.isEmpty else { return [] }
         let identity = ClientIdentityIndex(clients: companyClients)
@@ -110,7 +129,7 @@ struct ClientPickerSheet: View {
             }
             .background(OPSStyle.Colors.background)
             .standardSheetToolbar(
-                title: "Change Client",
+                title: context == .leadSeed ? "USE CLIENT" : "Change Client",
                 actionText: "",
                 isActionEnabled: false,
                 onCancel: { dismiss() },
@@ -118,6 +137,8 @@ struct ClientPickerSheet: View {
             )
             .onChange(of: searchText) { _, newValue in
                 // Warm the device-contacts index on the first real keystroke.
+                // Skipped in .leadSeed, which never lists phone contacts.
+                guard context == .projectReassign else { return }
                 if !newValue.isEmpty && !didPreparePhoneContacts {
                     didPreparePhoneContacts = true
                     Task { await phoneContacts.prepare() }
@@ -162,7 +183,9 @@ struct ClientPickerSheet: View {
 
         VStack(spacing: 0) {
             if clientRows.isEmpty && phoneRows.isEmpty {
-                Text("No clients found")
+                Text(context == .leadSeed
+                     ? "No clients yet — type the contact into the form and OPS will create them."
+                     : "No clients found")
                     .font(OPSStyle.Typography.body)
                     .foregroundColor(OPSStyle.Colors.secondaryText)
                     .padding(.vertical, OPSStyle.Layout.spacing3_5)
@@ -182,9 +205,35 @@ struct ClientPickerSheet: View {
                 }
             }
 
-            rowDivider
-            createClientRow
+            if Self.showsCreateRow(context: context) {
+                rowDivider
+                createClientRow
+            }
         }
+    }
+
+    // MARK: - Lane gates (pure — the lead-seed context cannot mint leads)
+
+    /// The device address book is offered only when reassigning a
+    /// project. Tapping a phone contact CREATES the OPS client, which
+    /// auto-queues that client's pipeline lead — a race against the lead
+    /// AddLeadSheet is composing. The lead sheet offers contacts through
+    /// its own fill-only import row instead.
+    static func showsPhoneContacts(
+        context: Context,
+        canRead: Bool,
+        searchEmpty: Bool
+    ) -> Bool {
+        guard context == .projectReassign else { return false }
+        return canRead && !searchEmpty
+    }
+
+    /// Same reason: the create row funnels through ClientSheet, which
+    /// queues the matching lead. In the lead-seed context a brand-new
+    /// person is covered by simply typing the form — the save path
+    /// resolves or creates the client.
+    static func showsCreateRow(context: Context) -> Bool {
+        context == .projectReassign
     }
 
     /// The typed name carries into the create form — the user has already said

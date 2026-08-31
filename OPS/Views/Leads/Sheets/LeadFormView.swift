@@ -88,6 +88,30 @@ struct LeadForm {
         }
     }
 
+    /// Bug 55f40233 — bind an existing client picked from the source row:
+    /// identity fields adopt the client record; job fields (title, value,
+    /// notes, stage, priority) stay the operator's. Source flips to
+    /// `repeat_client` — an existing client calling about new work is exactly
+    /// that, and the chip stays editable. Coordinates follow the client only
+    /// when it actually has them; otherwise they are nulled rather than left
+    /// pointing at a previous address.
+    mutating func adoptClient(_ client: Client) {
+        contactName = client.name
+        phone = client.phoneNumber ?? ""
+        email = client.email ?? ""
+        address = client.address ?? ""
+        if let lat = client.latitude, let lon = client.longitude {
+            latitude = lat
+            longitude = lon
+            lastResolvedAddress = client.address
+        } else {
+            latitude = nil
+            longitude = nil
+            lastResolvedAddress = nil
+        }
+        source = "repeat_client"
+    }
+
     /// Address text changed. Keep coords only while the text still matches the
     /// string they were resolved for — any divergence (hand edit, clear) nulls
     /// them so the save path writes honest geo.
@@ -266,11 +290,15 @@ struct LeadFormView: View {
     // repeat_client/voice_log/other). The form stores the id verbatim and the
     // DTO sends it unmodified, so an off-constraint id is rejected on save.
     static let sourceOptions: [LeadChipOption] = [
-        .init(id: "other",    label: "MANUAL"),
-        .init(id: "website",  label: "WEB FORM"),
-        .init(id: "referral", label: "REFERRAL"),
-        .init(id: "phone",    label: "INBOUND CALL"),
-        .init(id: "email",    label: "EMAIL"),
+        .init(id: "other",         label: "MANUAL"),
+        .init(id: "website",       label: "WEB FORM"),
+        .init(id: "referral",      label: "REFERRAL"),
+        // Bug 55f40233 — USE EXISTING CLIENT flips the form to this source, so
+        // the chip must exist or the group would render with nothing selected
+        // and the next chip tap would silently overwrite a correct value.
+        .init(id: "repeat_client", label: "REPEAT CLIENT"),
+        .init(id: "phone",         label: "INBOUND CALL"),
+        .init(id: "email",         label: "EMAIL"),
     ]
 
     static let stageOptions: [LeadChipOption] = [

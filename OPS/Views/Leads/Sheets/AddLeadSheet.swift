@@ -20,6 +20,7 @@
 
 import SwiftUI
 import SwiftData
+import Contacts
 
 struct AddLeadSheet: View {
     @EnvironmentObject private var dataController: DataController
@@ -27,24 +28,35 @@ struct AddLeadSheet: View {
 
     var onSaved: (Opportunity) -> Void = { _ in }
     var onStartSiteVisit: ((Opportunity) -> Void)? = nil
-    private let seedClient: Client?
 
     @State private var form: LeadForm
 
     /// `seedClient` pre-fills the form for a lead created from a client's page
-    /// and binds that client's id directly on save (no fuzzy name match).
-    /// Existing call sites keep working via the defaulted parameters.
+    /// and binds that client's id directly on save (no fuzzy name match). It
+    /// seeds `linkedClient`, so such a sheet simply OPENS in the bound state
+    /// the source rows lead to — one state machine, not two. Existing call
+    /// sites keep working via the defaulted parameters.
     init(seedClient: Client? = nil,
          onSaved: @escaping (Opportunity) -> Void = { _ in },
          onStartSiteVisit: ((Opportunity) -> Void)? = nil) {
-        self.seedClient = seedClient
         self.onSaved = onSaved
         self.onStartSiteVisit = onStartSiteVisit
         _form = State(initialValue: seedClient.map { LeadForm(fromClient: $0) } ?? LeadForm())
+        _linkedClient = State(initialValue: seedClient)
     }
     @State private var isSaving = false
     @State private var errorMessage: String?
     @State private var saveAction: AddLeadSaveAction = .saveOnly
+
+    // Bug 55f40233 — where a new lead's identity comes from. The two source
+    // rows answer different questions (the device address book vs the OPS
+    // client base), so they do not collapse into one entry point; both vanish
+    // behind a single bound chip the moment a client is actually linked.
+    /// The client this lead will be written against. Non-nil ⇒ bound: the save
+    /// path uses this id directly instead of resolving one by name.
+    @State private var linkedClient: Client?
+    @State private var showingClientPicker = false
+    @State private var showingContactImport = false
 
     private var canSave: Bool {
         !form.contactName.trimmingCharacters(in: .whitespaces).isEmpty && !isSaving
@@ -59,6 +71,11 @@ struct AddLeadSheet: View {
 
                 ScrollView {
                     VStack(alignment: .leading, spacing: 14) {
+                        if let linkedClient {
+                            boundClientChip(linkedClient)
+                        } else {
+                            sourceRows
+                        }
                         LeadFormView(form: $form)
                     }
                     .padding(.horizontal, OPSStyle.Layout.spacing3_5)
@@ -72,6 +89,130 @@ struct AddLeadSheet: View {
         }
         .preferredColorScheme(.dark)
         .interactiveDismissDisabled(isSaving)
+        .sheet(isPresented: $showingClientPicker) {
+            ClientPickerSheet(
+                currentClientId: linkedClient?.id,
+                companyId: dataController.currentUser?.companyId ?? "",
+                context: .leadSeed,
+                onSelect: { client in
+                    linkedClient = client
+                    form.adoptClient(client)
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                }
+            )
+            .environmentObject(dataController)
+        }
+        // NEVER `.sheet` — CNContactPickerViewController retires itself, and a
+        // SwiftUI dismissal afterwards lands on the next modal up the chain
+        // (bug 5d5df5b0). An invisible background anchor cannot do that.
+        .background(
+            ContactPicker(isPresented: $showingContactImport) { contact in
+                // Value-typed application — never three inouts into one
+                // struct, which is a Swift exclusivity violation. Import does
+                // NOT bind a client: none exists yet, and the save path
+                // resolves or creates one from the filled fields.
+                form = ContactLeadFill.from(contact).applied(to: form)
+            }
+        )
+    }
+
+    // MARK: - Identity source (bug 55f40233)
+
+    private var sourceRows: some View {
+        VStack(spacing: OPSStyle.Layout.spacing2) {
+            sourceRow(
+                icon: "person.crop.circle.badge.plus",
+                label: "IMPORT FROM CONTACTS",
+                accessibility: "Import from phone contacts"
+            ) { showingContactImport = true }
+            sourceRow(
+                icon: "person.text.rectangle",
+                label: "USE EXISTING CLIENT",
+                accessibility: "Use an existing client"
+            ) { showingClientPicker = true }
+        }
+    }
+
+    /// The capture panel's row chrome. Deliberately NOT shared cross-file —
+    /// the pattern is the contract, each surface owns its copy (LeadFormView's
+    /// scoping doctrine).
+    private func sourceRow(
+        icon: String,
+        label: String,
+        accessibility: String,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            HStack(spacing: OPSStyle.Layout.spacing2) {
+                Image(systemName: icon)
+                    .font(.system(size: 16, weight: .regular))
+                    .foregroundColor(OPSStyle.Colors.secondaryText)
+                Text(label)
+                    .font(OPSStyle.Typography.miniLabel)
+                    .foregroundColor(OPSStyle.Colors.secondaryText)
+                Spacer(minLength: 0)
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+            }
+            .padding(.horizontal, OPSStyle.Layout.spacing3)
+            .frame(maxWidth: .infinity)
+            .frame(height: OPSStyle.Layout.touchTargetMin)
+            .background(
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius, style: .continuous)
+                    .fill(OPSStyle.Colors.surfaceInput)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius, style: .continuous)
+                    .strokeBorder(OPSStyle.Colors.line, lineWidth: OPSStyle.Layout.Border.standard)
+            )
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(accessibility)
+    }
+
+    /// Bound state — the operator's current reality, not every possible one.
+    /// Unlinking keeps the prefilled fields: clearing text a human just
+    /// reviewed is the app forgetting what it was told. Only the binding drops
+    /// (the save then falls back to match-or-create by name).
+    private func boundClientChip(_ client: Client) -> some View {
+        HStack(spacing: OPSStyle.Layout.spacing2_5) {
+            Image(systemName: "person.crop.circle.badge.checkmark")
+                .font(.system(size: 16, weight: .regular))
+                .foregroundColor(OPSStyle.Colors.oliveTextM)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(client.name.uppercased())
+                    .font(OPSStyle.Typography.body)
+                    .foregroundColor(OPSStyle.Colors.text)
+                    .lineLimit(1)
+                Text("EXISTING CLIENT · LEAD WILL LINK")
+                    .font(OPSStyle.Typography.miniLabel)
+                    .foregroundColor(OPSStyle.Colors.text3)
+            }
+            Spacer(minLength: 0)
+            Button {
+                UISelectionFeedbackGenerator().selectionChanged()
+                linkedClient = nil
+            } label: {
+                Image(systemName: "xmark.circle.fill")
+                    .font(.system(size: 18, weight: .regular))
+                    .foregroundColor(OPSStyle.Colors.text3)
+                    .frame(width: OPSStyle.Layout.touchTargetMin, height: OPSStyle.Layout.touchTargetMin)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Unlink client")
+        }
+        .padding(.leading, OPSStyle.Layout.spacing3)
+        .frame(minHeight: 48)
+        .background(
+            RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius, style: .continuous)
+                .fill(OPSStyle.Colors.surfaceInput)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius, style: .continuous)
+                .strokeBorder(OPSStyle.Colors.oliveLineM, lineWidth: OPSStyle.Layout.Border.standard)
+        )
     }
 
     // MARK: - Header
@@ -199,8 +340,8 @@ struct AddLeadSheet: View {
         // From a client's page, bind THAT client's id directly — no fuzzy match,
         // no duplicate client. Otherwise resolve/create by name as before.
         let clientId: String?
-        if let seedClient {
-            clientId = seedClient.id
+        if let linkedClient {
+            clientId = linkedClient.id
         } else {
             let resolved = await resolveClient(companyId: companyId, name: trimmedName)
             clientId = resolved.id

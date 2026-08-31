@@ -97,6 +97,74 @@ final class SyncStatusCopyPendingWorkTests: XCTestCase {
         XCTAssertEqual(Copy.parkedDetailBody, "Your copy is safe on this phone. Retry now or export it.")
     }
 
+    func testEditRefusedDetailBlock() {
+        XCTAssertEqual(Copy.editRefusedDetailLabel, "SYS :: EDIT NOT ACCEPTED")
+        XCTAssertEqual(
+            Copy.editRefusedDetailBody,
+            "OPS didn't accept this change from your account. Your copy is safe on this phone — an admin can make it in OPS."
+        )
+    }
+
+    // MARK: - Edit-refused vs missing-row (bug 16d487c4)
+    //
+    // Both verdicts come out of the same zero-row UPDATE. Before the reconciler
+    // could tell them apart, this surface told a crew member "someone deleted
+    // this record in OPS" about a job that was never deleted. These lock the
+    // split by the two typed errors' own descriptions — not by hand-written
+    // strings, so a marker change fails here instead of in a truck.
+
+    func testEditRefusedIsRecognizedOnlyByItsOwnMarker() {
+        let refused = SyncError
+            .serverEditRefused(table: "projects", id: "a0636b77-3545-43fb-b94b-5d95feff74e1")
+            .localizedDescription
+        let missing = SyncError
+            .serverRowMissing(table: "projects", id: "a0636b77-3545-43fb-b94b-5d95feff74e1")
+            .localizedDescription
+
+        XCTAssertTrue(Copy.isEditRefused(refused))
+        XCTAssertFalse(Copy.isEditRefused(missing), "The two verdicts must never alias")
+        XCTAssertFalse(Copy.isMissingRow(refused), "An edit refusal is not a missing row")
+        XCTAssertTrue(Copy.isMissingRow(missing))
+        XCTAssertFalse(Copy.isEditRefused(nil))
+        XCTAssertFalse(Copy.isEditRefused(""))
+    }
+
+    func testParkedDetailSplitsEditRefusalFromDeletion() {
+        let refused = SyncError
+            .serverEditRefused(table: "projects", id: "a0636b77-3545-43fb-b94b-5d95feff74e1")
+            .localizedDescription
+        let missing = SyncError
+            .serverRowMissing(table: "projects", id: "a0636b77-3545-43fb-b94b-5d95feff74e1")
+            .localizedDescription
+
+        let refusedDetail = Copy.parkedDetail(lastError: refused)
+        XCTAssertEqual(refusedDetail.label, Copy.editRefusedDetailLabel)
+        XCTAssertEqual(refusedDetail.body, Copy.editRefusedDetailBody)
+        XCTAssertFalse(
+            refusedDetail.body.contains("deleted"),
+            "The record was never deleted — the copy must not say it was"
+        )
+
+        let missingDetail = Copy.parkedDetail(lastError: missing)
+        XCTAssertEqual(missingDetail.label, Copy.missingRowDetailLabel)
+        XCTAssertEqual(missingDetail.body, Copy.missingRowDetailBody)
+
+        // Every other park is still the plain rejection.
+        let other = Copy.parkedDetail(lastError: "some unexplained refusal")
+        XCTAssertEqual(other.label, Copy.parkedDetailLabel)
+    }
+
+    /// The DETAILS disclosure owes every named cause its own sentence — an edit
+    /// refusal is a permission fact, not the "export it to support" fallback.
+    func testEditRefusalDiagnosesAsAPermissionProblem() {
+        let refused = SyncError
+            .serverEditRefused(table: "projects", id: "a0636b77-3545-43fb-b94b-5d95feff74e1")
+            .localizedDescription
+        XCTAssertEqual(Copy.diagnostic(refused), Copy.diagnosticPermissionDenied)
+        XCTAssertNotEqual(Copy.diagnostic(refused), Copy.diagnosticUnknown)
+        XCTAssertNotEqual(Copy.diagnostic(refused), Copy.diagnosticMissingRow)
+    }
+
     // MARK: - Actions / labels / confirms
 
     func testActionAndConfirmCopy() {

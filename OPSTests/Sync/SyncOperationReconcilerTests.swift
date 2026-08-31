@@ -622,6 +622,130 @@ final class SyncOperationReconcilerTests: XCTestCase {
         )
     }
 
+    // MARK: - Project update row-verdict (bug 16d487c4)
+
+    /// A zero-row project UPDATE stops being a conclusion and becomes a
+    /// question. Detection keys on the typed error's own marker, so the
+    /// reconciler and the copy layer read the same evidence.
+    func testProjectUpdateRowVerdictIsDispatchedForZeroRowProjectUpdates() {
+        let missing = SyncError
+            .serverRowMissing(table: "projects", id: projectId)
+            .localizedDescription
+
+        XCTAssertEqual(
+            SyncOperationReconcilers.kind(
+                operationType: "update",
+                entityType: SyncEntityType.project.rawValue,
+                errorDescription: missing
+            ),
+            .projectUpdateRowVerdict
+        )
+        // A create is not this shape — it has its own idempotency paths.
+        XCTAssertNil(
+            SyncOperationReconcilers.kind(
+                operationType: "create",
+                entityType: SyncEntityType.project.rawValue,
+                errorDescription: missing
+            )
+        )
+        // A task update against a missing row is not the project verdict.
+        XCTAssertNil(
+            SyncOperationReconcilers.kind(
+                operationType: "update",
+                entityType: SyncEntityType.projectTask.rawValue,
+                errorDescription: missing
+            )
+        )
+        // Right shape, unrelated error — still parks.
+        XCTAssertNil(
+            SyncOperationReconcilers.kind(
+                operationType: "update",
+                entityType: SyncEntityType.project.rawValue,
+                errorDescription: "permission denied for table projects"
+            )
+        )
+    }
+
+    /// This is what heals the ops already sitting on crew phones, parked by a
+    /// build that shipped before the probes existed.
+    func testParkedProjectUpdatesAreSelectedForTheVerdictSweep() throws {
+        let context = try makeContext()
+        let operation = makeOperation(
+            entityType: SyncEntityType.project.rawValue,
+            entityId: projectId,
+            operationType: "update",
+            in: context
+        )
+        operation.status = "parked"
+        operation.lastError = SyncError
+            .serverRowMissing(table: "projects", id: projectId)
+            .localizedDescription
+        try context.save()
+
+        XCTAssertEqual(
+            SyncOperationReconcilers.parkedKind(for: operation),
+            .projectUpdateRowVerdict
+        )
+    }
+
+    /// The edit-refused verdict keeps the op parked — nothing about it became
+    /// sendable — but restates WHY, and in doing so removes itself from the
+    /// sweep's sights. Without that, every launch would re-probe the same op
+    /// forever.
+    func testEditRefusedVerdictParksHonestlyAndDefeatsReDetection() throws {
+        let context = try makeContext()
+        let operation = makeOperation(
+            entityType: SyncEntityType.project.rawValue,
+            entityId: projectId,
+            operationType: "update",
+            in: context
+        )
+        operation.status = "parked"
+        operation.lastError = SyncError
+            .serverRowMissing(table: "projects", id: projectId)
+            .localizedDescription
+        try context.save()
+
+        SyncOperationReconcilers.applyEditRefusedVerdict(operation, table: "projects")
+        try context.save()
+
+        XCTAssertEqual(operation.status, "parked", "The change still has not reached the server")
+        XCTAssertNil(operation.completedAt, "Nothing was completed — only explained")
+        let stored = try XCTUnwrap(operation.lastError)
+        XCTAssertTrue(stored.contains(SyncError.serverEditRefusedMarker))
+        XCTAssertFalse(stored.contains(SyncError.serverRowMissingMarker))
+        XCTAssertTrue(stored.contains(projectId), "The verdict names the row it is about")
+
+        XCTAssertNil(
+            SyncOperationReconcilers.parkedKind(for: operation),
+            "A resolved verdict must not be re-probed on every launch"
+        )
+        XCTAssertTrue(SyncStatusCopy.PendingWork.isEditRefused(operation.lastError))
+    }
+
+    // MARK: - project_server_state wire decoding
+
+    /// PostgREST renders a text-returning function as a JSON string; an
+    /// unquoted body is tolerated too, so a transport detail can never cost us
+    /// the verdict. Anything else answers nil — and the caller then invents no
+    /// verdict at all, which is the whole point of the probe.
+    func testProjectServerStateDecodesEveryVerdictAndRefusesGarbage() {
+        func decode(_ body: String) -> SyncOperationReconcilers.ProjectServerState? {
+            SyncOperationReconcilers.projectServerState(from: Data(body.utf8))
+        }
+
+        XCTAssertEqual(decode("\"active\""), .active)
+        XCTAssertEqual(decode("\"deleted\""), .deleted)
+        XCTAssertEqual(decode("\"absent\""), .absent)
+        XCTAssertEqual(decode("active"), .active, "An unquoted body still answers")
+        XCTAssertEqual(decode("\n \"deleted\" \n"), .deleted)
+
+        XCTAssertNil(decode(""))
+        XCTAssertNil(decode("null"))
+        XCTAssertNil(decode("{\"error\":\"boom\"}"))
+        XCTAssertNil(decode("ACTIVE"), "The contract is lowercase; a near-miss is not evidence")
+    }
+
     // MARK: - Parked share jobs (bug c3486912 residue)
 
     /// `shareParkedRetry.v1` resets every job the drain would NOT otherwise

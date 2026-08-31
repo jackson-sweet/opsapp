@@ -63,6 +63,12 @@ enum SyncOperationReconcilers {
         case duplicatePhotoCreate
         /// Apply the server's task tombstone locally.
         case taskTombstone
+        /// A project update the server matched to no row. Three truths hide
+        /// behind that one shape — the row is live but this account may not
+        /// edit it, the row is deleted, or the row is genuinely absent — and
+        /// only a probe can say which. See `reconcileProjectUpdateRowVerdict`
+        /// in either twin.
+        case projectUpdateRowVerdict
     }
 
     /// Dispatch for a failure as it happens — the error just thrown.
@@ -81,6 +87,11 @@ enum SyncOperationReconcilers {
            entityType == SyncEntityType.projectTask.rawValue,
            isTaskNotFound(errorDescription) {
             return .taskTombstone
+        }
+        if operationType == "update",
+           entityType == SyncEntityType.project.rawValue,
+           errorDescription.contains(SyncError.serverRowMissingMarker) {
+            return .projectUpdateRowVerdict
         }
         return nil
     }
@@ -107,6 +118,37 @@ enum SyncOperationReconcilers {
             return .duplicatePhotoCreate
         }
         return nil
+    }
+
+    // MARK: - Project server state
+
+    /// The server's verdict on a project row, company-scoped, independent of
+    /// this operator's per-row visibility. Answered by the
+    /// `public.project_server_state` RPC (migration cluster_j_03).
+    enum ProjectServerState: String, Equatable {
+        /// The row is live in this company. If the caller could not SELECT it,
+        /// the caller's view scope no longer reaches it.
+        case active
+        /// The row is tombstoned. RLS hides it from everyone, so this is the
+        /// only way a device can learn the deletion happened.
+        case deleted
+        /// No such row in this company — including another company's row, which
+        /// reads `absent` rather than leaking across the tenant boundary.
+        case absent
+    }
+
+    /// Reads the RPC's scalar answer off the wire.
+    ///
+    /// PostgREST renders a `text`-returning function as a JSON string
+    /// (`"active"`); an unquoted body is tolerated too, so a transport detail
+    /// can never cost us the verdict. Anything unrecognized returns nil and the
+    /// caller invents nothing — a probe that did not answer is not evidence.
+    static func projectServerState(from data: Data) -> ProjectServerState? {
+        guard let raw = String(data: data, encoding: .utf8) else { return nil }
+        let trimmed = raw
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .trimmingCharacters(in: CharacterSet(charactersIn: "\""))
+        return ProjectServerState(rawValue: trimmed)
     }
 
     // MARK: - Photo create: adopt the server row
@@ -263,6 +305,28 @@ enum SyncOperationReconcilers {
         // The deletion is the newer truth; there is nothing left to push.
         project.needsSync = false
         return true
+    }
+
+    /// Rewrites a zero-row project update as the edit-permission refusal it
+    /// actually is. The op stays parked — nothing about it became sendable —
+    /// but its stored reason now names the true cause, so PENDING WORK stops
+    /// claiming a deletion that never happened.
+    ///
+    /// Rewriting `lastError` is also what makes the verdict self-terminating:
+    /// the new description carries `serverEditRefusedMarker` and no longer
+    /// carries `serverRowMissingMarker`, so `parkedKind` never re-matches this
+    /// operation and the launch sweep cannot re-probe it forever.
+    ///
+    /// `completedAt` stays nil deliberately: the change never reached the
+    /// server, and the operator's copy is still the only copy.
+    static func applyEditRefusedVerdict(
+        _ operation: SyncOperation,
+        table: String
+    ) {
+        operation.status = "parked"
+        operation.lastError = SyncError
+            .serverEditRefused(table: table, id: operation.entityId)
+            .localizedDescription
     }
 
     // MARK: - Operation completion

@@ -451,6 +451,7 @@ struct MonthGridView: View {
                     // users tap a badge — preserves the previous "badge is
                     // non-interactive" behavior.
                     if let tapDate = dayDateForSpan(span, dates: dates) {
+                        viewModel.selectDate(tapDate, userInitiated: true)
                         sheetDate = IdentifiableDate(date: tapDate)
                         NotificationCenter.default.post(
                             name: Notification.Name("WizardCalendarMonthDayTapped"),
@@ -464,6 +465,7 @@ struct MonthGridView: View {
                     // visible week so the user lands on the same place as a normal
                     // day-cell tap.
                     if let firstDate = dates[span.startDayIndex] {
+                        viewModel.selectDate(firstDate, userInitiated: true)
                         sheetDate = IdentifiableDate(date: firstDate)
                     }
                 }
@@ -771,6 +773,7 @@ struct MonthGridView: View {
                                                                 cache: cache,
                                                                 cellHeight: cellHeight,
                                                                 onTap: {
+                                                                    viewModel.selectDate(date, userInitiated: true)
                                                                     sheetDate = IdentifiableDate(date: date)
                                                                     NotificationCenter.default.post(name: Notification.Name("WizardCalendarMonthDayTapped"), object: nil)
                                                                 }
@@ -1453,6 +1456,20 @@ private struct MonthGridReschedulePresenter: View {
     }
 }
 
+/// What the day sheet's body shows while the recentered snapshot is in
+/// flight. Pure — the gate is the regression surface (bug 83a01905: an
+/// empty flash reads as "nothing scheduled", which is the lie that shipped).
+enum DayDetailsSheetContentState: Equatable {
+    case loading
+    case empty
+    case populated
+
+    static func resolve(isLoading: Bool, eventCount: Int) -> Self {
+        if eventCount > 0 { return .populated }
+        return isLoading ? .loading : .empty
+    }
+}
+
 struct DayDetailsSheet: View {
     let date: Date
     @ObservedObject var viewModel: CalendarViewModel
@@ -1467,13 +1484,15 @@ struct DayDetailsSheet: View {
     @AppStorage("showCascadePreview") private var showCascadePreviewPref = true
 
     private var scheduledTasks: [ProjectTask] {
-        // Resolve from the calendar's source of truth — the same path day/week
-        // view uses — not the month grid's derived cache. That cache is built
-        // asynchronously and only rebuilt on a handful of triggers, so it can be
-        // empty or stale the moment the sheet reads it, which surfaced as "the day
-        // sheet is not picking up any events in month view" while day view worked.
-        // scheduledTasks(for:) is scope- and filter-aware and always current, so
-        // the month day sheet now matches day view exactly.
+        // Resolve from the calendar's week cache. The cache is a bounded
+        // 21-day window around the SELECTED date (CalendarWeekWindow) — which
+        // is why every month-grid day tap calls selectDate() before opening
+        // this sheet: selecting recenters the window on the tapped day
+        // (bug 83a01905 — a far month drew bars from the month-wide preview
+        // cache while this sheet read the un-recentered week cache and
+        // reported "0 events"). While the recenter is in flight the sheet
+        // shows a loading row, never a false empty state; the cache-only read
+        // itself is deliberate (ba073454) — no fetch may run during render.
         viewModel.scheduledTasks(for: date)
     }
 
@@ -1495,6 +1514,12 @@ struct DayDetailsSheet: View {
 
     private var totalEventCount: Int {
         scheduledTasks.count + dayUserEvents.count + dayBookedVisits.count
+    }
+
+    /// Loading, empty, or populated — never "empty" while the recentered
+    /// snapshot is still landing (bug 83a01905).
+    private var contentState: DayDetailsSheetContentState {
+        .resolve(isLoading: viewModel.isLoading, eventCount: totalEventCount)
     }
 
     // Separate new and ongoing tasks (matching week view)
@@ -1521,7 +1546,9 @@ struct DayDetailsSheet: View {
                     .padding(.horizontal)
                     .padding(.top, OPSStyle.Layout.spacing2)
 
-                Text("\(totalEventCount) event\(totalEventCount == 1 ? "" : "s")")
+                Text(contentState == .loading
+                     ? "Loading"
+                     : "\(totalEventCount) event\(totalEventCount == 1 ? "" : "s")")
                     .font(OPSStyle.Typography.caption)
                     .foregroundColor(OPSStyle.Colors.secondaryText)
                     .padding(.horizontal)
@@ -1533,7 +1560,20 @@ struct DayDetailsSheet: View {
                     CalendarHolidayCard(holiday: holiday)
                 }
 
-                if scheduledTasks.isEmpty && dayUserEvents.isEmpty && dayBookedVisits.isEmpty {
+                switch contentState {
+                case .loading:
+                    // Recentered snapshot in flight — never claim "no events"
+                    // while the answer is unknown. Matches the activity feed's
+                    // loading row (ActivityTabView).
+                    HStack {
+                        Spacer()
+                        ProgressView()
+                            .progressViewStyle(CircularProgressViewStyle(tint: OPSStyle.Colors.primaryAccent))
+                        Spacer()
+                    }
+                    .padding(.vertical, OPSStyle.Layout.spacing4)
+
+                case .empty:
                     VStack(spacing: OPSStyle.Layout.spacing2_5) {
                         Image(systemName: OPSStyle.Icons.calendar)
                             .font(.system(size: OPSStyle.Layout.IconSize.xxl))
@@ -1545,7 +1585,8 @@ struct DayDetailsSheet: View {
                     }
                     .frame(maxWidth: .infinity)
                     .padding(.top, 60)
-                } else {
+
+                case .populated:
                     // New tasks section (matching week view template)
                     VStack(spacing: OPSStyle.Layout.spacing2) {
                         ForEach(Array(newTasks.enumerated()), id: \.element.id) { index, task in

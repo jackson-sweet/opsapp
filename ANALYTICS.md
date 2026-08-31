@@ -2,7 +2,7 @@
 
 OPS separates business truth, product behaviour, and Google conversion signals. No single analytics destination is allowed to claim all three.
 
-**Release state — August 30, 2026:** this contract is implemented and verified on the local analytics-hardening branch. It is not customer-live until the iOS build is released through the App Store and live event readback succeeds. The production Firebase key-event configuration is a separate Google-admin state.
+**Release state — August 31, 2026:** this contract is implemented, verified, and pushed to `main` through `bbf985b9`. It is not customer-live until a signed iOS build is released through the App Store and live event readback succeeds. The release machine currently has no valid code-signing identity. The production Firebase key-event configuration is a separate Google-admin state.
 
 ## Source ownership
 
@@ -17,7 +17,7 @@ Client events never define whether a company activated or paid. Those milestones
 
 ## Firebase conversion allowlist
 
-The release-candidate `AnalyticsManager` may emit only:
+The `AnalyticsManager` contract on `main` may emit only:
 
 1. `sign_up`
 2. `begin_trial`
@@ -31,7 +31,7 @@ Firebase user properties are limited to conversion segmentation: `user_type`, `s
 
 ## Supabase event contract
 
-The release-candidate `AnalyticsService` creates a stable UUID for every product event and queues it durably in `UserDefaults`. The queue preserves order, caps itself at 1,000 events, retries transient failures, and drops permanent poison events so one bad payload cannot block the stream.
+The `AnalyticsService` contract on `main` creates a stable UUID for every product event and queues it durably in `UserDefaults`. The queue preserves order, caps itself at 1,000 events, retries transient failures, and drops permanent poison events so one bad payload cannot block the stream.
 
 Each event carries:
 

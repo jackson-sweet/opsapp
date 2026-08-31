@@ -51,12 +51,27 @@ final class ProjectPortalMirrorDeliveryTests: XCTestCase {
     private let companyId = "a612edc0-5c18-4c4d-af97-55b9410dd077"
     private let uploaderId = "7a2c2a6e-434e-4320-be41-9c6367948375"
     private let photoURL = "https://ops-app-files-prod.s3.us-west-2.amazonaws.com/projects/p/a.jpg"
+    private let otherPhotoURL = "https://ops-app-files-prod.s3.us-west-2.amazonaws.com/projects/p/b.jpg"
 
     private var retainedContainers: [ModelContainer] = []
 
+    /// The queues live in UserDefaults, which is process-global: a leftover
+    /// entry from a sibling case would be loaded by the next manager's init and
+    /// quietly change what these tests measure.
+    override func setUp() {
+        super.setUp()
+        clearQueues()
+    }
+
     override func tearDown() {
+        clearQueues()
         retainedContainers.removeAll()
         super.tearDown()
+    }
+
+    private func clearQueues() {
+        UserDefaults.standard.removeObject(forKey: ImageSyncManager.pendingPortalMirrorsKey)
+        UserDefaults.standard.removeObject(forKey: "pendingImageUploads")
     }
 
     // MARK: - Delivered
@@ -379,6 +394,325 @@ final class ProjectPortalMirrorDeliveryTests: XCTestCase {
         XCTAssertEqual(outcome, .retryQueued)
         let filings = harness.reporter.filings
         XCTAssertTrue(filings.isEmpty)
+    }
+
+    // MARK: - The durable queue (bug 16d487c4)
+    //
+    // The missing persistence. A failed or skipped portal insert used to leave
+    // NO record that delivery was still owed, so nothing retried it — and the
+    // tile copy promising "It'll retry automatically" was simply false on the
+    // online path.
+
+    func testQueuedMirrorSurvivesARestart() async throws {
+        let harness = try makeHarness()
+        harness.inserter.setFailure(URLError(.timedOut))
+
+        let outcome = await harness.manager.deliverPortalMirror(
+            urls: [photoURL],
+            project: harness.project,
+            uploadedBy: uploaderId,
+            source: "in_progress",
+            takenAt: Date(timeIntervalSince1970: 1_756_000_000)
+        )
+        XCTAssertEqual(outcome, .retryQueued)
+
+        let queued = harness.manager.getPendingPortalMirrors()
+        XCTAssertEqual(queued.count, 1)
+        let entry = try XCTUnwrap(queued.first)
+        XCTAssertEqual(entry.url, photoURL)
+        XCTAssertEqual(entry.projectId, projectId)
+        XCTAssertEqual(entry.companyId, companyId)
+        XCTAssertEqual(entry.uploadedBy, uploaderId)
+        XCTAssertEqual(entry.source, "in_progress")
+        XCTAssertEqual(entry.takenAt.timeIntervalSince1970, 1_756_000_000, accuracy: 0.001)
+
+        // A fresh manager over the same UserDefaults is the restart.
+        let reloaded = ImageSyncManager(
+            modelContext: harness.context,
+            connectivity: ConnectivityManager()
+        )
+        XCTAssertEqual(
+            reloaded.getPendingPortalMirrors(),
+            queued,
+            "An app restart must not decide whether a photo reaches the portal"
+        )
+        XCTAssertTrue(reloaded.hasQueuedDeliveryWork, "The retry must still be armed after a restart")
+    }
+
+    func testTheSamePhotoIsNeverQueuedTwice() async throws {
+        let harness = try makeHarness()
+        harness.inserter.setFailure(URLError(.timedOut))
+
+        for _ in 0..<3 {
+            _ = await harness.manager.deliverPortalMirror(
+                urls: [photoURL],
+                project: harness.project,
+                uploadedBy: uploaderId,
+                source: "in_progress"
+            )
+        }
+
+        XCTAssertEqual(harness.manager.getPendingPortalMirrors().count, 1)
+    }
+
+    /// Each verdict either keeps the debt or settles it — and the two that
+    /// settle it do so for opposite reasons.
+    func testQueueTransitionsMatchTheVerdict() async throws {
+        // Delivered clears the debt a transient failure recorded.
+        let delivered = try makeHarness()
+        delivered.inserter.setFailure(URLError(.timedOut))
+        _ = await delivered.manager.deliverPortalMirror(
+            urls: [photoURL], project: delivered.project,
+            uploadedBy: uploaderId, source: "in_progress"
+        )
+        XCTAssertEqual(delivered.manager.getPendingPortalMirrors().count, 1)
+        delivered.inserter.setFailure(nil)
+        _ = await delivered.manager.deliverPortalMirror(
+            urls: [photoURL], project: delivered.project,
+            uploadedBy: uploaderId, source: "in_progress"
+        )
+        XCTAssertTrue(delivered.manager.getPendingPortalMirrors().isEmpty)
+        XCTAssertFalse(delivered.manager.hasQueuedDeliveryWork)
+
+        // Held-not-shared KEEPS the debt: an assignment can be handed back.
+        let unshared = try makeHarness()
+        unshared.inserter.setFailure(Self.permissionDenied)
+        unshared.probe.setVisible(false)
+        unshared.probe.setState(.active)
+        _ = await unshared.manager.deliverPortalMirror(
+            urls: [photoURL], project: unshared.project,
+            uploadedBy: uploaderId, source: "in_progress"
+        )
+        XCTAssertEqual(
+            unshared.manager.getPendingPortalMirrors().count, 1,
+            "Access can come back; the photo should land the moment it does"
+        )
+
+        // Confirmed absent DROPS it: the bug is filed and a 30s loop against a
+        // project the server says is not there helps nobody.
+        let absent = try makeHarness()
+        absent.inserter.setFailure(Self.permissionDenied)
+        absent.probe.setVisible(false)
+        absent.probe.setState(.absent)
+        _ = await absent.manager.deliverPortalMirror(
+            urls: [photoURL], project: absent.project,
+            uploadedBy: uploaderId, source: "in_progress"
+        )
+        XCTAssertTrue(absent.manager.getPendingPortalMirrors().isEmpty)
+    }
+
+    /// A deleted job takes its whole queue with it — mirrors AND the bytes
+    /// waiting to upload into it.
+    func testDeletedProjectDropsEveryQueuedItemForThatJob() async throws {
+        let harness = try makeHarness()
+        harness.inserter.setFailure(URLError(.timedOut))
+        _ = await harness.manager.deliverPortalMirror(
+            urls: [photoURL, otherPhotoURL],
+            project: harness.project,
+            uploadedBy: uploaderId,
+            source: "in_progress"
+        )
+        XCTAssertEqual(harness.manager.getPendingPortalMirrors().count, 2)
+
+        harness.inserter.setFailure(Self.permissionDenied)
+        harness.probe.setVisible(false)
+        harness.probe.setState(.deleted)
+        let outcome = await harness.manager.deliverPortalMirror(
+            urls: [photoURL, otherPhotoURL],
+            project: harness.project,
+            uploadedBy: uploaderId,
+            source: "in_progress"
+        )
+
+        XCTAssertEqual(outcome, .heldProjectDeleted)
+        XCTAssertTrue(harness.manager.getPendingPortalMirrors().isEmpty)
+        XCTAssertFalse(harness.manager.hasQueuedDeliveryWork)
+        XCTAssertNotNil(harness.project.deletedAt)
+    }
+
+    /// The drain re-offers owed rows and settles them — with no pending upload
+    /// in sight, which is exactly the shape the online path leaves behind.
+    func testDrainRedeliversOwedRowsAndKeepsTheirCaptureTime() async throws {
+        let harness = try makeHarness()
+        let capturedAt = Date(timeIntervalSince1970: 1_756_000_000)
+        harness.inserter.setFailure(URLError(.timedOut))
+        _ = await harness.manager.deliverPortalMirror(
+            urls: [photoURL],
+            project: harness.project,
+            uploadedBy: uploaderId,
+            source: "in_progress",
+            takenAt: capturedAt
+        )
+        XCTAssertEqual(harness.manager.getPendingPortalMirrors().count, 1)
+
+        harness.inserter.setFailure(nil)
+        await harness.manager.drainPendingPortalMirrors()
+
+        XCTAssertTrue(
+            harness.manager.getPendingPortalMirrors().isEmpty,
+            "A drain pass with no pending uploads must still deliver owed rows"
+        )
+        let rows = harness.inserter.rows
+        XCTAssertEqual(rows.count, 1)
+        let row = try XCTUnwrap(rows.first)
+        XCTAssertEqual(row.url, photoURL)
+        XCTAssertEqual(
+            row.taken_at,
+            ISO8601DateFormatter().string(from: capturedAt),
+            "A retry must not rewrite when the photo was taken"
+        )
+    }
+
+    /// Two batches for the same project, captured at different moments, must
+    /// stay separate batches — a redelivered row is byte-identical to the one
+    /// first attempted.
+    func testDrainReconstructsTheOriginalBatches() async throws {
+        let harness = try makeHarness()
+        let firstCapture = Date(timeIntervalSince1970: 1_756_000_000)
+        let secondCapture = Date(timeIntervalSince1970: 1_756_009_999)
+        harness.inserter.setFailure(URLError(.timedOut))
+        _ = await harness.manager.deliverPortalMirror(
+            urls: [photoURL], project: harness.project,
+            uploadedBy: uploaderId, source: "in_progress", takenAt: firstCapture
+        )
+        _ = await harness.manager.deliverPortalMirror(
+            urls: [otherPhotoURL], project: harness.project,
+            uploadedBy: uploaderId, source: "completion", takenAt: secondCapture
+        )
+        XCTAssertEqual(harness.manager.getPendingPortalMirrors().count, 2)
+
+        harness.inserter.setFailure(nil)
+        await harness.manager.drainPendingPortalMirrors()
+
+        XCTAssertTrue(harness.manager.getPendingPortalMirrors().isEmpty)
+        let rows = harness.inserter.rows
+        XCTAssertEqual(rows.count, 2)
+        let byURL = Dictionary(uniqueKeysWithValues: rows.map { ($0.url, $0) })
+        let first = try XCTUnwrap(byURL[photoURL])
+        let second = try XCTUnwrap(byURL[otherPhotoURL])
+        XCTAssertEqual(first.source, "in_progress")
+        XCTAssertEqual(second.source, "completion")
+        XCTAssertEqual(first.taken_at, ISO8601DateFormatter().string(from: firstCapture))
+        XCTAssertEqual(second.taken_at, ISO8601DateFormatter().string(from: secondCapture))
+    }
+
+    /// A drain with no local row for the project keeps the debt rather than
+    /// dropping it — the project may still arrive from an authoritative pull.
+    func testDrainKeepsDebtWhenTheProjectIsNotOnThisDeviceYet() async throws {
+        let harness = try makeHarness()
+        harness.inserter.setFailure(URLError(.timedOut))
+        _ = await harness.manager.deliverPortalMirror(
+            urls: [photoURL], project: harness.project,
+            uploadedBy: uploaderId, source: "in_progress"
+        )
+
+        harness.context.delete(harness.project)
+        try harness.context.save()
+
+        harness.inserter.setFailure(nil)
+        await harness.manager.drainPendingPortalMirrors()
+
+        XCTAssertEqual(
+            harness.manager.getPendingPortalMirrors().count, 1,
+            "Dropping the debt here would be the silent write-off this queue exists to end"
+        )
+    }
+
+    /// The timer's liveness predicate, which is what actually decides whether a
+    /// stranded photo ever gets another chance.
+    func testRetryStaysArmedWhileAnyDeliveryIsOwed() async throws {
+        let harness = try makeHarness()
+        XCTAssertFalse(harness.manager.hasQueuedDeliveryWork, "Nothing owed at rest")
+
+        harness.inserter.setFailure(URLError(.timedOut))
+        _ = await harness.manager.deliverPortalMirror(
+            urls: [photoURL], project: harness.project,
+            uploadedBy: uploaderId, source: "in_progress"
+        )
+        XCTAssertTrue(
+            harness.manager.hasQueuedDeliveryWork,
+            "An owed portal row keeps the retry armed even with zero pending uploads"
+        )
+
+        harness.inserter.setFailure(nil)
+        _ = await harness.manager.deliverPortalMirror(
+            urls: [photoURL], project: harness.project,
+            uploadedBy: uploaderId, source: "in_progress"
+        )
+        XCTAssertFalse(harness.manager.hasQueuedDeliveryWork)
+    }
+
+    func testClearingPendingUploadsAlsoClearsOwedPortalRows() async throws {
+        let harness = try makeHarness()
+        harness.inserter.setFailure(URLError(.timedOut))
+        _ = await harness.manager.deliverPortalMirror(
+            urls: [photoURL], project: harness.project,
+            uploadedBy: uploaderId, source: "in_progress"
+        )
+        XCTAssertTrue(harness.manager.hasQueuedDeliveryWork)
+
+        harness.manager.clearAllPendingUploads()
+
+        XCTAssertTrue(harness.manager.getPendingPortalMirrors().isEmpty)
+        XCTAssertFalse(
+            harness.manager.hasQueuedDeliveryWork,
+            "Clearing must not leave the 30s timer running for work the operator dismissed"
+        )
+    }
+
+    // MARK: - Pre-drain settle
+
+    /// Before uploading bytes for a job, the drain asks whether the job still
+    /// exists. A local tombstone answers for free — no probe at all.
+    func testLocallyTombstonedProjectSettlesWithoutAskingTheServer() async throws {
+        let harness = try makeHarness()
+        harness.project.deletedAt = Date()
+        try harness.context.save()
+
+        let settled = await harness.manager.projectIsSettledAsDeleted(harness.project)
+
+        XCTAssertTrue(settled)
+        XCTAssertTrue(
+            harness.probe.stateChecks.isEmpty,
+            "This phone already knows; asking again is wasted traffic"
+        )
+    }
+
+    /// A server tombstone settles the job AND is applied locally, so the next
+    /// pass is free.
+    func testServerTombstoneSettlesAndIsAppliedLocally() async throws {
+        let harness = try makeHarness()
+        harness.probe.setState(.deleted)
+
+        let settled = await harness.manager.projectIsSettledAsDeleted(harness.project)
+
+        XCTAssertTrue(settled)
+        XCTAssertNotNil(harness.project.deletedAt)
+        XCTAssertEqual(harness.probe.stateChecks, [projectId])
+    }
+
+    /// Everything that is NOT a stated deletion leaves the queue alone. The
+    /// queue is a photo's last record — it is never dropped on a guess.
+    func testNothingButAStatedDeletionSettlesTheQueue() async throws {
+        for state in [SyncOperationReconcilers.ProjectServerState.active, .absent] {
+            let harness = try makeHarness()
+            harness.probe.setState(state)
+            let settled = await harness.manager.projectIsSettledAsDeleted(harness.project)
+            XCTAssertFalse(settled, "\(state.rawValue) is not a deletion")
+            XCTAssertNil(harness.project.deletedAt)
+        }
+
+        let unrecognized = try makeHarness()
+        unrecognized.probe.setState(nil)
+        let unrecognizedSettled = await unrecognized.manager
+            .projectIsSettledAsDeleted(unrecognized.project)
+        XCTAssertFalse(unrecognizedSettled)
+
+        let offline = try makeHarness()
+        offline.probe.setStateFailure(URLError(.notConnectedToInternet))
+        let offlineSettled = await offline.manager.projectIsSettledAsDeleted(offline.project)
+        XCTAssertFalse(offlineSettled, "A probe that could not answer is not a deletion")
+        XCTAssertNil(offline.project.deletedAt)
     }
 
     // MARK: - Fixtures

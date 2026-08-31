@@ -131,6 +131,30 @@ struct LiveProjectPortalMirrorPort: ProjectPhotoMirrorInserting, ProjectServerSt
     }
 }
 
+/// One undelivered portal row: an S3 photo whose canonical `project_photos`
+/// insert has not landed yet.
+///
+/// This is the persistence whose absence let bug 16d487c4 strand three photos.
+/// The S3 bytes were real and the gallery CSV knew about them, but a failed or
+/// skipped portal insert left NO record that delivery was still owed — so
+/// nothing ever retried it, and the tile copy promising "It'll retry
+/// automatically" was not true for the online path. Restart-surviving
+/// (UserDefaults), deduped by url, drained by the same passes as every other
+/// pending upload.
+struct PendingPortalMirror: Codable, Equatable {
+    /// The https S3 URL. The natural key, and half of the server-side
+    /// idempotency arbiter (project_id, url).
+    let url: String
+    let projectId: String
+    let companyId: String
+    let uploadedBy: String
+    /// `photo_source` raw value, e.g. "in_progress".
+    let source: String
+    /// Preserved across retries so a redelivered row keeps its original
+    /// capture time instead of drifting to whenever the retry happened.
+    let takenAt: Date
+}
+
 /// One undelivered photo tombstone: the (project, url) pair a `project_photos`
 /// soft-delete statement targets. A single statement covers every row on the
 /// pair, so the drain works pairs, not rows.
@@ -167,6 +191,11 @@ class ImageSyncManager: ObservableObject {
     // In-memory queue of pending image uploads
     private var pendingUploads: [PendingImageUpload] = []
 
+    /// Photos whose S3 bytes landed but whose canonical portal row has not.
+    /// Durable for the same reason `pendingUploads` is: an app restart must not
+    /// be what decides whether a photo reaches the client portal.
+    private var pendingPortalMirrors: [PendingPortalMirror] = []
+
     // Current sync state
     @Published private var isSyncing = false
 
@@ -200,12 +229,13 @@ class ImageSyncManager: ObservableObject {
 
         // Load any pending uploads from UserDefaults
         loadPendingUploads()
+        loadPendingPortalMirrors()
 
         // Set up connectivity change notifications
         setupConnectivityObserver()
 
         // If we're already connected and have pending uploads, try to sync them
-        if connectivity.isConnected && !pendingUploads.isEmpty {
+        if connectivity.isConnected && !(pendingUploads.isEmpty && pendingPortalMirrors.isEmpty) {
             Task {
                 // Small delay to ensure everything is initialized
                 try? await Task.sleep(nanoseconds: 2_000_000_000) // 2 seconds
@@ -563,15 +593,18 @@ class ImageSyncManager: ObservableObject {
         urls: [String],
         project: Project,
         uploadedBy: String,
-        source: String
+        source: String,
+        takenAt: Date = Date()
     ) async -> PortalMirrorOutcome {
         guard !urls.isEmpty else { return .delivered }
         let projectId = project.id
         let companyId = project.companyId
 
-        // Single ISO8601 timestamp for the whole batch keeps the rows grouped
-        // chronologically without needing to invent per-photo EXIF.
-        let timestamp = ISO8601DateFormatter().string(from: Date())
+        // One timestamp for the whole batch keeps the rows grouped
+        // chronologically without needing to invent per-photo EXIF, and a
+        // redelivery reuses the ORIGINAL one so a retry never rewrites when the
+        // photo was taken.
+        let timestamp = ISO8601DateFormatter().string(from: takenAt)
         let rows = urls.map { url in
             ProjectPhotoMirrorRow(
                 project_id: projectId,
@@ -584,9 +617,40 @@ class ImageSyncManager: ObservableObject {
             )
         }
 
+        // Every exit below routes through here, so the queue can never disagree
+        // with the verdict: a debt is recorded exactly while delivery is still
+        // owed and something might still change the answer.
+        func settle(_ outcome: PortalMirrorOutcome) -> PortalMirrorOutcome {
+            switch outcome {
+            case .delivered, .alreadyMirrored:
+                removePortalMirrors(urls: urls)
+            case .retryQueued, .heldNotShared:
+                // Held-not-shared stays queued on purpose: an assignment can be
+                // handed back, and the photo should land the moment it is.
+                enqueuePortalMirrors(
+                    urls: urls,
+                    projectId: projectId,
+                    companyId: companyId,
+                    uploadedBy: uploadedBy,
+                    source: source,
+                    takenAt: takenAt
+                )
+            case .heldProjectDeleted:
+                // Nothing left to deliver to. Drop the project's queued bytes
+                // too rather than re-uploading them into a trashed job forever.
+                dropQueuedWork(forProject: projectId)
+            case .heldProjectAbsent:
+                // The auto-bug has fired and the server has been asked. Never
+                // hammer a confirmed-absent project on a 30s loop; the launch
+                // backfill sweep re-offers if the project is ever recreated.
+                removePortalMirrors(urls: urls)
+            }
+            return outcome
+        }
+
         do {
             try await portalMirrorInserter.insertProjectPhotoRows(rows)
-            return .delivered
+            return settle(.delivered)
         } catch {
             // Both spellings are searched: the raw error carries the Postgres
             // text, the localized description is what string-only surfaces see.
@@ -601,7 +665,7 @@ class ImageSyncManager: ObservableObject {
                     level: .info,
                     category: "ImageSyncManager"
                 )
-                return .alreadyMirrored
+                return settle(.alreadyMirrored)
             }
 
             guard SyncErrorClassifier.disposition(for: error) == .permanent else {
@@ -610,15 +674,15 @@ class ImageSyncManager: ObservableObject {
                     level: .warning,
                     category: "ImageSyncManager"
                 )
-                return .retryQueued
+                return settle(.retryQueued)
             }
 
-            return await classifyPermanentMirrorRejection(
+            return settle(await classifyPermanentMirrorRejection(
                 error: error,
                 urls: urls,
                 project: project,
                 source: source
-            )
+            ))
         }
     }
 
@@ -865,22 +929,35 @@ class ImageSyncManager: ObservableObject {
 
     // MARK: - Periodic Retry Timer (Bug b171536b)
 
+    /// True while any durable delivery is still owed — bytes to upload, or a
+    /// portal row to insert. Both queues keep the timer alive: a photo whose
+    /// bytes landed but whose portal row did not is exactly the case that
+    /// stranded in bug 16d487c4, and it deserves the same 30s retry.
+    ///
+    /// Internal, not private, so tests can assert the timer's own liveness
+    /// predicate — `retryTimer` is private state with no other observable
+    /// surface, and "the retry stopped running" is precisely the failure that
+    /// strands a photo.
+    var hasQueuedDeliveryWork: Bool {
+        !pendingUploads.isEmpty || !pendingPortalMirrors.isEmpty
+    }
+
     private func startRetryTimerIfNeeded() {
-        guard retryTimer == nil, !pendingUploads.isEmpty else { return }
+        guard retryTimer == nil, hasQueuedDeliveryWork else { return }
         retryTimer = Timer.scheduledTimer(
             withTimeInterval: Self.retryInterval,
             repeats: true
         ) { [weak self] _ in
             Task { @MainActor [weak self] in
                 guard let self = self else { return }
-                if self.pendingUploads.isEmpty {
+                if !self.hasQueuedDeliveryWork {
                     self.stopRetryTimer()
                     return
                 }
                 if self.connectivity.isConnected {
                     await self.syncPendingImages()
                 }
-                if self.pendingUploads.isEmpty {
+                if !self.hasQueuedDeliveryWork {
                     self.stopRetryTimer()
                 }
             }
@@ -1371,7 +1448,15 @@ class ImageSyncManager: ObservableObject {
         // pending uploads but an undelivered tombstone must still push it.
         await drainPendingPhotoSoftDeletes()
 
+        // Owed portal rows drain on the same schedule and BEFORE the
+        // empty-queue check: a photo whose bytes are already in S3 has no
+        // pending upload, so a launch with nothing to upload must still deliver
+        // it. This is what finally makes the tile's "It'll retry automatically"
+        // true for the online path (bug 16d487c4).
+        await drainPendingPortalMirrors()
+
         if pendingUploads.isEmpty {
+            if !hasQueuedDeliveryWork { stopRetryTimer() }
             return
         }
         
@@ -1418,6 +1503,22 @@ class ImageSyncManager: ObservableObject {
                 level: .info,
                 category: "ImageSyncManager"
             )
+            return
+        }
+
+        // The other end of the same question: a job that is GONE. Uploading
+        // bytes into a trashed job every 30s helps nobody, so settle instead —
+        // free when this phone already holds the tombstone, and one probe when
+        // it does not (this runs only for projects that actually have queued
+        // work, so the cost is bounded by real stranded photos).
+        if await projectIsSettledAsDeleted(project) {
+            DebugLogger.shared.log(
+                "syncImagesForProject settling \(uploads.count) photo(s) for \(projectId) — the job was deleted in OPS",
+                level: .info,
+                category: "ImageSyncManager"
+            )
+            dropQueuedWork(forProject: projectId)
+            if !hasQueuedDeliveryWork { stopRetryTimer() }
             return
         }
 
@@ -1479,17 +1580,11 @@ class ImageSyncManager: ObservableObject {
                 project.markImageAsSynced(localURL)
             }
 
-            // Best-effort CSV mirror; project_photos (below) is canonical.
-            do {
-                try await SupabaseService.shared.client
-                    .from("projects")
-                    .update(["project_images": reconciled.updatedImageURLs])
-                    .eq("id", value: project.id)
-                    .execute()
-                project.needsSync = false
-            } catch {
-                project.needsSync = true
-            }
+            // No client CSV PATCH here either (bug 16d487c4). This one had no
+            // write guard at all: for a crew member it matched 0 rows, PostgREST
+            // answered 200, and `project.needsSync = false` wrote the change off
+            // silently. The server projects the CSV from project_photos now, so
+            // the canonical delivery below is the only write this path needs.
 
             // Canonical portal rows for the newly landed URLs, through the same
             // classification chokepoint the online path uses.
@@ -1558,15 +1653,54 @@ class ImageSyncManager: ObservableObject {
             )
         }
 
-        // Keep the periodic retry timer alive only while transient failures
-        // remain queued; otherwise stop waking the runloop every 30s.
-        if pendingUploads.isEmpty {
-            stopRetryTimer()
-        } else {
+        // Keep the periodic retry timer alive only while delivery is still owed
+        // — bytes to upload OR a portal row to insert; otherwise stop waking the
+        // runloop every 30s.
+        if hasQueuedDeliveryWork {
             startRetryTimerIfNeeded()
+        } else {
+            stopRetryTimer()
         }
     }
     
+    /// Whether this job is deleted and the drain should stop working for it.
+    ///
+    /// A local tombstone answers for free. Otherwise the server is asked, and
+    /// only `deleted` counts: `active`, `absent`, an unrecognized answer, and a
+    /// probe that throws all return false, because none of them is evidence of
+    /// a deletion and the queue must never be dropped on a guess. A server
+    /// tombstone is applied locally on the way past, so the next pass is free.
+    ///
+    /// No connectivity guard: offline, the probe simply throws and this returns
+    /// false — the same answer, with one fewer branch that no test can reach.
+    /// Internal so the settle decision is provable through the probe seam.
+    func projectIsSettledAsDeleted(_ project: Project) async -> Bool {
+        if project.deletedAt != nil { return true }
+
+        let state: SyncOperationReconcilers.ProjectServerState?
+        do {
+            state = try await projectServerStateProbe.projectServerState(projectId: project.id)
+        } catch {
+            DebugLogger.shared.log(
+                "pre-drain project state probe failed for \(project.id): \(error)",
+                level: .warning,
+                category: "ImageSyncManager"
+            )
+            return false
+        }
+        guard state == .deleted else { return false }
+
+        if let modelContext {
+            try? SyncOperationReconcilers.applyProjectTombstone(
+                projectId: project.id,
+                deletedAt: Date(),
+                in: modelContext
+            )
+            try? modelContext.save()
+        }
+        return true
+    }
+
     /// Helper to get project by ID
     private func getProject(by id: String) -> Project? {
         guard let modelContext = modelContext else { return nil }
@@ -1594,6 +1728,131 @@ class ImageSyncManager: ObservableObject {
     private func savePendingUploads() {
         if let data = try? JSONEncoder().encode(pendingUploads) {
             UserDefaults.standard.set(data, forKey: "pendingImageUploads")
+        }
+    }
+
+    // MARK: - Portal-mirror queue persistence (bug 16d487c4)
+
+    static let pendingPortalMirrorsKey = "pendingPortalMirrors"
+
+    private func loadPendingPortalMirrors() {
+        if let data = UserDefaults.standard.data(forKey: Self.pendingPortalMirrorsKey),
+           let mirrors = try? JSONDecoder().decode([PendingPortalMirror].self, from: data) {
+            pendingPortalMirrors = mirrors
+        }
+    }
+
+    private func savePendingPortalMirrors() {
+        if let data = try? JSONEncoder().encode(pendingPortalMirrors) {
+            UserDefaults.standard.set(data, forKey: Self.pendingPortalMirrorsKey)
+        }
+    }
+
+    /// Current portal-mirror queue. Internal so the drain and its tests can see
+    /// what delivery is still owed.
+    func getPendingPortalMirrors() -> [PendingPortalMirror] {
+        pendingPortalMirrors
+    }
+
+    /// Records that delivery is still owed for these urls. Deduped by url — the
+    /// same photo enqueued twice is still one debt.
+    private func enqueuePortalMirrors(
+        urls: [String],
+        projectId: String,
+        companyId: String,
+        uploadedBy: String,
+        source: String,
+        takenAt: Date
+    ) {
+        var added = 0
+        for url in urls where !pendingPortalMirrors.contains(where: { $0.url == url }) {
+            pendingPortalMirrors.append(PendingPortalMirror(
+                url: url,
+                projectId: projectId,
+                companyId: companyId,
+                uploadedBy: uploadedBy,
+                source: source,
+                takenAt: takenAt
+            ))
+            added += 1
+        }
+        guard added > 0 else { return }
+        savePendingPortalMirrors()
+        startRetryTimerIfNeeded()
+    }
+
+    /// Settles delivery for these urls — delivered, already held server-side, or
+    /// held for a reason no retry can change.
+    private func removePortalMirrors(urls: [String]) {
+        let settled = Set(urls)
+        guard pendingPortalMirrors.contains(where: { settled.contains($0.url) }) else { return }
+        pendingPortalMirrors.removeAll { settled.contains($0.url) }
+        savePendingPortalMirrors()
+    }
+
+    /// Drops every queued mirror and upload for a project. Used when the server
+    /// says the job is deleted: there is nothing left to deliver it to, and
+    /// re-uploading its bytes every 30s would be pure waste.
+    private func dropQueuedWork(forProject projectId: String) {
+        let hadMirrors = pendingPortalMirrors.contains { $0.projectId == projectId }
+        let hadUploads = pendingUploads.contains { $0.projectId == projectId }
+        if hadMirrors {
+            pendingPortalMirrors.removeAll { $0.projectId == projectId }
+            savePendingPortalMirrors()
+        }
+        if hadUploads {
+            pendingUploads.removeAll { $0.projectId == projectId }
+            savePendingUploads()
+        }
+    }
+
+    /// Re-offers every owed portal row, in the batches they were enqueued as.
+    ///
+    /// Batches are reconstructed by grouping on everything a single
+    /// `deliverPortalMirror` call fixes for the whole batch — project, uploader,
+    /// source, capture time — so a redelivered row is byte-identical to the one
+    /// first attempted. `deliverPortalMirror` owns the queue transitions, so
+    /// this method only has to decide WHAT to re-offer, never what to remove.
+    ///
+    /// No connectivity guard of its own — `syncPendingImages` gates the whole
+    /// pass on connectivity before calling in, the same arrangement
+    /// `reconcileStrandedProjectPhotos` uses. Internal so the redelivery is
+    /// provable without a live network stack.
+    func drainPendingPortalMirrors() async {
+        guard !pendingPortalMirrors.isEmpty else { return }
+
+        struct BatchKey: Hashable {
+            let projectId: String
+            let uploadedBy: String
+            let source: String
+            let takenAt: Date
+        }
+
+        var batches: [BatchKey: [PendingPortalMirror]] = [:]
+        for mirror in pendingPortalMirrors {
+            let key = BatchKey(
+                projectId: mirror.projectId,
+                uploadedBy: mirror.uploadedBy,
+                source: mirror.source,
+                takenAt: mirror.takenAt
+            )
+            batches[key, default: []].append(mirror)
+        }
+
+        for (key, mirrors) in batches {
+            guard let project = getProject(by: key.projectId) else {
+                // No local row to deliver against. Keep the debt: the project
+                // may still arrive from an authoritative pull, and dropping it
+                // here would be the silent write-off this queue exists to end.
+                continue
+            }
+            _ = await deliverPortalMirror(
+                urls: mirrors.map(\.url),
+                project: project,
+                uploadedBy: key.uploadedBy,
+                source: key.source,
+                takenAt: key.takenAt
+            )
         }
     }
     
@@ -1626,14 +1885,20 @@ class ImageSyncManager: ObservableObject {
     
     /// Clear all pending image syncs
     func clearAllPendingUploads() {
-        
+
         // Clear from memory
         let count = pendingUploads.count
         pendingUploads.removeAll()
-        
+        // Owed portal rows go with them: they are the same debt one step
+        // further along, and leaving them would keep the 30s retry timer alive
+        // for work the operator just asked to clear.
+        pendingPortalMirrors.removeAll()
+
         // Clear from UserDefaults
         UserDefaults.standard.removeObject(forKey: "pendingImageUploads")
-        
+        UserDefaults.standard.removeObject(forKey: Self.pendingPortalMirrorsKey)
+        stopRetryTimer()
+
         // Reset sync state
         isSyncing = false
         syncProgress = 0

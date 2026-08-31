@@ -18,6 +18,7 @@
 
 import SwiftUI
 import SwiftData
+import Contacts
 
 /// Which target sources the picker offers. `.all` is the activity logger's
 /// original behavior; `.leadsOnly` serves affordances that can only act on
@@ -50,6 +51,15 @@ struct ActivityTargetPickerView: View {
     /// Bug 55f40233 — the client row currently resolving into a bookable lead.
     /// Non-nil blocks every other row so a double-tap cannot mint two leads.
     @State private var materializingClientId: String?
+
+    // Bug f8951223 — pull the person straight out of the phone's address book
+    // instead of retyping them. FILL semantics: nothing is created until the
+    // operator commits with CREATE LEAD.
+    @State private var showingContactImport = false
+    /// The picked contact's postal address. The inline form has no address
+    /// input, but a site visit needs somewhere to go — so it rides along to
+    /// the created lead and is shown (and clearable) as a quiet mono line.
+    @State private var importedAddress: String = ""
 
     var body: some View {
         VStack(spacing: 0) {
@@ -122,6 +132,14 @@ struct ActivityTargetPickerView: View {
         }
         .background(OPSStyle.Colors.background)
         .onAppear(perform: loadTargets)
+        // NEVER `.sheet` — this picker is itself sheet content over the FAB,
+        // and the self-retiring CNContactPickerViewController would trigger
+        // the chain-dismissal that killed site visits (bug 5d5df5b0).
+        .background(
+            ContactPicker(isPresented: $showingContactImport) { contact in
+                applyImportedContact(contact)
+            }
+        )
     }
 
     // MARK: - Data
@@ -289,6 +307,9 @@ struct ActivityTargetPickerView: View {
                 withAnimation(OPSStyle.Animation.panel) {
                     isCreatingNewLead.toggle()
                 }
+                // Collapsing abandons the draft — the imported address goes
+                // with it rather than silently riding the next create.
+                if !isCreatingNewLead { importedAddress = "" }
             } label: {
                 HStack(spacing: OPSStyle.Layout.spacing2_5) {
                     ZStack {
@@ -325,9 +346,15 @@ struct ActivityTargetPickerView: View {
             // Inline create form
             if isCreatingNewLead {
                 VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2_5) {
+                    importFromContactsRow
+
                     inlineField(text: $newLeadName, placeholder: "Contact name *")
                     inlineField(text: $newLeadPhone, placeholder: "Phone (optional)")
                     inlineField(text: $newLeadEmail, placeholder: "Email (optional)")
+
+                    if !importedAddress.isEmpty {
+                        importedAddressLine
+                    }
 
                     if let newLeadError {
                         Text(newLeadError)
@@ -357,6 +384,80 @@ struct ActivityTargetPickerView: View {
 
     private var canCreateNewLead: Bool {
         !newLeadName.trimmingCharacters(in: .whitespaces).isEmpty
+    }
+
+    // MARK: - Contact import (bug f8951223)
+
+    /// The capture panel's row chrome, verbatim — one coherent pattern for
+    /// "pull this person out of my phone" across every surface that offers it.
+    private var importFromContactsRow: some View {
+        Button {
+            showingContactImport = true
+        } label: {
+            HStack(spacing: OPSStyle.Layout.spacing2) {
+                Image(systemName: "person.crop.circle.badge.plus")
+                    .font(.system(size: 16, weight: .regular))
+                    .foregroundColor(OPSStyle.Colors.secondaryText)
+                Text("IMPORT FROM CONTACTS")
+                    .font(OPSStyle.Typography.miniLabel)
+                    .foregroundColor(OPSStyle.Colors.secondaryText)
+                Spacer(minLength: 0)
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+            }
+            .padding(.horizontal, OPSStyle.Layout.spacing3)
+            .frame(maxWidth: .infinity)
+            .frame(height: OPSStyle.Layout.touchTargetMin)
+            .background(
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius, style: .continuous)
+                    .fill(OPSStyle.Colors.surfaceInput)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius, style: .continuous)
+                    .strokeBorder(OPSStyle.Colors.line, lineWidth: OPSStyle.Layout.Border.standard)
+            )
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Import from phone contacts")
+    }
+
+    /// A quiet mono line, not a field: the operator cannot type an address
+    /// here (the inline form is deliberately three fields), but they must see
+    /// what will ride onto the lead — and be able to drop it.
+    private var importedAddressLine: some View {
+        HStack(spacing: OPSStyle.Layout.spacing1) {
+            Text("// ADDRESS · \(importedAddress.uppercased())")
+                .font(OPSStyle.Typography.smallCaption)
+                .foregroundColor(OPSStyle.Colors.tertiaryText)
+                .lineLimit(1)
+                .truncationMode(.middle)
+            Spacer(minLength: 0)
+            Button {
+                importedAddress = ""
+            } label: {
+                Image(systemName: "xmark.circle.fill")
+                    .font(.system(size: 14))
+                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+                    .frame(width: OPSStyle.Layout.touchTargetMin, height: OPSStyle.Layout.touchTargetMin)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Clear imported address")
+        }
+    }
+
+    /// FILL, never create: only the fields the contact actually carries are
+    /// written, so a partly typed form survives an import. Opens the
+    /// disclosure if it somehow fired while closed, so the filled values are
+    /// never invisible.
+    private func applyImportedContact(_ contact: CNContact) {
+        let fill = ContactLeadFill.from(contact)
+        if !isCreatingNewLead {
+            withAnimation(OPSStyle.Animation.panel) { isCreatingNewLead = true }
+        }
+        fill.apply(name: &newLeadName, phone: &newLeadPhone, email: &newLeadEmail)
+        if let address = fill.address { importedAddress = address }
     }
 
     @ViewBuilder
@@ -458,6 +559,9 @@ struct ActivityTargetPickerView: View {
             contactEmail: newLeadEmail.isEmpty ? nil : newLeadEmail,
             contactPhone: newLeadPhone.isEmpty ? nil : newLeadPhone,
             description: nil,
+            // Bug f8951223 — an imported contact's postal address rides onto
+            // the lead, so a visit booked from here has somewhere to go.
+            address: importedAddress.isEmpty ? nil : importedAddress,
             estimatedValue: nil,
             source: "log_activity",
             quoteDeliveryMethod: nil

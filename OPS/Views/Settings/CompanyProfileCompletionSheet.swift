@@ -85,7 +85,17 @@ struct CompanyProfileCompletionSheet: View {
                             }
 
                             if missingAddress {
-                                fieldRow(label: "Address", text: $address, placeholder: "123 Main St, City, State")
+                                // The company's OWN address — shared
+                                // autocomplete WITHOUT known places:
+                                // customer-site suggestions are noise
+                                // here (bug 29b75dce rule).
+                                fieldRow(label: "Address") {
+                                    AddressAutocompleteField(
+                                        address: $address,
+                                        placeholder: "123 Main St, City, State"
+                                    )
+                                    .frame(minHeight: OPSStyle.Layout.inputHeight)
+                                }
                             }
 
                             if missingSize {
@@ -183,13 +193,27 @@ struct CompanyProfileCompletionSheet: View {
         .navigationBarBackButtonHidden(true)
     }
 
+    /// The label scaffold every row shares. Generic over its input so a
+    /// field can swap its control (the address row uses the shared
+    /// autocomplete engine) without forking the label treatment.
     @ViewBuilder
-    private func fieldRow(label: String, text: Binding<String>, placeholder: String) -> some View {
+    private func fieldRow<Content: View>(
+        label: String,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
         VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
             Text(label.uppercased())
                 .font(OPSStyle.Typography.smallCaption)
                 .foregroundColor(OPSStyle.Colors.secondaryText)
 
+            content()
+        }
+        .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+    }
+
+    @ViewBuilder
+    private func fieldRow(label: String, text: Binding<String>, placeholder: String) -> some View {
+        fieldRow(label: label) {
             TextField(placeholder, text: text)
                 .font(OPSStyle.Typography.body)
                 .foregroundColor(OPSStyle.Colors.primaryText)
@@ -201,7 +225,6 @@ struct CompanyProfileCompletionSheet: View {
                         .stroke(OPSStyle.Colors.inputFieldBorder, lineWidth: OPSStyle.Layout.Border.standard)
                 )
         }
-        .padding(.horizontal, OPSStyle.Layout.spacing3_5)
     }
 
     private func saveAndComplete() {

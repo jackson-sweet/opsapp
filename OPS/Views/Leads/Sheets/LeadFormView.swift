@@ -400,9 +400,13 @@ struct LeadTextInput: View {
                     .foregroundColor(OPSStyle.Colors.textMute)
             }
             TextField("", text: $text, prompt:
+                // Placeholder = --text-3 (MOBILE.md §9). `textMute` is
+                // decorative-only (DESIGN.md §3) and sat below the readable
+                // floor, which made this field's placeholder dimmer than the
+                // shared address field's next to it.
                 Text(placeholder)
                     .font(OPSStyle.Typography.body)
-                    .foregroundColor(OPSStyle.Colors.textMute)
+                    .foregroundColor(OPSStyle.Colors.text3)
             )
             .font(OPSStyle.Typography.body)
             .foregroundColor(OPSStyle.Colors.text)
@@ -422,8 +426,8 @@ struct LeadTextInput: View {
         .overlay(
             RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius, style: .continuous)
                 .strokeBorder(
-                    isFocused ? Color.white.opacity(0.20) : OPSStyle.Colors.line,  // no exact token
-                    lineWidth: 1
+                    isFocused ? OPSStyle.Colors.inputFieldBorderFocus : OPSStyle.Colors.line,
+                    lineWidth: OPSStyle.Layout.Border.standard
                 )
         )
         .animation(OPSStyle.Animation.standard, value: isFocused)
@@ -459,9 +463,11 @@ struct LeadTextArea: View {
                 .frame(minHeight: minHeight, alignment: .topLeading)
 
             if text.isEmpty {
+                // Placeholder = --text-3, matching LeadTextInput and the
+                // shared AddressAutocompleteField (MOBILE.md §9).
                 Text(placeholder)
                     .font(OPSStyle.Typography.body)
-                    .foregroundColor(OPSStyle.Colors.textMute)
+                    .foregroundColor(OPSStyle.Colors.text3)
                     .padding(.horizontal, OPSStyle.Layout.spacing2_5)
                     .padding(.vertical, OPSStyle.Layout.spacing2_5)
                     .allowsHitTesting(false)
@@ -474,8 +480,8 @@ struct LeadTextArea: View {
         .overlay(
             RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius, style: .continuous)
                 .strokeBorder(
-                    isFocused ? Color.white.opacity(0.20) : OPSStyle.Colors.line,  // no exact token
-                    lineWidth: 1
+                    isFocused ? OPSStyle.Colors.inputFieldBorderFocus : OPSStyle.Colors.line,
+                    lineWidth: OPSStyle.Layout.Border.standard
                 )
         )
         .animation(OPSStyle.Animation.standard, value: isFocused)
@@ -520,8 +526,8 @@ struct LeadChipPicker: View {
                         .overlay(
                             RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius, style: .continuous)
                                 .strokeBorder(
-                                    isActive ? Color.white.opacity(0.20) : OPSStyle.Colors.line,  // no exact token
-                                    lineWidth: 1
+                                    isActive ? OPSStyle.Colors.inputFieldBorderFocus : OPSStyle.Colors.line,
+                                    lineWidth: OPSStyle.Layout.Border.standard
                                 )
                         )
                         .contentShape(Rectangle())

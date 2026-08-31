@@ -204,7 +204,10 @@ struct AddLeadSheet: View {
             .accessibilityLabel("Unlink client")
         }
         .padding(.leading, OPSStyle.Layout.spacing3)
-        .frame(minHeight: 48)
+        // minHeight, not a fixed height: this chip carries a second line the
+        // capture panel's does not, so a long client name grows instead of
+        // clipping.
+        .frame(minHeight: OPSStyle.Layout.inputHeight)
         .background(
             RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius, style: .continuous)
                 .fill(OPSStyle.Colors.surfaceInput)

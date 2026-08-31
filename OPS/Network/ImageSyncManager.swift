@@ -65,6 +65,22 @@ protocol ProjectServerStateProbing {
     ) async throws -> SyncOperationReconcilers.ProjectServerState?
 }
 
+/// Seam for the two batched reads the stranded-mirror backfill sweep makes.
+///
+/// Both are plain reads, but they decide whether a photo already delivered or
+/// is still owed — so a wrong answer either double-delivers or re-strands. They
+/// get a seam for the same reason the probes do.
+protocol StrandedPortalMirrorReading {
+    /// The server's legacy CSV per project. RLS returns only rows this account
+    /// can view, so an invisible project is simply absent from the result —
+    /// which is correct: a photo cannot be inserted against a project this
+    /// account cannot see.
+    func serverProjectImages(projectIds: [String]) async throws -> [String: [String]]
+
+    /// The canonical portal rows per project, as a url set.
+    func serverPhotoURLs(projectIds: [String]) async throws -> [String: Set<String>]
+}
+
 /// Seam for the auto-bug filings the portal-mirror chokepoint makes.
 ///
 /// Filing is a real server write against the live triage queue, so it needs a
@@ -99,7 +115,60 @@ struct LivePortalMirrorIncidentReporter: PortalMirrorIncidentReporting {
 /// The production ports. Ids travel lowercased: `UUID().uuidString` is
 /// uppercase and Postgres uuid text is lowercase, so an un-normalized id
 /// silently matches nothing.
-struct LiveProjectPortalMirrorPort: ProjectPhotoMirrorInserting, ProjectServerStateProbing {
+struct LiveProjectPortalMirrorPort:
+    ProjectPhotoMirrorInserting,
+    ProjectServerStateProbing,
+    StrandedPortalMirrorReading {
+
+    /// PostgREST `.in` filters are URL-encoded into the query string; chunking
+    /// keeps a large local gallery from building a request no server will take.
+    static let readChunkSize = 50
+
+    func serverProjectImages(projectIds: [String]) async throws -> [String: [String]] {
+        struct Row: Decodable {
+            let id: String
+            let project_images: [String]?
+        }
+        var result: [String: [String]] = [:]
+        for chunk in Self.chunked(projectIds) {
+            let rows: [Row] = try await SupabaseService.shared.client
+                .from("projects")
+                .select("id, project_images")
+                .in("id", values: chunk)
+                .execute()
+                .value
+            for row in rows {
+                result[row.id.lowercased()] = row.project_images ?? []
+            }
+        }
+        return result
+    }
+
+    func serverPhotoURLs(projectIds: [String]) async throws -> [String: Set<String>] {
+        struct Row: Decodable {
+            let project_id: String
+            let url: String
+        }
+        var result: [String: Set<String>] = [:]
+        for chunk in Self.chunked(projectIds) {
+            let rows: [Row] = try await SupabaseService.shared.client
+                .from("project_photos")
+                .select("project_id, url")
+                .in("project_id", values: chunk)
+                .execute()
+                .value
+            for row in rows {
+                result[row.project_id.lowercased(), default: []].insert(row.url)
+            }
+        }
+        return result
+    }
+
+    private static func chunked(_ ids: [String]) -> [[String]] {
+        stride(from: 0, to: ids.count, by: readChunkSize).map {
+            Array(ids[$0..<min($0 + readChunkSize, ids.count)])
+        }
+    }
 
     func insertProjectPhotoRows(_ rows: [ProjectPhotoMirrorRow]) async throws {
         try await SupabaseService.shared.client
@@ -187,6 +256,14 @@ class ImageSyncManager: ObservableObject {
     /// Filer for the two portal-mirror incidents. Production writes real
     /// bug_reports rows; tests substitute a recorder.
     var portalMirrorReporter: PortalMirrorIncidentReporting = LivePortalMirrorIncidentReporter()
+
+    /// Batched reads for the launch backfill sweep.
+    var strandedMirrorReader: StrandedPortalMirrorReading = LiveProjectPortalMirrorPort()
+
+    /// The backfill sweep is network-bound and its answer does not change
+    /// within a launch, so it runs once — on the first drain pass that gets a
+    /// complete answer. A failure leaves the flag down so the next pass retries.
+    private var didReconcileStrandedPortalMirrors = false
 
     // In-memory queue of pending image uploads
     private var pendingUploads: [PendingImageUpload] = []
@@ -1060,6 +1137,116 @@ class ImageSyncManager: ObservableObject {
         startRetryTimerIfNeeded()
     }
 
+    // MARK: - Stranded portal-mirror backfill (bug 16d487c4)
+
+    /// Re-delivers photos stranded by the pre-fix online path, without anyone
+    /// having to touch the affected phone.
+    ///
+    /// The strand has a precise shape: an https URL sitting in this device's
+    /// local gallery CSV with NO canonical `project_photos` row and NO entry in
+    /// the SERVER's CSV. That combination can only mean one thing — this device
+    /// uploaded the bytes and its portal delivery was skipped. Legacy photos
+    /// always appear in the server CSV, so they never match; already-delivered
+    /// photos have a server row, so they never match either; projects this
+    /// account cannot see drop out of the read for free, which is correct
+    /// because a photo cannot be inserted against a project it cannot view.
+    ///
+    /// Runs once per launch on the first drain pass that gets a complete
+    /// answer. Delivery and idempotency ride the retry queue and the
+    /// active-(project_id, url) arbiter, so a row the PM repair already
+    /// inserted comes back `.alreadyMirrored` rather than duplicating.
+    func reconcileStrandedPortalMirrors() async {
+        guard !didReconcileStrandedPortalMirrors else { return }
+        guard let modelContext else { return }
+
+        // Attribution is truthful only because this strand class is created by
+        // THIS device's own writes. With no operator id there is nothing
+        // honest to attribute, and the insert would be refused anyway.
+        let uploaderId = UserDefaults.standard.string(forKey: "currentUserId") ?? ""
+        guard !uploaderId.isEmpty else { return }
+
+        let projects: [Project]
+        do {
+            projects = try modelContext.fetch(FetchDescriptor<Project>(
+                predicate: #Predicate { $0.deletedAt == nil }
+            ))
+        } catch {
+            DebugLogger.shared.log(
+                "Stranded portal-mirror sweep fetch failed: \(error)",
+                level: .warning,
+                category: "ImageSyncManager"
+            )
+            return
+        }
+
+        var localURLsByProject: [String: [String]] = [:]
+        for project in projects where !project.companyId.isEmpty {
+            let remote = project.getProjectImages().filter { $0.hasPrefix("http") }
+            guard !remote.isEmpty else { continue }
+            localURLsByProject[project.id] = remote
+        }
+        guard !localURLsByProject.isEmpty else {
+            didReconcileStrandedPortalMirrors = true
+            return
+        }
+
+        let projectIds = Array(localURLsByProject.keys).map { $0.lowercased() }
+        let serverCSV: [String: [String]]
+        let serverRows: [String: Set<String>]
+        do {
+            serverCSV = try await strandedMirrorReader.serverProjectImages(projectIds: projectIds)
+            // Only projects this account can actually see are worth asking
+            // about — and only those can receive an insert.
+            let visible = Array(serverCSV.keys)
+            serverRows = visible.isEmpty
+                ? [:]
+                : try await strandedMirrorReader.serverPhotoURLs(projectIds: visible)
+        } catch {
+            // Flag stays down: an incomplete answer must not be mistaken for
+            // "nothing was stranded".
+            DebugLogger.shared.log(
+                "Stranded portal-mirror sweep read failed — will retry next pass: \(error)",
+                level: .warning,
+                category: "ImageSyncManager"
+            )
+            return
+        }
+
+        let companyIdByProject = Dictionary(
+            projects.map { ($0.id.lowercased(), $0.companyId) },
+            uniquingKeysWith: { first, _ in first }
+        )
+
+        var enqueued = 0
+        for (projectId, localURLs) in localURLsByProject {
+            let key = projectId.lowercased()
+            // Absent from the read = invisible to this account. Skip it.
+            guard let csv = serverCSV[key] else { continue }
+            guard let companyId = companyIdByProject[key], !companyId.isEmpty else { continue }
+            let delivered = Set(csv).union(serverRows[key] ?? [])
+            let stranded = localURLs.filter { !delivered.contains($0) }
+            guard !stranded.isEmpty else { continue }
+
+            enqueuePortalMirrors(
+                urls: stranded,
+                projectId: projectId,
+                companyId: companyId,
+                uploadedBy: uploaderId,
+                source: "in_progress",
+                takenAt: Date()
+            )
+            enqueued += stranded.count
+        }
+
+        didReconcileStrandedPortalMirrors = true
+        guard enqueued > 0 else { return }
+        DebugLogger.shared.log(
+            "Stranded portal-mirror sweep queued \(enqueued) photo(s) for portal delivery",
+            level: .info,
+            category: "ImageSyncManager"
+        )
+    }
+
     /// The `project_photos` insert for a drained handoff photo. Carries the
     /// LOCAL row's identity + metadata so provenance survives the drain.
     ///
@@ -1441,6 +1628,13 @@ class ImageSyncManager: ObservableObject {
         // retry timer) BEFORE the empty-queue check — a launch with an empty
         // queue but stranded local:// rows must still pick them up.
         reconcileStrandedProjectPhotos()
+
+        // The other strand class, and the one bug 16d487c4 created: bytes that
+        // reached S3 and the local gallery while their portal delivery was
+        // skipped. Once per launch, network-bound, and self-healing — this is
+        // what re-delivers the affected photos without anyone touching the
+        // phone they are stranded on.
+        await reconcileStrandedPortalMirrors()
 
         // Unconfirmed soft-deletes drain on the same schedule and for the same
         // reason: a delete that raced a dead spot must not leave the photo alive

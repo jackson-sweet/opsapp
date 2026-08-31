@@ -55,16 +55,25 @@ final class ProjectPortalMirrorDeliveryTests: XCTestCase {
 
     private var retainedContainers: [ModelContainer] = []
 
-    /// The queues live in UserDefaults, which is process-global: a leftover
-    /// entry from a sibling case would be loaded by the next manager's init and
-    /// quietly change what these tests measure.
+    /// UserDefaults is process-global. The queues live there, and so does the
+    /// operator id — a leftover from either would be read by the next manager's
+    /// init and quietly change what these tests measure, or leak into a sibling
+    /// suite. Cleared going in, restored going out.
+    private var savedUserId: String?
+
     override func setUp() {
         super.setUp()
+        savedUserId = UserDefaults.standard.string(forKey: "currentUserId")
         clearQueues()
     }
 
     override func tearDown() {
         clearQueues()
+        if let savedUserId {
+            UserDefaults.standard.set(savedUserId, forKey: "currentUserId")
+        } else {
+            UserDefaults.standard.removeObject(forKey: "currentUserId")
+        }
         retainedContainers.removeAll()
         super.tearDown()
     }
@@ -715,6 +724,132 @@ final class ProjectPortalMirrorDeliveryTests: XCTestCase {
         XCTAssertNil(offline.project.deletedAt)
     }
 
+    // MARK: - Launch backfill sweep (heals the reported photos)
+
+    /// The exact strand shape: an https URL in this device's gallery with no
+    /// server CSV entry and no canonical row. Nothing else looks like that.
+    func testStrandedPhotoIsDetectedAndQueuedForDelivery() async throws {
+        let harness = try makeHarness(currentUserId: uploaderId)
+        harness.project.setProjectImageURLs([photoURL, otherPhotoURL])
+        try harness.context.save()
+        harness.reader.projectImages = [projectId: []]
+        harness.reader.photoURLs = [:]
+
+        await harness.manager.reconcileStrandedPortalMirrors()
+
+        let queued = harness.manager.getPendingPortalMirrors()
+        XCTAssertEqual(Set(queued.map(\.url)), [photoURL, otherPhotoURL])
+        let entry = try XCTUnwrap(queued.first)
+        XCTAssertEqual(entry.projectId, projectId)
+        XCTAssertEqual(entry.companyId, companyId)
+        XCTAssertEqual(entry.uploadedBy, uploaderId)
+        XCTAssertEqual(entry.source, "in_progress")
+        XCTAssertTrue(harness.manager.hasQueuedDeliveryWork)
+    }
+
+    /// A legacy photo lives in the server CSV, and an already-delivered one has
+    /// a canonical row. Neither is stranded, and re-delivering either would
+    /// double-tile someone's gallery.
+    func testAlreadyDeliveredPhotosAreNeverQueued() async throws {
+        let harness = try makeHarness(currentUserId: uploaderId)
+        let legacyURL = "https://ops-app-files-prod.s3.us-west-2.amazonaws.com/projects/p/legacy.jpg"
+        harness.project.setProjectImageURLs([legacyURL, photoURL, otherPhotoURL])
+        try harness.context.save()
+        harness.reader.projectImages = [projectId: [legacyURL]]
+        harness.reader.photoURLs = [projectId: [photoURL]]
+
+        await harness.manager.reconcileStrandedPortalMirrors()
+
+        let queued = harness.manager.getPendingPortalMirrors().map(\.url)
+        XCTAssertEqual(queued, [otherPhotoURL], "Only the genuinely undelivered photo is owed")
+    }
+
+    /// Local-only placeholders have no bytes on S3 to mirror — the upload queue
+    /// owns those.
+    func testLocalPlaceholdersAreNotTreatedAsStranded() async throws {
+        let harness = try makeHarness(currentUserId: uploaderId)
+        harness.project.setProjectImageURLs(["local://pending-a", "local://pending-b"])
+        try harness.context.save()
+        harness.reader.projectImages = [projectId: []]
+
+        await harness.manager.reconcileStrandedPortalMirrors()
+
+        XCTAssertTrue(harness.manager.getPendingPortalMirrors().isEmpty)
+    }
+
+    /// A project this account cannot see is absent from the RLS-filtered read.
+    /// Queueing an insert against it would only manufacture a rejection.
+    func testInvisibleProjectIsSkipped() async throws {
+        let harness = try makeHarness(currentUserId: uploaderId)
+        harness.project.setProjectImageURLs([photoURL])
+        try harness.context.save()
+        harness.reader.projectImages = [:]   // RLS returned nothing for it
+
+        await harness.manager.reconcileStrandedPortalMirrors()
+
+        XCTAssertTrue(harness.manager.getPendingPortalMirrors().isEmpty)
+    }
+
+    func testSweepRunsOnlyOncePerLaunch() async throws {
+        let harness = try makeHarness(currentUserId: uploaderId)
+        harness.project.setProjectImageURLs([photoURL])
+        try harness.context.save()
+        harness.reader.projectImages = [projectId: []]
+
+        await harness.manager.reconcileStrandedPortalMirrors()
+        await harness.manager.reconcileStrandedPortalMirrors()
+
+        XCTAssertEqual(harness.reader.projectImageReads, 1, "Network-bound and settled — ask once")
+        XCTAssertEqual(harness.manager.getPendingPortalMirrors().count, 1)
+    }
+
+    /// An incomplete answer must never be mistaken for "nothing was stranded".
+    func testFailedReadLeavesTheSweepArmedForTheNextPass() async throws {
+        let harness = try makeHarness(currentUserId: uploaderId)
+        harness.project.setProjectImageURLs([photoURL])
+        try harness.context.save()
+        harness.reader.failure = URLError(.notConnectedToInternet)
+
+        await harness.manager.reconcileStrandedPortalMirrors()
+        XCTAssertTrue(harness.manager.getPendingPortalMirrors().isEmpty)
+
+        harness.reader.failure = nil
+        harness.reader.projectImages = [projectId: []]
+        await harness.manager.reconcileStrandedPortalMirrors()
+
+        XCTAssertEqual(
+            harness.manager.getPendingPortalMirrors().count, 1,
+            "The retry must still find the strand once the network is back"
+        )
+    }
+
+    /// With no operator id there is nothing honest to attribute the photo to,
+    /// and the insert would be refused anyway.
+    func testSweepDoesNothingWithoutAnOperator() async throws {
+        let harness = try makeHarness(currentUserId: nil)
+        harness.project.setProjectImageURLs([photoURL])
+        try harness.context.save()
+        harness.reader.projectImages = [projectId: []]
+
+        await harness.manager.reconcileStrandedPortalMirrors()
+
+        XCTAssertTrue(harness.manager.getPendingPortalMirrors().isEmpty)
+        XCTAssertEqual(harness.reader.projectImageReads, 0)
+    }
+
+    /// A trashed job is not backfilled — its photos belong to the trash with it.
+    func testDeletedProjectsAreNotBackfilled() async throws {
+        let harness = try makeHarness(currentUserId: uploaderId)
+        harness.project.setProjectImageURLs([photoURL])
+        harness.project.deletedAt = Date()
+        try harness.context.save()
+        harness.reader.projectImages = [projectId: []]
+
+        await harness.manager.reconcileStrandedPortalMirrors()
+
+        XCTAssertTrue(harness.manager.getPendingPortalMirrors().isEmpty)
+    }
+
     // MARK: - Fixtures
 
     struct Harness {
@@ -724,9 +859,24 @@ final class ProjectPortalMirrorDeliveryTests: XCTestCase {
         let inserter: RecordingMirrorInserter
         let probe: StubServerStateProbe
         let reporter: RecordingIncidentReporter
+        let reader: StubStrandedMirrorReader
     }
 
-    private func makeHarness() throws -> Harness {
+    private func makeHarness(currentUserId: String? = nil) throws -> Harness {
+        if let currentUserId {
+            UserDefaults.standard.set(currentUserId, forKey: "currentUserId")
+        } else {
+            UserDefaults.standard.removeObject(forKey: "currentUserId")
+        }
+        return try buildHarness()
+    }
+
+    private func buildHarness() throws -> Harness {
+        // Several cases build more than one harness. Each manager loads the
+        // queue from UserDefaults at init, so without this a sibling harness's
+        // enqueue would leak in and the case would measure the wrong thing.
+        clearQueues()
+
         let schema = Schema(versionedSchema: OPSSchemaCurrent.self)
         let container = try ModelContainer(
             for: schema,
@@ -757,9 +907,11 @@ final class ProjectPortalMirrorDeliveryTests: XCTestCase {
         let inserter = RecordingMirrorInserter()
         let probe = StubServerStateProbe()
         let reporter = RecordingIncidentReporter()
+        let reader = StubStrandedMirrorReader()
         manager.portalMirrorInserter = inserter
         manager.projectServerStateProbe = probe
         manager.portalMirrorReporter = reporter
+        manager.strandedMirrorReader = reader
 
         return Harness(
             manager: manager,
@@ -767,7 +919,8 @@ final class ProjectPortalMirrorDeliveryTests: XCTestCase {
             project: project,
             inserter: inserter,
             probe: probe,
-            reporter: reporter
+            reporter: reporter,
+            reader: reader
         )
     }
 
@@ -836,6 +989,29 @@ final class StubServerStateProbe: ProjectServerStateProbing {
         stateChecks.append(projectId)
         if let stateFailure { throw stateFailure }
         return state
+    }
+}
+
+/// States what the server holds, and counts what was asked — the once-per-launch
+/// guarantee is only observable as "it did not ask twice".
+@MainActor
+final class StubStrandedMirrorReader: StrandedPortalMirrorReading {
+    var projectImages: [String: [String]] = [:]
+    var photoURLs: [String: Set<String>] = [:]
+    var failure: Error?
+    private(set) var projectImageReads = 0
+    private(set) var photoURLReads = 0
+
+    func serverProjectImages(projectIds: [String]) async throws -> [String: [String]] {
+        projectImageReads += 1
+        if let failure { throw failure }
+        return projectImages.filter { projectIds.contains($0.key) }
+    }
+
+    func serverPhotoURLs(projectIds: [String]) async throws -> [String: Set<String>] {
+        photoURLReads += 1
+        if let failure { throw failure }
+        return photoURLs.filter { projectIds.contains($0.key) }
     }
 }
 

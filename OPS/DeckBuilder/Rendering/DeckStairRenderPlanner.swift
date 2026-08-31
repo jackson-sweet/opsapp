@@ -55,7 +55,7 @@ struct DeckStairRenderPlan {
         return anchor.offset(by: stairNormal, distance: screenDistance / safeZoom)
     }
 
-    /// Places the builder's tread/rail summary beyond both the stair run and
+    /// Places the builder's tread/length summary beyond both the stair run and
     /// every segment-label lane, regardless of the current zoom level.
     func summaryLabelPosition(zoomScale: CGFloat) -> CGPoint {
         guard let stairNormal else {
@@ -104,8 +104,10 @@ struct DeckStairRenderPlan {
 struct DeckStairDimensionLabel: Equatable {
     enum Kind: Equatable {
         case width
-        case run
-        case rail
+        /// The sloped stringer/rail length — the one measurement a stair
+        /// carries besides its width, printed as LENGTH. The horizontal RUN
+        /// chip is retired (bug 5104d2d5).
+        case length
         case adjacentEdge
     }
 
@@ -125,7 +127,9 @@ struct DeckStairDimensionLabel: Equatable {
 /// Tread count + sloped rail run for one stair — the shared source for every
 /// 2D stair label. The rail run is the stair triangle's hypotenuse (total
 /// rise over total horizontal run): the length a stair railing actually
-/// follows, which is what a railing order is measured by.
+/// follows, which is what a railing order is measured by. `railRun` is the
+/// engineering name it shares with the railing-order pipeline; the operator
+/// only ever reads it as LENGTH (bug 5104d2d5).
 struct DeckStairRailInfo: Equatable {
     let treadCount: Int
     let railRunInches: Double
@@ -438,7 +442,6 @@ enum DeckStairRenderPlanner {
         let stairWidthCanvas = placement.widthDistance
         let stairDepthCanvas = placement.runDistance
         let startDistance = placement.leadingGapDistance
-        let totalRunInches = placement.totalRunInches
         let widthInches = placement.widthInches
         let leadingGapInches = placement.leadingGapInches
         let trailingGapInches = placement.trailingGapInches
@@ -453,8 +456,6 @@ enum DeckStairRenderPlanner {
 
         let widthLabelPoint = midpoint(baseStart, baseEnd)
             .offset(by: stairNormal, distance: labelInset)
-        let runLabelPoint = midpoint(baseStart, farStart)
-            .offset(by: CGVector(dx: -edgeUnit.dx, dy: -edgeUnit.dy), distance: lateralLabelInset)
 
         // A stair can occupy only part of its host edge. Those internal stair
         // corners are real measurement boundaries even though they are not
@@ -506,30 +507,27 @@ enum DeckStairRenderPlanner {
                 kind: .width,
                 text: "WIDTH \(DimensionEngine.format(widthInches, system: measurementSystem))",
                 position: widthLabelPoint
-            ),
-            DeckStairDimensionLabel(
-                kind: .run,
-                text: "RUN \(DimensionEngine.format(totalRunInches, system: measurementSystem))",
-                position: runLabelPoint
             )
         ]
 
-        // Rail run — the stair triangle's hypotenuse (rise over horizontal
-        // run), the length a stair railing follows. Emitted only when the
-        // caller knows the rise; mirrored on the flank opposite the RUN chip.
+        // Sloped length — the stair triangle's hypotenuse (rise over
+        // horizontal run), the length a stair railing follows and the one
+        // measurement the operator asked the plan to carry (bug 5104d2d5:
+        // the horizontal RUN chip is retired; the user-facing word is
+        // LENGTH). Emitted only when the caller knows the rise.
         if let totalRiseInches, totalRiseInches > 0 {
             let railRunInches = StairConfig.stringerLength(
                 totalRise: totalRiseInches,
                 treadCount: treadCount,
                 runPerTread: config.runPerTread
             )
-            let railLabelPoint = midpoint(baseEnd, farEnd)
+            let lengthLabelPoint = midpoint(baseEnd, farEnd)
                 .offset(by: edgeUnit, distance: lateralLabelInset)
             labels.append(
                 DeckStairDimensionLabel(
-                    kind: .rail,
-                    text: "RAIL \(DimensionEngine.format(railRunInches, system: measurementSystem))",
-                    position: railLabelPoint
+                    kind: .length,
+                    text: "LENGTH \(DimensionEngine.format(railRunInches, system: measurementSystem))",
+                    position: lengthLabelPoint
                 )
             )
         }

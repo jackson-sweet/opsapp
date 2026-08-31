@@ -521,7 +521,7 @@ struct DeckRenderer {
         let railInfo = drawingData.stairRailInfo(for: connection)
         let labelText: String
         if let railInfo {
-            labelText = "\(railInfo.treadCount) treads · \(DimensionEngine.format(railInfo.railRunInches, system: drawingData.config.measurementSystem)) rail"
+            labelText = "\(railInfo.treadCount) treads · \(DimensionEngine.format(railInfo.railRunInches, system: drawingData.config.measurementSystem)) length"
         } else {
             labelText = "\(plan.treadCount) treads"
         }

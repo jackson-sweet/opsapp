@@ -42,6 +42,15 @@ enum SyncOperationReconcilers {
             && errorDescription.contains("project_photos_active_site_visit_url")
     }
 
+    /// True when a create failed only because the active-(project_id, url)
+    /// arbiter already holds the row (project_photos_active_project_url_uidx,
+    /// migration cluster_j_01). Same doctrine as the site-visit matcher: the
+    /// constraint NAME is the contract; an unrelated 23505 still parks.
+    static func isActiveProjectPhotoURLDuplicate(_ errorDescription: String) -> Bool {
+        errorDescription.contains("duplicate key value violates unique constraint")
+            && errorDescription.contains("project_photos_active_project_url")
+    }
+
     /// True when a projectTask update was refused because the server task is
     /// gone (complete_project_task and its kin raise task_not_found).
     static func isTaskNotFound(_ errorDescription: String) -> Bool {
@@ -54,6 +63,12 @@ enum SyncOperationReconcilers {
         case duplicatePhotoCreate
         /// Apply the server's task tombstone locally.
         case taskTombstone
+        /// A project update the server matched to no row. Three truths hide
+        /// behind that one shape — the row is live but this account may not
+        /// edit it, the row is deleted, or the row is genuinely absent — and
+        /// only a probe can say which. See `reconcileProjectUpdateRowVerdict`
+        /// in either twin.
+        case projectUpdateRowVerdict
     }
 
     /// Dispatch for a failure as it happens — the error just thrown.
@@ -64,13 +79,19 @@ enum SyncOperationReconcilers {
     ) -> Kind? {
         if operationType == "create",
            entityType == SyncEntityType.projectPhoto.rawValue,
-           isSiteVisitPhotoDuplicate(errorDescription) {
+           isSiteVisitPhotoDuplicate(errorDescription)
+            || isActiveProjectPhotoURLDuplicate(errorDescription) {
             return .duplicatePhotoCreate
         }
         if operationType == "update",
            entityType == SyncEntityType.projectTask.rawValue,
            isTaskNotFound(errorDescription) {
             return .taskTombstone
+        }
+        if operationType == "update",
+           entityType == SyncEntityType.project.rawValue,
+           errorDescription.contains(SyncError.serverRowMissingMarker) {
+            return .projectUpdateRowVerdict
         }
         return nil
     }
@@ -97,6 +118,37 @@ enum SyncOperationReconcilers {
             return .duplicatePhotoCreate
         }
         return nil
+    }
+
+    // MARK: - Project server state
+
+    /// The server's verdict on a project row, company-scoped, independent of
+    /// this operator's per-row visibility. Answered by the
+    /// `public.project_server_state` RPC (migration cluster_j_03).
+    enum ProjectServerState: String, Equatable {
+        /// The row is live in this company. If the caller could not SELECT it,
+        /// the caller's view scope no longer reaches it.
+        case active
+        /// The row is tombstoned. RLS hides it from everyone, so this is the
+        /// only way a device can learn the deletion happened.
+        case deleted
+        /// No such row in this company — including another company's row, which
+        /// reads `absent` rather than leaking across the tenant boundary.
+        case absent
+    }
+
+    /// Reads the RPC's scalar answer off the wire.
+    ///
+    /// PostgREST renders a `text`-returning function as a JSON string
+    /// (`"active"`); an unquoted body is tolerated too, so a transport detail
+    /// can never cost us the verdict. Anything unrecognized returns nil and the
+    /// caller invents nothing — a probe that did not answer is not evidence.
+    static func projectServerState(from data: Data) -> ProjectServerState? {
+        guard let raw = String(data: data, encoding: .utf8) else { return nil }
+        let trimmed = raw
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .trimmingCharacters(in: CharacterSet(charactersIn: "\""))
+        return ProjectServerState(rawValue: trimmed)
     }
 
     // MARK: - Photo create: adopt the server row
@@ -221,6 +273,60 @@ enum SyncOperationReconcilers {
         // The deletion is the newer truth; there is nothing left to push.
         task.needsSync = false
         return true
+    }
+
+    // MARK: - Project update: the tombstone wins
+
+    /// Applies the server's project tombstone locally. The deletion is the newer
+    /// truth; the project moves to trash on this phone and nothing is left to
+    /// push.
+    ///
+    /// Returns whether a live local project was tombstoned. `false` is still a
+    /// successful reconciliation — the device may hold no row, or already hold
+    /// the tombstone. An existing tombstone is never restamped: the first
+    /// deletion time this phone learned is the honest one.
+    ///
+    /// `#Predicate` on `Project` is safe. The documented SwiftData trap is
+    /// specific to `SyncOperation` against a table that has never held a row.
+    @discardableResult
+    static func applyProjectTombstone(
+        projectId: String,
+        deletedAt: Date,
+        in context: ModelContext
+    ) throws -> Bool {
+        let descriptor = FetchDescriptor<Project>(
+            predicate: #Predicate<Project> { $0.id == projectId }
+        )
+        guard let project = try context.fetch(descriptor).first,
+              project.deletedAt == nil else {
+            return false
+        }
+        project.deletedAt = deletedAt
+        // The deletion is the newer truth; there is nothing left to push.
+        project.needsSync = false
+        return true
+    }
+
+    /// Rewrites a zero-row project update as the edit-permission refusal it
+    /// actually is. The op stays parked — nothing about it became sendable —
+    /// but its stored reason now names the true cause, so PENDING WORK stops
+    /// claiming a deletion that never happened.
+    ///
+    /// Rewriting `lastError` is also what makes the verdict self-terminating:
+    /// the new description carries `serverEditRefusedMarker` and no longer
+    /// carries `serverRowMissingMarker`, so `parkedKind` never re-matches this
+    /// operation and the launch sweep cannot re-probe it forever.
+    ///
+    /// `completedAt` stays nil deliberately: the change never reached the
+    /// server, and the operator's copy is still the only copy.
+    static func applyEditRefusedVerdict(
+        _ operation: SyncOperation,
+        table: String
+    ) {
+        operation.status = "parked"
+        operation.lastError = SyncError
+            .serverEditRefused(table: table, id: operation.entityId)
+            .localizedDescription
     }
 
     // MARK: - Operation completion

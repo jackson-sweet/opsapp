@@ -37,12 +37,21 @@ enum SyncError: Error, LocalizedError {
     /// addressed is not there, or not addressable by this operator under RLS.
     /// See `SupabaseWriteGuard`; classifies permanent, never auto-retried.
     case serverRowMissing(table: String, id: String)
+    /// The server saw the row and refused THIS account the write: the
+    /// UPDATE matched zero rows because RLS grants no edit on a row this
+    /// operator can otherwise see. Distinct from `serverRowMissing` in the
+    /// only way that matters to a field user — the record is still there.
+    /// Classifies permanent; retrying re-answers the same refusal.
+    case serverEditRefused(table: String, id: String)
     case unknown(underlying: Error)
 
     /// The stable phrase every `serverRowMissing` description carries. The only
     /// evidence downstream string-only surfaces get — the recovery copy layer
     /// and the parked-release proof both key off it, so it must not drift.
     static let serverRowMissingMarker = "server row missing"
+
+    /// Stable phrase for the edit-permission verdict (SyncStatusCopy matches it).
+    static let serverEditRefusedMarker = "server refused this edit"
 
     var errorDescription: String? {
         switch self {
@@ -85,6 +94,8 @@ enum SyncError: Error, LocalizedError {
             return "The sync request timed out. Will retry automatically."
         case .serverRowMissing(let table, let id):
             return "\(Self.serverRowMissingMarker): no \(table) row \(id) on the server."
+        case .serverEditRefused(let table, let id):
+            return "\(Self.serverEditRefusedMarker): OPS did not accept this change to \(table) row \(id) from this account."
         case .unknown(let underlying):
             return "Unexpected sync error: \(underlying.localizedDescription)"
         }

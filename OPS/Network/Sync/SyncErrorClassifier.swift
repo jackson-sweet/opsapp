@@ -244,6 +244,13 @@ enum SyncErrorClassifier {
             // — is the data loss this case exists to end. Park it: visible in
             // PENDING WORK, exportable, user-retryable, never automatic.
             return .permanent
+        case .serverEditRefused:
+            // The reconciler probed and proved the row is live and visible: the
+            // server refused THIS account the write, not the row's existence.
+            // A permission grant is the only thing that changes that answer, and
+            // it will not arrive between retries. Park it — same custody as
+            // serverRowMissing, honest copy (SyncStatusCopy.editRefusedDetail*).
+            return .permanent
         default:
             // networkUnavailable, timeout, notConnected, conflict, dependencyNotMet,
             // decodingFailed, dataCorruption, quotaExceeded, entityNotFound,

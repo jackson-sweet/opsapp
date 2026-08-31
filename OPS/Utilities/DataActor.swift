@@ -5297,6 +5297,87 @@ actor DataActor {
             return await reconcileDuplicateProjectPhotoCreate(operation)
         case .taskTombstone:
             return await reconcileTaskUpdateAgainstTombstone(operation)
+        case .projectUpdateRowVerdict:
+            return await reconcileProjectUpdateRowVerdict(operation)
+        }
+    }
+
+    /// Asks which of three truths is behind a project update the server matched
+    /// to no row, instead of inferring the worst one. Byte-mirrored in
+    /// OutboundProcessor — the twins keep the network half by house doctrine.
+    ///
+    /// Probe 1 (RLS SELECT) — a row comes back: the projects read policy exposes
+    /// only live rows, so the project IS there and IS readable by this account.
+    /// The zero-row UPDATE was an edit-permission refusal, not an absence. Park
+    /// it honestly; the operator's copy is safe and an admin can make the change.
+    ///
+    /// Probe 2 (project_server_state RPC) — the row is invisible to this
+    /// account, and only the server can say why:
+    ///   * `deleted`  — the tombstone is the newer truth: apply it locally and
+    ///     retire the op. The server does not expose the deletion timestamp to a
+    ///     non-viewer, so `Date()` is the honest local apply time; any later
+    ///     authoritative merge converges local trash on the real one.
+    ///   * `active`   — the row lives but this account's view scope no longer
+    ///     reaches it. The existing missing-row copy already says exactly that
+    ///     ("…or it is no longer shared with you"), so fall through and park
+    ///     with it.
+    ///   * `absent`   — genuinely not there. The missing-row verdict is now the
+    ///     TRUE one, so fall through and park with it.
+    ///
+    /// Any probe failure falls through as well: a probe that did not answer is
+    /// not evidence, and inventing a verdict from one is the bug being fixed.
+    private func reconcileProjectUpdateRowVerdict(
+        _ operation: SyncOperation
+    ) async -> Bool {
+        struct ServerProjectRow: Decodable {
+            let id: String
+            let deleted_at: String?
+        }
+        let projectId = operation.entityId.lowercased()
+        do {
+            let rows: [ServerProjectRow] = try await SupabaseService.shared.client
+                .from("projects")
+                .select("id, deleted_at")
+                .eq("id", value: projectId)
+                .execute()
+                .value
+            if !rows.isEmpty {
+                try modelContext.transaction {
+                    SyncOperationReconcilers.applyEditRefusedVerdict(
+                        operation,
+                        table: SyncEntityType.project.supabaseTable
+                    )
+                }
+                print("[DataActor] project update \(operation.entityId) parked as edit-refused — the row is live and visible to this account")
+                return true
+            }
+
+            let response = try await SupabaseService.shared.client
+                .rpc("project_server_state", params: ["p_project_id": projectId])
+                .execute()
+            guard let state = SyncOperationReconcilers
+                .projectServerState(from: response.data) else {
+                print("[DataActor] project_server_state returned an unrecognized verdict for \(operation.entityId)")
+                return false
+            }
+            guard state == .deleted else {
+                print("[DataActor] project update \(operation.entityId) parks with the missing-row verdict — server state \(state.rawValue)")
+                return false
+            }
+
+            try modelContext.transaction {
+                _ = try SyncOperationReconcilers.applyProjectTombstone(
+                    projectId: operation.entityId,
+                    deletedAt: Date(),
+                    in: modelContext
+                )
+                SyncOperationReconcilers.markResolved(operation)
+            }
+            print("[DataActor] project update \(operation.entityId) resolved against server tombstone")
+            return true
+        } catch {
+            print("[DataActor] project row-verdict probe failed for \(operation.entityId): \(error)")
+            return false
         }
     }
 

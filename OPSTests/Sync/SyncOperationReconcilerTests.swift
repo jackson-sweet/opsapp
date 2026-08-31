@@ -53,6 +53,10 @@ final class SyncOperationReconcilerTests: XCTestCase {
     private let prodDuplicateError =
         "duplicate key value violates unique constraint \"project_photos_active_site_visit_url_key\""
 
+    /// The portal-mirror arbiter (migration cluster_j_01) as PostgREST reports it.
+    private let prodPortalMirrorDuplicateError =
+        "duplicate key value violates unique constraint \"project_photos_active_project_url_uidx\""
+
     // MARK: - Detection
 
     func testDetectsBothSiteVisitDedupeArbiters() {
@@ -85,6 +89,45 @@ final class SyncOperationReconcilerTests: XCTestCase {
             )
         )
         XCTAssertFalse(SyncOperationReconcilers.isSiteVisitPhotoDuplicate(""))
+    }
+
+    /// The portal-mirror arbiter added by migration cluster_j_01. A create that
+    /// loses to it is the same lost confirmation as the site-visit case: the
+    /// server already holds the row, so the op adopts rather than parks.
+    func testDetectsTheActiveProjectURLArbiter() {
+        XCTAssertTrue(
+            SyncOperationReconcilers.isActiveProjectPhotoURLDuplicate(
+                "duplicate key value violates unique constraint \"project_photos_active_project_url_uidx\""
+            )
+        )
+    }
+
+    /// Narrow by the same doctrine as the site-visit matcher: only THIS index
+    /// name. A pkey conflict is the other idempotency path and an unrelated
+    /// 23505 is a real integrity problem a human must see.
+    func testActiveProjectURLMatcherRejectsUnrelatedIntegrityViolations() {
+        XCTAssertFalse(
+            SyncOperationReconcilers.isActiveProjectPhotoURLDuplicate(
+                "duplicate key value violates unique constraint \"project_photos_pkey\""
+            )
+        )
+        XCTAssertFalse(
+            SyncOperationReconcilers.isActiveProjectPhotoURLDuplicate(
+                "duplicate key value violates unique constraint \"project_photos_active_site_visit_url_uidx\""
+            ),
+            "The site-visit arbiter has its own matcher; these must not alias"
+        )
+        XCTAssertFalse(
+            SyncOperationReconcilers.isActiveProjectPhotoURLDuplicate(
+                "duplicate key value violates unique constraint \"users_email_key\""
+            )
+        )
+        XCTAssertFalse(
+            SyncOperationReconcilers.isActiveProjectPhotoURLDuplicate(
+                "new row violates row-level security policy for table \"project_photos\""
+            )
+        )
+        XCTAssertFalse(SyncOperationReconcilers.isActiveProjectPhotoURLDuplicate(""))
     }
 
     func testDetectsTaskNotFound() {
@@ -142,6 +185,36 @@ final class SyncOperationReconcilerTests: XCTestCase {
         )
     }
 
+    /// The new arbiter routes through the SAME adopt flow as the site-visit
+    /// one — the index is a second door onto one reconciliation, not a second
+    /// reconciliation.
+    func testLiveDispatchRoutesTheActiveProjectURLArbiterToAdoption() {
+        XCTAssertEqual(
+            SyncOperationReconcilers.kind(
+                operationType: "create",
+                entityType: SyncEntityType.projectPhoto.rawValue,
+                errorDescription: prodPortalMirrorDuplicateError
+            ),
+            .duplicatePhotoCreate
+        )
+        // Right error, wrong operation type — an update is not this shape.
+        XCTAssertNil(
+            SyncOperationReconcilers.kind(
+                operationType: "update",
+                entityType: SyncEntityType.projectPhoto.rawValue,
+                errorDescription: prodPortalMirrorDuplicateError
+            )
+        )
+        // Right error, wrong entity.
+        XCTAssertNil(
+            SyncOperationReconcilers.kind(
+                operationType: "create",
+                entityType: SyncEntityType.projectNote.rawValue,
+                errorDescription: prodPortalMirrorDuplicateError
+            )
+        )
+    }
+
     // MARK: - Parked-op selection (the launch sweep)
 
     func testParkedSelectionPicksBothShapesAndTheLegacyPKClass() throws {
@@ -181,6 +254,29 @@ final class SyncOperationReconcilerTests: XCTestCase {
         XCTAssertEqual(SyncOperationReconcilers.parkedKind(for: photoOp), .duplicatePhotoCreate)
         XCTAssertEqual(SyncOperationReconcilers.parkedKind(for: taskOp), .taskTombstone)
         XCTAssertEqual(SyncOperationReconcilers.parkedKind(for: legacyPKOp), .duplicatePhotoCreate)
+    }
+
+    /// The launch sweep must pick up a create parked on the portal-mirror
+    /// arbiter too — including one parked by a build that shipped before the
+    /// index existed. `parkedKind` inherits the widened live matcher, so this is
+    /// the guard that the two never drift apart.
+    func testParkedSelectionPicksThePortalMirrorArbiter() throws {
+        let context = try makeContext()
+
+        let mirrorOp = makeOperation(
+            entityType: SyncEntityType.projectPhoto.rawValue,
+            entityId: localPhotoId,
+            operationType: "create",
+            in: context
+        )
+        mirrorOp.status = "parked"
+        mirrorOp.lastError = prodPortalMirrorDuplicateError
+        try context.save()
+
+        XCTAssertEqual(
+            SyncOperationReconcilers.parkedKind(for: mirrorOp),
+            .duplicatePhotoCreate
+        )
     }
 
     /// Parked stays terminal for every other class — the sweep is targeted, not
@@ -460,6 +556,196 @@ final class SyncOperationReconcilerTests: XCTestCase {
         )
     }
 
+    // MARK: - Project tombstone
+
+    /// The server deleted the job while this phone still held an edit for it.
+    /// The tombstone is the newer truth: the project moves to trash here and
+    /// stops trying to push.
+    func testTombstonesTheLocalProject() throws {
+        let context = try makeContext()
+        let project = Project(id: projectId, title: "541 Prince Robert Ln", status: .inProgress)
+        project.needsSync = true
+        context.insert(project)
+        try context.save()
+
+        let deletedAt = try XCTUnwrap(SupabaseDate.parse("2026-08-28T19:37:16.195195+00:00"))
+        let applied = try SyncOperationReconcilers.applyProjectTombstone(
+            projectId: projectId,
+            deletedAt: deletedAt,
+            in: context
+        )
+        try context.save()
+
+        XCTAssertTrue(applied)
+        XCTAssertEqual(
+            project.deletedAt?.timeIntervalSince1970 ?? 0,
+            deletedAt.timeIntervalSince1970,
+            accuracy: 0.001
+        )
+        XCTAssertFalse(project.needsSync, "The deletion is the newer truth; nothing is left to push")
+    }
+
+    /// Already tombstoned, or never held at all: still a successful
+    /// reconciliation, just nothing to change. The first deletion time this
+    /// phone learned is never restamped.
+    func testProjectTombstoneIsIdempotentAndSurvivesAMissingRow() throws {
+        let context = try makeContext()
+        let deletedAt = try XCTUnwrap(SupabaseDate.parse("2026-08-28T19:37:16.195195+00:00"))
+        let earlier = Date(timeIntervalSince1970: 1_700_000_000)
+
+        let project = Project(id: projectId, title: "541 Prince Robert Ln", status: .inProgress)
+        project.deletedAt = earlier
+        context.insert(project)
+        try context.save()
+
+        XCTAssertFalse(
+            try SyncOperationReconcilers.applyProjectTombstone(
+                projectId: projectId,
+                deletedAt: deletedAt,
+                in: context
+            )
+        )
+        XCTAssertEqual(
+            project.deletedAt?.timeIntervalSince1970 ?? 0,
+            earlier.timeIntervalSince1970,
+            accuracy: 0.001,
+            "An existing tombstone is not restamped"
+        )
+
+        XCTAssertFalse(
+            try SyncOperationReconcilers.applyProjectTombstone(
+                projectId: "1b1e4c7a-0000-4b0a-9f00-000000000000",
+                deletedAt: deletedAt,
+                in: context
+            ),
+            "A device that holds no row for the project still reconciles cleanly"
+        )
+    }
+
+    // MARK: - Project update row-verdict (bug 16d487c4)
+
+    /// A zero-row project UPDATE stops being a conclusion and becomes a
+    /// question. Detection keys on the typed error's own marker, so the
+    /// reconciler and the copy layer read the same evidence.
+    func testProjectUpdateRowVerdictIsDispatchedForZeroRowProjectUpdates() {
+        let missing = SyncError
+            .serverRowMissing(table: "projects", id: projectId)
+            .localizedDescription
+
+        XCTAssertEqual(
+            SyncOperationReconcilers.kind(
+                operationType: "update",
+                entityType: SyncEntityType.project.rawValue,
+                errorDescription: missing
+            ),
+            .projectUpdateRowVerdict
+        )
+        // A create is not this shape — it has its own idempotency paths.
+        XCTAssertNil(
+            SyncOperationReconcilers.kind(
+                operationType: "create",
+                entityType: SyncEntityType.project.rawValue,
+                errorDescription: missing
+            )
+        )
+        // A task update against a missing row is not the project verdict.
+        XCTAssertNil(
+            SyncOperationReconcilers.kind(
+                operationType: "update",
+                entityType: SyncEntityType.projectTask.rawValue,
+                errorDescription: missing
+            )
+        )
+        // Right shape, unrelated error — still parks.
+        XCTAssertNil(
+            SyncOperationReconcilers.kind(
+                operationType: "update",
+                entityType: SyncEntityType.project.rawValue,
+                errorDescription: "permission denied for table projects"
+            )
+        )
+    }
+
+    /// This is what heals the ops already sitting on crew phones, parked by a
+    /// build that shipped before the probes existed.
+    func testParkedProjectUpdatesAreSelectedForTheVerdictSweep() throws {
+        let context = try makeContext()
+        let operation = makeOperation(
+            entityType: SyncEntityType.project.rawValue,
+            entityId: projectId,
+            operationType: "update",
+            in: context
+        )
+        operation.status = "parked"
+        operation.lastError = SyncError
+            .serverRowMissing(table: "projects", id: projectId)
+            .localizedDescription
+        try context.save()
+
+        XCTAssertEqual(
+            SyncOperationReconcilers.parkedKind(for: operation),
+            .projectUpdateRowVerdict
+        )
+    }
+
+    /// The edit-refused verdict keeps the op parked — nothing about it became
+    /// sendable — but restates WHY, and in doing so removes itself from the
+    /// sweep's sights. Without that, every launch would re-probe the same op
+    /// forever.
+    func testEditRefusedVerdictParksHonestlyAndDefeatsReDetection() throws {
+        let context = try makeContext()
+        let operation = makeOperation(
+            entityType: SyncEntityType.project.rawValue,
+            entityId: projectId,
+            operationType: "update",
+            in: context
+        )
+        operation.status = "parked"
+        operation.lastError = SyncError
+            .serverRowMissing(table: "projects", id: projectId)
+            .localizedDescription
+        try context.save()
+
+        SyncOperationReconcilers.applyEditRefusedVerdict(operation, table: "projects")
+        try context.save()
+
+        XCTAssertEqual(operation.status, "parked", "The change still has not reached the server")
+        XCTAssertNil(operation.completedAt, "Nothing was completed — only explained")
+        let stored = try XCTUnwrap(operation.lastError)
+        XCTAssertTrue(stored.contains(SyncError.serverEditRefusedMarker))
+        XCTAssertFalse(stored.contains(SyncError.serverRowMissingMarker))
+        XCTAssertTrue(stored.contains(projectId), "The verdict names the row it is about")
+
+        XCTAssertNil(
+            SyncOperationReconcilers.parkedKind(for: operation),
+            "A resolved verdict must not be re-probed on every launch"
+        )
+        XCTAssertTrue(SyncStatusCopy.PendingWork.isEditRefused(operation.lastError))
+    }
+
+    // MARK: - project_server_state wire decoding
+
+    /// PostgREST renders a text-returning function as a JSON string; an
+    /// unquoted body is tolerated too, so a transport detail can never cost us
+    /// the verdict. Anything else answers nil — and the caller then invents no
+    /// verdict at all, which is the whole point of the probe.
+    func testProjectServerStateDecodesEveryVerdictAndRefusesGarbage() {
+        func decode(_ body: String) -> SyncOperationReconcilers.ProjectServerState? {
+            SyncOperationReconcilers.projectServerState(from: Data(body.utf8))
+        }
+
+        XCTAssertEqual(decode("\"active\""), .active)
+        XCTAssertEqual(decode("\"deleted\""), .deleted)
+        XCTAssertEqual(decode("\"absent\""), .absent)
+        XCTAssertEqual(decode("active"), .active, "An unquoted body still answers")
+        XCTAssertEqual(decode("\n \"deleted\" \n"), .deleted)
+
+        XCTAssertNil(decode(""))
+        XCTAssertNil(decode("null"))
+        XCTAssertNil(decode("{\"error\":\"boom\"}"))
+        XCTAssertNil(decode("ACTIVE"), "The contract is lowercase; a near-miss is not evidence")
+    }
+
     // MARK: - Parked share jobs (bug c3486912 residue)
 
     /// `shareParkedRetry.v1` resets every job the drain would NOT otherwise
@@ -520,12 +806,10 @@ final class SyncOperationReconcilerTests: XCTestCase {
     }
 
     private func makeContainer() throws -> ModelContainer {
-        let schema = Schema([
-            ProjectPhoto.self,
-            ProjectTask.self,
-            PhotoAnnotation.self,
-            SyncOperation.self
-        ])
+        // Resolved through OPSSchemaCurrent rather than a hand-listed subset:
+        // Project carries @Relationship edges to Client / User / ProjectTask, and
+        // a partial schema that omits any of them fails to build the container.
+        let schema = Schema(versionedSchema: OPSSchemaCurrent.self)
         let configuration = ModelConfiguration(
             schema: schema,
             isStoredInMemoryOnly: true,

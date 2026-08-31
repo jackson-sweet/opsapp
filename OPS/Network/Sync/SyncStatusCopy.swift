@@ -56,6 +56,13 @@ enum SyncStatusCopy {
         /// and where the photo is; never imply it was lost.
         static let projectMissing =
             "That job isn't in OPS any more. The photo is safe on this phone."
+
+        /// The job is alive and well in OPS, but this account is no longer on
+        /// it — an assignment change between capture and save. Different fact
+        /// from `projectMissing`, so it gets different words: nothing is gone,
+        /// and the operator is not at fault.
+        static let notShared =
+            "This job is no longer shared with you. The photo is safe on this phone."
     }
 
     // MARK: - Collapsed header
@@ -311,18 +318,34 @@ enum SyncStatusCopy {
         static let missingRowDetailLabel = "SYS :: RECORD NOT FOUND"
         static let missingRowDetailBody = "Someone deleted this record in OPS, or it is no longer shared with you. Your copy is safe on this phone — export it before you stop the send."
 
+        // Detail sheet — the server refused this account's edit. The record is
+        // still there and still fine; this account simply may not change it. Say
+        // that, say where their copy is, and name the one move that works.
+        static let editRefusedDetailLabel = "SYS :: EDIT NOT ACCEPTED"
+        static let editRefusedDetailBody = "OPS didn't accept this change from your account. Your copy is safe on this phone — an admin can make it in OPS."
+
         // Detail sheet — the customer this work belongs to was refused.
         static let clientRejectedDetailLabel = "SYS :: CUSTOMER NOT SAVED"
         static let clientRejectedDetailBody = "This lead is waiting on a customer record the server refused. Both are safe on this phone. Retry the customer in this list — the lead follows on its own."
 
-        /// The parked block's label + body for one item. Three causes, three
-        /// answers: a refused customer is fixable right here, a missing record
-        /// never will be, and every other park is a plain rejection.
+        /// The parked block's label + body for one item. Four causes, four
+        /// answers: a refused customer is fixable right here, a refused EDIT
+        /// means the record is fine and the account is not allowed to change it,
+        /// a missing record never will be, and every other park is a plain
+        /// rejection.
+        ///
+        /// Edit-refused is checked before missing-row on purpose. Both verdicts
+        /// come out of the same zero-row UPDATE, and until the reconciler could
+        /// tell them apart this surface told a crew member "someone deleted this
+        /// record in OPS" about a job that was never deleted (bug 16d487c4).
         static func parkedDetail(
             lastError: String?
         ) -> (label: String, body: String) {
             if isClientRejected(lastError) {
                 return (clientRejectedDetailLabel, clientRejectedDetailBody)
+            }
+            if isEditRefused(lastError) {
+                return (editRefusedDetailLabel, editRefusedDetailBody)
             }
             return isMissingRow(lastError)
                 ? (missingRowDetailLabel, missingRowDetailBody)
@@ -336,6 +359,16 @@ enum SyncStatusCopy {
         static func isMissingRow(_ raw: String?) -> Bool {
             guard let raw, !raw.isEmpty else { return false }
             return raw.lowercased().contains(SyncError.serverRowMissingMarker)
+        }
+
+        /// The reconciler's edit-permission verdict, recognized by the stable
+        /// marker `SyncError.serverEditRefused` writes into every description.
+        /// Only the reconciler writes it, and only after it has SEEN the row
+        /// live on the server — so this surface never claims a permission
+        /// problem it did not verify.
+        static func isEditRefused(_ raw: String?) -> Bool {
+            guard let raw, !raw.isEmpty else { return false }
+            return raw.lowercased().contains(SyncError.serverEditRefusedMarker)
         }
 
         /// The lead-delivery queue's own ordering verdict, recognized by the
@@ -393,6 +426,10 @@ enum SyncStatusCopy {
             let lowered = raw.lowercased()
 
             if isClientRejected(lowered) { return diagnosticClientRejected }
+            // Before the transport symptoms below: an edit refusal is a
+            // permission fact the operator can act on (ask an admin), and its
+            // description carries none of the wording those rules match.
+            if isEditRefused(lowered) { return diagnosticPermissionDenied }
             if isMissingRow(lowered) { return diagnosticMissingRow }
             if lowered.contains("row-level security") || lowered.contains("42501") {
                 return diagnosticPermissionDenied

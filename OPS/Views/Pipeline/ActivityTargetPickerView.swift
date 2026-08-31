@@ -47,6 +47,10 @@ struct ActivityTargetPickerView: View {
     @State private var isSavingNewLead: Bool = false
     @State private var newLeadError: String?
 
+    /// Bug 55f40233 — the client row currently resolving into a bookable lead.
+    /// Non-nil blocks every other row so a double-tap cannot mint two leads.
+    @State private var materializingClientId: String?
+
     var body: some View {
         VStack(spacing: 0) {
             // Search bar — verbatim OpportunityPickerView treatment.
@@ -56,7 +60,7 @@ struct ActivityTargetPickerView: View {
                     .font(.system(size: 16))
 
                 TextField(
-                    sources == .leadsOnly ? "Search leads..." : "Search leads, clients, jobs...",
+                    sources == .leadsOnly ? "Search leads or clients..." : "Search leads, clients, jobs...",
                     text: $searchText
                 )
                     .font(OPSStyle.Typography.body)
@@ -103,6 +107,18 @@ struct ActivityTargetPickerView: View {
                     newLeadRow()
                 }
             }
+
+            // Client-materialization errors surface here. The inline create
+            // form owns its own error line, so this renders only when the
+            // disclosure is closed — never two copies of the same message.
+            if let newLeadError, !isCreatingNewLead {
+                Text(newLeadError)
+                    .font(OPSStyle.Typography.smallCaption)
+                    .foregroundColor(OPSStyle.Colors.errorStatus)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+                    .padding(.bottom, OPSStyle.Layout.spacing2_5)
+            }
         }
         .background(OPSStyle.Colors.background)
         .onAppear(perform: loadTargets)
@@ -113,12 +129,44 @@ struct ActivityTargetPickerView: View {
     private func loadTargets() {
         var loaded = ActivityTargetLoader.load(companyId: companyId, modelContext: modelContext)
         if case .leadsOnly = sources {
-            loaded = loaded.filter {
-                if case .opportunity = $0 { return true }
-                return false
-            }
+            loaded = loaded.filter(Self.leadsOnlyFilter)
         }
         allTargets = loaded
+    }
+
+    /// Visit booking: a repeat customer is as bookable as an open lead —
+    /// selecting a client materializes their lead (bug 55f40233). Jobs stay
+    /// out: a booking anchors to an opportunity, and a job's own lead is
+    /// reachable from the job itself (bug 7d94c9f3).
+    static func leadsOnlyFilter(_ target: ActivityTarget) -> Bool {
+        switch target {
+        case .opportunity, .client: return true
+        case .project, .unbound:    return false
+        }
+    }
+
+    /// The bookable lead among a client's linked leads: the newest still-open
+    /// one. WON / LOST / discarded leads are finished business — a repeat
+    /// customer booking new work gets a fresh lead instead.
+    static func firstOpenLead(in models: [Opportunity]) -> Opportunity? {
+        models.first { !$0.stage.isTerminal && !$0.isDeleted && !$0.isArchived }
+    }
+
+    /// The lead a repeat customer's booking mints when they hold no open one.
+    /// `repeat_client` is both schema-legal (`opportunities_source_check`) and
+    /// semantically exact. Title is omitted — the DTO derives it from the
+    /// contact name.
+    static func materializationDTO(for client: Client) -> CreateOpportunityDTO {
+        CreateOpportunityDTO(
+            contactName: client.name,
+            contactEmail: client.email,
+            contactPhone: client.phoneNumber,
+            address: client.address,
+            source: "repeat_client",
+            clientId: client.id,
+            latitude: client.latitude,
+            longitude: client.longitude
+        )
     }
 
     /// Multi-field lowercase-contains across name/subtitle/source badge,
@@ -141,7 +189,7 @@ struct ActivityTargetPickerView: View {
                 .font(OPSStyle.Typography.title)
                 .foregroundColor(OPSStyle.Colors.tertiaryText)
             Text(searchText.isEmpty
-                 ? (sources == .leadsOnly ? "NO OPEN LEADS" : "NO LEADS, CLIENTS, OR JOBS")
+                 ? (sources == .leadsOnly ? "NO LEADS OR CLIENTS" : "NO LEADS, CLIENTS, OR JOBS")
                  : "NO MATCHES")
                 .font(OPSStyle.Typography.smallCaption)
                 .foregroundColor(OPSStyle.Colors.tertiaryText)
@@ -155,8 +203,7 @@ struct ActivityTargetPickerView: View {
     @ViewBuilder
     private func targetRow(_ target: ActivityTarget) -> some View {
         Button {
-            onSelect(target)
-            dismiss()
+            select(target)
         } label: {
             HStack(spacing: OPSStyle.Layout.spacing2_5) {
                 // Initial circle — same treatment as OpportunityPickerView's contact avatar.
@@ -185,8 +232,14 @@ struct ActivityTargetPickerView: View {
 
                 Spacer()
 
-                // Source badge — neutral tag, never accent/earth-tone/green.
-                if let badge = target.sourceBadge {
+                // While a client row is resolving into a bookable lead it owns
+                // the trailing slot, so the operator sees exactly which tap is
+                // working. Same treatment as the inline create's spinner.
+                if isMaterializing(target) {
+                    ProgressView()
+                        .tint(OPSStyle.Colors.tertiaryText)
+                } else if let badge = target.sourceBadge {
+                    // Source badge — neutral tag, never accent/earth-tone/green.
                     sourceBadgeView(badge)
                 }
             }
@@ -195,6 +248,14 @@ struct ActivityTargetPickerView: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(TargetRowButtonStyle())
+        .disabled(materializingClientId != nil || isSavingNewLead)
+    }
+
+    /// True only for the client row whose lead is being resolved right now.
+    private func isMaterializing(_ target: ActivityTarget) -> Bool {
+        guard let materializingClientId,
+              case .client(let client) = target else { return false }
+        return client.id == materializingClientId
     }
 
     /// Neutral source-disambiguation tag: JetBrains Mono, text3-on-line —
@@ -313,6 +374,76 @@ struct ActivityTargetPickerView: View {
             )
     }
 
+    // MARK: - Selection
+
+    /// A lead / job / client tap. In the booking lane a CLIENT is not a
+    /// bookable target on its own — booking anchors to an opportunity — so the
+    /// tap resolves the client to a lead first. Every other case passes
+    /// straight through, so the activity logger's behavior is unchanged.
+    private func select(_ target: ActivityTarget) {
+        if case .client(let client) = target, sources == .leadsOnly {
+            guard materializingClientId == nil, !isSavingNewLead else { return }
+            Task { await materializeLead(for: client) }
+            return
+        }
+        onSelect(target)
+        dismiss()
+    }
+
+    /// A client tap in the booking lane resolves to a bookable lead:
+    /// the newest OPEN linked lead when one exists (remote-first — the local
+    /// cache may be stale), else a fresh `repeat_client` lead bound to the
+    /// client. A failed lookup NEVER falls through to create — that is how
+    /// duplicate leads are minted, and booking needs signal anyway.
+    @MainActor
+    private func materializeLead(for client: Client) async {
+        materializingClientId = client.id
+        newLeadError = nil
+        defer { materializingClientId = nil }
+
+        let repository = OpportunityRepository(companyId: companyId)
+        let linked: [OpportunityDTO]
+        do {
+            linked = try await repository.fetchAllLinked(toClientId: client.id)
+        } catch {
+            newLeadError = "COULD NOT CHECK LEADS FOR \(client.name.uppercased()) — TRY AGAIN"
+            return
+        }
+
+        if let open = Self.firstOpenLead(in: linked.map { $0.toModel() }) {
+            finishSelection(with: open)
+            return
+        }
+
+        do {
+            let created = try await repository.create(Self.materializationDTO(for: client))
+            finishSelection(with: created.toModel())
+        } catch {
+            newLeadError = error.localizedDescription
+        }
+    }
+
+    /// Upsert-by-id then hand back — blind inserts fork duplicate local rows
+    /// (the UUID-case lesson).
+    @MainActor
+    private func finishSelection(with model: Opportunity) {
+        let id = model.id
+        var descriptor = FetchDescriptor<Opportunity>(
+            predicate: #Predicate<Opportunity> { $0.id == id }
+        )
+        descriptor.fetchLimit = 1
+        let resolved: Opportunity
+        if let existing = (try? modelContext.fetch(descriptor))?.first {
+            resolved = existing
+        } else {
+            modelContext.insert(model)
+            try? modelContext.save()
+            resolved = model
+        }
+        onSelect(.opportunity(resolved))
+        dismiss()
+    }
+
     /// Creates the opportunity server-side (same repository call LogActivityViewModel.save
     /// uses for the voice-log new-lead path), inserts the resulting model locally, then
     /// hands it back through `onSelect` as `.opportunity(newlyCreated)`.
@@ -334,13 +465,10 @@ struct ActivityTargetPickerView: View {
 
         do {
             let created = try await repository.create(dto)
-            let model = created.toModel()
-            modelContext.insert(model)
-            try? modelContext.save()
-
             isSavingNewLead = false
-            onSelect(.opportunity(model))
-            dismiss()
+            // Upsert-by-id rather than a blind insert: the create can echo a
+            // row this device already holds.
+            finishSelection(with: created.toModel())
         } catch {
             isSavingNewLead = false
             newLeadError = error.localizedDescription

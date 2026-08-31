@@ -69,6 +69,14 @@ struct ProjectQuickActionsBar: View {
     /// Hidden when nil. Spec: ops-software-bible/specs/2026-05-10-lidar-dimensioned-photo-capture-design.md §3.1
     var onMeasure: (() -> Void)? = nil
     var onShare: (() -> Void)? = nil
+    /// Bug 7d94c9f3 — visit booking for the project's linked lead. nil hides
+    /// the entry (no linked lead, no convert grant, or project closed —
+    /// ProjectVisitBookingGate decides; this bar only renders). State-aware:
+    /// `hasOpenVisitBooking` flips the verb to REBOOK so a second booking is
+    /// never offered next to an existing one (the server enforces exactly one
+    /// open booking per lead).
+    var onBookVisit: (() -> Void)? = nil
+    var hasOpenVisitBooking: Bool = false
     /// Bug 1b7e59f7 — in-app equivalent of the requested Photos → OPS share
     /// extension flow. Tapping opens the Photos library picker for this
     /// project so the user can attach existing library photos without
@@ -145,6 +153,17 @@ struct ProjectQuickActionsBar: View {
 
         if hasClientContact {
             items.append(ActionItem(icon: "phone.fill", label: "CONTACT", action: onContact))
+        }
+
+        // Booking sits in the client-facing verb cluster (CONTACT · BOOK VISIT
+        // · TASK · SHARE) — it is an arrangement with the customer, not an
+        // on-site capture verb like PHOTO/NOTE/MEASURE.
+        if let onBookVisit = onBookVisit {
+            items.append(ActionItem(
+                icon: ProjectVisitBookingEntry.icon(hasOpenBooking: hasOpenVisitBooking),
+                label: ProjectVisitBookingEntry.label(hasOpenBooking: hasOpenVisitBooking),
+                action: onBookVisit
+            ))
         }
 
         if canEdit {

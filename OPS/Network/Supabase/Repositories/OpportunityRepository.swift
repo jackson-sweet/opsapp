@@ -145,6 +145,26 @@ class OpportunityRepository {
             .value
     }
 
+    /// The lead this project was converted from (or manually linked to), if
+    /// any. Conversion stamps `opportunities.project_id`
+    /// (`convert_opportunity_to_project` / manual link), so the newest
+    /// non-deleted row is the project's lead. Powers the project-side
+    /// BOOK VISIT entry — booking is opportunity-anchored by contract
+    /// (`book_site_visit(p_opportunity_id …)`).
+    func fetchLinked(toProjectId projectId: String) async throws -> OpportunityDTO? {
+        let rows: [OpportunityDTO] = try await client
+            .from("opportunities")
+            .select()
+            .eq("company_id", value: companyId)
+            .eq("project_id", value: projectId.lowercased())
+            .is("deleted_at", value: nil)
+            .order("created_at", ascending: false)
+            .limit(1)
+            .execute()
+            .value
+        return rows.first
+    }
+
     /// Resolve a durable ingestion key regardless of active/deleted state.
     /// The database uniquely constrains `(company_id, source_thread_key)`, so
     /// this is the authoritative readback after an ambiguous insert response.

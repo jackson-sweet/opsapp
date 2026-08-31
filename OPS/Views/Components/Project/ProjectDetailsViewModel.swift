@@ -106,6 +106,87 @@ class ProjectDetailsViewModel: ObservableObject {
 
     @Published var isRefreshingClient = false
 
+    // MARK: - Linked lead (site-visit booking)
+
+    /// The lead this project was converted from. Resolved local-first, then
+    /// network (leads are not guaranteed to be in SwiftData on this device).
+    @Published var linkedLead: Opportunity?
+    /// The linked lead's open booked appointment, if any — drives the bar
+    /// entry's BOOK VISIT / REBOOK state. nil ⇒ nothing booked.
+    @Published var linkedLeadOpenBooking: BookSiteVisitForm.BookingSnapshot?
+
+    /// Whether the action bar offers the visit-booking entry at all.
+    var canBookSiteVisit: Bool {
+        ProjectVisitBookingGate.canOffer(
+            projectStatus: project.status,
+            lead: linkedLead,
+            policy: PermissionStore.shared.leadAccessPolicy
+        )
+    }
+
+    /// Local-first, remote-fallback. Local upsert on the remote hit so the
+    /// booking sheet and every later surface read one instance by id.
+    func resolveLinkedLead() async {
+        guard linkedLead == nil else {
+            refreshLinkedLeadOpenBooking()
+            return
+        }
+        let projectId = project.id.lowercased()
+        if let context = dataController?.modelContext {
+            var descriptor = FetchDescriptor<Opportunity>(
+                predicate: #Predicate<Opportunity> { $0.projectId == projectId }
+            )
+            descriptor.fetchLimit = 1
+            if let local = (try? context.fetch(descriptor))?.first,
+               local.companyId == project.companyId, !local.isDeleted {
+                linkedLead = local
+                refreshLinkedLeadOpenBooking()
+                return
+            }
+        }
+        let repository = OpportunityRepository(companyId: project.companyId)
+        guard let dto = try? await repository.fetchLinked(toProjectId: project.id) else {
+            // Offline or no linked lead — the entry stays hidden. Honest:
+            // a booking cannot be committed without signal anyway
+            // (RPC-only, no offline queue).
+            return
+        }
+        linkedLead = upsertLocalOpportunity(dto.toModel())
+        refreshLinkedLeadOpenBooking()
+    }
+
+    /// Re-read the open booking (SiteVisitBookingChanged fires on
+    /// book/reschedule/cancel from any surface).
+    func refreshLinkedLeadOpenBooking() {
+        guard let lead = linkedLead,
+              let context = dataController?.modelContext,
+              let booking = SiteVisitBookingLookup.openBooking(
+                forOpportunityId: lead.id,
+                in: context
+              ) else {
+            linkedLeadOpenBooking = nil
+            return
+        }
+        linkedLeadOpenBooking = SiteVisitBookingLookup.snapshot(of: booking)
+    }
+
+    /// Insert-if-absent by id — never a blind insert (duplicate local rows
+    /// are the UUID-case lesson; ids are lowercased at generation).
+    private func upsertLocalOpportunity(_ model: Opportunity) -> Opportunity {
+        guard let context = dataController?.modelContext else { return model }
+        let id = model.id
+        var descriptor = FetchDescriptor<Opportunity>(
+            predicate: #Predicate<Opportunity> { $0.id == id }
+        )
+        descriptor.fetchLimit = 1
+        if let existing = (try? context.fetch(descriptor))?.first {
+            return existing
+        }
+        context.insert(model)
+        try? context.save()
+        return model
+    }
+
     // MARK: - Address
 
     @Published var addressMapRegion: MKCoordinateRegion

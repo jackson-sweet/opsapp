@@ -49,6 +49,7 @@ enum ClientLeadAutocreate {
         name: String,
         email: String?,
         phone: String?,
+        address: String? = nil,
         source: String? = nil
     ) -> CreateOpportunityDTO? {
         let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -59,6 +60,7 @@ enum ClientLeadAutocreate {
             contactEmail: sanitizedOptional(email),
             contactPhone: sanitizedOptional(phone),
             description: nil,
+            address: sanitizedOptional(address),
             estimatedValue: nil,
             source: conformedSource(source),
             quoteDeliveryMethod: nil

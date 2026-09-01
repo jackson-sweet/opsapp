@@ -134,10 +134,9 @@ final class SchedulerSheetSnapshotTests: XCTestCase {
     /// UNSCHEDULE. The toggle is proven through the dependents branch — a
     /// same-project task that depends on this one — because that count rides
     /// project-scoped queries only. (The crew-ripple branch reads
-    /// `DataController.currentUser`, which the app host's async
-    /// `checkExistingAuth` can rewrite mid-render; dating this task after the
-    /// fence job keeps that branch at zero either way, so the badge is a
-    /// deterministic 1.) The month grid compresses to its floor; nav and
+    /// `DataController.currentUser`; dating this task after the fence job
+    /// keeps that branch at zero regardless of operator state, so the badge
+    /// is a deterministic 1.) The month grid compresses to its floor; nav and
     /// footer must both survive on screen.
     func testSmallPhoneWorstCaseReschedule() throws {
         let world = try World()

@@ -61,7 +61,7 @@ final class MonthDaySheetWindowTests: XCTestCase {
         // Name the cause here rather than letting it surface as a bare [].
         XCTAssertNotNil(
             fixture.dataController.currentUser,
-            "The operator was signed out mid-test — DataControllerAuthSuppression is no longer holding."
+            "The operator was signed out mid-test — DataController's auth probe must stay inert under XCTest."
         )
 
         XCTAssertEqual(
@@ -121,13 +121,6 @@ final class MonthDaySheetWindowTests: XCTestCase {
         PermissionStore.shared.permissions = ["tasks.view": "all", "calendar.view": "all"]
         PermissionStore.shared.blockedByFlags = []
 
-        // Installed BEFORE the controller exists: `DataController.init` spawns
-        // `checkExistingAuth()` immediately, and on a cold process that call
-        // reaches `clearAuthentication()` seconds later — nilling `currentUser`
-        // in the middle of whichever test built the fixture. See the type's
-        // header for the full account.
-        let authSuppression = DataControllerAuthSuppression()
-
         let dataController = DataController()
         dataController.setModelContext(context)
 
@@ -164,7 +157,6 @@ final class MonthDaySheetWindowTests: XCTestCase {
             restore: {
                 PermissionStore.shared.permissions = previousPermissions
                 PermissionStore.shared.blockedByFlags = previousBlocked
-                authSuppression.restore()
             }
         )
     }

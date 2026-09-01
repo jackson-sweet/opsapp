@@ -330,14 +330,6 @@ final class AppStateNotificationRPCTests: XCTestCase {
 
         let dataController = DataController()
         dataController.setModelContext(context)
-        // `DataController.init` fires `checkExistingAuth()`, which clears
-        // `currentUser` when no credentials are stored. Outlast that clear
-        // rather than racing it — same dance as ReviewThresholdServiceTests.
-        dataController.currentUser = user
-        let authSettled = Date(timeIntervalSinceNow: 5)
-        while dataController.currentUser != nil, Date() < authSettled {
-            RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.02))
-        }
         dataController.currentUser = user
 
         return Fixture(

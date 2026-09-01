@@ -164,13 +164,9 @@ final class ReviewThresholdServiceTests: XCTestCase {
         let context = ModelContext(container)
         let dataController = DataController()
         dataController.setModelContext(context)
-        // `DataController.init` fires `checkExistingAuth()`, which clears
-        // `currentUser` when no credentials are stored — exactly the state
-        // this test needs. Wait for it to settle rather than racing it.
-        let authSettled = Date(timeIntervalSinceNow: 5)
-        while dataController.currentUser != nil, Date() < authSettled {
-            RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.02))
-        }
+        // The auth probe stays inert under XCTest and nothing here seeds
+        // `currentUser`, so the no-operator state is constructed, not raced
+        // into.
         XCTAssertNil(dataController.currentUser)
 
         let spy = ReviewStackSyncSpy()
@@ -253,13 +249,6 @@ final class ReviewThresholdServiceTests: XCTestCase {
 
         let dataController = DataController()
         dataController.setModelContext(context)
-        // Outlast the init-time `checkExistingAuth()` clear — same dance as
-        // TaskReviewQueryParityTests.
-        dataController.currentUser = user
-        let authSettled = Date(timeIntervalSinceNow: 5)
-        while dataController.currentUser != nil, Date() < authSettled {
-            RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.02))
-        }
         dataController.currentUser = user
 
         return Fixture(context: context, dataController: dataController)

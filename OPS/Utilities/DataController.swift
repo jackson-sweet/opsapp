@@ -219,6 +219,18 @@ class DataController: ObservableObject {
         }
         #endif
 
+        // Unit-test processes never probe auth. The probe's no-credentials
+        // path ends in clearAuthentication() seconds later — a keychain wipe
+        // plus dozens of UserDefaults removals that land mid-test and sign the
+        // fixture-seeded operator out (every guarded read then returns [],
+        // which presents as a data bug far from the cause). The app host's own
+        // controller used to spray that same teardown into whichever test was
+        // running. Fixtures seed `currentUser` directly instead; UI tests run
+        // the app in a separate, XCTest-free process and still probe normally.
+        if NSClassFromString("XCTestCase") != nil {
+            return
+        }
+
         // Check for existing authentication - plain Task for async work
         Task {
             await checkExistingAuth()

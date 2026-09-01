@@ -196,9 +196,16 @@ final class ArchivedProjectCalendarVisibilityTests: XCTestCase {
     /// not just at the predicate.
     func testWeekCanvasDropsTasksOnArchivedProjectsEndToEnd() async throws {
         let fixture = try makeCalendarFixture()
-        defer { fixture.restorePermissions() }
+        defer { fixture.restore() }
 
         await fixture.viewModel.reloadCalendarDataOffMain()
+
+        // A signed-out operator reads exactly like an empty canvas — name the
+        // cause instead of letting it surface as a bare wrong-rows diff.
+        XCTAssertNotNil(
+            fixture.dataController.currentUser,
+            "The operator was signed out mid-test — DataController's auth probe must stay inert under XCTest."
+        )
         let visible = fixture.viewModel.scheduledTasks(for: fixture.today)
 
         XCTAssertEqual(
@@ -212,7 +219,7 @@ final class ArchivedProjectCalendarVisibilityTests: XCTestCase {
     /// `getAllScheduledTasks` -> `applyTaskFilters` against the same store.
     func testMonthGridDropsTasksOnArchivedProjectsEndToEnd() throws {
         let fixture = try makeCalendarFixture()
-        defer { fixture.restorePermissions() }
+        defer { fixture.restore() }
 
         let cache = MonthGridCache()
         cache.loadEvents(from: fixture.dataController, viewModel: fixture.viewModel)
@@ -243,9 +250,17 @@ final class ArchivedProjectCalendarVisibilityTests: XCTestCase {
     /// the reload clears `cachedWeekStart` so the week actually re-fetches.
     func testArchivingRepaintsTheWeekCanvas() async throws {
         let fixture = try makeCalendarFixture()
-        defer { fixture.restorePermissions() }
+        defer { fixture.restore() }
 
         await fixture.viewModel.reloadCalendarDataOffMain()
+
+        // The calendar load correctly refuses to serve a signed-out operator,
+        // so a demolished session reads exactly like "no tasks on that day".
+        // Name the cause here rather than letting it surface as a bare [].
+        XCTAssertNotNil(
+            fixture.dataController.currentUser,
+            "The operator was signed out mid-test — DataController's auth probe must stay inert under XCTest."
+        )
         XCTAssertEqual(fixture.viewModel.scheduledTasks(for: fixture.today).map(\.id), ["task-live"])
 
         fixture.liveProject.status = .archived
@@ -372,7 +387,7 @@ final class ArchivedProjectCalendarVisibilityTests: XCTestCase {
         let viewModel: CalendarViewModel
         let liveProject: Project
         let today: Date
-        let restorePermissions: () -> Void
+        let restore: () -> Void
     }
 
     private func makeCalendarFixture() throws -> CalendarFixture {
@@ -392,19 +407,6 @@ final class ArchivedProjectCalendarVisibilityTests: XCTestCase {
             role: .crew, companyId: "co"
         )
         context.insert(user)
-
-        // `DataController.init` fires a one-shot `checkExistingAuth()`; with no
-        // stored credentials it calls `clearAuthentication()`, which nils
-        // `currentUser`. Seed the operator, wait for that clear to actually
-        // land, then seed again — otherwise the async clear lands mid-test and
-        // every fetch guarded on `currentUser` silently returns []. Waiting on
-        // the observed event, not a fixed sleep; the bound only guards the case
-        // where the environment never clears at all.
-        dataController.currentUser = user
-        let authSettled = Date(timeIntervalSinceNow: 5)
-        while dataController.currentUser != nil, Date() < authSettled {
-            RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.02))
-        }
         dataController.currentUser = user
 
         let today = Calendar.current.startOfDay(for: Date())
@@ -436,7 +438,7 @@ final class ArchivedProjectCalendarVisibilityTests: XCTestCase {
             viewModel: viewModel,
             liveProject: liveProject,
             today: today,
-            restorePermissions: {
+            restore: {
                 PermissionStore.shared.permissions = previousPermissions
                 PermissionStore.shared.blockedByFlags = previousBlocked
             }

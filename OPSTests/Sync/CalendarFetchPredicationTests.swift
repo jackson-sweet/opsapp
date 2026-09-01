@@ -45,10 +45,16 @@ final class CalendarFetchPredicationTests: XCTestCase {
     /// scope filter it replaced run verbatim over the same store.
     func test_weekCacheMatchesTheInMemoryFilterItReplaced() async throws {
         let fixture = try makeFixture()
-        defer { fixture.restorePermissions() }
+        defer { fixture.restore() }
 
         await fixture.viewModel.reloadCalendarDataOffMain()
 
+        // A signed-out operator reads exactly like an empty week cache — name
+        // the cause instead of letting it surface as a per-day parity diff.
+        XCTAssertNotNil(
+            fixture.dataController.currentUser,
+            "The operator was signed out mid-test — DataController's auth probe must stay inert under XCTest."
+        )
         let oracle = try weekCacheOracle(fixture)
         XCTAssertTrue(
             oracle.values.contains { !$0.isEmpty },
@@ -69,10 +75,14 @@ final class CalendarFetchPredicationTests: XCTestCase {
     /// startDate alone would drop this row off the canvas.
     func test_weekCacheKeepsWorkThatStartedLongBeforeTheWindow() async throws {
         let fixture = try makeFixture()
-        defer { fixture.restorePermissions() }
+        defer { fixture.restore() }
 
         await fixture.viewModel.reloadCalendarDataOffMain()
 
+        XCTAssertNotNil(
+            fixture.dataController.currentUser,
+            "The operator was signed out mid-test — DataController's auth probe must stay inert under XCTest."
+        )
         XCTAssertTrue(
             fixture.viewModel.scheduledTasks(for: fixture.today).map(\.id).contains("t-long-running"),
             """
@@ -84,7 +94,7 @@ final class CalendarFetchPredicationTests: XCTestCase {
 
     func test_weekCacheDropsTombstonedAndUndatedRows() async throws {
         let fixture = try makeFixture()
-        defer { fixture.restorePermissions() }
+        defer { fixture.restore() }
 
         let everyRow = try fixture.context.fetch(FetchDescriptor<ProjectTask>())
         XCTAssertTrue(
@@ -98,6 +108,10 @@ final class CalendarFetchPredicationTests: XCTestCase {
 
         await fixture.viewModel.reloadCalendarDataOffMain()
 
+        XCTAssertNotNil(
+            fixture.dataController.currentUser,
+            "The operator was signed out mid-test — DataController's auth probe must stay inert under XCTest."
+        )
         let drawn = Set(windowDays(around: fixture.today).flatMap {
             fixture.viewModel.scheduledTasks(for: $0).map(\.id)
         })
@@ -115,7 +129,7 @@ final class CalendarFetchPredicationTests: XCTestCase {
     /// behavior change cannot hide inside a parity assertion.
     func test_getAllScheduledTasksMatchesTheInMemoryFilterExceptForTombstones() throws {
         let fixture = try makeFixture()
-        defer { fixture.restorePermissions() }
+        defer { fixture.restore() }
 
         let cutoff = fixture.today.addingTimeInterval(-30 * day)
         let oracle = try monthGridOracle(fixture, from: cutoff)
@@ -150,7 +164,7 @@ final class CalendarFetchPredicationTests: XCTestCase {
     /// rather than quietly returning everything or nothing.
     func test_getAllScheduledTasksHonorsTheFromDateBound() throws {
         let fixture = try makeFixture()
-        defer { fixture.restorePermissions() }
+        defer { fixture.restore() }
 
         let cutoff = fixture.today.addingTimeInterval(-30 * day)
         let ids = Set(fixture.dataController.getAllScheduledTasks(from: cutoff).map(\.id))
@@ -258,7 +272,7 @@ final class CalendarFetchPredicationTests: XCTestCase {
         let dataController: DataController
         let viewModel: CalendarViewModel
         let today: Date
-        let restorePermissions: () -> Void
+        let restore: () -> Void
     }
 
     /// A store covering every branch the two fetches read: dated and undated,
@@ -334,16 +348,6 @@ final class CalendarFetchPredicationTests: XCTestCase {
         }
         try context.save()
 
-        // `DataController.init` fires a one-shot `checkExistingAuth()`; with no
-        // stored credentials it calls `clearAuthentication()`, which nils
-        // `currentUser`. Seed the operator, wait for that clear to land, then
-        // seed again — otherwise it arrives mid-test and every guarded fetch
-        // silently returns []. Waiting on the observed event, not a fixed sleep.
-        dataController.currentUser = user
-        let authSettled = Date(timeIntervalSinceNow: 5)
-        while dataController.currentUser != nil, Date() < authSettled {
-            RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.02))
-        }
         dataController.currentUser = user
 
         let viewModel = CalendarViewModel()
@@ -355,7 +359,7 @@ final class CalendarFetchPredicationTests: XCTestCase {
             dataController: dataController,
             viewModel: viewModel,
             today: today,
-            restorePermissions: {
+            restore: {
                 PermissionStore.shared.permissions = previousPermissions
                 PermissionStore.shared.blockedByFlags = previousBlocked
                 PermissionStore.shared.disabledFlags = previousDisabled

@@ -534,18 +534,6 @@ final class TaskReviewQueryParityTests: XCTestCase {
 
         let dataController = DataController()
         dataController.setModelContext(context)
-
-        // `DataController.init` fires a one-shot `checkExistingAuth()`; with no
-        // stored credentials it calls `clearAuthentication()`, which nils
-        // `currentUser`. Seed the operator, wait for that clear to land, then
-        // seed again — otherwise it arrives mid-test and every query guarded on
-        // `currentUser` silently returns []. Waiting on the observed event, not
-        // a fixed sleep; the bound only guards an environment that never clears.
-        dataController.currentUser = user
-        let authSettled = Date(timeIntervalSinceNow: 5)
-        while dataController.currentUser != nil, Date() < authSettled {
-            RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.02))
-        }
         dataController.currentUser = user
 
         return Fixture(

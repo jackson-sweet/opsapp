@@ -44,7 +44,7 @@ final class MonthDaySheetWindowTests: XCTestCase {
     /// land that day's tasks in the sheet's read path.
     func testRecenteredReloadServesAFarMonthDay() async throws {
         let fixture = try makeCalendarFixture()
-        defer { fixture.restorePermissions() }
+        defer { fixture.restore() }
 
         // Baseline (today-anchored window): the far day reads empty — this is
         // the pre-fix symptom, asserted so the test proves the mechanism and
@@ -55,6 +55,14 @@ final class MonthDaySheetWindowTests: XCTestCase {
         // What the month-grid tap now does: select, then reload around it.
         fixture.viewModel.selectedDate = fiveWeeksOut
         await fixture.viewModel.reloadCalendarDataOffMain()
+
+        // The calendar load correctly refuses to serve a signed-out operator,
+        // so a demolished session reads exactly like "no tasks on that day".
+        // Name the cause here rather than letting it surface as a bare [].
+        XCTAssertNotNil(
+            fixture.dataController.currentUser,
+            "The operator was signed out mid-test — DataControllerAuthSuppression is no longer holding."
+        )
 
         XCTAssertEqual(
             fixture.viewModel.scheduledTasks(for: fiveWeeksOut).map(\.id),
@@ -67,7 +75,7 @@ final class MonthDaySheetWindowTests: XCTestCase {
     /// off-main load; poll the cache with a deadline (never a fixed sleep).
     func testSelectDateRecentersTheWindowForTheSheet() throws {
         let fixture = try makeCalendarFixture()
-        defer { fixture.restorePermissions() }
+        defer { fixture.restore() }
 
         fixture.viewModel.selectDate(fiveWeeksOut, userInitiated: true)
 
@@ -100,7 +108,7 @@ final class MonthDaySheetWindowTests: XCTestCase {
         let context: ModelContext
         let dataController: DataController
         let viewModel: CalendarViewModel
-        let restorePermissions: () -> Void
+        let restore: () -> Void
     }
 
     private func makeCalendarFixture() throws -> CalendarFixture {
@@ -113,6 +121,13 @@ final class MonthDaySheetWindowTests: XCTestCase {
         PermissionStore.shared.permissions = ["tasks.view": "all", "calendar.view": "all"]
         PermissionStore.shared.blockedByFlags = []
 
+        // Installed BEFORE the controller exists: `DataController.init` spawns
+        // `checkExistingAuth()` immediately, and on a cold process that call
+        // reaches `clearAuthentication()` seconds later — nilling `currentUser`
+        // in the middle of whichever test built the fixture. See the type's
+        // header for the full account.
+        let authSuppression = DataControllerAuthSuppression()
+
         let dataController = DataController()
         dataController.setModelContext(context)
 
@@ -121,19 +136,6 @@ final class MonthDaySheetWindowTests: XCTestCase {
             role: .crew, companyId: "co"
         )
         context.insert(user)
-
-        // `DataController.init` fires a one-shot `checkExistingAuth()`; with no
-        // stored credentials it calls `clearAuthentication()`, which nils
-        // `currentUser`. Seed the operator, wait for that clear to actually
-        // land, then seed again — otherwise the async clear lands mid-test and
-        // every fetch guarded on `currentUser` silently returns []. Waiting on
-        // the observed event, not a fixed sleep; the bound only guards the case
-        // where the environment never clears at all.
-        dataController.currentUser = user
-        let authSettled = Date(timeIntervalSinceNow: 5)
-        while dataController.currentUser != nil, Date() < authSettled {
-            RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.02))
-        }
         dataController.currentUser = user
 
         let farProject = Project(id: "p-far", title: "North stair rebuild", status: .inProgress)
@@ -159,9 +161,10 @@ final class MonthDaySheetWindowTests: XCTestCase {
             context: context,
             dataController: dataController,
             viewModel: viewModel,
-            restorePermissions: {
+            restore: {
                 PermissionStore.shared.permissions = previousPermissions
                 PermissionStore.shared.blockedByFlags = previousBlocked
+                authSuppression.restore()
             }
         )
     }

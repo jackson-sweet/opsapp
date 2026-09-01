@@ -28,7 +28,7 @@ import XCTest
 @testable import OPS
 
 @MainActor
-final class ClientLeadAutocreateTests: XCTestCase {
+final class ClientLeadAutocreateFactoryTests: XCTestCase {
 
     private typealias Autocreate = ClientLeadAutocreate
 

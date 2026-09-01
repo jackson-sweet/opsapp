@@ -681,6 +681,9 @@ private struct DaySheetDeckResolver: View {
 
         let repo = DeckDesignRepository(companyId: opportunity.companyId)
         guard let dtos = try? await repo.fetchForOpportunity(opportunity.id) else { return }
+        // Post-cancellation resume: the card is gone and the context may be
+        // dead — fetching or saving on it would trap. Bail before touching it.
+        guard !Task.isCancelled else { return }
 
         for dto in dtos {
             let designId = DeckDesign.canonicalUUIDString(dto.id)

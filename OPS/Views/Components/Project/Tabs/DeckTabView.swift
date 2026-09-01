@@ -167,6 +167,11 @@ struct DeckTabView: View {
             // fetch is necessary.
             refreshLocalDeckDesign()
             await fetchRemoteDeckDesignIfNeeded()
+            // The repair fetch resumes even after SwiftUI cancels this task —
+            // the tab is gone by then, and in a test harness the captured
+            // context's container may already be dead (fetching on it traps).
+            // Never touch the context again once cancelled.
+            guard !Task.isCancelled else { return }
             refreshLocalDeckDesign()
         }
     }
@@ -863,6 +868,9 @@ struct DeckTabView: View {
             case .project: dtos = try await repository.fetchForProject(ownerId)
             case .lead: dtos = try await repository.fetchForOpportunity(ownerId)
             }
+            // Post-cancellation resume: the tab is gone and the context may be
+            // dead — merging into it would trap. Bail before touching it.
+            guard !Task.isCancelled else { return }
             guard !dtos.isEmpty else { return }
 
             try mergeRemoteDeckDesigns(dtos)

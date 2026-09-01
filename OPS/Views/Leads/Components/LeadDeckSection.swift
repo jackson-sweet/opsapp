@@ -95,6 +95,11 @@ struct LeadDeckSection: View {
             // DeckTabView's rule).
             refreshCandidate()
             await selfRepairFetchIfNeeded()
+            // The repair fetch resumes even after SwiftUI cancels this task —
+            // the view is gone by then, and in a test harness the captured
+            // context's container may already be dead (fetching on it traps).
+            // Never touch the context again once cancelled.
+            guard !Task.isCancelled else { return }
             refreshCandidate()
         }
     }
@@ -256,6 +261,9 @@ struct LeadDeckSection: View {
 
         let repo = DeckDesignRepository(companyId: opportunity.companyId)
         guard let dtos = try? await repo.fetchForOpportunity(opportunity.id) else { return }
+        // Post-cancellation resume: the view is gone and the context may be
+        // dead — merging into it would trap. Bail before touching it.
+        guard !Task.isCancelled else { return }
 
         do {
             try DeckDesignServerMerge.merge(dtos, into: modelContext)

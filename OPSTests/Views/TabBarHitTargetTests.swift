@@ -59,10 +59,65 @@ final class TabBarHitTargetTests: XCTestCase {
         return iconSize + gap
     }
 
-    /// Hosts the real `CustomTabBar` at device width in a window pinned to the
-    /// screen origin, so the accessibility frames (screen coordinates) can be
-    /// read directly.
-    private func hostTabBar() -> UIHostingController<AnyView> {
+    private struct Harness {
+        let host: UIHostingController<AnyView>
+        let restore: () -> Void
+    }
+
+    /// SwiftUI publishes accessibility nodes only when the simulator's
+    /// per-device accessibility bridging is on (`com.apple.Accessibility` →
+    /// `AccessibilityEnabled` + `ApplicationAccessibilityEnabled`). Long-lived
+    /// dev simulators have it — Accessibility Inspector or any XCUITest run
+    /// leaves it enabled — but a factory-fresh simulator does not, and there
+    /// the AX frame (this file's entire measurement seam) exists for NO
+    /// SwiftUI button at all. A control probe separates "this environment
+    /// cannot measure" from "the tab bar stopped publishing": a bare Button
+    /// always publishes a node when bridging is up, so its absence means the
+    /// environment — skip loudly with the fix, never fail on the wrong cause.
+    private func requireAccessibilityBridging() throws {
+        let window = try AppHostWindow.acquire()
+        let originalRoot = window.rootViewController
+        defer {
+            window.rootViewController = originalRoot
+            window.layoutIfNeeded()
+        }
+
+        let probe = UIHostingController(rootView: AnyView(
+            Button("ax-probe") {}
+                .accessibilityLabel("ax-probe")
+                .frame(width: 120, height: 44)
+        ))
+        window.rootViewController = probe
+        window.layoutIfNeeded()
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.2))
+
+        var frames: [String: CGRect] = [:]
+        tabNodeFrames(in: probe.view, into: &frames)
+        if frames["ax-probe"] == nil {
+            throw XCTSkip(
+                """
+                Accessibility bridging is off on this simulator, so SwiftUI \
+                publishes no AX nodes and the hit-region fence cannot measure \
+                its subject. Enable it once for this device, then reboot it: \
+                xcrun simctl spawn <udid> defaults write com.apple.Accessibility \
+                AccessibilityEnabled -bool true (and the same for \
+                ApplicationAccessibilityEnabled).
+                """
+            )
+        }
+    }
+
+    /// Hosts the real `CustomTabBar` in the app host's own window — never a
+    /// test-created one, which iOS 26.5 drops out of the render AND
+    /// accessibility pipelines (on a fresh simulator a test-created window
+    /// publishes no AX nodes at all, and the AX frame is this file's whole
+    /// measurement seam; see `AppHostWindow`). The app window sits at the
+    /// screen origin and matches `deviceWidth`, so accessibility frames
+    /// (screen coordinates) still read directly against the hosted geometry.
+    private func hostTabBar() throws -> Harness {
+        let window = try AppHostWindow.acquire()
+        let originalRoot = window.rootViewController
+
         let size = CGSize(width: deviceWidth, height: 200)
         let host = UIHostingController(rootView: AnyView(
             ZStack(alignment: .bottom) {
@@ -73,15 +128,19 @@ final class TabBarHitTargetTests: XCTestCase {
             .environment(\.colorScheme, .dark)
         ))
         host.overrideUserInterfaceStyle = .dark
-        host.view.frame = CGRect(origin: .zero, size: size)
+        host.safeAreaRegions = []
 
-        let window = UIWindow(frame: CGRect(origin: .zero, size: size))
         window.rootViewController = host
-        window.makeKeyAndVisible()
-        host.view.setNeedsLayout()
-        host.view.layoutIfNeeded()
+        window.layoutIfNeeded()
         RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.2))
-        return host
+
+        return Harness(
+            host: host,
+            restore: {
+                window.rootViewController = originalRoot
+                window.layoutIfNeeded()
+            }
+        )
     }
 
     /// Every tab's published accessibility node, keyed by its VoiceOver label —
@@ -106,9 +165,11 @@ final class TabBarHitTargetTests: XCTestCase {
     /// Each tab must own its whole cell: the full even-spaced column, not just
     /// the glyph inside it. Both axes must clear the 44pt floor.
     func testEveryTabOwnsItsFullCellAsATouchTarget() throws {
-        let host = hostTabBar()
+        try requireAccessibilityBridging()
+        let harness = try hostTabBar()
+        defer { harness.restore() }
         var frames: [String: CGRect] = [:]
-        tabNodeFrames(in: host.view, into: &frames)
+        tabNodeFrames(in: harness.host.view, into: &frames)
 
         let cell = cellWidth(laneWidth: deviceWidth)
         let minimum = OPSStyle.Layout.touchTargetMin
@@ -143,9 +204,10 @@ final class TabBarHitTargetTests: XCTestCase {
     /// scroll, so a quick tap never shows its pressed state — no acknowledgment
     /// at the moment of contact, which reads as latency.
     func testLaneDoesNotDelayTouchDown() throws {
-        let host = hostTabBar()
+        let harness = try hostTabBar()
+        defer { harness.restore() }
         let scrollView = try XCTUnwrap(
-            firstScrollView(in: host.view),
+            firstScrollView(in: harness.host.view),
             "The tab lane must be a scroll view for this guard to mean anything"
         )
 
@@ -171,9 +233,11 @@ final class TabBarHitTargetTests: XCTestCase {
     /// 32pt gap of nothing between neighbours — a tap landing there did
     /// absolutely nothing, which is the failure a user reads as lag.
     func testNoDeadGapBetweenAdjacentTabs() throws {
-        let host = hostTabBar()
+        try requireAccessibilityBridging()
+        let harness = try hostTabBar()
+        defer { harness.restore() }
         var frames: [String: CGRect] = [:]
-        tabNodeFrames(in: host.view, into: &frames)
+        tabNodeFrames(in: harness.host.view, into: &frames)
 
         let primary = adminTabs.dropLast()
         for (index, tab) in primary.enumerated() where index + 1 < primary.count {

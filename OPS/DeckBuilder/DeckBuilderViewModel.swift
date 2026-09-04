@@ -3844,6 +3844,44 @@ class DeckBuilderViewModel: ObservableObject {
         scheduleSave()
     }
 
+    // MARK: - Vinyl order settings (bug 9f4aeaf8)
+    //
+    // Same defect class as the canvas settings above: every control on the
+    // vinyl sheet wrote `drawingData` through a private helper in the view,
+    // with no save boundary. The sheet's `onDisappear` only persisted the
+    // free-text colour, and only when no catalog product was configured — so
+    // with a product selected, dismissing the sheet saved nothing at all.
+
+    func applyVinylOrderSettings(_ settings: VinylOrderSettings) {
+        guard drawingData.vinylOrderSettings != settings else { return }
+        drawingData.vinylOrderSettings = settings
+        scheduleSave()
+    }
+
+    func setVinylOrderMode(_ mode: VinylOrderMode) {
+        var materials = drawingData.materialsSettings ?? DeckMaterialsSettings()
+        guard materials.orderMode != mode else { return }
+        materials.orderMode = mode
+        drawingData.materialsSettings = materials
+        scheduleSave()
+    }
+
+    func setVinylFullRollLength(_ feet: Double) {
+        var materials = drawingData.materialsSettings ?? DeckMaterialsSettings()
+        guard materials.fullRollLengthFeet != feet else { return }
+        materials.fullRollLengthFeet = feet
+        drawingData.materialsSettings = materials
+        scheduleSave()
+    }
+
+    /// The ordered-snapshot merge behind MARK ORDERED / CLEAR ORDERED mutates
+    /// the drawing and must be written like any other edit — the service wrote
+    /// the model object, but the editor's working copy went unsaved.
+    func commitMergedOrderedSnapshot(_ data: DeckDrawingData) {
+        drawingData = data
+        scheduleSave()
+    }
+
     // MARK: - Persistence
 
     func save() {

@@ -194,11 +194,7 @@ struct VinylOrderSheet: View {
 
     private func handlePlanInputChange() {
         guard didSeedVinylOrderSettings else { return }
-        var data = viewModel.drawingData
-        if data.vinylOrderSettings != settings {
-            data.vinylOrderSettings = settings
-            viewModel.drawingData = data
-        }
+        viewModel.applyVinylOrderSettings(settings)
         recomputePlan()
     }
 
@@ -207,21 +203,13 @@ struct VinylOrderSheet: View {
     private func writeMaterialsOrderMode(_ mode: VinylOrderMode) {
         guard orderMode != mode else { return }
         orderMode = mode
-        var ms = viewModel.drawingData.materialsSettings ?? DeckMaterialsSettings()
-        ms.orderMode = mode
-        var data = viewModel.drawingData
-        data.materialsSettings = ms
-        viewModel.drawingData = data
+        viewModel.setVinylOrderMode(mode)
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
     }
 
     private func writeFullRollLength(_ feet: Double) {
         fullRollLengthFeet = feet
-        var ms = viewModel.drawingData.materialsSettings ?? DeckMaterialsSettings()
-        ms.fullRollLengthFeet = feet
-        var data = viewModel.drawingData
-        data.materialsSettings = ms
-        viewModel.drawingData = data
+        viewModel.setVinylFullRollLength(feet)
     }
 
     /// The signed-in operator's `users.id` (a lowercase Postgres uuid). This
@@ -413,6 +401,10 @@ struct VinylOrderSheet: View {
             }
             .onDisappear {
                 persistFreeTextColorIfNeeded()
+                // Defence in depth: the coalesced write from the last control
+                // touched is still inside its 0.4 s debounce at dismissal, and
+                // this sheet is routinely closed on the way out of the app.
+                viewModel.flushPendingSave()
             }
             .sheet(item: $pendingRollReceipt) { context in
                 VinylRollReceiptSheet(context: context) { count, lengthFeet, widthInches in
@@ -1346,7 +1338,7 @@ struct VinylOrderSheet: View {
                     from: viewModel.deckDesign,
                     into: &activeData
                 )
-                viewModel.drawingData = activeData
+                viewModel.commitMergedOrderedSnapshot(activeData)
                 // Same record, same builder, same feed entry as every other
                 // MARK ORDERED entry point — built from the frozen snapshot.
                 if let snapshot = viewModel.deckDesign.drawingData.orderedMaterials {
@@ -1437,7 +1429,7 @@ struct VinylOrderSheet: View {
                     from: viewModel.deckDesign,
                     into: &activeData
                 )
-                viewModel.drawingData = activeData
+                viewModel.commitMergedOrderedSnapshot(activeData)
                 isUpdatingProjectMarker = false
                 statusMessage = "VINYL MARK CLEARED"
                 UINotificationFeedbackGenerator().notificationOccurred(.success)

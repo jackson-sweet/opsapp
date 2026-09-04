@@ -67,6 +67,78 @@ final class DeckDesignDrawingDataCacheTests: XCTestCase {
         XCTAssertEqual(design.drawingData.vertices.count, 4)
     }
 
+    // MARK: - Sync merge base (bug 9f4aeaf8)
+
+    func test_storeDrawingData_leavesMergeBaseUntouched() {
+        let design = DeckDesign(companyId: "c1", title: "T")
+        design.syncedDrawingJSON = "{\"seed\":true}"
+
+        var drawing = DeckDrawingData()
+        drawing.scaleFactor = 1
+        design.storeDrawingData(drawing, json: drawing.toJSON())
+
+        XCTAssertEqual(
+            design.syncedDrawingJSON,
+            "{\"seed\":true}",
+            "a local edit must not move the merge base — only a confirmed server agreement may"
+        )
+        XCTAssertTrue(design.hasUnsyncedDrawing)
+    }
+
+    func test_markDrawingSynced_movesMergeBaseToCurrentPayload() {
+        let design = DeckDesign(companyId: "c1", title: "T")
+        var drawing = DeckDrawingData()
+        drawing.scaleFactor = 1
+        design.storeDrawingData(drawing, json: drawing.toJSON())
+        XCTAssertTrue(design.hasUnsyncedDrawing)
+
+        design.markDrawingSynced()
+
+        XCTAssertEqual(design.syncedDrawingJSON, design.drawingDataJSON)
+        XCTAssertFalse(design.hasUnsyncedDrawing)
+    }
+
+    /// The first local write to a row that has never recorded a base seeds it
+    /// with the payload being replaced — the last state the server and this
+    /// device agreed on. Without this, a row edited after upgrading would have
+    /// no content baseline and would depend on `needsSync`, which an inbound
+    /// merge is free to clear.
+    func test_storeDrawingData_seedsTheMergeBaseFromThePreEditPayload() {
+        let serverPayload = makeClosedDrawing(vertexCount: 4).toJSON()
+        let design = DeckDesign(companyId: "c1", title: "T", drawingDataJSON: serverPayload)
+        XCTAssertNil(design.syncedDrawingJSON)
+
+        var edited = makeClosedDrawing(vertexCount: 3)
+        edited.scaleFactor = 1
+        design.storeDrawingData(edited, json: edited.toJSON())
+
+        XCTAssertEqual(
+            design.syncedDrawingJSON,
+            serverPayload,
+            "the payload the edit replaced is the merge base"
+        )
+        XCTAssertTrue(design.hasUnsyncedDrawing)
+    }
+
+    /// An unknown merge base falls back to the only authorship signal such a
+    /// row carries. A row merged in from the server holds the server's own
+    /// content and must keep accepting inbound geometry; a row flagged for push
+    /// holds local content and must be protected.
+    func test_hasUnsyncedDrawing_withNoMergeBaseFollowsTheDirtyFlag() {
+        let merged = DeckDesign(companyId: "c1", title: "T")
+        XCTAssertNil(merged.syncedDrawingJSON)
+        XCTAssertFalse(
+            merged.hasUnsyncedDrawing,
+            "a row with no base and no local write holds nothing the server has not confirmed"
+        )
+
+        merged.needsSync = true
+        XCTAssertTrue(
+            merged.hasUnsyncedDrawing,
+            "a row flagged for push holds local content even with no recorded base"
+        )
+    }
+
     private func makeClosedDrawing(vertexCount: Int) -> DeckDrawingData {
         var drawing = DeckDrawingData()
         drawing.vertices = (0..<vertexCount).map { index in

@@ -62,6 +62,16 @@ final class DeckDesign: Identifiable {
     var syncPriority: Int = 1
     var deletedAt: Date?
 
+    /// The `drawing_data` payload the server and this device last agreed on —
+    /// the merge base for inbound conflict resolution. Set ONLY when a push is
+    /// confirmed or a server snapshot is accepted; a local edit never moves it.
+    ///
+    /// Nullable and additive so a shipped older build reading this table is
+    /// unaffected. `nil` means "merge base unknown", which only happens on a
+    /// row this build has never seen edited — `storeDrawingData` seeds the base
+    /// from the pre-edit payload on the first local write. Bug 9f4aeaf8.
+    var syncedDrawingJSON: String?
+
     // Timestamps
     var createdAt: Date
     var updatedAt: Date?
@@ -106,10 +116,42 @@ final class DeckDesign: Identifiable {
     /// save boundary. This avoids repeating the full encoder pass for the model
     /// setter and outbound sync payload.
     func storeDrawingData(_ drawing: DeckDrawingData, json: String) {
+        // Seed the merge base on the first local write to a row that has never
+        // recorded one. The payload being replaced is, by definition, the last
+        // state this device and the server agreed on: either a snapshot the
+        // inbound merge wrote, or the empty default of a brand-new design. From
+        // here on the row's unpushed content is provable by content comparison
+        // instead of by trusting a flag an inbound merge can clear. Bug 9f4aeaf8.
+        if syncedDrawingJSON == nil {
+            syncedDrawingJSON = drawingDataJSON
+        }
         drawingDataJSON = json
         drawingDataCache.store(drawing, json: json)
         updatedAt = Date()
         needsSync = true
+    }
+
+    /// True when the local drawing holds content the server has not confirmed.
+    ///
+    /// With a recorded merge base this is a pure content comparison — the only
+    /// honest signal, and the reason this exists: the timestamps it replaced
+    /// compared a server trigger clock against a device clock and always
+    /// resolved for the server (bug 9f4aeaf8).
+    ///
+    /// With no recorded base the row has had no local write since this field
+    /// shipped, so `needsSync` is the only authorship signal it carries and is
+    /// sound for exactly that case: a row merged in from the server holds the
+    /// server's own content. Failing safe to `true` here instead would freeze
+    /// inbound geometry on every pre-existing row on every device.
+    var hasUnsyncedDrawing: Bool {
+        guard let syncedDrawingJSON else { return needsSync }
+        return syncedDrawingJSON != drawingDataJSON
+    }
+
+    /// Records that the current local drawing is now what the server holds.
+    /// Called on a confirmed outbound push and on an accepted inbound snapshot.
+    func markDrawingSynced() {
+        syncedDrawingJSON = drawingDataJSON
     }
 
     // MARK: - Convenience

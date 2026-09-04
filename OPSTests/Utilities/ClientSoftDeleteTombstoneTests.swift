@@ -99,6 +99,41 @@ final class ClientSoftDeleteTombstoneTests: XCTestCase {
         )
     }
 
+    func test_getAllClients_excludesTombstonesButStillNamesThemOnRequest() async throws {
+        // The shared accessor behind the calendar filter, the job board client
+        // list, project search and the create-client duplicate check. Before the
+        // tombstone change a locally deleted client simply vanished from the
+        // store; now it lingers, so this is the guard that keeps it out of every
+        // surface an operator can pick from — while Books can still resolve the
+        // name on an invoice raised before the deletion.
+        let (dataController, context) = try makeHarness()
+        let deleted = makeClient()
+        let kept = makeClient(
+            id: "60606060-6060-4060-8060-606060606060",
+            name: "Harbourline Mechanical"
+        )
+        context.insert(deleted)
+        context.insert(kept)
+        try context.save()
+
+        try await dataController.deleteClient(deleted)
+
+        XCTAssertEqual(
+            dataController.getAllClients(for: "company-1").map(\.id),
+            [kept.id],
+            "A deleted client must not reach any picker or list."
+        )
+        XCTAssertEqual(
+            Set(
+                dataController
+                    .getAllClients(for: "company-1", includingDeleted: true)
+                    .map(\.id)
+            ),
+            [deleted.id, kept.id],
+            "Name lookups for historical rows must still see the tombstone."
+        )
+    }
+
     // MARK: - Harness
 
     private func makeHarness() throws -> (DataController, ModelContext) {

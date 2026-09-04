@@ -3025,16 +3025,27 @@ class DataController: ObservableObject {
         }
     }
     
-    func getAllClients(for companyId: String) -> [Client] {
+    /// Every client a company still has.
+    ///
+    /// Tombstoned rows are excluded by default: a deleted client is not a client
+    /// any more, and every list, picker and duplicate check that reads this
+    /// wants only live ones. The filter runs in Swift rather than the predicate
+    /// so the fetch itself is unchanged.
+    ///
+    /// - Parameter includingDeleted: pass `true` only to resolve a name for a
+    ///   historical row (an invoice against a since-deleted client should still
+    ///   render that client's name). Never for anything the operator can pick.
+    func getAllClients(for companyId: String, includingDeleted: Bool = false) -> [Client] {
         guard let context = modelContext else { return [] }
-        
+
         do {
             let descriptor = FetchDescriptor<Client>(
                 predicate: #Predicate<Client> { client in
                     client.companyId == companyId
                 }
             )
-            return try context.fetch(descriptor)
+            let clients = try context.fetch(descriptor)
+            return includingDeleted ? clients : clients.filter { $0.deletedAt == nil }
         } catch {
             print("[DataController] Error fetching clients: \(error)")
             return []

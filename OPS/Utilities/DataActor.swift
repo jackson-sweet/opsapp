@@ -1651,7 +1651,12 @@ actor DataActor {
 
             existing.applyServerSnapshot(dto, accepting: accept)
             existing.lastSyncedAt = Date()
-            if !hasPendingOperations(entityType: .deckDesign, entityId: existing.id) {
+            // Never clear the flag on a row still holding content the server has
+            // not confirmed: a parked or failed op is "not pending", and
+            // clearing here disarmed the conflict guard for an edit that was
+            // never delivered. Bug 9f4aeaf8.
+            if !hasPendingOperations(entityType: .deckDesign, entityId: existing.id),
+               !existing.hasUnsyncedDrawing {
                 existing.needsSync = false
             }
         } else {

@@ -2193,7 +2193,9 @@ final class RealtimeProcessor: ObservableObject {
             let acceptedFields = Set(DeckDesign.serverMergeFields).subtracting(pendingFields)
             existing.applyServerSnapshot(dto, accepting: acceptedFields)
             existing.lastSyncedAt = Date()
-            existing.needsSync = !pendingFields.isEmpty
+            // A row holding content the server has not confirmed stays flagged
+            // even with no outstanding operation. Bug 9f4aeaf8.
+            existing.needsSync = !pendingFields.isEmpty || existing.hasUnsyncedDrawing
         } else {
             let model = dto.toModel()
             model.lastSyncedAt = Date()

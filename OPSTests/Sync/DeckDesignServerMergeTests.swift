@@ -121,6 +121,110 @@ final class DeckDesignServerMergeTests: XCTestCase {
         )
     }
 
+    // MARK: - 2b. In-flight and parked coverage (bug 9f4aeaf8)
+
+    /// `pendingFields` matched `status == "pending"` alone, so an operation that
+    /// flipped to `inProgress` immediately before its network call protected
+    /// nothing — the exact window a realtime echo of the pre-edit row lands in.
+    /// Its sibling merge paths get that coverage from SyncFieldGuard; this one
+    /// claimed to mirror them and did not.
+    func test_pendingFields_protectsAnInProgressOperation() throws {
+        let context = try makeContext()
+        let design = DeckDesign(id: "c0509774-2748-479f-92e7-ee7d5dcff14e", companyId: companyId, title: "T")
+        context.insert(design)
+        let op = SyncOperation(
+            entityType: SyncEntityType.deckDesign.rawValue,
+            entityId: design.id,
+            operationType: "update",
+            payload: Data("{\"drawing_data\":{}}".utf8),
+            changedFields: ["drawing_data"],
+            previousValues: nil,
+            priority: 1,
+            dependsOnId: nil
+        )
+        op.status = "inProgress"
+        context.insert(op)
+        try context.save()
+
+        let fields = DeckDesignServerMerge.pendingFields(for: design.id, in: context)
+        XCTAssertTrue(
+            fields.contains("drawing_data"),
+            "an in-flight push must protect its field — the sibling inbound paths already do this via SyncFieldGuard"
+        )
+    }
+
+    /// A parked operation is one the server permanently refused. The edit it
+    /// carries was never delivered, so its fields must stay protected rather
+    /// than be handed to the next server snapshot.
+    func test_pendingFields_protectsARecentlyParkedOperation() throws {
+        let context = try makeContext()
+        let design = DeckDesign(id: "c0509774-2748-479f-92e7-ee7d5dcff14e", companyId: companyId, title: "T")
+        context.insert(design)
+        let op = SyncOperation(
+            entityType: SyncEntityType.deckDesign.rawValue,
+            entityId: design.id,
+            operationType: "update",
+            payload: Data("{\"drawing_data\":{}}".utf8),
+            changedFields: ["drawing_data"],
+            previousValues: nil,
+            priority: 1,
+            dependsOnId: nil
+        )
+        op.status = "parked"
+        op.lastAttemptedAt = Date()
+        context.insert(op)
+        try context.save()
+
+        XCTAssertTrue(
+            DeckDesignServerMerge.pendingFields(for: design.id, in: context).contains("drawing_data")
+        )
+    }
+
+    /// A row still holding content the server has not confirmed stays flagged
+    /// after a merge, even when no operation is outstanding. Clearing it there
+    /// is what let the next pull find nothing to protect.
+    func test_mergeKeepsTheDirtyFlagOnARowWithUnpushedContent() throws {
+        let context = try makeContext()
+
+        var localDrawing = square()
+        localDrawing.scaleFactor = 1
+        let design = DeckDesign(
+            id: designId,
+            companyId: companyId,
+            opportunityId: opportunityId,
+            title: "Local title",
+            drawingDataJSON: localDrawing.toJSON()
+        )
+        // Confirmed base is the EMPTY drawing — the local square is unpushed.
+        design.syncedDrawingJSON = DeckDrawingData().toJSON()
+        design.updatedAt = Date(timeIntervalSince1970: 1_780_000_000)
+        design.needsSync = false
+        context.insert(design)
+        try context.save()
+
+        try DeckDesignServerMerge.merge(
+            [
+                dto(
+                    id: designId,
+                    title: "Server title",
+                    drawing: DeckDrawingData(),
+                    updatedAt: Date(timeIntervalSince1970: 1_780_000_600)
+                )
+            ],
+            into: context
+        )
+
+        let stored = try XCTUnwrap(context.fetch(FetchDescriptor<DeckDesign>()).first)
+        XCTAssertEqual(
+            stored.drawingData.vertices.count, 4,
+            "unpushed geometry must survive a merge with no outstanding operation"
+        )
+        XCTAssertTrue(
+            stored.needsSync,
+            "the row still holds unpushed content and must stay flagged for push"
+        )
+    }
+
     // MARK: - 3. Case-variant identity
 
     /// `UUID().uuidString` is uppercase; Postgres hands back lowercase. A row

@@ -685,21 +685,15 @@ private struct DaySheetDeckResolver: View {
         // dead — fetching or saving on it would trap. Bail before touching it.
         guard !Task.isCancelled else { return }
 
-        for dto in dtos {
-            let designId = DeckDesign.canonicalUUIDString(dto.id)
-            let descriptor = FetchDescriptor<DeckDesign>(
-                predicate: #Predicate<DeckDesign> { $0.id == designId }
-            )
-            if let existing = (try? modelContext.fetch(descriptor))?.first {
-                existing.applyServerSnapshot(dto, accepting: Set(DeckDesign.serverMergeFields))
-            } else {
-                let model = dto.toModel()
-                model.lastSyncedAt = Date()
-                model.needsSync = false
-                modelContext.insert(model)
-            }
+        // One merge for every deck self-repair fetch. The hand-rolled upsert
+        // this replaced applied full server snapshots with NO pending-write
+        // protection at all, so a deck edit still queued for push could be
+        // overwritten by a card simply appearing on screen. Bug 9f4aeaf8.
+        do {
+            try DeckDesignServerMerge.merge(dtos, into: modelContext)
+        } catch {
+            print("[DaySheetLeadCard] Deck self-repair merge failed: \(error)")
         }
-        try? modelContext.save()
     }
 }
 

@@ -124,7 +124,16 @@ final class DeckDesignLinkSyncTests: XCTestCase {
         )
     }
 
-    func test_activeEditorSavesLocallyWithoutRecordingSyncUntilExit() throws {
+    /// Backgrounding is a DURABLE CLOUD BOUNDARY, not a local-only checkpoint.
+    ///
+    /// This test asserted the opposite until 2026-09-04. Commit 88edd771 removed
+    /// the mid-session enqueue along with the mid-session push, which made a
+    /// clean editor exit the only way work ever reached the server — so a crash,
+    /// an OOM kill or a force-quit lost the whole session server-side. That is
+    /// bug 9f4aeaf8, and 0db5ca1b put the queue record back while keeping every
+    /// byte of network I/O off this path via `deferPush`. The old assertion
+    /// encoded the defect, so it is inverted here rather than deleted.
+    func test_interruptedEditorLeavesADurableQueueRecordWithoutPushing() throws {
         let container = try makeSyncOperationContainer()
         let context = container.mainContext
         let design = DeckDesign(
@@ -149,9 +158,15 @@ final class DeckDesignLinkSyncTests: XCTestCase {
         XCTAssertTrue(try deckOps(context).isEmpty, "an active editor must not create cloud-sync work")
 
         vm.flushLocallyForInterruption()
-        XCTAssertTrue(
-            try deckOps(context).isEmpty,
-            "locking the phone or backgrounding the app while the editor remains open is local-only"
+        let interruptedOps = try deckOps(context)
+        XCTAssertEqual(
+            interruptedOps.filter { $0.operationType == "create" }.count, 1,
+            "locking the phone or backgrounding the app MUST leave a durable queue record — the OS kills suspended apps, and without this the session is lost server-side"
+        )
+        XCTAssertEqual(
+            try decoded(try XCTUnwrap(interruptedOps.first).payload)["title"] as? String,
+            "Local edit two",
+            "the record carries the latest revision, not the revision at editor open"
         )
 
         vm.flushBeforeExit()
@@ -159,6 +174,10 @@ final class DeckDesignLinkSyncTests: XCTestCase {
         XCTAssertEqual(exitOps.filter { $0.operationType == "create" }.count, 1)
         let payload = try decoded(try XCTUnwrap(exitOps.first).payload)
         XCTAssertEqual(payload["title"] as? String, "Local edit two")
+        XCTAssertEqual(
+            exitOps.count, interruptedOps.count,
+            "a background followed by a clean exit must not enqueue the same revision twice"
+        )
 
         vm.flushBeforeExit()
         XCTAssertEqual(

@@ -311,18 +311,46 @@ class ProjectRepository {
         )
     }
 
-    // MARK: - Soft Delete
+    // MARK: - Soft Delete / Restore
 
+    /// Tombstone a project through the definer-owned RPC.
+    ///
+    /// `projects.role_scope_read` is a RESTRICTIVE SELECT policy that judges the
+    /// row's own `deleted_at`, and Postgres attaches SELECT policies as WITH
+    /// CHECK options to any UPDATE whose target requires ACL_SELECT — which
+    /// `where id = $1` does. The PATCH this replaces was therefore refused
+    /// `42501` for every client role, which also broke the client-deletion flow
+    /// end to end: `ClientDeletionSheet` deletes each of the client's projects
+    /// before deleting the client itself.
+    ///
+    /// INVARIANT PRESERVED, DELIBERATELY: `public.enforce_project_opportunity_link`
+    /// fires on `deleted_at` and, for a project carrying an opportunity link,
+    /// still demands `pipeline.manage all` from the JWT caller — the trigger reads
+    /// the session's claims, not the definer's role, so moving the write inside an
+    /// RPC does not and must not suppress it. A user without that permission gets
+    /// a real `access_denied` (42501) rather than a silent success. Clearing the
+    /// tombstone trips the same check, so restore carries the same requirement.
     func softDelete(_ projectId: String) async throws {
-        struct SoftDelete: Codable {
-            let deleted_at: String
-            let updated_at: String
-        }
-        let payload = SoftDelete(deleted_at: isoNow(), updated_at: isoNow())
-        try await client
-            .from("projects")
-            .update(payload)
-            .eq("id", value: projectId)
+        _ = try await client
+            .rpc(
+                "soft_delete_project",
+                params: SoftDeleteProjectRPCParams(p_project_id: projectId.lowercased())
+            )
+            .execute()
+    }
+
+    /// Clear a project's tombstone.
+    ///
+    /// The PATCH this replaces matched zero rows rather than failing — the
+    /// tombstoned project is invisible to the read policy the USING clause
+    /// consults — so every restore from Settings ▸ Trash reported success while
+    /// the server kept its tombstone.
+    func restore(_ projectId: String) async throws {
+        _ = try await client
+            .rpc(
+                "restore_project",
+                params: SoftDeleteProjectRPCParams(p_project_id: projectId.lowercased())
+            )
             .execute()
     }
 }

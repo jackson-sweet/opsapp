@@ -515,12 +515,20 @@ final class SyncEngine {
     /// records. The RPC payload uses server column names, while
     /// `changedFields` deliberately uses the SwiftData property names consumed
     /// by inbound merge protection.
+    ///
+    /// Bug f5f57917 — `attachments` is the media half of the edit. `nil` means
+    /// the edit left the note's photos alone, and it is encoded by OMITTING the
+    /// `attachments` key: a text-only edit therefore queues an operation whose
+    /// RPC payload is exactly the one every previous build queued. The
+    /// `previous_attachments` key is recorded either way, so discarding the
+    /// operation can always put the photos back.
     @discardableResult
     func recordProjectNoteMentionEdit(
         note: ProjectNote,
         content: String,
         mentionedUserIds: [String],
-        mentionEventId: String
+        mentionEventId: String,
+        attachments: [String]? = nil
     ) -> Bool {
         guard let modelContext else {
             print("[SYNC_ENGINE] Cannot record project-note mention edit — modelContext not configured")
@@ -538,23 +546,33 @@ final class SyncEngine {
         } else {
             previousUpdatedAtPayload = NSNull()
         }
+        let previousAttachments = note.attachments
         do {
+            var updateObject: [String: Any] = [
+                ProjectNoteMentionEditSync.noteIdPayloadKey: noteId,
+                ProjectNoteMentionEditSync.contentPayloadKey: content,
+                ProjectNoteMentionEditSync.mentionedUserIdsPayloadKey: mentionedUserIds,
+                ProjectNoteMentionEditSync.eventIdPayloadKey: canonicalEventId,
+                ProjectNoteMentionEditSync.previousContentPayloadKey:
+                    note.content,
+                ProjectNoteMentionEditSync
+                    .previousMentionedUserIdsPayloadKey:
+                    note.mentionedUserIds,
+                ProjectNoteMentionEditSync
+                    .previousAttachmentsPayloadKey:
+                    previousAttachments,
+                ProjectNoteMentionEditSync.previousNeedsSyncPayloadKey:
+                    note.needsSync,
+                ProjectNoteMentionEditSync.previousUpdatedAtPayloadKey:
+                    previousUpdatedAtPayload,
+            ]
+            if let attachments {
+                updateObject[
+                    ProjectNoteMentionEditSync.attachmentsPayloadKey
+                ] = attachments
+            }
             updatePayload = try JSONSerialization.data(
-                withJSONObject: [
-                    ProjectNoteMentionEditSync.noteIdPayloadKey: noteId,
-                    ProjectNoteMentionEditSync.contentPayloadKey: content,
-                    ProjectNoteMentionEditSync.mentionedUserIdsPayloadKey: mentionedUserIds,
-                    ProjectNoteMentionEditSync.eventIdPayloadKey: canonicalEventId,
-                    ProjectNoteMentionEditSync.previousContentPayloadKey:
-                        note.content,
-                    ProjectNoteMentionEditSync
-                        .previousMentionedUserIdsPayloadKey:
-                        note.mentionedUserIds,
-                    ProjectNoteMentionEditSync.previousNeedsSyncPayloadKey:
-                        note.needsSync,
-                    ProjectNoteMentionEditSync.previousUpdatedAtPayloadKey:
-                        previousUpdatedAtPayload,
-                ]
+                withJSONObject: updateObject
             )
             dispatchPayload = try JSONSerialization.data(
                 withJSONObject: [
@@ -634,10 +652,21 @@ final class SyncEngine {
                             ProjectNoteMentionEditSync
                             .updateOperationType,
                         payload: updatePayload,
-                        changedFields: [
-                            "content",
-                            "mentionedUserIdsString",
-                        ],
+                        // Inbound merge protection reads these. A media edit
+                        // must claim `attachmentsJSON` too, or a server pull
+                        // landing before the operation does would paint the
+                        // detached photo straight back onto the card. A
+                        // text-only edit claims exactly what it always did.
+                        changedFields: attachments == nil
+                            ? [
+                                "content",
+                                "mentionedUserIdsString",
+                            ]
+                            : [
+                                "content",
+                                "mentionedUserIdsString",
+                                "attachmentsJSON",
+                            ],
                         priority: 1,
                         dependsOnId:
                             previousUpdate?.id.uuidString
@@ -678,6 +707,9 @@ final class SyncEngine {
 
                     note.content = content
                     note.mentionedUserIds = mentionedUserIds
+                    if let attachments {
+                        note.attachments = attachments
+                    }
                     note.updatedAt = Date()
                     note.needsSync = true
 
@@ -2795,8 +2827,17 @@ final class SyncEngine {
                         ProjectNoteMentionEditSync.DiscardNoteMutation?
                     if discardsUncreatedNote {
                         noteMutation = .offlineCreateDeletion
-                    } else if reconciledState != nil {
-                        noteMutation = .mentionUpdate
+                    } else if let reconciledState {
+                        // The reconciliation below rewrites the note's photos
+                        // only when the edit actually moved them, so only then
+                        // does a failed discard own restoring them. A
+                        // text-only edit must leave `attachmentsJSON` to
+                        // whoever else wrote it — a concurrent inbound merge,
+                        // say — exactly as the snapshot leaves `lastSyncedAt`.
+                        noteMutation = .mentionUpdate(
+                            restatesAttachments:
+                                reconciledState.attachments != nil
+                        )
                     } else if discardsProjectNoteDelete {
                         noteMutation = .delete
                     } else {
@@ -2818,6 +2859,11 @@ final class SyncEngine {
                         reconciledNote.content = reconciledState.content
                         reconciledNote.mentionedUserIds =
                             reconciledState.mentionedUserIds
+                        // nil means the discarded edit never touched the
+                        // note's photos, so leave them exactly as they are.
+                        if let attachments = reconciledState.attachments {
+                            reconciledNote.attachments = attachments
+                        }
                         reconciledNote.needsSync =
                             reconciledState.needsSync
                         reconciledNote.updatedAt =

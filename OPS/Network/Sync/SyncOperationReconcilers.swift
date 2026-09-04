@@ -135,6 +135,11 @@ enum SyncOperationReconcilers {
         /// No such row in this company — including another company's row, which
         /// reads `absent` rather than leaking across the tenant boundary.
         case absent
+        /// The server could not resolve the CALLER to a company, so it has no
+        /// opinion about the row. Bug bf2a75fb: this used to answer `absent`,
+        /// and a caller that believed it dropped the queued mirror for good
+        /// against a perfectly live job. Not evidence of anything — retry.
+        case unknown
     }
 
     /// Reads the RPC's scalar answer off the wire.

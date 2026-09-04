@@ -414,13 +414,18 @@ struct ClientDistributionCard: View {
     @Query private var projects: [Project]
 
     private var topClients: [(client: Client, projectCount: Int)] {
-        clients.compactMap { client in
-            let count = client.activeProjects.count
-            return count > 0 ? (client, count) : nil
-        }
-        .sorted { $0.projectCount > $1.projectCount }
-        .prefix(5)
-        .map { $0 }
+        // Tombstoned clients are excluded: since deleteClient tombstones instead
+        // of hard-deleting, a deleted client keeps its row (so Trash can restore
+        // it) and would otherwise still rank here.
+        clients
+            .filter { $0.deletedAt == nil }
+            .compactMap { client in
+                let count = client.activeProjects.count
+                return count > 0 ? (client, count) : nil
+            }
+            .sorted { $0.projectCount > $1.projectCount }
+            .prefix(5)
+            .map { $0 }
     }
 
     var body: some View {

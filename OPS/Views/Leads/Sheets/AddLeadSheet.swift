@@ -424,7 +424,9 @@ struct AddLeadSheet: View {
             let descriptor = FetchDescriptor<Client>(
                 predicate: #Predicate<Client> { $0.companyId == cid }
             )
-            clients = (try? context.fetch(descriptor)) ?? []
+            // Live clients only. Matching a new lead onto a tombstoned client
+            // would attach fresh work to a row the operator already deleted.
+            clients = ((try? context.fetch(descriptor)) ?? []).filter { $0.deletedAt == nil }
         }
 
         if let existing = LeadClientMatcher.match(in: clients, name: name, email: email, phone: phone) {

@@ -1111,8 +1111,21 @@ final class OutboundProcessor {
             try await repo.create(dto)
 
         case "update":
-            let fields = payloadToAnyJSON(sanitizedPayload)
-            try await repo.updateFields(entityId, fields: fields)
+            // Restore is staged as an `update` carrying `deleted_at: null`
+            // (DataController.restoreTrash), so the "delete" branch never sees
+            // it — and `deleted_at` cannot ride a PATCH on projects in either
+            // direction. Split it off for the definer RPC, in the order the read
+            // policy allows (SoftDeleteRPC.swift).
+            for step in TombstoneFieldSplit.steps(for: payloadToAnyJSON(sanitizedPayload)) {
+                switch step {
+                case .patch(let patch):
+                    try await repo.updateFields(entityId, fields: patch)
+                case .softDelete:
+                    try await repo.softDelete(entityId)
+                case .restore:
+                    try await repo.restore(entityId)
+                }
+            }
 
         case "delete":
             try await repo.softDelete(entityId)
@@ -1241,8 +1254,20 @@ final class OutboundProcessor {
                     materialAdjustments: TaskCompletionSync.materialAdjustments(from: payload)
                 )
             } else {
-                let fields = payloadToAnyJSON(sanitizedPayload)
-                try await repo.updateFields(entityId, fields: fields)
+                // A completion payload never carries `deleted_at`, so only this
+                // arm needs the split. Restore arrives here as an `update`
+                // carrying `deleted_at: null`, and the tombstone column cannot
+                // travel by PATCH in either direction (SoftDeleteRPC.swift).
+                for step in TombstoneFieldSplit.steps(for: payloadToAnyJSON(sanitizedPayload)) {
+                    switch step {
+                    case .patch(let patch):
+                        try await repo.updateFields(entityId, fields: patch)
+                    case .softDelete:
+                        try await repo.softDelete(entityId)
+                    case .restore:
+                        try await repo.restore(entityId)
+                    }
+                }
             }
 
         case "delete":
@@ -1309,9 +1334,20 @@ final class OutboundProcessor {
             try await repo.create(dto)
 
         case "update":
-            // ClientRepository doesn't have updateFields — use generic table push
-            let fields = payloadToAnyJSON(sanitizedPayload)
-            try await genericUpdateFields(table: "clients", entityId: entityId, fields: fields)
+            // ClientRepository doesn't have updateFields — use generic table push.
+            // The tombstone half cannot go through PostgREST at all: setting
+            // `deleted_at` is refused 42501 and clearing it matches zero rows in
+            // silence, so it splits off to the definer RPC (SoftDeleteRPC.swift).
+            for step in TombstoneFieldSplit.steps(for: payloadToAnyJSON(sanitizedPayload)) {
+                switch step {
+                case .patch(let patch):
+                    try await genericUpdateFields(table: "clients", entityId: entityId, fields: patch)
+                case .softDelete:
+                    try await repo.softDelete(entityId)
+                case .restore:
+                    try await repo.restore(entityId)
+                }
+            }
 
         case "delete":
             try await repo.softDelete(entityId)

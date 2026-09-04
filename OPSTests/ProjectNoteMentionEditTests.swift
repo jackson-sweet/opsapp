@@ -2594,6 +2594,179 @@ final class ProjectNoteMentionEditTests: XCTestCase {
         )
     }
 
+    /// Bug f5f57917, the cancellation half of the claim rule. `SyncEngine`
+    /// claims `attachmentsJSON` in a mention edit's `changedFields` only when
+    /// the edit actually moved the note's photos, and the inbound merge gate
+    /// (`DataActor.acceptableFields`) honours exactly that claim. A failed
+    /// discard's recovery must mirror it: a text-only edit never wrote the
+    /// column, so a merge that landed mid-discard still owns the note's
+    /// photos. Restoring the pre-edit set here would delete media the server
+    /// legitimately holds.
+    func testFailedTextOnlyDiscardLeavesConcurrentInboundPhotosAlone() throws {
+        let harness = try makeHarness(previousMentionIds: [])
+        harness.note.attachments = ["https://example.com/local-photo.jpg"]
+        try harness.context.save()
+
+        harness.dataController.updateProjectNoteContent(
+            note: harness.note,
+            content: "@Alice Able first.",
+            mentionedUserIds: [aliceId],
+            mentionEventId: eventId
+        )
+        harness.dataController.updateProjectNoteContent(
+            note: harness.note,
+            content: "@Bob Builder second.",
+            mentionedUserIds: [bobId],
+            mentionEventId: secondEventId
+        )
+        let operations = try harness.context.fetch(
+            FetchDescriptor<SyncOperation>()
+        )
+        let discarded = try XCTUnwrap(
+            operations.first {
+                ProjectNoteMentionEditSync.isUpdateOperation($0)
+                    && mentionEventId(in: $0) == secondEventId
+            }
+        )
+        XCTAssertFalse(
+            Set(discarded.getChangedFields()).contains("attachmentsJSON"),
+            "the discarded edit is text-only, so it never claimed the column"
+        )
+        let expectedContent = harness.note.content
+        let expectedMentions = harness.note.mentionedUserIdsString
+
+        let inboundContext = ModelContext(harness.context.container)
+        let inboundNote = try XCTUnwrap(
+            ProjectNoteMentionEditSync.fetchProjectNote(
+                matching: harness.note.id,
+                in: inboundContext
+            )
+        )
+        let inboundAttachments =
+            #"["https://example.com/server-photo.jpg"]"#
+        var didCommitInboundMerge = false
+        harness.dataController.syncEngine
+            .projectNoteDiscardFailureInjector = {
+                try inboundContext.transaction {
+                    inboundNote.attachmentsJSON = inboundAttachments
+                }
+                didCommitInboundMerge = true
+                throw ForcedDiscardFailure.stop
+            }
+        defer {
+            harness.dataController.syncEngine
+                .projectNoteDiscardFailureInjector = nil
+        }
+
+        harness.dataController.syncEngine.cancelOperation(discarded)
+
+        XCTAssertTrue(didCommitInboundMerge)
+        let verificationContext = ModelContext(harness.context.container)
+        let restoredNote = try XCTUnwrap(
+            ProjectNoteMentionEditSync.fetchProjectNote(
+                matching: harness.note.id,
+                in: verificationContext
+            )
+        )
+        XCTAssertEqual(
+            restoredNote.attachmentsJSON,
+            inboundAttachments,
+            "a text-only discard must leave the server's photo standing"
+        )
+        XCTAssertEqual(restoredNote.content, expectedContent)
+        XCTAssertEqual(
+            restoredNote.mentionedUserIdsString,
+            expectedMentions,
+            "the fields the discard did claim are still restored"
+        )
+    }
+
+    /// The other direction of the same rule. A media edit claims
+    /// `attachmentsJSON`, so cancelling it rewrites the note's photos — and a
+    /// failed cancellation therefore owns putting them back exactly as the
+    /// card showed them before the discard, not at the pre-edit set the
+    /// reconciliation was mid-way through applying, and not at a concurrent
+    /// merge's value (which the claim would have blocked at the gate anyway).
+    func testFailedMediaDiscardRestoresTheEditedPhotoSet() throws {
+        let harness = try makeHarness(previousMentionIds: [])
+        let kept = "https://example.com/kept.jpg"
+        let removed = "https://example.com/removed.jpg"
+        harness.note.attachments = [kept, removed]
+        try harness.context.save()
+
+        harness.dataController.updateProjectNoteContent(
+            note: harness.note,
+            content: harness.note.content,
+            mentionedUserIds: [],
+            mentionEventId: eventId,
+            attachments: [kept]
+        )
+        let operations = try harness.context.fetch(
+            FetchDescriptor<SyncOperation>()
+        )
+        let discarded = try XCTUnwrap(
+            operations.first {
+                ProjectNoteMentionEditSync.isUpdateOperation($0)
+            }
+        )
+        let discardedId = discarded.id
+        XCTAssertTrue(
+            Set(discarded.getChangedFields()).contains("attachmentsJSON"),
+            "a media edit claims the column, so its discard owns restoring it"
+        )
+        XCTAssertEqual(harness.note.attachments, [kept])
+        let expectedAttachmentsJSON = harness.note.attachmentsJSON
+
+        let inboundContext = ModelContext(harness.context.container)
+        let inboundNote = try XCTUnwrap(
+            ProjectNoteMentionEditSync.fetchProjectNote(
+                matching: harness.note.id,
+                in: inboundContext
+            )
+        )
+        var didCommitInboundMerge = false
+        harness.dataController.syncEngine
+            .projectNoteDiscardFailureInjector = {
+                try inboundContext.transaction {
+                    inboundNote.attachmentsJSON =
+                        #"["https://example.com/server-photo.jpg"]"#
+                }
+                didCommitInboundMerge = true
+                throw ForcedDiscardFailure.stop
+            }
+        defer {
+            harness.dataController.syncEngine
+                .projectNoteDiscardFailureInjector = nil
+        }
+
+        harness.dataController.syncEngine.cancelOperation(discarded)
+
+        XCTAssertTrue(didCommitInboundMerge)
+        let verificationContext = ModelContext(harness.context.container)
+        let restoredNote = try XCTUnwrap(
+            ProjectNoteMentionEditSync.fetchProjectNote(
+                matching: harness.note.id,
+                in: verificationContext
+            )
+        )
+        XCTAssertEqual(restoredNote.attachments, [kept])
+        XCTAssertEqual(
+            restoredNote.attachmentsJSON,
+            expectedAttachmentsJSON,
+            "the failed discard must leave the card exactly as it stood"
+        )
+        XCTAssertNotNil(
+            try verificationContext.fetch(
+                FetchDescriptor<SyncOperation>(
+                    predicate: #Predicate {
+                        $0.id == discardedId
+                    }
+                )
+            ).first,
+            "the failed discard must still restore its own deleted operation"
+        )
+    }
+
     func testFailedOfflineCreateDiscardPreservesConcurrentSurvivingNote() throws {
         let harness = try makeHarness(previousMentionIds: [])
         harness.note.needsSync = true
@@ -4023,6 +4196,216 @@ final class ProjectNoteMentionEditTests: XCTestCase {
             ).map(\.id),
             [delete.id],
             "case-tolerant inbound protection must see the lowercase queued delete"
+        )
+    }
+
+    // MARK: - Detaching a photo while editing (bug f5f57917)
+
+    /// Removing one of two attachments must queue an operation that carries the
+    /// surviving set AND the set it replaced, so the edit can be pushed and, if
+    /// it is ever discarded, undone.
+    func testEditWithRemovedAttachmentQueuesAttachmentsPayload() throws {
+        let harness = try makeHarness(previousMentionIds: [])
+        let kept = "https://example.com/kept.jpg"
+        let removed = "https://example.com/removed.jpg"
+        harness.note.attachments = [kept, removed]
+        try harness.context.save()
+
+        harness.dataController.updateProjectNoteContent(
+            note: harness.note,
+            content: harness.note.content,
+            mentionedUserIds: [],
+            mentionEventId: eventId,
+            attachments: [kept]
+        )
+
+        XCTAssertEqual(
+            harness.note.attachments,
+            [kept],
+            "the card must drop the tile immediately, not wait for the server"
+        )
+
+        let update = try XCTUnwrap(
+            try harness.context.fetch(FetchDescriptor<SyncOperation>()).first {
+                $0.operationType == ProjectNoteMentionEditSync.updateOperationType
+            }
+        )
+        let payload = try decodedPayload(update)
+        XCTAssertEqual(
+            payload[ProjectNoteMentionEditSync.attachmentsPayloadKey] as? [String],
+            [kept]
+        )
+        XCTAssertEqual(
+            payload[ProjectNoteMentionEditSync.previousAttachmentsPayloadKey] as? [String],
+            [kept, removed]
+        )
+        XCTAssertEqual(
+            Set(update.getChangedFields()),
+            Set(["content", "mentionedUserIdsString", "attachmentsJSON"]),
+            "a media edit must claim attachmentsJSON, or an inbound merge would "
+                + "paint the detached photo straight back onto the card"
+        )
+    }
+
+    /// The no-op path. An edit that did not move the photos must queue no
+    /// `attachments` key at all, so the RPC request stays exactly the one every
+    /// previous build sent and the media parameter can never perturb it.
+    func testTextOnlyEditOmitsAttachmentsKey() throws {
+        let harness = try makeHarness(previousMentionIds: [])
+        harness.note.attachments = ["https://example.com/kept.jpg"]
+        try harness.context.save()
+
+        harness.dataController.updateProjectNoteContent(
+            note: harness.note,
+            content: "Text only, photos untouched.",
+            mentionedUserIds: [],
+            mentionEventId: eventId,
+            attachments: nil
+        )
+
+        let update = try XCTUnwrap(
+            try harness.context.fetch(FetchDescriptor<SyncOperation>()).first {
+                $0.operationType == ProjectNoteMentionEditSync.updateOperationType
+            }
+        )
+        let payload = try decodedPayload(update)
+        XCTAssertFalse(
+            payload.keys.contains(ProjectNoteMentionEditSync.attachmentsPayloadKey),
+            "a text-only edit must send no media key"
+        )
+        XCTAssertEqual(
+            Set(update.getChangedFields()),
+            Set(["content", "mentionedUserIdsString"]),
+            "a text-only edit must claim exactly the fields it always claimed"
+        )
+        XCTAssertEqual(
+            harness.note.attachments,
+            ["https://example.com/kept.jpg"],
+            "a text-only edit must leave the note's photos alone"
+        )
+    }
+
+    /// Discarding the queued edit must put the detached photo back, not leave
+    /// the card showing a removal that was never sent.
+    func testRollbackRestoresAttachments() throws {
+        let harness = try makeHarness(previousMentionIds: [])
+        let kept = "https://example.com/kept.jpg"
+        let removed = "https://example.com/removed.jpg"
+        harness.note.attachments = [kept, removed]
+        try harness.context.save()
+
+        harness.dataController.updateProjectNoteContent(
+            note: harness.note,
+            content: harness.note.content,
+            mentionedUserIds: [],
+            mentionEventId: eventId,
+            attachments: [kept]
+        )
+
+        let operations = try harness.context.fetch(FetchDescriptor<SyncOperation>())
+        let update = try XCTUnwrap(
+            operations.first {
+                $0.operationType == ProjectNoteMentionEditSync.updateOperationType
+            }
+        )
+        let reconciled = try XCTUnwrap(
+            ProjectNoteMentionEditSync.reconciledNoteStateAfterDiscard(
+                update,
+                discardedIds: Set(operations.map(\.id)),
+                in: operations
+            )
+        )
+        XCTAssertEqual(reconciled.attachments, [kept, removed])
+    }
+
+    /// A queue row written by the build that predates the media half carries no
+    /// attachment keys at all. It must still reconcile as "photos untouched" —
+    /// never as "the edit cleared them".
+    ///
+    /// Asserted against the same key constants the outbound executor reads, so
+    /// the upgrade path is pinned without a network round trip.
+    func testOutboundDecodesLegacyPayloadWithoutAttachmentsKey() throws {
+        let harness = try makeHarness(previousMentionIds: [aliceId])
+        let legacyPayload: [String: Any] = [
+            ProjectNoteMentionEditSync.noteIdPayloadKey: noteId,
+            ProjectNoteMentionEditSync.contentPayloadKey: "Queued by an older build.",
+            ProjectNoteMentionEditSync.mentionedUserIdsPayloadKey: [bobId],
+            ProjectNoteMentionEditSync.eventIdPayloadKey: eventId,
+            ProjectNoteMentionEditSync.previousContentPayloadKey: "Before.",
+            ProjectNoteMentionEditSync.previousMentionedUserIdsPayloadKey: [aliceId],
+            ProjectNoteMentionEditSync.previousNeedsSyncPayloadKey: false,
+        ]
+
+        // Every key the outbound executor requires is still present, so the
+        // operation executes rather than failing as an incomplete payload.
+        XCTAssertNotNil(legacyPayload[ProjectNoteMentionEditSync.noteIdPayloadKey] as? String)
+        XCTAssertNotNil(legacyPayload[ProjectNoteMentionEditSync.contentPayloadKey] as? String)
+        XCTAssertNotNil(
+            legacyPayload[ProjectNoteMentionEditSync.mentionedUserIdsPayloadKey] as? [String]
+        )
+        XCTAssertNotNil(legacyPayload[ProjectNoteMentionEditSync.eventIdPayloadKey] as? String)
+        XCTAssertNil(
+            legacyPayload[ProjectNoteMentionEditSync.attachmentsPayloadKey] as? [String],
+            "absence must read as nil — the RPC then leaves attachments alone"
+        )
+
+        let legacyOperation = SyncOperation(
+            entityType: SyncEntityType.projectNote.rawValue,
+            entityId: noteId,
+            operationType: ProjectNoteMentionEditSync.updateOperationType,
+            payload: try JSONSerialization.data(withJSONObject: legacyPayload),
+            changedFields: ["content", "mentionedUserIdsString"],
+            priority: 1
+        )
+        harness.context.insert(legacyOperation)
+        try harness.context.save()
+
+        let reconciled = try XCTUnwrap(
+            ProjectNoteMentionEditSync.reconciledNoteStateAfterDiscard(
+                legacyOperation,
+                discardedIds: [legacyOperation.id],
+                in: try harness.context.fetch(FetchDescriptor<SyncOperation>())
+            )
+        )
+        XCTAssertNil(
+            reconciled.attachments,
+            "a legacy row must reconcile as photos-untouched, never as cleared"
+        )
+    }
+
+    /// An edit must never quietly become a delete. Removing the last photo from
+    /// a note with no words is refused before anything is queued.
+    func testEmptyNoteGuardRejectsRemovingLastPhotoFromEmptyText() async throws {
+        let harness = try makeHarness(previousMentionIds: [])
+        harness.note.content = ""
+        harness.note.attachments = ["https://example.com/only.jpg"]
+        try harness.context.save()
+
+        let viewModel = ProjectNotesViewModel(projectId: harness.note.projectId)
+        viewModel.setup(
+            companyId: harness.note.companyId,
+            currentUserId: authorId,
+            teamMembers: teamMembers,
+            modelContext: harness.context,
+            dataController: harness.dataController
+        )
+
+        let didQueueSave = await viewModel.updateNoteContent(
+            harness.note,
+            newContent: "   ",
+            attachments: []
+        )
+
+        XCTAssertFalse(didQueueSave)
+        XCTAssertEqual(viewModel.error, "A note needs words or a photo.")
+        XCTAssertEqual(
+            harness.note.attachments,
+            ["https://example.com/only.jpg"],
+            "a refused edit must not touch the note"
+        )
+        XCTAssertTrue(
+            try harness.context.fetch(FetchDescriptor<SyncOperation>()).isEmpty,
+            "a refused edit must queue nothing"
         )
     }
 

@@ -1784,7 +1784,16 @@ struct UniversalJobBoardCard: View {
                     ToastCenter.shared.present(Feedback.JobBoard.deleted)
                 }
             } catch {
+                // Never let a failed delete pass as a success. The success toast
+                // above fires on the local tombstone; if the local write itself
+                // threw, nothing happened at all and the operator has to be told
+                // — this used to print to the console and show the user nothing.
                 print("[DELETE] ❌ Error deleting item: \(error)")
+                await MainActor.run {
+                    ToastCenter.shared.present(
+                        Toast(label: Feedback.Err.deleteFailed, tone: .error)
+                    )
+                }
             }
         }
     }

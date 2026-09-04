@@ -205,6 +205,200 @@ final class LeadFieldEditTests: XCTestCase {
         )
     }
 
+    // MARK: - 2b. Press arbitration (bug 3650ac57)
+
+    // A dossier field runs a real Button beside a simultaneous
+    // `LongPressGesture`. Both recognizers see the same physical press, so one
+    // of them has to yield on the release, and `LeadFieldPressArbiter` is that
+    // rule. Each case below replays the exact event sequence SwiftUI emits, in
+    // order.
+    //
+    // Bug 3650ac57: the suppression was armed in the long press's `onChanged`,
+    // which fires at touch-DOWN — not at hold completion. Every tap in the
+    // dossier armed it and no tap ever reached `onEnded` to clear it, so
+    // CONTACT, CLIENT, ADDRESS and ASSIGNEE never worked once for an operator
+    // with edit rights. Bug 135434b5 ("tapping the address does not open Maps")
+    // is the same defect reported from a different row.
+    //
+    // The tests above prove `LeadFieldPress.resolve` picks the right effect for
+    // a press. These prove the press is allowed to reach it at all.
+
+    /// The headline regression test. A short tap is a press start followed by
+    /// an activation — nothing else — and it must reach the field's tap action.
+    func testAShortTapIsDelivered() {
+        var arbiter = LeadFieldPressArbiter()
+
+        arbiter.pressBegan()
+
+        XCTAssertTrue(
+            arbiter.consumeActivation(),
+            "A press that never completed a hold must not have its tap swallowed"
+        )
+    }
+
+    /// The other half of the reported symptom: not just the first tap, every
+    /// tap. A latch that only a completed hold could clear killed the control
+    /// for the rest of the dossier's life.
+    func testEveryTapInSuccessionIsDelivered() {
+        var arbiter = LeadFieldPressArbiter()
+
+        for attempt in 1...5 {
+            arbiter.pressBegan()
+            XCTAssertTrue(
+                arbiter.consumeActivation(),
+                "Tap \(attempt) of 5 must be delivered"
+            )
+        }
+    }
+
+    /// The no-double-fire guarantee, and the reason the suppression exists at
+    /// all. `onEnded` fires at `longPressHold`, BEFORE the finger lifts, so the
+    /// activation still to come belongs to the press that just opened the
+    /// editor — it must not also run the field's tap meaning.
+    func testACompletedHoldEatsOnlyItsOwnRelease() {
+        var arbiter = LeadFieldPressArbiter()
+
+        arbiter.pressBegan()
+        arbiter.holdCompleted()
+
+        XCTAssertFalse(
+            arbiter.consumeActivation(),
+            "A completed hold must not ALSO launch Maps or open the client behind it"
+        )
+    }
+
+    /// The CLIENT and ASSIGNEE case: the hold presents a sheet over the row,
+    /// the touch is cancelled, and the activation the hold claimed never
+    /// arrives. That stale claim must not then eat the operator's next tap.
+    func testAHoldNeverEatsTheNextPress() {
+        var arbiter = LeadFieldPressArbiter()
+
+        arbiter.pressBegan()
+        arbiter.holdCompleted()
+        // No activation: the release never reached the Button.
+
+        arbiter.pressBegan()
+
+        XCTAssertTrue(
+            arbiter.consumeActivation(),
+            "A claim left standing by an earlier press must not survive into the next one"
+        )
+    }
+
+    /// One hold can never eat two activations. The claim is spent on use.
+    /// (That the first activation is refused is `testACompletedHoldEatsOnlyItsOwnRelease`.)
+    func testSuppressionIsSpentOnce() {
+        var arbiter = LeadFieldPressArbiter()
+
+        arbiter.pressBegan()
+        arbiter.holdCompleted()
+        _ = arbiter.consumeActivation()
+
+        XCTAssertTrue(
+            arbiter.consumeActivation(),
+            "A hold claims exactly one release, not every release after it"
+        )
+    }
+
+    /// A field nobody has touched yet owes nothing to anyone.
+    func testAFreshArbiterOwesNothing() {
+        var arbiter = LeadFieldPressArbiter()
+
+        XCTAssertTrue(arbiter.consumeActivation())
+    }
+
+    /// Assistive activation never travels through the press gesture, so it must
+    /// never consult the arbiter — a claim left standing by a hold whose
+    /// release never came back would otherwise eat exactly one VoiceOver
+    /// double-tap, in a state a VoiceOver user cannot themselves create.
+    ///
+    /// It also has to answer for the hold-only fields. VALUE
+    /// (`DetailHero.swift:253`) announces itself as a button, publishes a
+    /// "Touch and hold to edit" hint and an "Edit estimated value" rotor
+    /// action, and mounts no Button at all — so before this rule a VoiceOver
+    /// double-tap on it did nothing. Where the hold is the field's ONLY
+    /// meaning, activation IS the edit.
+    func testAssistiveActivationNeverConsultsTheArbiter() {
+        XCTAssertEqual(
+            LeadFieldPress.assistiveActivation(offersEdit: true, hasTapAction: true),
+            .activate,
+            "CONTACT / CLIENT / ADDRESS / ASSIGNEE: activation runs the field's tap meaning"
+        )
+        XCTAssertEqual(
+            LeadFieldPress.assistiveActivation(offersEdit: true, hasTapAction: false),
+            .edit,
+            "VALUE is hold-only, and a long press is unreachable with VoiceOver on"
+        )
+        XCTAssertEqual(
+            LeadFieldPress.assistiveActivation(offersEdit: false, hasTapAction: true),
+            .activate,
+            "A viewer keeps the tap meaning they already have"
+        )
+        XCTAssertEqual(
+            LeadFieldPress.assistiveActivation(offersEdit: false, hasTapAction: false),
+            .ignore,
+            "An inert fact is prose, not a control — it must not answer an activation"
+        )
+    }
+
+    /// The blast radius, codified. These are the five real `.holdToEdit(...)`
+    /// call sites in the dossier; four of them carry a tap action and were dead
+    /// on arrival. A future edit that re-kills one fails here instead of in
+    /// Jackson's hands.
+    func testEveryDossierCallSiteDeliversItsTap() {
+        let callSites: [(
+            field: LeadEditableField,
+            offersEdit: Bool,
+            hasTapAction: Bool,
+            tap: LeadFieldPressEffect,
+            site: String
+        )] = [
+            (.contact,  true, true,  .activate, "LeadDetailView.swift:886"),
+            (.assignee, true, true,  .activate, "DetailHero.swift:155"),
+            (.value,    true, false, .ignore,   "DetailHero.swift:253"),
+            (.client,   true, true,  .activate, "LeadDetailsDocument.swift:226"),
+            (.address,  true, true,  .activate, "LeadDetailsDocument.swift:350")
+        ]
+
+        for callSite in callSites {
+            let where_ = "\(callSite.field.rawValue) (\(callSite.site))"
+
+            XCTAssertEqual(
+                LeadFieldPress.resolve(
+                    .tap,
+                    offersEdit: callSite.offersEdit,
+                    hasTapAction: callSite.hasTapAction
+                ),
+                callSite.tap,
+                where_
+            )
+
+            guard callSite.hasTapAction else {
+                // VALUE is hold-only by design — a KPI cell has no tap meaning,
+                // and its branch mounts no Button, so no activation ever
+                // reaches the arbiter. What it owes instead is that the hold
+                // still opens its editor.
+                XCTAssertEqual(
+                    LeadFieldPress.resolve(
+                        .hold,
+                        offersEdit: callSite.offersEdit,
+                        hasTapAction: callSite.hasTapAction
+                    ),
+                    .edit,
+                    "\(where_) must still be hold-editable"
+                )
+                continue
+            }
+
+            var arbiter = LeadFieldPressArbiter()
+            arbiter.pressBegan()
+            XCTAssertTrue(
+                arbiter.consumeActivation(),
+                "\(where_) must deliver a short tap"
+            )
+        }
+    }
+
     // MARK: - 3. Each field's editor opens
 
     func testHoldOpensEachInlineEditor() {

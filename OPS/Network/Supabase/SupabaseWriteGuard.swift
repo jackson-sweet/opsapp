@@ -30,6 +30,20 @@
 //  missed, and parking a delete the user already saw take effect locally would
 //  be a lie in the other direction. Deletes are settled by their own paths.
 //
+//  WHAT THAT EXEMPTION COST, AND WHAT IT STILL COVERS. The exemption is also the
+//  reason silent restores went unnoticed for as long as they did: clearing
+//  `deleted_at` through PostgREST matches zero rows — the tombstoned row is
+//  invisible to the UPDATE's own USING clause — and this guard waved every one of
+//  them through as delivered. `clients`, `projects` and `project_tasks` no longer
+//  route tombstones through PostgREST at all: both directions go through
+//  SECURITY DEFINER RPCs (see SoftDeleteRPC.swift), so nothing carrying
+//  `deleted_at` reaches this guard for those three tables any more.
+//
+//  The exemption stays because it is still load-bearing everywhere else —
+//  `opportunities`, `calendar_user_events`, catalog, inventory and the rest still
+//  PATCH `deleted_at` directly. Removing it would park their real writes. Retire
+//  it per-table, as each table's tombstone moves behind an RPC.
+//
 
 import Foundation
 import Supabase

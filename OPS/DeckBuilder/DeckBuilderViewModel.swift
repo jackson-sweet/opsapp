@@ -362,7 +362,10 @@ class DeckBuilderViewModel: ObservableObject {
             return match.id
         }
         // Force a reconcile so a brand-new persisted entry exists for this face.
-        reconcileSurfaces()
+        // The entry it creates is persisted state a plain tap just authored —
+        // write it, rather than leaving it for the next autosave tick or exit.
+        // Bug 9f4aeaf8.
+        if reconcileSurfaces() { scheduleSave() }
         if let now = activePersistedSurfaces.first(where: { $0.vertexIds == dSet }) {
             return now.id
         }
@@ -372,7 +375,16 @@ class DeckBuilderViewModel: ObservableObject {
     /// Reconciles persisted surfaces against the currently detected ones.
     /// Idempotent: safe to call after any geometry mutation (and from
     /// `save()` so persistence captures the latest reconciled state).
-    func reconcileSurfaces() {
+    ///
+    /// Returns true when the pass actually changed the drawing, so callers
+    /// outside `save()` can schedule the write. It never schedules internally:
+    /// `save()` calls this and must not re-enter the debounce it just cancelled.
+    /// The flag is set at the mutation sites rather than by re-encoding the
+    /// drawing — this runs on the tap path, where a full JSON pass is not free.
+    /// Bug 9f4aeaf8.
+    @discardableResult
+    func reconcileSurfaces() -> Bool {
+        var didChangeDrawing = false
         if isMultiLevel {
             for i in drawingData.levels.indices {
                 let detected = drawingData.levels[i].detectedSurfaces
@@ -384,9 +396,11 @@ class DeckBuilderViewModel: ObservableObject {
                     if !reconciled.isEmpty {
                         if !drawingData.levels[i].footprint.assignedItems.isEmpty {
                             drawingData.levels[i].footprint.assignedItems.removeAll()
+                            didChangeDrawing = true
                         }
                         if drawingData.levels[i].footprint.label != nil {
                             drawingData.levels[i].footprint.label = nil
+                            didChangeDrawing = true
                         }
                     }
                 } else {
@@ -394,6 +408,7 @@ class DeckBuilderViewModel: ObservableObject {
                 }
                 if drawingData.levels[i].surfaces != reconciled {
                     drawingData.levels[i].surfaces = reconciled
+                    didChangeDrawing = true
                 }
             }
         } else {
@@ -406,9 +421,11 @@ class DeckBuilderViewModel: ObservableObject {
                 if !reconciled.isEmpty {
                     if !drawingData.footprint.assignedItems.isEmpty {
                         drawingData.footprint.assignedItems.removeAll()
+                        didChangeDrawing = true
                     }
                     if drawingData.footprint.label != nil {
                         drawingData.footprint.label = nil
+                        didChangeDrawing = true
                     }
                 }
             } else {
@@ -416,6 +433,7 @@ class DeckBuilderViewModel: ObservableObject {
             }
             if drawingData.surfaces != reconciled {
                 drawingData.surfaces = reconciled
+                didChangeDrawing = true
             }
         }
 
@@ -429,6 +447,10 @@ class DeckBuilderViewModel: ObservableObject {
         if !liveIds.isEmpty {
             selection.selectedSurfaceIds = selection.selectedSurfaceIds.intersection(liveIds)
         }
+
+        // Selection is view state, not drawing content — pruning it alone is
+        // not a reason to write to disk.
+        return didChangeDrawing
     }
 
     /// Look up a vertex in the active context
@@ -3049,7 +3071,10 @@ class DeckBuilderViewModel: ObservableObject {
     }
 
     func vinylOrderSurfaceInputs(scope: VinylOrderSurfaceScope) -> [VinylOrderSurfaceInput] {
-        reconcileSurfaces()
+        // Reading the order inputs can create persisted surface entries and
+        // clear legacy footprint items. That is a write, and it needs a save
+        // boundary like any other. Bug 9f4aeaf8.
+        if reconcileSurfaces() { scheduleSave() }
         let scale = vinylOrderEffectiveScale
         let selectedIds = selection.selectedSurfaceIds
         if scope == .selectedSurfaces, selectedIds.isEmpty { return [] }

@@ -1180,6 +1180,72 @@ final class DeckBuilderRegressionTests: XCTestCase {
         XCTAssertNil(design.modelContext, "no orphan row may be created by a tick")
     }
 
+    // MARK: - Surface reconcile is a write (bug 9f4aeaf8)
+
+    /// Tapping a face the persisted store does not know yet creates a persisted
+    /// surface entry — and could clear legacy footprint items and labels — with
+    /// no save on the path. Silent dirty state, picked up only by the autosave
+    /// tick or the editor exit.
+    func testSurfaceTap_schedulesASaveWhenItCreatesAPersistedSurface() throws {
+        let viewModel = DeckBuilderViewModel(deckDesign: deckDesign(drawingData: closedSquareDrawingData()))
+        let detected = try XCTUnwrap(
+            viewModel.drawingData.detectedSurfaces.first,
+            "fixture must produce a detectable face"
+        )
+
+        // The state a freshly drawn face is in: detected, but with no persisted
+        // entry yet. `init` reconciles, so it has to be dropped deliberately.
+        viewModel.drawingData.surfaces = []
+        viewModel.flushPendingSave()
+        XCTAssertFalse(viewModel.hasPendingSave, "fixture must start clean")
+
+        _ = viewModel.persistedSurfaceId(for: detected)
+
+        XCTAssertFalse(
+            viewModel.drawingData.surfaces.isEmpty,
+            "the tap must have created the persisted entry"
+        )
+        XCTAssertTrue(
+            viewModel.hasPendingSave,
+            "a tap that reconciles surfaces must not leave unwritten model state"
+        )
+    }
+
+    /// A reconcile that changes nothing must report no change — otherwise every
+    /// read of the vinyl order inputs would schedule a pointless write.
+    func testReconcileSurfaces_reportsChangeOnlyWhenItMutatesTheDrawing() {
+        let viewModel = DeckBuilderViewModel(deckDesign: deckDesign(drawingData: closedSquareDrawingData()))
+
+        XCTAssertFalse(
+            viewModel.reconcileSurfaces(),
+            "init already reconciled — a repeat pass over stable geometry changes nothing"
+        )
+
+        viewModel.drawingData.surfaces = []
+        XCTAssertTrue(
+            viewModel.reconcileSurfaces(),
+            "a dropped persisted surface must be re-created, and reported"
+        )
+    }
+
+    private func closedSquareDrawingData() -> DeckDrawingData {
+        var data = DeckDrawingData()
+        data.scaleFactor = 1
+        data.vertices = [
+            DeckVertex(id: "s1", position: CGPoint(x: 0, y: 0)),
+            DeckVertex(id: "s2", position: CGPoint(x: 120, y: 0)),
+            DeckVertex(id: "s3", position: CGPoint(x: 120, y: 120)),
+            DeckVertex(id: "s4", position: CGPoint(x: 0, y: 120))
+        ]
+        data.edges = [
+            DeckEdge(id: "se1", startVertexId: "s1", endVertexId: "s2"),
+            DeckEdge(id: "se2", startVertexId: "s2", endVertexId: "s3"),
+            DeckEdge(id: "se3", startVertexId: "s3", endVertexId: "s4"),
+            DeckEdge(id: "se4", startVertexId: "s4", endVertexId: "s1")
+        ]
+        return data
+    }
+
     // MARK: - Settings controls persist (bug 9f4aeaf8)
 
     /// Measurement system, snapping, snap radius and grid were two-way bindings

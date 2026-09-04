@@ -737,6 +737,11 @@ final class SyncOperationReconcilerTests: XCTestCase {
         XCTAssertEqual(decode("\"active\""), .active)
         XCTAssertEqual(decode("\"deleted\""), .deleted)
         XCTAssertEqual(decode("\"absent\""), .absent)
+        // Bug bf2a75fb — the server now says "I could not identify you"
+        // instead of reporting a live project as missing. A build that decodes
+        // it explicitly says so; a build that does not still answers nil, and
+        // nil already means retry.
+        XCTAssertEqual(decode("\"unknown\""), .unknown)
         XCTAssertEqual(decode("active"), .active, "An unquoted body still answers")
         XCTAssertEqual(decode("\n \"deleted\" \n"), .deleted)
 

@@ -32,20 +32,14 @@ import Supabase
 
 // MARK: - RPC Parameters
 
+/// Every RPC in this family answers a jsonb verdict — `{ok, deleted|restored,
+/// <entity>_id, deleted_at}` — and reports `false` for the verb on an
+/// already-settled row, which is how a retried sync op stays idempotent. The
+/// callers do not decode it: there is no branch to take on either answer, and a
+/// refusal arrives as a thrown PostgrestError, not as `ok: false`.
 struct SoftDeleteTaskRPCParams: Encodable { let p_task_id: String }
 struct SoftDeleteClientRPCParams: Encodable { let p_client_id: String }
 struct SoftDeleteProjectRPCParams: Encodable { let p_project_id: String }
-
-/// Decoded shape of every soft-delete / restore RPC in this family. Every field
-/// past `ok` is optional so one type covers both directions and both verbs:
-/// the delete RPCs answer `deleted` + `deleted_at`, the restore RPCs answer
-/// `restored`, and both report `false` on an already-settled row (idempotent).
-struct SoftDeleteRPCResult: Decodable {
-    let ok: Bool
-    let deleted: Bool?
-    let restored: Bool?
-    let deleted_at: String?
-}
 
 // MARK: - Tombstone Field Split
 

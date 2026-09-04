@@ -12,6 +12,15 @@ enum VinylOrderSurfaceScope: Equatable {
     case allSurfaces
 }
 
+/// A local write that threw, held until the next successful save clears it.
+/// Carries the moment and the store's own description, so a failure that
+/// persists across an editing session is reported with its real cause rather
+/// than as a generic amber dot. Bug 9f4aeaf8.
+struct DeckSaveFailure: Equatable {
+    let occurredAt: Date
+    let message: String
+}
+
 /// Stable destination captured when a deck label field begins editing.
 /// `levelId == nil` means the single-level root drawing; a multi-level target
 /// always carries its level id so a later level/selection change cannot move
@@ -221,6 +230,12 @@ class DeckBuilderViewModel: ObservableObject {
     // MARK: - Error State
 
     @Published var isLocallySaved: Bool = true
+    /// Non-nil for exactly as long as the last write to disk is still failing.
+    /// Cleared by the next successful save — including a retry. The editor used
+    /// to report a failed save as an amber dot that also meant "saving", so the
+    /// one state that needed the user was indistinguishable from the one that
+    /// did not. Bug 9f4aeaf8.
+    @Published private(set) var saveFailure: DeckSaveFailure?
     @Published var estimateValidationError: String?
     private var hasShownUndoLevelToast: Bool = false
 
@@ -3932,9 +3947,19 @@ class DeckBuilderViewModel: ObservableObject {
         do {
             try modelContext?.save()
             isLocallySaved = true
+            saveFailure = nil
         } catch {
-            print("[DeckBuilder] Save failed: \(error)")
+            saveFailure = DeckSaveFailure(occurredAt: Date(), message: error.localizedDescription)
             ToastCenter.shared.present(Toast(label: Feedback.Err.saveFailed, tone: .error))
+        }
+    }
+
+    /// Re-runs the write behind the NOT SAVED affordance. Hands the revision to
+    /// the sync queue on the way out so a recovered save is not left local-only.
+    func retrySave() {
+        save()
+        if saveFailure == nil {
+            enqueueLatestDeckDesignIfNeeded()
         }
     }
 
@@ -4165,7 +4190,10 @@ class DeckBuilderViewModel: ObservableObject {
         save()
         enqueueLatestDeckDesignIfNeeded()
         schedulePendingDeckDesignSync()
-        if hasGeometry {
+        // DESIGN SAVED used to be presented whenever the drawing had geometry —
+        // including when the save() above it threw. Reporting a save that did
+        // not happen is worse than reporting nothing. Bug 9f4aeaf8.
+        if hasGeometry, saveFailure == nil {
             ToastCenter.shared.present(Feedback.Deck.designSaved)
         }
 

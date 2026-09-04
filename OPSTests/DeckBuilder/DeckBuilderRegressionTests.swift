@@ -1180,6 +1180,80 @@ final class DeckBuilderRegressionTests: XCTestCase {
         XCTAssertNil(design.modelContext, "no orphan row may be created by a tick")
     }
 
+    // MARK: - The editor never claims a save it did not make (bug 9f4aeaf8)
+
+    /// `saveForExit` presented DESIGN SAVED whenever the drawing had geometry,
+    /// even when the `save()` above it threw — and the only failure signal was
+    /// an 8pt dot whose amber also meant "saving". A rejected store must leave
+    /// a failure the UI can act on, not a green result.
+    func testSaveFailure_isRecordedRatherThanReportedAsSuccess() throws {
+        let container = try makeSaveRejectingContainer()
+        let context = ModelContext(container)
+        let design = DeckDesign(companyId: "c1", title: "T")
+        context.insert(design)
+
+        let viewModel = DeckBuilderViewModel(deckDesign: design, modelContext: context)
+        viewModel.drawingData = closedSquareDrawingData()
+        viewModel.save()
+
+        let failure = try XCTUnwrap(
+            viewModel.saveFailure,
+            "a store that refuses the write must leave a failure behind"
+        )
+        XCTAssertFalse(failure.message.isEmpty, "the failure carries the store's own cause")
+        XCTAssertFalse(viewModel.isLocallySaved)
+    }
+
+    /// The failure clears the moment a write succeeds, so the affordance can
+    /// never outlive the problem it reports.
+    func testSaveFailure_clearsOnTheNextSuccessfulWrite() throws {
+        let container = try makeSaveRejectingContainer()
+        let context = ModelContext(container)
+        let design = DeckDesign(companyId: "c1", title: "T")
+        context.insert(design)
+
+        let viewModel = DeckBuilderViewModel(deckDesign: design, modelContext: context)
+        viewModel.drawingData = closedSquareDrawingData()
+        viewModel.save()
+        XCTAssertNotNil(viewModel.saveFailure)
+
+        let writable = try makeDeckContainer()
+        let healthy = DeckDesign(companyId: "c1", title: "T")
+        writable.mainContext.insert(healthy)
+        let recovered = DeckBuilderViewModel(
+            deckDesign: healthy,
+            modelContext: writable.mainContext
+        )
+        recovered.drawingData = closedSquareDrawingData()
+        recovered.retrySave()
+
+        XCTAssertNil(recovered.saveFailure)
+        XCTAssertTrue(recovered.isLocallySaved)
+    }
+
+    /// A store that refuses the write must reopen read-only over a file that a
+    /// writable container has already materialized — an in-memory
+    /// `allowsSave: false` configuration no longer loads at all.
+    private func makeSaveRejectingContainer() throws -> ModelContainer {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("deck-save-readonly-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        addTeardownBlock {
+            try? FileManager.default.removeItem(at: directory)
+        }
+        let url = directory.appendingPathComponent("store.sqlite")
+        let schema = Schema([DeckDesign.self, SyncOperation.self])
+        do {
+            // Loading a writable container materializes the store file.
+            let writable = ModelConfiguration(schema: schema, url: url, allowsSave: true)
+            _ = try ModelContainer(for: schema, configurations: [writable])
+        }
+        let readOnly = ModelConfiguration(schema: schema, url: url, allowsSave: false)
+        let container = try ModelContainer(for: schema, configurations: [readOnly])
+        retainedContainers.append(container)
+        return container
+    }
+
     // MARK: - Surface reconcile is a write (bug 9f4aeaf8)
 
     /// Tapping a face the persisted store does not know yet creates a persisted

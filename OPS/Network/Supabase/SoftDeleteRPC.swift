@@ -60,6 +60,16 @@ enum TombstoneIntent: Equatable {
     case restore
 }
 
+/// One leg of an outbound `update`, in the order it must be performed.
+enum TombstoneUpdateStep: Equatable {
+    /// Send these fields through the entity's normal PATCH path.
+    case patch([String: AnyJSON])
+    /// Call the entity's soft-delete RPC.
+    case softDelete
+    /// Call the entity's restore RPC.
+    case restore
+}
+
 /// Splits an outbound update payload into its tombstone intent and the fields
 /// that can still travel through PostgREST.
 ///
@@ -88,5 +98,29 @@ enum TombstoneFieldSplit {
         // `.null` is how AnyJSONBridge encodes NSNull (AnyJSONBridge.swift:55).
         // A null clears the tombstone; anything else sets one.
         return (value == .null ? .restore : .delete, remaining)
+    }
+
+    /// The ordered legs of an outbound `update`.
+    ///
+    /// ORDER IS LOAD-BEARING, and it is the tombstone that decides it. A
+    /// tombstoned row is invisible to the RESTRICTIVE read policy the UPDATE's
+    /// USING clause consults, so a PATCH aimed at it matches nothing and
+    /// `SupabaseWriteGuard` correctly parks the operation as unaddressable:
+    ///
+    /// - deleting, sibling fields go FIRST, while the row is still visible;
+    /// - restoring, the RPC goes FIRST, to make the row addressable again.
+    ///
+    /// A payload with no tombstone keeps today's behaviour exactly — one PATCH
+    /// of the untouched payload, sent even when it is empty.
+    static func steps(for fields: [String: AnyJSON]) -> [TombstoneUpdateStep] {
+        let (intent, remaining) = split(fields)
+        switch intent {
+        case .none:
+            return [.patch(remaining)]
+        case .delete:
+            return remaining.isEmpty ? [.softDelete] : [.patch(remaining), .softDelete]
+        case .restore:
+            return remaining.isEmpty ? [.restore] : [.restore, .patch(remaining)]
+        }
     }
 }

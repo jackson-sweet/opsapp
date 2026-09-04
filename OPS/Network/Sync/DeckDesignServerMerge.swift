@@ -41,6 +41,61 @@ enum DeckDesignServerMerge {
         try modelContext.save()
     }
 
+    /// Moves a design's merge base to the payload a confirmed push delivered.
+    ///
+    /// This is the only thing that legitimately advances `syncedDrawingJSON`
+    /// from the outbound side, and it is what lets a row that was protected
+    /// mid-session start accepting inbound geometry again once its own work has
+    /// actually reached the server. Bug 9f4aeaf8.
+    ///
+    /// The base moves ONLY when the design's current payload still equals the
+    /// one that was pushed. If the user edited again while the push was in
+    /// flight, the server has not seen that edit and the base must stay put.
+    ///
+    /// `nonisolated` because both outbound completion paths call it — the
+    /// MainActor `OutboundProcessor` and the `@ModelActor` `DataActor` — each
+    /// with its own context. Predicate-free for the same reason
+    /// ``pendingFields(for:in:)`` is.
+    nonisolated static func recordConfirmedPush(
+        for operation: SyncOperation,
+        in context: ModelContext
+    ) throws {
+        guard operation.entityType == SyncEntityType.deckDesign.rawValue else { return }
+        guard ["create", "update"].contains(operation.operationType) else { return }
+        guard
+            let payload = try? JSONSerialization.jsonObject(with: operation.payload) as? [String: Any],
+            let pushedDrawing = payload["drawing_data"],
+            let pushedJSON = canonicalJSON(pushedDrawing)
+        else { return }
+
+        let canonicalId = DeckDesign.canonicalUUIDString(operation.entityId)
+        let designs = try context.fetch(FetchDescriptor<DeckDesign>())
+            .filter { DeckDesign.canonicalUUIDString($0.id) == canonicalId }
+
+        for design in designs {
+            guard let localJSON = canonicalJSON(jsonString: design.drawingDataJSON) else { continue }
+            guard localJSON == pushedJSON else { continue }
+            design.markDrawingSynced()
+        }
+    }
+
+    /// Re-serializes a decoded JSON value with sorted keys so two payloads that
+    /// carry the same content compare equal regardless of how each was written.
+    private nonisolated static func canonicalJSON(_ object: Any) -> String? {
+        guard
+            JSONSerialization.isValidJSONObject(object),
+            let data = try? JSONSerialization.data(withJSONObject: object, options: [.sortedKeys])
+        else { return nil }
+        return String(data: data, encoding: .utf8)
+    }
+
+    private nonisolated static func canonicalJSON(jsonString: String) -> String? {
+        guard let object = try? JSONSerialization.jsonObject(with: Data(jsonString.utf8)) else {
+            return nil
+        }
+        return canonicalJSON(object)
+    }
+
     /// Case-variant-aware local lookup — two spellings of one UUID are one row.
     static func localDesign(
         matching id: String,

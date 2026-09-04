@@ -74,6 +74,11 @@ final class DeckDesignServerMergeTests: XCTestCase {
         )
         design.updatedAt = localUpdatedAt
         design.needsSync = true
+        // The drawing itself is already confirmed by the server, so the
+        // content-based conflict rule has nothing to protect — which is the
+        // point: the ONLY thing that can save the geometry below is the
+        // pending-field subtraction under test.
+        design.syncedDrawingJSON = design.drawingDataJSON
         context.insert(design)
 
         let pending = SyncOperation(

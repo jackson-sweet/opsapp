@@ -87,16 +87,25 @@ extension DeckDesign {
         _ dto: SupabaseDeckDesignDTO,
         accepting requestedFields: Set<String>
     ) {
-        // Stale-overwrite guard (deck-revert data loss — LUPIN, 2026-06-19).
-        // An inbound merge must never overwrite locally-authored content with a
-        // server snapshot that is OLDER than, or an unconfirmed echo of, the
-        // local row. After a save+push completes, the pending SyncOperation that
-        // was the ONLY thing protecting drawing_data flips to "completed"; the
-        // 300s delta-overlap re-pull then re-fetches the very same deck, and a
-        // replica-lagged read can hand back a pre-edit row. Without this guard,
-        // applyServerSnapshot wrote that stale drawing_data over the just-saved
-        // geometry — silently reverting renamed levels + new geometry. The DTO
-        // already carries updated_at; we simply refuse to apply a stale snapshot.
+        // Stale-overwrite guard (deck-revert data loss — LUPIN, 2026-06-19),
+        // rebuilt on content instead of clocks (bug 9f4aeaf8).
+        //
+        // The guard this replaced compared two different clocks. The server's
+        // `updated_at` is written by a Postgres BEFORE UPDATE trigger
+        // (`NEW.updated_at = now()`) AFTER the push lands; the local `updatedAt`
+        // is stamped by the device clock in `storeDrawingData` BEFORE the push
+        // is even queued. The server stamp is therefore later than the local one
+        // for identical content, by the whole deferPush + queue + network
+        // latency — so `serverIsNewer` was effectively always true, the
+        // protective subtract effectively never ran, and a delta re-pull was
+        // free to write pre-session server geometry over the session's
+        // autosaved work.
+        //
+        // The rule now: an inbound snapshot may replace locally-authored
+        // content only when the local row holds nothing the server has not
+        // already confirmed. `syncedDrawingJSON` is that merge base. Timestamps
+        // stay a tiebreak for genuinely remote edits — never a licence to
+        // discard local work.
         let serverUpdatedAt = dto.updatedAt.flatMap { SupabaseDate.parse($0) }
 
         // Server strictly older than local → the whole snapshot is stale; ignore it.
@@ -105,14 +114,18 @@ extension DeckDesign {
         }
 
         var acceptedFields = requestedFields
+        let serverPayload = dto.drawingData.toJSON()
+        let localHoldsUnpushedContent = hasUnsyncedDrawing
 
-        // Local row still has unconfirmed edits and the server copy is NOT
-        // strictly newer → keep our locally-authored content rather than let an
-        // echo/replica-lagged read round-trip-clobber it. A genuinely newer
-        // server edit (server > local) is still applied normally.
-        if needsSync {
-            let serverIsNewer = serverUpdatedAt.flatMap { s in updatedAt.map { s > $0 } } ?? false
-            if !serverIsNewer {
+        if localHoldsUnpushedContent {
+            // The server's copy is a genuine remote edit only if it differs from
+            // the base we last agreed on too. Anything else is an echo of our
+            // own push or a replica-lagged read, and must not touch content this
+            // device authored. With no recorded base there is nothing to compare
+            // against, so the local row wins until its own push confirms and
+            // sets one — which `recordConfirmedPush` does on completion.
+            let serverMovedOffBase = syncedDrawingJSON.map { $0 != serverPayload } ?? false
+            if !serverMovedOffBase {
                 acceptedFields.subtract(["drawing_data", "title", "thumbnail_url", "version"])
             }
         }
@@ -121,18 +134,35 @@ extension DeckDesign {
         if acceptedFields.contains("project_id") { projectId = dto.projectId }
         if acceptedFields.contains("opportunity_id") { opportunityId = dto.opportunityId }
         if acceptedFields.contains("title") { title = dto.title }
-        if acceptedFields.contains("drawing_data") { drawingDataJSON = dto.drawingData.toJSON() }
+        if acceptedFields.contains("drawing_data") { drawingDataJSON = serverPayload }
         if acceptedFields.contains("thumbnail_url") { thumbnailURL = dto.thumbnailUrl }
         if acceptedFields.contains("version") { version = dto.version }
         if acceptedFields.contains("created_by") { createdBy = dto.createdBy }
         if acceptedFields.contains("created_at") {
             createdAt = SupabaseDate.parse(dto.createdAt) ?? createdAt
         }
-        if acceptedFields.contains("updated_at") {
-            updatedAt = dto.updatedAt.flatMap { SupabaseDate.parse($0) }
+        // Only ever move the local stamp FORWARD to a value we can parse. The
+        // previous form assigned the flatMap result directly, so a null or
+        // unparseable server timestamp nilled `updatedAt` — and the stale guard
+        // above, which needs a local timestamp to compare, could then never fire
+        // on that row again. Bug 9f4aeaf8.
+        if acceptedFields.contains("updated_at"),
+           let parsedUpdatedAt = serverUpdatedAt {
+            updatedAt = parsedUpdatedAt
         }
         if acceptedFields.contains("deleted_at") {
             deletedAt = dto.deletedAt.flatMap { SupabaseDate.parse($0) }
+        }
+
+        if acceptedFields.contains("drawing_data") {
+            // We just took the server's payload — it is now the agreed base.
+            markDrawingSynced()
+        }
+        // A row that still holds unpushed content must stay flagged whatever a
+        // merge decided about `needsSync` elsewhere, or the next pull finds
+        // nothing to protect and the work is gone.
+        if localHoldsUnpushedContent, hasUnsyncedDrawing {
+            needsSync = true
         }
     }
 }

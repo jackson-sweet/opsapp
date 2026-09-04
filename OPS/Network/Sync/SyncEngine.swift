@@ -2827,8 +2827,17 @@ final class SyncEngine {
                         ProjectNoteMentionEditSync.DiscardNoteMutation?
                     if discardsUncreatedNote {
                         noteMutation = .offlineCreateDeletion
-                    } else if reconciledState != nil {
-                        noteMutation = .mentionUpdate
+                    } else if let reconciledState {
+                        // The reconciliation below rewrites the note's photos
+                        // only when the edit actually moved them, so only then
+                        // does a failed discard own restoring them. A
+                        // text-only edit must leave `attachmentsJSON` to
+                        // whoever else wrote it — a concurrent inbound merge,
+                        // say — exactly as the snapshot leaves `lastSyncedAt`.
+                        noteMutation = .mentionUpdate(
+                            restatesAttachments:
+                                reconciledState.attachments != nil
+                        )
                     } else if discardsProjectNoteDelete {
                         noteMutation = .delete
                     } else {

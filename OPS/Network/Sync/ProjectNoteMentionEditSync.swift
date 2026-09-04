@@ -1237,15 +1237,24 @@ enum ProjectNoteMentionEditSync {
         let mentionedUserIdsString: String
         /// Bug f5f57917 — a mention edit can now move the note's photos too, so
         /// a failed discard must be able to put them back with everything else.
-        let attachmentsJSON: String
+        ///
+        /// Non-nil ONLY when the discard actually rewrites the note's photos.
+        /// The snapshot's whole contract is to capture exactly what
+        /// cancellation is about to mutate, and a text-only edit's discard
+        /// never touches `attachmentsJSON` — capturing it unconditionally let a
+        /// failed discard stomp a concurrent inbound merge's photo back to the
+        /// pre-edit value, destroying media the server legitimately owned.
+        let attachmentsJSON: String?
         let updatedAt: Date?
         let needsSync: Bool
 
-        init(_ note: ProjectNote) {
+        init(_ note: ProjectNote, restatesAttachments: Bool) {
             id = note.id
             content = note.content
             mentionedUserIdsString = note.mentionedUserIdsString
-            attachmentsJSON = note.attachmentsJSON
+            attachmentsJSON = restatesAttachments
+                ? note.attachmentsJSON
+                : nil
             updatedAt = note.updatedAt
             needsSync = note.needsSync
         }
@@ -1253,7 +1262,9 @@ enum ProjectNoteMentionEditSync {
         func restore(_ note: ProjectNote) {
             note.content = content
             note.mentionedUserIdsString = mentionedUserIdsString
-            note.attachmentsJSON = attachmentsJSON
+            if let attachmentsJSON {
+                note.attachmentsJSON = attachmentsJSON
+            }
             note.updatedAt = updatedAt
             note.needsSync = needsSync
         }
@@ -1278,7 +1289,13 @@ enum ProjectNoteMentionEditSync {
 
     enum DiscardNoteMutation {
         case delete
-        case mentionUpdate
+        /// `restatesAttachments` mirrors the reconciliation the discard is
+        /// about to apply — true only when that reconciliation actually
+        /// rewrites the note's photos, exactly as
+        /// `ReconciledNoteState.attachments` decides. Carrying it in the case
+        /// makes it impossible to snapshot a mention update without answering
+        /// the question.
+        case mentionUpdate(restatesAttachments: Bool)
         case offlineCreateDeletion
     }
 
@@ -1642,9 +1659,12 @@ enum ProjectNoteMentionEditSync {
                 noteSnapshot = .delete(
                     DiscardDeleteNoteSnapshot(note)
                 )
-            case .mentionUpdate:
+            case .mentionUpdate(let restatesAttachments):
                 noteSnapshot = .mentionUpdate(
-                    DiscardMentionUpdateNoteSnapshot(note)
+                    DiscardMentionUpdateNoteSnapshot(
+                        note,
+                        restatesAttachments: restatesAttachments
+                    )
                 )
             case .offlineCreateDeletion:
                 noteSnapshot = .offlineCreateDeletion(

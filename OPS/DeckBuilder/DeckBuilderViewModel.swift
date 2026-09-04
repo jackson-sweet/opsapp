@@ -867,14 +867,19 @@ class DeckBuilderViewModel: ObservableObject {
         schedulePendingDeckDesignSync()
     }
 
-    /// Crash-safe local persistence when the app is interrupted while the deck
-    /// editor remains open. Backgrounding or locking the phone is not an editor
-    /// exit and therefore must not create or push cloud work.
+    /// Crash-safe persistence when the app is interrupted while the deck editor
+    /// is still open. Backgrounding is where the OS kills a suspended app, so it
+    /// MUST leave a durable queue record — `deferPush` keeps every byte of
+    /// network I/O off this path, which is what commit 88edd771 was protecting
+    /// when it removed the enqueue entirely. Removing the record along with the
+    /// push is what made a clean editor exit the only way work ever reached the
+    /// server. Bug 9f4aeaf8.
     func flushLocallyForInterruption() {
         flushPendingSave()
         if shouldPersistExitSnapshot {
             save()
         }
+        enqueueLatestDeckDesignIfNeeded()
     }
 
     private var shouldPersistExitSnapshot: Bool {
@@ -3853,6 +3858,12 @@ class DeckBuilderViewModel: ObservableObject {
     ) -> Bool {
         guard let syncEngine else { return false }
 
+        // The version column has been inert since the table was created (every
+        // production row still reads 1), so there was no content-based conflict
+        // signal at all. Bump it on every enqueued revision so the server and
+        // every other device get a monotonic tiebreak. Bug 9f4aeaf8.
+        deckDesign.version += 1
+
         let nowIso = ISO8601DateFormatter().string(from: Date())
         let createdIso = ISO8601DateFormatter().string(from: deckDesign.createdAt)
 
@@ -3972,15 +3983,23 @@ class DeckBuilderViewModel: ObservableObject {
     /// local queue write only (`deferPush`); cloud I/O is scheduled separately
     /// after the exit transaction yields.
     private func enqueueLatestDeckDesignIfNeeded() {
-        guard syncEngine != nil, isLocallySaved else { return }
+        guard syncEngine != nil else { return }
+        // Deliberately NOT gated on `isLocallySaved`. A failed local write is
+        // precisely when the server copy is the user's only remaining copy; the
+        // old guard turned a save failure into a silent sync skip. Bug 9f4aeaf8.
+        guard hasAnyCommittedGeometry || deckDesign.modelContext != nil else { return }
         let drawingJSONString = drawingEncoder(drawingData)
+        // `version` is deliberately absent from the identity key. It is now
+        // client-incremented by the enqueue itself, so including it would make
+        // every key differ from the last one recorded and re-enqueue an
+        // unchanged design on every tick — and a version an inbound merge moved
+        // is not a reason to push content the server already has.
         let payloadKey = [
             deckDesign.title,
             drawingJSONString,
             deckDesign.thumbnailURL ?? "",
             deckDesign.projectId ?? "",
-            deckDesign.opportunityId ?? "",
-            String(deckDesign.version)
+            deckDesign.opportunityId ?? ""
         ].joined(separator: "\u{1F}")
 
         guard payloadKey != lastQueuedSyncPayloadKey else { return }

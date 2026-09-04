@@ -648,6 +648,180 @@ final class DeckDesignSyncTests: XCTestCase {
         )
     }
 
+    // MARK: - Mid-session durability (bug 9f4aeaf8)
+
+    /// Since 88edd771 the only path that put a deck edit on the wire was a
+    /// clean editor exit. A crash, an OOM kill or a force-quit therefore lost
+    /// the whole session server-side even though the 2-minute tick had written
+    /// it to disk — there was no SyncOperation for the session at all.
+    @MainActor
+    func test_autosaveTick_recordsDeferredSyncOperation() throws {
+        let container = try makeSyncOperationContainer()
+        let context = container.mainContext
+        let syncEngine = SyncEngine()
+        syncEngine.configure(modelContext: context, connectivity: ConnectivityManager())
+
+        let design = DeckDesign(
+            companyId: "a612edc0-5c18-4c4d-af97-55b9410dd077",
+            projectId: "1ad4822d-2a9f-4e0a-a9c1-2ccfa7b142d1",
+            title: "Mid-session deck",
+            drawingDataJSON: closedSquare().toJSON()
+        )
+        context.insert(design)
+        try context.save()
+
+        let viewModel = DeckBuilderViewModel(
+            deckDesign: design,
+            modelContext: context,
+            syncEngine: syncEngine
+        )
+        viewModel.drawingData.config.gridVisible = false
+        viewModel.performAutosaveTickForTesting()
+
+        let ops = try context.fetch(FetchDescriptor<SyncOperation>())
+            .filter { $0.entityType == SyncEntityType.deckDesign.rawValue }
+        XCTAssertFalse(
+            ops.isEmpty,
+            "the 2-minute tick must record a durable queue entry — exit is not the only cloud boundary"
+        )
+        XCTAssertTrue(
+            ops.contains { $0.getChangedFields().contains("drawing_data") },
+            "the queued revision must carry the drawing, not just a link"
+        )
+    }
+
+    /// Backgrounding used to record nothing at all — `flushLocallyForInterruption`
+    /// wrote to disk and stopped there, which is the worst possible moment to
+    /// stop: a suspended app is what the OS kills.
+    @MainActor
+    func test_backgrounding_recordsDeferredSyncOperation() throws {
+        let container = try makeSyncOperationContainer()
+        let context = container.mainContext
+        let syncEngine = SyncEngine()
+        syncEngine.configure(modelContext: context, connectivity: ConnectivityManager())
+
+        let design = DeckDesign(
+            companyId: "a612edc0-5c18-4c4d-af97-55b9410dd077",
+            projectId: "1ad4822d-2a9f-4e0a-a9c1-2ccfa7b142d1",
+            title: "Interrupted deck",
+            drawingDataJSON: closedSquare().toJSON()
+        )
+        context.insert(design)
+        try context.save()
+
+        let viewModel = DeckBuilderViewModel(
+            deckDesign: design,
+            modelContext: context,
+            syncEngine: syncEngine
+        )
+        viewModel.drawingData.config.gridVisible = false
+        viewModel.flushLocallyForInterruption()
+
+        let ops = try context.fetch(FetchDescriptor<SyncOperation>())
+            .filter { $0.entityType == SyncEntityType.deckDesign.rawValue }
+        XCTAssertFalse(
+            ops.isEmpty,
+            "backgrounding is where the OS kills a suspended app — it must leave a durable queue record"
+        )
+    }
+
+    /// The revision counter was inert: every production row read version 1
+    /// because nothing ever incremented it. Each enqueued revision must move it.
+    @MainActor
+    func test_enqueuedRevisionIncrementsTheVersionColumn() throws {
+        let container = try makeSyncOperationContainer()
+        let context = container.mainContext
+        let syncEngine = SyncEngine()
+        syncEngine.configure(modelContext: context, connectivity: ConnectivityManager())
+
+        let design = DeckDesign(
+            companyId: "a612edc0-5c18-4c4d-af97-55b9410dd077",
+            projectId: "1ad4822d-2a9f-4e0a-a9c1-2ccfa7b142d1",
+            title: "Versioned deck",
+            drawingDataJSON: closedSquare().toJSON()
+        )
+        design.lastSyncedAt = Date()
+        context.insert(design)
+        try context.save()
+        let startingVersion = design.version
+
+        let viewModel = DeckBuilderViewModel(
+            deckDesign: design,
+            modelContext: context,
+            syncEngine: syncEngine
+        )
+        viewModel.drawingData.config.gridVisible = false
+        viewModel.performAutosaveTickForTesting()
+
+        XCTAssertEqual(design.version, startingVersion + 1)
+
+        let op = try XCTUnwrap(
+            try context.fetch(FetchDescriptor<SyncOperation>())
+                .first { $0.entityType == SyncEntityType.deckDesign.rawValue }
+        )
+        let payload = try XCTUnwrap(
+            try JSONSerialization.jsonObject(with: op.payload) as? [String: Any]
+        )
+        XCTAssertEqual(payload["version"] as? Int, startingVersion + 1)
+    }
+
+    /// An editor left open on an unchanged design must enqueue nothing, or the
+    /// tick becomes a request storm — the failure 88edd771 was written to stop.
+    @MainActor
+    func test_repeatedTicksOnAnUnchangedDesignEnqueueOnlyOnce() throws {
+        let container = try makeSyncOperationContainer()
+        let context = container.mainContext
+        let syncEngine = SyncEngine()
+        syncEngine.configure(modelContext: context, connectivity: ConnectivityManager())
+
+        let design = DeckDesign(
+            companyId: "a612edc0-5c18-4c4d-af97-55b9410dd077",
+            projectId: "1ad4822d-2a9f-4e0a-a9c1-2ccfa7b142d1",
+            title: "Idle deck",
+            drawingDataJSON: closedSquare().toJSON()
+        )
+        design.lastSyncedAt = Date()
+        context.insert(design)
+        try context.save()
+
+        let viewModel = DeckBuilderViewModel(
+            deckDesign: design,
+            modelContext: context,
+            syncEngine: syncEngine
+        )
+        viewModel.drawingData.config.gridVisible = false
+        viewModel.performAutosaveTickForTesting()
+        viewModel.performAutosaveTickForTesting()
+        viewModel.performAutosaveTickForTesting()
+
+        let ops = try context.fetch(FetchDescriptor<SyncOperation>())
+            .filter { $0.entityType == SyncEntityType.deckDesign.rawValue }
+        XCTAssertEqual(
+            ops.count, 1,
+            "an idle editor must not stack a queue record on every tick"
+        )
+    }
+
+    /// Closed square (4 verts + 4 edges) so the geometry survives the JSON
+    /// round-trip — orphan (edgeless) vertices are pruned on decode.
+    private func closedSquare() -> DeckDrawingData {
+        var drawing = DeckDrawingData()
+        drawing.vertices = [
+            DeckVertex(id: "v1", position: CGPoint(x: 0, y: 0)),
+            DeckVertex(id: "v2", position: CGPoint(x: 120, y: 0)),
+            DeckVertex(id: "v3", position: CGPoint(x: 120, y: 120)),
+            DeckVertex(id: "v4", position: CGPoint(x: 0, y: 120))
+        ]
+        drawing.edges = [
+            DeckEdge(id: "e1", startVertexId: "v1", endVertexId: "v2"),
+            DeckEdge(id: "e2", startVertexId: "v2", endVertexId: "v3"),
+            DeckEdge(id: "e3", startVertexId: "v3", endVertexId: "v4"),
+            DeckEdge(id: "e4", startVertexId: "v4", endVertexId: "v1")
+        ]
+        drawing.scaleFactor = 1
+        return drawing
+    }
+
     private func makeInMemoryContainer() throws -> ModelContainer {
         let schema = Schema([DeckDesign.self, SyncOperation.self])
         let configuration = ModelConfiguration(

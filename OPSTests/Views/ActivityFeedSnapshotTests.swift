@@ -80,6 +80,44 @@ final class ActivityFeedSnapshotTests: XCTestCase {
         print("📸 SNAPSHOT \(name) (\(Int(image.size.width))×\(Int(image.size.height))pt)")
     }
 
+    /// Render through the shared `FixedSizeSnapshot` harness, which hosts the
+    /// view in the APP HOST's real window via `AppHostWindow.acquire()`.
+    ///
+    /// The `snapshot(_:width:_:)` helper above draws into a window the test
+    /// creates. On iOS 26.5 a full-suite run can drop the host out of the
+    /// foreground pipeline, at which point drawing any freshly attached window
+    /// renders blank — and a proof-PNG test passes silently while producing
+    /// nothing. New proofs go through the harness that repairs scene
+    /// activation instead.
+    private func hostedSnapshot<V: View>(
+        _ name: String,
+        size: CGSize,
+        @ViewBuilder _ content: () -> V
+    ) {
+        let view = content()
+            .frame(width: size.width)
+            .background(OPSStyle.Colors.background)
+            .environment(\.colorScheme, .dark)
+
+        let image: UIImage
+        do {
+            image = try FixedSizeSnapshot.render(view, size: size)
+        } catch {
+            XCTFail("Could not acquire the app host window for \(name): \(error)")
+            return
+        }
+        guard let data = image.pngData() else {
+            XCTFail("Failed to render \(name)")
+            return
+        }
+        let attachment = XCTAttachment(data: data, uniformTypeIdentifier: "public.png")
+        attachment.name = "\(name).png"
+        attachment.lifetime = .keepAlways
+        add(attachment)
+        try? data.write(to: outDir.appendingPathComponent("\(name).png"))
+        print("📸 SNAPSHOT \(name) (\(Int(size.width))×\(Int(size.height))pt)")
+    }
+
     // MARK: - Seed helpers
 
     private func note(
@@ -134,7 +172,10 @@ final class ActivityFeedSnapshotTests: XCTestCase {
     /// into edit mode, because `isEditing` is private `@State` a test cannot
     /// set. The card composes exactly this view, so the pixels are the same.
     func testActivityEntryEditModeShowsRemovableAttachment() {
-        snapshot("feed_edit_mode_removable_attachments") {
+        hostedSnapshot(
+            "feed_edit_mode_removable_attachments",
+            size: CGSize(width: deviceWidth, height: 260)
+        ) {
             VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
                 Text("Only the highlighted section getting new rail, the rest will be done in the spring")
                     .font(OPSStyle.Typography.body)

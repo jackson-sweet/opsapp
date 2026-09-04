@@ -534,12 +534,12 @@ final class DeckDesignSyncTests: XCTestCase {
         )
     }
 
-    /// Recovery sweep for decks stranded by the pre-fix conversion handoff:
-    /// needsSync = true, projectId set, but no SyncOperation ever recorded —
-    /// the link exists only on the capturing phone. The sweep re-records a
-    /// durable {project_id, updated_at} update so the link finally lands.
+    /// Recovery sweep for decks stranded with work the server never received.
+    /// It used to require a projectId — skipping every lead deck and standalone
+    /// sketch, the two kinds most likely to be stranded — and pushed the link
+    /// alone, bumping the server updated_at without delivering a single vertex.
     @MainActor
-    func test_enqueueStrandedDeckDesignLinks_recordsLinkUpdateOnce() throws {
+    func test_enqueueStrandedDeckDesigns_recordsAFullRevisionForEveryStrandedDeck() throws {
         let container = try makeSyncOperationContainer()
         let context = container.mainContext
 
@@ -552,7 +552,8 @@ final class DeckDesignSyncTests: XCTestCase {
         )
         stranded.markForSync()
 
-        // Dirty but unlinked — nothing to heal, must not be touched.
+        // Dirty and unlinked — a lead deck or standalone sketch. This is the
+        // case the old sweep skipped outright, stranding the drawing forever.
         let unlinkedDirty = DeckDesign(
             id: "11111111-1111-4111-8111-111111111111",
             companyId: "a612edc0-5c18-4c4d-af97-55b9410dd077",
@@ -581,32 +582,53 @@ final class DeckDesignSyncTests: XCTestCase {
             connectivity: ConnectivityManager()
         )
 
-        syncEngine.enqueueStrandedDeckDesignLinks()
+        syncEngine.enqueueStrandedDeckDesigns()
 
         let ops = try context.fetch(FetchDescriptor<SyncOperation>())
             .filter { $0.entityType == SyncEntityType.deckDesign.rawValue }
-        XCTAssertEqual(ops.count, 1, "exactly the stranded linked deck gets a recovery op")
-        let op = try XCTUnwrap(ops.first)
-        XCTAssertEqual(op.entityId, stranded.id)
-        XCTAssertEqual(op.operationType, "update")
+        XCTAssertEqual(
+            ops.count, 2,
+            "both stranded decks get a recovery op — the converged one does not"
+        )
+        XCTAssertEqual(
+            Set(ops.map(\.entityId)), Set([stranded.id, unlinkedDirty.id]),
+            "an unlinked deck holding unpushed work must be swept, not skipped"
+        )
+
+        let linkedOp = try XCTUnwrap(ops.first { $0.entityId == stranded.id })
+        XCTAssertEqual(linkedOp.operationType, "update")
         let payload = try XCTUnwrap(
-            try JSONSerialization.jsonObject(with: op.payload) as? [String: Any]
+            try JSONSerialization.jsonObject(with: linkedOp.payload) as? [String: Any]
         )
         XCTAssertEqual(payload["project_id"] as? String, "5f90388c-69af-4bb9-ba26-f8d74487d344")
         XCTAssertNotNil(payload["updated_at"])
+        XCTAssertNotNil(
+            payload["drawing_data"],
+            "the sweep must deliver the drawing, not just bump the server timestamp"
+        )
+
+        let unlinkedOp = try XCTUnwrap(ops.first { $0.entityId == unlinkedDirty.id })
+        let unlinkedPayload = try XCTUnwrap(
+            try JSONSerialization.jsonObject(with: unlinkedOp.payload) as? [String: Any]
+        )
+        XCTAssertNil(
+            unlinkedPayload["project_id"],
+            "an unlinked deck must not push an explicit null project link"
+        )
+        XCTAssertNotNil(unlinkedPayload["drawing_data"])
 
         // A pending op suppresses re-recording — the sweep runs every push
-        // cycle and must not stack duplicate link ops.
-        syncEngine.enqueueStrandedDeckDesignLinks()
+        // cycle and must not stack duplicate ops.
+        syncEngine.enqueueStrandedDeckDesigns()
         let opsAfterSecondSweep = try context.fetch(FetchDescriptor<SyncOperation>())
             .filter { $0.entityType == SyncEntityType.deckDesign.rawValue }
-        XCTAssertEqual(opsAfterSecondSweep.count, 1)
+        XCTAssertEqual(opsAfterSecondSweep.count, 2)
     }
 
     /// A deck whose op just completed is mid-convergence (needsSync clears on
     /// the next inbound merge) — the sweep must not spam link updates for it.
     @MainActor
-    func test_enqueueStrandedDeckDesignLinks_skipsDecksWithRecentOperations() throws {
+    func test_enqueueStrandedDeckDesigns_skipsDecksWithRecentOperations() throws {
         let container = try makeSyncOperationContainer()
         let context = container.mainContext
 
@@ -638,7 +660,7 @@ final class DeckDesignSyncTests: XCTestCase {
             connectivity: ConnectivityManager()
         )
 
-        syncEngine.enqueueStrandedDeckDesignLinks()
+        syncEngine.enqueueStrandedDeckDesigns()
 
         let pendingOps = try context.fetch(FetchDescriptor<SyncOperation>())
             .filter { $0.entityType == SyncEntityType.deckDesign.rawValue && $0.status == "pending" }
@@ -1108,6 +1130,76 @@ final class DeckDesignSyncTests: XCTestCase {
         ]
         drawing.scaleFactor = 1
         return drawing
+    }
+
+    /// The stranding case the old sweep could never reach: a deck drawn on a
+    /// LEAD, so `projectId` is nil until conversion. The sweep skipped it, and
+    /// nothing else ever retried it — the drawing lived on one phone forever.
+    @MainActor
+    func test_strandedSweep_recoversALeadDeckWithItsGeometry() throws {
+        let container = try makeSyncOperationContainer()
+        let context = container.mainContext
+        let syncEngine = SyncEngine()
+        syncEngine.configure(modelContext: context, connectivity: ConnectivityManager())
+
+        let design = DeckDesign(
+            companyId: "a612edc0-5c18-4c4d-af97-55b9410dd077",
+            projectId: nil,                                   // lead deck — no project
+            opportunityId: "1ad4822d-2a9f-4e0a-a9c1-2ccfa7b142d1",
+            title: "Stranded lead deck",
+            drawingDataJSON: closedSquare().toJSON()
+        )
+        design.needsSync = true
+        design.syncedDrawingJSON = nil                        // never confirmed
+        design.updatedAt = Date().addingTimeInterval(-3600)
+        context.insert(design)
+        try context.save()
+
+        syncEngine.enqueueStrandedDeckDesigns()
+
+        let ops = try context.fetch(FetchDescriptor<SyncOperation>())
+            .filter { $0.entityType == SyncEntityType.deckDesign.rawValue }
+        XCTAssertTrue(
+            ops.contains { $0.getChangedFields().contains("drawing_data") },
+            "the recovery sweep must carry the user's geometry, not just a link"
+        )
+
+        let op = try XCTUnwrap(ops.first { $0.entityId == design.id })
+        let payload = try XCTUnwrap(
+            try JSONSerialization.jsonObject(with: op.payload) as? [String: Any]
+        )
+        let drawing = try XCTUnwrap(payload["drawing_data"] as? [String: Any])
+        let vertices = try XCTUnwrap(drawing["vertices"] as? [[String: Any]])
+        XCTAssertEqual(vertices.count, 4, "the swept payload carries the real drawing")
+    }
+
+    /// A deck whose content the server has already confirmed must not be swept —
+    /// re-pushing it would bump the server timestamp for nothing, which is the
+    /// pattern that arms the inbound clobber.
+    @MainActor
+    func test_strandedSweep_ignoresADeckWhoseContentIsAlreadyConfirmed() throws {
+        let container = try makeSyncOperationContainer()
+        let context = container.mainContext
+        let syncEngine = SyncEngine()
+        syncEngine.configure(modelContext: context, connectivity: ConnectivityManager())
+
+        let design = DeckDesign(
+            companyId: "a612edc0-5c18-4c4d-af97-55b9410dd077",
+            projectId: nil,
+            opportunityId: "1ad4822d-2a9f-4e0a-a9c1-2ccfa7b142d1",
+            title: "Converged lead deck",
+            drawingDataJSON: closedSquare().toJSON()
+        )
+        design.needsSync = false
+        design.markDrawingSynced()
+        context.insert(design)
+        try context.save()
+
+        syncEngine.enqueueStrandedDeckDesigns()
+
+        let ops = try context.fetch(FetchDescriptor<SyncOperation>())
+            .filter { $0.entityType == SyncEntityType.deckDesign.rawValue }
+        XCTAssertTrue(ops.isEmpty, "a converged deck must not be re-pushed")
     }
 
     private func makeInMemoryContainer() throws -> ModelContainer {

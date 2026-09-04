@@ -1474,10 +1474,10 @@ final class SyncEngine {
             // hand back any whose file is actually present.
             SiteVisitParkedMediaReconciler.reconcile(in: modelContext)
 
-            // Same class of safety net for deck→project links: a stranded link
-            // (needsSync set, no op recorded) re-records its update here and
-            // drains in this very pass.
-            self.enqueueStrandedDeckDesignLinks()
+            // Same class of safety net for stranded deck designs: a design
+            // holding unpushed work with no op recorded re-records its full
+            // revision here and drains in this very pass.
+            self.enqueueStrandedDeckDesigns()
 
             // One-time server-orphan heal for deck→lead links (RC3): records a
             // guarded linkOpportunity op for every locally-linked design whose
@@ -1627,45 +1627,76 @@ final class SyncEngine {
         }
     }
 
-    /// Recovery sweep for deck→project links stranded by the pre-fix
-    /// site-visit conversion handoff: needsSync == true with a projectId but
-    /// no SyncOperation ever recorded — the link exists only on the capturing
-    /// phone, so the deck shows project_id NULL to every other device. This
-    /// re-records a durable {project_id, updated_at} update (deferPush — the
-    /// surrounding pushPending drains it in the same pass). Decks with an open
-    /// op are already in flight; decks with any recent op lifecycle are
-    /// converging through the normal pipeline (needsSync clears on the next
-    /// inbound merge) and must not be spammed with link updates.
-    func enqueueStrandedDeckDesignLinks() {
+    /// Recovery sweep for deck designs stranded with work the server never got:
+    /// unpushed content with no SyncOperation ever recorded, so the drawing
+    /// exists only on the capturing phone. Re-records a durable full revision
+    /// (deferPush — the surrounding pushPending drains it in the same pass).
+    /// Decks with an open op are already in flight; decks with any recent op
+    /// lifecycle are converging through the normal pipeline and must not be
+    /// spammed.
+    ///
+    /// Bug 9f4aeaf8 rebuilt this. It used to require a `projectId`, which
+    /// skipped every lead deck and standalone sketch — the two kinds most
+    /// likely to be stranded, because a site-visit deck is created before it
+    /// has a project. And it pushed `project_id` + `updated_at` ONLY, so a deck
+    /// it did sweep had its server `updated_at` bumped by the table's trigger
+    /// without a single vertex being delivered: the recovery path was arming
+    /// the inbound clobber instead of curing it. It now carries the drawing.
+    func enqueueStrandedDeckDesigns() {
         guard let modelContext else { return }
-        let stranded: [DeckDesign]
+        let candidates: [DeckDesign]
         do {
-            stranded = try modelContext.fetch(
+            candidates = try modelContext.fetch(
                 FetchDescriptor<DeckDesign>(
-                    predicate: #Predicate { $0.needsSync == true && $0.deletedAt == nil }
+                    predicate: #Predicate { $0.deletedAt == nil }
                 )
             )
         } catch {
             print("[SYNC_ENGINE] Stranded-deck sweep fetch failed: \(error)")
             return
         }
+        // Filtered in Swift: `hasUnsyncedDrawing` is a content comparison
+        // against the recorded merge base and cannot be expressed in a
+        // #Predicate.
+        let stranded = candidates.filter { $0.needsSync || $0.hasUnsyncedDrawing }
         guard !stranded.isEmpty else { return }
 
         let writer = ISO8601DateFormatter()
         for design in stranded {
-            guard let projectId = design.projectId, !projectId.isEmpty else { continue }
             guard !hasOpenOperation(entityType: .deckDesign, entityId: design.id) else { continue }
             guard !hasRecentLocalWrite(entityId: design.id, withinSeconds: 15 * 60) else { continue }
 
-            print("[SYNC_ENGINE] Stranded deck link (needsSync, no op): \(design.id) — re-recording project link \(projectId)")
+            // The Supabase `drawing_data` column is jsonb, so the payload has to
+            // carry a parsed object rather than the JSON string.
+            let drawingObject: Any = (try? JSONSerialization.jsonObject(
+                with: Data(design.drawingDataJSON.utf8),
+                options: []
+            )) ?? [String: Any]()
+
+            design.version += 1
+
+            var changedFields: [String: Any] = [
+                "title": design.title,
+                "drawing_data": drawingObject,
+                "version": design.version,
+                "updated_at": writer.string(from: Date())
+            ]
+            // Included only when non-nil: an explicit null from a device whose
+            // local row is stale-nil would UNLINK a deck another device just
+            // attached (Carol Dancer case).
+            if let projectId = design.projectId, !projectId.isEmpty {
+                changedFields["project_id"] = projectId
+            }
+            if let thumbnail = design.thumbnailURL, !thumbnail.isEmpty {
+                changedFields["thumbnail_url"] = thumbnail
+            }
+
+            print("[SYNC_ENGINE] Stranded deck (unpushed content, no op): \(design.id) — re-recording full revision")
             _ = recordOperation(
                 entityType: .deckDesign,
                 entityId: design.id,
                 operationType: "update",
-                changedFields: [
-                    "project_id": projectId,
-                    "updated_at": writer.string(from: Date())
-                ],
+                changedFields: changedFields,
                 deferPush: true
             )
         }

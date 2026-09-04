@@ -101,14 +101,22 @@ class ProjectNoteRepository: ProjectNoteFetching {
 
     // MARK: - Update Content and Mentions
 
-    /// Replaces the note body and authoritative mention list in one guarded
-    /// database transaction. The RPC also persists an immutable edit event,
-    /// keyed by `mentionEventId`, so a lost response can be replayed safely.
+    /// Replaces the note body, authoritative mention list and — when the edit
+    /// changed it — the attachment set, in one guarded database transaction.
+    /// The RPC also persists an immutable edit event, keyed by
+    /// `mentionEventId`, so a lost response can be replayed safely.
+    ///
+    /// Bug f5f57917 — `attachments` is the media half of the edit. `nil` means
+    /// "leave the note's attachments alone", and it is sent by OMITTING the
+    /// key rather than by sending a JSON null: the two payload shapes below
+    /// keep a text-only edit byte-identical to what every previous build sent,
+    /// so the media parameter can never perturb the text-only path.
     func updateMentions(
         _ noteId: String,
         content: String,
         mentionedUserIds: [String],
-        mentionEventId: String
+        mentionEventId: String,
+        attachments: [String]? = nil
     ) async throws {
         struct Parameters: Encodable {
             let p_note_id: String
@@ -117,17 +125,40 @@ class ProjectNoteRepository: ProjectNoteFetching {
             let p_event_id: String
         }
 
-        try await client
-            .rpc(
-                "update_project_note_mentions",
-                params: Parameters(
-                    p_note_id: noteId,
-                    p_content: content,
-                    p_mentioned_user_ids: mentionedUserIds,
-                    p_event_id: mentionEventId
+        struct ParametersWithAttachments: Encodable {
+            let p_note_id: String
+            let p_content: String
+            let p_mentioned_user_ids: [String]
+            let p_event_id: String
+            let p_attachments: [String]
+        }
+
+        if let attachments {
+            try await client
+                .rpc(
+                    "update_project_note_mentions",
+                    params: ParametersWithAttachments(
+                        p_note_id: noteId,
+                        p_content: content,
+                        p_mentioned_user_ids: mentionedUserIds,
+                        p_event_id: mentionEventId,
+                        p_attachments: attachments
+                    )
                 )
-            )
-            .execute()
+                .execute()
+        } else {
+            try await client
+                .rpc(
+                    "update_project_note_mentions",
+                    params: Parameters(
+                        p_note_id: noteId,
+                        p_content: content,
+                        p_mentioned_user_ids: mentionedUserIds,
+                        p_event_id: mentionEventId
+                    )
+                )
+                .execute()
+        }
     }
 
     // MARK: - Soft Delete

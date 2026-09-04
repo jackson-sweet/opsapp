@@ -881,6 +881,18 @@ class ImageSyncManager: ObservableObject {
             )
             return .heldProjectAbsent
 
+        case .unknown:
+            // The server could not identify the caller, so it has no opinion
+            // about this row. Saying so out loud rather than inheriting the
+            // `nil` fallback: "I could not identify you" must never again be
+            // read as "the project is gone" (bug bf2a75fb).
+            DebugLogger.shared.log(
+                "portal mirror queued for \(projectId) — the server could not resolve this account to a company",
+                level: .warning,
+                category: "ImageSyncManager"
+            )
+            return .retryQueued
+
         case nil:
             // The RPC answered something this build does not recognize. Not
             // evidence of anything — queue it.

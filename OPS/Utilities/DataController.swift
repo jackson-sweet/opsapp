@@ -5450,21 +5450,27 @@ class DataController: ObservableObject {
         ProjectNoteChangeSignal.post(projectId: note.projectId)
     }
 
-    /// Replace a project note's content and authoritative mentions locally,
-    /// then append its immutable server event and dependent delivery work.
+    /// Replace a project note's content, authoritative mentions and — when the
+    /// edit moved them — its attachments locally, then append its immutable
+    /// server event and dependent delivery work.
+    ///
+    /// Bug f5f57917 — `attachments` is `nil` for a text-only edit, which leaves
+    /// the note's photos untouched all the way through to the RPC.
     @discardableResult
     @MainActor
     func updateProjectNoteContent(
         note: ProjectNote,
         content: String,
         mentionedUserIds: [String],
-        mentionEventId: String
+        mentionEventId: String,
+        attachments: [String]? = nil
     ) -> Bool {
         syncEngine.recordProjectNoteMentionEdit(
             note: note,
             content: content,
             mentionedUserIds: mentionedUserIds,
-            mentionEventId: mentionEventId
+            mentionEventId: mentionEventId,
+            attachments: attachments
         )
     }
 

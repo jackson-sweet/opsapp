@@ -113,6 +113,46 @@ final class LeadPhotoOptimisticDisplayTests: XCTestCase {
         XCTAssertTrue(LeadPhotoItem.remote(remotePhoto).canDeleteFromLead)
     }
 
+    /// Bug 05f0aae6 — a lead showed the same photo many times over because
+    /// `get_opportunity_lead_files` returned every attributed row with no
+    /// content dedupe: each quoted reply re-ingests the same inline image under
+    /// a new message id. The fix is server-side (the RPC now returns one row
+    /// per distinct file content, earliest occurrence first), so there is
+    /// nothing to fix here — this pins the presentation contract the fix relies
+    /// on, so a future client-side regression that collapses or multiplies
+    /// tiles is caught even though the repair lives in the database.
+    func test_leadPhotoStripRendersOneTilePerDistinctAttachment() {
+        let deduped = (1...9).map { index in
+            LeadAttachment(
+                id: "attachment-\(index)",
+                filename: "site-\(index).jpg",
+                mimeType: "image/jpeg",
+                sourceUrl: nil,
+                fromEmail: "client@example.com",
+                ingestStatus: "stored",
+                occurredAt: "2026-08-0\(index)T12:00:00Z",
+                createdAt: "2026-08-0\(index)T12:00:00Z"
+            )
+        }
+
+        let items = LeadPhotoStripPresentation.items(
+            reservationIDs: [],
+            queued: [],
+            remoteURLs: [],
+            emailPhotoAttachments: deduped
+        )
+
+        XCTAssertEqual(
+            items.count,
+            deduped.count,
+            "the strip must render exactly what the RPC returned — no collapsing, no multiplying"
+        )
+        XCTAssertEqual(
+            items.map(\.id),
+            deduped.map { "email:\($0.id)" }
+        )
+    }
+
     func test_drainReconciliationPreservesPhotoQueuedAfterSnapshot() {
         let snapshotItem = pending(localURL: "local://project_images/snapshot.jpg")
         let failedSnapshotItem = pending(localURL: "local://project_images/failed.jpg")

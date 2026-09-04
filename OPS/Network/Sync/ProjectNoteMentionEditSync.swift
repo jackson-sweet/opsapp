@@ -1064,10 +1064,21 @@ enum ProjectNoteMentionEditSync {
         "previous_mentioned_user_ids"
     static let previousNeedsSyncPayloadKey = "previous_needs_sync"
     static let previousUpdatedAtPayloadKey = "previous_updated_at"
+    /// Bug f5f57917 — the media half of an edit. Present ONLY when the edit
+    /// actually changed the note's attachments, so a text-only edit still
+    /// queues the exact payload every previous build queued, and an operation
+    /// queued by an older build (no key at all) still executes.
+    static let attachmentsPayloadKey = "attachments"
+    /// Always recorded, so discarding the operation can put the note's photos
+    /// back even when the edit never reached the server.
+    static let previousAttachmentsPayloadKey = "previous_attachments"
 
     struct ReconciledNoteState: Equatable {
         let content: String
         let mentionedUserIds: [String]
+        /// `nil` means "this edit did not touch the note's photos" — leave the
+        /// local attachment set alone rather than overwriting it with a guess.
+        let attachments: [String]?
         let needsSync: Bool
         let updatedAt: Date?
     }
@@ -1224,6 +1235,9 @@ enum ProjectNoteMentionEditSync {
         let id: String
         let content: String
         let mentionedUserIdsString: String
+        /// Bug f5f57917 — a mention edit can now move the note's photos too, so
+        /// a failed discard must be able to put them back with everything else.
+        let attachmentsJSON: String
         let updatedAt: Date?
         let needsSync: Bool
 
@@ -1231,6 +1245,7 @@ enum ProjectNoteMentionEditSync {
             id = note.id
             content = note.content
             mentionedUserIdsString = note.mentionedUserIdsString
+            attachmentsJSON = note.attachmentsJSON
             updatedAt = note.updatedAt
             needsSync = note.needsSync
         }
@@ -1238,6 +1253,7 @@ enum ProjectNoteMentionEditSync {
         func restore(_ note: ProjectNote) {
             note.content = content
             note.mentionedUserIdsString = mentionedUserIdsString
+            note.attachmentsJSON = attachmentsJSON
             note.updatedAt = updatedAt
             note.needsSync = needsSync
         }
@@ -1774,6 +1790,9 @@ enum ProjectNoteMentionEditSync {
             return ReconciledNoteState(
                 content: content,
                 mentionedUserIds: mentionedUserIds,
+                // Absent means the surviving edit was text-only, so the note's
+                // photos are not this operation's business to restate.
+                attachments: payload[attachmentsPayloadKey] as? [String],
                 needsSync:
                     survivingUpdate.status != "completed"
                         || hasSurvivingSameNoteWrite,
@@ -1800,6 +1819,12 @@ enum ProjectNoteMentionEditSync {
         return ReconciledNoteState(
             content: content,
             mentionedUserIds: mentionedUserIds,
+            // Only put the photos back when this edit actually moved them.
+            // Rows queued before bug f5f57917 carry neither key and correctly
+            // reconcile to "attachments unchanged".
+            attachments: payload.keys.contains(attachmentsPayloadKey)
+                ? (payload[previousAttachmentsPayloadKey] as? [String] ?? [])
+                : nil,
             needsSync:
                 (payload[previousNeedsSyncPayloadKey] as? Bool ?? false)
                     || hasSurvivingSameNoteWrite,
@@ -2010,11 +2035,18 @@ enum ProjectNoteMentionEditSync {
                 )
             }
 
+            // Bug f5f57917 — OPTIONAL by design. An operation queued by a build
+            // that predates the media half carries no `attachments` key, and
+            // must still execute: absence means "this edit did not touch the
+            // note's photos", which is exactly what `nil` tells the RPC.
+            let attachments = payload[attachmentsPayloadKey] as? [String]
+
             try await ProjectNoteRepository(companyId: companyId).updateMentions(
                 noteId,
                 content: content,
                 mentionedUserIds: mentionedUserIds,
-                mentionEventId: mentionEventId
+                mentionEventId: mentionEventId,
+                attachments: attachments
             )
             return true
 

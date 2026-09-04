@@ -80,6 +80,44 @@ final class ActivityFeedSnapshotTests: XCTestCase {
         print("📸 SNAPSHOT \(name) (\(Int(image.size.width))×\(Int(image.size.height))pt)")
     }
 
+    /// Render through the shared `FixedSizeSnapshot` harness, which hosts the
+    /// view in the APP HOST's real window via `AppHostWindow.acquire()`.
+    ///
+    /// The `snapshot(_:width:_:)` helper above draws into a window the test
+    /// creates. On iOS 26.5 a full-suite run can drop the host out of the
+    /// foreground pipeline, at which point drawing any freshly attached window
+    /// renders blank — and a proof-PNG test passes silently while producing
+    /// nothing. New proofs go through the harness that repairs scene
+    /// activation instead.
+    private func hostedSnapshot<V: View>(
+        _ name: String,
+        size: CGSize,
+        @ViewBuilder _ content: () -> V
+    ) {
+        let view = content()
+            .frame(width: size.width)
+            .background(OPSStyle.Colors.background)
+            .environment(\.colorScheme, .dark)
+
+        let image: UIImage
+        do {
+            image = try FixedSizeSnapshot.render(view, size: size)
+        } catch {
+            XCTFail("Could not acquire the app host window for \(name): \(error)")
+            return
+        }
+        guard let data = image.pngData() else {
+            XCTFail("Failed to render \(name)")
+            return
+        }
+        let attachment = XCTAttachment(data: data, uniformTypeIdentifier: "public.png")
+        attachment.name = "\(name).png"
+        attachment.lifetime = .keepAlways
+        add(attachment)
+        try? data.write(to: outDir.appendingPathComponent("\(name).png"))
+        print("📸 SNAPSHOT \(name) (\(Int(size.width))×\(Int(size.height))pt)")
+    }
+
     // MARK: - Seed helpers
 
     private func note(
@@ -115,10 +153,47 @@ final class ActivityFeedSnapshotTests: XCTestCase {
                 isOwnNote: false,
                 allTeamMembers: [member()],
                 onDelete: { _ in },
-                onEdit: { _, _ in true },
+                onEdit: { _, _, _ in true },
                 onPhotoTap: { _, _ in }
             )
             .environmentObject(DataController())
+            .padding(OPSStyle.Layout.spacing3)
+        }
+    }
+
+    // MARK: - Edit-mode attachment strip (bug f5f57917)
+
+    /// Visual proof that an inline note edit now renders its photos with a
+    /// remove control. Before this fix, edit mode showed no photo at all and
+    /// offered no way to detach one — Delete was the only route, and it
+    /// destroyed the whole note.
+    ///
+    /// The strip is rendered directly rather than by driving `ActivityEntryView`
+    /// into edit mode, because `isEditing` is private `@State` a test cannot
+    /// set. The card composes exactly this view, so the pixels are the same.
+    func testActivityEntryEditModeShowsRemovableAttachment() {
+        hostedSnapshot(
+            "feed_edit_mode_removable_attachments",
+            size: CGSize(width: deviceWidth, height: 260)
+        ) {
+            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
+                Text("Only the highlighted section getting new rail, the rest will be done in the spring")
+                    .font(OPSStyle.Typography.body)
+                    .foregroundColor(OPSStyle.Colors.primaryText)
+
+                ActivityEditAttachmentStrip(
+                    attachments: .constant([
+                        "https://example.com/1782770183522-sketch.jpg",
+                        "https://example.com/1782770183523-rail.jpg"
+                    ])
+                )
+
+                Text("A note needs words or a photo.")
+                    .font(OPSStyle.Typography.smallCaption)
+                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+            }
+            .padding(OPSStyle.Layout.spacing3)
+            .glassSurface()
             .padding(OPSStyle.Layout.spacing3)
         }
     }

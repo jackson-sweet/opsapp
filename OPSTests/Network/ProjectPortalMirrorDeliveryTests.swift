@@ -252,6 +252,35 @@ final class ProjectPortalMirrorDeliveryTests: XCTestCase {
         XCTAssertTrue(filing.summary.contains(projectId))
     }
 
+    /// Bug bf2a75fb — the server saying it could not resolve the caller to a
+    /// company is NOT a missing project. Before the probe was hardened this
+    /// case answered `absent`, which filed a false PROJECT_ROW_MISSING report
+    /// and dropped the queued mirror for good against a live job. It must
+    /// queue, and it must file nothing.
+    func testUnknownVerdictQueuesTheMirrorAndFilesNothing() async throws {
+        let harness = try makeHarness()
+        harness.inserter.setFailure(Self.permissionDenied)
+        harness.probe.setVisible(false)
+        harness.probe.setState(.unknown)
+
+        let outcome = await harness.manager.deliverPortalMirror(
+            urls: [photoURL],
+            project: harness.project,
+            uploadedBy: uploaderId,
+            source: "in_progress"
+        )
+
+        XCTAssertEqual(outcome, .retryQueued)
+        XCTAssertTrue(
+            harness.reporter.filings.isEmpty,
+            "An unidentified caller is not evidence that the job is gone"
+        )
+        XCTAssertNil(
+            harness.project.deletedAt,
+            "An unknown verdict must never tombstone the job locally"
+        )
+    }
+
     /// A project whose own create has not landed yet is not missing — it just
     /// has not been sent. The barrier vetoes the claim before it is filed.
     func testAbsentProjectAwaitingItsOwnCreateIsQueuedNotFiled() async throws {
@@ -703,7 +732,13 @@ final class ProjectPortalMirrorDeliveryTests: XCTestCase {
     /// Everything that is NOT a stated deletion leaves the queue alone. The
     /// queue is a photo's last record — it is never dropped on a guess.
     func testNothingButAStatedDeletionSettlesTheQueue() async throws {
-        for state in [SyncOperationReconcilers.ProjectServerState.active, .absent] {
+        // `.unknown` is in this list on purpose (bug bf2a75fb): the server
+        // saying it could not identify the caller must never settle anything.
+        for state in [
+            SyncOperationReconcilers.ProjectServerState.active,
+            .absent,
+            .unknown,
+        ] {
             let harness = try makeHarness()
             harness.probe.setState(state)
             let settled = await harness.manager.projectIsSettledAsDeleted(harness.project)

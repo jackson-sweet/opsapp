@@ -3620,7 +3620,7 @@ class DataController: ObservableObject {
         }
     }
 
-    /// Delete a client from both server and local storage
+    /// Soft delete a client by setting deletedAt timestamp
     /// - Parameter client: The client to delete
     /// - Throws: API or database errors
     /// - Note: Caller is responsible for handling associated projects (reassignment or deletion)
@@ -3631,17 +3631,32 @@ class DataController: ObservableObject {
         }
 
         let clientId = client.id
+        let deletionDate = Date()
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime]
 
-        // Record delete for async sync
+        // SOFT DELETE: tombstone locally so the client lands in Settings > Trash
+        // and stays restorable — the same shape as deleteProject above.
+        //
+        // This used to `modelContext.delete(client)`: a HARD delete of the local
+        // row, which is why a deleted client never appeared in Trash (TrashView
+        // selects on `deletedAt != nil`, and there was no row left to carry one)
+        // and reappeared in the app on the next inbound sync, because the server
+        // row had not been tombstoned either — the delete op was refused 42501 by
+        // row security and parked. The user was told the client was gone twice
+        // over, and it was gone from neither place. Bug 2a55c78f.
+        client.deletedAt = deletionDate
+        client.needsSync = true
+
+        // `deleted_at` rather than `id`: matches deleteProject's tombstone
+        // convention so the queued op says what it changed.
         syncEngine.recordOperation(
             entityType: .client,
             entityId: clientId,
             operationType: "delete",
-            changedFields: ["id": clientId]
+            changedFields: ["deleted_at": formatter.string(from: deletionDate)]
         )
 
-        // Delete client from local SwiftData
-        modelContext.delete(client)
         try modelContext.save()
     }
 

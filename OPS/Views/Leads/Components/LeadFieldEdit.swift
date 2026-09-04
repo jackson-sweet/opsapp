@@ -135,6 +135,37 @@ enum LeadFieldPress {
     }
 }
 
+/// Which of the two recognizers on a dossier field owns the release.
+///
+/// A dossier field runs a real Button beside a simultaneous `LongPressGesture`.
+/// Both see the same physical press, so exactly one of them has to yield on the
+/// release — and the rule for which one is the entire defect surface.
+///
+/// This is the SHIPPED rule, lifted verbatim out of `HoldToEditModifier` so it
+/// can be stated once and put under test at all. Behaviour is unchanged: the
+/// press START arms the suppression, and only a completed hold clears it.
+struct LeadFieldPressArbiter: Equatable {
+    /// The shipped `suppressNextActivation` flag under a name that says what it
+    /// is claiming rather than what it is doing to the next event.
+    private(set) var holdOwnsRelease = false
+
+    /// A finger landed — where `LongPressGesture.onChanged` fires.
+    mutating func pressBegan() {
+        holdOwnsRelease = true
+    }
+
+    /// The hold reached `longPressHold` — the disarm the shipped modifier
+    /// schedules for the next runloop turn.
+    mutating func holdCompleted() {
+        holdOwnsRelease = false
+    }
+
+    /// The Button fired. Returns whether the tap action should run.
+    mutating func consumeActivation() -> Bool {
+        !holdOwnsRelease
+    }
+}
+
 // MARK: - Failure vocabulary (pure)
 
 /// Why a field write did not land, in the app's existing error vocabulary
@@ -463,7 +494,10 @@ private struct HoldToEditModifier: ViewModifier {
     /// press REVEALS that the field is live — the quietest discovery channel
     /// there is, and it costs no chrome when nobody is touching the screen.
     @GestureState private var isPressing = false
-    @State private var suppressNextActivation = false
+    /// Press arbitration between the Button's activation and the hold. A named
+    /// value type, not a loose Bool, so the rule lives in one place and is
+    /// under test — see `LeadFieldPressArbiter`.
+    @State private var arbiter = LeadFieldPressArbiter()
 
     private var hasTapAction: Bool { onActivate != nil }
 
@@ -524,18 +558,18 @@ private struct HoldToEditModifier: ViewModifier {
                 state = value
             }
             .onChanged { _ in
-                suppressNextActivation = true
+                arbiter.pressBegan()
             }
             .onEnded { _ in
                 perform(.hold)
                 DispatchQueue.main.async {
-                    suppressNextActivation = false
+                    arbiter.holdCompleted()
                 }
             }
     }
 
     private func activateFromButton() {
-        guard !suppressNextActivation else { return }
+        guard arbiter.consumeActivation() else { return }
         perform(.tap)
     }
 

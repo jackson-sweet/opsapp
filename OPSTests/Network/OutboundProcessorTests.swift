@@ -191,6 +191,154 @@ final class OutboundProcessorTests: XCTestCase {
         XCTAssertTrue(spy.updatedFieldSets.isEmpty)
     }
 
+    // MARK: - Tombstone routing (bugs db15baf2, 2a55c78f)
+
+    func testUpdateCarryingATombstoneCallsTheSoftDeleteRPCInsteadOfPatching() async throws {
+        // `deleted_at` cannot travel on a PATCH here at all: project_tasks'
+        // RESTRICTIVE read policy judges that column, and Postgres attaches
+        // SELECT policies as WITH CHECK options to any UPDATE whose WHERE needs
+        // read access, so the write comes back 42501 for every client role.
+        let taskId = "1a1a1a1a-1a1a-4a1a-8a1a-1a1a1a1a1a1a"
+        let spy = SpyProjectTaskSyncing()
+        let processor = OutboundProcessor(projectTaskSyncingFactory: { _ in spy })
+        let operation = makeOperation(
+            operationType: "update",
+            taskId: taskId,
+            payload: ["deleted_at": "2026-09-04T17:15:45Z"],
+            changedFields: ["deleted_at"],
+            createdAt: Date(timeIntervalSince1970: 8)
+        )
+
+        let context = try makeContext()
+        context.insert(operation)
+        try context.save()
+
+        try await processor.executeOperation(operation, context: context)
+
+        XCTAssertEqual(spy.softDeletedTaskIds, [taskId])
+        XCTAssertTrue(
+            spy.updatedFieldSets.isEmpty,
+            "A tombstone-only payload must send no PATCH at all."
+        )
+        XCTAssertTrue(operation.isCompleted)
+    }
+
+    func testRestoreUpdateCallsTheRestoreRPCInsteadOfPatchingNull() async throws {
+        // Restore is staged as an `update` carrying `deleted_at: null`
+        // (DataController.restoreTrash), so it never reaches the delete branch.
+        // As a PATCH it matched zero rows — the tombstoned row is invisible to
+        // the policy the UPDATE consults — and PostgREST answers that 200 with
+        // an empty body, so every restore reported success and did nothing.
+        let taskId = "2b2b2b2b-2b2b-4b2b-8b2b-2b2b2b2b2b2b"
+        let spy = SpyProjectTaskSyncing()
+        let processor = OutboundProcessor(projectTaskSyncingFactory: { _ in spy })
+        let operation = makeOperation(
+            operationType: "update",
+            taskId: taskId,
+            payload: ["deleted_at": NSNull()],
+            changedFields: ["deleted_at"],
+            createdAt: Date(timeIntervalSince1970: 9)
+        )
+
+        let context = try makeContext()
+        context.insert(operation)
+        try context.save()
+
+        try await processor.executeOperation(operation, context: context)
+
+        XCTAssertEqual(spy.restoredTaskIds, [taskId])
+        XCTAssertTrue(spy.softDeletedTaskIds.isEmpty, "A restore must never tombstone.")
+        XCTAssertTrue(spy.updatedFieldSets.isEmpty)
+        XCTAssertTrue(operation.isCompleted)
+    }
+
+    func testTombstoneUpdateSendsSiblingFieldsBeforeTheRowGoesInvisible() async throws {
+        // Order is load-bearing: once the tombstone lands the row is invisible to
+        // the read policy, so a PATCH issued after it would match nothing and
+        // park the operation as unaddressable.
+        let taskId = "3c3c3c3c-3c3c-4c3c-8c3c-3c3c3c3c3c3c"
+        let spy = SpyProjectTaskSyncing()
+        let processor = OutboundProcessor(projectTaskSyncingFactory: { _ in spy })
+        let operation = makeOperation(
+            operationType: "update",
+            taskId: taskId,
+            payload: [
+                "deleted_at": "2026-09-04T17:15:45Z",
+                "custom_title": "Retired lane"
+            ],
+            changedFields: ["deleted_at", "custom_title"],
+            createdAt: Date(timeIntervalSince1970: 10)
+        )
+
+        let context = try makeContext()
+        context.insert(operation)
+        try context.save()
+
+        try await processor.executeOperation(operation, context: context)
+
+        XCTAssertEqual(spy.callLog, ["updateFields", "softDelete"])
+        XCTAssertEqual(
+            spy.updatedFieldSets.first?["custom_title"],
+            .string("Retired lane")
+        )
+        XCTAssertNil(
+            spy.updatedFieldSets.first?["deleted_at"],
+            "The tombstone column must be stripped out of the PATCH."
+        )
+    }
+
+    func testRestoreUpdateClearsTheTombstoneBeforeSendingSiblingFields() async throws {
+        let taskId = "4d4d4d4d-4d4d-4d4d-8d4d-4d4d4d4d4d4d"
+        let spy = SpyProjectTaskSyncing()
+        let processor = OutboundProcessor(projectTaskSyncingFactory: { _ in spy })
+        let operation = makeOperation(
+            operationType: "update",
+            taskId: taskId,
+            payload: [
+                "deleted_at": NSNull(),
+                "custom_title": "Back in service"
+            ],
+            changedFields: ["deleted_at", "custom_title"],
+            createdAt: Date(timeIntervalSince1970: 11)
+        )
+
+        let context = try makeContext()
+        context.insert(operation)
+        try context.save()
+
+        try await processor.executeOperation(operation, context: context)
+
+        XCTAssertEqual(spy.callLog, ["restore", "updateFields"])
+        XCTAssertEqual(
+            spy.updatedFieldSets.first?["custom_title"],
+            .string("Back in service")
+        )
+    }
+
+    func testOrdinaryUpdateStillPatchesAndNeverTouchesTheTombstoneRPCs() async throws {
+        let taskId = "5e5e5e5e-5e5e-4e5e-8e5e-5e5e5e5e5e5e"
+        let spy = SpyProjectTaskSyncing()
+        let processor = OutboundProcessor(projectTaskSyncingFactory: { _ in spy })
+        let operation = makeOperation(
+            operationType: "update",
+            taskId: taskId,
+            payload: ["custom_title": "Renamed lane"],
+            changedFields: ["custom_title"],
+            createdAt: Date(timeIntervalSince1970: 12)
+        )
+
+        let context = try makeContext()
+        context.insert(operation)
+        try context.save()
+
+        try await processor.executeOperation(operation, context: context)
+
+        XCTAssertEqual(spy.callLog, ["updateFields"])
+        XCTAssertEqual(spy.updatedTaskIds, [taskId])
+        XCTAssertTrue(spy.softDeletedTaskIds.isEmpty)
+        XCTAssertTrue(spy.restoredTaskIds.isEmpty)
+    }
+
     func testCompleteProjectTaskResponseParsesConsumptionEvidence() throws {
         let payload = """
         {
@@ -268,22 +416,38 @@ private final class SpyProjectTaskSyncing: ProjectTaskSyncing {
     var createdStatuses: [String] = []
     var updatedTaskIds: [String] = []
     var updatedFieldSets: [[String: AnyJSON]] = []
+    var softDeletedTaskIds: [String] = []
+    var restoredTaskIds: [String] = []
     var completedTaskIds: [String] = []
     var completionIdempotencyKeys: [String] = []
     var materialAdjustmentCounts: [Int] = []
     var remainingCompletionFailures = 0
 
+    /// Ordered record of every call, so ordering assertions read the real
+    /// sequence instead of inferring it from three separate arrays.
+    var callLog: [String] = []
+
     func create(_ dto: SupabaseProjectTaskDTO) async throws -> SupabaseProjectTaskDTO {
         createdStatuses.append(dto.status)
+        callLog.append("create")
         return dto
     }
 
     func updateFields(_ taskId: String, fields: [String: AnyJSON]) async throws {
         updatedTaskIds.append(taskId)
         updatedFieldSets.append(fields)
+        callLog.append("updateFields")
     }
 
-    func softDelete(_ taskId: String) async throws {}
+    func softDelete(_ taskId: String) async throws {
+        softDeletedTaskIds.append(taskId)
+        callLog.append("softDelete")
+    }
+
+    func restore(_ taskId: String) async throws {
+        restoredTaskIds.append(taskId)
+        callLog.append("restore")
+    }
 
     func completeProjectTask(
         taskId: String,

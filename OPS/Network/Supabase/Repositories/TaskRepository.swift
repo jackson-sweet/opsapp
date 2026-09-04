@@ -16,6 +16,7 @@ protocol ProjectTaskSyncing: AnyObject {
     func create(_ dto: SupabaseProjectTaskDTO) async throws -> SupabaseProjectTaskDTO
     func updateFields(_ taskId: String, fields: [String: AnyJSON]) async throws
     func softDelete(_ taskId: String) async throws
+    func restore(_ taskId: String) async throws
     func completeProjectTask(
         taskId: String,
         idempotencyKey: String,
@@ -257,18 +258,46 @@ class TaskRepository: ProjectTaskSyncing {
             .execute()
     }
 
-    // MARK: - Soft Delete
+    // MARK: - Soft Delete / Restore
 
+    /// Tombstone a task through the definer-owned RPC.
+    ///
+    /// The direct PATCH is structurally impossible, not merely unlucky: since
+    /// ledger 20260818014340 `project_tasks.role_scope_read` judges the row's own
+    /// `deleted_at`, and Postgres attaches SELECT policies as WITH CHECK options
+    /// to any UPDATE whose target requires ACL_SELECT — `where id = $1` requires
+    /// it. RETURNING is not the trigger and `Prefer: return=minimal` does not
+    /// help; no client role can set the column through PostgREST at all.
+    ///
+    /// `public.soft_delete_project_task` (ledger 20260902160624) enforces the
+    /// same `private.user_can_edit_task` ladder the PATCH was supposed to satisfy
+    /// and is idempotent — a second delete answers `deleted: false`. Bug db15baf2.
     func softDelete(_ taskId: String) async throws {
-        struct SoftDelete: Codable {
-            let deleted_at: String
-            let updated_at: String
-        }
-        let payload = SoftDelete(deleted_at: isoNow(), updated_at: isoNow())
-        try await client
-            .from("project_tasks")
-            .update(payload)
-            .eq("id", value: taskId)
+        _ = try await client
+            .rpc(
+                "soft_delete_project_task",
+                params: SoftDeleteTaskRPCParams(p_task_id: taskId.lowercased())
+            )
+            .execute()
+    }
+
+    /// Clear a task's tombstone.
+    ///
+    /// A direct PATCH does not fail here — it matches zero rows, because the
+    /// tombstoned row is invisible to the read policy the USING clause consults,
+    /// and PostgREST answers 200 with an empty body. Every restore from Settings
+    /// ▸ Trash therefore un-tombstoned the local row and left the server's
+    /// tombstone standing, with no error anywhere.
+    ///
+    /// `public.restore_project_task` re-states the tasks.edit ladder against the
+    /// tombstoned row (`private.user_can_edit_task` filters `deleted_at is null`
+    /// and would refuse every restore) and requires a live parent project.
+    func restore(_ taskId: String) async throws {
+        _ = try await client
+            .rpc(
+                "restore_project_task",
+                params: SoftDeleteTaskRPCParams(p_task_id: taskId.lowercased())
+            )
             .execute()
     }
 }

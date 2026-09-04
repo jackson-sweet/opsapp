@@ -2594,6 +2594,179 @@ final class ProjectNoteMentionEditTests: XCTestCase {
         )
     }
 
+    /// Bug f5f57917, the cancellation half of the claim rule. `SyncEngine`
+    /// claims `attachmentsJSON` in a mention edit's `changedFields` only when
+    /// the edit actually moved the note's photos, and the inbound merge gate
+    /// (`DataActor.acceptableFields`) honours exactly that claim. A failed
+    /// discard's recovery must mirror it: a text-only edit never wrote the
+    /// column, so a merge that landed mid-discard still owns the note's
+    /// photos. Restoring the pre-edit set here would delete media the server
+    /// legitimately holds.
+    func testFailedTextOnlyDiscardLeavesConcurrentInboundPhotosAlone() throws {
+        let harness = try makeHarness(previousMentionIds: [])
+        harness.note.attachments = ["https://example.com/local-photo.jpg"]
+        try harness.context.save()
+
+        harness.dataController.updateProjectNoteContent(
+            note: harness.note,
+            content: "@Alice Able first.",
+            mentionedUserIds: [aliceId],
+            mentionEventId: eventId
+        )
+        harness.dataController.updateProjectNoteContent(
+            note: harness.note,
+            content: "@Bob Builder second.",
+            mentionedUserIds: [bobId],
+            mentionEventId: secondEventId
+        )
+        let operations = try harness.context.fetch(
+            FetchDescriptor<SyncOperation>()
+        )
+        let discarded = try XCTUnwrap(
+            operations.first {
+                ProjectNoteMentionEditSync.isUpdateOperation($0)
+                    && mentionEventId(in: $0) == secondEventId
+            }
+        )
+        XCTAssertFalse(
+            Set(discarded.getChangedFields()).contains("attachmentsJSON"),
+            "the discarded edit is text-only, so it never claimed the column"
+        )
+        let expectedContent = harness.note.content
+        let expectedMentions = harness.note.mentionedUserIdsString
+
+        let inboundContext = ModelContext(harness.context.container)
+        let inboundNote = try XCTUnwrap(
+            ProjectNoteMentionEditSync.fetchProjectNote(
+                matching: harness.note.id,
+                in: inboundContext
+            )
+        )
+        let inboundAttachments =
+            #"["https://example.com/server-photo.jpg"]"#
+        var didCommitInboundMerge = false
+        harness.dataController.syncEngine
+            .projectNoteDiscardFailureInjector = {
+                try inboundContext.transaction {
+                    inboundNote.attachmentsJSON = inboundAttachments
+                }
+                didCommitInboundMerge = true
+                throw ForcedDiscardFailure.stop
+            }
+        defer {
+            harness.dataController.syncEngine
+                .projectNoteDiscardFailureInjector = nil
+        }
+
+        harness.dataController.syncEngine.cancelOperation(discarded)
+
+        XCTAssertTrue(didCommitInboundMerge)
+        let verificationContext = ModelContext(harness.context.container)
+        let restoredNote = try XCTUnwrap(
+            ProjectNoteMentionEditSync.fetchProjectNote(
+                matching: harness.note.id,
+                in: verificationContext
+            )
+        )
+        XCTAssertEqual(
+            restoredNote.attachmentsJSON,
+            inboundAttachments,
+            "a text-only discard must leave the server's photo standing"
+        )
+        XCTAssertEqual(restoredNote.content, expectedContent)
+        XCTAssertEqual(
+            restoredNote.mentionedUserIdsString,
+            expectedMentions,
+            "the fields the discard did claim are still restored"
+        )
+    }
+
+    /// The other direction of the same rule. A media edit claims
+    /// `attachmentsJSON`, so cancelling it rewrites the note's photos — and a
+    /// failed cancellation therefore owns putting them back exactly as the
+    /// card showed them before the discard, not at the pre-edit set the
+    /// reconciliation was mid-way through applying, and not at a concurrent
+    /// merge's value (which the claim would have blocked at the gate anyway).
+    func testFailedMediaDiscardRestoresTheEditedPhotoSet() throws {
+        let harness = try makeHarness(previousMentionIds: [])
+        let kept = "https://example.com/kept.jpg"
+        let removed = "https://example.com/removed.jpg"
+        harness.note.attachments = [kept, removed]
+        try harness.context.save()
+
+        harness.dataController.updateProjectNoteContent(
+            note: harness.note,
+            content: harness.note.content,
+            mentionedUserIds: [],
+            mentionEventId: eventId,
+            attachments: [kept]
+        )
+        let operations = try harness.context.fetch(
+            FetchDescriptor<SyncOperation>()
+        )
+        let discarded = try XCTUnwrap(
+            operations.first {
+                ProjectNoteMentionEditSync.isUpdateOperation($0)
+            }
+        )
+        let discardedId = discarded.id
+        XCTAssertTrue(
+            Set(discarded.getChangedFields()).contains("attachmentsJSON"),
+            "a media edit claims the column, so its discard owns restoring it"
+        )
+        XCTAssertEqual(harness.note.attachments, [kept])
+        let expectedAttachmentsJSON = harness.note.attachmentsJSON
+
+        let inboundContext = ModelContext(harness.context.container)
+        let inboundNote = try XCTUnwrap(
+            ProjectNoteMentionEditSync.fetchProjectNote(
+                matching: harness.note.id,
+                in: inboundContext
+            )
+        )
+        var didCommitInboundMerge = false
+        harness.dataController.syncEngine
+            .projectNoteDiscardFailureInjector = {
+                try inboundContext.transaction {
+                    inboundNote.attachmentsJSON =
+                        #"["https://example.com/server-photo.jpg"]"#
+                }
+                didCommitInboundMerge = true
+                throw ForcedDiscardFailure.stop
+            }
+        defer {
+            harness.dataController.syncEngine
+                .projectNoteDiscardFailureInjector = nil
+        }
+
+        harness.dataController.syncEngine.cancelOperation(discarded)
+
+        XCTAssertTrue(didCommitInboundMerge)
+        let verificationContext = ModelContext(harness.context.container)
+        let restoredNote = try XCTUnwrap(
+            ProjectNoteMentionEditSync.fetchProjectNote(
+                matching: harness.note.id,
+                in: verificationContext
+            )
+        )
+        XCTAssertEqual(restoredNote.attachments, [kept])
+        XCTAssertEqual(
+            restoredNote.attachmentsJSON,
+            expectedAttachmentsJSON,
+            "the failed discard must leave the card exactly as it stood"
+        )
+        XCTAssertNotNil(
+            try verificationContext.fetch(
+                FetchDescriptor<SyncOperation>(
+                    predicate: #Predicate {
+                        $0.id == discardedId
+                    }
+                )
+            ).first,
+            "the failed discard must still restore its own deleted operation"
+        )
+    }
+
     func testFailedOfflineCreateDiscardPreservesConcurrentSurvivingNote() throws {
         let harness = try makeHarness(previousMentionIds: [])
         harness.note.needsSync = true

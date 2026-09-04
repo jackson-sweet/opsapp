@@ -307,6 +307,40 @@ final class LeadFieldEditTests: XCTestCase {
         XCTAssertTrue(arbiter.consumeActivation())
     }
 
+    /// Assistive activation never travels through the press gesture, so it must
+    /// never consult the arbiter — a claim left standing by a hold whose
+    /// release never came back would otherwise eat exactly one VoiceOver
+    /// double-tap, in a state a VoiceOver user cannot themselves create.
+    ///
+    /// It also has to answer for the hold-only fields. VALUE
+    /// (`DetailHero.swift:253`) announces itself as a button, publishes a
+    /// "Touch and hold to edit" hint and an "Edit estimated value" rotor
+    /// action, and mounts no Button at all — so before this rule a VoiceOver
+    /// double-tap on it did nothing. Where the hold is the field's ONLY
+    /// meaning, activation IS the edit.
+    func testAssistiveActivationNeverConsultsTheArbiter() {
+        XCTAssertEqual(
+            LeadFieldPress.assistiveActivation(offersEdit: true, hasTapAction: true),
+            .activate,
+            "CONTACT / CLIENT / ADDRESS / ASSIGNEE: activation runs the field's tap meaning"
+        )
+        XCTAssertEqual(
+            LeadFieldPress.assistiveActivation(offersEdit: true, hasTapAction: false),
+            .edit,
+            "VALUE is hold-only, and a long press is unreachable with VoiceOver on"
+        )
+        XCTAssertEqual(
+            LeadFieldPress.assistiveActivation(offersEdit: false, hasTapAction: true),
+            .activate,
+            "A viewer keeps the tap meaning they already have"
+        )
+        XCTAssertEqual(
+            LeadFieldPress.assistiveActivation(offersEdit: false, hasTapAction: false),
+            .ignore,
+            "An inert fact is prose, not a control — it must not answer an activation"
+        )
+    }
+
     /// The blast radius, codified. These are the five real `.holdToEdit(...)`
     /// call sites in the dossier; four of them carry a tap action and were dead
     /// on arrival. A future edit that re-kills one fails here instead of in

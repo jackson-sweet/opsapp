@@ -12,10 +12,14 @@
 //    · bug c0ed9969 (ContactDetailView) — the inline-edit shape: a row swaps
 //      to its input with check / cancel + a spinner while the write lands,
 //      gated so an operator without edit rights never sees the affordance.
-//    · bug a093d9cc (DaySheetLeadRow) — the gesture shape: ONE exclusive
-//      gesture, `LongPress.exclusively(before: Tap)`, so a successful hold
-//      consumes the release and editing can never also launch Maps or open
-//      the client behind it.
+//    · bug a093d9cc (DaySheetLeadRow) — the guarantee: ONE effect per press,
+//      so a successful hold can never also launch Maps or open the client
+//      behind it. The card's `LongPress.exclusively(before: Tap)` is NOT the
+//      mechanism here — an exclusive gesture makes the tap wait on the long
+//      press failing first and swallowed the release on physical devices
+//      (bug 7347b075). A dossier field runs a real Button beside a
+//      SIMULTANEOUS long press, and `LeadFieldPressArbiter` decides which of
+//      the two owns the release.
 //
 //  THE GESTURE CONTRACT, stated once:
 //
@@ -133,6 +137,22 @@ enum LeadFieldPress {
     static func isInteractive(offersEdit: Bool, hasTapAction: Bool) -> Bool {
         offersEdit || hasTapAction
     }
+
+    /// What an assistive activation (VoiceOver double-tap, Switch Control) on a
+    /// dossier field must do.
+    ///
+    /// It never travels through the press gesture, so it must never consult the
+    /// press arbiter. It also has to answer for the hold-only fields: a long
+    /// press is unreachable with VoiceOver on, so where the hold is the field's
+    /// ONLY meaning, activation IS the edit. A field carrying the button trait
+    /// whose activation does nothing is a broken promise.
+    static func assistiveActivation(
+        offersEdit: Bool,
+        hasTapAction: Bool
+    ) -> LeadFieldPressEffect {
+        if hasTapAction { return .activate }
+        return offersEdit ? .edit : .ignore
+    }
 }
 
 /// Which of the two recognizers on a dossier field owns the release.
@@ -141,28 +161,39 @@ enum LeadFieldPress {
 /// Both see the same physical press, so exactly one of them has to yield on the
 /// release — and the rule for which one is the entire defect surface.
 ///
-/// This is the SHIPPED rule, lifted verbatim out of `HoldToEditModifier` so it
-/// can be stated once and put under test at all. Behaviour is unchanged: the
-/// press START arms the suppression, and only a completed hold clears it.
+/// Bug 3650ac57: the suppression was armed in the long press's `onChanged`,
+/// which fires at touch-DOWN, not at hold completion. Every tap in the dossier
+/// armed it, no tap reached `onEnded` to clear it, and so CONTACT, CLIENT,
+/// ADDRESS and ASSIGNEE never worked once for an operator with edit rights.
+///
+/// The rule, inverted and stated as a value type so it is provable in a test
+/// instead of only on a device: a press START owes nothing; only a COMPLETED
+/// hold claims the release that follows it; and that claim is spent the moment
+/// it is used, so it can never reach a second press.
 struct LeadFieldPressArbiter: Equatable {
-    /// The shipped `suppressNextActivation` flag under a name that says what it
-    /// is claiming rather than what it is doing to the next event.
+    /// True only between "this press completed its hold" and "the activation
+    /// that press produced arrived". Nothing else sets it.
     private(set) var holdOwnsRelease = false
 
-    /// A finger landed — where `LongPressGesture.onChanged` fires.
+    /// A finger landed. `LongPressGesture` publishes its first value here — at
+    /// touch-DOWN, not at hold completion — which is what makes this the place
+    /// to clear a claim left standing by an earlier press.
     mutating func pressBegan() {
-        holdOwnsRelease = true
-    }
-
-    /// The hold reached `longPressHold` — the disarm the shipped modifier
-    /// schedules for the next runloop turn.
-    mutating func holdCompleted() {
         holdOwnsRelease = false
     }
 
-    /// The Button fired. Returns whether the tap action should run.
+    /// The hold reached `longPressHold`. The editor is opening, and the release
+    /// still to come belongs to this same press: it must not also activate.
+    mutating func holdCompleted() {
+        holdOwnsRelease = true
+    }
+
+    /// The Button fired. Returns whether the tap action should run, and spends
+    /// the claim either way so one hold can never eat two activations.
     mutating func consumeActivation() -> Bool {
-        !holdOwnsRelease
+        guard holdOwnsRelease else { return true }
+        holdOwnsRelease = false
+        return false
     }
 }
 
@@ -511,7 +542,8 @@ private struct HoldToEditModifier: ViewModifier {
                     hasTapAction: hasTapAction
                 ),
                 actionName: field.accessibilityActionName,
-                onEdit: onEdit
+                onEdit: onEdit,
+                onActivate: activateFromAssistiveTechnology
             ))
     }
 
@@ -547,11 +579,18 @@ private struct HoldToEditModifier: ViewModifier {
         }
     }
 
-    /// A real Button owns ordinary activation. The prior exclusive gesture
-    /// waited on a long-press recognizer before considering the tap and could
-    /// swallow the release entirely on physical devices. The long press now
-    /// runs alongside the Button and suppresses only the activation generated
-    /// by that same completed press.
+    /// A real Button owns ordinary activation. The exclusive gesture this
+    /// replaced made the tap wait on a long-press recognizer failing first, and
+    /// could swallow the release entirely on physical devices; the Button never
+    /// waits, so the tap is delivered on the release that produced it. The long
+    /// press runs beside it and claims only the release of a hold that actually
+    /// completed.
+    ///
+    /// `onChanged` fires at touch-DOWN — that is what bug 3650ac57 got wrong.
+    /// Arming the suppression there suppressed EVERY tap, because a short press
+    /// never reaches `onEnded` to disarm it. The press start now DISARMS and
+    /// only a completed hold ARMS, so the sole activation that can be eaten is
+    /// the release of the press that just opened the editor.
     private var longPressGesture: some Gesture {
         LongPressGesture(minimumDuration: OPSStyle.Animation.longPressHold)
             .updating($isPressing) { value, state, _ in
@@ -561,16 +600,37 @@ private struct HoldToEditModifier: ViewModifier {
                 arbiter.pressBegan()
             }
             .onEnded { _ in
+                // Fires at `longPressHold`, BEFORE the finger lifts — the
+                // Button's activation for this same press is still to come, so
+                // claim it first, then open the editor.
+                arbiter.holdCompleted()
                 perform(.hold)
-                DispatchQueue.main.async {
-                    arbiter.holdCompleted()
-                }
             }
     }
 
+    /// The Button's activation: the touch-up of a real press.
     private func activateFromButton() {
         guard arbiter.consumeActivation() else { return }
         perform(.tap)
+    }
+
+    /// VoiceOver / Switch Control activation. It reaches the view without any
+    /// gesture callbacks, so it must never consult the press arbiter — a claim
+    /// left standing by a hold whose release never came back (the finger left
+    /// the row, or a sheet presented over it) would otherwise eat it.
+    ///
+    /// Deliberately NOT routed through `perform(_:)`: `perform(.hold)` fires the
+    /// medium-impact commit haptic, which belongs to the PHYSICAL hold. An
+    /// assistive activation is a tap-equivalent and must not counterfeit it.
+    private func activateFromAssistiveTechnology() {
+        switch LeadFieldPress.assistiveActivation(
+            offersEdit: offersEdit,
+            hasTapAction: hasTapAction
+        ) {
+        case .activate: onActivate?()
+        case .edit:     onEdit()
+        case .ignore:   break
+        }
     }
 
     private func perform(_ gesture: LeadFieldGesture) {
@@ -604,6 +664,9 @@ private struct EditAffordanceAccessibility: ViewModifier {
     let isInteractive: Bool
     let actionName: String
     let onEdit: () -> Void
+    /// Assistive activation, routed around the press arbiter — and, on a
+    /// hold-only field, the activation that field would otherwise not have.
+    let onActivate: () -> Void
 
     @ViewBuilder
     func body(content: Content) -> some View {
@@ -612,6 +675,7 @@ private struct EditAffordanceAccessibility: ViewModifier {
                 .accessibilityAddTraits(.isButton)
                 .accessibilityHint("Touch and hold to edit.")
                 .accessibilityAction(named: Text(actionName), onEdit)
+                .accessibilityAction(.default, onActivate)
         } else if isInteractive {
             content.accessibilityAddTraits(.isButton)
         } else {

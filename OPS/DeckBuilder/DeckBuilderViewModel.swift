@@ -3944,14 +3944,47 @@ class DeckBuilderViewModel: ObservableObject {
         if deckDesign.modelContext == nil {
             modelContext?.insert(deckDesign)
         }
+        // `try modelContext?.save()` — the optional chain this replaced — made a
+        // missing store indistinguishable from a completed write: the
+        // expression evaluated to nil, nothing threw, and the save reported
+        // success. The in-memory commit above is real either way, so this is
+        // not a user-facing failure and the flag still reflects it; what it must
+        // never again be is UNRECORDED. Bug 9f4aeaf8.
+        guard let modelContext else {
+            isLocallySaved = true
+            saveFailure = nil
+            // Unreachable from the app — all eight presentation sites guard on
+            // the context, and only previews and headless fixtures build a view
+            // model without one. If it ever becomes reachable, we find out from
+            // production instead of from a data-loss report weeks later.
+            DeckSaveTelemetry.recordFailure(
+                designId: deckDesign.id,
+                error: DeckSaveError.noModelContext,
+                isPersisted: false
+            )
+            return
+        }
         do {
-            try modelContext?.save()
+            try modelContext.save()
             isLocallySaved = true
             saveFailure = nil
         } catch {
-            saveFailure = DeckSaveFailure(occurredAt: Date(), message: error.localizedDescription)
-            ToastCenter.shared.present(Toast(label: Feedback.Err.saveFailed, tone: .error))
+            recordSaveFailure(error)
         }
+    }
+
+    /// One place where a failed write becomes visible: to the user as a standing
+    /// affordance and a toast, and to us as a deduped bug report. The only trace
+    /// this used to leave was a console print, which is why the save-loss class
+    /// was invisible in production. Bug 9f4aeaf8.
+    private func recordSaveFailure(_ error: Error) {
+        saveFailure = DeckSaveFailure(occurredAt: Date(), message: error.localizedDescription)
+        DeckSaveTelemetry.recordFailure(
+            designId: deckDesign.id,
+            error: error,
+            isPersisted: deckDesign.modelContext != nil
+        )
+        ToastCenter.shared.present(Toast(label: Feedback.Err.saveFailed, tone: .error))
     }
 
     /// Re-runs the write behind the NOT SAVED affordance. Hands the revision to

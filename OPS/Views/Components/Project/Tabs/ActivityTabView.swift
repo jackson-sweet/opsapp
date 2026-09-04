@@ -188,11 +188,12 @@ struct ActivityTabView: View {
                                 onDelete: { deletePhoto in
                                     Task { await notesViewModel.deleteNote(note, deletePhoto: deletePhoto) }
                                 },
-                                onEdit: { newContent, identitySpans in
+                                onEdit: { newContent, identitySpans, attachments in
                                     await notesViewModel.updateNoteContent(
                                         note,
                                         newContent: newContent,
-                                        identitySpans: identitySpans
+                                        identitySpans: identitySpans,
+                                        attachments: attachments
                                     )
                                 },
                                 onPhotoTap: onPhotoTap

@@ -568,6 +568,10 @@ enum OPSStyle {
         static let formMediaPreviewMaxHeight: CGFloat = 360.0
         static let leadPhotoTileSize: CGFloat = 84.0
         static let leadPhotoTileCompactSize: CGFloat = 52.0
+        /// Activity-feed card photo tile. One value drives the card's
+        /// read-only strip and its edit strip, so the two modes of the same
+        /// card can never drift apart.
+        static let activityPhotoTileSize: CGFloat = 80.0
         static let monthGridDayHeaderHeight: CGFloat = 26.0
         static let monthGridCompactBadgeHeight: CGFloat = 10.0
         static let monthGridStandardBadgeHeight: CGFloat = 14.0

@@ -115,10 +115,44 @@ final class ActivityFeedSnapshotTests: XCTestCase {
                 isOwnNote: false,
                 allTeamMembers: [member()],
                 onDelete: { _ in },
-                onEdit: { _, _ in true },
+                onEdit: { _, _, _ in true },
                 onPhotoTap: { _, _ in }
             )
             .environmentObject(DataController())
+            .padding(OPSStyle.Layout.spacing3)
+        }
+    }
+
+    // MARK: - Edit-mode attachment strip (bug f5f57917)
+
+    /// Visual proof that an inline note edit now renders its photos with a
+    /// remove control. Before this fix, edit mode showed no photo at all and
+    /// offered no way to detach one — Delete was the only route, and it
+    /// destroyed the whole note.
+    ///
+    /// The strip is rendered directly rather than by driving `ActivityEntryView`
+    /// into edit mode, because `isEditing` is private `@State` a test cannot
+    /// set. The card composes exactly this view, so the pixels are the same.
+    func testActivityEntryEditModeShowsRemovableAttachment() {
+        snapshot("feed_edit_mode_removable_attachments") {
+            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
+                Text("Only the highlighted section getting new rail, the rest will be done in the spring")
+                    .font(OPSStyle.Typography.body)
+                    .foregroundColor(OPSStyle.Colors.primaryText)
+
+                ActivityEditAttachmentStrip(
+                    attachments: .constant([
+                        "https://example.com/1782770183522-sketch.jpg",
+                        "https://example.com/1782770183523-rail.jpg"
+                    ])
+                )
+
+                Text("A note needs words or a photo.")
+                    .font(OPSStyle.Typography.smallCaption)
+                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+            }
+            .padding(OPSStyle.Layout.spacing3)
+            .glassSurface()
             .padding(OPSStyle.Layout.spacing3)
         }
     }

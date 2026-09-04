@@ -239,27 +239,17 @@ class DeckBuilderViewModel: ObservableObject {
 
     @Published var activeLevelIndex: Int = 0
 
-    // MARK: - Autosave (bug 2b1f1a9e)
+    // MARK: - Autosave (bug 2b1f1a9e, unconditional since 9f4aeaf8)
 
-    /// New drawings autosave silently every 2 minutes. Existing drawings
-    /// prompt the user the FIRST time they edit anything, asking whether
-    /// to enable the same 2-minute autosave for their changes.
-    @Published var showingAutosavePrompt: Bool = false
-    @Published var autosaveEnabled: Bool = false
-    /// Detected at init: a drawing with no vertices/edges in either single
-    /// or multi-level form. New drawings auto-enable the autosave loop;
-    /// existing drawings opt in via the prompt.
-    private let isNewDrawing: Bool
+    /// Every drawing autosaves. This used to be opt-in on existing drawings,
+    /// behind a "Save your edits automatically?" alert — a question that asked
+    /// the user to consent to not losing their work, and that was raised only
+    /// from inside `save()`, so a session touching only the settings or vinyl
+    /// sheets never reached it and never armed the timer at all. Bug 9f4aeaf8.
+    @Published private(set) var autosaveEnabled: Bool = true
     private var autosaveTimer: Timer?
-    private var hasPromptedForAutosave: Bool = false
     /// 2 minutes — matches the field-test request.
     private static let autosaveInterval: TimeInterval = 120.0
-    /// UserDefaults keys for persisting the user's autosave decision so the
-    /// prompt fires AT MOST ONCE per device. Previously the answer lived in
-    /// the in-memory `hasPromptedForAutosave` flag, which reset on every
-    /// fresh ViewModel and re-fired the prompt on every open.
-    private static let autosaveDecisionMadeKey = "deckBuilder.autosaveDecisionMade"
-    private static let autosavePreferenceKey = "deckBuilder.autosaveEnabled"
 
     // MARK: - Speed-Draw Dictation (bug 722b1606)
 
@@ -771,34 +761,15 @@ class DeckBuilderViewModel: ObservableObject {
         // If the model has already been pushed to Supabase at least once,
         // future saves enqueue updates rather than creates. Bug ab554b5f.
         self.hasEnqueuedCreate = deckDesign.lastSyncedAt != nil
-        // A drawing is "new" if it has no committed geometry yet — both
-        // single-level and multi-level forms must be empty.
-        let hasSingleGeometry = !deckDesign.drawingData.vertices.isEmpty
-            || !deckDesign.drawingData.edges.isEmpty
-        let hasMultiGeometry = deckDesign.drawingData.levels.contains { level in
-            !level.vertices.isEmpty || !level.edges.isEmpty
-        }
-        self.isNewDrawing = !(hasSingleGeometry || hasMultiGeometry)
         setupLaserSubscription()
-        // New drawings auto-enable autosave silently. Existing drawings
-        // apply the persisted user choice if one exists, otherwise wait
-        // for the first edit to surface the prompt (handled in `save()`).
-        // The persisted choice lives in UserDefaults so the prompt never
-        // re-asks once the user has answered (either way) on this device.
-        if self.isNewDrawing {
-            self.autosaveEnabled = true
-            startAutosaveTimer()
-        } else {
-            let defaults = UserDefaults.standard
-            if defaults.bool(forKey: Self.autosaveDecisionMadeKey) {
-                let saved = defaults.bool(forKey: Self.autosavePreferenceKey)
-                self.autosaveEnabled = saved
-                self.hasPromptedForAutosave = true
-                if saved {
-                    startAutosaveTimer()
-                }
-            }
-        }
+        // Crash recovery is not a preference. Every drawing — new or existing —
+        // autosaves, unconditionally, from the moment the editor opens. The
+        // opt-in this replaced was worse than a bad default: the prompt that
+        // armed it was raised only from inside `save()`, so a session that
+        // touched only the settings or vinyl sheets never called save(), never
+        // asked, never armed the timer, and held every edit in RAM until exit.
+        // Bug 9f4aeaf8.
+        startAutosaveTimer()
 
         // Speed-draw dictation defaults ON; `object(forKey:)` (not
         // `bool(forKey:)`) so an absent key reads as enabled rather than
@@ -833,24 +804,43 @@ class DeckBuilderViewModel: ObservableObject {
 
     // MARK: - Autosave (bug 2b1f1a9e)
 
-    /// Start the 2-minute autosave loop. Each tick runs `save()` so the
-    /// user can recover their work from a crash without having to manually
-    /// commit. No-op if a timer is already running.
-    ///
-    /// Bug 14555d2c — gate the tick on `hasAnyCommittedGeometry` so a
-    /// blank-canvas builder that's left open never persists an empty
-    /// orphan deck design row (or enqueues an empty create op against
-    /// Supabase). The autosave loop only persists once the user has
-    /// actually drawn something.
+    /// Start the 2-minute autosave loop. Each tick writes the drawing to disk
+    /// and records the revision for the sync queue, so neither a crash nor a
+    /// session that never exits cleanly can lose the work. No-op if a timer is
+    /// already running.
     private func startAutosaveTimer() {
         guard autosaveTimer == nil else { return }
         autosaveTimer = Timer.scheduledTimer(withTimeInterval: Self.autosaveInterval, repeats: true) { [weak self] _ in
             Task { @MainActor in
-                guard let self = self, self.autosaveEnabled else { return }
-                guard self.hasAnyCommittedGeometry else { return }
-                self.save()
+                self?.performAutosaveTick()
             }
         }
+    }
+
+    /// Bug 14555d2c is preserved: a blank canvas that was never inserted must
+    /// not persist an orphan row. But once the design IS persisted, config,
+    /// label and material work is real work and must be written — the old
+    /// `hasAnyCommittedGeometry` gate discarded all of it, which is how a
+    /// session spent entirely in the settings or vinyl sheets reached exit with
+    /// nothing on disk. Bug 9f4aeaf8.
+    private func performAutosaveTick() {
+        guard autosaveEnabled else { return }
+        guard hasAnyCommittedGeometry || deckDesign.modelContext != nil else { return }
+        // Idle suppression is deliberately content-based. `isLocallySaved` only
+        // tracks writes that went through a save boundary, and mutations that
+        // reach `drawingData` without one are exactly what this tick backstops —
+        // gating on the flag would leave the same work unwritten it did before.
+        guard hasPendingSave
+            || !isLocallySaved
+            || drawingEncoder(drawingData) != deckDesign.drawingDataJSON
+        else { return }
+        save()
+        enqueueLatestDeckDesignIfNeeded()
+    }
+
+    /// Test seam for the 120-second tick. Never called in production.
+    func performAutosaveTickForTesting() {
+        performAutosaveTick()
     }
 
     /// True when the design has at least one vertex or edge in either the
@@ -863,11 +853,6 @@ class DeckBuilderViewModel: ObservableObject {
             return true
         }
         return drawingData.levels.contains { !$0.vertices.isEmpty || !$0.edges.isEmpty }
-    }
-
-    private func stopAutosaveTimer() {
-        autosaveTimer?.invalidate()
-        autosaveTimer = nil
     }
 
     /// Final persistence guard used when the designer is dismissed or the app
@@ -916,38 +901,6 @@ class DeckBuilderViewModel: ObservableObject {
             guard !Task.isCancelled, let syncEngine else { return }
             await syncEngine.triggerSync()
             self?.pendingSyncTriggerTask = nil
-        }
-    }
-
-    /// Called by the prompt's accept path. Existing drawings opt in here.
-    /// Persists the choice so the prompt never re-asks on this device.
-    func enableAutosave() {
-        setAutosavePreference(true)
-        showingAutosavePrompt = false
-    }
-
-    /// Called by the prompt's decline path. Records that the user answered
-    /// so the prompt doesn't re-fire on the next open.
-    func declineAutosave() {
-        setAutosavePreference(false)
-        showingAutosavePrompt = false
-    }
-
-    /// Sets the persisted autosave preference and applies it to the live
-    /// timer. Bound to the toggle in DeckSettingsSheet so the user can
-    /// change their mind after the initial prompt — and writes the
-    /// `decisionMade` flag so the prompt stays suppressed.
-    func setAutosavePreference(_ enabled: Bool) {
-        autosaveEnabled = enabled
-        hasPromptedForAutosave = true
-        autosavePromptDeferred = false
-        let defaults = UserDefaults.standard
-        defaults.set(true, forKey: Self.autosaveDecisionMadeKey)
-        defaults.set(enabled, forKey: Self.autosavePreferenceKey)
-        if enabled {
-            startAutosaveTimer()
-        } else {
-            stopAutosaveTimer()
         }
     }
 
@@ -3880,50 +3833,6 @@ class DeckBuilderViewModel: ObservableObject {
             print("[DeckBuilder] Save failed: \(error)")
             ToastCenter.shared.present(Toast(label: Feedback.Err.saveFailed, tone: .error))
         }
-
-        // Bug 2b1f1a9e — first edit on an EXISTING drawing surfaces the
-        // autosave prompt (new drawings already auto-enabled it in init).
-        // Suppress when called from the autosave timer itself (autosaveEnabled
-        // is already true by then, and the guard prevents recursion).
-        if !isNewDrawing && !hasPromptedForAutosave && !autosaveEnabled {
-            hasPromptedForAutosave = true
-            requestAutosavePrompt()
-        }
-    }
-
-    // MARK: - Autosave prompt presentation (bug 71129ae2)
-
-    /// The autosave alert is bound to the builder's ROOT view, so raising it
-    /// while a sheet is up presents it behind that sheet: the user sees
-    /// nothing, and the next tap lands on a dialog they can't see. The ask
-    /// waits for a clear screen instead.
-    private var autosavePromptDeferred = false
-
-    /// Every modal that can own the screen when a first edit fires the
-    /// autosave question.
-    var isPresentingModal: Bool {
-        showingDimensionInput || showingElevationInput || showingStairConfig
-            || showingAssignmentWheel || showingMaterialPicker || showingVinylOrderSheet
-            || showingPropertySheet || showingSettings || showingClearConfirm
-            || showingARVisualization || showingPhotoSourcePicker || showingPhotoOverlayEditor
-            || showingEstimatePreview || showingShareOptions || showingDuplicateAlert
-            || showingShareSheet
-    }
-
-    private func requestAutosavePrompt() {
-        guard !isPresentingModal else {
-            autosavePromptDeferred = true
-            return
-        }
-        showingAutosavePrompt = true
-    }
-
-    /// Raises a prompt that was held back while a sheet was up. Driven by the
-    /// builder view the moment the last modal closes.
-    func presentDeferredAutosavePromptIfReady() {
-        guard autosavePromptDeferred, !isPresentingModal else { return }
-        autosavePromptDeferred = false
-        showingAutosavePrompt = true
     }
 
     /// Records a SyncOperation so the OutboundProcessor pushes the deck

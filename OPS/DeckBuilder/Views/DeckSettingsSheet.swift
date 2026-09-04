@@ -224,19 +224,6 @@ struct DeckSettingsSheet: View {
                         .foregroundColor(OPSStyle.Colors.tertiaryText)
                 }
 
-                Section {
-                    Toggle("Autosave every 2 minutes", isOn: Binding(
-                        get: { viewModel.autosaveEnabled },
-                        set: { viewModel.setAutosavePreference($0) }
-                    ))
-                    .tint(OPSStyle.Colors.text)
-                } header: {
-                    Text("AUTOSAVE")
-                } footer: {
-                    Text("Saves your changes silently so a crash or quit doesn't lose work.")
-                        .font(OPSStyle.Typography.caption)
-                        .foregroundColor(OPSStyle.Colors.tertiaryText)
-                }
             }
             .listStyle(.insetGrouped)
             .scrollContentBackground(.hidden)

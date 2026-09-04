@@ -9,6 +9,7 @@
 import CoreGraphics
 import SceneKit
 import simd
+import SwiftData
 import UIKit
 import XCTest
 @testable import OPS
@@ -1117,6 +1118,89 @@ final class DeckBuilderRegressionTests: XCTestCase {
         await thumbnailWork?.value
 
         XCTAssertEqual(design.thumbnailURL, "https://cdn.ops.test/decks/lead.jpg")
+    }
+
+    // MARK: - Autosave is unconditional (bug 9f4aeaf8)
+
+    func testAutosave_isArmedForAnExistingDrawingWithoutAnyPrompt() {
+        var data = DeckDrawingData()
+        data.scaleFactor = 1
+        data.vertices = [
+            DeckVertex(id: "v1", position: CGPoint(x: 0, y: 0)),
+            DeckVertex(id: "v2", position: CGPoint(x: 10, y: 0))
+        ]
+        data.edges = [DeckEdge(id: "e1", startVertexId: "v1", endVertexId: "v2")]
+
+        let viewModel = DeckBuilderViewModel(deckDesign: deckDesign(drawingData: data))
+
+        XCTAssertTrue(
+            viewModel.autosaveEnabled,
+            "an existing drawing must autosave without the user opting in — crash recovery is not a preference"
+        )
+    }
+
+    /// The tick used to be gated on `hasAnyCommittedGeometry`, which silently
+    /// discarded every session spent on config, labels or materials — the exact
+    /// work the settings and vinyl sheets produce.
+    func testAutosaveTick_persistsConfigOnlyWorkOnAPersistedDesign() throws {
+        let container = try makeDeckContainer()
+        let design = DeckDesign(companyId: "c1", title: "T")
+        container.mainContext.insert(design)
+        try container.mainContext.save()
+
+        let viewModel = DeckBuilderViewModel(
+            deckDesign: design,
+            modelContext: container.mainContext
+        )
+        viewModel.drawingData.config.gridVisible = false
+
+        viewModel.performAutosaveTickForTesting()
+
+        XCTAssertTrue(
+            design.drawingDataJSON.contains("\"gridVisible\":false")
+                || design.drawingDataJSON.contains("\"gridVisible\": false"),
+            "config-only work on a persisted design must reach disk on an autosave tick"
+        )
+    }
+
+    /// Bug 14555d2c must survive: a blank canvas the user never committed and
+    /// that was never inserted must not create an orphan row on a tick.
+    func testAutosaveTick_doesNotPersistAnUninsertedBlankCanvas() {
+        var blank = DeckDrawingData()
+        blank.scaleFactor = 1
+        let design = deckDesign(drawingData: blank)
+        let viewModel = DeckBuilderViewModel(deckDesign: design)
+
+        viewModel.performAutosaveTickForTesting()
+
+        XCTAssertFalse(
+            viewModel.hasPendingSave,
+            "an uninserted blank canvas must not schedule work"
+        )
+        XCTAssertNil(design.modelContext, "no orphan row may be created by a tick")
+    }
+
+    private var retainedContainers: [ModelContainer] = []
+
+    override func tearDown() {
+        retainedContainers.removeAll()
+        super.tearDown()
+    }
+
+    /// The container is retained for the case's lifetime on purpose: a
+    /// `ModelContext` does not keep its `ModelContainer` alive, and inserting
+    /// into a context whose container has been released traps inside SwiftData
+    /// before the first assertion runs.
+    private func makeDeckContainer() throws -> ModelContainer {
+        let schema = Schema([DeckDesign.self, SyncOperation.self])
+        let configuration = ModelConfiguration(
+            schema: schema,
+            isStoredInMemoryOnly: true,
+            allowsSave: true
+        )
+        let container = try ModelContainer(for: schema, configurations: [configuration])
+        retainedContainers.append(container)
+        return container
     }
 
     private func deckDesign(drawingData: DeckDrawingData) -> DeckDesign {

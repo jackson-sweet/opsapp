@@ -488,29 +488,6 @@ struct DeckBuilderView: View {
         } message: {
             Text("This cannot be undone.")
         }
-        // Bug 2b1f1a9e — autosave prompt for EXISTING drawings on first edit.
-        // New drawings autosave silently; existing drawings opt in here so the
-        // user knows their working copy will be saved every couple of minutes
-        // without a manual commit.
-        .alert("Save your edits automatically?", isPresented: $viewModel.showingAutosavePrompt) {
-            Button("Yes, every 2 minutes") {
-                viewModel.enableAutosave()
-            }
-            Button("Not now", role: .cancel) {
-                viewModel.declineAutosave()
-            }
-        } message: {
-            Text("OPS can save your changes to this drawing every 2 minutes so you don't lose work.")
-        }
-        // The autosave alert is bound here, at the builder's root — raising it
-        // while a sheet is up presents it BEHIND that sheet. The view model
-        // holds the ask back in that case; this releases it the moment the
-        // last modal closes.
-        .onChange(of: viewModel.isPresentingModal) { _, isPresenting in
-            if !isPresenting {
-                viewModel.presentDeferredAutosavePromptIfReady()
-            }
-        }
         .statusBarHidden(true)
         .onAppear {
             // Defense-in-depth: prevent deep-link or programmatic access bypassing UI gate

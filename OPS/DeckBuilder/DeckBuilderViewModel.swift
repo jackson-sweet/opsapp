@@ -3809,6 +3809,41 @@ class DeckBuilderViewModel: ObservableObject {
         deferredSaveTask = nil
     }
 
+    // MARK: - Canvas settings (bug 9f4aeaf8)
+    //
+    // These used to be raw two-way bindings into `drawingData.config` from
+    // DeckSettingsSheet. The binding's setter committed the mutation with no
+    // save boundary anywhere on the path, so the change lived only in RAM until
+    // the autosave tick or editor exit — and because the sheet's Cancel button
+    // neither saved nor reverted, "Cancel" kept the change rather than dropping
+    // it. Every settings write now goes through a setter that schedules a save.
+    // A binding that mutates persisted model state with no save boundary is the
+    // defect class; these setters remove the class, not the instance.
+
+    func setMeasurementSystem(_ system: MeasurementSystem) {
+        guard drawingData.config.measurementSystem != system else { return }
+        drawingData.config.measurementSystem = system
+        scheduleSave()
+    }
+
+    func setSnappingEnabled(_ enabled: Bool) {
+        guard drawingData.config.snappingEnabled != enabled else { return }
+        drawingData.config.snappingEnabled = enabled
+        scheduleSave()
+    }
+
+    func setEndpointSnapRadius(_ radius: Double) {
+        guard drawingData.config.endpointSnapRadius != radius else { return }
+        drawingData.config.endpointSnapRadius = radius
+        scheduleSave()
+    }
+
+    func setGridVisible(_ visible: Bool) {
+        guard drawingData.config.gridVisible != visible else { return }
+        drawingData.config.gridVisible = visible
+        scheduleSave()
+    }
+
     // MARK: - Persistence
 
     func save() {

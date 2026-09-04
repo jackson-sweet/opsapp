@@ -1180,6 +1180,52 @@ final class DeckBuilderRegressionTests: XCTestCase {
         XCTAssertNil(design.modelContext, "no orphan row may be created by a tick")
     }
 
+    // MARK: - Settings controls persist (bug 9f4aeaf8)
+
+    /// Measurement system, snapping, snap radius and grid were two-way bindings
+    /// straight into `drawingData.config` with no save boundary on the path.
+    func testCanvasSettings_everyControlSchedulesASave() {
+        var data = DeckDrawingData()
+        data.scaleFactor = 1
+        let viewModel = DeckBuilderViewModel(deckDesign: deckDesign(drawingData: data))
+
+        viewModel.setMeasurementSystem(.metric)
+        XCTAssertTrue(viewModel.hasPendingSave, "measurement system must schedule a save")
+        viewModel.flushPendingSave()
+
+        viewModel.setSnappingEnabled(false)
+        XCTAssertTrue(viewModel.hasPendingSave, "snapping toggle must schedule a save")
+        viewModel.flushPendingSave()
+
+        viewModel.setEndpointSnapRadius(35)
+        XCTAssertTrue(viewModel.hasPendingSave, "snap radius must schedule a save")
+        viewModel.flushPendingSave()
+
+        viewModel.setGridVisible(false)
+        XCTAssertTrue(viewModel.hasPendingSave, "grid toggle must schedule a save")
+        viewModel.flushPendingSave()
+
+        XCTAssertEqual(viewModel.drawingData.config.measurementSystem, .metric)
+        XCTAssertFalse(viewModel.drawingData.config.snappingEnabled)
+        XCTAssertEqual(viewModel.drawingData.config.endpointSnapRadius, 35)
+        XCTAssertFalse(viewModel.drawingData.config.gridVisible)
+    }
+
+    /// Re-applying the value already in place must not churn a write.
+    func testCanvasSettings_settingTheSameValueSchedulesNothing() {
+        var data = DeckDrawingData()
+        data.scaleFactor = 1
+        let viewModel = DeckBuilderViewModel(deckDesign: deckDesign(drawingData: data))
+        let current = viewModel.drawingData.config
+
+        viewModel.setMeasurementSystem(current.measurementSystem)
+        viewModel.setSnappingEnabled(current.snappingEnabled)
+        viewModel.setEndpointSnapRadius(current.endpointSnapRadius)
+        viewModel.setGridVisible(current.gridVisible)
+
+        XCTAssertFalse(viewModel.hasPendingSave)
+    }
+
     private var retainedContainers: [ModelContainer] = []
 
     override func tearDown() {

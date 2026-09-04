@@ -54,15 +54,21 @@ struct DeckSettingsSheet: View {
                             .font(OPSStyle.Typography.caption)
                             .foregroundColor(OPSStyle.Colors.secondaryText)
 
-                        Picker("", selection: $viewModel.drawingData.config.measurementSystem) {
+                        Picker("", selection: Binding(
+                            get: { viewModel.drawingData.config.measurementSystem },
+                            set: { viewModel.setMeasurementSystem($0) }
+                        )) {
                             Text("Imperial").tag(MeasurementSystem.imperial)
                             Text("Metric").tag(MeasurementSystem.metric)
                         }
                         .pickerStyle(.segmented)
                     }
 
-                    Toggle("Snapping", isOn: $viewModel.drawingData.config.snappingEnabled)
-                        .tint(OPSStyle.Colors.text)
+                    Toggle("Snapping", isOn: Binding(
+                        get: { viewModel.drawingData.config.snappingEnabled },
+                        set: { viewModel.setSnappingEnabled($0) }
+                    ))
+                    .tint(OPSStyle.Colors.text)
 
                     if viewModel.drawingData.config.snappingEnabled {
                         VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
@@ -163,7 +169,10 @@ struct DeckSettingsSheet: View {
                                 .foregroundColor(OPSStyle.Colors.secondaryText)
                         }
                         Slider(
-                            value: $viewModel.drawingData.config.endpointSnapRadius,
+                            value: Binding(
+                                get: { viewModel.drawingData.config.endpointSnapRadius },
+                                set: { viewModel.setEndpointSnapRadius($0) }
+                            ),
                             in: 10...40,
                             step: 5
                         )
@@ -174,8 +183,11 @@ struct DeckSettingsSheet: View {
                 }
 
                 Section {
-                    Toggle("Grid", isOn: $viewModel.drawingData.config.gridVisible)
-                        .tint(OPSStyle.Colors.text)
+                    Toggle("Grid", isOn: Binding(
+                        get: { viewModel.drawingData.config.gridVisible },
+                        set: { viewModel.setGridVisible($0) }
+                    ))
+                    .tint(OPSStyle.Colors.text)
                 } header: {
                     Text("DISPLAY")
                 }
@@ -230,17 +242,15 @@ struct DeckSettingsSheet: View {
             .background(OPSStyle.Colors.background)
             .navigationTitle("Canvas Settings")
             .navigationBarTitleDisplayMode(.inline)
+            // No Cancel. Every control here commits and saves the moment it is
+            // touched, so a Cancel that neither reverted nor saved was a lie —
+            // it dismissed while keeping the change. This is a live settings
+            // surface, not a form: Done is the only exit it needs.
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") {
-                        dismiss()
-                    }
-                    .foregroundColor(OPSStyle.Colors.secondaryText)
-                }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Done") {
                         mediumImpact.impactOccurred()
-                        viewModel.save()
+                        viewModel.flushPendingSave()
                         dismiss()
                     }
                     .foregroundColor(OPSStyle.Colors.primaryAccent)
@@ -249,6 +259,12 @@ struct DeckSettingsSheet: View {
             }
         }
         .presentationDetents([.medium, .large])
+        // Defence in depth for the swipe-to-dismiss exit, which never reaches
+        // Done: the coalesced write is still 0.4 s out at that moment, and a
+        // force-quit inside that window would drop it.
+        .onDisappear {
+            viewModel.flushPendingSave()
+        }
     }
 }
 

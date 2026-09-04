@@ -12,6 +12,15 @@ enum VinylOrderSurfaceScope: Equatable {
     case allSurfaces
 }
 
+/// A local write that threw, held until the next successful save clears it.
+/// Carries the moment and the store's own description, so a failure that
+/// persists across an editing session is reported with its real cause rather
+/// than as a generic amber dot. Bug 9f4aeaf8.
+struct DeckSaveFailure: Equatable {
+    let occurredAt: Date
+    let message: String
+}
+
 /// Stable destination captured when a deck label field begins editing.
 /// `levelId == nil` means the single-level root drawing; a multi-level target
 /// always carries its level id so a later level/selection change cannot move
@@ -221,6 +230,12 @@ class DeckBuilderViewModel: ObservableObject {
     // MARK: - Error State
 
     @Published var isLocallySaved: Bool = true
+    /// Non-nil for exactly as long as the last write to disk is still failing.
+    /// Cleared by the next successful save — including a retry. The editor used
+    /// to report a failed save as an amber dot that also meant "saving", so the
+    /// one state that needed the user was indistinguishable from the one that
+    /// did not. Bug 9f4aeaf8.
+    @Published private(set) var saveFailure: DeckSaveFailure?
     @Published var estimateValidationError: String?
     private var hasShownUndoLevelToast: Bool = false
 
@@ -239,27 +254,17 @@ class DeckBuilderViewModel: ObservableObject {
 
     @Published var activeLevelIndex: Int = 0
 
-    // MARK: - Autosave (bug 2b1f1a9e)
+    // MARK: - Autosave (bug 2b1f1a9e, unconditional since 9f4aeaf8)
 
-    /// New drawings autosave silently every 2 minutes. Existing drawings
-    /// prompt the user the FIRST time they edit anything, asking whether
-    /// to enable the same 2-minute autosave for their changes.
-    @Published var showingAutosavePrompt: Bool = false
-    @Published var autosaveEnabled: Bool = false
-    /// Detected at init: a drawing with no vertices/edges in either single
-    /// or multi-level form. New drawings auto-enable the autosave loop;
-    /// existing drawings opt in via the prompt.
-    private let isNewDrawing: Bool
+    /// Every drawing autosaves. This used to be opt-in on existing drawings,
+    /// behind a "Save your edits automatically?" alert — a question that asked
+    /// the user to consent to not losing their work, and that was raised only
+    /// from inside `save()`, so a session touching only the settings or vinyl
+    /// sheets never reached it and never armed the timer at all. Bug 9f4aeaf8.
+    @Published private(set) var autosaveEnabled: Bool = true
     private var autosaveTimer: Timer?
-    private var hasPromptedForAutosave: Bool = false
     /// 2 minutes — matches the field-test request.
     private static let autosaveInterval: TimeInterval = 120.0
-    /// UserDefaults keys for persisting the user's autosave decision so the
-    /// prompt fires AT MOST ONCE per device. Previously the answer lived in
-    /// the in-memory `hasPromptedForAutosave` flag, which reset on every
-    /// fresh ViewModel and re-fired the prompt on every open.
-    private static let autosaveDecisionMadeKey = "deckBuilder.autosaveDecisionMade"
-    private static let autosavePreferenceKey = "deckBuilder.autosaveEnabled"
 
     // MARK: - Speed-Draw Dictation (bug 722b1606)
 
@@ -372,7 +377,10 @@ class DeckBuilderViewModel: ObservableObject {
             return match.id
         }
         // Force a reconcile so a brand-new persisted entry exists for this face.
-        reconcileSurfaces()
+        // The entry it creates is persisted state a plain tap just authored —
+        // write it, rather than leaving it for the next autosave tick or exit.
+        // Bug 9f4aeaf8.
+        if reconcileSurfaces() { scheduleSave() }
         if let now = activePersistedSurfaces.first(where: { $0.vertexIds == dSet }) {
             return now.id
         }
@@ -382,7 +390,16 @@ class DeckBuilderViewModel: ObservableObject {
     /// Reconciles persisted surfaces against the currently detected ones.
     /// Idempotent: safe to call after any geometry mutation (and from
     /// `save()` so persistence captures the latest reconciled state).
-    func reconcileSurfaces() {
+    ///
+    /// Returns true when the pass actually changed the drawing, so callers
+    /// outside `save()` can schedule the write. It never schedules internally:
+    /// `save()` calls this and must not re-enter the debounce it just cancelled.
+    /// The flag is set at the mutation sites rather than by re-encoding the
+    /// drawing — this runs on the tap path, where a full JSON pass is not free.
+    /// Bug 9f4aeaf8.
+    @discardableResult
+    func reconcileSurfaces() -> Bool {
+        var didChangeDrawing = false
         if isMultiLevel {
             for i in drawingData.levels.indices {
                 let detected = drawingData.levels[i].detectedSurfaces
@@ -394,9 +411,11 @@ class DeckBuilderViewModel: ObservableObject {
                     if !reconciled.isEmpty {
                         if !drawingData.levels[i].footprint.assignedItems.isEmpty {
                             drawingData.levels[i].footprint.assignedItems.removeAll()
+                            didChangeDrawing = true
                         }
                         if drawingData.levels[i].footprint.label != nil {
                             drawingData.levels[i].footprint.label = nil
+                            didChangeDrawing = true
                         }
                     }
                 } else {
@@ -404,6 +423,7 @@ class DeckBuilderViewModel: ObservableObject {
                 }
                 if drawingData.levels[i].surfaces != reconciled {
                     drawingData.levels[i].surfaces = reconciled
+                    didChangeDrawing = true
                 }
             }
         } else {
@@ -416,9 +436,11 @@ class DeckBuilderViewModel: ObservableObject {
                 if !reconciled.isEmpty {
                     if !drawingData.footprint.assignedItems.isEmpty {
                         drawingData.footprint.assignedItems.removeAll()
+                        didChangeDrawing = true
                     }
                     if drawingData.footprint.label != nil {
                         drawingData.footprint.label = nil
+                        didChangeDrawing = true
                     }
                 }
             } else {
@@ -426,6 +448,7 @@ class DeckBuilderViewModel: ObservableObject {
             }
             if drawingData.surfaces != reconciled {
                 drawingData.surfaces = reconciled
+                didChangeDrawing = true
             }
         }
 
@@ -439,6 +462,10 @@ class DeckBuilderViewModel: ObservableObject {
         if !liveIds.isEmpty {
             selection.selectedSurfaceIds = selection.selectedSurfaceIds.intersection(liveIds)
         }
+
+        // Selection is view state, not drawing content — pruning it alone is
+        // not a reason to write to disk.
+        return didChangeDrawing
     }
 
     /// Look up a vertex in the active context
@@ -771,34 +798,15 @@ class DeckBuilderViewModel: ObservableObject {
         // If the model has already been pushed to Supabase at least once,
         // future saves enqueue updates rather than creates. Bug ab554b5f.
         self.hasEnqueuedCreate = deckDesign.lastSyncedAt != nil
-        // A drawing is "new" if it has no committed geometry yet — both
-        // single-level and multi-level forms must be empty.
-        let hasSingleGeometry = !deckDesign.drawingData.vertices.isEmpty
-            || !deckDesign.drawingData.edges.isEmpty
-        let hasMultiGeometry = deckDesign.drawingData.levels.contains { level in
-            !level.vertices.isEmpty || !level.edges.isEmpty
-        }
-        self.isNewDrawing = !(hasSingleGeometry || hasMultiGeometry)
         setupLaserSubscription()
-        // New drawings auto-enable autosave silently. Existing drawings
-        // apply the persisted user choice if one exists, otherwise wait
-        // for the first edit to surface the prompt (handled in `save()`).
-        // The persisted choice lives in UserDefaults so the prompt never
-        // re-asks once the user has answered (either way) on this device.
-        if self.isNewDrawing {
-            self.autosaveEnabled = true
-            startAutosaveTimer()
-        } else {
-            let defaults = UserDefaults.standard
-            if defaults.bool(forKey: Self.autosaveDecisionMadeKey) {
-                let saved = defaults.bool(forKey: Self.autosavePreferenceKey)
-                self.autosaveEnabled = saved
-                self.hasPromptedForAutosave = true
-                if saved {
-                    startAutosaveTimer()
-                }
-            }
-        }
+        // Crash recovery is not a preference. Every drawing — new or existing —
+        // autosaves, unconditionally, from the moment the editor opens. The
+        // opt-in this replaced was worse than a bad default: the prompt that
+        // armed it was raised only from inside `save()`, so a session that
+        // touched only the settings or vinyl sheets never called save(), never
+        // asked, never armed the timer, and held every edit in RAM until exit.
+        // Bug 9f4aeaf8.
+        startAutosaveTimer()
 
         // Speed-draw dictation defaults ON; `object(forKey:)` (not
         // `bool(forKey:)`) so an absent key reads as enabled rather than
@@ -833,24 +841,43 @@ class DeckBuilderViewModel: ObservableObject {
 
     // MARK: - Autosave (bug 2b1f1a9e)
 
-    /// Start the 2-minute autosave loop. Each tick runs `save()` so the
-    /// user can recover their work from a crash without having to manually
-    /// commit. No-op if a timer is already running.
-    ///
-    /// Bug 14555d2c — gate the tick on `hasAnyCommittedGeometry` so a
-    /// blank-canvas builder that's left open never persists an empty
-    /// orphan deck design row (or enqueues an empty create op against
-    /// Supabase). The autosave loop only persists once the user has
-    /// actually drawn something.
+    /// Start the 2-minute autosave loop. Each tick writes the drawing to disk
+    /// and records the revision for the sync queue, so neither a crash nor a
+    /// session that never exits cleanly can lose the work. No-op if a timer is
+    /// already running.
     private func startAutosaveTimer() {
         guard autosaveTimer == nil else { return }
         autosaveTimer = Timer.scheduledTimer(withTimeInterval: Self.autosaveInterval, repeats: true) { [weak self] _ in
             Task { @MainActor in
-                guard let self = self, self.autosaveEnabled else { return }
-                guard self.hasAnyCommittedGeometry else { return }
-                self.save()
+                self?.performAutosaveTick()
             }
         }
+    }
+
+    /// Bug 14555d2c is preserved: a blank canvas that was never inserted must
+    /// not persist an orphan row. But once the design IS persisted, config,
+    /// label and material work is real work and must be written — the old
+    /// `hasAnyCommittedGeometry` gate discarded all of it, which is how a
+    /// session spent entirely in the settings or vinyl sheets reached exit with
+    /// nothing on disk. Bug 9f4aeaf8.
+    private func performAutosaveTick() {
+        guard autosaveEnabled else { return }
+        guard hasAnyCommittedGeometry || deckDesign.modelContext != nil else { return }
+        // Idle suppression is deliberately content-based. `isLocallySaved` only
+        // tracks writes that went through a save boundary, and mutations that
+        // reach `drawingData` without one are exactly what this tick backstops —
+        // gating on the flag would leave the same work unwritten it did before.
+        guard hasPendingSave
+            || !isLocallySaved
+            || drawingEncoder(drawingData) != deckDesign.drawingDataJSON
+        else { return }
+        save()
+        enqueueLatestDeckDesignIfNeeded()
+    }
+
+    /// Test seam for the 120-second tick. Never called in production.
+    func performAutosaveTickForTesting() {
+        performAutosaveTick()
     }
 
     /// True when the design has at least one vertex or edge in either the
@@ -865,11 +892,6 @@ class DeckBuilderViewModel: ObservableObject {
         return drawingData.levels.contains { !$0.vertices.isEmpty || !$0.edges.isEmpty }
     }
 
-    private func stopAutosaveTimer() {
-        autosaveTimer?.invalidate()
-        autosaveTimer = nil
-    }
-
     /// Final persistence guard used when the designer is dismissed or the app
     /// leaves the foreground. The timer is crash recovery; exit/background
     /// must commit the current drawing immediately.
@@ -882,14 +904,19 @@ class DeckBuilderViewModel: ObservableObject {
         schedulePendingDeckDesignSync()
     }
 
-    /// Crash-safe local persistence when the app is interrupted while the deck
-    /// editor remains open. Backgrounding or locking the phone is not an editor
-    /// exit and therefore must not create or push cloud work.
+    /// Crash-safe persistence when the app is interrupted while the deck editor
+    /// is still open. Backgrounding is where the OS kills a suspended app, so it
+    /// MUST leave a durable queue record — `deferPush` keeps every byte of
+    /// network I/O off this path, which is what commit 88edd771 was protecting
+    /// when it removed the enqueue entirely. Removing the record along with the
+    /// push is what made a clean editor exit the only way work ever reached the
+    /// server. Bug 9f4aeaf8.
     func flushLocallyForInterruption() {
         flushPendingSave()
         if shouldPersistExitSnapshot {
             save()
         }
+        enqueueLatestDeckDesignIfNeeded()
     }
 
     private var shouldPersistExitSnapshot: Bool {
@@ -916,38 +943,6 @@ class DeckBuilderViewModel: ObservableObject {
             guard !Task.isCancelled, let syncEngine else { return }
             await syncEngine.triggerSync()
             self?.pendingSyncTriggerTask = nil
-        }
-    }
-
-    /// Called by the prompt's accept path. Existing drawings opt in here.
-    /// Persists the choice so the prompt never re-asks on this device.
-    func enableAutosave() {
-        setAutosavePreference(true)
-        showingAutosavePrompt = false
-    }
-
-    /// Called by the prompt's decline path. Records that the user answered
-    /// so the prompt doesn't re-fire on the next open.
-    func declineAutosave() {
-        setAutosavePreference(false)
-        showingAutosavePrompt = false
-    }
-
-    /// Sets the persisted autosave preference and applies it to the live
-    /// timer. Bound to the toggle in DeckSettingsSheet so the user can
-    /// change their mind after the initial prompt — and writes the
-    /// `decisionMade` flag so the prompt stays suppressed.
-    func setAutosavePreference(_ enabled: Bool) {
-        autosaveEnabled = enabled
-        hasPromptedForAutosave = true
-        autosavePromptDeferred = false
-        let defaults = UserDefaults.standard
-        defaults.set(true, forKey: Self.autosaveDecisionMadeKey)
-        defaults.set(enabled, forKey: Self.autosavePreferenceKey)
-        if enabled {
-            startAutosaveTimer()
-        } else {
-            stopAutosaveTimer()
         }
     }
 
@@ -3091,7 +3086,10 @@ class DeckBuilderViewModel: ObservableObject {
     }
 
     func vinylOrderSurfaceInputs(scope: VinylOrderSurfaceScope) -> [VinylOrderSurfaceInput] {
-        reconcileSurfaces()
+        // Reading the order inputs can create persisted surface entries and
+        // clear legacy footprint items. That is a write, and it needs a save
+        // boundary like any other. Bug 9f4aeaf8.
+        if reconcileSurfaces() { scheduleSave() }
         let scale = vinylOrderEffectiveScale
         let selectedIds = selection.selectedSurfaceIds
         if scope == .selectedSurfaces, selectedIds.isEmpty { return [] }
@@ -3851,6 +3849,79 @@ class DeckBuilderViewModel: ObservableObject {
         deferredSaveTask = nil
     }
 
+    // MARK: - Canvas settings (bug 9f4aeaf8)
+    //
+    // These used to be raw two-way bindings into `drawingData.config` from
+    // DeckSettingsSheet. The binding's setter committed the mutation with no
+    // save boundary anywhere on the path, so the change lived only in RAM until
+    // the autosave tick or editor exit — and because the sheet's Cancel button
+    // neither saved nor reverted, "Cancel" kept the change rather than dropping
+    // it. Every settings write now goes through a setter that schedules a save.
+    // A binding that mutates persisted model state with no save boundary is the
+    // defect class; these setters remove the class, not the instance.
+
+    func setMeasurementSystem(_ system: MeasurementSystem) {
+        guard drawingData.config.measurementSystem != system else { return }
+        drawingData.config.measurementSystem = system
+        scheduleSave()
+    }
+
+    func setSnappingEnabled(_ enabled: Bool) {
+        guard drawingData.config.snappingEnabled != enabled else { return }
+        drawingData.config.snappingEnabled = enabled
+        scheduleSave()
+    }
+
+    func setEndpointSnapRadius(_ radius: Double) {
+        guard drawingData.config.endpointSnapRadius != radius else { return }
+        drawingData.config.endpointSnapRadius = radius
+        scheduleSave()
+    }
+
+    func setGridVisible(_ visible: Bool) {
+        guard drawingData.config.gridVisible != visible else { return }
+        drawingData.config.gridVisible = visible
+        scheduleSave()
+    }
+
+    // MARK: - Vinyl order settings (bug 9f4aeaf8)
+    //
+    // Same defect class as the canvas settings above: every control on the
+    // vinyl sheet wrote `drawingData` through a private helper in the view,
+    // with no save boundary. The sheet's `onDisappear` only persisted the
+    // free-text colour, and only when no catalog product was configured — so
+    // with a product selected, dismissing the sheet saved nothing at all.
+
+    func applyVinylOrderSettings(_ settings: VinylOrderSettings) {
+        guard drawingData.vinylOrderSettings != settings else { return }
+        drawingData.vinylOrderSettings = settings
+        scheduleSave()
+    }
+
+    func setVinylOrderMode(_ mode: VinylOrderMode) {
+        var materials = drawingData.materialsSettings ?? DeckMaterialsSettings()
+        guard materials.orderMode != mode else { return }
+        materials.orderMode = mode
+        drawingData.materialsSettings = materials
+        scheduleSave()
+    }
+
+    func setVinylFullRollLength(_ feet: Double) {
+        var materials = drawingData.materialsSettings ?? DeckMaterialsSettings()
+        guard materials.fullRollLengthFeet != feet else { return }
+        materials.fullRollLengthFeet = feet
+        drawingData.materialsSettings = materials
+        scheduleSave()
+    }
+
+    /// The ordered-snapshot merge behind MARK ORDERED / CLEAR ORDERED mutates
+    /// the drawing and must be written like any other edit — the service wrote
+    /// the model object, but the editor's working copy went unsaved.
+    func commitMergedOrderedSnapshot(_ data: DeckDrawingData) {
+        drawingData = data
+        scheduleSave()
+    }
+
     // MARK: - Persistence
 
     func save() {
@@ -3873,57 +3944,56 @@ class DeckBuilderViewModel: ObservableObject {
         if deckDesign.modelContext == nil {
             modelContext?.insert(deckDesign)
         }
-        do {
-            try modelContext?.save()
+        // `try modelContext?.save()` — the optional chain this replaced — made a
+        // missing store indistinguishable from a completed write: the
+        // expression evaluated to nil, nothing threw, and the save reported
+        // success. The in-memory commit above is real either way, so this is
+        // not a user-facing failure and the flag still reflects it; what it must
+        // never again be is UNRECORDED. Bug 9f4aeaf8.
+        guard let modelContext else {
             isLocallySaved = true
-        } catch {
-            print("[DeckBuilder] Save failed: \(error)")
-            ToastCenter.shared.present(Toast(label: Feedback.Err.saveFailed, tone: .error))
-        }
-
-        // Bug 2b1f1a9e — first edit on an EXISTING drawing surfaces the
-        // autosave prompt (new drawings already auto-enabled it in init).
-        // Suppress when called from the autosave timer itself (autosaveEnabled
-        // is already true by then, and the guard prevents recursion).
-        if !isNewDrawing && !hasPromptedForAutosave && !autosaveEnabled {
-            hasPromptedForAutosave = true
-            requestAutosavePrompt()
-        }
-    }
-
-    // MARK: - Autosave prompt presentation (bug 71129ae2)
-
-    /// The autosave alert is bound to the builder's ROOT view, so raising it
-    /// while a sheet is up presents it behind that sheet: the user sees
-    /// nothing, and the next tap lands on a dialog they can't see. The ask
-    /// waits for a clear screen instead.
-    private var autosavePromptDeferred = false
-
-    /// Every modal that can own the screen when a first edit fires the
-    /// autosave question.
-    var isPresentingModal: Bool {
-        showingDimensionInput || showingElevationInput || showingStairConfig
-            || showingAssignmentWheel || showingMaterialPicker || showingVinylOrderSheet
-            || showingPropertySheet || showingSettings || showingClearConfirm
-            || showingARVisualization || showingPhotoSourcePicker || showingPhotoOverlayEditor
-            || showingEstimatePreview || showingShareOptions || showingDuplicateAlert
-            || showingShareSheet
-    }
-
-    private func requestAutosavePrompt() {
-        guard !isPresentingModal else {
-            autosavePromptDeferred = true
+            saveFailure = nil
+            // Unreachable from the app — all eight presentation sites guard on
+            // the context, and only previews and headless fixtures build a view
+            // model without one. If it ever becomes reachable, we find out from
+            // production instead of from a data-loss report weeks later.
+            DeckSaveTelemetry.recordFailure(
+                designId: deckDesign.id,
+                error: DeckSaveError.noModelContext,
+                isPersisted: false
+            )
             return
         }
-        showingAutosavePrompt = true
+        do {
+            try modelContext.save()
+            isLocallySaved = true
+            saveFailure = nil
+        } catch {
+            recordSaveFailure(error)
+        }
     }
 
-    /// Raises a prompt that was held back while a sheet was up. Driven by the
-    /// builder view the moment the last modal closes.
-    func presentDeferredAutosavePromptIfReady() {
-        guard autosavePromptDeferred, !isPresentingModal else { return }
-        autosavePromptDeferred = false
-        showingAutosavePrompt = true
+    /// One place where a failed write becomes visible: to the user as a standing
+    /// affordance and a toast, and to us as a deduped bug report. The only trace
+    /// this used to leave was a console print, which is why the save-loss class
+    /// was invisible in production. Bug 9f4aeaf8.
+    private func recordSaveFailure(_ error: Error) {
+        saveFailure = DeckSaveFailure(occurredAt: Date(), message: error.localizedDescription)
+        DeckSaveTelemetry.recordFailure(
+            designId: deckDesign.id,
+            error: error,
+            isPersisted: deckDesign.modelContext != nil
+        )
+        ToastCenter.shared.present(Toast(label: Feedback.Err.saveFailed, tone: .error))
+    }
+
+    /// Re-runs the write behind the NOT SAVED affordance. Hands the revision to
+    /// the sync queue on the way out so a recovered save is not left local-only.
+    func retrySave() {
+        save()
+        if saveFailure == nil {
+            enqueueLatestDeckDesignIfNeeded()
+        }
     }
 
     /// Records a SyncOperation so the OutboundProcessor pushes the deck
@@ -3943,6 +4013,12 @@ class DeckBuilderViewModel: ObservableObject {
         drawingJSONString suppliedDrawingJSONString: String? = nil
     ) -> Bool {
         guard let syncEngine else { return false }
+
+        // The version column has been inert since the table was created (every
+        // production row still reads 1), so there was no content-based conflict
+        // signal at all. Bump it on every enqueued revision so the server and
+        // every other device get a monotonic tiebreak. Bug 9f4aeaf8.
+        deckDesign.version += 1
 
         let nowIso = ISO8601DateFormatter().string(from: Date())
         let createdIso = ISO8601DateFormatter().string(from: deckDesign.createdAt)
@@ -4063,15 +4139,23 @@ class DeckBuilderViewModel: ObservableObject {
     /// local queue write only (`deferPush`); cloud I/O is scheduled separately
     /// after the exit transaction yields.
     private func enqueueLatestDeckDesignIfNeeded() {
-        guard syncEngine != nil, isLocallySaved else { return }
+        guard syncEngine != nil else { return }
+        // Deliberately NOT gated on `isLocallySaved`. A failed local write is
+        // precisely when the server copy is the user's only remaining copy; the
+        // old guard turned a save failure into a silent sync skip. Bug 9f4aeaf8.
+        guard hasAnyCommittedGeometry || deckDesign.modelContext != nil else { return }
         let drawingJSONString = drawingEncoder(drawingData)
+        // `version` is deliberately absent from the identity key. It is now
+        // client-incremented by the enqueue itself, so including it would make
+        // every key differ from the last one recorded and re-enqueue an
+        // unchanged design on every tick — and a version an inbound merge moved
+        // is not a reason to push content the server already has.
         let payloadKey = [
             deckDesign.title,
             drawingJSONString,
             deckDesign.thumbnailURL ?? "",
             deckDesign.projectId ?? "",
-            deckDesign.opportunityId ?? "",
-            String(deckDesign.version)
+            deckDesign.opportunityId ?? ""
         ].joined(separator: "\u{1F}")
 
         guard payloadKey != lastQueuedSyncPayloadKey else { return }
@@ -4139,7 +4223,10 @@ class DeckBuilderViewModel: ObservableObject {
         save()
         enqueueLatestDeckDesignIfNeeded()
         schedulePendingDeckDesignSync()
-        if hasGeometry {
+        // DESIGN SAVED used to be presented whenever the drawing had geometry —
+        // including when the save() above it threw. Reporting a save that did
+        // not happen is worse than reporting nothing. Bug 9f4aeaf8.
+        if hasGeometry, saveFailure == nil {
             ToastCenter.shared.present(Feedback.Deck.designSaved)
         }
 

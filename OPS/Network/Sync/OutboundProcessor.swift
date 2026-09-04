@@ -703,6 +703,14 @@ final class OutboundProcessor {
                     for: operation,
                     in: context
                 )
+                // Confirmed server success is also the only thing that may move
+                // a deck design's merge base — the baseline the inbound merge
+                // compares against to decide whether a snapshot is a genuine
+                // remote edit or an echo of this push (bug 9f4aeaf8).
+                try DeckDesignServerMerge.recordConfirmedPush(
+                    for: operation,
+                    in: context
+                )
             }
             print("[OutboundProcessor] Completed \(operation.entityType) \(operation.entityId)")
         } catch {

@@ -1690,7 +1690,11 @@ final class InboundProcessor {
             existing.applyServerSnapshot(dto, accepting: accept)
             existing.lastSyncedAt = Date()
             let hasPending = hasPendingOperations(entityType: .deckDesign, entityId: existing.id, context: context)
-            if !hasPending {
+            // Never clear the flag on a row still holding content the server has
+            // not confirmed: a parked or failed op is "not pending", and
+            // clearing here disarmed the conflict guard for an edit that was
+            // never delivered. Bug 9f4aeaf8.
+            if !hasPending, !existing.hasUnsyncedDrawing {
                 existing.needsSync = false
             }
         } else {

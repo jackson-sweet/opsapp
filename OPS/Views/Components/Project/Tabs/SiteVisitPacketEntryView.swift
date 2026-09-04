@@ -155,21 +155,16 @@ struct SiteVisitRecordSheet: View {
             DeckDesign.canonicalUUIDString($0.id) == DeckDesign.canonicalUUIDString(id)
         }) else { return }
 
-        let canonicalId = DeckDesign.canonicalUUIDString(dto.id)
-        let descriptor = FetchDescriptor<DeckDesign>(
-            predicate: #Predicate<DeckDesign> { $0.id == canonicalId }
-        )
-        if let existing = (try? modelContext.fetch(descriptor))?.first {
-            existing.applyServerSnapshot(dto, accepting: Set(DeckDesign.serverMergeFields))
-            existing.lastSyncedAt = Date()
-            existing.needsSync = false
-        } else {
-            let model = dto.toModel()
-            model.lastSyncedAt = Date()
-            model.needsSync = false
-            modelContext.insert(model)
+        // One merge for every deck self-repair fetch. The hand-rolled upsert
+        // this replaced applied a full server snapshot with no pending-write
+        // protection AND cleared needsSync unconditionally — which hard-disarmed
+        // the conflict guard on that row for every future merge, whether or not
+        // the local edit had ever reached the server. Bug 9f4aeaf8.
+        do {
+            try DeckDesignServerMerge.merge([dto], into: modelContext)
+        } catch {
+            print("[SiteVisitPacketEntry] Deck repair merge failed: \(error)")
         }
-        try? modelContext.save()
     }
 
     private var effectiveCompanyId: String? {

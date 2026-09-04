@@ -1651,7 +1651,12 @@ actor DataActor {
 
             existing.applyServerSnapshot(dto, accepting: accept)
             existing.lastSyncedAt = Date()
-            if !hasPendingOperations(entityType: .deckDesign, entityId: existing.id) {
+            // Never clear the flag on a row still holding content the server has
+            // not confirmed: a parked or failed op is "not pending", and
+            // clearing here disarmed the conflict guard for an edit that was
+            // never delivered. Bug 9f4aeaf8.
+            if !hasPendingOperations(entityType: .deckDesign, entityId: existing.id),
+               !existing.hasUnsyncedDrawing {
                 existing.needsSync = false
             }
         } else {
@@ -5267,6 +5272,14 @@ actor DataActor {
                 // completion, because that flag is what keeps the inbound merge
                 // off a locally-edited row (bug ef5a69e6).
                 try CalendarUserEventOutboundSync.clearNeedsSyncOnCompletion(
+                    for: operation,
+                    in: modelContext
+                )
+                // Confirmed server success is also the only thing that may move
+                // a deck design's merge base — the baseline the inbound merge
+                // compares against to decide whether a snapshot is a genuine
+                // remote edit or an echo of this push (bug 9f4aeaf8).
+                try DeckDesignServerMerge.recordConfirmedPush(
                     for: operation,
                     in: modelContext
                 )

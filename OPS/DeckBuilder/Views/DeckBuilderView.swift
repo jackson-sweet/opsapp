@@ -488,29 +488,6 @@ struct DeckBuilderView: View {
         } message: {
             Text("This cannot be undone.")
         }
-        // Bug 2b1f1a9e — autosave prompt for EXISTING drawings on first edit.
-        // New drawings autosave silently; existing drawings opt in here so the
-        // user knows their working copy will be saved every couple of minutes
-        // without a manual commit.
-        .alert("Save your edits automatically?", isPresented: $viewModel.showingAutosavePrompt) {
-            Button("Yes, every 2 minutes") {
-                viewModel.enableAutosave()
-            }
-            Button("Not now", role: .cancel) {
-                viewModel.declineAutosave()
-            }
-        } message: {
-            Text("OPS can save your changes to this drawing every 2 minutes so you don't lose work.")
-        }
-        // The autosave alert is bound here, at the builder's root — raising it
-        // while a sheet is up presents it BEHIND that sheet. The view model
-        // holds the ask back in that case; this releases it the moment the
-        // last modal closes.
-        .onChange(of: viewModel.isPresentingModal) { _, isPresenting in
-            if !isPresenting {
-                viewModel.presentDeferredAutosavePromptIfReady()
-            }
-        }
         .statusBarHidden(true)
         .onAppear {
             // Defense-in-depth: prevent deep-link or programmatic access bypassing UI gate
@@ -561,6 +538,51 @@ struct DeckBuilderView: View {
         .allowsHitTesting(false)
     }
 
+    // MARK: - Save Failure Affordance
+
+    /// Nothing while saving works; a labelled retry control when it does not.
+    ///
+    /// Sized against the tightest bar this screen ever renders (iPhone SE,
+    /// alongside close / 2D-3D / gear): the state is spelled out and the verb
+    /// is carried by the retry glyph, because a bar that fits everything only
+    /// by shrinking the alarm is the wrong trade. The title beside it is the
+    /// flex element and truncates first — when the drawing did not save, the
+    /// deck's name is the least important thing in the row.
+    @ViewBuilder
+    private var saveFailureAffordance: some View {
+        if viewModel.saveFailure != nil {
+            Button {
+                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                viewModel.retrySave()
+            } label: {
+                HStack(spacing: OPSStyle.Layout.spacing1) {
+                    Text("// NOT SAVED")
+                        .font(OPSStyle.Typography.smallCaption)
+                        .fontWeight(.semibold)
+                        .foregroundColor(OPSStyle.Colors.roseTextM)
+                        .fixedSize()
+                    Image(systemName: OPSStyle.Icons.arrowClockwise)
+                        .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .semibold))
+                        .foregroundColor(OPSStyle.Colors.roseTextM)
+                }
+                .padding(.horizontal, OPSStyle.Layout.spacing2)
+                .frame(minHeight: OPSStyle.Layout.touchTargetMin)
+                .background(
+                    RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius, style: .continuous)
+                        .fill(OPSStyle.Colors.roseFillM)
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius, style: .continuous)
+                        .strokeBorder(OPSStyle.Colors.roseLineM, lineWidth: OPSStyle.Layout.Border.standard)
+                )
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Not saved. Tap to retry.")
+            .accessibilityAddTraits(.isButton)
+        }
+    }
+
     private func commitTitleEdit() {
         viewModel.renameDesign(to: editingTitleText)
         viewModel.isEditingTitle = false
@@ -586,14 +608,15 @@ struct DeckBuilderView: View {
                     .frame(width: OPSStyle.Layout.touchTargetMin, height: OPSStyle.Layout.touchTargetMin)
             }
 
-            // Save status dot — tracks local persistence, not remote sync.
-            // Color encodes state (green = saved, amber = saving). Text label
-            // intentionally absent so the bar fits in portrait without the
-            // pill bleeding past the screen edge.
-            Circle()
-                .fill(viewModel.isLocallySaved ? OPSStyle.Colors.successStatus : OPSStyle.Colors.warningStatus)
-                .frame(width: 8, height: 8)
-                .accessibilityLabel(viewModel.isLocallySaved ? "Saved" : "Saving")
+            // Save state is silent while it works and explicit when it does
+            // not. This replaced an 8pt unlabelled dot whose amber meant BOTH
+            // "writing" (true for a few hundred milliseconds, and nothing the
+            // user should ever think about) and "the write failed" (the only
+            // state that demands action) — indistinguishable at arm's length.
+            // Nothing is rendered on the happy path, so the failure affordance
+            // costs no bar width until it is the most important thing on the
+            // screen, and it does not clear itself. Bug 9f4aeaf8.
+            saveFailureAffordance
 
             // Title — flex content. Tap to edit when edit permission allows.
             inlineTitleEditor

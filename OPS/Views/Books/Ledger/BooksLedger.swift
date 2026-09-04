@@ -23,9 +23,11 @@ struct BooksLedger: View {
     let segment: BooksSection
     @ObservedObject var invoiceVM: InvoiceViewModel
     @ObservedObject var estimateVM: EstimateViewModel
+    @ObservedObject var supplierBillVM: SupplierBillIntakeViewModel
     @ObservedObject var expenseVM: ExpenseViewModel
     let invoiceFilter: BooksInvoiceFilter
     let estimateFilter: BooksEstimateFilter
+    let supplierBillStage: SupplierBillStage
     let expenseFilter: BooksExpenseFilter
 
     @EnvironmentObject private var dataController: DataController
@@ -57,12 +59,14 @@ struct BooksLedger: View {
             switch segment {
             case .invoices:  invoiceContent
             case .estimates: estimateContent
+            case .bills:     SupplierBillsLedger(viewModel: supplierBillVM, stage: supplierBillStage)
             case .expenses:  expenseContent
             }
         }
         .onChange(of: segment) { _, _ in openRowID = nil }
         .onChange(of: invoiceFilter) { _, _ in openRowID = nil }
         .onChange(of: estimateFilter) { _, _ in openRowID = nil }
+        .onChange(of: supplierBillStage) { _, _ in openRowID = nil }
         .onChange(of: expenseFilter) { _, _ in openRowID = nil }
         // NOTE: the invoice/estimate navigationDestinations were moved UP to
         // BooksTabView (outside the ScrollView's LazyVStack). A row tap sets the
@@ -128,6 +132,7 @@ struct BooksLedger: View {
         }
         .errorToast($invoiceVM.error, label: Feedback.Err.operationFailed)
         .errorToast($estimateVM.error, label: Feedback.Err.operationFailed)
+        .errorToast($supplierBillVM.error, label: Feedback.Err.operationFailed)
         .errorToast($expenseVM.error, label: Feedback.Err.operationFailed)
     }
 

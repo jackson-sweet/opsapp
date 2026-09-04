@@ -205,7 +205,7 @@ struct MainTabView: View {
     private let keyboardWillHide = NotificationCenter.default
         .publisher(for: UIResponder.keyboardWillHideNotification)
     
-    // BOOKS tab is visible to anyone with at least one of the three financial-area
+    // BOOKS tab is visible to anyone with at least one financial-area
     // permissions. The hub itself filters segments per-permission; users with a
     // single visible segment auto-skip the hub via `booksAutoSkipDestination`.
     //
@@ -214,6 +214,7 @@ struct MainTabView: View {
     private var hasBooksAccess: Bool {
         permissionStore.can("finances.view")
             || permissionStore.can("estimates.view")
+            || permissionStore.can("accounting.view")
             || permissionStore.can("expenses.view")
     }
 
@@ -233,6 +234,10 @@ struct MainTabView: View {
             return AnyView(NavigationStack { InvoicesListView() })
         case .estimates:
             return AnyView(NavigationStack { EstimatesListView() })
+        case .bills:
+            // Bills rely on the Books lifecycle chips and offline capture rail,
+            // so even bills-only users keep the compact Books hub.
+            return nil
         case .expenses:
             let scopeIsOwn = !permissionStore.hasFullAccess("expenses.view")
             if scopeIsOwn {

@@ -7,7 +7,7 @@
 //  Top: AppHeader + sync banner + period pill + a scannable KPI command grid
 //  (NET CASH hero · CASH FLOW · RUNWAY · RECEIVABLES · FORECAST · JOB MARGIN),
 //  each tile drilling into the existing expand sheet / RUNWAY full screen.
-//  Below: a sticky ledger band (Invoices · Estimates · Expenses + filter chips)
+//  Below: a sticky ledger band (Invoices · Estimates · Bills · Expenses + filters)
 //  over flat, hairline-separated rows. Pipeline has its own top-level tab.
 //
 
@@ -17,6 +17,7 @@ struct BooksTabView: View {
     @StateObject private var dashboardVM: MoneyDashboardViewModel
     @StateObject private var estimateVM = EstimateViewModel()
     @StateObject private var invoiceVM = InvoiceViewModel()
+    @StateObject private var supplierBillVM = SupplierBillIntakeViewModel()
     @StateObject private var expenseVM = ExpenseViewModel()
     @StateObject private var cashflowVM = CashflowForecastViewModel()
 
@@ -49,11 +50,13 @@ struct BooksTabView: View {
     // (estimates ALL · OUT · WON here) independent of each list's standalone VM.
     @State private var invoiceFilter: BooksInvoiceFilter = .all
     @State private var estimateFilter: BooksEstimateFilter = .all
+    @State private var supplierBillStage: SupplierBillStage = .review
     @State private var expenseFilter: BooksExpenseFilter = .all
 
     @State private var expandedCard: HeroCarousel.CardID?
     @State private var showCashflowForecast = false
     @State private var showBatchReview = false
+    @State private var showCaptureBill = false
     /// Batch to auto-open inside the pushed review hub (set by a batch-scoped
     /// expense deep link). Bug 7cdbe7bb.
     @State private var pendingBatchReviewId: String? = nil
@@ -76,6 +79,7 @@ struct BooksTabView: View {
 
     private var canFinances: Bool { permissionStore.can("finances.view") }
     private var canPipeline: Bool { permissionStore.can("pipeline.view") }
+    private var canCaptureBills: Bool { permissionStore.can("accounting.bills.capture") }
     private var hasFinances: Bool { canFinances }
     private var gridVisible: Bool { canFinances || canPipeline }
 
@@ -110,6 +114,7 @@ struct BooksTabView: View {
         switch selectedSegment {
         case .invoices:  return "WHO OWES YOU"
         case .estimates: return "OUT & WON"
+        case .bills:     return "WHAT YOU OWE"
         case .expenses:  return "SPEND LOG"
         }
     }
@@ -118,6 +123,15 @@ struct BooksTabView: View {
         switch selectedSegment {
         case .invoices:  return BooksInvoiceFilter.chips(from: invoiceVM.invoices)
         case .estimates: return BooksEstimateFilter.chips(from: estimateVM.estimates)
+        case .bills:
+            return SupplierBillStage.allCases.map { stage in
+                TacticalChip(
+                    id: stage.rawValue,
+                    label: stage.label,
+                    count: stage.count(in: supplierBillVM.bills),
+                    tone: stage.color
+                )
+            }
         case .expenses:  return BooksExpenseFilter.chips(from: expenseVM.expenses)
         }
     }
@@ -126,6 +140,7 @@ struct BooksTabView: View {
         switch selectedSegment {
         case .invoices:  return invoiceVM.invoices.filter(invoiceFilter.matches).count
         case .estimates: return estimateVM.estimates.filter(estimateFilter.matches).count
+        case .bills:     return supplierBillVM.bills.filter(supplierBillStage.matches).count
         case .expenses:  return expenseVM.expenses.filter(expenseFilter.matches).count
         }
     }
@@ -145,6 +160,9 @@ struct BooksTabView: View {
         case .estimates:
             return Binding(get: { estimateFilter.rawValue },
                            set: { estimateFilter = BooksEstimateFilter(rawValue: $0) ?? .all })
+        case .bills:
+            return Binding(get: { supplierBillStage.rawValue },
+                           set: { supplierBillStage = SupplierBillStage(rawValue: $0) ?? .review })
         case .expenses:
             return Binding(get: { expenseFilter.rawValue },
                            set: { expenseFilter = BooksExpenseFilter(rawValue: $0) ?? .all })
@@ -200,9 +218,11 @@ struct BooksTabView: View {
                                     segment: selectedSegment,
                                     invoiceVM: invoiceVM,
                                     estimateVM: estimateVM,
+                                    supplierBillVM: supplierBillVM,
                                     expenseVM: expenseVM,
                                     invoiceFilter: invoiceFilter,
                                     estimateFilter: estimateFilter,
+                                    supplierBillStage: supplierBillStage,
                                     expenseFilter: expenseFilter,
                                     selectedInvoice: $selectedInvoice,
                                     selectedEstimate: $selectedEstimate
@@ -225,6 +245,7 @@ struct BooksTabView: View {
             .animation(reduceMotion ? nil : OPSStyle.Animation.panel, value: selectedSegmentRaw)
             .animation(reduceMotion ? nil : OPSStyle.Animation.panel, value: invoiceFilter)
             .animation(reduceMotion ? nil : OPSStyle.Animation.panel, value: estimateFilter)
+            .animation(reduceMotion ? nil : OPSStyle.Animation.panel, value: supplierBillStage)
             .animation(reduceMotion ? nil : OPSStyle.Animation.panel, value: expenseFilter)
             .background(OPSStyle.Colors.background.ignoresSafeArea())
             .sheet(item: $expandedCard) { card in
@@ -245,6 +266,11 @@ struct BooksTabView: View {
             }
             .fullScreenCover(isPresented: $showCashflowForecast) {
                 CashflowForecastScreen(viewModel: cashflowVM)
+            }
+            .sheet(isPresented: $showCaptureBill) {
+                SupplierBillCaptureSheet(viewModel: supplierBillVM)
+                    .presentationDetents([.large])
+                    .presentationDragIndicator(.visible)
             }
             .navigationDestination(isPresented: $showBatchReview) {
                 ExpensesListView(deepLinkBatchId: pendingBatchReviewId)
@@ -344,6 +370,25 @@ struct BooksTabView: View {
                     showBatchReview = true
                 }
             }
+            if selectedSegment == .bills && canCaptureBills {
+                Button {
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    showCaptureBill = true
+                } label: {
+                    HStack(spacing: OPSStyle.Layout.spacing1) {
+                        if supplierBillVM.pendingCaptureCount > 0 {
+                            Text("\(supplierBillVM.pendingCaptureCount) QUEUED")
+                                .foregroundColor(OPSStyle.Colors.tan)
+                        }
+                        Text("CAPTURE BILL →")
+                    }
+                    .frame(minHeight: OPSStyle.Layout.touchTargetMin)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .padding(.vertical, -OPSStyle.Layout.spacing3)
+                .accessibilityLabel("Capture supplier bill")
+            }
         }
         .font(OPSStyle.Typography.miniLabelBold)
         .tracking(1.6)
@@ -359,6 +404,7 @@ struct BooksTabView: View {
         dashboardVM.setup(companyId: companyId, modelContext: modelContext)
         estimateVM.setup(companyId: companyId, modelContext: modelContext)
         invoiceVM.setup(companyId: companyId, modelContext: modelContext)
+        supplierBillVM.setup(companyId: companyId)
         expenseVM.setup(
             companyId: companyId,
             currentUserId: dataController.currentUser?.id,
@@ -367,14 +413,15 @@ struct BooksTabView: View {
         cashflowVM.setup(companyId: companyId, dashboardVM: dashboardVM)
     }
 
-    /// Refreshes the dashboard first (above the fold), then the three ledgers in
+    /// Refreshes the dashboard first (above the fold), then the four ledgers in
     /// parallel, then the runway forecast. Drives both `.task` and pull-to-refresh.
     private func refreshAll() async {
         await dashboardVM.loadData()
         async let invoices: Void = invoiceVM.loadInvoices()
         async let estimates: Void = estimateVM.loadEstimates()
+        async let supplierBills: Void = supplierBillVM.load()
         async let expenses: Void = expenseVM.loadAll()
-        _ = await (invoices, estimates, expenses)
+        _ = await (invoices, estimates, supplierBills, expenses)
         if canFinances {
             await cashflowVM.load()
         }

@@ -58,6 +58,7 @@ final class ExpenseBucketsTests: XCTestCase {
         flaggedBy: String? = nil,
         expenseDate: String? = "2026-07-05",
         allocated: Bool = false,
+        hasReceipt: Bool = true,
         updatedAt: String = "2026-07-05T10:00:00Z"
     ) -> ExpenseDTO {
         ExpenseDTO(
@@ -73,8 +74,8 @@ final class ExpenseBucketsTests: XCTestCase {
             currency: "USD",
             expenseDate: expenseDate,
             paymentMethod: nil,
-            receiptImageUrl: nil,
-            receiptThumbnailUrl: nil,
+            receiptImageUrl: hasReceipt ? "https://files.ops.test/receipt.jpg" : nil,
+            receiptThumbnailUrl: hasReceipt ? "https://files.ops.test/receipt-thumb.jpg" : nil,
             receiptMissingReason: nil,
             receiptMissingNote: nil,
             projectMissingReason: nil,
@@ -104,6 +105,84 @@ final class ExpenseBucketsTests: XCTestCase {
     }
 
     // MARK: - Spend log ordering
+
+    func testBooksExpenseFiltersKeepApprovalAtTheBatchLevel() {
+        XCTAssertEqual(
+            BooksExpenseFilter.allCases.map(\.label),
+            ["ALL", "NO RECEIPT"]
+        )
+    }
+
+    func testSubmittedExpenseDoesNotReadAsIndividualApprovalWork() {
+        XCTAssertEqual(BooksLedgerStatus.expense(line()).text, "PENDING")
+    }
+
+    func testSubmittedExpenseReportsItsEnvelopePhase() {
+        let expense = line()
+
+        XCTAssertEqual(BooksLedgerStatus.expense(expense, batchStatus: .open).text, "FILLING")
+        XCTAssertEqual(BooksLedgerStatus.expense(expense, batchStatus: .pendingReview).text, "WITH OFFICE")
+        XCTAssertEqual(BooksLedgerStatus.expense(expense, batchStatus: .submitted).text, "WITH OFFICE")
+        XCTAssertEqual(BooksLedgerStatus.expense(expense, batchStatus: .approved).text, "APPROVED")
+        XCTAssertEqual(BooksLedgerStatus.expense(expense, batchStatus: .autoApproved).text, "APPROVED")
+        XCTAssertEqual(BooksLedgerStatus.expense(expense, batchStatus: .partiallyApproved).text, "APPROVED")
+        XCTAssertEqual(BooksLedgerStatus.expense(expense, batchStatus: .rejected).text, "NEEDS FIX")
+    }
+
+    func testBooksExpenseBatchStatusResolverUsesBatchIdentity() {
+        let statuses = BooksExpenseBatchStatusResolver.index([
+            batch(id: "review", status: "pending_review"),
+            batch(id: "filling", status: "open"),
+            batch(id: "future", status: "future_status")
+        ])
+
+        XCTAssertEqual(
+            BooksExpenseBatchStatusResolver.status(
+                for: line(batchId: "review"),
+                in: statuses
+            ),
+            .pendingReview
+        )
+        XCTAssertEqual(
+            BooksExpenseBatchStatusResolver.status(
+                for: line(batchId: "filling"),
+                in: statuses
+            ),
+            .open
+        )
+        XCTAssertNil(
+            BooksExpenseBatchStatusResolver.status(
+                for: line(batchId: "missing"),
+                in: statuses
+            )
+        )
+        XCTAssertNil(
+            BooksExpenseBatchStatusResolver.status(
+                for: line(batchId: "future"),
+                in: statuses
+            )
+        )
+        XCTAssertNil(
+            BooksExpenseBatchStatusResolver.status(
+                for: line(batchId: nil),
+                in: statuses
+            )
+        )
+    }
+
+    func testExpenseLineStatusUsesTheEstablishedLifecycleVocabulary() {
+        XCTAssertEqual(BooksLedgerStatus.expense(line(status: "draft")).text, "UNFINISHED")
+        XCTAssertEqual(BooksLedgerStatus.expense(line(status: "rejected")).text, "NEEDS FIX")
+        XCTAssertEqual(BooksLedgerStatus.expense(line(status: "approved")).text, "APPROVED")
+        XCTAssertEqual(BooksLedgerStatus.expense(line(status: "reimbursed")).text, "PAID")
+    }
+
+    func testMissingReceiptOverridesBatchedStatus() {
+        XCTAssertEqual(
+            BooksLedgerStatus.expense(line(hasReceipt: false), batchStatus: .pendingReview).text,
+            "NO RECEIPT"
+        )
+    }
 
     func testSpendLogPutsApprovedStatesFirstThenNewestExpense() {
         let rows = [

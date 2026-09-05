@@ -41,6 +41,26 @@ enum DeckFramingPreviewPlanner {
         )
     }
 
+    /// Whether every layout this planner would generate for the drawing sits
+    /// inside the published span tables.
+    ///
+    /// Drives the extra line of the in-product disclosure — a deck deeper than
+    /// one published joist span, or one whose entering span runs off the end of
+    /// the beam tables, is a sketch rather than a table result and must say so.
+    /// Persisted Deckset framing is authored elsewhere and is never judged here.
+    static func generatedFramingIsPrescriptive(for drawing: DeckDrawingData) -> Bool {
+        let persistedLevelIds = Set((drawing.framing?.members ?? []).map(\.levelId))
+        let scaleFactor = drawing.effectiveScaleFactor
+
+        for level in geometryLevels(in: drawing) where !persistedLevelIds.contains(level.id) {
+            for context in surfaceContexts(for: level) {
+                guard let layout = solvedLayout(context, scaleFactor: scaleFactor) else { continue }
+                if !layout.solution.isPrescriptive { return false }
+            }
+        }
+        return true
+    }
+
     private struct GeometryLevel {
         let id: String
         let vertices: [DeckVertex]
@@ -74,6 +94,19 @@ enum DeckFramingPreviewPlanner {
         let end: CGPoint
 
         var length: Double { SnapEngine.distance(start, end) }
+    }
+
+    /// One surface with its reference edge and framing axes resolved.
+    private struct SurfaceContext {
+        let surface: DetectedSurface
+        let boundaries: [Boundary]
+        let reference: Boundary
+        /// Along the reference edge — the direction beams run.
+        let along: CGVector
+        /// Into the surface from the reference edge — the direction joists run.
+        let inward: CGVector
+        /// True when a boundary of this surface is a house edge.
+        let attached: Bool
     }
 
     /// A solved framing layout bound to one surface's canvas geometry. All
@@ -114,41 +147,19 @@ enum DeckFramingPreviewPlanner {
             return FramingMemberSet(levelId: level.id, members: [])
         }
 
-        let edgeByPair = preferredEdgesByPair(level.edges)
-        let incidence = surfaceIncidence(level.surfaces)
         var members: [FramingMember] = []
 
-        for surface in level.surfaces {
-            let boundaries = boundaries(
-                of: surface,
-                edgeByPair: edgeByPair,
-                incidence: incidence,
-                exteriorOnly: true
-            )
-            guard let reference = referenceBoundary(from: boundaries),
-                  let along = FramingGeometry.unit(CGVector(
-                    dx: reference.end.x - reference.start.x,
-                    dy: reference.end.y - reference.start.y
-                  )),
-                  let inward = FramingGeometry.inwardNormal(
-                    edgeStart: reference.start,
-                    edgeEnd: reference.end,
-                    surface: surface.positions
-                  ) else { continue }
+        for context in surfaceContexts(for: level) {
+            let surface = context.surface
+            let along = context.along
+            let inward = context.inward
 
             members.append(contentsOf: perimeterMembers(
-                boundaries: boundaries,
+                boundaries: context.boundaries,
                 levelId: level.id
             ))
 
-            guard let layout = solvedLayout(
-                surface: surface.positions,
-                reference: reference,
-                beamAxis: along,
-                joistAxis: inward,
-                attached: boundaries.contains(where: { $0.edge.edgeType == .houseEdge }),
-                scaleFactor: scaleFactor
-            ) else { continue }
+            guard let layout = solvedLayout(context, scaleFactor: scaleFactor) else { continue }
 
             members.append(contentsOf: joistMembers(
                 surface: surface.positions,
@@ -273,19 +284,56 @@ enum DeckFramingPreviewPlanner {
         }
     }
 
+    /// Every surface on a level that can carry framing, with its reference edge
+    /// and axes already resolved. Shared by member generation and by the
+    /// in-product disclosure, so both read the same layout.
+    private static func surfaceContexts(for level: GeometryLevel) -> [SurfaceContext] {
+        let edgeByPair = preferredEdgesByPair(level.edges)
+        let incidence = surfaceIncidence(level.surfaces)
+
+        return level.surfaces.compactMap { surface in
+            let surfaceBoundaries = boundaries(
+                of: surface,
+                edgeByPair: edgeByPair,
+                incidence: incidence,
+                exteriorOnly: true
+            )
+            guard let reference = referenceBoundary(from: surfaceBoundaries),
+                  let along = FramingGeometry.unit(CGVector(
+                    dx: reference.end.x - reference.start.x,
+                    dy: reference.end.y - reference.start.y
+                  )),
+                  let inward = FramingGeometry.inwardNormal(
+                    edgeStart: reference.start,
+                    edgeEnd: reference.end,
+                    surface: surface.positions
+                  ) else { return nil }
+
+            return SurfaceContext(
+                surface: surface,
+                boundaries: surfaceBoundaries,
+                reference: reference,
+                along: along,
+                inward: inward,
+                attached: surfaceBoundaries.contains { $0.edge.edgeType == .houseEdge }
+            )
+        }
+    }
+
     /// Solves this surface against the published tables. Returns nil when the
     /// surface has no usable depth or length.
     private static func solvedLayout(
-        surface: [CGPoint],
-        reference: Boundary,
-        beamAxis: CGVector,
-        joistAxis: CGVector,
-        attached: Bool,
+        _ context: SurfaceContext,
         scaleFactor: Double
     ) -> SolvedLayout? {
+        let surface = context.surface.positions
+        let reference = context.reference
+        let joistAxis = context.inward
+        let attached = context.attached
+
         guard scaleFactor > 0,
               let joistBounds = FramingGeometry.projectionBounds(of: surface, onto: joistAxis),
-              let beamBounds = FramingGeometry.projectionBounds(of: surface, onto: beamAxis) else { return nil }
+              let beamBounds = FramingGeometry.projectionBounds(of: surface, onto: context.along) else { return nil }
 
         // Depth runs from the ledger, or from the near outer edge when there is none.
         let referenceProjection: CGFloat = attached

@@ -118,6 +118,15 @@ struct DeckBuilderView: View {
                     screenshot3DButton
                         .padding(.trailing, OPSStyle.Layout.spacing4)
                         .padding(.top, OPSStyle.Layout.spacing2)
+
+                    // The builder renders the same generated framing, so it
+                    // carries the same stamp.
+                    if viewModel.drawingData.hasAnyClosedSurface {
+                        FramingIllustrationBadge(drawingData: viewModel.drawingData)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
+                            .padding(.trailing, OPSStyle.Layout.spacing4)
+                            .padding(.bottom, OPSStyle.Layout.spacing2)
+                    }
                 }
                 .ignoresSafeArea(edges: .horizontal)
 

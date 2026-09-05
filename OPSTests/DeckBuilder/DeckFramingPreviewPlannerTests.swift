@@ -306,6 +306,19 @@ final class DeckFramingPreviewPlannerTests: XCTestCase {
         }
     }
 
+    func testTheDisclosureReportsWhetherTheLayoutCameFromThePublishedTables() {
+        // A 12 ft deep deck is one published joist span — a table result.
+        XCTAssertTrue(DeckFramingPreviewPlanner.generatedFramingIsPrescriptive(
+            for: deckDrawing(widthInches: 192, depthInches: 144, ledgerAttached: true)
+        ))
+
+        // 24 ft is deeper than any published joist span plus its cantilever, so
+        // the frame is a sketch and the disclosure has to say so.
+        XCTAssertFalse(DeckFramingPreviewPlanner.generatedFramingIsPrescriptive(
+            for: deckDrawing(widthInches: 192, depthInches: 288, ledgerAttached: true)
+        ))
+    }
+
     // MARK: - Fixtures
 
     private let liveHouseStartId = "6CF06C30-083C-48B4-A0E2-689DA2C55848"

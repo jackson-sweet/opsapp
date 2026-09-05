@@ -155,6 +155,157 @@ final class DeckFramingPreviewPlannerTests: XCTestCase {
         XCTAssertEqual(drawing.futureBlocks, originalFutureBlocks)
     }
 
+    // MARK: - Column placement (bug 311ccfe5)
+
+    func testSixteenByTwelveLedgerDeckDrawsOneBeamAndThreePostsNoneOnAVertex() throws {
+        let drawing = deckDrawing(widthInches: 192, depthInches: 144, ledgerAttached: true)
+        let members = DeckFramingPreviewPlanner.resolvedPlan(for: drawing).members.flatMap(\.members)
+
+        let beams = members.filter { $0.role == .beam }
+        let posts = members.filter { $0.role == .post }
+        XCTAssertEqual(beams.count, 1, "A 12 ft deep deck needs one beam. The old planner drew two.")
+        XCTAssertEqual(posts.count, 3, "Eight posts and eight footings become three.")
+
+        // The beam sits a full 24 in Table 3b cantilever inboard of the outer edge.
+        let beam = try XCTUnwrap(beams.first)
+        XCTAssertEqual(Double(beam.start.y), 120, accuracy: 0.001)
+        XCTAssertEqual(Double(beam.end.y), 120, accuracy: 0.001)
+
+        for post in posts {
+            for vertex in drawing.vertices {
+                XCTAssertGreaterThan(distance(post.start, vertex.position), 0.001,
+                                     "A post on a deck corner is the reported bug.")
+            }
+            XCTAssertGreaterThan(Double(post.start.y), 0.001, "No post on the house edge.")
+            XCTAssertLessThan(Double(post.start.y), 143.999, "No post on the outer edge.")
+        }
+    }
+
+    /// The substance of the bug: a post on a corner.
+    ///
+    /// Every fixture here is a rectangle or a pair of rectangles, where the
+    /// invariant holds by construction — a beam sits strictly between the
+    /// reference edge and the outer edge, so its clipped ends land on the two
+    /// side edges, never on a corner. The live 2114 drawing is deliberately
+    /// absent: it is concave, and on a concave outline a beam chord can end
+    /// exactly at a notch vertex. No cited source gives a beam-overhang limit
+    /// that would let us pull such a post inboard, so that case is verified
+    /// visually on device rather than asserted here.
+    func testNoGeneratedPostEverLandsOnADeckVertex() {
+        let fixtures: [(String, DeckDrawingData)] = [
+            ("16x12 ledger", deckDrawing(widthInches: 192, depthInches: 144, ledgerAttached: true)),
+            ("16x12 free-standing", deckDrawing(widthInches: 192, depthInches: 144, ledgerAttached: false)),
+            ("24x20 ledger", deckDrawing(widthInches: 288, depthInches: 240, ledgerAttached: true)),
+            ("120 square", rectangleDrawing(prefix: "square", originX: 0)),
+            ("two levels", twoLevelDrawing()),
+            ("shared seam", twoSquaresSharingEdge()),
+        ]
+
+        for (label, drawing) in fixtures {
+            let plan = DeckFramingPreviewPlanner.resolvedPlan(for: drawing)
+            let posts = plan.members.flatMap(\.members).filter { $0.role == .post }
+            XCTAssertFalse(posts.isEmpty, "\(label): expected generated posts.")
+
+            let vertices = drawing.isMultiLevel
+                ? drawing.levels.flatMap(\.vertices)
+                : drawing.vertices
+            for post in posts {
+                for vertex in vertices {
+                    XCTAssertGreaterThan(
+                        distance(post.start, vertex.position), 0.001,
+                        "\(label): a post landed on a deck vertex."
+                    )
+                }
+            }
+        }
+    }
+
+    func testEveryBeamIsInboardOfTheOuterEdgeByTheFullPublishedCantilever() throws {
+        for depthInches in [96.0, 120.0, 144.0, 168.0] {
+            let drawing = deckDrawing(widthInches: 192, depthInches: depthInches, ledgerAttached: true)
+            let members = DeckFramingPreviewPlanner.resolvedPlan(for: drawing).members.flatMap(\.members)
+            let joist = try XCTUnwrap(members.first(where: { $0.role == .joist }))
+            let joistSize = try XCTUnwrap(joist.nominalSize)
+            let cantilever = try XCTUnwrap(DeckSpanTables.maxCantileverInches(nominalSize: joistSize))
+
+            let outermost = try XCTUnwrap(members.filter { $0.role == .beam }.map { Double($0.start.y) }.max())
+            XCTAssertEqual(outermost, depthInches - cantilever, accuracy: 0.001,
+                           "\(depthInches) in deep: the beam must sit a full cantilever inboard.")
+            XCTAssertNotEqual(depthInches - outermost, 12, accuracy: 0.001,
+                              "12 in was the unsourced setback this change removes.")
+        }
+    }
+
+    func testJoistsCarryTheSpeciesGradeSizeAndSpacingTheTablesChose() throws {
+        let drawing = deckDrawing(widthInches: 192, depthInches: 144, ledgerAttached: true)
+        let members = DeckFramingPreviewPlanner.resolvedPlan(for: drawing).members.flatMap(\.members)
+
+        let joists = members.filter { $0.role == .joist }
+        XCTAssertFalse(joists.isEmpty)
+        for joist in joists {
+            XCTAssertEqual(joist.nominalSize, .twoByTen)
+            XCTAssertEqual(joist.spacingInchesOC, 24, "24 in o.c. is the BCBC 9.23.1.1 ceiling and the fewest joists.")
+            XCTAssertEqual(joist.species, .hemFir)
+            XCTAssertEqual(joist.grade, .no2)
+        }
+
+        let beam = try XCTUnwrap(members.first(where: { $0.role == .beam }))
+        XCTAssertEqual(beam.nominalSize, .twoByTen)
+        XCTAssertEqual(beam.plyCount, 2, "Table 5b gives 2-2x10 at a 12 ft entering span and 8 ft posts.")
+
+        let posts = members.filter { $0.role == .post }
+        XCTAssertTrue(posts.allSatisfy { $0.nominalSize == .sixBySix },
+                      "BCBC 9.17.4.1 requires 6x6 absent a structural calculation.")
+    }
+
+    func testTheOverhangPastTheOuterBeamIsDrawnAsACantilever() throws {
+        let drawing = deckDrawing(widthInches: 192, depthInches: 144, ledgerAttached: true)
+        let members = DeckFramingPreviewPlanner.resolvedPlan(for: drawing).members.flatMap(\.members)
+
+        let cantilevers = members.filter { $0.role == .cantilever }
+        XCTAssertFalse(cantilevers.isEmpty, "The joist overhang past the beam is a cantilever, not a joist.")
+        for member in cantilevers {
+            let lower = min(Double(member.start.y), Double(member.end.y))
+            let upper = max(Double(member.start.y), Double(member.end.y))
+            XCTAssertEqual(lower, 120, accuracy: 0.001, "A cantilever starts at the beam.")
+            XCTAssertEqual(upper, 144, accuracy: 0.001, "A cantilever ends at the deck edge.")
+        }
+
+        // Every joist run stops at the beam it bears on.
+        for joist in members.filter({ $0.role == .joist }) {
+            XCTAssertLessThanOrEqual(max(Double(joist.start.y), Double(joist.end.y)), 120.001)
+        }
+    }
+
+    func testAFreeStandingDeckKeepsBothBeamsOffTheOuterEdges() throws {
+        let drawing = deckDrawing(widthInches: 192, depthInches: 144, ledgerAttached: false)
+        let members = DeckFramingPreviewPlanner.resolvedPlan(for: drawing).members.flatMap(\.members)
+
+        let beamRows = Set(members.filter { $0.role == .beam }.map { (Double($0.start.y) * 1_000).rounded() })
+        XCTAssertEqual(beamRows.count, 2, "No ledger means one beam inboard of each outer edge.")
+        for row in beamRows {
+            let y = row / 1_000
+            XCTAssertGreaterThan(y, 0.001, "A beam on the outer edge is the bug.")
+            XCTAssertLessThan(y, 143.999, "A beam on the outer edge is the bug.")
+        }
+        XCTAssertFalse(members.filter { $0.role == .cantilever }.isEmpty,
+                       "A free-standing deck cantilevers past both beams.")
+    }
+
+    func testGeneratedFramingNeverCarriesEngineeringSizing() {
+        for drawing in [
+            live2114Drawing(),
+            deckDrawing(widthInches: 192, depthInches: 144, ledgerAttached: true),
+            deckDrawing(widthInches: 192, depthInches: 144, ledgerAttached: false),
+        ] {
+            let members = DeckFramingPreviewPlanner.resolvedPlan(for: drawing).members.flatMap(\.members)
+            XCTAssertFalse(members.isEmpty)
+            XCTAssertTrue(members.allSatisfy { $0.sizing == nil },
+                          "The preview is a picture, not an engineered design.")
+            XCTAssertTrue(members.allSatisfy { !$0.locked })
+        }
+    }
+
     // MARK: - Fixtures
 
     private let liveHouseStartId = "6CF06C30-083C-48B4-A0E2-689DA2C55848"
@@ -210,6 +361,32 @@ final class DeckFramingPreviewPlannerTests: XCTestCase {
             edge("e5", "v2", "v5", 120),
             edge("e6", "v5", "v6", 120),
             edge("e7", "v6", "v3", 120),
+        ]
+        return drawing
+    }
+
+    /// A plain rectangle at one canvas unit per inch, with the reference edge at
+    /// y = 0 and the deck running to y = depth.
+    private func deckDrawing(
+        widthInches: CGFloat,
+        depthInches: CGFloat,
+        ledgerAttached: Bool
+    ) -> DeckDrawingData {
+        var drawing = DeckDrawingData()
+        drawing.scaleFactor = 1
+        let prefix = "deck-\(Int(widthInches))x\(Int(depthInches))-\(ledgerAttached ? "attached" : "free")"
+        drawing.vertices = [
+            DeckVertex(id: "\(prefix)-v1", position: CGPoint(x: 0, y: 0)),
+            DeckVertex(id: "\(prefix)-v2", position: CGPoint(x: widthInches, y: 0)),
+            DeckVertex(id: "\(prefix)-v3", position: CGPoint(x: widthInches, y: depthInches)),
+            DeckVertex(id: "\(prefix)-v4", position: CGPoint(x: 0, y: depthInches)),
+        ]
+        drawing.edges = [
+            edge("\(prefix)-e1", "\(prefix)-v1", "\(prefix)-v2", Double(widthInches),
+                 type: ledgerAttached ? .houseEdge : .deckEdge),
+            edge("\(prefix)-e2", "\(prefix)-v2", "\(prefix)-v3", Double(depthInches)),
+            edge("\(prefix)-e3", "\(prefix)-v3", "\(prefix)-v4", Double(widthInches)),
+            edge("\(prefix)-e4", "\(prefix)-v4", "\(prefix)-v1", Double(depthInches)),
         ]
         return drawing
     }

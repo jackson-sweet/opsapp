@@ -1693,9 +1693,17 @@ class ImageSyncManager: ObservableObject {
         }
 
         let companyId = project.companyId
-        guard !companyId.isEmpty else {
-            return
+        guard !companyId.isEmpty,
+              let captureAccount = CaptureAccountIdentity.current(), captureAccount.companyID == companyId.lowercased() else { return }
+        func accountIsCurrent() -> Bool { !Task.isCancelled && CaptureAccountIdentity.current() == captureAccount }
+
+        let captureRows = handoffPhotoRows(projectId: projectId, localURLs: uploads.map(\.localURL))
+        let uploads = uploads.filter { upload in
+            guard upload.localURL.hasPrefix("local://project_images/capture_") else { return true }
+            guard let row = captureRows[upload.localURL] else { return false }
+            return row.companyId.lowercased() == captureAccount.companyID && row.uploadedBy.lowercased() == captureAccount.userID
         }
+        guard !uploads.isEmpty else { return }
 
         // The same barrier `saveImages` applies, applied again on every drain.
         // The queue is durable and the retry timer fires every 30s, so without
@@ -1717,7 +1725,9 @@ class ImageSyncManager: ObservableObject {
         // free when this phone already holds the tombstone, and one probe when
         // it does not (this runs only for projects that actually have queued
         // work, so the cost is bounded by real stranded photos).
-        if await projectIsSettledAsDeleted(project) {
+        let settledAsDeleted = await projectIsSettledAsDeleted(project)
+        guard accountIsCurrent() else { return }
+        if settledAsDeleted {
             DebugLogger.shared.log(
                 "syncImagesForProject settling \(uploads.count) photo(s) for \(projectId) — the job was deleted in OPS",
                 level: .info,
@@ -1759,7 +1769,9 @@ class ImageSyncManager: ObservableObject {
 
         // Resilient per-photo upload — one failure never aborts the batch.
         let images = pairs.map { $0.image }
+        guard accountIsCurrent() else { return }
         let outcomes = await presignedURLService.uploadProjectImages(images, for: project, companyId: companyId)
+        guard accountIsCurrent() else { return }
 
         // Reconcile by IDENTITY: each upload's local:// URL is swapped for ITS
         // OWN remote URL, found by identity (never by array position).
@@ -1795,6 +1807,7 @@ class ImageSyncManager: ObservableObject {
             // Canonical portal rows for the newly landed URLs, through the same
             // classification chokepoint the online path uses.
             let uploaderId = UserDefaults.standard.string(forKey: "currentUserId") ?? ""
+            guard accountIsCurrent() else { return }
             await deliverPortalMirror(
                 urls: reconciled.newRemoteURLs,
                 project: project,
@@ -1802,6 +1815,7 @@ class ImageSyncManager: ObservableObject {
                 source: "in_progress"
             )
 
+            guard accountIsCurrent() else { return }
             project.lastSyncedAt = Date()
 
             // Drop the drained (synced) uploads from the queue.
@@ -1821,16 +1835,20 @@ class ImageSyncManager: ObservableObject {
         // the price of never losing the portal row.
         var inserted: [(localURL: String, row: ProjectPhoto, remoteURL: String)] = []
         for (localURL, outcome) in handoffResults {
-            guard let remoteURL = outcome.url,
-                  let row = handoffRowsByURL[localURL],
-                  await insertHandoffPhotoRow(row, remoteURL: remoteURL) else { continue }
-            inserted.append((localURL, row, remoteURL))
+            guard accountIsCurrent() else { return }
+            guard let remoteURL = outcome.url, let row = handoffRowsByURL[localURL] else { continue }
+            if localURL.hasPrefix("local://project_images/capture_"), row.uploadedBy.lowercased() != captureAccount.userID { continue }
+            let accepted = await insertHandoffPhotoRow(row, remoteURL: remoteURL)
+            guard accountIsCurrent() else { return }
+            if accepted { inserted.append((localURL, row, remoteURL)) }
         }
         // Camera retirement requires an authoritative row, including lost-response
         // duplicate inserts. Read once for the project, then match exact identities.
         let hasCameraReceipts = inserted.contains { $0.localURL.hasPrefix("local://project_images/capture_") }
+        guard accountIsCurrent() else { return }
         let canonical = hasCameraReceipts
             ? (try? await ProjectPhotoRepository(companyId: companyId).fetchForProject(projectId)) ?? [] : []
+        guard accountIsCurrent() else { return }
         var deliveries: [StagedPhotoDestinations.ProjectDelivery] = []
         for entry in inserted {
             let remoteURL: String
@@ -1843,7 +1861,7 @@ class ImageSyncManager: ObservableObject {
         }
         if !deliveries.isEmpty, let modelContext {
             do {
-                try StagedPhotoDestinations.persistProjectDeliveries(deliveries, context: modelContext)
+                try StagedPhotoDestinations.persistProjectDeliveries(deliveries, context: modelContext, account: captureAccount)
                 for delivery in deliveries {
                     if let row = handoffRowsByURL[delivery.localURL] { Self.healHandoffPhotoRow(row, remoteURL: delivery.remoteURL) }
                     var seen = Set<String>()
@@ -1852,7 +1870,8 @@ class ImageSyncManager: ObservableObject {
                 // Only now are the canonical URL and row healing durable locally.
                 // Reopen also reconciles any retirement whose receipt write fails.
                 let localURLs = Set(deliveries.map(\.localURL))
-                try? await DurableCaptureStore.shared.recordDelivered(localURLs: localURLs)
+                try? await DurableCaptureStore.shared.recordDelivered(localURLs: localURLs, account: captureAccount)
+                guard accountIsCurrent() else { return }
                 pendingUploads.removeAll { localURLs.contains($0.localURL) }
                 savePendingUploads()
             } catch {

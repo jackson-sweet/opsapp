@@ -28,8 +28,35 @@ struct StagedCaptureBatch: Codable, Equatable, Identifiable, Sendable {
     var items: [StagedCaptureItem]
 }
 
-enum CaptureStagingError: Error {
+struct CaptureAccountIdentity: Equatable, Sendable {
+    let companyID: String
+    let userID: String
+    init(companyID: String, userID: String) { self.companyID = companyID.lowercased(); self.userID = userID.lowercased() }
+    static func current(defaults: UserDefaults = .standard) -> CaptureAccountIdentity? {
+        guard let company = defaults.string(forKey: "currentUserCompanyId"), !company.isEmpty,
+              let user = defaults.string(forKey: "currentUserId"), !user.isEmpty else { return nil }
+        return .init(companyID: company, userID: user)
+    }
+    func owns(_ owner: StagedCaptureOwner) -> Bool { companyID == owner.companyID && userID == owner.userID }
+}
+
+struct RetainedCaptureRecovery: Sendable {
+    let batch: StagedCaptureBatch
+    let failedItems: [StagedCaptureItem]
+}
+
+enum CaptureStagingError: LocalizedError {
     case invalidImage, invalidIdentity, incompatibleManifest, missingOriginal, writeFailed, closedDraft
+    var errorDescription: String? {
+        switch self {
+        case .invalidImage: return "Some photos need another save attempt. Retry or remove them before finishing."
+        case .invalidIdentity: return "Photo destination changed. Reopen it and try again."
+        case .incompatibleManifest: return "Saved photos need a newer version of OPS. Their files remain on this device."
+        case .missingOriginal: return "A saved photo could not be read. Retry before continuing."
+        case .writeFailed: return "Photos could not be saved. Keep this screen open and retry."
+        case .closedDraft: return "This photo draft has already been completed."
+        }
+    }
 }
 
 /// A versioned file journal, separate from SwiftData schema history. Every intent
@@ -38,6 +65,8 @@ enum CaptureStagingError: Error {
 actor DurableCaptureStore {
     static let shared = DurableCaptureStore()
     private struct Manifest: Codable {
+        // Any change to custody semantics or required fields MUST bump version.
+        // Unknown higher versions remain untouched; v1 extensions are optional.
         var version = 1
         var batch: StagedCaptureBatch
         var acknowledged: Set<String> = []
@@ -49,13 +78,18 @@ actor DurableCaptureStore {
     private let images: URL
     private let writer: Writer
     private let ledger: PhotoCacheLedger?
+    private let currentAccount: (@Sendable () -> CaptureAccountIdentity?)?
 
-    init(root: URL? = nil, images: URL? = nil, writer: @escaping Writer = { try $0.write(to: $1, options: .atomic) }) {
+    init(root: URL? = nil, images: URL? = nil, currentAccount: (@Sendable () -> CaptureAccountIdentity?)? = nil,
+        writer: @escaping Writer = { try $0.write(to: $1, options: .atomic) }) {
         let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
         self.root = root ?? docs.appendingPathComponent("CaptureBatches", isDirectory: true)
         self.images = images ?? docs.appendingPathComponent("ProjectImages", isDirectory: true)
         self.writer = writer
         self.ledger = images == nil ? .shared : nil
+        if let currentAccount { self.currentAccount = currentAccount }
+        else if root == nil { self.currentAccount = { CaptureAccountIdentity.current() } }
+        else { self.currentAccount = nil }
     }
 
     func create(owner: StagedCaptureOwner) throws -> StagedCaptureBatch {
@@ -112,7 +146,7 @@ actor DurableCaptureStore {
     }
 
     func recover(owner: StagedCaptureOwner) throws -> [StagedCaptureBatch] {
-        try recordDelivered(localURLs: [])
+        try recordDelivered(localURLs: [], account: .init(companyID: owner.companyID, userID: owner.userID))
         guard FileManager.default.fileExists(atPath: root.path) else { return [] }
         let files = try FileManager.default.contentsOfDirectory(at: root, includingPropertiesForKeys: nil)
         var recovered: [StagedCaptureBatch] = []
@@ -139,10 +173,27 @@ actor DurableCaptureStore {
     /// Failed siblings remain owned and visible in camera review; successfully
     /// prepared siblings can still be recovered/committed independently.
     func retainedBatch(batchID: String, owner: StagedCaptureOwner, prepareImages: Bool = true) throws -> StagedCaptureBatch {
+        if prepareImages { return try retainedRecovery(batchID: batchID, owner: owner).batch }
         let manifest = try read(batchID)
         guard manifest.batch.owner == owner else { throw CaptureStagingError.invalidIdentity }
         let retained = manifest.batch.items.filter { !manifest.discarded.contains($0.id) && !(manifest.delivered ?? []).contains($0.id) }
-        return StagedCaptureBatch(id: batchID, owner: owner, items: prepareImages ? try retained.map { try prepare($0) } : retained)
+        return StagedCaptureBatch(id: batchID, owner: owner, items: retained)
+    }
+
+    /// A bad original cannot hide its prepared siblings from the form. Failed
+    /// metadata remains explicit and owned, including previously acknowledged shots.
+    func retainedRecovery(batchID: String, owner: StagedCaptureOwner) throws -> RetainedCaptureRecovery {
+        var manifest = try read(batchID)
+        guard manifest.batch.owner == owner else { throw CaptureStagingError.invalidIdentity }
+        var prepared: [StagedCaptureItem] = [], failed: [StagedCaptureItem] = []
+        for item in manifest.batch.items where !manifest.discarded.contains(item.id) && !(manifest.delivered ?? []).contains(item.id) {
+            if let value = try? prepare(item) {
+                prepared.append(value)
+                if let index = manifest.batch.items.firstIndex(where: { $0.id == item.id }) { manifest.batch.items[index] = value }
+            } else { failed.append(item) }
+        }
+        try save(manifest)
+        return RetainedCaptureRecovery(batch: .init(id: batchID, owner: owner, items: prepared), failedItems: failed)
     }
 
     /// Metadata only: destination reopen can settle delivered items even when
@@ -190,25 +241,35 @@ actor DurableCaptureStore {
     /// Called only with exact canonical-delivery receipts after local healing.
     /// Retire duplicate source/JPEG bytes; compact metadata keeps old ack/replay
     /// IDs valid without retaining an unbounded protected photo cache.
-    func recordDelivered(localURLs: Set<String>) throws {
+    func recordDelivered(localURLs: Set<String>, account: CaptureAccountIdentity? = nil) throws {
         guard FileManager.default.fileExists(atPath: root.path) else { return }
         let receiptURL = root.appendingPathComponent("retirements.pending")
         var pending = FileManager.default.fileExists(atPath: receiptURL.path)
             ? try JSONDecoder().decode(Set<String>.self, from: Data(contentsOf: receiptURL)) : []
         pending.formUnion(localURLs.filter { $0.hasPrefix("local://project_images/capture_") })
         guard !pending.isEmpty else { return }
+        let expected = account ?? currentAccount?()
+        func requireOriginalAccount() throws {
+            if let currentAccount {
+                guard let expected, currentAccount() == expected else { throw CancellationError() }
+            }
+        }
+        try requireOriginalAccount()
         try JSONEncoder().encode(pending).write(to: receiptURL, options: .atomic)
         for file in try FileManager.default.contentsOfDirectory(at: root, includingPropertiesForKeys: nil) where file.pathExtension == "json" {
             // An unrelated damaged manifest cannot destroy a delivery receipt.
             guard var manifest = try? read(file.deletingPathExtension().lastPathComponent) else { continue }
+            if let expected, !expected.owns(manifest.batch.owner) { continue }
             let delivered = manifest.batch.items.filter { pending.contains($0.localURL) }
             guard !delivered.isEmpty else { continue }
             manifest.delivered = (manifest.delivered ?? []).union(delivered.map(\.id))
             manifest.acknowledged.formUnion(delivered.map(\.id))
+            try requireOriginalAccount()
             try save(manifest)
             for item in delivered {
                 var removed = true
                 for id in [item.originalLocalURL, item.localURL] {
+                    try requireOriginalAccount()
                     let url = fileURL(id)
                     if let ledger { removed = ledger.remove(url) && removed }
                     else if FileManager.default.fileExists(atPath: url.path) {
@@ -218,6 +279,7 @@ actor DurableCaptureStore {
                 if removed { pending.remove(item.localURL) }
             }
         }
+        try requireOriginalAccount()
         try JSONEncoder().encode(pending).write(to: receiptURL, options: .atomic)
     }
 

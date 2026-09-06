@@ -4,6 +4,20 @@ import SwiftData
 /// Camera destination receipts describe local custody, never remote upload success.
 @MainActor
 enum StagedPhotoDestinations {
+    typealias CurrentAccount = @Sendable () -> CaptureAccountIdentity?
+
+    static func requireAccount(_ account: CaptureAccountIdentity, currentAccount: CurrentAccount = { CaptureAccountIdentity.current() }) throws {
+        guard !Task.isCancelled, currentAccount() == account else { throw CancellationError() }
+    }
+
+    static func loadDraftCaptures(_ draft: ProjectPhotoFormDraft, store: DurableCaptureStore = .shared) async throws -> [RetainedCaptureRecovery] {
+        let retained = try await store.retainedBatches(owner: draft.owner)
+        var results: [RetainedCaptureRecovery] = []
+        for id in Set(draft.batchIDs).union(retained.map(\.id)).sorted() {
+            results.append(try await store.retainedRecovery(batchID: id, owner: draft.owner))
+        }
+        return results
+    }
     /// The caller inserts this operation before saving its new Project, so
     /// termination cannot leave a photo draft pointing at an unqueued parent.
     static func ensureParentCreate(project: Project, dto: SupabaseProjectDTO, context: ModelContext) throws -> SyncOperation {
@@ -136,12 +150,16 @@ enum StagedPhotoDestinations {
     /// Commit authoritative delivery in an owned context. A failed save cannot
     /// roll back unrelated screen edits or leave an unsaved remote URL visible.
     static func persistProjectDeliveries(_ deliveries: [ProjectDelivery], context: ModelContext,
+        account: CaptureAccountIdentity, currentAccount: CurrentAccount = { CaptureAccountIdentity.current() },
         save: (ModelContext) throws -> Void = { try $0.save() }) throws {
+        try requireAccount(account, currentAccount: currentAccount)
         let owned = ModelContext(context.container)
         owned.autosaveEnabled = false
         for delivery in deliveries {
             let id = delivery.id, projectID = delivery.projectID, companyID = delivery.companyID
-            guard isRemoteURL(delivery.remoteURL),
+            guard companyID.lowercased() == account.companyID,
+                  !delivery.localURL.hasPrefix("local://project_images/capture_") || delivery.uploadedBy.lowercased() == account.userID,
+                  isRemoteURL(delivery.remoteURL),
                   let row = try owned.fetch(FetchDescriptor<ProjectPhoto>(predicate: #Predicate { $0.id == id })).first,
                   row.projectId == projectID, row.companyId == companyID, row.uploadedBy == delivery.uploadedBy,
                   row.deletedAt == nil, [delivery.localURL, delivery.remoteURL].contains(row.url),
@@ -151,12 +169,19 @@ enum StagedPhotoDestinations {
             project.setProjectImageURLs(project.getProjectImages().map { $0 == delivery.localURL ? delivery.remoteURL : $0 }.filter { seen.insert($0).inserted })
             project.lastSyncedAt = Date()
         }
+        try requireAccount(account, currentAccount: currentAccount)
         try save(owned)
     }
 
     static func retireDeliveredProjectCaptures(owner: StagedCaptureOwner, projectID: String, context: ModelContext,
-        store: DurableCaptureStore = .shared) async throws {
-        let batches = try await store.retainedBatches(owner: owner)
+        store: DurableCaptureStore = .shared, currentAccount: @escaping CurrentAccount = { CaptureAccountIdentity.current() },
+        readBatches: (@Sendable (StagedCaptureOwner) async throws -> [StagedCaptureBatch])? = nil) async throws {
+        let account = CaptureAccountIdentity(companyID: owner.companyID, userID: owner.userID)
+        try requireAccount(account, currentAccount: currentAccount)
+        let batches: [StagedCaptureBatch]
+        if let readBatches { batches = try await readBatches(owner) }
+        else { batches = try await store.retainedBatches(owner: owner) }
+        try requireAccount(account, currentAccount: currentAccount)
         let owned = ModelContext(context.container)
         var delivered = Set<String>()
         for item in batches.flatMap(\.items) {
@@ -167,7 +192,8 @@ enum StagedPhotoDestinations {
                   row.deletedAt == nil, isRemoteURL(row.url) else { continue }
             delivered.insert(item.localURL)
         }
-        try await store.recordDelivered(localURLs: delivered)
+        try requireAccount(account, currentAccount: currentAccount)
+        try await store.recordDelivered(localURLs: delivered, account: account)
     }
 
     static func persistLeadDelivery(_ dto: OpportunityDTO, opportunityID: String, companyID: String, remoteURL: String,

@@ -179,6 +179,7 @@ struct ProjectFormSheet: View {
     @State private var showingPhotoDraftRecovery = false
     @State private var stagedPhotoBatches: [StagedCaptureBatch] = []
     @State private var stagedPhotoThumbnails: [String: UIImage] = [:]
+    @State private var stagedPhotoFailures = Set<String>()
     @State private var isPreparingCamera = false
 
     // Local tasks for multiple task creation
@@ -1947,8 +1948,9 @@ struct ProjectFormSheet: View {
                         ForEach(stagedPhotoBatches.flatMap(\.items)) { item in
                             Group {
                                 if let thumbnail = stagedPhotoThumbnails[item.id] { Image(uiImage: thumbnail).resizable().scaledToFill() }
-                                else { Image(systemName: "photo").foregroundColor(OPSStyle.Colors.secondaryText) }
+                                else { Image(systemName: stagedPhotoFailures.contains(item.id) ? OPSStyle.Icons.alert : OPSStyle.Icons.photos).foregroundColor(OPSStyle.Colors.secondaryText) }
                             }
+                            .accessibilityLabel(stagedPhotoFailures.contains(item.id) ? "Photo needs another save attempt" : "Saved photo")
                             .frame(width: OPSStyle.Layout.leadPhotoTileSize, height: OPSStyle.Layout.leadPhotoTileSize)
                             .clipped()
                             .cornerRadius(OPSStyle.Layout.cornerRadius)
@@ -2055,7 +2057,9 @@ struct ProjectFormSheet: View {
                 }
             )
         }
-        .fullScreenCover(isPresented: $showingCameraBatch) {
+        .fullScreenCover(isPresented: $showingCameraBatch, onDismiss: {
+            Task { await refreshPhotoDraftCaptures() }
+        }) {
             if let project = mode.project {
                 CameraBatchView(owner: StagedPhotoDestinations.owner(companyID: project.companyId, userID: dataController.currentUser?.id ?? "", kind: "project", id: project.id)) { batch in
                     await StagedPhotoDestinations.acceptProject(batch, project: project, userID: dataController.currentUser?.id ?? "", context: modelContext, imageSyncManager: dataController.imageSyncManager, tutorialMode: tutorialMode)
@@ -2085,6 +2089,7 @@ struct ProjectFormSheet: View {
             guard draft.companyID == companyID.lowercased(), draft.userID == user.id.lowercased() else { throw CaptureStagingError.invalidIdentity }
             draft.fields = photoDraftFields; draft.updatedAt = Date()
             try await ProjectPhotoFormDraftStore.shared.save(draft)
+            guard draft.companyID == dataController.currentUser?.companyId?.lowercased(), draft.userID == dataController.currentUser?.id.lowercased() else { throw CancellationError() }
             photoDraft = draft
             showingCameraBatch = true
         } catch { errorMessage = "Photo draft could not be saved. Retry before taking photos." }
@@ -2099,6 +2104,7 @@ struct ProjectFormSheet: View {
             if !draft.batchIDs.contains(batch.id) { draft.batchIDs.append(batch.id) }
             draft.fields = photoDraftFields; draft.updatedAt = Date()
             try await ProjectPhotoFormDraftStore.shared.save(draft)
+            guard draft.companyID == dataController.currentUser?.companyId?.lowercased(), draft.userID == dataController.currentUser?.id.lowercased() else { throw CancellationError() }
             photoDraft = draft
             if let index = stagedPhotoBatches.firstIndex(where: { $0.id == batch.id }) { stagedPhotoBatches[index] = batch }
             else { stagedPhotoBatches.append(batch) }
@@ -2111,21 +2117,41 @@ struct ProjectFormSheet: View {
     private func restorePhotoDraft() async {
         guard let draft = resumePhotoDraft,
               draft.companyID == dataController.currentUser?.companyId?.lowercased(), draft.userID == dataController.currentUser?.id.lowercased() else { return }
+        photoDraft = draft
+        title = draft.fields.title; titleIsAuto = draft.fields.titleIsAuto
+        selectedClientId = draft.fields.clientID; address = draft.fields.address
+        description = draft.fields.description; notes = draft.fields.notes
+        selectedStatus = Status(rawValue: draft.fields.status) ?? defaultProjectStatus
+        startDate = draft.fields.startDate; endDate = draft.fields.endDate
+        await refreshPhotoDraftCaptures()
+        isPhotosExpanded = true
+    }
+
+    @MainActor
+    private func refreshPhotoDraftCaptures() async {
+        guard let draft = photoDraft else { return }
         do {
-            photoDraft = draft
-            title = draft.fields.title; titleIsAuto = draft.fields.titleIsAuto
-            selectedClientId = draft.fields.clientID; address = draft.fields.address
-            description = draft.fields.description; notes = draft.fields.notes
-            selectedStatus = Status(rawValue: draft.fields.status) ?? defaultProjectStatus
-            startDate = draft.fields.startDate; endDate = draft.fields.endDate
-            let pending = try await DurableCaptureStore.shared.recover(owner: draft.owner)
-            let batchIDs = Set(draft.batchIDs).union(pending.map(\.id))
-            for id in batchIDs.sorted() {
-                let batch = try await DurableCaptureStore.shared.retainedBatch(batchID: id, owner: draft.owner)
-                guard await acceptDraftCapture(batch) else { throw CaptureStagingError.writeFailed }
+            let recovered = try await StagedPhotoDestinations.loadDraftCaptures(draft)
+            guard draft.companyID == dataController.currentUser?.companyId?.lowercased(), draft.userID == dataController.currentUser?.id.lowercased() else { throw CancellationError() }
+            for result in recovered {
+                guard await acceptDraftCapture(result.batch) else { throw CaptureStagingError.writeFailed }
+                try await DurableCaptureStore.shared.acknowledge(batchID: result.batch.id, itemIDs: Set(result.batch.items.map(\.id)))
+                showRetainedCapture(result)
             }
-            isPhotosExpanded = true
+            let visibleIDs = Set(recovered.flatMap { $0.batch.items + $0.failedItems }.map(\.id))
+            stagedPhotoFailures.formIntersection(visibleIDs)
+            if !stagedPhotoFailures.isEmpty { errorMessage = "Some photos need another save attempt. Open the camera to retry or remove them here." }
         } catch { errorMessage = "Saved photos need another attempt. Open the camera to retry." }
+    }
+
+    @MainActor
+    private func showRetainedCapture(_ result: RetainedCaptureRecovery) {
+        var visible = result.batch
+        visible.items.append(contentsOf: result.failedItems)
+        if let index = stagedPhotoBatches.firstIndex(where: { $0.id == visible.id }) { stagedPhotoBatches[index] = visible }
+        else { stagedPhotoBatches.append(visible) }
+        stagedPhotoFailures.subtract(result.batch.items.map(\.id))
+        stagedPhotoFailures.formUnion(result.failedItems.map(\.id))
     }
 
     @MainActor
@@ -2161,6 +2187,7 @@ struct ProjectFormSheet: View {
             }.filter { !$0.items.isEmpty }
             let remainingIDs = Set(stagedPhotoBatches.flatMap(\.items).map(\.id))
             stagedPhotoThumbnails = stagedPhotoThumbnails.filter { remainingIDs.contains($0.key) }
+            stagedPhotoFailures.formIntersection(remainingIDs)
         } catch { errorMessage = "Photos could not be removed. Retry." }
     }
 
@@ -2168,16 +2195,21 @@ struct ProjectFormSheet: View {
     private func transferDraftPhotos(to project: Project) async throws {
         guard let draft = photoDraft else { return }
         guard draft.projectID == project.id else { throw CaptureStagingError.invalidIdentity }
-        let failures = try await DurableCaptureStore.shared.failedItems(owner: draft.owner)
-        guard failures.isEmpty else { throw CaptureStagingError.writeFailed }
-        let pending = try await DurableCaptureStore.shared.recover(owner: draft.owner)
-        for id in Set(draft.batchIDs).union(pending.map(\.id)) {
-            let batch = try await DurableCaptureStore.shared.retainedBatch(batchID: id, owner: draft.owner)
-            guard await StagedPhotoDestinations.acceptProject(batch, project: project, userID: dataController.currentUser?.id ?? "", context: modelContext, imageSyncManager: dataController.imageSyncManager, tutorialMode: tutorialMode) else { throw CaptureStagingError.writeFailed }
-            try await DurableCaptureStore.shared.acknowledge(batchID: id, itemIDs: Set(batch.items.map(\.id)))
+        let recovered = try await StagedPhotoDestinations.loadDraftCaptures(draft)
+        var hasFailures = false
+        for result in recovered {
+            let batch = result.batch
+            showRetainedCapture(result)
+            if !batch.items.isEmpty {
+                guard await StagedPhotoDestinations.acceptProject(batch, project: project, userID: dataController.currentUser?.id ?? "", context: modelContext, imageSyncManager: dataController.imageSyncManager, tutorialMode: tutorialMode) else { throw CaptureStagingError.writeFailed }
+                try await DurableCaptureStore.shared.acknowledge(batchID: batch.id, itemIDs: Set(batch.items.map(\.id)))
+            }
+            hasFailures = hasFailures || !result.failedItems.isEmpty
         }
+        guard !hasFailures else { throw CaptureStagingError.invalidImage }
+
         try await ProjectPhotoFormDraftStore.shared.remove(draft)
-        photoDraft = nil; stagedPhotoBatches = []; stagedPhotoThumbnails = [:]
+        photoDraft = nil; stagedPhotoBatches = []; stagedPhotoThumbnails = [:]; stagedPhotoFailures = []
     }
 
     /// Fields that currently have data (for copy overwrite warning)
@@ -2854,8 +2886,6 @@ struct ProjectFormSheet: View {
                 }
                 return existing
             }
-            let failures = try await DurableCaptureStore.shared.failedItems(owner: photoDraft.owner)
-            guard failures.isEmpty else { throw CaptureStagingError.writeFailed }
         }
         print("[PROJECT_CREATE] Creating project locally with ID: \(projectId)")
 

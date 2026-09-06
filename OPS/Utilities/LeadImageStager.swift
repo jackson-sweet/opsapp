@@ -77,10 +77,16 @@ actor LeadImageStager {
         return item
     }
 
-    func finish(_ item: PendingLeadImageUpload) throws {
+    func finish(_ item: PendingLeadImageUpload, account: CaptureAccountIdentity? = nil) throws {
+        if let account {
+            guard CaptureAccountIdentity.current() == account else { throw CancellationError() }
+        }
         if let id = item.journalID {
             let url = try journalURL(id)
             try JSONEncoder().encode(Record(finished: true, pending: item)).write(to: url, options: .atomic)
+        }
+        if let account {
+            guard CaptureAccountIdentity.current() == account else { throw CancellationError() }
         }
         _ = ImageFileManager.shared.deleteImage(localID: item.localURL)
         if let original = item.originalLocalURL { _ = ImageFileManager.shared.deleteImage(localID: original) }

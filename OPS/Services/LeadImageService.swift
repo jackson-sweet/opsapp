@@ -204,6 +204,7 @@ final class LeadImageService: ObservableObject {
                 let adopted = try await LeadImageStager.shared.adopt(pending)
                 guard canDeliver(adopted) else { return false }
                 guard try await LeadImageStager.shared.isActive(adopted) else { continue }
+                guard canDeliver(adopted) else { return false }
                 if !pendingUploads.contains(where: { $0.localURL == adopted.localURL }) { pendingUploads.append(adopted) }
                 savePendingUploads()
             }
@@ -324,6 +325,8 @@ final class LeadImageService: ObservableObject {
         let snapshot = pendingUploads
 
         for pending in snapshot {
+            guard let captureAccount = CaptureAccountIdentity.current(defaults: defaults) else { continue }
+            func accountIsCurrent() -> Bool { !Task.isCancelled && CaptureAccountIdentity.current(defaults: defaults) == captureAccount }
             guard !Task.isCancelled, pendingUploads.contains(where: { $0.localURL == pending.localURL }) else { continue }
             do {
                 guard try await LeadImageStager.shared.isActive(pending) else {
@@ -331,33 +334,37 @@ final class LeadImageService: ObservableObject {
                     savePendingUploads()
                     continue
                 }
-                guard canDeliver(pending) else { continue }
+                guard accountIsCurrent(), canDeliver(pending) else { continue }
                 var current = try await LeadImageStager.shared.current(pending)
+                guard accountIsCurrent() else { continue }
                 let remoteURL: String
                 if let uploaded = current.uploadedURL {
                     remoteURL = uploaded
                 } else if pending.localURL.hasPrefix("local://") {
-                    guard let data = try await LeadImageStager.shared.uploadData(pending) else { continue }
+                    guard let data = try await LeadImageStager.shared.uploadData(pending), accountIsCurrent() else { continue }
                     remoteURL = try await uploader.uploadImageData(
                         data, filename: (pending.localURL as NSString).lastPathComponent,
                         folder: LeadImageStoragePath.folder(companyId: pending.companyId, opportunityId: pending.opportunityId)
                     )
-                    guard pendingUploads.contains(where: { $0.localURL == pending.localURL }) else { continue }
+                    guard accountIsCurrent(), pendingUploads.contains(where: { $0.localURL == pending.localURL }) else { continue }
                     current = try await LeadImageStager.shared.recordRemote(pending, url: remoteURL)
+                    guard accountIsCurrent() else { continue }
                     if let index = pendingUploads.firstIndex(where: { $0.localURL == pending.localURL }) {
                         pendingUploads[index] = current
                         savePendingUploads()
                     }
                 } else { remoteURL = pending.localURL }
-                guard !Task.isCancelled, canDeliver(current), pendingUploads.contains(where: { $0.localURL == pending.localURL }) else { continue }
+                guard accountIsCurrent(), canDeliver(current), pendingUploads.contains(where: { $0.localURL == pending.localURL }) else { continue }
                 let repo = OpportunityRepository(companyId: current.companyId)
                 let dto = try await repo.appendImages([remoteURL], to: current.opportunityId)
-                guard canDeliver(current), let modelContext else { throw CaptureStagingError.invalidIdentity }
+                guard accountIsCurrent(), canDeliver(current), let modelContext else { throw CaptureStagingError.invalidIdentity }
                 try StagedPhotoDestinations.persistLeadDelivery(dto, opportunityID: current.opportunityId, companyID: current.companyId, remoteURL: remoteURL, context: modelContext)
                 // Retain original + upload JPEG until both S3 and the lead row
                 // confirm custody. A failed merge retries the recorded remote URL.
-                try await DurableCaptureStore.shared.recordDelivered(localURLs: [current.localURL])
-                try await LeadImageStager.shared.finish(current)
+                try await DurableCaptureStore.shared.recordDelivered(localURLs: [current.localURL], account: captureAccount)
+                guard accountIsCurrent() else { continue }
+                try await LeadImageStager.shared.finish(current, account: captureAccount)
+                guard accountIsCurrent() else { continue }
                 pendingUploads.removeAll { $0.localURL == pending.localURL }
                 savePendingUploads()
             } catch { continue }

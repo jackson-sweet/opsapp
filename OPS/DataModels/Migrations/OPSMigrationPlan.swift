@@ -177,7 +177,8 @@ enum OPSMigrationPlan: SchemaMigrationPlan {
             OPSSchemaV22.self,
             OPSSchemaV23.self,
             OPSSchemaV24.self,
-            OPSSchemaV25.self
+            OPSSchemaV25.self,
+            OPSSchemaV26.self
         ]
     }
 
@@ -206,9 +207,18 @@ enum OPSMigrationPlan: SchemaMigrationPlan {
             addActivitySiteVisitIdV21toV22,
             addSiteVisitBookingFieldsV22toV23,
             addPhaseCAppointmentFieldsV23toV24,
-            addProjectPrimarySubClientV24toV25
+            addProjectPrimarySubClientV24toV25,
+            addDeckDrawingMergeBaseV25toV26
         ]
     }
+
+    /// V25 → V26: nullable local drawing merge base. Do not backfill it from
+    /// drawingDataJSON: a legacy row can contain unsent work and needsSync is
+    /// still its authorship signal until a confirmed push or accepted snapshot.
+    static let addDeckDrawingMergeBaseV25toV26 = MigrationStage.lightweight(
+        fromVersion: OPSSchemaV25.self,
+        toVersion: OPSSchemaV26.self
+    )
 
     /// V24 → V25: additive project primary-contact projection entity.
     static let addProjectPrimarySubClientV24toV25 = MigrationStage.lightweight(

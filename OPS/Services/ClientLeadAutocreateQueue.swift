@@ -557,18 +557,20 @@ final class ClientLeadAutocreateQueue: ClientLeadAutocreateQueueing {
 
     private func applyLocalDelivery(_ delivery: ClientLeadAutocreateDelivery) {
         guard let dto = delivery.opportunityDTO,
-              let modelContext else { return }
+              let sharedContext = modelContext else { return }
+        let deliveryContext = ModelContext(sharedContext.container)
+        deliveryContext.autosaveEnabled = false
 
         let opportunityId = dto.id
         let descriptor = FetchDescriptor<Opportunity>(
             predicate: #Predicate<Opportunity> { $0.id == opportunityId }
         )
-        let existing = (try? modelContext.fetch(descriptor)) ?? []
+        let existing = (try? deliveryContext.fetch(descriptor)) ?? []
         guard existing.isEmpty else { return }
 
-        modelContext.insert(dto.toModel())
+        deliveryContext.insert(dto.toModel())
         do {
-            try modelContext.save()
+            try deliveryContext.save()
         } catch {
             // The server delivery already succeeded. Realtime / the next REST
             // refresh remains the source of truth if this local cache write fails.

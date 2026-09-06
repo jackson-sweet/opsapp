@@ -367,6 +367,37 @@ final class ClientLeadAutocreateParentGateTests: XCTestCase {
         }
     }
 
+    func testLeadArrivalAndVisitBindingLeaveCallerPendingWorkUnsaved() async throws {
+        let context = try makeContext()
+        let visit = SiteVisit(companyId: "company-1", createdBy: "actor")
+        let draft = SiteVisitIdentityDraft(siteVisitId: visit.id, companyId: "company-1", clientId: "client-1")
+        let other = SiteVisit(companyId: "company-1", createdBy: "actor")
+        other.notes = "Stored B"
+        context.insert(visit); context.insert(draft); context.insert(other); try context.save()
+        other.notes = "Pending B"
+        let pendingDraft = SiteVisitIdentityDraft(siteVisitId: other.id, companyId: "company-1", notes: "Pending B draft")
+        context.insert(pendingDraft)
+        let json: [String: Any] = ["id": "synthetic-lead", "company_id": "company-1", "contact_name": "Synthetic customer",
+            "stage": "new_lead", "stage_entered_at": "2026-09-06T12:00:00Z", "assignment_version": 3,
+            "created_at": "2026-09-06T12:00:00Z", "updated_at": "2026-09-06T12:00:00Z"]
+        let dto = try JSONDecoder().decode(OpportunityDTO.self, from: JSONSerialization.data(withJSONObject: json))
+        let queue = makeQueue { _ in
+            ClientLeadAutocreateDelivery(opportunityId: dto.id, opportunityDTO: dto, createdNow: true)
+        }
+        queue.configure(modelContext: context, activeCompanyId: { "company-1" })
+        queue.enqueue(makeClient(id: "client-1"), companyId: "company-1")
+        await queue.drain()
+        XCTAssertEqual(queue.pendingCount, 0)
+        XCTAssertEqual(other.notes, "Pending B")
+        XCTAssertEqual(pendingDraft.notes, "Pending B draft")
+        XCTAssertTrue(context.hasChanges)
+        let fresh = ModelContext(context.container)
+        XCTAssertEqual(try fresh.fetch(FetchDescriptor<SiteVisit>()).first { $0.id == other.id }?.notes, "Stored B")
+        XCTAssertFalse(try fresh.fetch(FetchDescriptor<SiteVisitIdentityDraft>()).contains { $0.id == pendingDraft.id })
+        XCTAssertEqual(try fresh.fetch(FetchDescriptor<SiteVisitIdentityDraft>()).first { $0.id == draft.id }?.opportunityId, dto.id)
+        XCTAssertEqual(try fresh.fetch(FetchDescriptor<Opportunity>()).first?.assignmentVersion, 3)
+    }
+
     private func makeQueue(
         attempt: @escaping ClientLeadAutocreateQueue.Attempt
     ) -> ClientLeadAutocreateQueue {

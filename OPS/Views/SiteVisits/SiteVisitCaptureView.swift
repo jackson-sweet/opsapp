@@ -46,6 +46,7 @@ struct SiteVisitCaptureView: View {
                         onCreateProject(lead)
                     }
                 )
+                .environment(\.modelContext, viewModel.modelContext)
             } else {
                 ZStack {
                     OPSStyle.Colors.background.ignoresSafeArea()
@@ -999,6 +1000,12 @@ private struct SiteVisitCaptureConsole: View {
             viewModel.errorMessage = "DECK DESIGN UNAVAILABLE"
             return
         }
+        guard viewModel.preserveDraft() else { return }
+        if let pending = viewModel.pendingDeckCreation {
+            guard let saved = viewModel.saveDeckForCapture(pending) else { return }
+            activeDeckDesign = saved
+            return
+        }
 
         // Continue before create: the exact design the caller asked for
         // (checklist EDIT), then the visit's own sketch, then the lead's
@@ -1022,7 +1029,7 @@ private struct SiteVisitCaptureConsole: View {
             opportunityId: viewModel.currentOpportunity?.id,
             in: allDesigns
         ) {
-            viewModel.attachDeckDesign(existing)   // idempotent — links, never dupes
+            guard viewModel.attachDeckDesign(existing) else { return }
             activeDeckDesign = existing
             return
         }
@@ -1048,15 +1055,8 @@ private struct SiteVisitCaptureConsole: View {
             companyId: viewModel.companyIdentifier,
             userId: dataController.currentUser?.id,
             onDesignCreated: { design in
-                // A blank design is handed over unsaved on purpose (the builder
-                // persists it on the first real edit), but a visit artifact has
-                // to point at a row that exists.
-                if design.modelContext == nil {
-                    modelContext.insert(design)
-                }
-                try? modelContext.save()
-                viewModel.attachDeckDesign(design)
-                deckDesignPendingOpen = design
+                guard let saved = viewModel.saveDeckForCapture(design) else { return }
+                deckDesignPendingOpen = saved
                 showingDeckCreationPicker = false
             }
         )

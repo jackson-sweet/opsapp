@@ -88,12 +88,15 @@ final class SiteVisitCaptureViewModel: ObservableObject {
 
     private let companyId: String
     private let userId: String?
-    private let modelContext: ModelContext
+    /// The console, picker and deck editor inherit this same owned context.
+    let modelContext: ModelContext
     private let persistenceCoordinator: SiteVisitPersistenceCoordinator
     var readStageSnapshot: SiteVisitStageTransport.ReadSnapshot = SiteVisitStageTransport.readSnapshot
     @Published private(set) var stageSnapshot: SiteVisitStageSnapshot?
     private var stageSnapshotGeneration = 0
     private var autosavedNoteArtifactId: String?
+    private(set) var pendingDeckCreation: DeckDesign?
+    var validateDeckSave: () throws -> Void = {}
     private var leadBoundObserver: NSObjectProtocol?
 
     /// The active visit's id, mirrored as a plain String.
@@ -774,8 +777,9 @@ final class SiteVisitCaptureViewModel: ObservableObject {
         hydrateChecklistAnswersFromCapturedEvidence()
     }
 
-    func attachDeckDesign(_ deckDesign: DeckDesign) {
-        guard let visit = requireVisit() else { return }
+    @discardableResult
+    func attachDeckDesign(_ deckDesign: DeckDesign) -> Bool {
+        guard let visit = requireVisit() else { return false }
 
         // Idempotent on reopen: one active artifact per design. Continuing a
         // design (checklist EDIT, or a lead deck carried into the visit) must
@@ -806,10 +810,38 @@ final class SiteVisitCaptureViewModel: ObservableObject {
                 deckAnswer.updatedAt = Date()
                 deckAnswer.needsSync = true
             }
-        }) else { return }
+        }) else { return false }
         reloadArtifacts()
         reloadChecklistAnswers()
         hydrateChecklistAnswersFromCapturedEvidence()
+        return true
+    }
+
+    /// Called by the actual picker host, before it opens the editor. A failed
+    /// save keeps the pending design for the next DECK tap instead of opening
+    /// an editor for an uncommitted row or discarding its captured geometry.
+    func saveDeckForCapture(_ incoming: DeckDesign) -> DeckDesign? {
+        let design: DeckDesign
+        if let owner = incoming.modelContext, owner !== modelContext {
+            let id = incoming.id
+            guard let local = try? modelContext.fetch(FetchDescriptor<DeckDesign>(predicate: #Predicate { $0.id == id })).first else {
+                errorMessage = "DECK NOT SAVED · RETRY"
+                return nil
+            }
+            design = local
+        } else { design = incoming }
+        pendingDeckCreation = design
+        if design.modelContext == nil { modelContext.insert(design) }
+        do {
+            try validateDeckSave()
+            if modelContext.hasChanges { try modelContext.save() }
+            guard attachDeckDesign(design) else { return nil }
+            pendingDeckCreation = nil
+            return design
+        } catch {
+            errorMessage = "DECK NOT SAVED · RETRY"
+            return nil
+        }
     }
 
     func setIncluded(_ artifact: SiteVisitCaptureArtifact, included: Bool) {
@@ -1806,7 +1838,7 @@ final class SiteVisitCaptureViewModel: ObservableObject {
             }
         )
         if let existing = try? modelContext.fetch(descriptor).first {
-            Self.copyOpportunityFields(from: incoming, to: existing)
+            existing.apply(incoming)
             return existing
         }
         modelContext.insert(incoming)
@@ -1816,49 +1848,10 @@ final class SiteVisitCaptureViewModel: ObservableObject {
     private static func detachedOpportunitySnapshot(_ incoming: Opportunity) -> Opportunity {
         let snapshot = Opportunity(id: incoming.id, companyId: incoming.companyId,
             contactName: incoming.contactName, stage: incoming.stage)
-        copyOpportunityFields(from: incoming, to: snapshot)
+        snapshot.apply(incoming)
         return snapshot
     }
 
-    private static func copyOpportunityFields(from incoming: Opportunity, to existing: Opportunity) {
-        existing.companyId = incoming.companyId
-        existing.title = incoming.title
-        existing.contactName = incoming.contactName
-        existing.contactEmail = incoming.contactEmail
-        existing.contactPhone = incoming.contactPhone
-        existing.descriptionText = incoming.descriptionText
-        existing.address = incoming.address
-        existing.stage = incoming.stage
-        existing.stageEnteredAt = incoming.stageEnteredAt
-        existing.stageManuallySet = incoming.stageManuallySet
-        existing.assignedTo = incoming.assignedTo
-        existing.priority = incoming.priority
-        existing.source = incoming.source
-        existing.quoteDeliveryMethod = incoming.quoteDeliveryMethod
-        existing.estimatedValue = incoming.estimatedValue
-        existing.actualValue = incoming.actualValue
-        existing.winProbabilityOverride = incoming.winProbabilityOverride
-        existing.expectedCloseDate = incoming.expectedCloseDate
-        existing.actualCloseDate = incoming.actualCloseDate
-        existing.nextFollowUpAt = incoming.nextFollowUpAt
-        existing.lastActivityAt = incoming.lastActivityAt
-        existing.projectId = incoming.projectId
-        existing.clientId = incoming.clientId
-        existing.lostReason = incoming.lostReason
-        existing.lostNotes = incoming.lostNotes
-        existing.deletedAt = incoming.deletedAt
-        existing.archivedAt = incoming.archivedAt
-        existing.tags = incoming.tags
-        existing.sourceEmailId = incoming.sourceEmailId
-        existing.correspondenceCount = incoming.correspondenceCount
-        existing.outboundCount = incoming.outboundCount
-        existing.inboundCount = incoming.inboundCount
-        existing.lastInboundAt = incoming.lastInboundAt
-        existing.lastOutboundAt = incoming.lastOutboundAt
-        existing.lastMessageDirection = incoming.lastMessageDirection
-        existing.createdAt = incoming.createdAt
-        existing.updatedAt = incoming.updatedAt
-    }
 
     private func requireVisit() -> SiteVisit? {
         if siteVisit == nil {

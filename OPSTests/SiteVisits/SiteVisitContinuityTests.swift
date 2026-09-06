@@ -11,6 +11,68 @@ final class SiteVisitContinuityTests: XCTestCase {
 
     override func tearDown() { containers.removeAll(); super.tearDown() }
 
+    func test_initialAndReassignedLeadSnapshotsPreserveConversionAndSummaryFields() throws {
+        let (vm, context) = try makeVisit(prepareShared: { context in
+            let initial = try XCTUnwrap(context.fetch(FetchDescriptor<Opportunity>()).first)
+            self.fillLeadSnapshotFields(initial, version: 7)
+            try context.save()
+        })
+        assertSnapshotFields(try XCTUnwrap(vm.currentOpportunity), version: 7)
+        let reassigned = Opportunity(id: UUID().uuidString.lowercased(), companyId: company, contactName: "Reassigned")
+        fillLeadSnapshotFields(reassigned, version: 11)
+        context.insert(reassigned); try context.save()
+        vm.reassignVisit(to: reassigned)
+        assertSnapshotFields(try XCTUnwrap(vm.currentOpportunity), version: 11)
+        XCTAssertNil(vm.currentOpportunity?.modelContext)
+    }
+
+    func test_actualDeckHostSaveKeepsCallerWIPPendingAndRetainsFailedDrawingForRetry() throws {
+        var other: SiteVisit!
+        let (vm, context) = try makeVisit(prepareShared: { context in
+            other = SiteVisit(companyId: self.company, createdBy: self.actor)
+            other.notes = "Stored other visit"
+            context.insert(other); try context.save()
+            other.notes = "Unfinished other visit"
+        })
+        let design = DeckDesign(companyId: company, opportunityId: lead, title: "Synthetic deck")
+        design.drawingDataJSON = "{\"synthetic_geometry\":true}"
+        vm.validateDeckSave = { throw URLError(.cannotWriteToFile) }
+        XCTAssertNil(vm.saveDeckForCapture(design))
+        XCTAssertEqual(vm.pendingDeckCreation?.drawingDataJSON, design.drawingDataJSON)
+        XCTAssertNotNil(vm.errorMessage)
+        XCTAssertTrue(try ModelContext(context.container).fetch(FetchDescriptor<DeckDesign>()).isEmpty)
+        vm.validateDeckSave = {}
+        let saved = try XCTUnwrap(vm.saveDeckForCapture(try XCTUnwrap(vm.pendingDeckCreation)))
+        XCTAssertTrue(saved.modelContext === vm.modelContext)
+        XCTAssertNil(vm.pendingDeckCreation)
+        XCTAssertEqual(other.notes, "Unfinished other visit")
+        XCTAssertTrue(context.hasChanges)
+        let fresh = ModelContext(context.container)
+        XCTAssertEqual(try fresh.fetch(FetchDescriptor<SiteVisit>()).first { $0.id == other.id }?.notes, "Stored other visit")
+        XCTAssertEqual(try fresh.fetch(FetchDescriptor<DeckDesign>()).first?.drawingDataJSON, design.drawingDataJSON)
+        XCTAssertTrue(try fresh.fetch(FetchDescriptor<SiteVisitCaptureArtifact>()).contains { $0.deckDesignId == saved.id })
+    }
+
+    private func fillLeadSnapshotFields(_ opportunity: Opportunity, version: Int64) {
+        opportunity.assignmentVersion = version
+        opportunity.aiSummary = "Synthetic summary"
+        opportunity.aiSummaryUpdatedAt = Date(timeIntervalSince1970: 123)
+        opportunity.images = ["local://project_images/synthetic.jpg"]
+        opportunity.latitude = 48.4; opportunity.longitude = -123.3
+        opportunity.handledAt = Date(timeIntervalSince1970: 124)
+        opportunity.operatorActionRequiredAt = Date(timeIntervalSince1970: 125)
+    }
+
+    private func assertSnapshotFields(_ opportunity: Opportunity, version: Int64) {
+        XCTAssertEqual(opportunity.assignmentVersion, version)
+        XCTAssertEqual(opportunity.aiSummary, "Synthetic summary")
+        XCTAssertEqual(opportunity.aiSummaryUpdatedAt, Date(timeIntervalSince1970: 123))
+        XCTAssertEqual(opportunity.images, ["local://project_images/synthetic.jpg"])
+        XCTAssertEqual(opportunity.latitude, 48.4); XCTAssertEqual(opportunity.longitude, -123.3)
+        XCTAssertEqual(opportunity.handledAt, Date(timeIntervalSince1970: 124))
+        XCTAssertEqual(opportunity.operatorActionRequiredAt, Date(timeIntervalSince1970: 125))
+    }
+
     func test_captureSessionDoesNotSaveOrRollbackCallerPendingVisitGraph() throws {
         for shouldFail in [false, true] {
             let gate = FailureGate()
@@ -275,7 +337,7 @@ final class SiteVisitContinuityTests: XCTestCase {
     private func makeVisit(gate: FailureGate = FailureGate(), rejectStageEncoding: Bool = false,
                            prepareShared: (ModelContext) throws -> Void = { _ in }) throws -> (SiteVisitCaptureViewModel, ModelContext) {
         let schema = Schema([SiteVisit.self, SiteVisitType.self, SiteVisitCaptureArtifact.self, SiteVisitChecklistAnswer.self,
-            SiteVisitIdentityDraft.self, SyncOperation.self, Opportunity.self, Client.self, SubClient.self])
+            SiteVisitIdentityDraft.self, SyncOperation.self, Opportunity.self, Client.self, SubClient.self, DeckDesign.self])
         let container = try ModelContainer(for: schema, configurations: [ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)])
         containers.append(container)
         let context = container.mainContext

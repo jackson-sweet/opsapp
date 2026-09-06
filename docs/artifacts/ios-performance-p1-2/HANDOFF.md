@@ -18,6 +18,7 @@ Baseline: `94543f955ca8a2ccee4cc148c24c6d33de92cccc`. Apply these local commits 
 10. `bad6ad3a` — typed visit/media delivery inherits its caller actor and checks current-session validity after every suspension; five explicit-gate regression cases.
 11. `ea5d8798` — CREATE LEAD saves client/contact/notes/subcontacts, draft binding and their standard outbox operations in the capture-owned transaction; actual-entry rollback/retry, deduplication and stopped-parent tests.
 12. `2ef96911` — blank capture notes preserve existing client notes, including already-bound legacy/resumed drafts; real resume regression plus nonblank note-update and contact-clear assertions.
+13. `4c889f09` — queue-policy binding assertions use exact-ID durable reads; the open-visit regression exercises the real queue/cache/bind/notification path with only its remote attempt mocked.
 
 P1-3 media APIs through `c528e1b0` are implemented prerequisites. These visit adapters do not depend on P1-3's remaining non-visit camera adapters. New files use existing synchronized Xcode groups; there are no persistent model/schema or project-file changes. P1-5's finalized SQL contract includes `already_satisfied`; production migration is not applied and remains a separate gate.
 
@@ -58,7 +59,7 @@ Typed delivery's public executeIfHandled and uploadPendingMedia APIs accept isCu
 
 ## Verification performed and authored
 
-`static-verification.json` records all 31 changed Swift files passing frontend syntax parsing, preserved CRLF boundaries, and zero new literal color/font/spacing/radius violations in changed visit UI. `git diff --check` passes. These are source checks only. The PM's earlier combined compile found a complex predicate and actor-conversion warning; `344c3c7b` splits the predicate and uses the nonisolated classifier. Those fixes have not yet been typechecked by this worker.
+`static-verification.json` records all 32 changed Swift files passing frontend syntax parsing, preserved CRLF boundaries, and zero new literal color/font/spacing/radius violations in changed visit UI. `git diff --check` passes. These are source checks only. The PM's earlier combined compile found a complex predicate and actor-conversion warning; `344c3c7b` splits the predicate and uses the nonisolated classifier. Those fixes have not yet been typechecked by this worker.
 
 Authored synthetic tests cover:
 
@@ -76,7 +77,15 @@ All fixtures/photo URLs are synthetic. No XCTest has run in this worker, and the
 
 Parent core03 ran an earlier combined snapshot: 292 tests, 287 passed, 5 failed, zero skipped. Two lead tests trapped in SyncOperation backing data through OutboundProcessor; P1-4 owns the real sync-driver/lifetime repair. Separately, 26e9936d makes the synthetic lead fixture hermetic and waits for controller teardown before releasing its containers; this is not production lifetime proof. bad6ad3a adds inner typed-lane guards, which require P1-4's real predicates at both callers. Exact retained diagnostics are in the integration checkout under docs/artifacts/ios-performance-combined/core03-relevant-diagnostics/.
 
-The three assertion failures were both search fixtures and the repeated-URL markup test. Commit 9f6c5cdb replaces the 100-yield polling gate with a MainActor request-registration expectation, a five-second bound and cancellation cleanup; the markup assertion reads the same operation ID from a fresh context and still requires pending status/retryCount zero. The queue-delivery fixture now writes its binding through a separate context, matching production. These amendments, plus the latest entry/deck/snapshot tests, await the focused combined rerun. Syntax parsing passes for the final 31 Swift files; runtime completion is not yet claimed.
+The three assertion failures were both search fixtures and the repeated-URL markup test. Commit 9f6c5cdb replaces the 100-yield polling gate with a MainActor request-registration expectation, a five-second bound and cancellation cleanup; the markup assertion reads the same operation ID from a fresh context and still requires pending status/retryCount zero. The queue-delivery fixture now writes its binding through a separate context, matching production. These amendments, plus the latest entry/deck/snapshot tests, await the focused combined rerun. Syntax parsing passes for the final 32 Swift files; runtime completion is not yet claimed.
+
+## Parent core04 queue-policy follow-up
+
+Parent core04 at integration `8ef739cd` ran 309 tests: 306 passed, three failed, zero skipped. All five core03 failures and the new client isolation/blank-note/typed validity tests passed. Remaining failures were queue-policy binding assertions, a P1-4 lifecycle reset fixture trap, and a project-note retarget assertion outside this worker's ownership. Evidence: integration `docs/artifacts/ios-performance-combined/core-tests-04-summary.json`, `queue-policy-04-details.json` and `core04-relevant-diagnostics/test-stdout.txt`.
+
+The queue-policy failure observed the original context's registered draft/visit after the new owned-context delivery. Its binding notification was received and delivery logged success; there was no binding-save error. Independently in the same run, the queue arrival isolation test passed its fresh durable read and the open-capture observation test passed. Production delivery always includes the opportunity DTO; the queue saves that cache entry before its binding notification, and the open VM rereads the draft/lead in a fresh context before updating its own models.
+
+Commit `4c889f09` changes no production code. The policy test retains both exact opportunity ID assertions and strengthens lastCommittedAt to an exact injected timestamp, all read from a new context using captured exact IDs. The open-visit test now invokes the real queue instead of simulating its store writes/notification; only the remote delivery is synthetic. It checks both the visible VM and independently persisted visit/draft/timestamp. Those amended cases await the parent's focused rerun; this worker performed syntax/diff checks only.
 
 ## Exact focused commands — PM only with baton
 
@@ -100,6 +109,7 @@ xcodebuild test -project OPS.xcodeproj -scheme OPS \
   -only-testing:OPSTests/SiteVisitActivityPostTests \
   -only-testing:OPSTests/SiteVisitStageDefaultTests \
   -only-testing:OPSTests/ClientLeadAutocreateParentGateTests \
+  -only-testing:OPSTests/ClientLeadAutocreateQueuePolicyTests \
   -only-testing:OPSTests/SiteVisitOutboundSyncTests \
   -only-testing:OPSTests/SiteVisitMediaSyncManagerTests
 ```

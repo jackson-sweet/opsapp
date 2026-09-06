@@ -1,6 +1,6 @@
 {
   "swift_syntax_parse_exit": 0,
-  "swift_files": 31,
+  "swift_files": 32,
   "files": [
     "OPS/Network/Supabase/Repositories/OpportunityRepository.swift",
     "OPS/Network/Sync/SiteVisitMediaSyncManager.swift",
@@ -22,6 +22,7 @@
     "OPS/Views/SiteVisits/SiteVisitFeedback.swift",
     "OPS/Views/SiteVisits/SiteVisitStageDefault.swift",
     "OPSTests/Services/ClientLeadAutocreateParentGateTests.swift",
+    "OPSTests/Services/ClientLeadAutocreateQueuePolicyTests.swift",
     "OPSTests/SiteVisits/SiteVisitActivityPostTests.swift",
     "OPSTests/SiteVisits/SiteVisitCapturePacketTests.swift",
     "OPSTests/SiteVisits/SiteVisitContinuityTests.swift",
@@ -39,5 +40,5 @@
   "typecheck_run": false,
   "xctest_run": false,
   "build_baton_received": false,
-  "verified_source_commit": "2ef969116cab2524e37067331a7e0df914f95a92"
+  "verified_source_commit": "4c889f096cd8d31dac0d781d54753ae189dd1835"
 }

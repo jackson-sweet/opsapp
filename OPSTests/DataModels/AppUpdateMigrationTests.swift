@@ -664,6 +664,11 @@ final class AppUpdateMigrationTests: XCTestCase {
             r.fileSize, r.mimeType, r.width, r.height, r.capturedAt, r.latitude, r.longitude,
             r.uploadProgress, r.uploadRetryCount, r.status, r.createdAt, r.deletedAt, r.lastSyncedAt, r.needsSync
         ] }
+        try capture(ProjectPhoto.self, "project photos") { r in [
+            r.id, r.projectId, r.companyId, r.url, r.thumbnailURL, r.renderedURL, r.source,
+            r.siteVisitId, r.uploadedBy, r.caption, r.isClientVisible, r.takenAt,
+            r.createdAt, r.updatedAt, r.deletedAt, r.lastSyncedAt, r.needsSync
+        ] }
         try capture(PhotoAnnotation.self, "photo annotations") { r in [
             r.id, r.projectId, r.companyId, r.photoURL, r.annotationURL, r.note, r.authorId,
             r.createdAt, r.updatedAt, r.deletedAt, r.renderedPhotoURL, r.lastSyncedAt, r.needsSync,

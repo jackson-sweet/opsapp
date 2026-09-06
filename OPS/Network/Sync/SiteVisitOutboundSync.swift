@@ -226,8 +226,12 @@ struct SiteVisitOutboundSync {
     func executeIfHandled(
         operation: SyncOperation,
         context: ModelContext,
-        activeCompanyId: String
+        activeCompanyId: String,
+        isCurrent: () -> Bool = { true },
+        isolation: isolated (any Actor)? = #isolation
     ) async throws -> Bool {
+        try Task.checkCancellation()
+        guard isCurrent() else { throw CancellationError() }
         guard Self.isSiteVisitOperation(operation) else { return false }
         let envelope: SiteVisitSyncOperation.Payload
         do {
@@ -267,6 +271,8 @@ struct SiteVisitOutboundSync {
                 throw SyncError.serverError(statusCode: 409, message: "STAGE REVIEW REQUIRED · OPEN LEAD")
             }
             let result = try await deliverStage(command)
+            try Task.checkCancellation()
+            guard isCurrent() else { throw CancellationError() }
             try result.validate(for: command)
             // The durable receipt is authoritative for this command only.
             // Never apply a historical stage to a newer local opportunity.
@@ -277,41 +283,63 @@ struct SiteVisitOutboundSync {
             try await mediaManager.uploadPendingMedia(
                 artifactId: envelope.entityId,
                 mediaOperation: operation,
-                context: context
+                context: context,
+                isCurrent: isCurrent,
+                isolation: isolation
             )
+            try Task.checkCancellation()
+            guard isCurrent() else { throw CancellationError() }
             return true
         }
 
         let repository = await repositoryFactory(activeCompany)
+        try Task.checkCancellation()
+        guard isCurrent() else { throw CancellationError() }
         switch SyncEntityType(rawValue: operation.entityType) {
         case .siteVisit:
             try await executeVisit(
                 operation: operation,
                 envelope: envelope,
                 repository: repository,
-                context: context
+                context: context,
+                isCurrent: isCurrent,
+                isolation: isolation
             )
+            try Task.checkCancellation()
+            guard isCurrent() else { throw CancellationError() }
         case .siteVisitArtifact:
             try await executeArtifact(
                 operation: operation,
                 envelope: envelope,
                 repository: repository,
-                context: context
+                context: context,
+                isCurrent: isCurrent,
+                isolation: isolation
             )
+            try Task.checkCancellation()
+            guard isCurrent() else { throw CancellationError() }
         case .siteVisitChecklistAnswer:
             try await executeChecklistAnswer(
                 operation: operation,
                 envelope: envelope,
                 repository: repository,
-                context: context
+                context: context,
+                isCurrent: isCurrent,
+                isolation: isolation
             )
+            try Task.checkCancellation()
+            guard isCurrent() else { throw CancellationError() }
         case .siteVisitIdentityDraft:
             try await executeIdentityDraft(
                 operation: operation,
                 envelope: envelope,
                 repository: repository,
-                context: context
+                context: context,
+                isCurrent: isCurrent,
+                isolation: isolation
             )
+            try Task.checkCancellation()
+            guard isCurrent() else { throw CancellationError() }
         default:
             return false
         }
@@ -322,8 +350,12 @@ struct SiteVisitOutboundSync {
         operation: SyncOperation,
         envelope: SiteVisitSyncOperation.Payload,
         repository: SiteVisitRemoteWriting,
-        context: ModelContext
+        context: ModelContext,
+        isCurrent: () -> Bool,
+        isolation: isolated (any Actor)?
     ) async throws {
+        try Task.checkCancellation()
+        guard isCurrent() else { throw CancellationError() }
         let visit = try fetchVisit(id: envelope.entityId, context: context)
 
         if operation.operationType == SiteVisitSyncOperation.completionOperationType {
@@ -338,6 +370,8 @@ struct SiteVisitOutboundSync {
                 envelope.siteVisitId,
                 completion: completion
             )
+            try Task.checkCancellation()
+            guard isCurrent() else { throw CancellationError() }
             try context.transaction {
                 visit.loggedActivityId = response.activityId
                 visit.lastSyncedAt = response.visit.updatedAt ?? Date()
@@ -359,6 +393,8 @@ struct SiteVisitOutboundSync {
                 id: envelope.entityId,
                 at: visit?.deletedAt ?? Date()
             )
+            try Task.checkCancellation()
+            guard isCurrent() else { throw CancellationError() }
             if let visit {
                 try context.transaction {
                     visit.lastSyncedAt = Date()
@@ -373,6 +409,8 @@ struct SiteVisitOutboundSync {
         let response = try await repository.upsertVisit(
             try CreateSiteVisitDTO(model: visit)
         )
+        try Task.checkCancellation()
+        guard isCurrent() else { throw CancellationError() }
         try context.transaction {
             visit.loggedActivityId = response.activityId ?? visit.loggedActivityId
             visit.lastSyncedAt = response.updatedAt ?? Date()
@@ -391,8 +429,12 @@ struct SiteVisitOutboundSync {
         operation: SyncOperation,
         envelope: SiteVisitSyncOperation.Payload,
         repository: SiteVisitRemoteWriting,
-        context: ModelContext
+        context: ModelContext,
+        isCurrent: () -> Bool,
+        isolation: isolated (any Actor)?
     ) async throws {
+        try Task.checkCancellation()
+        guard isCurrent() else { throw CancellationError() }
         let artifact = try fetchArtifact(id: envelope.entityId, context: context)
         if operation.operationType == "delete" || artifact?.deletedAt != nil {
             try await repository.softDelete(
@@ -400,6 +442,8 @@ struct SiteVisitOutboundSync {
                 id: envelope.entityId,
                 at: artifact?.deletedAt ?? Date()
             )
+            try Task.checkCancellation()
+            guard isCurrent() else { throw CancellationError() }
             if let artifact {
                 try markSynced(artifact, operation: operation, context: context)
             }
@@ -415,6 +459,8 @@ struct SiteVisitOutboundSync {
         let response = try await repository.upsertArtifact(
             try UpsertSiteVisitArtifactDTO(model: artifact)
         )
+        try Task.checkCancellation()
+        guard isCurrent() else { throw CancellationError() }
         try context.transaction {
             artifact.lastSyncedAt = response.updatedAt
             if !hasNewerCRUDOperation(
@@ -432,8 +478,12 @@ struct SiteVisitOutboundSync {
         operation: SyncOperation,
         envelope: SiteVisitSyncOperation.Payload,
         repository: SiteVisitRemoteWriting,
-        context: ModelContext
+        context: ModelContext,
+        isCurrent: () -> Bool,
+        isolation: isolated (any Actor)?
     ) async throws {
+        try Task.checkCancellation()
+        guard isCurrent() else { throw CancellationError() }
         let answer = try fetchAnswer(id: envelope.entityId, context: context)
         if operation.operationType == "delete" || answer?.deletedAt != nil {
             try await repository.softDelete(
@@ -441,6 +491,8 @@ struct SiteVisitOutboundSync {
                 id: envelope.entityId,
                 at: answer?.deletedAt ?? Date()
             )
+            try Task.checkCancellation()
+            guard isCurrent() else { throw CancellationError() }
             if let answer {
                 try markSynced(answer, operation: operation, context: context)
             }
@@ -456,6 +508,8 @@ struct SiteVisitOutboundSync {
         let response = try await repository.upsertChecklistAnswer(
             try UpsertSiteVisitChecklistAnswerDTO(model: answer)
         )
+        try Task.checkCancellation()
+        guard isCurrent() else { throw CancellationError() }
         try context.transaction {
             answer.lastSyncedAt = response.updatedAt
             if !hasNewerCRUDOperation(
@@ -473,8 +527,12 @@ struct SiteVisitOutboundSync {
         operation: SyncOperation,
         envelope: SiteVisitSyncOperation.Payload,
         repository: SiteVisitRemoteWriting,
-        context: ModelContext
+        context: ModelContext,
+        isCurrent: () -> Bool,
+        isolation: isolated (any Actor)?
     ) async throws {
+        try Task.checkCancellation()
+        guard isCurrent() else { throw CancellationError() }
         let draft = try fetchDraft(id: envelope.entityId, context: context)
         if operation.operationType == "delete" || draft?.deletedAt != nil {
             try await repository.softDelete(
@@ -482,6 +540,8 @@ struct SiteVisitOutboundSync {
                 id: envelope.entityId,
                 at: draft?.deletedAt ?? Date()
             )
+            try Task.checkCancellation()
+            guard isCurrent() else { throw CancellationError() }
             if let draft {
                 try markSynced(draft, operation: operation, context: context)
             }
@@ -497,6 +557,8 @@ struct SiteVisitOutboundSync {
         let response = try await repository.upsertIdentityDraft(
             try UpsertSiteVisitIdentityDraftDTO(model: draft)
         )
+        try Task.checkCancellation()
+        guard isCurrent() else { throw CancellationError() }
         try context.transaction {
             draft.lastSyncedAt = response.updatedAt
             if !hasNewerCRUDOperation(
@@ -509,6 +571,7 @@ struct SiteVisitOutboundSync {
             }
         }
     }
+
 
     // MARK: - Authorship heal
     //

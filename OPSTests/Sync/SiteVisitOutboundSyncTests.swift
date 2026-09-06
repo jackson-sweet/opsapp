@@ -666,6 +666,65 @@ final class SiteVisitOutboundSyncTests: XCTestCase {
         )
     }
 
+    func test_invalidatedSessionStopsAfterRepositoryAcquisition() async throws {
+        try await assertInvalidationStopsDelivery(at: "factory")
+    }
+
+    func test_invalidatedSessionDoesNotApplyUpsertResponse() async throws {
+        try await assertInvalidationStopsDelivery(at: "upsert")
+    }
+
+    func test_invalidatedSessionDoesNotApplyCompletionResponse() async throws {
+        try await assertInvalidationStopsDelivery(at: "completion")
+    }
+
+    private func assertInvalidationStopsDelivery(at suspension: String) async throws {
+        let container = try makeContainer()
+        let context = ModelContext(container)
+        context.autosaveEnabled = false
+        let visit = makeVisit()
+        visit.needsSync = true
+        context.insert(visit)
+        let operation = try insert(
+            suspension == "completion"
+                ? SiteVisitSyncOperation.completion(visit)
+                : SiteVisitSyncOperation.parent(visit),
+            in: context
+        )
+        try context.save()
+        let operationId = operation.id
+        let gate = SiteVisitDeliveryTestGate()
+        let remote = RecordingSiteVisitWriter(visitDTO: try makeVisitDTO(status: .inProgress))
+        if suspension != "factory" { remote.beforeVisitResponse = { await gate.pause() } }
+        let sync = SiteVisitOutboundSync(repositoryFactory: { _ in
+            if suspension == "factory" { await gate.pause() }
+            return remote
+        })
+        var current = true
+        let company = companyId
+        let delivery = Task {
+            try await sync.executeIfHandled(operation: operation, context: context,
+                activeCompanyId: company, isCurrent: { current })
+        }
+        defer { delivery.cancel(); gate.release() }
+        await fulfillment(of: [gate.started], timeout: 5)
+        current = false
+        gate.release()
+        do {
+            _ = try await delivery.value
+            XCTFail("An invalidated session must abandon its response")
+        } catch is CancellationError {} catch {
+            XCTFail("Expected cancellation, received \(error)")
+        }
+        let readback = ModelContext(container)
+        let savedVisit = try XCTUnwrap(try readback.fetch(FetchDescriptor<SiteVisit>()).first)
+        let savedOperation = try XCTUnwrap(try allOperations(readback).first { $0.id == operationId })
+        XCTAssertNil(savedVisit.lastSyncedAt)
+        XCTAssertTrue(savedVisit.needsSync)
+        XCTAssertEqual(savedOperation.status, "pending")
+        XCTAssertEqual(remote.calls.count, suspension == "factory" ? 0 : 1)
+    }
+
     private func makeVisit() -> SiteVisit {
         makeVisit(author: userId)
     }
@@ -816,6 +875,7 @@ private final class RecordingSiteVisitWriter: SiteVisitRemoteWriting {
     }
 
     var calls: [Call] = []
+    var beforeVisitResponse: (() async -> Void)?
     let visitDTO: SiteVisitDTO
     let activityId: String?
     /// Thrown by every child upsert AFTER the call is recorded, so a test can tell
@@ -834,6 +894,7 @@ private final class RecordingSiteVisitWriter: SiteVisitRemoteWriting {
 
     func upsertVisit(_ payload: CreateSiteVisitDTO) async throws -> SiteVisitDTO {
         calls.append(.upsertVisit(notes: payload.notes))
+        await beforeVisitResponse?()
         return visitDTO
     }
 
@@ -918,6 +979,7 @@ private final class RecordingSiteVisitWriter: SiteVisitRemoteWriting {
         completion: SiteVisitCompletionPayload
     ) async throws -> SiteVisitCompletionResponseDTO {
         calls.append(.complete(notes: completion.notes))
+        await beforeVisitResponse?()
         return try JSONDecoder().decode(
             SiteVisitCompletionResponseDTO.self,
             from: Data(
@@ -936,5 +998,27 @@ private final class RecordingSiteVisitWriter: SiteVisitRemoteWriting {
                 """.utf8
             )
         )
+    }
+}
+
+/// Registration is explicit; a timed-out assertion cannot strand a continuation.
+@MainActor
+final class SiteVisitDeliveryTestGate {
+    let started = XCTestExpectation(description: "Delivery reached its suspension")
+    private var continuation: CheckedContinuation<Void, Never>?
+    private var released = false
+
+    func pause() async {
+        guard !released else { return }
+        await withCheckedContinuation { continuation in
+            self.continuation = continuation
+            started.fulfill()
+        }
+    }
+
+    func release() {
+        released = true
+        continuation?.resume()
+        continuation = nil
     }
 }

@@ -1,0 +1,46 @@
+{
+  "devicesAndConfigurations" : [
+    {
+      "device" : {
+        "architecture" : "arm64",
+        "deviceId" : "1C6A8F09-A337-41F0-AFDD-81C4F3EDFB8A",
+        "deviceName" : "OPS performance integration",
+        "modelName" : "iPhone 17",
+        "osBuildNumber" : "23F77",
+        "osVersion" : "26.5",
+        "platform" : "iOS Simulator"
+      },
+      "expectedFailures" : 0,
+      "failedTests" : 0,
+      "passedTests" : 68,
+      "skippedTests" : 1,
+      "testPlanConfiguration" : {
+        "configurationId" : "1",
+        "configurationName" : "Test Scheme Action"
+      }
+    }
+  ],
+  "environmentDescription" : "OPS · Built with macOS 26.6.2",
+  "expectedFailures" : 0,
+  "failedTests" : 0,
+  "finishTime" : 1788716060.832,
+  "passedTests" : 68,
+  "result" : "Passed",
+  "skippedTests" : 1,
+  "startTime" : 1788715544.759,
+  "statistics" : [
+
+  ],
+  "testFailures" : [
+
+  ],
+  "title" : "Test - OPS",
+  "topInsights" : [
+    {
+      "category" : "Longest Test Runs",
+      "impact" : "13% of duration",
+      "text" : "1 longest test run with outlier durations exceeding 5.03s (three standard deviations)"
+    }
+  ],
+  "totalTestCount" : 69
+}

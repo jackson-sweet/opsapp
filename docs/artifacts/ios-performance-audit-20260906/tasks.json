@@ -1,0 +1,112 @@
+{
+  "parentThreadId": "01a0779e-54bf-72a3-976c-81c692990d23",
+  "baseline": "94543f955ca8a2ccee4cc148c24c6d33de92cccc",
+  "tasks": [
+    {
+      "number": 1,
+      "title": "IOS PERFORMANCE - P1-1",
+      "threadId": "01a077ad-4e3e-7931-a8c2-0d2b3bf051c6",
+      "hostId": "local",
+      "worktree": "/Users/jacksonsweet/Projects/OPS/.worktrees/ios-performance-p1-1",
+      "ownership": "Database compatibility",
+      "afterCursor": "4d3cb209-29b6-4e23-9cc3-a88ce9eed94e:7",
+      "status": "accepted locally; all assigned proof complete; idle",
+      "sourceCommits": [
+        "28be9966",
+        "9b5c0d92",
+        "48912895",
+        "27c9f4a64c3dfbf1fee7cc470cb947ce158e1100",
+        "9a7538164b3652c61e8e5804e03059b06a9597bb"
+      ]
+    },
+    {
+      "number": 2,
+      "title": "IOS PERFORMANCE - P1-2",
+      "threadId": "01a077ad-5ae0-7ef2-9651-b4d4343db0bd",
+      "hostId": "local",
+      "worktree": "/Users/jacksonsweet/Projects/OPS/.worktrees/ios-performance-p1-2",
+      "ownership": "Visit edits and continuity",
+      "afterCursor": "7f7ccd51-e735-4480-9895-050cd2f50a85:9",
+      "status": "accepted locally; all assigned proof complete; idle",
+      "sourceCommits": [
+        "774a3778",
+        "c37d4d91",
+        "ca26d189",
+        "344c3c7b",
+        "835f0a1a",
+        "81ed0606",
+        "fad0e453",
+        "35f84ee6",
+        "9f6c5cdb",
+        "93eac1ec",
+        "9d64bd4c",
+        "26e9936d",
+        "bad6ad3a",
+        "ea5d8798",
+        "7a49db75",
+        "2ef96911",
+        "fec9073c",
+        "4c889f09",
+        "bf51f8a8"
+      ]
+    },
+    {
+      "number": 3,
+      "title": "IOS PERFORMANCE - P1-3",
+      "threadId": "01a077ad-6602-7001-8cff-8f30842f0654",
+      "hostId": "local",
+      "worktree": "/Users/jacksonsweet/Projects/OPS/.worktrees/ios-performance-p1-3",
+      "ownership": "Photos and cache",
+      "afterCursor": "d2806c80-f6cd-4da1-85bf-756571d6464e:7",
+      "status": "accepted locally; all assigned proof complete; idle",
+      "sourceCommits": [
+        "e2a71a7e",
+        "ce8ffb72",
+        "3f6e14f2",
+        "c528e1b0",
+        "b4e2418e",
+        "7690fb0c",
+        "ce1def1b",
+        "ce233114",
+        "6c687915"
+      ]
+    },
+    {
+      "number": 4,
+      "title": "IOS PERFORMANCE - P1-4",
+      "threadId": "01a077ad-75df-7fd1-b182-679cbd60dc60",
+      "hostId": "local",
+      "worktree": "/Users/jacksonsweet/Projects/OPS/.worktrees/ios-performance-p1-4",
+      "ownership": "Sync and deck responsiveness",
+      "afterCursor": "4c1ff8ae-b6a4-4cc7-8d35-c29379105f0f:10",
+      "status": "accepted locally; all assigned proof complete; idle",
+      "sourceCommits": [
+        "047a719798a4aa6f2e6e08a586fed2cdb549e3b6",
+        "193f7464b1cd076df9a5d92f96f0541c52543b09",
+        "69ee624c7213cc592622d9b0ccd1e1e942c0f9c9",
+        "8e7e2ef1d10e36ed9584632f1a877757c2f7ec28",
+        "a021ab0a16a8e5054f7cb17f95b1222782991893",
+        "245ac1b786befae4a03ef0b0ea9cb1941476a1d2"
+      ]
+    },
+    {
+      "number": 5,
+      "title": "IOS PERFORMANCE - P1-5",
+      "threadId": "01a077b5-2eb8-7231-9577-85b93a1734a5",
+      "hostId": "local",
+      "worktree": "/Users/jacksonsweet/Projects/OPS/.worktrees/ios-performance-p1-5",
+      "ownership": "Guarded stage-delivery server contract",
+      "baseline": "bcd252e55c6af94a603a04d4d08ad88e7518a34a",
+      "afterCursor": "f6606ba9-32ef-48ad-8bfe-42988bac4962:3",
+      "status": "accepted locally;34 SQL tests pass; migration unapplied; idle",
+      "sourceCommits": [
+        "caec2dfae3c4adfe4ce5bc987b5d0bd9d4e498d1",
+        "e95d12a0650cd09f5095c4e5cd20534f0e1a93d9",
+        "f0022f8054a4c850f0b03b70234263a79707777e",
+        "26816f355f55807232c8c9f8cb3b406d4314d948"
+      ]
+    }
+  ],
+  "status": "local_complete_external_approval_required",
+  "verifiedIOSSource": "622010a01839387a91e6fadbba3444950f6acfff"
+}

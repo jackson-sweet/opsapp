@@ -12,6 +12,8 @@ Baseline: `94543f955ca8a2ccee4cc148c24c6d33de92cccc`. Apply these local commits 
 4. `344c3c7b` — dedicated capture contexts; isolated queue-binding, dimensioned-photo and pending-work deletion adapters; unsaved-other-visit tests; compiler predicate/actor fixes.
 5. `835f0a1a` — thumbnail refresh for wildcard cache invalidation and fallback-source changes.
 6. `fad0e453` — actual entry/template/deck-host isolation, complete Opportunity snapshots, full queue cache-entry isolation and corresponding fixtures.
+7. `9f6c5cdb` — bounded/cancellable search-fixture registration, persisted media readback, and realistic isolated queue-delivery fixture.
+8. `93eac1ec` — first delivery is marked for newly captured blank/scan deck rows before a visit references them.
 
 P1-3 media APIs through `c528e1b0` are implemented prerequisites. These visit adapters do not depend on P1-3's remaining non-visit camera adapters. New files use existing synchronized Xcode groups; there are no persistent model/schema or project-file changes. P1-5's finalized SQL contract includes `already_satisfied`; production migration is not applied and remains a separate gate.
 
@@ -61,7 +63,13 @@ Authored synthetic tests cover:
 
 All fixtures/photo URLs are synthetic. No XCTest has run in this worker, and there is no visual, device-frame-time or customer-live proof. P1-3 owns filesystem/original/thumbnail failure tests; P1-4 owns recovery scheduling and deck/sync tests. PM owns the Bible and final combined proof.
 
-## Exact focused commands — UNRUN, PM only with baton
+## Parent combined run and current rerun status
+
+Parent core03 ran an earlier combined snapshot: 292 tests, 287 passed, 5 failed, zero skipped. Two lead tests trapped in SyncOperation backing data through OutboundProcessor; P1-4 owns the sync-driver/lifetime repair, and this worker did not alter the driver or hide the crashes with fixture teardown. Exact retained diagnostics are in the integration checkout under docs/artifacts/ios-performance-combined/core03-relevant-diagnostics/.
+
+The three assertion failures were both search fixtures and the repeated-URL markup test. Commit 9f6c5cdb replaces the 100-yield polling gate with a MainActor request-registration expectation, a five-second bound and cancellation cleanup; the markup assertion reads the same operation ID from a fresh context and still requires pending status/retryCount zero. The queue-delivery fixture now writes its binding through a separate context, matching production. These amendments, plus the latest entry/deck/snapshot tests, await the focused combined rerun. Syntax parsing passes for the final 27 Swift files; runtime completion is not yet claimed.
+
+## Exact focused commands — PM only with baton
 
 Run from the combined integration checkout with its existing ignored Secrets.xcconfig and approved locked `.spm-local` packages. Reuse the single PM-owned DerivedData path after the current process ends. Do not set private phone-fixture environment variables or replay real pending work. Use a fresh result suffix if the bundle already exists.
 

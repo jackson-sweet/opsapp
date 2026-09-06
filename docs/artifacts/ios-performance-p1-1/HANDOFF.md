@@ -110,3 +110,25 @@ xcodebuild build -project OPS.xcodeproj -scheme OPS \
 Update `03_DATA_ARCHITECTURE.md` schema-head paragraph from V25 to V26; document frozen V16–V25 DeckDesign, adjacent nullable merge-base boundary, original-V25 and widened-debug shape coverage, and the required AppUpdateMigrationTests checksum guard. Clarify that dirty legacy rows keep an unknown base until confirmed and unchanged local saves must not manufacture acknowledgements.
 
 Update the iOS startup/persistence architecture section to describe the owned off-main storage bootstrap, state-gated DataController initialization, preserved-store recovery view and same-location retry. Record verification status accurately after PM runs tests; local implementation is not a phone install or App Store release. No server migration is required for this storage slice.
+
+## Optional copied-device V25 proof amendment
+
+Added `AppUpdateMigrationTests.testCopiedDeviceV25StoreMigratesToCurrentPreservingCustody` beside the unchanged optional V15 test. This is test-only source; all production storage changes above were already integrated by PM. No worker build baton was granted and this optional test has not been executed here. The worker did not open or inspect the private device export.
+
+The test skips unless the **test runner's** environment contains `OPS_V25_STORE_FIXTURE_DIR`. PM supplies the approved, quiescent private export only to this one selector:
+
+```text
+OPSTests/AppUpdateMigrationTests/testCopiedDeviceV25StoreMigratesToCurrentPreservingCustody
+```
+
+Do not enable this variable for the general suite or repurpose `OPS_V15_STORE_FIXTURE_DIR`. A shell variable alone does not establish that the hosted runner received it; confirm the selector ran and passed rather than skipped. No private export path, user-specific row count, record fixture, ID, or content is committed.
+
+The fixture must contain `default.store` and any corresponding WAL/SHM sidecars. The test copies those, plus either conventional store-support directory if present, into a fresh mode-0700 temporary directory. It rejects symlinked store/sidecar/support entries so opening the copy cannot follow a link back into the export. Every metadata/container URL points to the disposable copy. Deferred cleanup removes the copy on success or thrown failure; normal test teardown removes the surrounding temporary directory. If the runner crashes, PM must remove residual test copies as part of private-artifact cleanup.
+
+Preflight requires the released V25 metadata/checksum, then opens the frozen V25 graph and records in-memory counts and keyed content digests. The first current-schema open uses the actual `OPSMigrationPlan`; a second separately scoped container reopens the migrated store without a migration plan. Both passes must retain every recorded count and digest and persist V26 metadata. No context saves, model mutations, drawing deserialization, app-service attachment, or network call are part of the proof beyond SwiftData's migration of the copy itself. All contexts disable autosave; configurations disable CloudKit.
+
+Coverage: visits, capture artifacts, checklist answers, identity drafts, visit types, decks, complete outbox records, local photos, photo annotations, project notes, leads, clients, sub-contacts, projects, and primary-contact projections. Digests include stable IDs, persisted scalar content, local asset references, binary drawing/answer/markup data, full outbox payload/previous-values bytes, statuses, retry/dependency/confirmation metadata, and stable relationship IDs. They preserve duplicate-row multiplicity while ignoring fetch order. They do not read the referenced external photo files or claim those asset bytes exist. Every migrated deck must retain a nil merge base, and dirty drawings must remain unsent.
+
+A random per-invocation HMAC-SHA256 key prevents reusable content/ID fingerprints. Only counts and keyed digests survive each container scope in memory; neither key nor digests are persisted or logged. Assertions compare booleans and name only the model/check, avoiding XCTest value dumps. Thrown-error details are suppressed because filesystem/SwiftData descriptions can contain private paths or records. Keep any framework-generated diagnostics private and share only the sanitized test outcome.
+
+Fresh verification: `xcrun swiftc -frontend -parse OPSTests/DataModels/AppUpdateMigrationTests.swift` and `git diff --check` pass. Source checks confirm the V15 method is byte-for-byte unchanged; all persisted scalar fields of the six critical visit/artifact/answer/draft/deck/outbox models are included; there are no value-dumping assertions, private export paths, or application-service initializers in the new proof. These checks do not establish typechecking, macro expansion, execution, or real-store compatibility. PM owns the single authorized invocation and its final result.

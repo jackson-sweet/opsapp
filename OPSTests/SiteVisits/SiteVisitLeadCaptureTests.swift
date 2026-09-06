@@ -541,40 +541,50 @@ final class SiteVisitLeadCaptureTests: XCTestCase {
     func test_queueDeliveredLeadBindsTheOpenVisit() async throws {
         let harness = try makeLeadCreateHarness()
         let visitId = try XCTUnwrap(harness.viewModel.siteVisit?.id)
-
-        // Exactly what ClientLeadAutocreateQueue does on a successful delivery:
-        // cache the opportunity, bind the waiting draft, then signal the visit.
+        let client = Client(id: "client-x", name: "Synthetic client", email: "synthetic@example.com",
+            companyId: Self.companyId)
+        harness.context.insert(client)
+        try harness.context.save()
+        harness.viewModel.bindClient(client)
+        let draftId = try XCTUnwrap(harness.viewModel.identityDraft?.id)
         let delivered = try Self.makeOpportunityDTO(
-            id: "opp-delivered",
-            companyId: Self.companyId,
-            clientId: "client-x",
+            id: "opp-delivered", companyId: Self.companyId, clientId: client.id,
             title: "Corinne Robertson — lead"
-        ).toModel()
-        let deliveryContext = ModelContext(harness.context.container)
-        deliveryContext.insert(delivered)
-        let draft = try XCTUnwrap(deliveryContext.fetch(FetchDescriptor<SiteVisitIdentityDraft>(
-            predicate: #Predicate { $0.siteVisitId == visitId }
-        )).first)
-        draft.opportunityId = delivered.id
-        draft.lastCommittedAt = Date()
-        draft.touch()
-        let visit = try XCTUnwrap(deliveryContext.fetch(FetchDescriptor<SiteVisit>(
-            predicate: #Predicate { $0.id == visitId }
-        )).first)
-        visit.opportunityId = delivered.id
-        try deliveryContext.save()
-
-        NotificationCenter.default.post(
-            name: Notification.Name("SiteVisitLeadBound"),
-            object: nil,
-            userInfo: ["siteVisitId": visitId]
         )
+        let suite = "SiteVisitLeadCaptureTests.delivery.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let committedAt = Date(timeIntervalSince1970: 1_788_732_345)
+        let queue = ClientLeadAutocreateQueue(defaults: defaults, defaultsKey: "pending",
+            automaticRetry: false, attempt: { _ in
+                ClientLeadAutocreateDelivery(opportunityId: delivered.id,
+                    opportunityDTO: delivered, createdNow: true)
+            })
+        queue.now = { committedAt }
+        queue.configure(modelContext: harness.context, activeCompanyId: { Self.companyId })
+        queue.enqueue(client, companyId: Self.companyId)
 
+        // Exercise the real cache insert, owned binding commit and notification.
+        // Only the remote attempt is synthetic; the open VM receives the same
+        // notification as production and must reread/adopt its durable binding.
+        await queue.drain()
         let bound = await settled { harness.viewModel.currentOpportunity != nil }
         XCTAssertTrue(bound, "the open console must pick up the queue's delivery")
-        XCTAssertEqual(harness.viewModel.currentOpportunity?.id, "opp-delivered")
-        XCTAssertEqual(harness.viewModel.siteVisit?.opportunityId, "opp-delivered")
+        XCTAssertEqual(queue.pendingCount, 0)
+        XCTAssertEqual(harness.viewModel.currentOpportunity?.id, delivered.id)
+        XCTAssertEqual(harness.viewModel.siteVisit?.opportunityId, delivered.id)
+        XCTAssertEqual(harness.viewModel.identityDraft?.opportunityId, delivered.id)
+        XCTAssertEqual(harness.viewModel.identityDraft?.lastCommittedAt, committedAt)
         XCTAssertTrue(harness.viewModel.hasBoundOpportunity)
+        let readback = ModelContext(harness.context.container)
+        XCTAssertEqual(try readback.fetch(FetchDescriptor<SiteVisit>(
+            predicate: #Predicate { $0.id == visitId }
+        )).first?.opportunityId, delivered.id)
+        let storedDraft = try XCTUnwrap(try readback.fetch(FetchDescriptor<SiteVisitIdentityDraft>(
+            predicate: #Predicate { $0.id == draftId }
+        )).first)
+        XCTAssertEqual(storedDraft.opportunityId, delivered.id)
+        XCTAssertEqual(storedDraft.lastCommittedAt, committedAt)
     }
 
     func test_queueDeliveryForAnotherVisitIsIgnored() throws {

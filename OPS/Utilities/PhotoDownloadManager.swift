@@ -98,7 +98,7 @@ class PhotoDownloadManager: ObservableObject {
     // MARK: - Download
 
     /// Download a single photo and cache to disk
-    func downloadPhoto(_ url: String, timeout: TimeInterval? = nil) async -> Bool {
+    func downloadPhoto(_ url: String, timeout: TimeInterval? = nil, cacheReservation: UUID? = nil) async -> Bool {
         let cacheKey = url.hasPrefix("//") ? "https:" + url : url
         guard let imageURL = URL(string: cacheKey) else { return false }
 
@@ -119,8 +119,9 @@ class PhotoDownloadManager: ObservableObject {
                 return false
             }
 
+            try Task.checkCancellation()
             activeDownloads[url] = 1.0
-            return await Self.decodeAndStore(data: data, url: url, cacheKey: cacheKey)
+            return await Self.decodeAndStore(data: data, url: url, cacheKey: cacheKey, reservation: cacheReservation)
         } catch {
             return false
         }
@@ -140,17 +141,19 @@ class PhotoDownloadManager: ObservableObject {
     private nonisolated static func decodeAndStore(
         data: Data,
         url: String,
-        cacheKey: String
+        cacheKey: String,
+        reservation: UUID?
     ) async -> Bool {
-        guard let decoded = UIImage(data: data) else { return false }
-        guard ImageFileManager.shared.saveImage(data: data, localID: cacheKey) else { return false }
+        guard !Task.isCancelled, let decoded = PhotoDownsampler.image(data: data, maxPixelSize: 1024) else { return false }
+        guard ImageFileManager.shared.saveImage(data: data, localID: cacheKey, reservation: reservation, allowEviction: reservation == nil) else { return false }
 
         // Keep the in-memory display slot consistent with the reader ladder
         // (composite-first). If this photo already has a durable markup
         // composite — e.g. the raw was budget-evicted while the composite
         // survived and we're re-fetching the raw now — don't shadow it with the
         // unmarked photo; otherwise cache the raw.
-        if let composite = ImageFileManager.shared.loadCompositedImage(forURL: url) {
+        if let compositeURL = ImageFileManager.shared.getFileURL(for: ImageFileManager.shared.compositedLocalID(forURL: url)),
+           let composite = PhotoDownsampler.image(url: compositeURL, maxPixelSize: 1024) {
             ImageCache.shared.set(composite, forKey: cacheKey)
         } else {
             ImageCache.shared.set(decoded, forKey: cacheKey)

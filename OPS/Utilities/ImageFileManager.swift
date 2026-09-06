@@ -118,22 +118,21 @@ class ImageFileManager {
     /// skipping pinned ones, until the incoming write fits. Local upload-pending
     /// images (`local://project_images/...`) bypass the budget — they can't be
     /// re-fetched from the cloud and are the user's only copy until upload.
-    func saveImage(data: Data, localID: String) -> Bool {
-        guard let fileURL = getFileURL(for: localID) else {
-            return false
-        }
+    func saveImage(data: Data, localID: String, reservation: UUID? = nil, allowEviction: Bool = true) -> Bool {
+        guard let fileURL = getFileURL(for: localID) else { return false }
+        let saved = PhotoCacheLedger.shared.write(
+            data: data, to: fileURL,
+            budget: isRemoteCacheKey(localID) ? StorageProfiler.shared.budgetBytes : nil,
+            reservation: reservation, allowEviction: allowEviction,
+            pinnedFilenames: loadPinnedRemoteFilenames()
+        )
+        if saved { notifyThumbnailChange(localID) }
+        return saved
+    }
 
-        if isRemoteCacheKey(localID) {
-            let budget = StorageProfiler.shared.budgetBytes
-            evictRemoteImagesIfNeeded(bytesNeeded: Int64(data.count), budget: budget)
-        }
-
-        do {
-            try data.write(to: fileURL)
-            return true
-        } catch {
-            return false
-        }
+    private func notifyThumbnailChange(_ localID: String) {
+        NotificationCenter.default.post(name: .photoThumbnailSourceChanged, object: nil,
+                                        userInfo: ["sourceURL": localID])
     }
 
     /// True if `localID` represents a remote (server-side) photo that's been
@@ -144,7 +143,7 @@ class ImageFileManager {
     /// instant-composite cache.
     private func isRemoteCacheKey(_ localID: String) -> Bool {
         localID.hasPrefix("http") || localID.hasPrefix("//")
-            || localID.hasPrefix("remote_") || localID.hasPrefix("composited_")
+            || localID.hasPrefix("remote_") || localID.hasPrefix("composited_remote_")
     }
 
     /// Pinned URLs serialised by PhotoDownloadManager. Stored as a Set<String>
@@ -180,62 +179,9 @@ class ImageFileManager {
     /// viewer, etc.) gets the same enforcement without an actor hop.
     @discardableResult
     func evictRemoteImagesIfNeeded(bytesNeeded: Int64, budget: Int64) -> Int64 {
-        let fm = FileManager.default
-        let currentUsage = StorageProfiler.shared.currentUsageBytes()
-        guard currentUsage + bytesNeeded > budget else { return 0 }
-
-        guard let enumerator = fm.enumerator(
-            at: imagesDirectory,
-            includingPropertiesForKeys: [.contentModificationDateKey, .totalFileAllocatedSizeKey],
-            options: [.skipsHiddenFiles, .skipsSubdirectoryDescendants]
-        ) else { return 0 }
-
-        let pinned = loadPinnedRemoteFilenames()
-
-        struct Candidate {
-            let url: URL
-            let modified: Date
-            let size: Int64
-        }
-
-        var candidates: [Candidate] = []
-        for case let fileURL as URL in enumerator {
-            let name = fileURL.lastPathComponent
-            // Both raw remote originals (`remote_…`) and their flattened markup
-            // composites (`composited_remote_…`) are reclaimable — composites
-            // regenerate from raw+overlay on the next preComposite pass.
-            let isCandidate = name.hasPrefix("remote_") || name.hasPrefix("composited_")
-            guard isCandidate, !pinned.contains(name) else { continue }
-            guard let values = try? fileURL.resourceValues(
-                forKeys: [.contentModificationDateKey, .totalFileAllocatedSizeKey]
-            ) else { continue }
-            let modified = values.contentModificationDate ?? .distantPast
-            let size = Int64(values.totalFileAllocatedSize ?? 0)
-            guard size > 0 else { continue }
-            candidates.append(Candidate(url: fileURL, modified: modified, size: size))
-        }
-
-        candidates.sort { $0.modified < $1.modified }
-
-        var freed: Int64 = 0
-        var projectedUsage = currentUsage
-        for candidate in candidates {
-            if projectedUsage + bytesNeeded <= budget { break }
-            do {
-                try fm.removeItem(at: candidate.url)
-                projectedUsage -= candidate.size
-                freed += candidate.size
-            } catch {
-                continue
-            }
-        }
-
-        if freed > 0 {
-            print("[ImageFileManager] Budget evict: freed \(freed) bytes across \(candidates.count) candidate(s) to make room for \(bytesNeeded) byte write")
-        }
-        return freed
+        PhotoCacheLedger.shared.evict(bytesNeeded: bytesNeeded, budget: budget, pinned: loadPinnedRemoteFilenames())
     }
-    
+
     /// Load image data from file system
     func loadImage(localID: String) -> UIImage? {
         // For remote URLs, we still need to handle them, but check file system first
@@ -256,10 +202,9 @@ class ImageFileManager {
             // For backward compatibility - check UserDefaults as fallback
             if let cachedData = UserDefaults.standard.data(forKey: localID) {
                 // Migrate to file system for future use
-                _ = saveImage(data: cachedData, localID: encodedID)
-                
-                // Remove from UserDefaults to free up space
-                UserDefaults.standard.removeObject(forKey: localID)
+                if saveImage(data: cachedData, localID: encodedID) {
+                    UserDefaults.standard.removeObject(forKey: localID)
+                }
                 
                 return UIImage(data: cachedData)
             }
@@ -285,10 +230,9 @@ class ImageFileManager {
            let data = Data(base64Encoded: base64String) {
             
             // Save to file system for future use
-            let _ = saveImage(data: data, localID: localID)
-            
-            // Remove from UserDefaults to free up space
-            UserDefaults.standard.removeObject(forKey: localID)
+            if saveImage(data: data, localID: localID) {
+                UserDefaults.standard.removeObject(forKey: localID)
+            }
             
             return UIImage(data: data)
         }
@@ -305,19 +249,11 @@ class ImageFileManager {
         // Also remove from UserDefaults if it exists there (for migration)
         UserDefaults.standard.removeObject(forKey: localID)
         
-        // Check if file exists before deleting
-        if FileManager.default.fileExists(atPath: fileURL.path) {
-            do {
-                try FileManager.default.removeItem(at: fileURL)
-                return true
-            } catch {
-                return false
-            }
-        }
-        
-        return true // Return true if file didn't exist
+        let removed = PhotoCacheLedger.shared.remove(fileURL)
+        if removed { notifyThumbnailChange(localID) }
+        return removed
     }
-    
+
     /// Get the file size in bytes without loading data into memory
     func imageFileSize(localID: String) -> Int64? {
         guard let fileURL = getFileURL(for: localID) else { return nil }
@@ -351,8 +287,18 @@ class ImageFileManager {
     /// On-disk localID for a photo's flattened markup composite.
     /// `encodeRemoteURL` normalises (`//` → `https:`) and hashes, so every
     /// reader/writer that passes the source URL addresses the same file.
-    private func compositedLocalID(forURL url: String) -> String {
-        "composited_" + encodeRemoteURL(url)
+    func compositedLocalID(forURL url: String) -> String {
+        (url.hasPrefix("local://") ? "composited_local_" : "composited_") + encodeRemoteURL(url)
+    }
+
+    /// Read-through compatibility for local composites written before local
+    /// pending composites received their protected cache namespace.
+    func compositedReadLocalID(forURL url: String) -> String {
+        let preferred = compositedLocalID(forURL: url)
+        if url.hasPrefix("local://"), !imageExists(localID: preferred) {
+            return "composited_" + encodeRemoteURL(url)
+        }
+        return preferred
     }
 
     /// Persist a flattened photo+markup composite for `url`. Budget-enforced
@@ -360,35 +306,42 @@ class ImageFileManager {
     /// evict older reclaimable images to stay under the user's quota.
     @discardableResult
     func saveCompositedImage(_ data: Data, forURL url: String) -> Bool {
-        saveImage(data: data, localID: compositedLocalID(forURL: url))
+        let saved = saveImage(data: data, localID: compositedLocalID(forURL: url))
+        if saved { notifyThumbnailChange(url) }
+        return saved
     }
 
     /// Load the durable markup composite for `url`, if one is on disk.
     func loadCompositedImage(forURL url: String) -> UIImage? {
-        loadImage(localID: compositedLocalID(forURL: url))
+        loadImage(localID: compositedReadLocalID(forURL: url))
     }
 
     /// Lightweight existence check for a photo's composite (no decode).
     func compositedImageExists(forURL url: String) -> Bool {
-        imageExists(localID: compositedLocalID(forURL: url))
+        imageExists(localID: compositedReadLocalID(forURL: url))
     }
 
     /// Composite file size in bytes, or nil if absent.
     func compositedImageFileSize(forURL url: String) -> Int64? {
-        imageFileSize(localID: compositedLocalID(forURL: url))
+        imageFileSize(localID: compositedReadLocalID(forURL: url))
     }
 
     /// Composite last-modified timestamp, or nil if absent. Drives the
     /// compositor's "skip if the composite is newer than the annotation" check.
     func compositedImageModificationDate(forURL url: String) -> Date? {
-        imageModificationDate(localID: compositedLocalID(forURL: url))
+        imageModificationDate(localID: compositedReadLocalID(forURL: url))
     }
 
     /// Remove a photo's durable composite (invalidation on edit / soft-delete /
     /// raw eviction). Returns true if the file is gone afterward.
     @discardableResult
     func deleteCompositedImage(forURL url: String) -> Bool {
-        deleteImage(localID: compositedLocalID(forURL: url))
+        let readID = compositedReadLocalID(forURL: url)
+        let writeID = compositedLocalID(forURL: url)
+        let removedRead = deleteImage(localID: readID)
+        let removed = readID == writeID ? removedRead : deleteImage(localID: writeID) && removedRead
+        if removed { notifyThumbnailChange(url) }
+        return removed
     }
 
     /// Get the raw data for an image
@@ -481,12 +434,12 @@ class ImageFileManager {
                 let name = file.lastPathComponent
                 // Sweep both raw remote originals and their derived composites —
                 // a composite without its raw is just orphaned bytes.
-                if name.hasPrefix("remote_") || name.hasPrefix("composited_") {
-                    try fileManager.removeItem(at: file)
+                if name.hasPrefix("remote_") || name.hasPrefix("composited_remote_") {
+                    _ = PhotoCacheLedger.shared.remove(file)
                     deletedCount += 1
                 }
             }
-            
+            notifyThumbnailChange("*")
         } catch {
         }
     }

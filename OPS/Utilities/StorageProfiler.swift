@@ -92,24 +92,15 @@ final class StorageProfiler {
 
     /// Current on-disk photo storage usage in bytes.
     ///
-    /// Walks the three OPS photo directories and sums allocated file sizes.
-    /// Marked `nonisolated` so callers can run it off the main actor — this
-    /// is essential for the Settings UI, which otherwise stalls main for
-    /// seconds walking hundreds of megabytes of photos.
+    /// Returns shared allocated-byte accounting. First use initializes the
+    /// ledger; prefetch explicitly primes/reconciles it on a background executor.
+    /// Legacy synchronous consumers remain compatible; ordinary reads are O(1).
     nonisolated func currentUsageBytes() -> Int64 {
-        let fm = FileManager.default
-        let docs = fm.urls(for: .documentDirectory, in: .userDomainMask)[0]
-        let dirs = [
-            docs.appendingPathComponent("photos", isDirectory: true),
-            docs.appendingPathComponent("thumbnails", isDirectory: true),
-            docs.appendingPathComponent("ProjectImages", isDirectory: true)
-        ]
+        PhotoCacheLedger.shared.snapshot()
+    }
 
-        var total: Int64 = 0
-        for dir in dirs {
-            total += Self.directorySize(at: dir)
-        }
-        return total
+    nonisolated func backgroundUsageBytes(reconcile: Bool = false) async -> Int64 {
+        await PhotoCacheLedger.shared.backgroundSnapshot(reconcile: reconcile)
     }
 
     /// Remaining budget headroom in bytes. Negative value means over budget.
@@ -180,26 +171,6 @@ final class StorageProfiler {
     }
 
     // MARK: - Helpers
-
-    /// Computes the total allocated size of a directory by walking its contents.
-    /// Returns 0 if the directory doesn't exist or isn't enumerable.
-    nonisolated private static func directorySize(at url: URL) -> Int64 {
-        let fm = FileManager.default
-        guard fm.fileExists(atPath: url.path),
-              let enumerator = fm.enumerator(
-                at: url,
-                includingPropertiesForKeys: [.totalFileAllocatedSizeKey],
-                options: [.skipsHiddenFiles]
-              ) else { return 0 }
-
-        var total: Int64 = 0
-        for case let fileURL as URL in enumerator {
-            guard let values = try? fileURL.resourceValues(forKeys: [.totalFileAllocatedSizeKey]),
-                  let size = values.totalFileAllocatedSize else { continue }
-            total += Int64(size)
-        }
-        return total
-    }
 
     /// Human-readable byte formatter for log messages and UI labels.
     static func formatBytes(_ bytes: Int64) -> String {

@@ -50,6 +50,7 @@ final class SiteVisitContinuityTests: XCTestCase {
         let fresh = ModelContext(context.container)
         XCTAssertEqual(try fresh.fetch(FetchDescriptor<SiteVisit>()).first { $0.id == other.id }?.notes, "Stored other visit")
         XCTAssertEqual(try fresh.fetch(FetchDescriptor<DeckDesign>()).first?.drawingDataJSON, design.drawingDataJSON)
+        XCTAssertEqual(try fresh.fetch(FetchDescriptor<DeckDesign>()).first?.needsSync, true)
         XCTAssertTrue(try fresh.fetch(FetchDescriptor<SiteVisitCaptureArtifact>()).contains { $0.deckDesignId == saved.id })
     }
 

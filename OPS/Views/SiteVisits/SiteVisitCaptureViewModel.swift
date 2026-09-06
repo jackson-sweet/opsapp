@@ -832,6 +832,9 @@ final class SiteVisitCaptureViewModel: ObservableObject {
         } else { design = incoming }
         pendingDeckCreation = design
         if design.modelContext == nil { modelContext.insert(design) }
+        // Blank/scan constructors default to needsSync=false. Once a visit
+        // artifact references this row, its first delivery is required too.
+        if design.lastSyncedAt == nil && !design.needsSync { design.markForSync() }
         do {
             try validateDeckSave()
             if modelContext.hasChanges { try modelContext.save() }

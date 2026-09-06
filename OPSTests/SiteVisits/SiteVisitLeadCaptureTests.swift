@@ -121,7 +121,7 @@ final class SiteVisitLeadCaptureTests: XCTestCase {
         }
     }
 
-    func test_createLead_updatesExistingClientAndExplicitlyClearsContactFieldsAndNotes() async throws {
+    func test_createLead_updatesExistingClientAndClearsContactFieldsWhilePreservingBlankNotes() async throws {
         var fail = false
         let harness = try makeLeadCreateHarness(validateCommit: {
             if fail { throw URLError(.cannotWriteToFile) }
@@ -162,7 +162,7 @@ final class SiteVisitLeadCaptureTests: XCTestCase {
         XCTAssertEqual(updated.phoneNumber, "250-555-0199")
         XCTAssertNil(updated.email)
         XCTAssertNil(updated.address)
-        XCTAssertNil(updated.notes)
+        XCTAssertEqual(updated.notes, "Old notes")
         XCTAssertEqual(client.name, "Pending elsewhere")
         XCTAssertTrue(harness.context.hasChanges)
         let operation = try XCTUnwrap(try readback.fetch(FetchDescriptor<SyncOperation>()).first {
@@ -171,9 +171,71 @@ final class SiteVisitLeadCaptureTests: XCTestCase {
         let payload = try XCTUnwrap(try JSONSerialization.jsonObject(with: operation.payload) as? [String: Any])
         XCTAssertTrue(payload["email"] is NSNull)
         XCTAssertTrue(payload["address"] is NSNull)
-        XCTAssertEqual(payload["notes"] as? String, "")
+        XCTAssertNil(payload["notes"], "Blank capture notes must not encode a client-note clear")
         XCTAssertEqual(payload["phone_number"] as? String, "250-555-0199")
         XCTAssertTrue(operation.getChangedFields().contains("phoneNumber"))
+
+        harness.viewModel.updateIdentityDraft(searchText: "", clientName: "Updated", contactName: "Person",
+            preferredEmail: "", additionalEmailsText: "extra@example.com", phoneNumber: "250-555-0199",
+            address: "", notes: "New captured notes")
+        let noteUpdate = await harness.viewModel.createLeadFromIdentityDraft(dataController: harness.dataController)
+        guard case .queued = noteUpdate else { return XCTFail("Nonblank note update should be queued") }
+        let noteReadback = ModelContext(harness.context.container)
+        XCTAssertEqual(try noteReadback.fetch(FetchDescriptor<Client>()).first?.notes, "New captured notes")
+        let noteOperation = try XCTUnwrap(try noteReadback.fetch(FetchDescriptor<SyncOperation>()).first {
+            $0.entityType == SyncEntityType.client.rawValue
+        })
+        let notePayload = try XCTUnwrap(try JSONSerialization.jsonObject(with: noteOperation.payload) as? [String: Any])
+        XCTAssertEqual(notePayload["notes"] as? String, "New captured notes")
+        XCTAssertTrue(notePayload["email"] is NSNull)
+        XCTAssertTrue(notePayload["address"] is NSNull)
+        XCTAssertEqual(client.name, "Pending elsewhere")
+        XCTAssertTrue(harness.context.hasChanges)
+    }
+
+    func test_createLead_resumedClientBoundBlankDraftPreservesExistingClientNotes() async throws {
+        let harness = try makeLeadCreateHarness()
+        let client = Client(id: UUID().uuidString.lowercased(), name: "Original",
+            email: "legacy@example.com", companyId: Self.companyId, notes: "Existing client notes")
+        harness.context.insert(client)
+        let visit = insertVisit(id: UUID().uuidString.lowercased(), into: harness.context)
+        let draft = SiteVisitIdentityDraft(siteVisitId: visit.id, companyId: Self.companyId,
+            clientId: client.id, clientName: "Updated legacy client", contactName: "Site person",
+            preferredEmail: "legacy@example.com", notes: "", createdBy: "user-operator-1")
+        harness.context.insert(draft)
+        try harness.context.save()
+        let clientId = client.id
+        let visitId = visit.id
+        let draftId = draft.id
+        client.notes = "Uncommitted caller notes"
+
+        // Load the already-bound stored draft directly; do not call bindClient
+        // or updateIdentityDraft, which would bypass the legacy resume path.
+        let resumed = SiteVisitCaptureViewModel(opportunity: nil, companyId: Self.companyId,
+            userId: "user-operator-1", modelContext: harness.context, entryIntent: .resume(visitId: visitId))
+        resumed.leadAutocreateQueue = harness.queue
+        resumed.probeClientVisibility = { _, _ in XCTFail("Existing parent needs no visibility wait") }
+        resumed.createOpportunityRemotely = { _, _ in throw URLError(.notConnectedToInternet) }
+        resumed.loadOrCreateVisit()
+        XCTAssertEqual(resumed.siteVisit?.id, visitId)
+        XCTAssertEqual(resumed.identityDraft?.id, draftId)
+        XCTAssertEqual(resumed.identityDraft?.clientId, clientId)
+        XCTAssertEqual(resumed.identityDraft?.notes, "")
+        let outcome = await resumed.createLeadFromIdentityDraft(dataController: harness.dataController)
+        guard case .queued = outcome else { return XCTFail("Resumed draft must retain durable lead delivery") }
+        let fresh = ModelContext(harness.context.container)
+        let saved = try XCTUnwrap(try fresh.fetch(FetchDescriptor<Client>()).first { $0.id == clientId })
+        XCTAssertEqual(saved.notes, "Existing client notes")
+        XCTAssertEqual(saved.name, "Updated legacy client")
+        XCTAssertEqual(client.notes, "Uncommitted caller notes")
+        XCTAssertTrue(harness.context.hasChanges)
+        let operation = try XCTUnwrap(try fresh.fetch(FetchDescriptor<SyncOperation>()).first {
+            $0.entityType == SyncEntityType.client.rawValue && $0.entityId == clientId
+        })
+        let payload = try XCTUnwrap(try JSONSerialization.jsonObject(with: operation.payload) as? [String: Any])
+        XCTAssertNil(payload["notes"])
+        XCTAssertFalse(operation.getChangedFields().contains("notes"))
+        XCTAssertEqual(try fresh.fetch(FetchDescriptor<SiteVisitIdentityDraft>()).first { $0.id == draftId }?.notes, "")
     }
 
     func test_createLead_doesNotReviveOrBypassAStoppedClientCreate() async throws {

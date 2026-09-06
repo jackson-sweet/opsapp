@@ -53,7 +53,10 @@ enum SiteVisitIdentityClientStore {
         if client.email != email { client.email = email; fields["email"] = email as Any? ?? NSNull() }
         if client.phoneNumber != phone { client.phoneNumber = phone; fields["phone_number"] = phone as Any? ?? NSNull() }
         if client.address != address { client.address = address; fields["address"] = address as Any? ?? NSNull() }
-        if client.notes != notes { client.notes = notes; fields["notes"] = notes ?? "" }
+        // Blank capture notes never meant an explicit client-note clear. Older
+        // resumed drafts can be blank beside a client with saved notes, so keep
+        // the prior nonblank-only update contract without inventing clear intent.
+        if let notes, client.notes != notes { client.notes = notes; fields["notes"] = notes }
         var queuedWork = false
         if !fields.isEmpty {
             client.needsSync = true

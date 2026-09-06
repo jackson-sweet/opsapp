@@ -1091,9 +1091,6 @@ final class SiteVisitCaptureViewModel: ObservableObject {
             if draft.address.trimmedNilIfEmpty == nil {
                 draft.address = client.address ?? ""
             }
-            if draft.notes.trimmedNilIfEmpty == nil {
-                draft.notes = client.notes ?? ""
-            }
             draft.touch()
             if let visit = siteVisit {
                 visit.address = draft.address.trimmedNilIfEmpty ?? visit.address

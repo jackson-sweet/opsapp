@@ -134,15 +134,16 @@ final class SiteVisitCaptureViewModel: ObservableObject {
         entryIntent: EntryIntent = .newVisit
     ) {
         self.entryIntent = entryIntent
-        self.currentOpportunity = opportunity
+        self.currentOpportunity = opportunity.map(Self.detachedOpportunitySnapshot)
         self.companyId = companyId
         self.userId = userId
-        self.modelContext = modelContext
-        self.persistenceCoordinator = persistenceCoordinator
-            ?? SiteVisitPersistenceCoordinator(
+        let baseCoordinator = persistenceCoordinator ?? SiteVisitPersistenceCoordinator(
                 modelContext: modelContext,
                 companyId: companyId
             )
+        let captureCoordinator = baseCoordinator.isolatedSession()
+        self.persistenceCoordinator = captureCoordinator
+        self.modelContext = captureCoordinator.modelContext
         // The durable queue writes the delivered lead's binding straight into
         // the store; this is how an OPEN console learns about it and flips to
         // LINKED without waiting for an unrelated redraw.
@@ -980,6 +981,7 @@ final class SiteVisitCaptureViewModel: ObservableObject {
 
     func reassignVisit(to opportunity: Opportunity, identityCommittedAt: Date? = nil) {
         guard opportunity.id != currentOpportunity?.id else { return }
+        let opportunity = Self.detachedOpportunitySnapshot(opportunity)
         guard let visit = requireVisit() else { return }
         let priorAddress = currentOpportunity?.address?.trimmingCharacters(in: .whitespacesAndNewlines)
         let visitAddress = visit.address?.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -1217,7 +1219,7 @@ final class SiteVisitCaptureViewModel: ObservableObject {
             attempts: clientVisibilityAttempts,
             probe: probeClientVisibility,
             backoff: clientVisibilityBackoff,
-            isOffline: isLikelyOfflineError
+            isOffline: ClientServerVisibility.isLikelyOfflineError
         )
     }
 
@@ -1247,34 +1249,21 @@ final class SiteVisitCaptureViewModel: ObservableObject {
 
         // Re-read the draft the queue just wrote rather than trusting the cached
         // instance — the binding happened outside this view model.
+        let readContext = ModelContext(modelContext.container)
         let draftDescriptor = FetchDescriptor<SiteVisitIdentityDraft>(
             predicate: #Predicate<SiteVisitIdentityDraft> { $0.siteVisitId == visitId },
             sortBy: [SortDescriptor(\.updatedAt, order: .reverse)]
         )
-        guard let draft = try? modelContext.fetch(draftDescriptor).first,
+        guard let draft = try? readContext.fetch(draftDescriptor).first,
               let opportunityId = draft.opportunityId?.trimmedNilIfEmpty else { return }
 
         let opportunityDescriptor = FetchDescriptor<Opportunity>(
             predicate: #Predicate<Opportunity> { $0.id == opportunityId }
         )
-        guard let delivered = try? modelContext.fetch(opportunityDescriptor).first else { return }
-
-        identityDraft = draft
-        currentOpportunity = delivered
-
-        let visitDescriptor = FetchDescriptor<SiteVisit>(
-            predicate: #Predicate<SiteVisit> { $0.id == visitId }
-        )
-        _ = persistSiteVisitChanges {
-            if let visit = try? modelContext.fetch(visitDescriptor).first {
-                siteVisit = visit
-                if visit.opportunityId == nil {
-                    visit.opportunityId = delivered.id
-                    visit.updatedAt = Date()
-                    visit.needsSync = true
-                }
-            }
-        }
+        guard let delivered = try? readContext.fetch(opportunityDescriptor).first else { return }
+        // Transfer scalar lead/binding data; never move a registered row from
+        // the reader into this capture's context or replace an unsaved buffer.
+        reassignVisit(to: delivered, identityCommittedAt: draft.lastCommittedAt)
         objectWillChange.send()
     }
 
@@ -1451,8 +1440,8 @@ final class SiteVisitCaptureViewModel: ObservableObject {
             let updatedDTO = try await OpportunityRepository(companyId: companyId)
                 .update(opportunity.id, patch: patch)
             let updated = updatedDTO.toModel()
-            currentOpportunity?.address = updated.address
-            currentOpportunity?.updatedAt = updated.updatedAt
+            _ = upsertLocalOpportunity(updated)
+            currentOpportunity = Self.detachedOpportunitySnapshot(updated)
             objectWillChange.send()
             saveLocalContext()
         } catch {
@@ -1464,12 +1453,15 @@ final class SiteVisitCaptureViewModel: ObservableObject {
     private func openVisits() -> [SiteVisit] {
         let company = companyId.lowercased()
         let user = userId?.lowercased() ?? ""
-        let descriptor = FetchDescriptor<SiteVisit>(
-            predicate: #Predicate {
-                $0.companyId == company && $0.completedAt == nil && $0.deletedAt == nil
-                    && ($0.createdBy == user || $0.assignedTo == user || $0.assigneeIds.contains(user))
-            }, sortBy: [SortDescriptor(\.createdAt, order: .reverse)]
-        )
+        let isOpen = #Predicate<SiteVisit> {
+            $0.companyId == company && $0.completedAt == nil && $0.deletedAt == nil
+        }
+        let isAssigned = #Predicate<SiteVisit> {
+            $0.createdBy == user || $0.assignedTo == user || $0.assigneeIds.contains(user)
+        }
+        let predicate = #Predicate<SiteVisit> { isOpen.evaluate($0) && isAssigned.evaluate($0) }
+        let descriptor = FetchDescriptor<SiteVisit>(predicate: predicate,
+            sortBy: [SortDescriptor(\.createdAt, order: .reverse)])
         return ((try? modelContext.fetch(descriptor)) ?? []).filter { $0.status != .cancelled }
     }
 
@@ -1814,14 +1806,21 @@ final class SiteVisitCaptureViewModel: ObservableObject {
             }
         )
         if let existing = try? modelContext.fetch(descriptor).first {
-            copyOpportunityFields(from: incoming, to: existing)
+            Self.copyOpportunityFields(from: incoming, to: existing)
             return existing
         }
         modelContext.insert(incoming)
         return incoming
     }
 
-    private func copyOpportunityFields(from incoming: Opportunity, to existing: Opportunity) {
+    private static func detachedOpportunitySnapshot(_ incoming: Opportunity) -> Opportunity {
+        let snapshot = Opportunity(id: incoming.id, companyId: incoming.companyId,
+            contactName: incoming.contactName, stage: incoming.stage)
+        copyOpportunityFields(from: incoming, to: snapshot)
+        return snapshot
+    }
+
+    private static func copyOpportunityFields(from incoming: Opportunity, to existing: Opportunity) {
         existing.companyId = incoming.companyId
         existing.title = incoming.title
         existing.contactName = incoming.contactName

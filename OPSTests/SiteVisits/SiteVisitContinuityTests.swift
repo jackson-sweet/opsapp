@@ -11,6 +11,44 @@ final class SiteVisitContinuityTests: XCTestCase {
 
     override func tearDown() { containers.removeAll(); super.tearDown() }
 
+    func test_captureSessionDoesNotSaveOrRollbackCallerPendingVisitGraph() throws {
+        for shouldFail in [false, true] {
+            let gate = FailureGate()
+            var other: SiteVisit!
+            var answer: SiteVisitChecklistAnswer!
+            var draft: SiteVisitIdentityDraft!
+            let (vm, context) = try makeVisit(gate: gate, prepareShared: { context in
+                other = SiteVisit(companyId: self.company, createdBy: self.actor)
+                other.notes = "Stored B"
+                answer = SiteVisitChecklistAnswer(siteVisitId: other.id, companyId: self.company,
+                    opportunityId: nil, siteVisitTypeId: nil, fieldId: "b", label: "B",
+                    kind: .shortText, required: false, sortOrder: 0, answerValue: .text("Stored B answer"))
+                context.insert(other); context.insert(answer); try context.save()
+                other.notes = "Pending B"
+                answer.answerValue = .text("Pending B answer")
+                draft = SiteVisitIdentityDraft(siteVisitId: other.id, companyId: self.company, notes: "Pending B draft")
+                context.insert(draft)
+            })
+            gate.fail = shouldFail
+            vm.noteDraft = "Owned A note"
+            XCTAssertEqual(vm.preserveDraft(), !shouldFail)
+            XCTAssertEqual(other.notes, "Pending B")
+            XCTAssertEqual(answer.answerValue.text, "Pending B answer")
+            XCTAssertEqual(draft.notes, "Pending B draft")
+            XCTAssertTrue(context.insertedModelsArray.contains { ObjectIdentifier($0) == ObjectIdentifier(draft!) })
+            XCTAssertTrue(context.hasChanges)
+            let fresh = ModelContext(context.container)
+            XCTAssertEqual(try fresh.fetch(FetchDescriptor<SiteVisit>()).first { $0.id == other.id }?.notes, "Stored B")
+            XCTAssertEqual(try fresh.fetch(FetchDescriptor<SiteVisitChecklistAnswer>()).first { $0.id == answer.id }?.answerValue.text,
+                "Stored B answer")
+            XCTAssertFalse(try fresh.fetch(FetchDescriptor<SiteVisitIdentityDraft>()).contains { $0.id == draft.id })
+            let visitId = try XCTUnwrap(vm.siteVisit?.id)
+            let captures = try fresh.fetch(FetchDescriptor<SiteVisitCaptureArtifact>()).filter { $0.siteVisitId == visitId }
+            XCTAssertEqual(captures.contains { $0.body == "Owned A note" }, !shouldFail)
+            XCTAssertNil(vm.currentOpportunity?.modelContext, "A lead passed from another context is a detached display snapshot")
+        }
+    }
+
     func test_incompleteChecklistSavesDraftWithoutCompletionOrStageCommand() async throws {
         let (vm, context) = try makeVisit()
         let required = try XCTUnwrap(vm.missingRequiredChecklistAnswers.first)
@@ -234,7 +272,8 @@ final class SiteVisitContinuityTests: XCTestCase {
     }
 
     private final class FailureGate { var fail = false }
-    private func makeVisit(gate: FailureGate = FailureGate(), rejectStageEncoding: Bool = false) throws -> (SiteVisitCaptureViewModel, ModelContext) {
+    private func makeVisit(gate: FailureGate = FailureGate(), rejectStageEncoding: Bool = false,
+                           prepareShared: (ModelContext) throws -> Void = { _ in }) throws -> (SiteVisitCaptureViewModel, ModelContext) {
         let schema = Schema([SiteVisit.self, SiteVisitType.self, SiteVisitCaptureArtifact.self, SiteVisitChecklistAnswer.self,
             SiteVisitIdentityDraft.self, SyncOperation.self, Opportunity.self, Client.self, SubClient.self])
         let container = try ModelContainer(for: schema, configurations: [ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)])
@@ -242,6 +281,7 @@ final class SiteVisitContinuityTests: XCTestCase {
         let context = container.mainContext
         let opportunity = Opportunity(id: lead, companyId: company, contactName: "Synthetic customer", stage: .newLead)
         context.insert(opportunity); try context.save()
+        try prepareShared(context)
         let coordinator = SiteVisitPersistenceCoordinator(modelContext: context, companyId: company,
             encodeOperation: { payload in
                 if rejectStageEncoding && payload.stageCommand != nil { throw URLError(.cannotWriteToFile) }

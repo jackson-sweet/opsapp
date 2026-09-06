@@ -383,39 +383,81 @@ final class SiteVisitPersistenceCoordinatorTests: XCTestCase {
         XCTAssertTrue(stopped.allSatisfy { $0.retryCount == 9 && $0.lastError == "Fixture rejection" })
     }
 
-    func test_preexistingUnsavedChangesAndInsertionsAreOutsideMutationBoundary() throws {
-        let context = try makeContainer().mainContext
-        let coordinator = SiteVisitPersistenceCoordinator(modelContext: context, companyId: companyId)
-        let target = makeVisit()
-        let other = SiteVisit(companyId: companyId, createdBy: userId)
-        try coordinator.commit { context.insert(target); context.insert(other) }
-        let otherOp = try XCTUnwrap(context.fetch(FetchDescriptor<SyncOperation>()).first { $0.entityId == other.id })
-        otherOp.status = "parked"
-        otherOp.retryCount = 7
-        try context.save()
-        // Shared-context WIP exists BEFORE this transaction starts.
-        other.notes = "Another console is editing this"
-        other.updatedAt = Date()
-        let insertedElsewhere = SiteVisit(companyId: companyId, createdBy: userId)
-        context.insert(insertedElsewhere)
-        let result = try coordinator.commit {
-            target.notes = "Target edit"
-            target.updatedAt = Date()
-        }
-        XCTAssertEqual(result.operationIds.count, 1)
-        XCTAssertEqual(otherOp.status, "parked")
-        XCTAssertEqual(otherOp.retryCount, 7)
-        XCTAssertFalse(try context.fetch(FetchDescriptor<SyncOperation>()).contains { $0.entityId == insertedElsewhere.id })
-    }
-
-    func test_alreadyDirtyTargetStillQueuesItsActualRevision() throws {
+    func test_sharedLegacyWrapperRefusesPendingChangesBeforeInvokingMutation() throws {
         let context = try makeContainer().mainContext
         let coordinator = SiteVisitPersistenceCoordinator(modelContext: context, companyId: companyId)
         let visit = makeVisit()
         try coordinator.commit { context.insert(visit) }
-        visit.notes = "Preexisting buffer"
-        let result = try coordinator.commit { visit.notes = "Actual transaction revision" }
-        XCTAssertEqual(result.operationIds.count, 1)
+        visit.notes = "Existing unsaved work"
+        var invoked = false
+        XCTAssertThrowsError(try coordinator.commit { invoked = true })
+        XCTAssertFalse(invoked)
+        XCTAssertEqual(visit.notes, "Existing unsaved work")
+        XCTAssertTrue(context.hasChanges)
+        let stored = try XCTUnwrap(ModelContext(context.container).fetch(FetchDescriptor<SiteVisit>()).first)
+        XCTAssertNil(stored.notes)
+    }
+
+    func test_isolatedTransactionPreservesUnrelatedPendingValuesAndStoredBaselineOnSuccessAndFailure() throws {
+        for shouldFail in [false, true] {
+            let context = try makeContainer().mainContext
+            let target = makeVisit()
+            let other = SiteVisit(companyId: companyId, createdBy: userId)
+            other.notes = "Stored B"
+            let answer = SiteVisitChecklistAnswer(siteVisitId: other.id, companyId: companyId,
+                opportunityId: nil, siteVisitTypeId: nil, fieldId: "b", label: "B field",
+                kind: .shortText, required: false, sortOrder: 0, answerValue: .text("Stored B answer"))
+            context.insert(target); context.insert(other); context.insert(answer); try context.save()
+            other.notes = "Pending B"
+            answer.answerValue = .text("Pending B answer")
+            let draft = SiteVisitIdentityDraft(siteVisitId: other.id, companyId: companyId, notes: "Pending B draft")
+            context.insert(draft)
+            let draftId = draft.id
+            let isolated = SiteVisitPersistenceCoordinator(modelContext: context, companyId: companyId,
+                validateCommit: { if shouldFail { throw FixtureError.transactionRejected } }).isolatedSession()
+            let targetId = target.id
+            let owned = try XCTUnwrap(isolated.modelContext.fetch(FetchDescriptor<SiteVisit>(predicate: #Predicate { $0.id == targetId })).first)
+            do {
+                try isolated.commit { owned.notes = "Saved A" }
+                XCTAssertFalse(shouldFail)
+            } catch { XCTAssertTrue(shouldFail) }
+            XCTAssertEqual(other.notes, "Pending B")
+            XCTAssertEqual(answer.answerValue.text, "Pending B answer")
+            XCTAssertEqual(draft.notes, "Pending B draft")
+            XCTAssertTrue(context.insertedModelsArray.contains { ObjectIdentifier($0) == ObjectIdentifier(draft) })
+            XCTAssertTrue(context.hasChanges)
+            let fresh = ModelContext(context.container)
+            let rows = try fresh.fetch(FetchDescriptor<SiteVisit>())
+            XCTAssertEqual(rows.first { $0.id == other.id }?.notes, "Stored B")
+            XCTAssertEqual(rows.first { $0.id == targetId }?.notes, shouldFail ? nil : "Saved A")
+            XCTAssertEqual(try fresh.fetch(FetchDescriptor<SiteVisitChecklistAnswer>()).first?.answerValue.text, "Stored B answer")
+            XCTAssertFalse(try fresh.fetch(FetchDescriptor<SiteVisitIdentityDraft>()).contains { $0.id == draftId })
+            XCTAssertEqual(isolated.lastBoundarySnapshotCount, 1)
+            // A later, deliberate save of B must not restore stale A data from
+            // the caller's registered (but unmodified) original A instance.
+            try context.save()
+            let afterBSave = ModelContext(context.container)
+            XCTAssertEqual(try afterBSave.fetch(FetchDescriptor<SiteVisit>()).first { $0.id == targetId }?.notes,
+                shouldFail ? nil : "Saved A")
+        }
+    }
+
+    func test_unsavedUnrelatedGraphDoesNotEnterOwnedBoundarySnapshotWork() throws {
+        let context = try makeContainer().mainContext
+        let visit = makeVisit()
+        context.insert(visit); try context.save()
+        for index in 0..<1_000 {
+            context.insert(SiteVisitIdentityDraft(siteVisitId: "unrelated-\(index)", companyId: companyId,
+                notes: String(repeating: "Synthetic pending text ", count: 100)))
+        }
+        let isolated = SiteVisitPersistenceCoordinator(modelContext: context, companyId: companyId).isolatedSession()
+        let id = visit.id
+        let owned = try XCTUnwrap(isolated.modelContext.fetch(FetchDescriptor<SiteVisit>(predicate: #Predicate { $0.id == id })).first)
+        try isolated.commit { owned.notes = "One owned edit" }
+        XCTAssertEqual(isolated.lastChangedEntityCount, 1)
+        XCTAssertEqual(isolated.lastBoundarySnapshotCount, 1)
+        XCTAssertEqual(context.insertedModelsArray.count, 1_000)
+        XCTAssertEqual(try ModelContext(context.container).fetchCount(FetchDescriptor<SiteVisitIdentityDraft>()), 0)
     }
 
     func test_noMutationDoesNotReviveStoppedOperation() throws {

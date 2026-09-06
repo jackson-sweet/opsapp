@@ -21,11 +21,14 @@ final class SiteVisitPersistenceCoordinator {
 
     enum Error: Swift.Error, LocalizedError {
         case transactionFailed(Swift.Error)
+        case pendingChangesRequireIsolation
 
         var errorDescription: String? {
             switch self {
             case .transactionFailed(let error):
                 return "Site visit save failed: \(error.localizedDescription)"
+            case .pendingChangesRequireIsolation:
+                return "Site visit save requires its own editing context"
             }
         }
     }
@@ -48,9 +51,11 @@ final class SiteVisitPersistenceCoordinator {
     /// Bounded work-count evidence; does not contain operator data.
     private(set) var lastChangedEntityCount = 0
     private(set) var lastLoadedOperationCount = 0
+    private(set) var lastBoundarySnapshotCount = 0
 
     private var transactionOperationIds: Set<UUID> = []
-    private let modelContext: ModelContext
+    let modelContext: ModelContext
+    private let ownsContext: Bool
     private let companyId: String
     private let encodeOperation: OperationEncoder
     private let validateCommit: CommitValidator
@@ -61,12 +66,23 @@ final class SiteVisitPersistenceCoordinator {
         encodeOperation: @escaping OperationEncoder = {
             try JSONEncoder().encode($0)
         },
-        validateCommit: @escaping CommitValidator = {}
+        validateCommit: @escaping CommitValidator = {},
+        ownsContext: Bool = false
     ) {
         self.modelContext = modelContext
         self.companyId = companyId.lowercased()
         self.encodeOperation = encodeOperation
         self.validateCommit = validateCommit
+        self.ownsContext = ownsContext
+    }
+
+    /// One capture/recovery operation owns this context. Caller WIP is never
+    /// copied, saved, rolled back or inspected field-by-field by this session.
+    func isolatedSession() -> SiteVisitPersistenceCoordinator {
+        let context = ModelContext(modelContext.container)
+        context.autosaveEnabled = false
+        return SiteVisitPersistenceCoordinator(modelContext: context, companyId: companyId,
+            encodeOperation: encodeOperation, validateCommit: validateCommit, ownsContext: true)
     }
 
     /// Runs the model mutation, builds/coalesces all matching durable queue
@@ -78,6 +94,12 @@ final class SiteVisitPersistenceCoordinator {
         revisedMediaArtifactIds: Set<String> = [],
         mutation: () throws -> Void
     ) throws -> CommitResult {
+        // The compatible closure API cannot identify which pre-existing WIP
+        // belongs to its caller. Reject before invoking it; shared-context
+        // clients resolve their models through isolatedSession().modelContext.
+        guard ownsContext || !modelContext.hasChanges else {
+            throw Error.pendingChangesRequireIsolation
+        }
         var queuedIds: [UUID] = []
         var completionId: UUID?
         let boundary = SiteVisitMutationBoundary(context: modelContext)
@@ -98,6 +120,7 @@ final class SiteVisitPersistenceCoordinator {
                 }
                 changed = boundary.changedEntities(in: modelContext)
                 lastChangedEntityCount = changed.count
+                lastBoundarySnapshotCount = boundary.pendingSnapshotCount + changed.count
                 lastLoadedOperationCount = 0
                 let result = try queueChangedEntities(changed, completing: visit, revisedMediaArtifactIds: revisedMediaArtifactIds)
                 queuedIds = result.operationIds
@@ -165,12 +188,15 @@ final class SiteVisitPersistenceCoordinator {
         answers: [SiteVisitChecklistAnswer],
         drafts: [SiteVisitIdentityDraft]
     ) throws {
-        guard visit.lastSyncedAt == nil, visit.bookedAt == nil, visit.loggedActivityId == nil,
-              visit.completedAt == nil,
+        guard ownsContext || !modelContext.hasChanges else {
+            throw Error.pendingChangesRequireIsolation
+        }
+        // This entry point is used only by the explicit pending-work deletion
+        // action. Capture entry never calls it to infer that a visit is empty.
+        guard visit.lastSyncedAt == nil,
               artifacts.allSatisfy({ $0.lastSyncedAt == nil }),
-              answers.allSatisfy({ $0.lastSyncedAt == nil }), drafts.allSatisfy({ $0.lastSyncedAt == nil }),
-              !SiteVisitContentPolicy.hasContent(visit: visit, artifacts: artifacts, answers: answers, drafts: drafts) else {
-            throw SyncError.encodingFailed(detail: "Visit still owns captured or synced work")
+              answers.allSatisfy({ $0.lastSyncedAt == nil }), drafts.allSatisfy({ $0.lastSyncedAt == nil }) else {
+            throw SyncError.encodingFailed(detail: "Visit still owns synced work")
         }
         let entityIds = Set(
             ([visit.id] + artifacts.map(\.id) + answers.map(\.id) + drafts.map(\.id))

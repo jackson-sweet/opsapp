@@ -6,6 +6,7 @@ import SwiftData
 @MainActor
 struct SiteVisitMutationBoundary {
     private let pending: [ObjectIdentifier: [AnyHashable]]
+    var pendingSnapshotCount: Int { pending.count }
 
     init(context: ModelContext) {
         pending = Dictionary(

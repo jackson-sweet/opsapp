@@ -586,7 +586,9 @@ final class ClientLeadAutocreateQueue: ClientLeadAutocreateQueueing {
         forClientId clientId: String,
         delivery: ClientLeadAutocreateDelivery
     ) {
-        guard let modelContext else { return }
+        guard let sharedContext = modelContext else { return }
+        let bindingContext = ModelContext(sharedContext.container)
+        bindingContext.autosaveEnabled = false
         let normalizedClientId = clientId.lowercased()
 
         // `#Predicate` can't express a reliable case-insensitive String equality,
@@ -594,7 +596,7 @@ final class ClientLeadAutocreateQueue: ClientLeadAutocreateQueueing {
         let draftDescriptor = FetchDescriptor<SiteVisitIdentityDraft>(
             predicate: #Predicate<SiteVisitIdentityDraft> { $0.opportunityId == nil }
         )
-        guard let unboundDrafts = try? modelContext.fetch(draftDescriptor) else { return }
+        guard let unboundDrafts = try? bindingContext.fetch(draftDescriptor) else { return }
         let matches = unboundDrafts.filter {
             ($0.clientId ?? "").lowercased() == normalizedClientId
         }
@@ -607,11 +609,11 @@ final class ClientLeadAutocreateQueue: ClientLeadAutocreateQueueing {
             let visitDescriptor = FetchDescriptor<SiteVisit>(
                 predicate: #Predicate<SiteVisit> { $0.id == visitId }
             )
-            let visit = (try? modelContext.fetch(visitDescriptor))?.first
+            let visit = (try? bindingContext.fetch(visitDescriptor))?.first
             let completionVisit = visit?.status == .completed ? visit : nil
             let coordinator = SiteVisitPersistenceCoordinator(
-                modelContext: modelContext,
-                companyId: draft.companyId
+                modelContext: bindingContext,
+                companyId: draft.companyId, ownsContext: true
             )
             do {
                 try coordinator.commit(completing: completionVisit) {

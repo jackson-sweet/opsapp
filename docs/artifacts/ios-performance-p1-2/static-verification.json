@@ -38,5 +38,6 @@
   "new_ui_token_violations": [],
   "typecheck_run": false,
   "xctest_run": false,
-  "build_baton_received": false
+  "build_baton_received": false,
+  "verified_source_commit": "2ef969116cab2524e37067331a7e0df914f95a92"
 }

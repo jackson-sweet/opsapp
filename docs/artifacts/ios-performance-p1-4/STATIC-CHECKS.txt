@@ -43,3 +43,11 @@ Exit 0, no diagnostics.
 git -c core.whitespace=cr-at-eol diff --check
 Exit 0, no diagnostics.
 Seven authored OutboundLifecycleTests cases are UNRUN. Integrate P1-2 bad6ad3a for the typed executor validity/isolation API. No build baton or runtime proof claimed.
+
+Combined core04 fixture corrections, 2026-09-06:
+PM runtime evidence: 306/309 passed; original two lead-capture crashes resolved; 6/7 lifecycle cases passed. Reset case final readback trapped after stores were removed; mention retarget fixture allowed live connectivity to claim its pending dispatch. See HANDOFF.md for exact artifacts and diagnosis.
+xcrun swiftc -frontend -parse OPSTests/Sync/OutboundLifecycleTests.swift OPSTests/ProjectNoteMentionEditTests.swift
+Exit 0, no diagnostics.
+git -c core.whitespace=cr-at-eol diff --check
+Exit 0, no diagnostics.
+Corrected fixtures still require PM rerun; no worker build/typecheck/test/simulator/package/device work.

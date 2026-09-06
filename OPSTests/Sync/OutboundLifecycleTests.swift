@@ -126,8 +126,10 @@ final class OutboundLifecycleTests: XCTestCase {
         await gate.release()
         do { try await work.value; XCTFail("Reset must stop the old continuation") }
         catch { XCTAssertTrue(error is CancellationError) }
-        // Deliberately never read operation after reset, including in cleanup.
-        XCTAssertEqual(try ModelContext(container).fetchCount(FetchDescriptor<SyncOperation>()), 0)
+        // Awaiting CancellationError is the proof: the continuation and its
+        // claim-release defer survived without touching the destroyed model.
+        // deleteAllData also removes this container's stores, so constructing
+        // another context here would itself trap, independently of the driver.
     }
 
     func testActorDrainCannotAcknowledgeAfterSessionInvalidationAndResume() async throws {

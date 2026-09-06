@@ -19,23 +19,32 @@ import SwiftData
 @MainActor
 final class SyncPushDrainCoordinator {
     private var isRunning = false
-    private var rerunRequested = false
+    private var pending: [Bool: @MainActor () async -> Void] = [:]
+    private var order: [Bool] = []
+    private var activeKind: Bool?
+    private var activeOperation: (@MainActor () async -> Void)?
     private var waiters: [CheckedContinuation<Void, Never>] = []
 
-    func run(_ operation: @MainActor () async -> Void) async {
+    /// Upload requests coalesce together; recovery has a distinct slot so an
+    /// edit arriving during discovery cannot replace or accidentally rerun it.
+    func run(recovery: Bool = false, _ operation: @escaping @MainActor () async -> Void) async {
+        if pending[recovery] == nil { order.append(recovery) }
+        pending[recovery] = activeKind == recovery ? activeOperation : (pending[recovery] ?? operation)
         if isRunning {
-            rerunRequested = true
             await waitUntilIdle()
             return
         }
-
         isRunning = true
-        repeat {
-            rerunRequested = false
-            await operation()
-        } while rerunRequested
+        while !order.isEmpty {
+            let kind = order.removeFirst()
+            let next = pending.removeValue(forKey: kind)
+            activeKind = kind
+            activeOperation = next
+            await next?()
+            activeKind = nil
+            activeOperation = nil
+        }
         isRunning = false
-
         let pendingWaiters = waiters
         waiters.removeAll()
         pendingWaiters.forEach { $0.resume() }
@@ -73,6 +82,102 @@ final class SyncEngine {
     private var syncInProgress: Bool = false
     private var syncRequestedWhileInProgress: Bool = false
     private let pushDrainCoordinator = SyncPushDrainCoordinator()
+    private var recoveryTask: Task<Void, Never>?
+    private var uploadWakeupTask: Task<Void, Never>?
+    private var lifecycleGeneration = 0
+    private var recoveryRequested = false
+
+    /// Coalesces post-editor uploads without pulling the whole app. Outbox
+    /// writes are already durable; cancelling a wakeup never cancels custody.
+    func scheduleUploadWakeup() {
+        uploadWakeupTask?.cancel()
+        uploadWakeupTask = Task { [weak self] in
+            try? await Task.sleep(for: .milliseconds(300))
+            guard !Task.isCancelled, let self else { return }
+            self.uploadWakeupTask = nil
+            await self.pushPending()
+        }
+    }
+
+    /// Explicit launch/reconnect/manual recovery boundary. Ordinary online
+    /// edits only wake pushPending() and never rediscover historical graphs.
+    func requestRecovery() {
+        recoveryRequested = true
+        guard recoveryTask == nil else { return }
+        let generation = lifecycleGeneration
+        recoveryTask = Task { [weak self] in
+            guard let self else { return }
+            repeat {
+                self.recoveryRequested = false
+                await self.runRecoveryPass()
+            } while self.recoveryRequested && !Task.isCancelled
+            guard generation == self.lifecycleGeneration else { return }
+            self.recoveryTask = nil
+            if !Task.isCancelled { await self.pushPending() }
+        }
+    }
+
+    private func runRecoveryPass() async {
+        guard let context = modelContext else { return }
+        let generation = lifecycleGeneration
+        let companyId = UserDefaults.standard.string(forKey: "currentUserCompanyId")?.lowercased() ?? ""
+        let userId = currentUserId?.lowercased()
+        guard !companyId.isEmpty else { return }
+        func scopeIsCurrent() -> Bool {
+            !Task.isCancelled && generation == lifecycleGeneration
+                && currentUserId?.lowercased() == userId
+                && UserDefaults.standard.string(forKey: "currentUserCompanyId")?.lowercased() == companyId
+        }
+        let container = context.container
+        do {
+            let candidates = try await Task.detached(priority: .utility) {
+                try SyncRecoveryReader.discover(container: container, companyId: companyId)
+            }.value
+            guard scopeIsCurrent() else { return }
+            // Serialize repair mutations with outbound claims. Discovery can
+            // overlap interaction; these exact graph transactions cannot overlap
+            // an engine drain or cross an auth/container lifetime.
+            await pushDrainCoordinator.run(recovery: true) {
+                guard scopeIsCurrent() else { return }
+                if candidates.hasParkedTaskUpdates { self.settleDeletedProjectTaskUpdates() }
+                if candidates.hasQuarantines { self.releaseRestoredParentSiteVisitChains() }
+                let tasks = candidates.taskIds.sorted()
+                for start in stride(from: 0, to: tasks.count, by: 8) {
+                    guard scopeIsCurrent() else { return }
+                    self.enqueueOrphanedTaskWrites(candidateIds: Set(tasks[start..<min(start + 8, tasks.count)]))
+                    await Task.yield()
+                }
+                let visits = candidates.visitIds.sorted()
+                for start in stride(from: 0, to: visits.count, by: 8) {
+                    guard scopeIsCurrent() else { return }
+                    self.enqueueOrphanedSiteVisitWrites(siteVisitIds: Set(visits[start..<min(start + 8, visits.count)]))
+                    await Task.yield()
+                }
+                guard scopeIsCurrent() else { return }
+                if candidates.hasDeletedVisitParents { self.settleDeletedParentSiteVisitChains() }
+                if candidates.hasParkedMedia { SiteVisitParkedMediaReconciler.reconcile(in: context) }
+                let decks = candidates.deckIds.sorted()
+                for start in stride(from: 0, to: decks.count, by: 8) {
+                    guard scopeIsCurrent() else { return }
+                    self.enqueueStrandedDeckDesigns(candidateIds: Set(decks[start..<min(start + 8, decks.count)]))
+                    await Task.yield()
+                }
+                guard scopeIsCurrent() else { return }
+                self.enqueueDeckDesignLinkBackfillOnce()
+                self.healSiteVisitAuthorshipOnce()
+                if candidates.hasParkedNotes {
+                    self.reconcileSupersededParkedProjectNoteMentionUpdates()
+                    self.reconcileParkedProjectNoteCreateDeleteChains()
+                }
+                self.refreshPendingCount()
+            }
+        } catch {
+            // Failure leaves the durable queue untouched and the next explicit
+            // boundary retries discovery. Never interpret failure as no work.
+            print("[SYNC_ENGINE] Recovery discovery failed: \(error)")
+        }
+    }
+
     nonisolated(unsafe) private var syncRetryTimer: Timer?
 
     #if DEBUG
@@ -148,6 +253,10 @@ final class SyncEngine {
         connectivity: ConnectivityManager,
         dataActor: DataActor? = nil
     ) {
+        lifecycleGeneration += 1
+        recoveryTask?.cancel()
+        recoveryTask = nil
+        recoveryRequested = false
         self.modelContext = modelContext
         self.connectivity = connectivity
         self.dataActor = dataActor
@@ -246,6 +355,7 @@ final class SyncEngine {
             Task { @MainActor [weak self] in
                 guard let self else { return }
                 if self.connectivity?.shouldAttemptSync == true {
+                    self.requestRecovery()
                     // Connectivity restored — actually re-establish Realtime. The
                     // old code only commented that it "will auto-reconnect" but
                     // never called startListening, so a device that lost and
@@ -296,6 +406,8 @@ final class SyncEngine {
             )
         }
 
+        if NSClassFromString("XCTestCase") == nil { requestRecovery() }
+
         // Refresh the pending count on configure
         refreshPendingCount()
 
@@ -309,6 +421,7 @@ final class SyncEngine {
     /// Call after login completes and companyId is confirmed in UserDefaults.
     func reconfigureForCompany() {
         inboundProcessor?.reconfigure()
+        if NSClassFromString("XCTestCase") == nil { requestRecovery() }
         print("[SYNC_ENGINE] Reconfigured InboundProcessor for current company")
     }
 
@@ -357,6 +470,12 @@ final class SyncEngine {
     ///
     /// Safe to call multiple times.
     func stopForLogoutSync() {
+        lifecycleGeneration += 1
+        recoveryRequested = false
+        recoveryTask?.cancel()
+        recoveryTask = nil
+        uploadWakeupTask?.cancel()
+        uploadWakeupTask = nil
         print("[SYNC_ENGINE] stopForLogoutSync — halting timer + observers")
 
         syncRetryTimer?.invalidate()
@@ -1225,8 +1344,11 @@ final class SyncEngine {
         guard let allFailed = try? context.fetch(descriptor) else { return }
 
         let stale = allFailed.filter { op in
-            (op.lastError?.contains("Not yet connected to repositories") == true) ||
-            (op.retryCount >= 20)
+            // A durable stage command retains its original authority and receipt.
+            // Generic legacy cleanup cannot erase its recovery custody.
+            guard op.operationType != SiteVisitSyncOperation.stageOperationType else { return false }
+            return (op.lastError?.contains("Not yet connected to repositories") == true) ||
+                (op.retryCount >= 20)
         }
 
         for op in stale {
@@ -1241,6 +1363,7 @@ final class SyncEngine {
     /// Performs a full sync of all entities in dependency order.
     /// Used for initial sync or manual full-refresh.
     func fullSync() async {
+        requestRecovery()
         // One-time migration cleanup (gated by UserDefaults flag)
         let migrationKey = "sync.migrationCleanupV1"
         if !UserDefaults.standard.bool(forKey: migrationKey), let ctx = modelContext {
@@ -1464,74 +1587,16 @@ final class SyncEngine {
 
     /// Pushes all pending local operations to the server via OutboundProcessor.
     func pushPending() async {
-        guard let modelContext, let connectivity else {
-            print("[SYNC_ENGINE] Cannot push — not configured")
-            return
-        }
-
+        guard let modelContext, let connectivity else { return }
+        guard connectivity.shouldAttemptSync else { return }
+        let generation = lifecycleGeneration
+        // Legacy children need their recovered parent before the first send.
+        // The recovery task clears this slot before its own final upload wakeup.
+        if let recoveryTask { await recoveryTask.value }
+        guard generation == lifecycleGeneration, !Task.isCancelled else { return }
         await pushDrainCoordinator.run {
-            // A server-row-missing task update is obsolete only when this phone
-            // holds the exact same-company task as a soft-delete tombstone.
-            // Settle that proven no-op before orphan recovery reads the queue.
-            self.settleDeletedProjectTaskUpdates()
-
-            // If an inbound merge restored a site visit that was previously
-            // deleted, release its protected packet back into the durable queue.
-            // Children and media stay local and drain in this same pass.
-            self.releaseRestoredParentSiteVisitChains()
-
-            // Safety net: recover any task whose local edit never produced an
-            // outbound op (needsSync set without recordOperation) before reading the
-            // pending queue, so a future bypass can't silently drop a write.
-            self.enqueueOrphanedTaskWrites()
-
-            // Repair historical site-visit rows whose local dirty flag exists
-            // without a durable queue record. The coordinator is company-scoped
-            // and skips all open/failed/parked work, so this never revives a
-            // permanent rejection or crosses tenants.
-            self.enqueueOrphanedSiteVisitWrites()
-
-            // Settle chains whose site visit was deleted in OPS: a completion
-            // carrying `cannot_complete_deleted_site_visit` can never land, and
-            // its children are RLS-blocked behind the deleted parent. The whole
-            // chain moves to protected vault custody (visible in PENDING WORK)
-            // instead of retrying forever. Runs after the orphan sweep so a
-            // reconstructed parent's dirty flags are already accounted for.
-            self.settleDeletedParentSiteVisitChains()
-
-            // A media upload that parked because its local bytes were gone
-            // can never be revived by the normal path (parked work never
-            // auto-retries, and the orphan sweep treats parked as unresolved).
-            // Re-read the filesystem: retire pointers that are truly dead, and
-            // hand back any whose file is actually present.
-            SiteVisitParkedMediaReconciler.reconcile(in: modelContext)
-
-            // Same class of safety net for stranded deck designs: a design
-            // holding unpushed work with no op recorded re-records its full
-            // revision here and drains in this very pass.
-            self.enqueueStrandedDeckDesigns()
-
-            // One-time server-orphan heal for deck→lead links (RC3): records a
-            // guarded linkOpportunity op for every locally-linked design whose
-            // server row may still be an orphan (older builds stripped the link).
-            // Idempotent + gated by a UserDefaults flag, so it drains in this pass
-            // exactly once per device.
-            self.enqueueDeckDesignLinkBackfillOnce()
-
-            // Legacy site-visit rows carry no author: `created_by` arrived with
-            // the V19→V20 migration, which could only default existing rows to
-            // nil. Such a row can never build a valid payload, so it failed
-            // before every send and — being a child — dammed its visit's
-            // completion behind it (bug 70db7ed6). Heal the whole backlog here,
-            // ahead of the drain, so no row spends its turn failing.
-            self.healSiteVisitAuthorshipOnce()
-
-            // Recover a chain persisted between the instant a predecessor parked
-            // and the normal post-failure reconciliation. A later full replacement
-            // proves the parked payload and its event are safe to supersede.
-            self.reconcileSupersededParkedProjectNoteMentionUpdates()
-            self.reconcileParkedProjectNoteCreateDeleteChains()
-
+            guard !Task.isCancelled, generation == self.lifecycleGeneration,
+                  connectivity.shouldAttemptSync else { return }
             let pending = self.getPendingOperations()
             guard !pending.isEmpty else {
                 print("[SYNC_ENGINE] No pending operations to push")
@@ -1561,6 +1626,7 @@ final class SyncEngine {
                 )
             }
 
+            guard generation == self.lifecycleGeneration, !Task.isCancelled else { return }
             self.clearCompletedProjectTaskSyncFlags(
                 since: pushStartedAt,
                 completedProjectTaskIds: completedProjectTaskIds
@@ -1591,13 +1657,16 @@ final class SyncEngine {
     /// has no such recent local-write signal. Orphans lacking that evidence get
     /// `needsSync` cleared so the next inbound/realtime merge applies the server
     /// value and the row converges to server truth.
-    func enqueueOrphanedTaskWrites() {
+    func enqueueOrphanedTaskWrites(candidateIds: Set<String>? = nil) {
         guard let modelContext else { return }
+        if let candidateIds, candidateIds.isEmpty { return }
+        let ids = RecoveryStoreQueries.caseVariants(candidateIds ?? [])
+        let scoped = candidateIds != nil
         let orphans: [ProjectTask]
         do {
             orphans = try modelContext.fetch(
                 FetchDescriptor<ProjectTask>(
-                    predicate: #Predicate { $0.needsSync == true && $0.deletedAt == nil }
+                    predicate: #Predicate { $0.needsSync == true && $0.deletedAt == nil && (!scoped || ids.contains($0.id)) }
                 )
             )
         } catch {
@@ -1622,7 +1691,7 @@ final class SyncEngine {
         var didMutate = false
         for task in orphans {
             if let created = task.createdAt, created > graceCutoff { continue }
-            if hasOpenOperation(entityType: .projectTask, entityId: task.id) { continue }
+            if hasRecoveryOwnerOperation(entityType: .projectTask, entityId: task.id) { continue }
 
             guard hasRecentLocalWrite(entityId: task.id, withinSeconds: recentLocalWriteWindow) else {
                 // No evidence of a genuine recent local edit. Do NOT push the local
@@ -1674,13 +1743,16 @@ final class SyncEngine {
     /// it did sweep had its server `updated_at` bumped by the table's trigger
     /// without a single vertex being delivered: the recovery path was arming
     /// the inbound clobber instead of curing it. It now carries the drawing.
-    func enqueueStrandedDeckDesigns() {
+    func enqueueStrandedDeckDesigns(candidateIds: Set<String>? = nil) {
         guard let modelContext else { return }
+        if let candidateIds, candidateIds.isEmpty { return }
+        let ids = RecoveryStoreQueries.caseVariants(candidateIds ?? [])
+        let scoped = candidateIds != nil
         let candidates: [DeckDesign]
         do {
             candidates = try modelContext.fetch(
                 FetchDescriptor<DeckDesign>(
-                    predicate: #Predicate { $0.deletedAt == nil }
+                    predicate: #Predicate { $0.deletedAt == nil && (!scoped || ids.contains($0.id)) }
                 )
             )
         } catch {
@@ -1695,7 +1767,8 @@ final class SyncEngine {
 
         let writer = ISO8601DateFormatter()
         for design in stranded {
-            guard !hasOpenOperation(entityType: .deckDesign, entityId: design.id) else { continue }
+            guard !DeckEditingSessionRegistry.shared.isHeld(entityType: "deckDesign", entityId: design.id),
+                  !hasRecoveryOwnerOperation(entityType: .deckDesign, entityId: design.id) else { continue }
             guard !hasRecentLocalWrite(entityId: design.id, withinSeconds: 15 * 60) else { continue }
 
             // The Supabase `drawing_data` column is jsonb, so the payload has to
@@ -1828,6 +1901,19 @@ final class SyncEngine {
             }
         )
         return ((try? modelContext.fetchCount(descriptor)) ?? 0) > 0
+    }
+
+    private func hasRecoveryOwnerOperation(entityType: SyncEntityType, entityId: String) -> Bool {
+        guard let modelContext else { return true }
+        let ids = RecoveryStoreQueries.caseVariants([entityId])
+        let type = entityType.rawValue
+        do {
+            guard try modelContext.fetchCount(FetchDescriptor<SyncOperation>()) > 0 else { return false }
+            let rows = try modelContext.fetch(FetchDescriptor<SyncOperation>(predicate: #Predicate {
+                $0.entityType == type && ids.contains($0.entityId) && $0.status != "completed"
+            }))
+            return !rows.isEmpty
+        } catch { return true } // Unreadable custody never permits a new send.
     }
 
     /// True if a pending or in-flight SyncOperation already exists for this entity.
@@ -2182,7 +2268,7 @@ final class SyncEngine {
         }
     }
 
-    func enqueueOrphanedSiteVisitWrites() {
+    func enqueueOrphanedSiteVisitWrites(siteVisitIds: Set<String>? = nil) {
         guard let modelContext else { return }
         let companyId = UserDefaults.standard.string(
             forKey: "currentUserCompanyId"
@@ -2197,6 +2283,7 @@ final class SyncEngine {
                 in: modelContext,
                 activeUserId: userId,
                 activeCompanyId: companyId,
+                siteVisitIds: siteVisitIds,
                 quarantine: { record in
                     try SiteVisitRecoveryVault.shared.recordQuarantine(
                         record,
@@ -2447,6 +2534,10 @@ final class SyncEngine {
 
             try modelContext.transaction {
                 for op in inProgressOps {
+                    guard SiteVisitCommandRecoveryPolicy.mayAutomaticallyResume(
+                        op, userId: self.currentUserId,
+                        companyId: UserDefaults.standard.string(forKey: "currentUserCompanyId")
+                    ) else { continue }
                     // A fresh in-flight op (recent lastAttemptedAt) is left alone;
                     // only nil or stale ones are crash-stranded.
                     if let last = op.lastAttemptedAt, last >= staleCutoff { continue }
@@ -2454,6 +2545,10 @@ final class SyncEngine {
                     revivedInProgress += 1
                 }
                 for op in failedOps {
+                    guard SiteVisitCommandRecoveryPolicy.mayAutomaticallyResume(
+                        op, userId: self.currentUserId,
+                        companyId: UserDefaults.standard.string(forKey: "currentUserCompanyId")
+                    ) else { continue }
                     op.status = "pending"
                     op.retryCount = 0
                     // lastError PRESERVED so the recovery screen still shows why it
@@ -3190,6 +3285,9 @@ final class SyncEngine {
     /// Called by the retry timer. Triggers a sync if conditions are met.
     private func retryTimerFired() {
         guard connectivity?.shouldAttemptSync == true else { return }
+        // A zero pending count must not hide orphaned local work. Historical
+        // discovery runs on the timer boundary, independently of upload wakes.
+        requestRecovery()
         guard pendingOperationCount > 0 else { return }
         guard !syncInProgress else { return }
 

@@ -499,6 +499,7 @@ struct DeckBuilderView: View {
         }
         .statusBarHidden(true)
         .onAppear {
+            viewModel.resumeEditingSession()
             // Defense-in-depth: prevent deep-link or programmatic access bypassing UI gate
             if !PermissionStore.shared.isFeatureEnabled("deck_builder") {
                 dismiss()
@@ -609,7 +610,7 @@ struct DeckBuilderView: View {
             // Close
             Button {
                 viewModel.saveForExit()
-                dismiss()
+                if viewModel.saveFailure == nil { dismiss() }
             } label: {
                 Image(systemName: OPSStyle.Icons.xmark)
                     .font(.system(size: OPSStyle.Layout.IconSize.md))

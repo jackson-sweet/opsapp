@@ -4439,8 +4439,10 @@ actor DataActor {
     /// re-pull the affected row.
     func handleRealtimeUpdate(_ update: RealtimeUpdate) async {
         do {
-            if try await mergeSiteVisitRealtimeIfHandled(update) {
-                InboundChangeSignal.post(entityNames: [update.mergedEntityName])
+            if let report = try await mergeSiteVisitRealtimeIfHandled(update) {
+                if report.inserted > 0 || report.updated > 0 {
+                    InboundChangeSignal.post(entityNames: [update.mergedEntityName])
+                }
                 return
             }
             try modelContext.transaction {
@@ -4483,10 +4485,10 @@ actor DataActor {
 
     private func mergeSiteVisitRealtimeIfHandled(
         _ update: RealtimeUpdate
-    ) async throws -> Bool {
+    ) async throws -> SiteVisitMergeReport? {
         switch update {
         case .siteVisit(let dto):
-            _ = try SiteVisitServerMerge.merge(
+            return try SiteVisitServerMerge.merge(
                 visit: dto,
                 companyId: activeCompanyId(fallback: dto.companyId),
                 into: modelContext
@@ -4494,13 +4496,13 @@ actor DataActor {
         case .siteVisitArtifact(let dto):
             let companyId = activeCompanyId(fallback: dto.companyId)
             do {
-                _ = try SiteVisitServerMerge.merge(
+                return try SiteVisitServerMerge.merge(
                     artifact: dto,
                     companyId: companyId,
                     into: modelContext
                 )
             } catch SiteVisitMergeError.orphanedChild {
-                try await recoverSiteVisitBundle(
+                return try await recoverSiteVisitBundle(
                     siteVisitId: dto.siteVisitId,
                     companyId: companyId
                 )
@@ -4508,13 +4510,13 @@ actor DataActor {
         case .siteVisitChecklistAnswer(let dto):
             let companyId = activeCompanyId(fallback: dto.companyId)
             do {
-                _ = try SiteVisitServerMerge.merge(
+                return try SiteVisitServerMerge.merge(
                     checklistAnswer: dto,
                     companyId: companyId,
                     into: modelContext
                 )
             } catch SiteVisitMergeError.orphanedChild {
-                try await recoverSiteVisitBundle(
+                return try await recoverSiteVisitBundle(
                     siteVisitId: dto.siteVisitId,
                     companyId: companyId
                 )
@@ -4522,36 +4524,36 @@ actor DataActor {
         case .siteVisitIdentityDraft(let dto):
             let companyId = activeCompanyId(fallback: dto.companyId)
             do {
-                _ = try SiteVisitServerMerge.merge(
+                return try SiteVisitServerMerge.merge(
                     identityDraft: dto,
                     companyId: companyId,
                     into: modelContext
                 )
             } catch SiteVisitMergeError.orphanedChild {
-                try await recoverSiteVisitBundle(
+                return try await recoverSiteVisitBundle(
                     siteVisitId: dto.siteVisitId,
                     companyId: companyId
                 )
             }
         default:
-            return false
+            return nil
         }
-        return true
     }
 
+    @discardableResult
     private func recoverSiteVisitBundle(
         siteVisitId: String,
         companyId: String
-    ) async throws {
+    ) async throws -> SiteVisitMergeReport {
         let repository = await MainActor.run {
             SiteVisitRepository(companyId: companyId)
         }
         let bundle = try await repository.fetchBundle(siteVisitId: siteVisitId)
-        _ = try SiteVisitServerMerge.merge(
-            bundle: bundle,
-            into: modelContext
-        )
-        inboundMergedEntityNames.formUnion(Self.siteVisitEntityNames)
+        let report = try SiteVisitServerMerge.merge(bundle: bundle, into: modelContext)
+        if report.inserted > 0 || report.updated > 0 {
+            inboundMergedEntityNames.formUnion(Self.siteVisitEntityNames)
+        }
+        return report
     }
 
     private func activeCompanyId(fallback: String) -> String {
@@ -4818,6 +4820,9 @@ actor DataActor {
             try? modelContext.fetch(FetchDescriptor<SyncOperation>())
         ) ?? pending
         let eligible = pending.filter { op in
+            guard !DeckEditingSessionRegistry.shared.isHeld(
+                entityType: op.entityType, entityId: op.entityId
+            ) else { return false }
             if op.retryCount > 0, let lastAttempt = op.lastAttemptedAt {
                 let earliestRetry = lastAttempt.addingTimeInterval(op.backoffDelay)
                 if now < earliestRetry {
@@ -5024,6 +5029,9 @@ actor DataActor {
     /// Ported from OutboundProcessor.executeOperation. Context parameter removed;
     /// state mutations now wrapped in `modelContext.transaction { }` blocks.
     private func executeOperation(_ operation: SyncOperation) async throws {
+        guard !DeckEditingSessionRegistry.shared.isHeld(
+            entityType: operation.entityType, entityId: operation.entityId
+        ) else { return }
         guard try claimForExecution(operation) else { return }
         defer {
             ProjectNoteMentionQueueCoordinator.shared.release(

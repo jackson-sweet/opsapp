@@ -145,6 +145,9 @@ final class OutboundProcessor {
             try? context.fetch(FetchDescriptor<SyncOperation>())
         ) ?? pending
         let eligible = pending.filter { op in
+            guard !DeckEditingSessionRegistry.shared.isHeld(
+                entityType: op.entityType, entityId: op.entityId
+            ) else { return false }
             // Backoff check: if retried before, ensure enough time has elapsed since last attempt
             if op.retryCount > 0, let lastAttempt = op.lastAttemptedAt {
                 let earliestRetry = lastAttempt.addingTimeInterval(op.backoffDelay)
@@ -466,6 +469,9 @@ final class OutboundProcessor {
     /// Executes a single SyncOperation against Supabase.
     /// Sets status to "inProgress" before attempting, and updates status/retryCount on completion or failure.
     func executeOperation(_ operation: SyncOperation, context: ModelContext) async throws {
+        guard !DeckEditingSessionRegistry.shared.isHeld(
+            entityType: operation.entityType, entityId: operation.entityId
+        ) else { return }
         guard try claimForExecution(
             operation,
             context: context

@@ -253,6 +253,8 @@ final class SyncEngine {
         connectivity: ConnectivityManager,
         dataActor: DataActor? = nil
     ) {
+        outboundProcessor?.invalidate()
+        self.dataActor?.invalidateOutboundWork()
         lifecycleGeneration += 1
         recoveryTask?.cancel()
         recoveryTask = nil
@@ -260,6 +262,7 @@ final class SyncEngine {
         self.modelContext = modelContext
         self.connectivity = connectivity
         self.dataActor = dataActor
+        dataActor?.resumeOutboundWork()
 
         // One-time recovery for the poisoned deck-design cursor (the crew
         // deck-blackout bug): an earlier build advanced sync.lastPull.deckDesign
@@ -434,7 +437,9 @@ final class SyncEngine {
     /// the actor never gets wired in. Also pushes the actor reference to the
     /// already-created RealtimeProcessor so its flag-gated dispatch engages.
     func setDataActor(_ actor: DataActor?) {
+        self.dataActor?.invalidateOutboundWork()
         self.dataActor = actor
+        actor?.resumeOutboundWork()
         if let actor = actor {
             self.realtimeProcessor?.setDataActor(actor)
         }
@@ -470,6 +475,8 @@ final class SyncEngine {
     ///
     /// Safe to call multiple times.
     func stopForLogoutSync() {
+        outboundProcessor?.invalidate()
+        self.dataActor?.invalidateOutboundWork()
         lifecycleGeneration += 1
         recoveryRequested = false
         recoveryTask?.cancel()

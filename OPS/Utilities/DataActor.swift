@@ -33,6 +33,47 @@ extension Notification.Name {
 
 @ModelActor
 actor DataActor {
+    private nonisolated let outboundLifetime = OutboundSessionLifetime()
+    nonisolated func invalidateOutboundWork() { outboundLifetime.invalidate() }
+    nonisolated func resumeOutboundWork() { outboundLifetime.resume() }
+
+    private struct OutboundScope {
+        let generation: UInt64
+        let userID: String?
+        let companyID: String?
+    }
+    private struct OutboundHandle {
+        let model: SyncOperation
+        let persistentID: PersistentIdentifier
+        let id: UUID
+        init(_ model: SyncOperation) {
+            self.model = model
+            self.persistentID = model.persistentModelID
+            self.id = model.id
+        }
+    }
+    private func outboundScope() -> OutboundScope? {
+        guard !Task.isCancelled, let generation = outboundLifetime.snapshot() else { return nil }
+        return OutboundScope(generation: generation,
+            userID: UserDefaults.standard.string(forKey: "currentUserId")?.lowercased(),
+            companyID: UserDefaults.standard.string(forKey: "currentUserCompanyId")?.lowercased())
+    }
+    private func outboundIsCurrent(_ scope: OutboundScope, handle: OutboundHandle? = nil) -> Bool {
+        guard !Task.isCancelled, outboundLifetime.isCurrent(scope.generation),
+              scope.userID == UserDefaults.standard.string(forKey: "currentUserId")?.lowercased(),
+              scope.companyID == UserDefaults.standard.string(forKey: "currentUserCompanyId")?.lowercased() else { return false }
+        guard let handle else { return true }
+        let registered: SyncOperation? = modelContext.registeredModel(for: handle.persistentID)
+        return registered === handle.model
+    }
+
+    #if DEBUG
+    private var outboundPushForTesting: ((String, String, String, [String: Any]) async throws -> Void)?
+    func setOutboundPushForTesting(_ push: @escaping (String, String, String, [String: Any]) async throws -> Void) {
+        outboundPushForTesting = push
+    }
+    #endif
+
     // MARK: - Observer State
 
     private var didSaveObserver: NSObjectProtocol?
@@ -4709,6 +4750,7 @@ actor DataActor {
     ///   - executeOperation mutations persist via per-state transactions inside that
     ///     method (no single trailing context.save)
     func processPendingOperations() async -> Set<String> {
+        guard let scope = outboundScope() else { return [] }
         var completedProjectTaskIds = Set<String>()
         var shouldContinueDrain: Bool
         repeat {
@@ -4723,6 +4765,7 @@ actor DataActor {
             completedProjectTaskIds.formUnion(
                 await processPendingOperationsPass()
             )
+            guard outboundIsCurrent(scope) else { return completedProjectTaskIds }
             let readyMentionsAfterPass =
                 readyPendingProjectNoteMentionOperationIds()
             let readyTaskTypePipelineAfterPass =
@@ -4787,6 +4830,7 @@ actor DataActor {
     }
 
     private func processPendingOperationsPass() async -> Set<String> {
+        guard let scope = outboundScope() else { return [] }
         // 0. Hand back work parked before the row it references existed. Runs
         //    ahead of the fetch so a released op joins THIS pass.
         releaseCrossEntityMisparkedOperations()
@@ -4899,14 +4943,18 @@ actor DataActor {
         // 4. Execute each survivor. Each call manages its own state transitions via
         //    per-state transactions (inProgress → completed/failed/pending).
         var completedProjectTaskIds = Set<String>()
-        for op in coalesced {
+        for handle in coalesced.map(OutboundHandle.init) {
+            guard outboundIsCurrent(scope, handle: handle) else { return completedProjectTaskIds }
+            let op = handle.model
             do {
                 try await executeOperation(op)
+                guard outboundIsCurrent(scope, handle: handle) else { return completedProjectTaskIds }
                 if op.entityType == SyncEntityType.projectTask.rawValue,
                    op.status == "completed" {
                     completedProjectTaskIds.insert(op.entityId.lowercased())
                 }
             } catch {
+                guard outboundIsCurrent(scope, handle: handle) else { return completedProjectTaskIds }
                 let classified = classifySyncError(error)
                 print("[DataActor] Operation failed for \(op.entityType) \(op.entityId): \(classified.localizedDescription)")
                 // Error handling (state mutation) already done inside executeOperation.
@@ -5029,15 +5077,13 @@ actor DataActor {
     /// Ported from OutboundProcessor.executeOperation. Context parameter removed;
     /// state mutations now wrapped in `modelContext.transaction { }` blocks.
     private func executeOperation(_ operation: SyncOperation) async throws {
+        guard let scope = outboundScope() else { throw CancellationError() }
         guard !DeckEditingSessionRegistry.shared.isHeld(
             entityType: operation.entityType, entityId: operation.entityId
         ) else { return }
         guard try claimForExecution(operation) else { return }
-        defer {
-            ProjectNoteMentionQueueCoordinator.shared.release(
-                operationId: operation.id
-            )
-        }
+        let handle = OutboundHandle(operation)
+        defer { ProjectNoteMentionQueueCoordinator.shared.release(operationId: handle.id) }
         print("[DataActor] Pushing \(operation.entityType) \(operation.entityId)...")
         if operation.entityType == SyncEntityType.projectTask.rawValue {
             print("[DUPE_TRACE] ACTOR.outbound.inProgress id=\(operation.entityId) op=\(operation.operationType)")
@@ -5051,20 +5097,26 @@ actor DataActor {
                 .executeIfHandled(
                     operation: operation,
                     context: modelContext,
-                    activeCompanyId: activeCompanyId
+                    activeCompanyId: activeCompanyId,
+                    isCurrent: { self.outboundIsCurrent(scope, handle: handle) }
                 )
+            guard outboundIsCurrent(scope, handle: handle) else { throw CancellationError() }
             if !handledSiteVisit {
                 guard let payloadDict = decodePayload(operation.payload) else {
                     throw SyncError.decodingFailed(detail: "Could not decode payload for \(operation.entityType) \(operation.entityId)")
                 }
-                try await routeToRepository(
-                    entityType: operation.entityType,
-                    entityId: operation.entityId,
-                    operationType: operation.operationType,
-                    payload: payloadDict
-                )
+                #if DEBUG
+                if let outboundPushForTesting {
+                    try await outboundPushForTesting(operation.entityType, operation.entityId, operation.operationType, payloadDict)
+                } else {
+                    try await routeToRepository(entityType: operation.entityType, entityId: operation.entityId, operationType: operation.operationType, payload: payloadDict, isCurrent: { self.outboundIsCurrent(scope, handle: handle) })
+                }
+                #else
+                try await routeToRepository(entityType: operation.entityType, entityId: operation.entityId, operationType: operation.operationType, payload: payloadDict, isCurrent: { self.outboundIsCurrent(scope, handle: handle) })
+                #endif
             }
         } catch {
+            guard outboundIsCurrent(scope, handle: handle), !(error is CancellationError) else { throw CancellationError() }
             let classified = classifySyncError(error)
 
             // Idempotency: if this is a `create` retry and the server says the row
@@ -5108,6 +5160,7 @@ actor DataActor {
             ), await reconcile(operation, as: reconciliation) {
                 return
             }
+            guard outboundIsCurrent(scope, handle: handle) else { throw CancellationError() }
 
             // Classify + apply the SHARED failure policy (single source of truth
             // for the state transition — mirrored byte-for-byte with
@@ -5259,6 +5312,7 @@ actor DataActor {
             throw error
         }
 
+        guard outboundIsCurrent(scope, handle: handle) else { throw CancellationError() }
         // Push confirmed. Persisting the confirmation is a LOCAL concern: it sits
         // outside the push's `do` so a store throw can never be classified as a
         // server rejection, consume retry budget, or park an operation the server
@@ -5350,6 +5404,9 @@ actor DataActor {
     private func reconcileProjectUpdateRowVerdict(
         _ operation: SyncOperation
     ) async -> Bool {
+        guard let scope = outboundScope() else { return false }
+        let handle = OutboundHandle(operation)
+        func isCurrent() -> Bool { outboundIsCurrent(scope, handle: handle) }
         struct ServerProjectRow: Decodable {
             let id: String
             let deleted_at: String?
@@ -5362,6 +5419,7 @@ actor DataActor {
                 .eq("id", value: projectId)
                 .execute()
                 .value
+            guard isCurrent() else { return false }
             if !rows.isEmpty {
                 try modelContext.transaction {
                     SyncOperationReconcilers.applyEditRefusedVerdict(
@@ -5376,6 +5434,7 @@ actor DataActor {
             let response = try await SupabaseService.shared.client
                 .rpc("project_server_state", params: ["p_project_id": projectId])
                 .execute()
+            guard isCurrent() else { return false }
             guard let state = SyncOperationReconcilers
                 .projectServerState(from: response.data) else {
                 print("[DataActor] project_server_state returned an unrecognized verdict for \(operation.entityId)")
@@ -5397,6 +5456,7 @@ actor DataActor {
             print("[DataActor] project update \(operation.entityId) resolved against server tombstone")
             return true
         } catch {
+            guard isCurrent() else { return false }
             print("[DataActor] project row-verdict probe failed for \(operation.entityId): \(error)")
             return false
         }
@@ -5410,6 +5470,9 @@ actor DataActor {
     private func reconcileDuplicateProjectPhotoCreate(
         _ operation: SyncOperation
     ) async -> Bool {
+        guard let scope = outboundScope() else { return false }
+        let handle = OutboundHandle(operation)
+        func isCurrent() -> Bool { outboundIsCurrent(scope, handle: handle) }
         guard let payload = decodePayload(operation.payload),
               let projectId = payload["project_id"] as? String,
               let url = payload["url"] as? String else { return false }
@@ -5429,7 +5492,7 @@ actor DataActor {
                 .limit(1)
                 .execute()
                 .value
-            guard let server = rows.first else { return false }
+            guard isCurrent(), let server = rows.first else { return false }
 
             let serverId = server.id.lowercased()
             var patch: [String: String] = [:]
@@ -5453,9 +5516,11 @@ actor DataActor {
                     .eq("id", value: serverId)
                     .execute()
             }
+            guard isCurrent() else { return false }
             print("[DataActor] projectPhoto create \(operation.entityId) reconciled to server row \(serverId) (dedupe-index conflict)")
             return true
         } catch {
+            guard isCurrent() else { return false }
             print("[DataActor] projectPhoto duplicate reconciliation failed for \(operation.entityId): \(error)")
             return false
         }
@@ -5467,6 +5532,9 @@ actor DataActor {
     private func reconcileTaskUpdateAgainstTombstone(
         _ operation: SyncOperation
     ) async -> Bool {
+        guard let scope = outboundScope() else { return false }
+        let handle = OutboundHandle(operation)
+        func isCurrent() -> Bool { outboundIsCurrent(scope, handle: handle) }
         struct ServerTaskRow: Decodable {
             let id: String
             let deleted_at: String?
@@ -5478,6 +5546,7 @@ actor DataActor {
                 .eq("id", value: operation.entityId.lowercased())
                 .execute()
                 .value
+            guard isCurrent() else { return false }
             if rows.isEmpty {
                 // The task read policy hides soft-deleted rows entirely, so the
                 // tombstone this op parked on can never become visible here. The
@@ -5507,6 +5576,7 @@ actor DataActor {
             print("[DUPE_TRACE] ACTOR.outbound.completed.tombstone id=\(operation.entityId) op=\(operation.operationType)")
             return true
         } catch {
+            guard isCurrent() else { return false }
             print("[DataActor] task tombstone reconciliation failed for \(operation.entityId): \(error)")
             return false
         }
@@ -5524,13 +5594,16 @@ actor DataActor {
     /// Fetches predicate-free and filters in Swift: a `#Predicate` fetch of
     /// SyncOperation traps against a table that has never held a row.
     func resolveReconcilableParkedOperations() async {
+        guard let scope = outboundScope() else { return }
         let all = (try? modelContext.fetch(FetchDescriptor<SyncOperation>())) ?? []
         let parked = all.filter { $0.status == "parked" }
         guard !parked.isEmpty else { return }
         var resolved = 0
-        for operation in parked {
-            guard let kind = SyncOperationReconcilers.parkedKind(for: operation) else { continue }
-            if await reconcile(operation, as: kind) { resolved += 1 }
+        for handle in parked.map(OutboundHandle.init) {
+            guard outboundIsCurrent(scope, handle: handle) else { return }
+            guard let kind = SyncOperationReconcilers.parkedKind(for: handle.model) else { continue }
+            if await reconcile(handle.model, as: kind) { resolved += 1 }
+            guard outboundIsCurrent(scope, handle: handle) else { return }
         }
         if resolved > 0 {
             print("[DataActor] Parked-op sweep: \(resolved) reconciled against server state")
@@ -5602,8 +5675,10 @@ actor DataActor {
         entityType: String,
         entityId: String,
         operationType: String,
-        payload: [String: Any]
+        payload: [String: Any],
+        isCurrent: () -> Bool
     ) async throws {
+        guard isCurrent() else { throw CancellationError() }
         let companyId = UserDefaults.standard.string(forKey: "currentUserCompanyId") ?? ""
 
         if try await ProjectNoteMentionEditSync.executeIfHandled(
@@ -5614,6 +5689,7 @@ actor DataActor {
         ) {
             return
         }
+        guard isCurrent() else { throw CancellationError() }
         if try await TaskTypeMutationSync.executeIfHandled(
             entityType: entityType,
             operationType: operationType,
@@ -5624,6 +5700,7 @@ actor DataActor {
         // Time off and personal events. Owned here rather than by a switch case
         // below because the create also carries the notification that must not
         // fire until the server has the row (bug ef5a69e6).
+        guard isCurrent() else { throw CancellationError() }
         if try await CalendarUserEventOutboundSync.executeIfHandled(
             entityType: entityType,
             operationType: operationType,
@@ -5634,6 +5711,7 @@ actor DataActor {
             return
         }
 
+        guard isCurrent() else { throw CancellationError() }
         guard let syncEntityType = SyncEntityType(rawValue: entityType) else {
             print("[DataActor] Unknown entity type: \(entityType) — using generic table push")
             try await genericTablePush(entityType: entityType, entityId: entityId, operationType: operationType, payload: payload)

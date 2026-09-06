@@ -114,3 +114,27 @@ Update the existing deck persistence and recovery sections when merging the init
 > Embedded deck autosave and interruption boundaries persist both local drawing data and its durable outbox revision. A process-local, per-editor hold defers that design's uploads until actual editor disappearance; crash/restart leaves durable work eligible for ordinary recovery. Exit reuses the saved JSON. Thumbnail rendering decodes its own drawing/cache state on a serial worker and can update metadata only while the captured revision remains current and the editor stays closed. Historical task/deck/site-visit discovery runs at controlled launch/reconnect/manual/timer boundaries with background reads and scoped mutation batches. Ordinary online edits drain their outbox directly. The global sync pill reads a compact asynchronous attention summary; detailed RecoveryInventory stays on demand. Stage commands keep their original snapshot and identity through retry/recovery and remain parked after deleted-parent custody restoration until deliberately reviewed.
 
 No shared Bible or PM ledger was edited by this worker. Existing visual tokens, notification layout, and refresh timing are preserved. No new paid service, subscription, or upload route was introduced.
+
+## Combined core03 lifecycle crash follow-up
+
+PM reported 287 passing and five failing tests in the combined core03 run. Two failures crashed in `SyncOperation.operationType.getter` from the legacy driver's post-request catch block (`OutboundProcessor.executeOperation`, pre-fix line 518), after a preceding lead-capture fixture had queued a real asynchronous client drain and then released its container. Evidence was read from the integration tree's `docs/artifacts/ios-performance-combined/core03-relevant-diagnostics/test-stdout.txt`, `OPS-2026-09-06-135158.ips`, and `OPS-2026-09-06-135214.ips`. Both crash reports identify a model destroyed by `ModelContext.reset`. Fixture teardown releases its containers without waiting for the background drain. This supports the container-lifetime diagnosis; it is not a claim that the new regression has passed.
+
+The bounded repair retains both the container and context throughout each legacy drain, execution, and reconciliation. Both drivers capture immutable operation identifiers before suspension, check task cancellation, account identity, and owning-context registration before post-request model reads/writes, and release the shared claim using the captured UUID. `SyncEngine` invalidates the old processor and actor session synchronously before logout/reconfiguration. The actor's locked scalar generation prevents an invalidate/resume cycle from authorizing an old callback. Interrupted callbacks leave the persisted claim in progress for the existing recovery path without charging retry budget or acknowledging delivery.
+
+The validity predicate is also passed into P1-2's typed site-visit executor. **Integrate P1-2 `bad6ad3a` before compiling this follow-up** (P1-2's preceding fixture commit is `26e9936d`). Its verified source signature is `executeIfHandled(operation:context:activeCompanyId:isCurrent:isolation:)`, with `isCurrent: () -> Bool = { true }` and `isolation: isolated (any Actor)? = #isolation`. That companion change preserves the calling actor and checks the same validity at internal CRUD/media suspension points; those files were not copied or edited here. Repository routing, merge-base advancement, retry classification, and newer-revision acknowledgement rules remain in place.
+
+Seven synthetic, gated tests were authored in `OutboundLifecycleTests`: container-owner release during a failing request; invalidation during either success or failure; user/company replacement; task cancellation; invalidation before a synthetic in-memory reset; actor invalidation/resume during either success or failure; and successful completion of a current actor session. The latter also covers the normal claim rollback/refetch registration path. Injected repository closures prevent these tests from making real network writes. The synthetic reset exists only in test source and has not been executed by this worker.
+
+Source-only verification for this follow-up: frontend parse of the five changed/new Swift files and CRLF-aware whitespace validation both exited 0. No compilation, typecheck, XCTest, package resolution, simulator, or device commands were run. PM should use the existing serial integration command and include:
+
+```text
+-only-testing:OPSTests/OutboundLifecycleTests
+-only-testing:OPSTests/SiteVisitLeadCaptureTests
+-only-testing:OPSTests/OutboundProcessorTests
+-only-testing:OPSTests/OutboundRetryPolicyTests
+-only-testing:OPSTests/DeckEditingSessionTests
+-only-testing:OPSTests/ProjectNoteMentionEditTests
+-only-testing:OPSTests/SyncCrossEntityDependencyTests
+```
+
+The two originally crashing selectors are `SiteVisitLeadCaptureTests/test_createLead_queuesImmediatelyWhenOfflineInsteadOfBurningTheWait` and `SiteVisitLeadCaptureTests/test_queueDeliveredLeadBindsTheOpenVisit`; run the full class because the observed callback began in an earlier fixture. The other three core03 failures remain with P1-2. Parent Bible addition: outbound callbacks retain their storage owner and reject cancelled, replaced-account, unregistered-model, or obsolete-session continuations before stored-state acknowledgement; interrupted claims remain recoverable.

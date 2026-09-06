@@ -60,4 +60,23 @@ final class PhotoCacheLedgerTests: XCTestCase {
         ledger.release(id)
         XCTAssertNotNil(ledger.reserve(bytes: 4096, budget: 4096))
     }
+
+    func testOriginalAndThumbnailWritersSettleUsageDuringRemoteReservations() throws {
+        let photos = root.deletingLastPathComponent().appendingPathComponent("photos")
+        let thumbnails = root.deletingLastPathComponent().appendingPathComponent("thumbnails")
+        let ledger = PhotoCacheLedger(directories: [root, photos, thumbnails])
+        ledger.reconcile()
+        let reservation = try XCTUnwrap(ledger.reserve(bytes: 4096, budget: 8192))
+        let original = photos.appendingPathComponent("original.jpg")
+        let thumbnail = thumbnails.appendingPathComponent("original_thumb.jpg")
+        XCTAssertTrue(ledger.write(data: Data(repeating: 3, count: 8192), to: original, budget: nil))
+        XCTAssertTrue(ledger.write(data: Data(repeating: 4, count: 4096), to: thumbnail, budget: nil))
+        XCTAssertGreaterThanOrEqual(ledger.snapshot(), 12288)
+        XCTAssertFalse(ledger.write(data: Data(repeating: 8, count: 4096), to: root.appendingPathComponent("remote_reserved"), budget: 8192, reservation: reservation, allowEviction: false))
+        XCTAssertTrue(ledger.remove(original))
+        XCTAssertTrue(ledger.remove(thumbnail))
+        XCTAssertEqual(ledger.snapshot(), 0)
+        XCTAssertTrue(ledger.write(data: Data(repeating: 8, count: 4096), to: root.appendingPathComponent("remote_reserved"), budget: 8192, reservation: reservation, allowEviction: false))
+        XCTAssertEqual(ledger.snapshotCount, 1)
+    }
 }

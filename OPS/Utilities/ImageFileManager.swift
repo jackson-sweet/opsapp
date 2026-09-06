@@ -122,7 +122,7 @@ class ImageFileManager {
         guard let fileURL = getFileURL(for: localID) else { return false }
         let saved = PhotoCacheLedger.shared.write(
             data: data, to: fileURL,
-            budget: isRemoteCacheKey(localID) ? StorageProfiler.shared.budgetBytes : nil,
+            budget: isRemoteCacheKey(localID) ? StorageProfiler.budgetSnapshot() : nil,
             reservation: reservation, allowEviction: allowEviction,
             pinnedFilenames: loadPinnedRemoteFilenames()
         )

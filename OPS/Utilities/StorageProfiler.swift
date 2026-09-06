@@ -36,22 +36,22 @@ final class StorageProfiler {
 
     /// Hard floor — below this, OPS photo caching is effectively disabled.
     /// Chosen so a single site-visit batch (≈10 photos at 2 MB each) fits.
-    static let minBudget: Int64 = 200 * 1024 * 1024             // 200 MB
+    nonisolated static let minBudget: Int64 = 200 * 1024 * 1024             // 200 MB
 
     /// Hard ceiling — we never set a budget above this regardless of device size.
     /// Chosen as a reasonable limit for a work app; larger budgets are opt-in
     /// by the user via setBudget().
-    static let initialMaxBudget: Int64 = 5 * 1024 * 1024 * 1024 // 5 GB
+    nonisolated static let initialMaxBudget: Int64 = 5 * 1024 * 1024 * 1024 // 5 GB
 
     /// Fraction of device free space used for the initial calibration.
     private static let budgetPercentageOfFreeSpace: Double = 0.20
 
     /// Fallback when free-space can't be read. Large enough that small devices
     /// still get a reasonable budget; small enough not to overwhelm storage.
-    private static let fallbackFreeBytes: Int64 = 10 * 1024 * 1024 * 1024 // 10 GB
+    private nonisolated static let fallbackFreeBytes: Int64 = 10 * 1024 * 1024 * 1024 // 10 GB
 
     /// Fallback budget when not yet calibrated.
-    private static let fallbackBudget: Int64 = 2 * 1024 * 1024 * 1024    // 2 GB
+    private nonisolated static let fallbackBudget: Int64 = 2 * 1024 * 1024 * 1024    // 2 GB
 
     private init() {}
 
@@ -85,9 +85,13 @@ final class StorageProfiler {
     // MARK: - Queries
 
     /// Current budget in bytes. Returns a 2 GB fallback if not yet calibrated.
-    nonisolated var budgetBytes: Int64 {
-        let stored = Int64(UserDefaults.standard.integer(forKey: Key.budgetBytes))
-        return stored > 0 ? stored : Self.fallbackBudget
+    nonisolated var budgetBytes: Int64 { Self.budgetSnapshot() }
+
+    /// UserDefaults provides a thread-safe scalar read; cache writers need no
+    /// access to the main-actor profiler instance or a mutable UI setting.
+    nonisolated static func budgetSnapshot(defaults: UserDefaults = .standard) -> Int64 {
+        let stored = Int64(defaults.integer(forKey: Key.budgetBytes))
+        return stored > 0 ? stored : fallbackBudget
     }
 
     /// Current on-disk photo storage usage in bytes.

@@ -58,7 +58,7 @@ final class PhotoCacheLedger: @unchecked Sendable {
         }
     }
 
-    func release(_ id: UUID) { locked { reservations.removeValue(forKey: id) } }
+    func release(_ id: UUID) { _ = locked { reservations.removeValue(forKey: id) } }
 
     /// Atomic overwrite + actual allocated-byte settlement. Pending local originals
     /// bypass the cache budget and can never be selected for eviction.

@@ -88,7 +88,7 @@ actor PhotoThumbnailLoader {
     private let limiter: PhotoWorkLimiter
 
     init(
-        fetch: @escaping Fetch = PhotoThumbnailLoader.fetchRemote,
+        fetch: @escaping Fetch = { try await PhotoThumbnailLoader.fetchRemote($0) },
         localURL: @escaping LocalURL = { ImageFileManager.shared.getFileURL(for: $0) },
         compositeID: @escaping @Sendable (String) -> String = { ImageFileManager.shared.compositedReadLocalID(forURL: $0) },
         store: @escaping @Sendable (Data, String) -> Void = { _ = ImageFileManager.shared.saveImage(data: $0, localID: $1) },

@@ -25,6 +25,8 @@ Preserved unrelated iOS `docs/artifacts/task-groups/`; never staged it. Shared o
 
 After Jackson explicitly approves: re-read current ops-app schema/function fingerprints, then apply ONLY `/Users/jacksonsweet/Projects/OPS/.worktrees/ios-performance-p1-5/supabase/migrations/20260906171832_site_visit_stage_commands.sql` (SHA2562f642640d3be1fc273e6bef82ccdc9f0f149d9dac3bbf1fc950dd41b9df696a6), verify its live actor/company/permission/replay contracts and record applied migration in the Bible. It is a database-only dependency; no Vercel deployment is needed. Preserve the legacy move function; local MD5 proof34ce4987e8411de6bfbe8d93dcec7afa.
 
+Read-only signing preflight found1valid signing identity on this Mac; no signing/provisioning mutation was performed. Recheck identity/profile/device compatibility before installation.
+
 Then, with explicit phone installation approval, prepare/install a known optimized test build on the paired iPhone and measure the representative visit workflow online/offline/reconnect. Preserve actual phone data and current unfinished work. Build labels alone do not establish source provenance. Physical latency remains UNMEASURED; no speed percentage or customer-live claim. An App Store release/push remains a separate explicit gate.
 
 ## Automation

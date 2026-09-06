@@ -2281,12 +2281,12 @@ private struct SiteVisitArtifactThumbnail: View {
             RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius, style: .continuous)
                 .strokeBorder(OPSStyle.Colors.line, lineWidth: OPSStyle.Layout.hairlineWidth)
         )
-        .task(id: "\(artifact.previewAssetURL ?? artifact.id)::\(sourceRevision)::\(displayScale)") {
+        .task(id: "\(artifact.previewAssetURL ?? artifact.id)::\(artifact.localAssetURL ?? "")::\(sourceRevision)::\(displayScale)") {
             await loadImage()
         }
         .onReceive(NotificationCenter.default.publisher(for: .photoThumbnailSourceChanged)) { notification in
             let source = notification.userInfo?["sourceURL"] as? String
-            if source == artifact.previewAssetURL || source == artifact.localAssetURL { sourceRevision += 1 }
+            if source == "*" || source == artifact.previewAssetURL || source == artifact.localAssetURL { sourceRevision += 1 }
         }
     }
 

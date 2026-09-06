@@ -105,6 +105,60 @@ final class DurableCaptureStoreTests: XCTestCase {
         catch {}
     }
 
+    func testDirectReopenReportsCorruptManifestWithoutRemovingSuccessfulSibling() async throws {
+        let journal = store()
+        let data = await fixture()
+        let batch = try await journal.create(owner: owner)
+        let item = try await journal.stage(data: data, batchID: batch.id)
+        let corrupt = scratch.appendingPathComponent("Journal").appendingPathComponent(UUID().uuidString.lowercased()).appendingPathExtension("json")
+        try Data("invalid-json".utf8).write(to: corrupt)
+        do { _ = try await journal.recover(owner: owner); XCTFail("Direct reopen must report unreadable custody") } catch {}
+        do { _ = try await journal.failedItems(owner: owner); XCTFail("Failed-item discovery must report unreadable custody") } catch {}
+        let good = try await journal.retainedBatch(batchID: batch.id, owner: owner)
+        XCTAssertEqual(good.items, [item])
+        XCTAssertEqual(try Data(contentsOf: file(item.originalLocalURL)), data)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: corrupt.path))
+        try FileManager.default.removeItem(at: corrupt) // Only the synthetic damaged fixture.
+        let reopened = try await store().recover(owner: owner)
+        XCTAssertEqual(reopened.flatMap(\.items), [item])
+    }
+
+    func testDeliveryRetiresBytesOnlyAfterReceiptAndRetriesInterruptedManifestWrite() async throws {
+        let journal = store()
+        let batch = try await journal.create(owner: owner)
+        let data = await fixture()
+        let item = try await journal.stage(data: data, batchID: batch.id)
+        try await journal.acknowledge(batchID: batch.id, itemIDs: [item.id])
+        XCTAssertEqual(try Data(contentsOf: file(item.originalLocalURL)), data)
+        let failing = store { data, url in
+            if url.pathExtension == "json" { throw CocoaError(.fileWriteOutOfSpace) }
+            try data.write(to: url, options: .atomic)
+        }
+        do { try await failing.recordDelivered(localURLs: [item.localURL]); XCTFail("Expected manifest write failure") } catch {}
+        XCTAssertEqual(try Data(contentsOf: file(item.originalLocalURL)), data)
+        _ = try await store().recover(owner: owner)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: file(item.originalLocalURL).path))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: file(item.localURL).path))
+        // A delayed camera acknowledgment after successful destination delivery is safe.
+        try await journal.acknowledge(batchID: batch.id, itemIDs: [item.id])
+        let retained = try await journal.retainedBatch(batchID: batch.id, owner: owner)
+        XCTAssertTrue(retained.items.isEmpty)
+    }
+
+    func testDraftCanExplicitlyDiscardAnUnpreparedOriginalWithoutDecodingIt() async throws {
+        let draftOwner = StagedCaptureOwner(companyID: owner.companyID, userID: owner.userID, contextID: "project-draft:project-a")
+        let journal = store()
+        let batch = try await journal.create(owner: draftOwner)
+        let id = UUID().uuidString.lowercased()
+        do { _ = try await journal.stage(data: Data("not-an-image".utf8), batchID: batch.id, itemID: id); XCTFail("Expected decode failure") } catch {}
+        let metadata = try await journal.retainedBatch(batchID: batch.id, owner: draftOwner, prepareImages: false)
+        XCTAssertEqual(metadata.items.map(\.id), [id])
+        try await journal.discardDraft(batchID: batch.id, owner: draftOwner, itemIDs: [id])
+        let retained = try await journal.retainedBatches(owner: draftOwner)
+        XCTAssertTrue(retained.isEmpty)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: file(metadata.items[0].originalLocalURL).path))
+    }
+
     @MainActor
     private func fixture() -> Data {
         let format = UIGraphicsImageRendererFormat(); format.scale = 1

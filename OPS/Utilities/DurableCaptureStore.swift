@@ -29,7 +29,7 @@ struct StagedCaptureBatch: Codable, Equatable, Identifiable, Sendable {
 }
 
 enum CaptureStagingError: Error {
-    case invalidImage, invalidIdentity, incompatibleManifest, missingOriginal, writeFailed
+    case invalidImage, invalidIdentity, incompatibleManifest, missingOriginal, writeFailed, closedDraft
 }
 
 /// A versioned file journal, separate from SwiftData schema history. Every intent
@@ -42,6 +42,7 @@ actor DurableCaptureStore {
         var batch: StagedCaptureBatch
         var acknowledged: Set<String> = []
         var discarded: Set<String> = []
+        var delivered: Set<String>? = nil
     }
     typealias Writer = @Sendable (Data, URL) throws -> Void
     private let root: URL
@@ -111,12 +112,15 @@ actor DurableCaptureStore {
     }
 
     func recover(owner: StagedCaptureOwner) throws -> [StagedCaptureBatch] {
+        try recordDelivered(localURLs: [])
         guard FileManager.default.fileExists(atPath: root.path) else { return [] }
         let files = try FileManager.default.contentsOfDirectory(at: root, includingPropertiesForKeys: nil)
         var recovered: [StagedCaptureBatch] = []
         for file in files.sorted(by: { $0.lastPathComponent < $1.lastPathComponent }) where file.pathExtension == "json" {
-            // Unknown/corrupt journals are retained, never removed or reassigned.
-            guard var manifest = try? read(file.deletingPathExtension().lastPathComponent), manifest.batch.owner == owner else { continue }
+            // A damaged journal has unknown ownership. Surface the read failure
+            // instead of treating this exact-owner reopen as an empty camera.
+            var manifest = try read(file.deletingPathExtension().lastPathComponent)
+            guard manifest.batch.owner == owner else { continue }
             var pending: [StagedCaptureItem] = []
             for item in manifest.batch.items where !manifest.acknowledged.contains(item.id) && !manifest.discarded.contains(item.id) {
                 guard FileManager.default.fileExists(atPath: fileURL(item.originalLocalURL).path) else { continue }
@@ -134,12 +138,43 @@ actor DurableCaptureStore {
 
     /// Failed siblings remain owned and visible in camera review; successfully
     /// prepared siblings can still be recovered/committed independently.
+    func retainedBatch(batchID: String, owner: StagedCaptureOwner, prepareImages: Bool = true) throws -> StagedCaptureBatch {
+        let manifest = try read(batchID)
+        guard manifest.batch.owner == owner else { throw CaptureStagingError.invalidIdentity }
+        let retained = manifest.batch.items.filter { !manifest.discarded.contains($0.id) && !(manifest.delivered ?? []).contains($0.id) }
+        return StagedCaptureBatch(id: batchID, owner: owner, items: prepareImages ? try retained.map { try prepare($0) } : retained)
+    }
+
+    /// Metadata only: destination reopen can settle delivered items even when
+    /// an earlier disk failure interrupted retirement after local model healing.
+    func retainedBatches(owner: StagedCaptureOwner) throws -> [StagedCaptureBatch] {
+        guard FileManager.default.fileExists(atPath: root.path) else { return [] }
+        return try FileManager.default.contentsOfDirectory(at: root, includingPropertiesForKeys: nil)
+            .filter { $0.pathExtension == "json" }.compactMap { file in
+                let manifest = try read(file.deletingPathExtension().lastPathComponent)
+                guard manifest.batch.owner == owner else { return nil }
+                let items = manifest.batch.items.filter { !manifest.discarded.contains($0.id) && !(manifest.delivered ?? []).contains($0.id) }
+                return items.isEmpty ? nil : StagedCaptureBatch(id: manifest.batch.id, owner: owner, items: items)
+            }
+    }
+
+    /// Draft receipts own acknowledged photos before a project exists. Only an
+    /// explicit draft discard may release these, and the exact owner is required.
+    func discardDraft(batchID: String, owner: StagedCaptureOwner, itemIDs: Set<String>) throws {
+        guard owner.contextID.hasPrefix("project-draft:") else { throw CaptureStagingError.invalidIdentity }
+        var manifest = try read(batchID)
+        guard manifest.batch.owner == owner, itemIDs.isSubset(of: Set(manifest.batch.items.map(\.id))), (manifest.delivered ?? []).isDisjoint(with: itemIDs) else { throw CaptureStagingError.invalidIdentity }
+        manifest.acknowledged.subtract(itemIDs)
+        try save(manifest)
+        try discard(batchID: batchID, itemIDs: itemIDs)
+    }
+
     func failedItems(owner: StagedCaptureOwner) throws -> [StagedCaptureBatch] {
         guard FileManager.default.fileExists(atPath: root.path) else { return [] }
         let files = try FileManager.default.contentsOfDirectory(at: root, includingPropertiesForKeys: nil)
-        return files.compactMap { file in
-            guard file.pathExtension == "json", let manifest = try? read(file.deletingPathExtension().lastPathComponent),
-                  manifest.batch.owner == owner else { return nil }
+        return try files.filter { $0.pathExtension == "json" }.compactMap { file in
+            let manifest = try read(file.deletingPathExtension().lastPathComponent)
+            guard manifest.batch.owner == owner else { return nil }
             let failed = manifest.batch.items.filter {
                 !manifest.acknowledged.contains($0.id) && !manifest.discarded.contains($0.id)
                     && (!FileManager.default.fileExists(atPath: fileURL($0.localURL).path) || $0.pixelWidth == 0)
@@ -150,6 +185,40 @@ actor DurableCaptureStore {
 
     func originalData(for item: StagedCaptureItem) -> Data? {
         try? Data(contentsOf: fileURL(item.originalLocalURL), options: .mappedIfSafe)
+    }
+
+    /// Called only with exact canonical-delivery receipts after local healing.
+    /// Retire duplicate source/JPEG bytes; compact metadata keeps old ack/replay
+    /// IDs valid without retaining an unbounded protected photo cache.
+    func recordDelivered(localURLs: Set<String>) throws {
+        guard FileManager.default.fileExists(atPath: root.path) else { return }
+        let receiptURL = root.appendingPathComponent("retirements.pending")
+        var pending = FileManager.default.fileExists(atPath: receiptURL.path)
+            ? try JSONDecoder().decode(Set<String>.self, from: Data(contentsOf: receiptURL)) : []
+        pending.formUnion(localURLs.filter { $0.hasPrefix("local://project_images/capture_") })
+        guard !pending.isEmpty else { return }
+        try JSONEncoder().encode(pending).write(to: receiptURL, options: .atomic)
+        for file in try FileManager.default.contentsOfDirectory(at: root, includingPropertiesForKeys: nil) where file.pathExtension == "json" {
+            // An unrelated damaged manifest cannot destroy a delivery receipt.
+            guard var manifest = try? read(file.deletingPathExtension().lastPathComponent) else { continue }
+            let delivered = manifest.batch.items.filter { pending.contains($0.localURL) }
+            guard !delivered.isEmpty else { continue }
+            manifest.delivered = (manifest.delivered ?? []).union(delivered.map(\.id))
+            manifest.acknowledged.formUnion(delivered.map(\.id))
+            try save(manifest)
+            for item in delivered {
+                var removed = true
+                for id in [item.originalLocalURL, item.localURL] {
+                    let url = fileURL(id)
+                    if let ledger { removed = ledger.remove(url) && removed }
+                    else if FileManager.default.fileExists(atPath: url.path) {
+                        do { try FileManager.default.removeItem(at: url) } catch { removed = false }
+                    }
+                }
+                if removed { pending.remove(item.localURL) }
+            }
+        }
+        try JSONEncoder().encode(pending).write(to: receiptURL, options: .atomic)
     }
 
     func acknowledge(batchID: String, itemIDs: Set<String>) throws {

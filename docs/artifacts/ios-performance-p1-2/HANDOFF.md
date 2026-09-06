@@ -11,19 +11,22 @@ Baseline: `94543f955ca8a2ccee4cc148c24c6d33de92cccc`. Apply these local commits 
 3. `ca26d189` — finalized `already_satisfied` receipt, no-transition validation and replay tests.
 4. `344c3c7b` — dedicated capture contexts; isolated queue-binding, dimensioned-photo and pending-work deletion adapters; unsaved-other-visit tests; compiler predicate/actor fixes.
 5. `835f0a1a` — thumbnail refresh for wildcard cache invalidation and fallback-source changes.
+6. `fad0e453` — actual entry/template/deck-host isolation, complete Opportunity snapshots, full queue cache-entry isolation and corresponding fixtures.
 
 P1-3 media APIs through `c528e1b0` are implemented prerequisites. These visit adapters do not depend on P1-3's remaining non-visit camera adapters. New files use existing synchronized Xcode groups; there are no persistent model/schema or project-file changes. P1-5's finalized SQL contract includes `already_satisfied`; production migration is not applied and remains a separate gate.
 
 ## Final ownership and transaction contract
 
 - Each `SiteVisitCaptureViewModel` retains its own ModelContext for its lifetime. `isolatedSession()` creates it from the same container with autosave disabled and preserves injected encoder/validator closures. No caller-context pending values are copied, saved or rolled back.
-- The three other reachable shared-context mutation callers are migrated: `ClientLeadAutocreateQueue.bindSiteVisitDrafts`, `SiteVisitDimensionedCaptureStore.persist`, and `PendingWorkView.deleteVisitPacket`. They fetch/insert their records in independently owned contexts. Dimensioned capture resolves its persisted artifact ID back in the caller's context, without inserting a registered foreign model. DeckBuilder continues to use the capture View's original context; the visit adapter copies design IDs/text only.
-- Lead inputs from another context are detached display snapshots. Queue-delivered lead binding reads a fresh context and transfers scalar identity through the owned capture transaction; it does not move registered models or replace active text buffers across contexts.
+- The three other reachable shared-context mutation callers are migrated: `ClientLeadAutocreateQueue.bindSiteVisitDrafts`, `SiteVisitDimensionedCaptureStore.persist`, and `PendingWorkView.deleteVisitPacket`. They fetch/insert their records in independently owned contexts. Dimensioned capture resolves its persisted artifact ID back in the caller's context, without inserting a registered foreign model. The console, creation picker and DeckBuilder inherit the VM-owned context through the real root view environment. The typed deck-host save keeps failed drawings for the next DECK tap, reports the failure, and opens the editor only after the row and visit link persist.
+- Lead inputs from another context are detached display snapshots using the complete canonical Opportunity.apply method, including nonzero assignmentVersion, summary, images and coordinates. The queue's preceding applyLocalDelivery cache insert also has its own context, so no pre-binding shared save remains. Queue-delivered lead binding reads a fresh context and transfers scalar identity through the owned capture transaction; it does not move registered models or replace active text buffers across contexts.
 - The compatible `commit(completing:stageCommand:revisedMediaArtifactIds:mutation:)` wrapper remains. A caller without explicit context ownership must begin with a clean context; pre-existing pending changes cause rejection before its mutation closure runs. All reachable shared production mutation callers now use owned contexts, so unrelated WIP is not a routine-save blocker.
 - Ordinary commits inspect only their owned context's changed/inserted visit entities and fetch unresolved operations for those IDs plus exact parent IDs. Completed history is not materialized. A per-transaction entity/type/media index and ID index handle coalescing/dependencies. The empty SyncOperation-table workaround uses a predicate-free count and pending insertion list.
 - Missing never-synced parents are queued before children. Unchanged parent/media owners retain parked/declined decisions; changed identity/answer/note/inclusion guards avoid no-op saves. Metadata edits do not revive stopped media; explicit new markup does.
 - Completion fetches only the exact visit graph's unresolved tail and inserts a distinct command. Stage commands are excluded from CRUD coalescing and completion's live barrier. Rollback affects only the owned context and rematerializes held row/operation references.
 - `recoverOrphanedWrites(siteVisitIds: Set<String>? = nil)` stays source compatible for P1-4. Candidate/company/UUID scope is supported and existing pending/inProgress/failed/parked/declined owners are preserved. Ordinary save never invokes repair. P1-4 owns the background recovery context and scheduling.
+
+- Capture entry's ensureSiteVisitTypesSeeded uses an isolated SiteVisitTypeSeedStore. Templates and queue entries save together, permissions/stopped owners are preserved, and a no-op seed does not save any context. The actual opening path never saves the controller's unrelated pending edits.
 
 ## Product behavior
 
@@ -46,13 +49,14 @@ The existing Codable outbox payload holds the stable command UUID, original acto
 
 ## Verification performed and authored
 
-`static-verification.json` records all 23 changed Swift files passing frontend syntax parsing, preserved CRLF boundaries, and zero new literal color/font/spacing/radius violations in changed visit UI. `git diff --check` passes. These are source checks only. The PM's earlier combined compile found a complex predicate and actor-conversion warning; `344c3c7b` splits the predicate and uses the nonisolated classifier. Those fixes have not yet been typechecked by this worker.
+`static-verification.json` records all 27 changed Swift files passing frontend syntax parsing, preserved CRLF boundaries, and zero new literal color/font/spacing/radius violations in changed visit UI. `git diff --check` passes. These are source checks only. The PM's earlier combined compile found a complex predicate and actor-conversion warning; `344c3c7b` splits the predicate and uses the nonisolated classifier. Those fixes have not yet been typechecked by this worker.
 
 Authored synthetic tests cover:
 
 - 30 visits, 149 artifacts, 283 answers, 25 identity drafts and 2,625 completed operations plus stopped media owners: one target edit asserts one changed/encoded entity and one loaded operation. No elapsed-time claim.
 - Isolated coordinator and actual VM paths: another visit's pending note, answer and newly inserted draft keep their memory values while its prior stored values remain unchanged on both success and failure. A later deliberate save of B must not overwrite A.
 - 1,000 unsaved unrelated drafts: one owned edit produces one boundary snapshot and no persisted unrelated drafts.
+- Actual entry seed success/failure/no-op with B pending, real deck-host save failure/retry with B pending, full queue arrival cache+binding isolation, and complete initial/reassigned lead snapshots.
 - Rollback rematerialization, exact orphan candidates, metadata versus new markup retry, draft versus completion, explicit new/resume, staged-photo deduplication/foreign-owner rejection/failure replay, local suggestions under held networking, frozen late-stage snapshots, durable stage dependency, offline parked custody and settle-only historical receipts.
 
 All fixtures/photo URLs are synthetic. No XCTest has run in this worker, and there is no visual, device-frame-time or customer-live proof. P1-3 owns filesystem/original/thumbnail failure tests; P1-4 owns recovery scheduling and deck/sync tests. PM owns the Bible and final combined proof.
@@ -72,6 +76,7 @@ xcodebuild test -project OPS.xcodeproj -scheme OPS \
   -only-testing:OPSTests/SiteVisitPersistenceCoordinatorTests \
   -only-testing:OPSTests/SiteVisitContinuityTests \
   -only-testing:OPSTests/SiteVisitSearchSourceTests \
+  -only-testing:OPSTests/SiteVisitTypeSeedStoreTests \
   -only-testing:OPSTests/SiteVisitStageDeliveryTests \
   -only-testing:OPSTests/SiteVisitLeadCaptureTests \
   -only-testing:OPSTests/SiteVisitCapturePacketTests \

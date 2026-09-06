@@ -40,6 +40,10 @@ struct PendingLeadImageUpload: Codable, Equatable, Identifiable {
     let displayID: String?
     /// Preserves selection order for photos staged in the same batch.
     let batchIndex: Int?
+    let journalID: String?
+    let originalLocalURL: String?
+    let userID: String?
+    var uploadedURL: String?
 
     var id: String { displayID ?? localURL }
 
@@ -49,7 +53,11 @@ struct PendingLeadImageUpload: Codable, Equatable, Identifiable {
         companyId: String,
         timestamp: Date,
         displayID: String? = nil,
-        batchIndex: Int? = nil
+        batchIndex: Int? = nil,
+        journalID: String? = nil,
+        originalLocalURL: String? = nil,
+        userID: String? = nil,
+        uploadedURL: String? = nil
     ) {
         self.localURL = localURL
         self.opportunityId = opportunityId
@@ -57,6 +65,10 @@ struct PendingLeadImageUpload: Codable, Equatable, Identifiable {
         self.timestamp = timestamp
         self.displayID = displayID
         self.batchIndex = batchIndex
+        self.journalID = journalID
+        self.originalLocalURL = originalLocalURL
+        self.userID = userID
+        self.uploadedURL = uploadedURL
     }
 }
 
@@ -110,6 +122,9 @@ final class LeadImageService: ObservableObject {
                 object: nil
             )
         }
+        if backgroundWorkEnabled {
+            Task { await restoreStagedImages() }
+        }
         if backgroundWorkEnabled && !pendingUploads.isEmpty {
             startRetryTimerIfNeeded()
             Task {
@@ -141,18 +156,45 @@ final class LeadImageService: ObservableObject {
         to opportunity: Opportunity,
         reservationIDs: [String] = []
     ) async -> AddResult {
-        let result = stageImages(
-            images,
-            opportunityId: opportunity.id,
-            companyId: opportunity.companyId,
-            reservationIDs: reservationIDs
-        )
+        // Snapshot model identity before suspending; only immutable metadata and
+        // UIImage sources enter the serial background stager.
+        let opportunityID = opportunity.id
+        let companyID = opportunity.companyId
+        let userID = defaults.string(forKey: "currentUserId")?.lowercased()
+        let timestamp = Date()
+        var result = AddResult()
+        for (index, image) in images.enumerated() {
+            let id = UUID().uuidString.lowercased()
+            let displayID = reservationIDs.indices.contains(index) ? reservationIDs[index] : id
+            let pending = PendingLeadImageUpload(
+                localURL: "local://project_images/lead_\(id).jpg",
+                opportunityId: opportunityID, companyId: companyID, timestamp: timestamp,
+                displayID: displayID, batchIndex: index, journalID: id,
+                originalLocalURL: "local://project_images/lead_\(id).original", userID: userID
+            )
+            do {
+                let staged = try await LeadImageStager.shared.stage(image, pending: pending)
+                if !pendingUploads.contains(where: { $0.localURL == staged.localURL }) { pendingUploads.append(staged) }
+                savePendingUploads()
+                result.queuedCount += 1
+            } catch {
+                if await LeadImageStager.shared.hasOriginal(pending) {
+                    pendingUploads.append(pending)
+                    savePendingUploads()
+                    result.queuedCount += 1
+                } else { result.failedCount += 1 }
+            }
+        }
         if result.queuedCount > 0, backgroundWorkEnabled {
+            startRetryTimerIfNeeded()
             Task { await drain() }
         }
         return result
     }
 
+    /// Compatibility-only synchronous entry point. Production import uses
+    /// addImages, which awaits the background, per-item durable stager.
+    @available(*, deprecated, message: "Use addImages for background durable staging")
     @discardableResult
     func stageImages(
         _ images: [UIImage],
@@ -204,10 +246,13 @@ final class LeadImageService: ObservableObject {
     /// record + bytes.
     func deleteImage(_ url: String, from opportunity: Opportunity) async -> Bool {
         if url.hasPrefix("local://") {
-            pendingUploads.removeAll { $0.localURL == url }
-            savePendingUploads()
-            _ = ImageFileManager.shared.deleteImage(localID: url)
-            return true
+            let selected = pendingUploads.filter { $0.localURL == url }
+            do {
+                for pending in selected { try await LeadImageStager.shared.finish(pending) }
+                pendingUploads.removeAll { $0.localURL == url }
+                savePendingUploads()
+                return true
+            } catch { return false }
         }
 
         do {
@@ -231,7 +276,8 @@ final class LeadImageService: ObservableObject {
 
     func queuedImage(for pending: PendingLeadImageUpload) -> UIImage? {
         guard pending.localURL.hasPrefix("local://"),
-              let data = ImageFileManager.shared.getImageData(localID: pending.localURL) else {
+              let data = ImageFileManager.shared.getImageData(localID: pending.localURL)
+                ?? pending.originalLocalURL.flatMap({ ImageFileManager.shared.getImageData(localID: $0) }) else {
             return nil
         }
         return UIImage(data: data)
@@ -249,70 +295,71 @@ final class LeadImageService: ObservableObject {
         isDraining = true
         let snapshot = pendingUploads
 
-        var stillPending: [PendingLeadImageUpload] = []
-        var mergedByOpportunity: [String: (companyId: String, urls: [String])] = [:]
-
         for pending in snapshot {
-            if pending.localURL.hasPrefix("local://") {
-                guard let data = ImageFileManager.shared.getImageData(localID: pending.localURL) else {
-                    // Bytes are gone (storage cleanup) — nothing recoverable.
+            guard !Task.isCancelled, pendingUploads.contains(where: { $0.localURL == pending.localURL }) else { continue }
+            do {
+                guard try await LeadImageStager.shared.isActive(pending) else {
+                    pendingUploads.removeAll { $0.localURL == pending.localURL }
+                    savePendingUploads()
                     continue
                 }
-                do {
-                    let url = try await uploader.uploadImageData(
-                        data,
-                        filename: (pending.localURL as NSString).lastPathComponent,
-                        folder: LeadImageStoragePath.folder(
-                            companyId: pending.companyId,
-                            opportunityId: pending.opportunityId
-                        )
+                guard canDeliver(pending) else { continue }
+                var current = try await LeadImageStager.shared.current(pending)
+                let remoteURL: String
+                if let uploaded = current.uploadedURL {
+                    remoteURL = uploaded
+                } else if pending.localURL.hasPrefix("local://") {
+                    guard let data = try await LeadImageStager.shared.uploadData(pending) else { continue }
+                    remoteURL = try await uploader.uploadImageData(
+                        data, filename: (pending.localURL as NSString).lastPathComponent,
+                        folder: LeadImageStoragePath.folder(companyId: pending.companyId, opportunityId: pending.opportunityId)
                     )
-                    _ = ImageFileManager.shared.deleteImage(localID: pending.localURL)
-                    mergedByOpportunity[pending.opportunityId, default: (pending.companyId, [])].urls.append(url)
-                } catch {
-                    stillPending.append(pending)
-                }
-            } else {
-                mergedByOpportunity[pending.opportunityId, default: (pending.companyId, [])].urls.append(pending.localURL)
-            }
+                    guard pendingUploads.contains(where: { $0.localURL == pending.localURL }) else { continue }
+                    current = try await LeadImageStager.shared.recordRemote(pending, url: remoteURL)
+                    if let index = pendingUploads.firstIndex(where: { $0.localURL == pending.localURL }) {
+                        pendingUploads[index] = current
+                        savePendingUploads()
+                    }
+                } else { remoteURL = pending.localURL }
+                guard !Task.isCancelled, canDeliver(current), pendingUploads.contains(where: { $0.localURL == pending.localURL }) else { continue }
+                let repo = OpportunityRepository(companyId: current.companyId)
+                let dto = try await repo.appendImages([remoteURL], to: current.opportunityId)
+                applyEcho(dto, to: nil, opportunityId: current.opportunityId)
+                // Retain original + upload JPEG until both S3 and the lead row
+                // confirm custody. A failed merge retries the recorded remote URL.
+                try await LeadImageStager.shared.finish(current)
+                pendingUploads.removeAll { $0.localURL == pending.localURL }
+                savePendingUploads()
+            } catch { continue }
         }
-
-        for (opportunityId, entry) in mergedByOpportunity {
-            do {
-                let repo = OpportunityRepository(companyId: entry.companyId)
-                let dto = try await repo.appendImages(entry.urls, to: opportunityId)
-                applyEcho(dto, to: nil, opportunityId: opportunityId)
-            } catch {
-                // Row merge still failing — keep the URLs queued (as merge-only
-                // records; any local bytes were already uploaded + cleared).
-                for url in entry.urls {
-                    stillPending.append(PendingLeadImageUpload(
-                        localURL: url,
-                        opportunityId: opportunityId,
-                        companyId: entry.companyId,
-                        timestamp: Date()
-                    ))
-                }
-            }
-        }
-
-        let appendedDuringDrain = pendingUploads.contains { current in
-            !snapshot.contains { $0.localURL == current.localURL }
-        }
-        pendingUploads = LeadImagePendingQueue.reconciling(
-            current: pendingUploads,
-            drainedSnapshot: snapshot,
-            stillPendingFromSnapshot: stillPending
-        )
-        savePendingUploads()
         isDraining = false
+        let appendedDuringDrain = pendingUploads.contains { current in !snapshot.contains { $0.localURL == current.localURL } }
         let shouldDrainAgain = drainRequested || appendedDuringDrain
         drainRequested = false
-        if pendingUploads.isEmpty {
-            stopRetryTimer()
-        } else if shouldDrainAgain, backgroundWorkEnabled {
-            Task { await drain() }
-        }
+        if pendingUploads.isEmpty { stopRetryTimer() }
+        else if shouldDrainAgain, backgroundWorkEnabled { Task { await drain() } }
+    }
+
+    private func canDeliver(_ item: PendingLeadImageUpload) -> Bool {
+        guard defaults.string(forKey: "currentUserCompanyId")?.lowercased() == item.companyId.lowercased() else { return false }
+        if let expectedUser = item.userID { return defaults.string(forKey: "currentUserId")?.lowercased() == expectedUser }
+        return true // Legacy records did not persist user identity.
+    }
+
+    private func restoreStagedImages() async {
+        guard let company = defaults.string(forKey: "currentUserCompanyId"),
+              let user = defaults.string(forKey: "currentUserId") else { return }
+        do {
+            let recovered = try await LeadImageStager.shared.recover(companyID: company, userID: user)
+            guard defaults.string(forKey: "currentUserCompanyId") == company,
+                  defaults.string(forKey: "currentUserId") == user else { return }
+            for item in recovered {
+                if let index = pendingUploads.firstIndex(where: { $0.localURL == item.localURL }) { pendingUploads[index] = item }
+                else { pendingUploads.append(item) }
+            }
+            savePendingUploads()
+            if !pendingUploads.isEmpty { startRetryTimerIfNeeded(); await drain() }
+        } catch { print("[LEAD_IMAGES] Staged photo recovery remains pending: \(error)") }
     }
 
     // MARK: - Local model healing

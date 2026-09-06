@@ -1091,6 +1091,9 @@ final class SiteVisitCaptureViewModel: ObservableObject {
             if draft.address.trimmedNilIfEmpty == nil {
                 draft.address = client.address ?? ""
             }
+            if draft.notes.trimmedNilIfEmpty == nil {
+                draft.notes = client.notes ?? ""
+            }
             draft.touch()
             if let visit = siteVisit {
                 visit.address = draft.address.trimmedNilIfEmpty ?? visit.address
@@ -1165,25 +1168,19 @@ final class SiteVisitCaptureViewModel: ObservableObject {
 
         var upsertedClient: Client?
         do {
-            let upserted = try await upsertClientFromIdentityDraft(
+            let upserted = try upsertClientFromIdentityDraft(
                 draft,
                 clientName: clientName,
                 dataController: dataController
             )
             let client = upserted.client
             upsertedClient = client
-            try await createMissingSubContacts(
-                from: draft,
-                client: client,
-                dataController: dataController
-            )
-
-            // A client this draft just created exists LOCALLY first, and the
-            // guarded RPC refuses a lead whose client the server cannot see
-            // (`client_not_found_in_company`, 22023) — rolling the whole
-            // transaction back. Wait for the parent before writing the child.
-            // Clients we merely updated are already server-side.
-            if upserted.isNew {
+            // A retry can resolve a previously saved client whose create is
+            // still pending or stopped. Local existence is not server proof.
+            if upserted.createState == .rejected {
+                return handOffLeadDelivery(client, draft: draft, offline: false)
+            }
+            if upserted.createState == .inFlight {
                 switch await awaitClientServerVisibility(clientId: client.id) {
                 case .visible:
                     break
@@ -1718,120 +1715,22 @@ final class SiteVisitCaptureViewModel: ObservableObject {
         draft.touch()
     }
 
-    /// A client the lead-create path resolved, and whether this call is what
-    /// brought it into existence. Only a brand-new client needs the
-    /// server-visibility wait — an updated one is already server-side.
-    private struct UpsertedIdentityClient {
-        let client: Client
-        let isNew: Bool
-    }
-
     private func upsertClientFromIdentityDraft(
         _ draft: SiteVisitIdentityDraft,
         clientName: String,
         dataController: DataController
-    ) async throws -> UpsertedIdentityClient {
-        if let clientId = draft.clientId?.trimmedNilIfEmpty,
-           let existing = fetchClient(id: clientId) {
-            try await dataController.updateClientContact(
-                clientId: existing.id,
-                name: clientName,
-                email: draft.preferredEmail.trimmedNilIfEmpty,
-                phone: draft.phoneNumber.trimmedNilIfEmpty,
-                address: draft.address.trimmedNilIfEmpty
-            )
-            if let notes = draft.notes.trimmedNilIfEmpty {
-                try await dataController.updateClientNotes(clientId: existing.id, notes: notes)
-            }
-            return UpsertedIdentityClient(client: fetchClient(id: existing.id) ?? existing, isNew: false)
+    ) throws -> SiteVisitIdentityClientStore.Result {
+        var saved: SiteVisitIdentityClientStore.Result?
+        try persistenceCoordinator.commit {
+            saved = try SiteVisitIdentityClientStore.upsert(draft: draft,
+                clientName: clientName, companyId: companyId, context: modelContext)
         }
-
-        let clientId = UUID().uuidString.lowercased()
-        let dto = SupabaseClientDTO(
-            id: clientId,
-            bubbleId: nil,
-            companyId: companyId,
-            name: clientName,
-            email: draft.preferredEmail.trimmedNilIfEmpty,
-            phoneNumber: draft.phoneNumber.trimmedNilIfEmpty,
-            address: draft.address.trimmedNilIfEmpty,
-            latitude: nil,
-            longitude: nil,
-            notes: draft.notes.trimmedNilIfEmpty,
-            profileImageUrl: nil,
-            deletedAt: nil
-        )
-        _ = try await dataController.createClient(dto: dto)
-        guard persistSiteVisitChanges({
-            draft.clientId = clientId
-            draft.touch()
-        }) else {
-            throw SiteVisitCaptureViewModelError.localSaveFailed
-        }
-
-        if let created = fetchClient(id: clientId) {
-            return UpsertedIdentityClient(client: created, isNew: true)
-        }
-
-        let fallback = Client(
-            id: clientId,
-            name: clientName,
-            email: draft.preferredEmail.trimmedNilIfEmpty,
-            phoneNumber: draft.phoneNumber.trimmedNilIfEmpty,
-            address: draft.address.trimmedNilIfEmpty,
-            companyId: companyId,
-            notes: draft.notes.trimmedNilIfEmpty
-        )
-        fallback.needsSync = true
-        guard persistSiteVisitChanges({
-            modelContext.insert(fallback)
-        }) else {
-            throw SiteVisitCaptureViewModelError.localSaveFailed
-        }
-        dataController.triggerBackgroundSync()
-        return UpsertedIdentityClient(client: fallback, isNew: true)
+        // Never return a newly inserted model after a transaction rollback.
+        guard let saved else { throw SiteVisitCaptureViewModelError.localSaveFailed }
+        if saved.queuedWork { dataController.syncEngine.notifyDurableOperationQueued() }
+        return saved
     }
 
-    private func createMissingSubContacts(
-        from draft: SiteVisitIdentityDraft,
-        client: Client,
-        dataController: DataController
-    ) async throws {
-        let primaryEmail = draft.preferredEmail.trimmedNilIfEmpty?.lowercased()
-        let existingEmails = Set(
-            client.subClients
-                .compactMap { $0.email?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() }
-        )
-        let additionalEmails = draft.additionalEmails
-            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-            .filter { !$0.isEmpty }
-            .filter { $0.lowercased() != primaryEmail }
-            .filter { !existingEmails.contains($0.lowercased()) }
-
-        guard !additionalEmails.isEmpty else { return }
-        let contactName = draft.contactName.trimmedNilIfEmpty ?? client.name
-        for email in additionalEmails {
-            _ = try await dataController.createSubClient(
-                clientId: client.id,
-                name: contactName,
-                title: "Site contact",
-                email: email,
-                phone: nil,
-                address: draft.address.trimmedNilIfEmpty,
-                companyId: companyId
-            )
-        }
-    }
-
-    private func fetchClient(id: String) -> Client? {
-        let clientId = id
-        let descriptor = FetchDescriptor<Client>(
-            predicate: #Predicate<Client> { client in
-                client.id == clientId
-            }
-        )
-        return try? modelContext.fetch(descriptor).first
-    }
 
     private func upsertLocalOpportunity(_ incoming: Opportunity) -> Opportunity {
         let opportunityId = incoming.id

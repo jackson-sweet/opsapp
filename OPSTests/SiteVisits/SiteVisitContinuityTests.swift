@@ -316,8 +316,11 @@ final class SiteVisitContinuityTests: XCTestCase {
         })
         media.status = "declined"; media.retryCount = 5; try context.save()
         XCTAssertTrue(vm.saveMarkup(artifact, renderedAssetURL: url))
-        XCTAssertEqual(media.status, "pending")
-        XCTAssertEqual(media.retryCount, 0)
+        let fresh = ModelContext(context.container)
+        let mediaId = media.id
+        let persisted = try XCTUnwrap(fresh.fetch(FetchDescriptor<SyncOperation>(predicate: #Predicate { $0.id == mediaId })).first)
+        XCTAssertEqual(persisted.status, "pending")
+        XCTAssertEqual(persisted.retryCount, 0)
     }
 
     private func stageCommand(in context: ModelContext) throws -> SiteVisitStageCommand {

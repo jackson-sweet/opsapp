@@ -12,6 +12,7 @@ final class SiteVisitSearchSourceTests: XCTestCase {
         context.insert(Client(id: "foreign", name: "Synthetic foreign", companyId: "other-company"))
         try context.save()
         let gate = SearchGate()
+        defer { gate.cancelAll() }
         let source = SiteVisitSearchSource(search: { _, query in try await gate.search(query) })
         source.loadLocalClients(context: context, companyId: "company")
         XCTAssertEqual(source.clients.map(\.id), ["local"])
@@ -24,6 +25,7 @@ final class SiteVisitSearchSourceTests: XCTestCase {
 
     func test_lateSearchCannotOverwriteNewestQueryOrCrossAccountResults() async throws {
         let gate = SearchGate()
+        defer { gate.cancelAll() }
         let source = SiteVisitSearchSource(search: { _, query in try await gate.search(query) })
         let old = Task { await source.refresh(query: "old", companyId: "company", userId: "actor") }
         await gate.waitForRequest("old")
@@ -43,17 +45,41 @@ final class SiteVisitSearchSourceTests: XCTestCase {
         return try JSONDecoder().decode(OpportunityDTO.self, from: JSONSerialization.data(withJSONObject: row))
     }
 
+    @MainActor
     private final class SearchGate {
         private var requests: [String: CheckedContinuation<[OpportunityDTO], Error>] = [:]
+        private var registrations: [String: XCTestExpectation] = [:]
+        private var cancelledQueries = Set<String>()
         func search(_ query: String) async throws -> [OpportunityDTO] {
-            try await withCheckedThrowingContinuation { requests[query] = $0 }
+            try Task.checkCancellation()
+            guard !cancelledQueries.contains(query) else { throw CancellationError() }
+            return try await withTaskCancellationHandler {
+                try await withCheckedThrowingContinuation { continuation in
+                    requests[query] = continuation
+                    registrations.removeValue(forKey: query)?.fulfill()
+                }
+            } onCancel: {
+                Task { @MainActor in self.cancel(query) }
+            }
         }
         func waitForRequest(_ query: String) async {
-            for _ in 0..<100 where requests[query] == nil { await Task.yield() }
-            XCTAssertNotNil(requests[query])
+            if requests[query] != nil { return }
+            let registered = XCTestExpectation(description: "Search registered: \(query)")
+            registrations[query] = registered
+            let result = await XCTWaiter.fulfillment(of: [registered], timeout: 5)
+            if result != .completed { cancel(query) }
+            XCTAssertEqual(result, .completed, "The request must be registered before delivering its response")
         }
         func finish(_ query: String, rows: [OpportunityDTO]) {
             requests.removeValue(forKey: query)?.resume(returning: rows)
+        }
+        private func cancel(_ query: String) {
+            cancelledQueries.insert(query)
+            requests.removeValue(forKey: query)?.resume(throwing: CancellationError())
+            registrations.removeValue(forKey: query)?.fulfill()
+        }
+        func cancelAll() {
+            for query in Set(requests.keys).union(registrations.keys) { cancel(query) }
         }
     }
 }

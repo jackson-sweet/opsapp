@@ -317,9 +317,19 @@ final class SiteVisitLeadCaptureTests: XCTestCase {
             clientId: "client-x",
             title: "Corinne Robertson — lead"
         ).toModel()
-        harness.context.insert(delivered)
-        harness.viewModel.identityDraft?.opportunityId = "opp-delivered"
-        try harness.context.save()
+        let deliveryContext = ModelContext(harness.context.container)
+        deliveryContext.insert(delivered)
+        let draft = try XCTUnwrap(deliveryContext.fetch(FetchDescriptor<SiteVisitIdentityDraft>(
+            predicate: #Predicate { $0.siteVisitId == visitId }
+        )).first)
+        draft.opportunityId = delivered.id
+        draft.lastCommittedAt = Date()
+        draft.touch()
+        let visit = try XCTUnwrap(deliveryContext.fetch(FetchDescriptor<SiteVisit>(
+            predicate: #Predicate { $0.id == visitId }
+        )).first)
+        visit.opportunityId = delivered.id
+        try deliveryContext.save()
 
         NotificationCenter.default.post(
             name: Notification.Name("SiteVisitLeadBound"),

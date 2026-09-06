@@ -324,6 +324,179 @@ final class SiteVisitPersistenceCoordinatorTests: XCTestCase {
         XCTAssertEqual(operations[0].entityId.lowercased(), visitId)
     }
 
+    func test_historyHeavyEditDoesNotEncodeOrReviveOtherVisits() throws {
+        let context = try makeContainer().mainContext
+        var encodedEntities: [String] = []
+        let coordinator = SiteVisitPersistenceCoordinator(modelContext: context, companyId: companyId,
+            encodeOperation: { payload in
+                encodedEntities.append(payload.entityId)
+                return try JSONEncoder().encode(payload)
+            })
+        let target = makeVisit()
+        try coordinator.commit { context.insert(target) }
+        var stopped: [SyncOperation] = []
+        for index in 0..<29 {
+            let visit = SiteVisit(companyId: companyId, createdBy: userId)
+            context.insert(visit)
+            let photo = SiteVisitCaptureArtifact(siteVisitId: visit.id, companyId: companyId,
+                kind: .photo, source: .camera, localAssetURL: "local://project_images/fixture-\(index).jpg")
+            context.insert(photo)
+            let spec = SiteVisitSyncOperation.media(photo)
+            let op = SyncOperation(entityType: spec.entityType.rawValue, entityId: spec.entityId,
+                operationType: spec.operationType, payload: try JSONEncoder().encode(spec.payload), changedFields: [])
+            op.status = index.isMultiple(of: 2) ? "declined" : "parked"
+            op.retryCount = 9
+            op.lastError = "Fixture rejection"
+            stopped.append(op)
+            context.insert(op)
+        }
+        let otherIds = try context.fetch(FetchDescriptor<SiteVisit>()).map(\.id).filter { $0 != target.id }
+        for index in 0..<120 {
+            context.insert(SiteVisitCaptureArtifact(siteVisitId: otherIds[index % otherIds.count], companyId: companyId,
+                kind: .note, source: .keyboard, body: "Synthetic historical note"))
+        }
+        for index in 0..<283 {
+            context.insert(SiteVisitChecklistAnswer(siteVisitId: otherIds[index % otherIds.count], companyId: companyId,
+                opportunityId: nil, siteVisitTypeId: nil, fieldId: "field-\(index)", label: "Synthetic field",
+                kind: .shortText, required: false, sortOrder: index, answerValue: .text("Historical answer")))
+        }
+        for id in otherIds.prefix(25) {
+            context.insert(SiteVisitIdentityDraft(siteVisitId: id, companyId: companyId, notes: "Synthetic identity note"))
+        }
+        for _ in 0..<2_625 {
+            let op = SyncOperation(entityType: "siteVisit", entityId: UUID().uuidString.lowercased(),
+                operationType: "update", payload: Data(), changedFields: [])
+            op.status = "completed"
+            context.insert(op)
+        }
+        try context.save()
+        encodedEntities.removeAll()
+        let result = try coordinator.commit {
+            target.notes = "Only this visit changed"
+            target.updatedAt = Date()
+        }
+        XCTAssertEqual(encodedEntities, [target.id])
+        XCTAssertEqual(coordinator.lastChangedEntityCount, 1)
+        XCTAssertEqual(coordinator.lastLoadedOperationCount, 1)
+        XCTAssertEqual(result.operationIds.count, 1)
+        XCTAssertTrue(stopped.allSatisfy { $0.status == "parked" || $0.status == "declined" })
+        XCTAssertTrue(stopped.allSatisfy { $0.retryCount == 9 && $0.lastError == "Fixture rejection" })
+    }
+
+    func test_preexistingUnsavedChangesAndInsertionsAreOutsideMutationBoundary() throws {
+        let context = try makeContainer().mainContext
+        let coordinator = SiteVisitPersistenceCoordinator(modelContext: context, companyId: companyId)
+        let target = makeVisit()
+        let other = SiteVisit(companyId: companyId, createdBy: userId)
+        try coordinator.commit { context.insert(target); context.insert(other) }
+        let otherOp = try XCTUnwrap(context.fetch(FetchDescriptor<SyncOperation>()).first { $0.entityId == other.id })
+        otherOp.status = "parked"
+        otherOp.retryCount = 7
+        try context.save()
+        // Shared-context WIP exists BEFORE this transaction starts.
+        other.notes = "Another console is editing this"
+        other.updatedAt = Date()
+        let insertedElsewhere = SiteVisit(companyId: companyId, createdBy: userId)
+        context.insert(insertedElsewhere)
+        let result = try coordinator.commit {
+            target.notes = "Target edit"
+            target.updatedAt = Date()
+        }
+        XCTAssertEqual(result.operationIds.count, 1)
+        XCTAssertEqual(otherOp.status, "parked")
+        XCTAssertEqual(otherOp.retryCount, 7)
+        XCTAssertFalse(try context.fetch(FetchDescriptor<SyncOperation>()).contains { $0.entityId == insertedElsewhere.id })
+    }
+
+    func test_alreadyDirtyTargetStillQueuesItsActualRevision() throws {
+        let context = try makeContainer().mainContext
+        let coordinator = SiteVisitPersistenceCoordinator(modelContext: context, companyId: companyId)
+        let visit = makeVisit()
+        try coordinator.commit { context.insert(visit) }
+        visit.notes = "Preexisting buffer"
+        let result = try coordinator.commit { visit.notes = "Actual transaction revision" }
+        XCTAssertEqual(result.operationIds.count, 1)
+    }
+
+    func test_noMutationDoesNotReviveStoppedOperation() throws {
+        let context = try makeContainer().mainContext
+        let coordinator = SiteVisitPersistenceCoordinator(modelContext: context, companyId: companyId)
+        let visit = makeVisit()
+        try coordinator.commit { context.insert(visit) }
+        let op = try XCTUnwrap(context.fetch(FetchDescriptor<SyncOperation>()).first)
+        op.status = "declined"
+        try context.save()
+        let result = try coordinator.commit {}
+        XCTAssertTrue(result.operationIds.isEmpty)
+        XCTAssertEqual(op.status, "declined")
+    }
+
+    func test_failedEditRematerializesHeldModelAndQueueReferences() throws {
+        let context = try makeContainer().mainContext
+        let initial = SiteVisitPersistenceCoordinator(modelContext: context, companyId: companyId)
+        let visit = makeVisit()
+        try initial.commit { context.insert(visit) }
+        let operation = try XCTUnwrap(context.fetch(FetchDescriptor<SyncOperation>()).first)
+        operation.status = "parked"
+        operation.retryCount = 4
+        try context.save()
+        let failing = SiteVisitPersistenceCoordinator(modelContext: context, companyId: companyId,
+            validateCommit: { throw FixtureError.transactionRejected })
+        XCTAssertThrowsError(try failing.commit { visit.notes = "Rejected edit" })
+        XCTAssertNil(visit.notes)
+        XCTAssertEqual(operation.status, "parked")
+        XCTAssertEqual(operation.retryCount, 4)
+    }
+
+    func test_candidateScopedRecoveryDoesNotEnqueueOutsideExactVisitIds() throws {
+        let context = try makeContainer().mainContext
+        let target = makeVisit()
+        let other = SiteVisit(companyId: companyId, createdBy: userId)
+        context.insert(target); context.insert(other)
+        let answer = SiteVisitChecklistAnswer(siteVisitId: other.id, companyId: companyId,
+            opportunityId: nil, siteVisitTypeId: nil, fieldId: "outside", label: "Other field",
+            kind: .shortText, required: false, sortOrder: 1)
+        context.insert(answer); try context.save()
+        let coordinator = SiteVisitPersistenceCoordinator(modelContext: context, companyId: companyId)
+        let recovered = try coordinator.recoverOrphanedWrites(siteVisitIds: [target.id])
+        XCTAssertEqual(recovered.operationIds.count, 1)
+        let operations = try context.fetch(FetchDescriptor<SyncOperation>())
+        XCTAssertEqual(operations.map(\.entityId), [target.id])
+    }
+
+    func test_throwingMutationRestoresHeldReferenceBeforeQueueConstruction() throws {
+        let context = try makeContainer().mainContext
+        let coordinator = SiteVisitPersistenceCoordinator(modelContext: context, companyId: companyId)
+        let visit = makeVisit()
+        try coordinator.commit { context.insert(visit) }
+        XCTAssertThrowsError(try coordinator.commit {
+            visit.notes = "Rejected before queue construction"
+            throw FixtureError.transactionRejected
+        })
+        XCTAssertNil(visit.notes)
+    }
+
+    func test_metadataEditDoesNotReviveStoppedMediaButNewMarkupDoes() throws {
+        let context = try makeContainer().mainContext
+        let coordinator = SiteVisitPersistenceCoordinator(modelContext: context, companyId: companyId)
+        let visit = makeVisit()
+        let artifact = SiteVisitCaptureArtifact(siteVisitId: visit.id, companyId: companyId,
+            kind: .photo, source: .camera, localAssetURL: "local://project_images/original.jpg")
+        try coordinator.commit { context.insert(visit); context.insert(artifact) }
+        let media = try XCTUnwrap(context.fetch(FetchDescriptor<SyncOperation>()).first {
+            $0.operationType == SiteVisitSyncOperation.mediaOperationType
+        })
+        media.status = "declined"; media.retryCount = 6; try context.save()
+        try coordinator.commit { artifact.includedInProjectReview = false }
+        XCTAssertEqual(media.status, "declined")
+        XCTAssertEqual(media.retryCount, 6)
+        try coordinator.commit(revisedMediaArtifactIds: [artifact.id]) {
+            artifact.renderedAssetURL = "local://project_images/new-markup.jpg"
+        }
+        XCTAssertEqual(media.status, "pending")
+        XCTAssertEqual(media.retryCount, 0)
+    }
+
     private func makeVisit() -> SiteVisit {
         SiteVisit(
             id: visitId,

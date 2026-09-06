@@ -20,17 +20,20 @@ struct SiteVisitOutboundSync {
     private let repositoryFactory: RepositoryFactory
     private let mediaManager: SiteVisitMediaSyncManager
     private let sessionUserId: () -> String?
+    private let deliverStage: SiteVisitStageTransport.Deliver
 
     init(
         repositoryFactory: @escaping RepositoryFactory = { companyId in
             await MainActor.run { SiteVisitRepository(companyId: companyId) }
         },
         mediaManager: SiteVisitMediaSyncManager = SiteVisitMediaSyncManager(),
-        sessionUserId: @escaping () -> String? = { SiteVisitAuthorHeal.sessionUserId() }
+        sessionUserId: @escaping () -> String? = { SiteVisitAuthorHeal.sessionUserId() },
+        deliverStage: @escaping SiteVisitStageTransport.Deliver = SiteVisitStageTransport.deliver
     ) {
         self.repositoryFactory = repositoryFactory
         self.mediaManager = mediaManager
         self.sessionUserId = sessionUserId
+        self.deliverStage = deliverStage
     }
 
     static func isSiteVisitOperation(_ operation: SyncOperation) -> Bool {
@@ -111,6 +114,7 @@ struct SiteVisitOutboundSync {
                   isSiteVisitOperation(candidate),
                   candidate.operationType
                     != SiteVisitSyncOperation.completionOperationType,
+                  candidate.operationType != SiteVisitSyncOperation.stageOperationType,
                   unresolvedStatuses.contains(candidate.status),
                   !dependsTransitively(candidate, on: operation, in: operations),
                   let candidateEnvelope = try? JSONDecoder().decode(
@@ -186,10 +190,12 @@ struct SiteVisitOutboundSync {
         var result = ordered.filter {
             $0.operationType == SiteVisitSyncOperation.completionOperationType
                 || $0.operationType == SiteVisitSyncOperation.mediaOperationType
+                || $0.operationType == SiteVisitSyncOperation.stageOperationType
         }
         let crud = ordered.filter {
             $0.operationType != SiteVisitSyncOperation.completionOperationType
                 && $0.operationType != SiteVisitSyncOperation.mediaOperationType
+                && $0.operationType != SiteVisitSyncOperation.stageOperationType
         }
         let groups = Dictionary(grouping: crud) {
             "\($0.entityType)::\($0.entityId.lowercased())"
@@ -247,6 +253,24 @@ struct SiteVisitOutboundSync {
             throw SyncError.encodingFailed(
                 detail: "Site-visit operation entity id does not match its envelope"
             )
+        }
+
+        if operation.operationType == SiteVisitSyncOperation.stageOperationType {
+            guard let command = envelope.stageCommand,
+                  command.companyId.lowercased() == activeCompany,
+                  command.siteVisitId.lowercased() == envelope.siteVisitId.lowercased(),
+                  command.siteVisitId.lowercased() == envelope.entityId.lowercased(),
+                  command.actorId.lowercased() == sessionUserId()?.lowercased() else {
+                throw SyncError.serverError(statusCode: 409, message: "ORIGINAL ACCOUNT REQUIRED FOR STAGE DELIVERY")
+            }
+            guard command.canDeliver else {
+                throw SyncError.serverError(statusCode: 409, message: "STAGE REVIEW REQUIRED · OPEN LEAD")
+            }
+            let result = try await deliverStage(command)
+            try result.validate(for: command)
+            // The durable receipt is authoritative for this command only.
+            // Never apply a historical stage to a newer local opportunity.
+            return true
         }
 
         if operation.operationType == SiteVisitSyncOperation.mediaOperationType {
@@ -599,6 +623,7 @@ struct SiteVisitOutboundSync {
                 && $0.operationType
                     != SiteVisitSyncOperation.completionOperationType
                 && $0.operationType != SiteVisitSyncOperation.mediaOperationType
+                && $0.operationType != SiteVisitSyncOperation.stageOperationType
                 && Self.unresolvedStatuses.contains($0.status)
         }
     }

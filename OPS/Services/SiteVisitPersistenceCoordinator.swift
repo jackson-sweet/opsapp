@@ -45,6 +45,11 @@ final class SiteVisitPersistenceCoordinator {
         "pending", "inProgress", "failed", "parked", "declined",
     ]
 
+    /// Bounded work-count evidence; does not contain operator data.
+    private(set) var lastChangedEntityCount = 0
+    private(set) var lastLoadedOperationCount = 0
+
+    private var transactionOperationIds: Set<UUID> = []
     private let modelContext: ModelContext
     private let companyId: String
     private let encodeOperation: OperationEncoder
@@ -69,15 +74,32 @@ final class SiteVisitPersistenceCoordinator {
     @discardableResult
     func commit(
         completing visit: SiteVisit? = nil,
+        stageCommand: SiteVisitStageCommand? = nil,
+        revisedMediaArtifactIds: Set<String> = [],
         mutation: () throws -> Void
     ) throws -> CommitResult {
         var queuedIds: [UUID] = []
         var completionId: UUID?
+        let boundary = SiteVisitMutationBoundary(context: modelContext)
+        var changed: [any PersistentModel] = []
+        var changedRows: [SiteVisitMutationBoundary.Row] = []
+        transactionOperationIds = []
 
         do {
             try modelContext.transaction {
-                try mutation()
-                let result = try queueDirtyGraphs()
+                defer { changedRows = changed.map(SiteVisitMutationBoundary.Row.init) }
+                do {
+                    try mutation()
+                } catch {
+                    // Preserve identities before transaction unwinding clears
+                    // the context's change list, so held rows can be refreshed.
+                    changed = boundary.changedEntities(in: modelContext)
+                    throw error
+                }
+                changed = boundary.changedEntities(in: modelContext)
+                lastChangedEntityCount = changed.count
+                lastLoadedOperationCount = 0
+                let result = try queueChangedEntities(changed, completing: visit, revisedMediaArtifactIds: revisedMediaArtifactIds)
                 queuedIds = result.operationIds
 
                 if let visit {
@@ -88,6 +110,27 @@ final class SiteVisitPersistenceCoordinator {
                     )
                     queuedIds.append(completion.id)
                     completionId = completion.id
+                    if let stageCommand {
+                        guard stageCommand.siteVisitId.lowercased() == visit.id.lowercased(),
+                              stageCommand.companyId.lowercased() == companyId,
+                              stageCommand.opportunityId.lowercased() == visit.opportunityId?.lowercased() else {
+                            throw SyncError.encodingFailed(detail: "Stage command does not belong to this visit")
+                        }
+                        let payload = SiteVisitSyncOperation.Payload(companyId: companyId,
+                            siteVisitId: visit.id, entityId: visit.id, stageCommand: stageCommand)
+                        let stage = SyncOperation(entityType: SyncEntityType.siteVisit.rawValue,
+                            entityId: visit.id.lowercased(), operationType: SiteVisitSyncOperation.stageOperationType,
+                            payload: try encodeOperation(payload), changedFields: ["stage"], priority: 1,
+                            dependsOnId: completion.id.uuidString.lowercased())
+                        if !stageCommand.canDeliver {
+                            stage.status = "parked"
+                            stage.lastError = "STAGE REVIEW REQUIRED · OPEN LEAD"
+                        }
+                        modelContext.insert(stage)
+                        queuedIds.append(stage.id)
+                    }
+                } else if stageCommand != nil {
+                    throw SyncError.encodingFailed(detail: "Stage command requires visit completion")
                 }
 
                 // Test seam for a transaction/store failure after every model
@@ -96,6 +139,14 @@ final class SiteVisitPersistenceCoordinator {
             }
         } catch {
             modelContext.rollback()
+            for row in changedRows { row.rematerialize(in: modelContext) }
+            if (try? modelContext.fetchCount(FetchDescriptor<SyncOperation>())) ?? 0 > 0 {
+                for id in transactionOperationIds {
+                    _ = try? modelContext.fetch(FetchDescriptor<SyncOperation>(
+                        predicate: #Predicate { $0.id == id }
+                    ))
+                }
+            }
             throw Error.transactionFailed(error)
         }
 
@@ -114,6 +165,13 @@ final class SiteVisitPersistenceCoordinator {
         answers: [SiteVisitChecklistAnswer],
         drafts: [SiteVisitIdentityDraft]
     ) throws {
+        guard visit.lastSyncedAt == nil, visit.bookedAt == nil, visit.loggedActivityId == nil,
+              visit.completedAt == nil,
+              artifacts.allSatisfy({ $0.lastSyncedAt == nil }),
+              answers.allSatisfy({ $0.lastSyncedAt == nil }), drafts.allSatisfy({ $0.lastSyncedAt == nil }),
+              !SiteVisitContentPolicy.hasContent(visit: visit, artifacts: artifacts, answers: answers, drafts: drafts) else {
+            throw SyncError.encodingFailed(detail: "Visit still owns captured or synced work")
+        }
         let entityIds = Set(
             ([visit.id] + artifacts.map(\.id) + answers.map(\.id) + drafts.map(\.id))
                 .map { $0.lowercased() }
@@ -142,14 +200,16 @@ final class SiteVisitPersistenceCoordinator {
     /// flight, exhausted, or parked. This is intentionally company-scoped and
     /// never auto-revives a permanent rejection.
     @discardableResult
-    func recoverOrphanedWrites() throws -> CommitResult {
+    func recoverOrphanedWrites(siteVisitIds: Set<String>? = nil) throws -> CommitResult {
         var queuedIds: [UUID] = []
+        let normalizedIds = siteVisitIds.map { Set($0.map { $0.lowercased() }) }
         do {
             try modelContext.transaction {
-                let result = try queueDirtyGraphs(onlyOrphans: true)
+                let result = try queueDirtyGraphs(onlyOrphans: true, siteVisitIds: normalizedIds)
                 queuedIds = result.operationIds
                 try repairCompletionDependencies(
-                    chainTips: result.chainTips
+                    chainTips: result.chainTips,
+                    siteVisitIds: normalizedIds
                 )
                 try validateCommit()
             }
@@ -168,9 +228,11 @@ final class SiteVisitPersistenceCoordinator {
     /// operation for the same visit so priority sorting can never complete the
     /// visit before its packet exists on the server.
     private func repairCompletionDependencies(
-        chainTips: [String: String]
+        chainTips: [String: String],
+        siteVisitIds: Set<String>? = nil
     ) throws {
-        let operations = try modelContext.fetch(FetchDescriptor<SyncOperation>())
+        let operations = try siteVisitIds.map { try fetchOperations(entityIds: $0) }
+            ?? modelContext.fetch(FetchDescriptor<SyncOperation>())
         for completion in operations where
             completion.operationType == SiteVisitSyncOperation.completionOperationType
                 && Self.unresolvedStatuses.contains(completion.status)
@@ -180,15 +242,18 @@ final class SiteVisitPersistenceCoordinator {
                 from: completion.payload
             ), belongsToCompany(payload.companyId) else { continue }
             let visitId = payload.siteVisitId.lowercased()
+            guard siteVisitIds == nil || siteVisitIds!.contains(visitId) else { continue }
             if let chainTip = chainTips[visitId] {
                 completion.dependsOnId = chainTip
                 continue
             }
+            if siteVisitIds != nil { continue }
             completion.dependsOnId = operations
                 .filter { operation in
                     guard operation.id != completion.id,
                           operation.operationType
                             != SiteVisitSyncOperation.completionOperationType,
+                          operation.operationType != SiteVisitSyncOperation.stageOperationType,
                           Self.unresolvedStatuses.contains(operation.status),
                           let otherPayload = try? JSONDecoder().decode(
                             SiteVisitSyncOperation.Payload.self,
@@ -209,16 +274,36 @@ final class SiteVisitPersistenceCoordinator {
     }
 
     private func queueDirtyGraphs(
-        onlyOrphans: Bool = false
+        onlyOrphans: Bool = false,
+        siteVisitIds: Set<String>? = nil
     ) throws -> QueueResult {
-        var operations = try modelContext.fetch(FetchDescriptor<SyncOperation>())
         var queuedIds: [UUID] = []
         var chainTips: [String: String] = [:]
-
-        let visits = try modelContext.fetch(FetchDescriptor<SiteVisit>())
-            .filter { belongsToCompany($0.companyId) }
-            .sorted { $0.createdAt < $1.createdAt }
-        let visitIds = Set(visits.map { $0.id.lowercased() })
+        let companies = [companyId, companyId.uppercased()]
+        let requestedIds = siteVisitIds.map { Array(Set($0.flatMap { [$0.lowercased(), $0.uppercased()] })) }
+        let visits: [SiteVisit]
+        if let requestedIds {
+            visits = try modelContext.fetch(FetchDescriptor<SiteVisit>(predicate: #Predicate {
+                companies.contains($0.companyId) && requestedIds.contains($0.id)
+            }, sortBy: [SortDescriptor(\.createdAt)]))
+        } else {
+            visits = try modelContext.fetch(FetchDescriptor<SiteVisit>(predicate: #Predicate {
+                companies.contains($0.companyId)
+            }, sortBy: [SortDescriptor(\.createdAt)]))
+        }
+        let ids = Array(Set(visits.flatMap { [$0.id.lowercased(), $0.id.uppercased()] }))
+        let visitIds = Set(ids.map { $0.lowercased() })
+        guard !ids.isEmpty else { return QueueResult(operationIds: [], chainTips: [:]) }
+        let artifacts = try modelContext.fetch(FetchDescriptor<SiteVisitCaptureArtifact>(predicate: #Predicate {
+            companies.contains($0.companyId) && ids.contains($0.siteVisitId)
+        }, sortBy: [SortDescriptor(\.createdAt)]))
+        let answers = try modelContext.fetch(FetchDescriptor<SiteVisitChecklistAnswer>(predicate: #Predicate {
+            companies.contains($0.companyId) && ids.contains($0.siteVisitId) && $0.needsSync
+        }, sortBy: [SortDescriptor(\.createdAt)]))
+        let drafts = try modelContext.fetch(FetchDescriptor<SiteVisitIdentityDraft>(predicate: #Predicate {
+            companies.contains($0.companyId) && ids.contains($0.siteVisitId) && $0.needsSync
+        }, sortBy: [SortDescriptor(\.createdAt)]))
+        var operations = try fetchOperations(entityIds: Set(ids + artifacts.map(\.id) + answers.map(\.id) + drafts.map(\.id)))
 
         for visit in visits where visit.needsSync {
             let specification = SiteVisitSyncOperation.parent(visit)
@@ -235,9 +320,6 @@ final class SiteVisitPersistenceCoordinator {
             chainTips[visit.id.lowercased()] = operation.id.uuidString.lowercased()
         }
 
-        let artifacts = try modelContext.fetch(FetchDescriptor<SiteVisitCaptureArtifact>())
-            .filter { belongsToCompany($0.companyId) }
-            .sorted { $0.createdAt < $1.createdAt }
         for artifact in artifacts where artifact.needsSync {
             let visitId = artifact.siteVisitId.lowercased()
             guard visitIds.contains(visitId) else { continue }
@@ -259,9 +341,6 @@ final class SiteVisitPersistenceCoordinator {
             chainTips[visitId] = operation.id.uuidString.lowercased()
         }
 
-        let answers = try modelContext.fetch(FetchDescriptor<SiteVisitChecklistAnswer>())
-            .filter { belongsToCompany($0.companyId) && $0.needsSync }
-            .sorted { $0.createdAt < $1.createdAt }
         for answer in answers {
             let visitId = answer.siteVisitId.lowercased()
             guard visitIds.contains(visitId) else { continue }
@@ -283,9 +362,6 @@ final class SiteVisitPersistenceCoordinator {
             chainTips[visitId] = operation.id.uuidString.lowercased()
         }
 
-        let drafts = try modelContext.fetch(FetchDescriptor<SiteVisitIdentityDraft>())
-            .filter { belongsToCompany($0.companyId) && $0.needsSync }
-            .sorted { $0.createdAt < $1.createdAt }
         for draft in drafts {
             let visitId = draft.siteVisitId.lowercased()
             guard visitIds.contains(visitId) else { continue }
@@ -338,6 +414,178 @@ final class SiteVisitPersistenceCoordinator {
         return QueueResult(operationIds: distinctOperationIds, chainTips: chainTips)
     }
 
+    /// Transaction-local work only. The snapshot boundary excludes pre-existing
+    /// unsaved edits, including another console's inserted objects.
+    private func queueChangedEntities(_ changed: [any PersistentModel], completing visitToComplete: SiteVisit?,
+                                      revisedMediaArtifactIds: Set<String>) throws -> QueueResult {
+        let changedVisits = changed.compactMap { $0 as? SiteVisit }
+            .filter { belongsToCompany($0.companyId) }
+        let artifacts = changed.compactMap { $0 as? SiteVisitCaptureArtifact }
+            .filter { belongsToCompany($0.companyId) }
+        let answers = changed.compactMap { $0 as? SiteVisitChecklistAnswer }
+            .filter { belongsToCompany($0.companyId) }
+        let drafts = changed.compactMap { $0 as? SiteVisitIdentityDraft }
+            .filter { belongsToCompany($0.companyId) }
+        let specifications = artifacts.map(SiteVisitSyncOperation.artifact)
+            + answers.map(SiteVisitSyncOperation.checklistAnswer)
+            + drafts.map(SiteVisitSyncOperation.identityDraft)
+        let visitIds = Set(changedVisits.map { $0.id.lowercased() }
+            + specifications.map { $0.payload.siteVisitId })
+        guard !visitIds.isEmpty else { return QueueResult(operationIds: [], chainTips: [:]) }
+        var visits = changedVisits
+        for id in visitIds where !visits.contains(where: { $0.id.lowercased() == id }) {
+            let upper = id.uppercased()
+            var descriptor = FetchDescriptor<SiteVisit>(predicate: #Predicate {
+                $0.id == id || $0.id == upper
+            })
+            descriptor.fetchLimit = 1
+            if let parent = try modelContext.fetch(descriptor).first,
+               belongsToCompany(parent.companyId) { visits.append(parent) }
+        }
+        let validVisitIds = Set(visits.map { $0.id.lowercased() })
+        var entityIds = visitIds.union(specifications.map { $0.entityId })
+        if let visitToComplete {
+            let id = visitToComplete.id
+            entityIds.formUnion(try modelContext.fetch(FetchDescriptor<SiteVisitCaptureArtifact>(
+                predicate: #Predicate { $0.siteVisitId == id })).map(\.id))
+            entityIds.formUnion(try modelContext.fetch(FetchDescriptor<SiteVisitChecklistAnswer>(
+                predicate: #Predicate { $0.siteVisitId == id })).map(\.id))
+            entityIds.formUnion(try modelContext.fetch(FetchDescriptor<SiteVisitIdentityDraft>(
+                predicate: #Predicate { $0.siteVisitId == id })).map(\.id))
+        }
+        let operations = try fetchOperations(entityIds: entityIds)
+        lastLoadedOperationCount = operations.count
+        var index = OperationIndex(operations)
+        var queued: [UUID] = []
+        var tips: [String: String] = [:]
+        let revisedVisitIds = Set(changedVisits.map { $0.id.lowercased() })
+        for visit in visits.sorted(by: { $0.createdAt < $1.createdAt }) {
+            let specification = SiteVisitSyncOperation.parent(visit)
+            if let owner = index.owner(specification), !revisedVisitIds.contains(visit.id.lowercased()) {
+                tips[visit.id.lowercased()] = owner.id.uuidString.lowercased()
+                continue
+            }
+            guard revisedVisitIds.contains(visit.id.lowercased()) || visit.lastSyncedAt == nil else { continue }
+            let operation = try enqueueScoped(specification, dependency: nil, index: &index)
+            queued.append(operation.id)
+            tips[visit.id.lowercased()] = operation.id.uuidString.lowercased()
+        }
+        for specification in specifications where validVisitIds.contains(specification.payload.siteVisitId) {
+            let operation = try enqueueScoped(specification,
+                dependency: tips[specification.payload.siteVisitId], index: &index)
+            queued.append(operation.id)
+            tips[specification.payload.siteVisitId] = operation.id.uuidString.lowercased()
+        }
+        for artifact in artifacts where artifact.isActive && needsMediaUpload(artifact)
+            && validVisitIds.contains(artifact.siteVisitId.lowercased()) {
+            let specification = SiteVisitSyncOperation.media(artifact)
+            // Metadata edits never revive an existing stopped media upload.
+            // The media sender resolves current local variants on explicit retry.
+            if let owner = index.owner(specification), !revisedMediaArtifactIds.contains(artifact.id.lowercased()) {
+                tips[artifact.siteVisitId.lowercased()] = owner.id.uuidString.lowercased()
+                continue
+            }
+            let operation = try enqueueScoped(specification,
+                dependency: tips[artifact.siteVisitId.lowercased()], index: &index)
+            queued.append(operation.id)
+            tips[artifact.siteVisitId.lowercased()] = operation.id.uuidString.lowercased()
+        }
+        if let visitToComplete {
+            let tail = index.byId.values.filter {
+                $0.operationType != SiteVisitSyncOperation.completionOperationType
+                    && $0.operationType != SiteVisitSyncOperation.stageOperationType
+            }.sorted(by: operationOrder).last
+            tips[visitToComplete.id.lowercased()] = tail?.id.uuidString.lowercased()
+        }
+        return QueueResult(operationIds: Array(Set(queued)).sorted { $0.uuidString < $1.uuidString }, chainTips: tips)
+    }
+
+    private func fetchOperations(entityIds: Set<String>) throws -> [SyncOperation] {
+        // An untouched empty SyncOperation table traps with a predicate on iOS
+        // 26.5. Count without a predicate first; never materialize history.
+        let ids = Array(entityIds.union(entityIds.map { $0.uppercased() }))
+        let statuses = Array(Self.unresolvedStatuses)
+        var count = FetchDescriptor<SyncOperation>()
+        count.includePendingChanges = false
+        guard try modelContext.fetchCount(count) > 0 else {
+            return modelContext.insertedModelsArray.compactMap { $0 as? SyncOperation }.filter {
+                ids.contains($0.entityId) && Self.unresolvedStatuses.contains($0.status)
+            }
+        }
+        return try modelContext.fetch(FetchDescriptor<SyncOperation>(predicate: #Predicate {
+            ids.contains($0.entityId) && statuses.contains($0.status)
+        }))
+    }
+
+    private struct OperationIndex {
+        var byKey: [String: [SyncOperation]] = [:]
+        var byId: [String: SyncOperation] = [:]
+
+        init(_ operations: [SyncOperation]) {
+            for operation in operations.sorted(by: {
+                $0.createdAt == $1.createdAt ? $0.id.uuidString < $1.id.uuidString : $0.createdAt < $1.createdAt
+            }) { append(operation) }
+        }
+        static func key(type: String, id: String, media: Bool) -> String {
+            "\(type)::\(id.lowercased())::\(media)"
+        }
+        mutating func append(_ operation: SyncOperation) {
+            byId[operation.id.uuidString.lowercased()] = operation
+            guard operation.operationType != SiteVisitSyncOperation.completionOperationType,
+                  operation.operationType != SiteVisitSyncOperation.stageOperationType else { return }
+            let key = Self.key(type: operation.entityType, id: operation.entityId,
+                media: operation.operationType == SiteVisitSyncOperation.mediaOperationType)
+            byKey[key, default: []].append(operation)
+        }
+        func candidates(_ specification: SiteVisitSyncOperation.Specification) -> [SyncOperation] {
+            byKey[Self.key(type: specification.entityType.rawValue, id: specification.entityId,
+                media: specification.operationType == SiteVisitSyncOperation.mediaOperationType)] ?? []
+        }
+        func owner(_ specification: SiteVisitSyncOperation.Specification) -> SyncOperation? {
+            candidates(specification).last
+        }
+        func safeDependency(_ proposed: String?, for operation: SyncOperation) -> String? {
+            var seen = Set<String>()
+            var cursor = proposed?.lowercased()
+            while let id = cursor, seen.insert(id).inserted {
+                if id == operation.id.uuidString.lowercased() { return operation.dependsOnId }
+                cursor = byId[id]?.dependsOnId?.lowercased()
+            }
+            return proposed
+        }
+    }
+
+    private func enqueueScoped(_ specification: SiteVisitSyncOperation.Specification,
+                               dependency: String?, index: inout OperationIndex) throws -> SyncOperation {
+        let candidates = index.candidates(specification)
+        let payload = try encodeOperation(specification.payload)
+        if let existing = candidates.last(where: { $0.status != "inProgress" }) {
+            transactionOperationIds.insert(existing.id)
+            if existing.operationType != "create" || specification.operationType == "delete" {
+                existing.operationType = specification.operationType
+            }
+            existing.payload = payload
+            existing.changedFields = specification.changedFields.joined(separator: ",")
+            existing.priority = min(existing.priority, specification.priority)
+            existing.dependsOnId = index.safeDependency(dependency, for: existing)
+            existing.status = "pending"
+            existing.retryCount = 0
+            existing.lastAttemptedAt = nil
+            existing.completedAt = nil
+            existing.lastError = nil
+            return existing
+        }
+        let operation = SyncOperation(entityType: specification.entityType.rawValue,
+            entityId: specification.entityId, operationType: specification.operationType,
+            payload: payload, changedFields: specification.changedFields,
+            priority: specification.priority,
+            dependsOnId: candidates.last?.id.uuidString.lowercased() ?? dependency)
+        transactionOperationIds.insert(operation.id)
+        modelContext.insert(operation)
+        index.append(operation)
+        return operation
+    }
+
     private func dependencyRoot(
         for siteVisitId: String,
         chainTips: [String: String],
@@ -348,6 +596,7 @@ final class SiteVisitPersistenceCoordinator {
             .filter { operation in
                 guard operation.operationType
                         != SiteVisitSyncOperation.completionOperationType,
+                      operation.operationType != SiteVisitSyncOperation.stageOperationType,
                       Self.unresolvedStatuses.contains(operation.status),
                       SiteVisitOutboundSync.isSiteVisitOperation(operation),
                       let payload = try? JSONDecoder().decode(
@@ -377,6 +626,7 @@ final class SiteVisitPersistenceCoordinator {
                 $0.entityType == specification.entityType.rawValue
                     && $0.entityId.lowercased() == canonicalEntityId
                     && $0.operationType != SiteVisitSyncOperation.completionOperationType
+                    && $0.operationType != SiteVisitSyncOperation.stageOperationType
                     && (($0.operationType
                             == SiteVisitSyncOperation.mediaOperationType) == isMedia)
                     && Self.unresolvedStatuses.contains($0.status)
@@ -457,6 +707,7 @@ final class SiteVisitPersistenceCoordinator {
             $0.entityType == specification.entityType.rawValue
                 && $0.entityId.lowercased() == specification.entityId.lowercased()
                 && $0.operationType != SiteVisitSyncOperation.completionOperationType
+                    && $0.operationType != SiteVisitSyncOperation.stageOperationType
                 && (($0.operationType
                         == SiteVisitSyncOperation.mediaOperationType) == isMedia)
                 && Self.unresolvedStatuses.contains($0.status)

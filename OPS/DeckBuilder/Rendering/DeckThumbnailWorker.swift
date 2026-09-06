@@ -26,7 +26,7 @@ actor DeckThumbnailWorker {
     /// Neither compression nor networking receives a live DeckDesign instance.
     static func upload(image: UIImage, designId: String, companyId: String) async throws -> String {
         guard let data = await shared.jpegData(for: image) else {
-            throw DeckRendererError.compressionFailed
+            throw DeckRenderer.DeckRendererError.compressionFailed
         }
         let timestamp = Int(Date().timeIntervalSince1970)
         return try await PresignedURLUploadService.shared.uploadImageData(

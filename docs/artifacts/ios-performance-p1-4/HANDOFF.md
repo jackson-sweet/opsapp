@@ -99,6 +99,8 @@ Key authored cases:
 
 ## Instrumentation and limits
 
+Parent combined compile follow-up: the first compilation stopped before tests because the worker referenced `DeckRendererError` without its enclosing `DeckRenderer` namespace. The bounded follow-up qualifies the existing type as `DeckRenderer.DeckRendererError.compressionFailed`; no new error contract or upload behavior is introduced. The renderer error declaration, drawing JSON decoder, and presigned `uploadImageData(_:filename:folder:) async throws -> String` signature were inspected directly. This worker still has no build baton; the parent must rerun combined verification. Source parse cannot prove symbol resolution.
+
 `CapturePerformanceTrace.signposter` uses subsystem `com.ops.capture`, category `Persistence`, with `DeckLocalSave`, `SyncRecoveryDiscovery`, and `RecoveryAttentionRead` intervals. They record no content or identity. Instruments can show main-thread saves separately from the two utility reads and `DeckThumbnailWorker` execution.
 
 Remaining proof requirements for the parent: combined compilation/typecheck and focused tests, then separately authorized phone behavior/timing on real capture/edit/exit/navigation. No latency or customer-live improvement is claimed by this handoff.

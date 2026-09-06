@@ -34,3 +34,5 @@ OPSTests/Sync/SiteVisitInboundSyncTests.swift
 OPSTests/Sync/SiteVisitOrphanRecoveryTests.swift
 OPSTests/Sync/SiteVisitRecoveryVaultTests.swift
 OPSTests/Sync/SyncRecoverySchedulingTests.swift
+
+Parent compile follow-up: qualified nested DeckRenderer.DeckRendererError. Changed worker frontend parse exit 0; whitespace check exit 0. Symbol declarations were inspected directly. Combined compilation/tests remain pending with PM; no worker build baton.

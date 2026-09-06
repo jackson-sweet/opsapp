@@ -90,6 +90,21 @@ final class DurableCaptureStoreTests: XCTestCase {
         XCTAssertEqual(recovered.flatMap(\.items).count, 1)
     }
 
+    func testPendingContextIndexIncludesFailedOriginalAndFailsClosedOnCorruptJournal() async throws {
+        let journal = store()
+        let batch = try await journal.create(owner: owner)
+        do { _ = try await journal.stage(data: Data("invalid-image".utf8), batchID: batch.id); XCTFail("Expected decode failure") }
+        catch {}
+        let contexts = try await journal.pendingContextIDs(companyID: "company-a", userID: "user-a")
+        XCTAssertEqual(contexts, ["visit-a"])
+        let foreign = try await journal.pendingContextIDs(companyID: "company-a", userID: "different")
+        XCTAssertTrue(foreign.isEmpty)
+        let corrupt = scratch.appendingPathComponent("Journal").appendingPathComponent(UUID().uuidString.lowercased()).appendingPathExtension("json")
+        try Data("invalid-json".utf8).write(to: corrupt)
+        do { _ = try await journal.pendingContextIDs(companyID: "company-a", userID: "user-a"); XCTFail("Unreadable custody cannot report empty") }
+        catch {}
+    }
+
     @MainActor
     private func fixture() -> Data {
         let format = UIGraphicsImageRendererFormat(); format.scale = 1

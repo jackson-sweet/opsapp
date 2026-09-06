@@ -92,6 +92,24 @@ actor DurableCaptureStore {
         return try stage(data: data, batchID: batchID, itemID: itemID)
     }
 
+    /// One account-scoped manifest scan for draft discovery. Failure to inspect
+    /// a journal propagates: unreadable custody must never look like no capture.
+    func pendingContextIDs(companyID: String, userID: String) throws -> Set<String> {
+        guard FileManager.default.fileExists(atPath: root.path) else { return [] }
+        let files = try FileManager.default.contentsOfDirectory(at: root, includingPropertiesForKeys: nil)
+        var contexts = Set<String>()
+        for file in files where file.pathExtension == "json" {
+            let manifest = try read(file.deletingPathExtension().lastPathComponent)
+            guard manifest.batch.owner.companyID == companyID.lowercased(),
+                  manifest.batch.owner.userID == userID.lowercased() else { continue }
+            if manifest.batch.items.contains(where: {
+                !manifest.acknowledged.contains($0.id) && !manifest.discarded.contains($0.id)
+                    && FileManager.default.fileExists(atPath: fileURL($0.originalLocalURL).path)
+            }) { contexts.insert(manifest.batch.owner.contextID) }
+        }
+        return contexts
+    }
+
     func recover(owner: StagedCaptureOwner) throws -> [StagedCaptureBatch] {
         guard FileManager.default.fileExists(atPath: root.path) else { return [] }
         let files = try FileManager.default.contentsOfDirectory(at: root, includingPropertiesForKeys: nil)

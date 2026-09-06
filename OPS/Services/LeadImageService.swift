@@ -192,6 +192,34 @@ final class LeadImageService: ObservableObject {
         return result
     }
 
+    func acceptCapture(_ batch: StagedCaptureBatch, opportunity: Opportunity, userID: String) async -> Bool {
+        guard batch.owner == StagedPhotoDestinations.owner(companyID: opportunity.companyId, userID: userID, kind: "lead", id: opportunity.id),
+              defaults.string(forKey: "currentUserId")?.lowercased() == userID.lowercased(),
+              defaults.string(forKey: "currentUserCompanyId")?.lowercased() == opportunity.companyId.lowercased() else { return false }
+        do {
+            for (index, item) in batch.items.enumerated() {
+                let pending = PendingLeadImageUpload(localURL: item.localURL, opportunityId: opportunity.id,
+                    companyId: opportunity.companyId, timestamp: item.capturedAt, displayID: item.id,
+                    batchIndex: index, journalID: item.id, originalLocalURL: item.originalLocalURL, userID: userID.lowercased())
+                let adopted = try await LeadImageStager.shared.adopt(pending)
+                guard canDeliver(adopted) else { return false }
+                guard try await LeadImageStager.shared.isActive(adopted) else { continue }
+                if !pendingUploads.contains(where: { $0.localURL == adopted.localURL }) { pendingUploads.append(adopted) }
+                savePendingUploads()
+            }
+            if backgroundWorkEnabled { startRetryTimerIfNeeded(); Task { await drain() } }
+            return true
+        } catch { return false }
+    }
+
+    func recoverCaptures(opportunity: Opportunity, userID: String) async throws {
+        let owner = StagedPhotoDestinations.owner(companyID: opportunity.companyId, userID: userID, kind: "lead", id: opportunity.id)
+        for batch in try await DurableCaptureStore.shared.recover(owner: owner) {
+            guard await acceptCapture(batch, opportunity: opportunity, userID: userID) else { throw CaptureStagingError.writeFailed }
+            try await DurableCaptureStore.shared.acknowledge(batchID: batch.id, itemIDs: Set(batch.items.map(\.id)))
+        }
+    }
+
     /// Compatibility-only synchronous entry point. Production import uses
     /// addImages, which awaits the background, per-item durable stager.
     @available(*, deprecated, message: "Use addImages for background durable staging")
@@ -324,9 +352,11 @@ final class LeadImageService: ObservableObject {
                 guard !Task.isCancelled, canDeliver(current), pendingUploads.contains(where: { $0.localURL == pending.localURL }) else { continue }
                 let repo = OpportunityRepository(companyId: current.companyId)
                 let dto = try await repo.appendImages([remoteURL], to: current.opportunityId)
-                applyEcho(dto, to: nil, opportunityId: current.opportunityId)
+                guard canDeliver(current), let modelContext else { throw CaptureStagingError.invalidIdentity }
+                try StagedPhotoDestinations.persistLeadDelivery(dto, opportunityID: current.opportunityId, companyID: current.companyId, remoteURL: remoteURL, context: modelContext)
                 // Retain original + upload JPEG until both S3 and the lead row
                 // confirm custody. A failed merge retries the recorded remote URL.
+                try await DurableCaptureStore.shared.recordDelivered(localURLs: [current.localURL])
                 try await LeadImageStager.shared.finish(current)
                 pendingUploads.removeAll { $0.localURL == pending.localURL }
                 savePendingUploads()

@@ -128,6 +128,12 @@ struct ProjectDetailsView: View {
                     .sheet(isPresented: $viewModel.showingImagePicker) {
                         imagePickerContent
                     }
+                    .task(id: project.id) {
+                        guard let context = dataController.modelContext else { return }
+                        do {
+                            try await StagedPhotoDestinations.recoverProject(project: project, userID: dataController.currentUser?.id ?? "", context: context, imageSyncManager: dataController.imageSyncManager, tutorialMode: tutorialMode)
+                        } catch { viewModel.networkError = "Saved photos could not be recovered. Open the camera to retry." }
+                    }
                     .fullScreenCover(isPresented: $showingCamera) {
                         cameraContent
                     }
@@ -1077,15 +1083,11 @@ struct ProjectDetailsView: View {
         // Bug 56c37df2 — the standardized batch camera (same component
         // as site-visit capture): live multi-shot, real lens stops, and
         // library import built into the camera HUD.
-        CameraBatchView { images in
-            showingCamera = false
-            guard !images.isEmpty else { return }
-            viewModel.selectedImages = images
-            viewModel.addPhotosToProject(tutorialMode: tutorialMode)
-            NotificationCenter.default.post(
-                name: Notification.Name("WizardPhotoCaptured"),
-                object: nil
-            )
+        CameraBatchView(owner: StagedPhotoDestinations.owner(companyID: project.companyId, userID: dataController.currentUser?.id ?? "", kind: "project", id: project.id)) { batch in
+            guard let context = dataController.modelContext else { return false }
+            let accepted = await StagedPhotoDestinations.acceptProject(batch, project: project, userID: dataController.currentUser?.id ?? "", context: context, imageSyncManager: dataController.imageSyncManager, tutorialMode: tutorialMode)
+            if accepted { NotificationCenter.default.post(name: Notification.Name("WizardPhotoCaptured"), object: nil) }
+            return accepted
         }
     }
 

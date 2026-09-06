@@ -47,8 +47,6 @@ struct ProjectActionBar: View {
     /// camera (same component as site-visit capture): live multi-shot,
     /// real lens stops, and library import built into the camera HUD.
     @State private var showingCamera = false
-    @State private var selectedImages: [UIImage] = []
-    @State private var processingImage = false
 
     @StateObject private var expenseViewModel = ExpenseViewModel()
 
@@ -200,34 +198,17 @@ struct ProjectActionBar: View {
         // as site-visit capture). Library import lives inside the camera
         // HUD, so one entry point covers both paths.
         .fullScreenCover(isPresented: $showingCamera) {
-            CameraBatchView { images in
-                showingCamera = false
-                guard !images.isEmpty else { return }
-                selectedImages = images
-                addPhotosToProject()
+            CameraBatchView(owner: StagedPhotoDestinations.owner(companyID: project.companyId, userID: dataController.currentUser?.id ?? "", kind: "project", id: project.id)) { batch in
+                guard let context = dataController.modelContext else { return false }
+                return await StagedPhotoDestinations.acceptProject(batch, project: project, userID: dataController.currentUser?.id ?? "", context: context, imageSyncManager: dataController.imageSyncManager, tutorialMode: tutorialMode)
             }
         }
-        // Loading overlay when processing image
-        .overlay(
-            Group {
-                if processingImage {
-                    ZStack {
-                        OPSStyle.Colors.imageOverlay
-                        VStack {
-                            ProgressView()
-                                .progressViewStyle(CircularProgressViewStyle(tint: OPSStyle.Colors.primaryAccent))
-                            Text("Processing image...")
-                                .foregroundColor(OPSStyle.Colors.primaryText)
-                                .padding(.top, 10)
-                        }
-                    }
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 80)
-                    .padding(.horizontal, OPSStyle.Layout.spacing3_5)
-                    .cornerRadius(OPSStyle.Layout.cardCornerRadius)
-                }
-            }
-        )
+        .task(id: project.id) {
+            guard let context = dataController.modelContext else { return }
+            do { try await StagedPhotoDestinations.recoverProject(project: project, userID: dataController.currentUser?.id ?? "", context: context, imageSyncManager: dataController.imageSyncManager, tutorialMode: tutorialMode) }
+            catch { actionBarError = "Saved photos need another attempt. Open the camera to retry." }
+        }
+
     }
 
     @ViewBuilder
@@ -510,107 +491,7 @@ struct ProjectActionBar: View {
         }
     }
     
-    private func addPhotosToProject() {
-        // Prevent duplicate calls
-        guard !processingImage else { return }
 
-        // Start loading indicator
-        processingImage = true
-
-        Task {
-            do {
-                // Use ImageSyncManager if available
-                if let imageSyncManager = dataController.imageSyncManager {
-
-                    // Process all images through the ImageSyncManager.
-                    // Bug 35c400c2 — saveImages already appends the new
-                    // URLs onto project.projectImagesString and saves the
-                    // model context. Do NOT append a second time here;
-                    // doing so was the root cause of every Done click
-                    // duplicating photos in the carousel.
-                    let urls = await imageSyncManager.saveImages(selectedImages, for: project)
-
-                    await MainActor.run {
-                        if !urls.isEmpty {
-                            // Mark the project for sync priority bump so
-                            // the next outbound pass surfaces the new
-                            // photo set fast.
-                            project.syncPriority = 2
-
-                            if let modelContext = dataController.modelContext {
-                                try? modelContext.save()
-                            }
-                        }
-                        // Always reset state — empty result means upload
-                        // failed, but the in-flight placeholders have
-                        // already been cleared by saveImages's defer.
-                        selectedImages.removeAll()
-                        processingImage = false
-                    }
-                } else {
-                    // Fallback to direct processing
-                    
-                    // Process each image
-                    for (index, image) in selectedImages.enumerated() {
-                        // Debug log
-                        
-                        // Compress image
-                        guard let imageData = image.jpegData(compressionQuality: 0.7) else {
-                            continue
-                        }
-                        
-                        // Generate a unique filename
-                        let timestamp = Date().timeIntervalSince1970
-                        let filename = "project_\(project.id)_\(timestamp)_\(UUID().uuidString).jpg"
-                        
-                        // Save image data to UserDefaults with the key as the URL
-                        let localURL = "local://project_images/\(filename)"
-                        
-                        // Store the image in UserDefaults
-                        if let imageBase64 = imageData.base64EncodedString() as String? {
-                            UserDefaults.standard.set(imageBase64, forKey: localURL)
-                            
-                            // Add to project's images
-                            await MainActor.run {
-                                var currentImages = project.getProjectImages()
-                                currentImages.append(localURL)
-                                project.setProjectImageURLs(currentImages)
-                                project.needsSync = true
-                            }
-                        }
-                        
-                        // Small delay to simulate upload process
-                        if selectedImages.count > 1 {
-                            try await Task.sleep(nanoseconds: 500_000_000) // 0.5 seconds per image
-                        }
-                    }
-                    
-                    // Simulate upload delay for single image
-                    if selectedImages.count == 1 {
-                        try await Task.sleep(nanoseconds: 1_500_000_000) // 1.5 seconds
-                    }
-                    
-                    // Save at the end with all changes
-                    await MainActor.run {
-                        if let modelContext = dataController.modelContext {
-                            do {
-                                try modelContext.save()
-                            } catch {
-                            }
-                        }
-                        
-                        selectedImages.removeAll()
-                        processingImage = false
-                    }
-                }
-            } catch {
-                await MainActor.run {
-                    processingImage = false
-                    selectedImages.removeAll()
-                }
-            }
-        }
-    }
 }
 
 // MARK: - Project Actions Enum

@@ -1819,20 +1819,45 @@ class ImageSyncManager: ObservableObject {
         // heals local:// → S3 in place. A failed insert keeps the entry queued
         // so the next pass retries; the S3 bytes are re-uploaded then, which is
         // the price of never losing the portal row.
-        var healedAny = false
+        var inserted: [(localURL: String, row: ProjectPhoto, remoteURL: String)] = []
         for (localURL, outcome) in handoffResults {
             guard let remoteURL = outcome.url,
-                  let row = handoffRowsByURL[localURL] else { continue }
-            guard await insertHandoffPhotoRow(row, remoteURL: remoteURL) else { continue }
-            Self.healHandoffPhotoRow(row, remoteURL: remoteURL)
-            pendingUploads.removeAll { $0.localURL == localURL }
-            healedAny = true
+                  let row = handoffRowsByURL[localURL],
+                  await insertHandoffPhotoRow(row, remoteURL: remoteURL) else { continue }
+            inserted.append((localURL, row, remoteURL))
         }
-        if healedAny {
-            savePendingUploads()
-            project.lastSyncedAt = Date()
-            if let modelContext = modelContext {
-                try? modelContext.save()
+        // Camera retirement requires an authoritative row, including lost-response
+        // duplicate inserts. Read once for the project, then match exact identities.
+        let hasCameraReceipts = inserted.contains { $0.localURL.hasPrefix("local://project_images/capture_") }
+        let canonical = hasCameraReceipts
+            ? (try? await ProjectPhotoRepository(companyId: companyId).fetchForProject(projectId)) ?? [] : []
+        var deliveries: [StagedPhotoDestinations.ProjectDelivery] = []
+        for entry in inserted {
+            let remoteURL: String
+            if entry.localURL.hasPrefix("local://project_images/capture_") {
+                guard let canonicalURL = StagedPhotoDestinations.canonicalCaptureURL(for: entry.row, receipts: canonical) else { continue }
+                remoteURL = canonicalURL
+            } else { remoteURL = entry.remoteURL }
+            deliveries.append(.init(id: entry.row.id, projectID: entry.row.projectId, companyID: entry.row.companyId,
+                uploadedBy: entry.row.uploadedBy, localURL: entry.localURL, remoteURL: remoteURL))
+        }
+        if !deliveries.isEmpty, let modelContext {
+            do {
+                try StagedPhotoDestinations.persistProjectDeliveries(deliveries, context: modelContext)
+                for delivery in deliveries {
+                    if let row = handoffRowsByURL[delivery.localURL] { Self.healHandoffPhotoRow(row, remoteURL: delivery.remoteURL) }
+                    var seen = Set<String>()
+                    project.setProjectImageURLs(project.getProjectImages().map { $0 == delivery.localURL ? delivery.remoteURL : $0 }.filter { seen.insert($0).inserted })
+                }
+                // Only now are the canonical URL and row healing durable locally.
+                // Reopen also reconciles any retirement whose receipt write fails.
+                let localURLs = Set(deliveries.map(\.localURL))
+                try? await DurableCaptureStore.shared.recordDelivered(localURLs: localURLs)
+                pendingUploads.removeAll { localURLs.contains($0.localURL) }
+                savePendingUploads()
+            } catch {
+                // Original rows, upload queue and camera bytes remain recoverable.
+                DebugLogger.shared.log("Photo delivery could not be saved locally: \(error)", level: .warning, category: "ImageSyncManager")
             }
         }
 

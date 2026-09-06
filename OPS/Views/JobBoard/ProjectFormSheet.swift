@@ -174,6 +174,12 @@ struct ProjectFormSheet: View {
     @State private var startDate: Date? = nil
     @State private var endDate: Date? = nil
     @State private var projectImages: [UIImage] = []
+    @State private var photoDraft: ProjectPhotoFormDraft?
+    @State private var resumePhotoDraft: ProjectPhotoFormDraft?
+    @State private var showingPhotoDraftRecovery = false
+    @State private var stagedPhotoBatches: [StagedCaptureBatch] = []
+    @State private var stagedPhotoThumbnails: [String: UIImage] = [:]
+    @State private var isPreparingCamera = false
 
     // Local tasks for multiple task creation
     @State private var localTasks: [LocalTask] = []
@@ -550,6 +556,32 @@ struct ProjectFormSheet: View {
                 tutorialModeProjectContent
             } else {
                 standardProjectContent
+            }
+        }
+        .task {
+            guard mode.isCreate, !tutorialMode, photoDraft == nil else { return }
+            do {
+                let drafts = try await ProjectPhotoFormDraftStore.shared.pending(companyID: dataController.currentUser?.companyId ?? "", userID: dataController.currentUser?.id ?? "")
+                resumePhotoDraft = drafts.first
+                showingPhotoDraftRecovery = resumePhotoDraft != nil
+            } catch { errorMessage = "Saved photo drafts could not be read. Retry opening this form." }
+        }
+        .confirmationDialog("Resume photo draft?", isPresented: $showingPhotoDraftRecovery, titleVisibility: .visible) {
+            Button("Resume draft") { Task { await restorePhotoDraft() } }
+            Button("Discard draft", role: .destructive) { Task { await discardSavedPhotoDraft() } }
+            Button("Cancel", role: .cancel) { dismiss() }
+        } message: {
+            Text(resumePhotoDraft.map { $0.fields.title.isEmpty ? $0.fields.address : $0.fields.title } ?? "Photos saved on this device")
+        }
+        .onChange(of: photoDraftFields) { _, _ in
+            guard var draft = photoDraft else { return }
+            draft.fields = photoDraftFields
+            draft.updatedAt = Date()
+            photoDraft = draft
+            Task {
+                do { try await ProjectPhotoFormDraftStore.shared.save(draft) }
+                catch CaptureStagingError.closedDraft { /* A delayed edit cannot reopen a completed draft. */ }
+                catch { errorMessage = "Photo draft could not be updated. Retry before leaving." }
             }
         }
         .onDisappear {
@@ -1899,6 +1931,7 @@ struct ProjectFormSheet: View {
             isExpanded: $isPhotosExpanded,
             onDelete: {
                 projectImages.removeAll()
+                Task { await discardStagedPhotos() }
                 withAnimation(.accessibleEaseInOut()) {
                     isPhotosExpanded = false
                 }
@@ -1908,9 +1941,25 @@ struct ProjectFormSheet: View {
                 #endif
             }
         ) {
-            if !projectImages.isEmpty {
+            if !projectImages.isEmpty || !stagedPhotoBatches.isEmpty {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: OPSStyle.Layout.spacing2_5) {
+                        ForEach(stagedPhotoBatches.flatMap(\.items)) { item in
+                            Group {
+                                if let thumbnail = stagedPhotoThumbnails[item.id] { Image(uiImage: thumbnail).resizable().scaledToFill() }
+                                else { Image(systemName: "photo").foregroundColor(OPSStyle.Colors.secondaryText) }
+                            }
+                            .frame(width: OPSStyle.Layout.leadPhotoTileSize, height: OPSStyle.Layout.leadPhotoTileSize)
+                            .clipped()
+                            .cornerRadius(OPSStyle.Layout.cornerRadius)
+                            .overlay(alignment: .topTrailing) {
+                                Button { Task { await discardStagedPhotos(itemIDs: [item.id]) } } label: {
+                                    Image(systemName: "xmark").foregroundColor(OPSStyle.Colors.primaryText)
+                                        .frame(width: OPSStyle.Layout.touchTargetMin, height: OPSStyle.Layout.touchTargetMin)
+                                        .background(OPSStyle.Colors.imageOverlay)
+                                }
+                            }
+                        }
                         ForEach(Array(projectImages.enumerated()), id: \.offset) { index, image in
                             Image(uiImage: image)
                                 .resizable()
@@ -1977,9 +2026,8 @@ struct ProjectFormSheet: View {
         }
         // Bug 02222904 — confirmation dialog lets the user pick between
         // the multi-capture camera and the photo library before any
-        // sheet opens. Cancel just dismisses; both paths feed into the
-        // same `projectImages` array so the form preview updates the
-        // moment images return.
+        // sheet opens. Camera shots use a durable photo draft; library
+        // selections retain the existing form preview path.
         .confirmationDialog(
             "Add Photos",
             isPresented: $showingPhotoSourceChooser,
@@ -1988,9 +2036,8 @@ struct ProjectFormSheet: View {
             // Camera path — only offered when a real camera is present
             // so the simulator doesn't show a button that does nothing.
             if UIImagePickerController.isSourceTypeAvailable(.camera) {
-                Button("Take Photos") {
-                    showingCameraBatch = true
-                }
+                Button("Take Photos") { Task { await prepareFormCamera() } }
+                    .disabled(isPreparingCamera)
             }
             Button("Choose from Library") {
                 showingImagePicker = true
@@ -2009,13 +2056,128 @@ struct ProjectFormSheet: View {
             )
         }
         .fullScreenCover(isPresented: $showingCameraBatch) {
-            // Same multi-capture stack used inside ProjectDetailsView —
-            // reuse the component so the project creation flow gets the
-            // identical stack/review behaviour for free.
-            CameraBatchView { capturedImages in
-                projectImages.append(contentsOf: capturedImages)
+            if let project = mode.project {
+                CameraBatchView(owner: StagedPhotoDestinations.owner(companyID: project.companyId, userID: dataController.currentUser?.id ?? "", kind: "project", id: project.id)) { batch in
+                    await StagedPhotoDestinations.acceptProject(batch, project: project, userID: dataController.currentUser?.id ?? "", context: modelContext, imageSyncManager: dataController.imageSyncManager, tutorialMode: tutorialMode)
+                }
+            } else if let draft = photoDraft {
+                CameraBatchView(owner: draft.owner) { batch in await acceptDraftCapture(batch) }
             }
         }
+    }
+
+    private var photoDraftFields: ProjectPhotoFormFields {
+        ProjectPhotoFormFields(title: title, titleIsAuto: titleIsAuto, clientID: selectedClientId, address: address,
+            description: description, notes: notes, status: selectedStatus.rawValue, startDate: startDate, endDate: endDate)
+    }
+
+    @MainActor
+    private func prepareFormCamera() async {
+        guard !isPreparingCamera else { return }
+        isPreparingCamera = true
+        defer { isPreparingCamera = false }
+        if !mode.isCreate { showingCameraBatch = true; return }
+        guard let user = dataController.currentUser, let companyID = user.companyId else { return }
+        do {
+            var draft = photoDraft ?? ProjectPhotoFormDraft(id: UUID().uuidString.lowercased(),
+                projectID: tutorialMode ? "DEMO_PROJECT_\(UUID().uuidString)" : UUID().uuidString.lowercased(),
+                companyID: companyID.lowercased(), userID: user.id.lowercased(), fields: photoDraftFields, batchIDs: [], updatedAt: Date())
+            guard draft.companyID == companyID.lowercased(), draft.userID == user.id.lowercased() else { throw CaptureStagingError.invalidIdentity }
+            draft.fields = photoDraftFields; draft.updatedAt = Date()
+            try await ProjectPhotoFormDraftStore.shared.save(draft)
+            photoDraft = draft
+            showingCameraBatch = true
+        } catch { errorMessage = "Photo draft could not be saved. Retry before taking photos." }
+    }
+
+    @MainActor
+    private func acceptDraftCapture(_ batch: StagedCaptureBatch) async -> Bool {
+        guard var draft = photoDraft, draft.owner == batch.owner,
+              draft.userID == dataController.currentUser?.id.lowercased(),
+              draft.companyID == dataController.currentUser?.companyId?.lowercased() else { return false }
+        do {
+            if !draft.batchIDs.contains(batch.id) { draft.batchIDs.append(batch.id) }
+            draft.fields = photoDraftFields; draft.updatedAt = Date()
+            try await ProjectPhotoFormDraftStore.shared.save(draft)
+            photoDraft = draft
+            if let index = stagedPhotoBatches.firstIndex(where: { $0.id == batch.id }) { stagedPhotoBatches[index] = batch }
+            else { stagedPhotoBatches.append(batch) }
+            for item in batch.items { stagedPhotoThumbnails[item.id] = await DurableCaptureStore.shared.thumbnail(for: item) }
+            return true
+        } catch { return false }
+    }
+
+    @MainActor
+    private func restorePhotoDraft() async {
+        guard let draft = resumePhotoDraft,
+              draft.companyID == dataController.currentUser?.companyId?.lowercased(), draft.userID == dataController.currentUser?.id.lowercased() else { return }
+        do {
+            photoDraft = draft
+            title = draft.fields.title; titleIsAuto = draft.fields.titleIsAuto
+            selectedClientId = draft.fields.clientID; address = draft.fields.address
+            description = draft.fields.description; notes = draft.fields.notes
+            selectedStatus = Status(rawValue: draft.fields.status) ?? defaultProjectStatus
+            startDate = draft.fields.startDate; endDate = draft.fields.endDate
+            let pending = try await DurableCaptureStore.shared.recover(owner: draft.owner)
+            let batchIDs = Set(draft.batchIDs).union(pending.map(\.id))
+            for id in batchIDs.sorted() {
+                let batch = try await DurableCaptureStore.shared.retainedBatch(batchID: id, owner: draft.owner)
+                guard await acceptDraftCapture(batch) else { throw CaptureStagingError.writeFailed }
+            }
+            isPhotosExpanded = true
+        } catch { errorMessage = "Saved photos need another attempt. Open the camera to retry." }
+    }
+
+    @MainActor
+    private func discardSavedPhotoDraft() async {
+        guard let draft = resumePhotoDraft else { return }
+        do {
+            let pending = try await DurableCaptureStore.shared.recover(owner: draft.owner)
+            let failures = try await DurableCaptureStore.shared.failedItems(owner: draft.owner)
+            for id in Set(draft.batchIDs).union(pending.map(\.id)).union(failures.map(\.id)) {
+                let batch = try await DurableCaptureStore.shared.retainedBatch(batchID: id, owner: draft.owner, prepareImages: false)
+                let disposable = try StagedPhotoDestinations.unclaimedDraftItems(batch, context: modelContext)
+                try await DurableCaptureStore.shared.discardDraft(batchID: id, owner: draft.owner, itemIDs: disposable)
+            }
+            try await ProjectPhotoFormDraftStore.shared.remove(draft)
+            resumePhotoDraft = nil
+        } catch { errorMessage = "Photo draft could not be removed. Retry." }
+    }
+
+    @MainActor
+    private func discardStagedPhotos(itemIDs: Set<String>? = nil) async {
+        guard let draft = photoDraft else { return }
+        do {
+            for batch in stagedPhotoBatches {
+                let ids = Set(batch.items.map(\.id)).intersection(itemIDs ?? Set(batch.items.map(\.id)))
+                let disposable = try StagedPhotoDestinations.unclaimedDraftItems(batch, context: modelContext)
+                guard ids.isSubset(of: disposable) else { throw CaptureStagingError.invalidIdentity }
+                try await DurableCaptureStore.shared.discardDraft(batchID: batch.id, owner: draft.owner, itemIDs: ids)
+            }
+            stagedPhotoBatches = stagedPhotoBatches.map { batch in
+                var batch = batch
+                batch.items.removeAll { itemIDs?.contains($0.id) ?? true }
+                return batch
+            }.filter { !$0.items.isEmpty }
+            let remainingIDs = Set(stagedPhotoBatches.flatMap(\.items).map(\.id))
+            stagedPhotoThumbnails = stagedPhotoThumbnails.filter { remainingIDs.contains($0.key) }
+        } catch { errorMessage = "Photos could not be removed. Retry." }
+    }
+
+    @MainActor
+    private func transferDraftPhotos(to project: Project) async throws {
+        guard let draft = photoDraft else { return }
+        guard draft.projectID == project.id else { throw CaptureStagingError.invalidIdentity }
+        let failures = try await DurableCaptureStore.shared.failedItems(owner: draft.owner)
+        guard failures.isEmpty else { throw CaptureStagingError.writeFailed }
+        let pending = try await DurableCaptureStore.shared.recover(owner: draft.owner)
+        for id in Set(draft.batchIDs).union(pending.map(\.id)) {
+            let batch = try await DurableCaptureStore.shared.retainedBatch(batchID: id, owner: draft.owner)
+            guard await StagedPhotoDestinations.acceptProject(batch, project: project, userID: dataController.currentUser?.id ?? "", context: modelContext, imageSyncManager: dataController.imageSyncManager, tutorialMode: tutorialMode) else { throw CaptureStagingError.writeFailed }
+            try await DurableCaptureStore.shared.acknowledge(batchID: id, itemIDs: Set(batch.items.map(\.id)))
+        }
+        try await ProjectPhotoFormDraftStore.shared.remove(draft)
+        photoDraft = nil; stagedPhotoBatches = []; stagedPhotoThumbnails = [:]
     }
 
     /// Fields that currently have data (for copy overwrite warning)
@@ -2492,7 +2654,7 @@ struct ProjectFormSheet: View {
         // stale row from a prior company lingers.
         let scopedCompanyId = dataController.currentUser?.companyId
         let existingTitles = dataController.getAllProjects()
-            .filter { $0.deletedAt == nil }
+            .filter { $0.deletedAt == nil && $0.id != photoDraft?.projectID }
             .filter { project in
                 guard let scopedCompanyId, !scopedCompanyId.isEmpty else { return true }
                 return project.companyId == scopedCompanyId
@@ -2608,6 +2770,8 @@ struct ProjectFormSheet: View {
                     return
                 }
 
+                try await transferDraftPhotos(to: project)
+
                 await MainActor.run {
                     #if !targetEnvironment(simulator)
                     let generator = UINotificationFeedbackGenerator()
@@ -2674,9 +2838,25 @@ struct ProjectFormSheet: View {
         // Postgres (uuid columns are lowercase). Uppercase UUIDs from
         // Swift's UUID().uuidString caused fetch-by-id in InboundProcessor
         // to miss the realtime echo, inserting a second row.
-        let projectId = tutorialMode
+        let projectId = photoDraft?.projectID ?? (tutorialMode
             ? "DEMO_PROJECT_\(UUID().uuidString)"
-            : UUID().uuidString.lowercased()
+            : UUID().uuidString.lowercased())
+        if let photoDraft {
+            guard photoDraft.companyID == companyId.lowercased(),
+                  photoDraft.userID == dataController.currentUser?.id.lowercased() else { throw CaptureStagingError.invalidIdentity }
+            let existing = try modelContext.fetch(FetchDescriptor<Project>(predicate: #Predicate { $0.id == projectId && $0.companyId == companyId }))
+            if let existing = existing.first {
+                guard !existing.isDeleted else { throw CaptureStagingError.invalidIdentity }
+                // New draft projects are committed with their create operation.
+                // Refuse photo transfer if that local parent custody is missing.
+                if !tutorialMode {
+                    try StagedPhotoDestinations.requireParentCustody(project: existing, context: modelContext)
+                }
+                return existing
+            }
+            let failures = try await DurableCaptureStore.shared.failedItems(owner: photoDraft.owner)
+            guard failures.isEmpty else { throw CaptureStagingError.writeFailed }
+        }
         print("[PROJECT_CREATE] Creating project locally with ID: \(projectId)")
 
         // Auto-naming: when the operator left the name blank, the server
@@ -2721,10 +2901,64 @@ struct ProjectFormSheet: View {
             return user
         })
 
-        await MainActor.run {
+        // Build DTO outside do block so catch blocks can access it.
+        // Stamp createdAt/createdBy on insert so the new "start from recent"
+        // suggestions strip can scope to projects the current user created.
+        let isoFormatter = ISO8601DateFormatter()
+        let now = Date()
+        project.createdAt = now
+        project.createdBy = dataController.currentUser?.id
+        let dto = SupabaseProjectDTO(
+                id: project.id,
+                bubbleId: nil,
+                companyId: companyId,
+                clientId: client.id,
+                opportunityId: nil,
+                // `project.title` already holds the street-line preview when
+                // auto-named (satisfies the NOT NULL column); the BEFORE-INSERT
+                // `projects_autoname` trigger overwrites it with the derived +
+                // `#N`-deduped name when title_is_auto is true.
+                title: project.title,
+                titleIsAuto: titleIsAuto,
+                status: project.status.rawValue,
+                address: project.address,
+                latitude: nil,
+                longitude: nil,
+                startDate: project.startDate.map { isoFormatter.string(from: $0) },
+                endDate: project.endDate.map { isoFormatter.string(from: $0) },
+                duration: nil,
+                notes: project.notes,
+                description: project.projectDescription,
+                allDay: project.allDay,
+                teamMemberIds: Array(allTeamMemberIds),
+                projectImages: nil,
+                completedAt: nil,
+                deletedAt: nil,
+                createdAt: isoFormatter.string(from: now),
+                createdBy: dataController.currentUser?.id
+            )
+
+
+        // A photo draft keeps this reserved project identity across interruption.
+        // Save its create request in the SAME local transaction as the project.
+        var draftCreateOperation: SyncOperation?
+        var insertedDraftCreateOperation = false
+        try await MainActor.run {
             modelContext.insert(project)
             client.projects.append(project)
-            try? modelContext.save()
+            do {
+                if photoDraft != nil && !tutorialMode {
+                    let existingOperations = try modelContext.fetch(FetchDescriptor<SyncOperation>(predicate: #Predicate { $0.entityId == projectId && $0.entityType == "project" && $0.operationType == "create" }))
+                    draftCreateOperation = try StagedPhotoDestinations.ensureParentCreate(project: project, dto: dto, context: modelContext)
+                    insertedDraftCreateOperation = existingOperations.isEmpty
+                }
+                try modelContext.save()
+            } catch {
+                if insertedDraftCreateOperation, let draftCreateOperation { modelContext.delete(draftCreateOperation) }
+                client.projects.removeAll { $0 === project }
+                modelContext.delete(project)
+                throw error
+            }
             print("[PROJECT_CREATE] ✅ Project saved locally")
 
             // Bug f86cf554 — attach any captured deck design to the real
@@ -2772,42 +3006,6 @@ struct ProjectFormSheet: View {
 
         var savedOffline = false
 
-        // Build DTO outside do block so catch blocks can access it.
-        // Stamp createdAt/createdBy on insert so the new "start from recent"
-        // suggestions strip can scope to projects the current user created.
-        let isoFormatter = ISO8601DateFormatter()
-        let now = Date()
-        project.createdAt = now
-        project.createdBy = dataController.currentUser?.id
-        let dto = SupabaseProjectDTO(
-                id: project.id,
-                bubbleId: nil,
-                companyId: companyId,
-                clientId: client.id,
-                opportunityId: nil,
-                // `project.title` already holds the street-line preview when
-                // auto-named (satisfies the NOT NULL column); the BEFORE-INSERT
-                // `projects_autoname` trigger overwrites it with the derived +
-                // `#N`-deduped name when title_is_auto is true.
-                title: project.title,
-                titleIsAuto: titleIsAuto,
-                status: project.status.rawValue,
-                address: project.address,
-                latitude: nil,
-                longitude: nil,
-                startDate: project.startDate.map { isoFormatter.string(from: $0) },
-                endDate: project.endDate.map { isoFormatter.string(from: $0) },
-                duration: nil,
-                notes: project.notes,
-                description: project.projectDescription,
-                allDay: project.allDay,
-                teamMemberIds: Array(allTeamMemberIds),
-                projectImages: nil,
-                completedAt: nil,
-                deletedAt: nil,
-                createdAt: isoFormatter.string(from: now),
-                createdBy: dataController.currentUser?.id
-            )
 
         do {
             let _ = try await dataController.createProject(dto: dto)
@@ -2815,6 +3013,9 @@ struct ProjectFormSheet: View {
             await MainActor.run {
                 project.needsSync = false
                 project.lastSyncedAt = Date()
+                draftCreateOperation?.status = "completed"
+                draftCreateOperation?.completedAt = Date()
+                draftCreateOperation?.serverConfirmedAt = Date()
                 try? modelContext.save()
             }
 
@@ -2874,7 +3075,7 @@ struct ProjectFormSheet: View {
 
             // Queue for SyncEngine push
             await MainActor.run {
-                recordProjectSyncOperation(project: project, dto: dto)
+                if draftCreateOperation == nil { recordProjectSyncOperation(project: project, dto: dto) }
             }
 
             // Create tasks offline with local project ID
@@ -2890,7 +3091,7 @@ struct ProjectFormSheet: View {
 
             // Queue for SyncEngine push
             await MainActor.run {
-                recordProjectSyncOperation(project: project, dto: dto)
+                if draftCreateOperation == nil { recordProjectSyncOperation(project: project, dto: dto) }
             }
 
             // Create tasks offline with local project ID

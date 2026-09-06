@@ -117,7 +117,7 @@ final class CameraCaptureSession: ObservableObject {
             do {
                 if let onStaged {
                     guard await onStaged(staged) else {
-                        errorMessage = "Photos are saved on this device. Retry adding them to the visit."
+                        errorMessage = "Photos are saved on this device. Retry adding them."
                         return false
                     }
                     try await store.acknowledge(batchID: batchID, itemIDs: Set(staged.items.map(\.id)))

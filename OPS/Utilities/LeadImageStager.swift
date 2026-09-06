@@ -28,13 +28,30 @@ actor LeadImageStager {
         return pending
     }
 
+    /// Adopts already-durable camera bytes without another decode/encode cycle.
+    func adopt(_ pending: PendingLeadImageUpload) throws -> PendingLeadImageUpload {
+        if let id = pending.journalID, FileManager.default.fileExists(atPath: try journalURL(id).path) {
+            let record = try JSONDecoder().decode(Record.self, from: Data(contentsOf: journalURL(id)))
+            guard record.version == 1 else { throw CaptureStagingError.incompatibleManifest }
+            guard record.pending.companyId.lowercased() == pending.companyId.lowercased(),
+                  record.pending.opportunityId.lowercased() == pending.opportunityId.lowercased(),
+                  record.pending.userID == pending.userID, record.pending.localURL == pending.localURL,
+                  record.pending.originalLocalURL == pending.originalLocalURL else { throw CaptureStagingError.invalidIdentity }
+            return record.pending
+        }
+        guard ImageFileManager.shared.imageExists(localID: pending.localURL) else { throw CaptureStagingError.missingOriginal }
+        try save(pending)
+        return pending
+    }
+
     func recover(companyID: String, userID: String) throws -> [PendingLeadImageUpload] {
         guard FileManager.default.fileExists(atPath: root.path) else { return [] }
         let files = try FileManager.default.contentsOfDirectory(at: root, includingPropertiesForKeys: nil)
         var pending: [PendingLeadImageUpload] = []
         for file in files where file.pathExtension == "json" {
-            guard let record = try? JSONDecoder().decode(Record.self, from: Data(contentsOf: file)),
-                  record.version == 1, !record.finished else { continue }
+            let record = try JSONDecoder().decode(Record.self, from: Data(contentsOf: file))
+            guard record.version == 1 else { throw CaptureStagingError.incompatibleManifest }
+            guard !record.finished else { continue }
             let item = record.pending
             guard item.companyId.lowercased() == companyID.lowercased(), item.userID == userID.lowercased() else { continue }
             if item.uploadedURL == nil && !ImageFileManager.shared.imageExists(localID: item.localURL) {

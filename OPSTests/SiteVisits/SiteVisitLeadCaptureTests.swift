@@ -36,7 +36,7 @@ final class SiteVisitLeadCaptureTests: XCTestCase {
 
     // MARK: - Bug 5d5df5b0 · non-destructive re-entry
 
-    func test_reentry_autoResumesRecentUnlinkedVisitThatHoldsContent() throws {
+    func test_reentry_resumesExactInterruptedVisitIdentity() throws {
         let context = try makeContext()
         let prior = insertVisit(id: "visit-prior", into: context)
         insertDraft(
@@ -47,20 +47,55 @@ final class SiteVisitLeadCaptureTests: XCTestCase {
             into: context
         )
 
-        let viewModel = makeViewModel(context: context)
+        let viewModel = SiteVisitCaptureViewModel(opportunity: nil, companyId: Self.companyId,
+            userId: "user-operator-1", modelContext: context, entryIntent: .resume(visitId: prior.id))
         viewModel.loadOrCreateVisit()
 
         XCTAssertEqual(
             viewModel.siteVisit?.id,
             prior.id,
-            "re-entering within the window continues the SAME visit — a blank one loses the capture"
+            "explicit resume continues the same visit regardless of age"
         )
         XCTAssertEqual(viewModel.identityDraft?.contactName, "Corinne Robertson")
         XCTAssertEqual(viewModel.identityDraft?.address, "972 Lyall St, Esquimalt")
         XCTAssertNil(
             viewModel.resumableVisit,
-            "an auto-resumed visit must not also nag through the resume banner"
+            "an explicitly resumed visit must not also show the resume banner"
         )
+    }
+
+    func test_newVisitNeverReusesRecentIdentityButOffersResume() throws {
+        let context = try makeContext()
+        let prior = insertVisit(id: "recent-visit", into: context)
+        insertDraft(forVisitId: prior.id, contactName: "Synthetic customer", updatedAt: Date(), into: context)
+        let viewModel = makeViewModel(context: context)
+        viewModel.loadOrCreateVisit()
+        XCTAssertNotEqual(viewModel.siteVisit?.id, prior.id)
+        XCTAssertEqual(viewModel.resumableVisit?.id, prior.id)
+    }
+
+    func test_checklistOnlyAndIdentityNotesOnlyRemainResumable() throws {
+        let context = try makeContext()
+        let prior = insertVisit(id: "checklist-only", into: context)
+        let answer = SiteVisitChecklistAnswer(siteVisitId: prior.id, companyId: Self.companyId,
+            opportunityId: nil, siteVisitTypeId: nil, fieldId: "gate", label: "Gate",
+            kind: .shortText, required: false, sortOrder: 1, answerValue: .text("1234"))
+        context.insert(answer)
+        try context.save()
+        let first = makeViewModel(context: context)
+        first.loadOrCreateVisit()
+        XCTAssertEqual(first.resumableVisit?.id, prior.id)
+        first.resumeResumableVisit()
+        XCTAssertTrue(first.hasCapturedAnything)
+        XCTAssertEqual(first.checklistAnswers.first?.answerValue.text, "1234")
+        let noteVisit = insertVisit(id: "identity-notes-only", into: context)
+        let draft = SiteVisitIdentityDraft(siteVisitId: noteVisit.id, companyId: Self.companyId,
+            searchText: "partial lookup", notes: "Call before arrival")
+        context.insert(draft)
+        try context.save()
+        let next = makeViewModel(context: context)
+        next.loadOrCreateVisit()
+        XCTAssertEqual(next.resumableVisit?.id, noteVisit.id)
     }
 
     func test_reentry_startsFreshWhenPriorUnlinkedVisitIsStale() throws {
@@ -90,7 +125,7 @@ final class SiteVisitLeadCaptureTests: XCTestCase {
         )
     }
 
-    func test_reentry_sweepsEmptyAbandonedVisits() throws {
+    func test_reentry_preservesEmptyVisitBecauseCameraJournalCustodyIsUnknown() throws {
         let context = try makeContext()
         let empty = insertVisit(id: "visit-empty", into: context)
 
@@ -100,7 +135,7 @@ final class SiteVisitLeadCaptureTests: XCTestCase {
         XCTAssertNotEqual(viewModel.siteVisit?.id, empty.id)
         XCTAssertNil(viewModel.resumableVisit, "an empty visit is nothing to resume")
         let survivors = try context.fetch(FetchDescriptor<SiteVisit>()).map(\.id)
-        XCTAssertFalse(survivors.contains(empty.id), "empty abandoned visits are swept")
+        XCTAssertTrue(survivors.contains(empty.id), "absence of attached artifacts cannot prove camera custody empty")
     }
 
     func test_reentry_linkedStartIgnoresUnlinkedVisitsEntirely() throws {
@@ -549,6 +584,7 @@ final class SiteVisitLeadCaptureTests: XCTestCase {
             opportunityId: nil,
             companyId: Self.companyId,
             status: .scheduled,
+            createdBy: "user-operator-1",
             createdAt: createdAt
         )
         context.insert(visit)

@@ -15,6 +15,15 @@
 
 import Foundation
 
+/// One review decision owns both its displayed stage and its original revision.
+/// A late response cannot silently authorize a choice made without that revision.
+struct SiteVisitStageDecision: Equatable {
+    let opportunityId: String
+    let currentStage: PipelineStage
+    let snapshot: SiteVisitStageSnapshot?
+    var targetStage: PipelineStage
+}
+
 enum SiteVisitStageDefault {
 
     /// The stage a visit's lead should be preset to on save. Never returns a
@@ -39,6 +48,6 @@ enum SiteVisitStageDefault {
     /// excluded — closing a lead is an explicit action elsewhere, not a
     /// side effect of saving a visit.
     static var selectableStages: [PipelineStage] {
-        [.newLead, .qualifying, .quoting, .quoted, .followUp, .negotiation]
+        [.qualifying, .quoting, .quoted, .followUp, .negotiation]
     }
 }

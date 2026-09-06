@@ -16,27 +16,29 @@ final class SiteVisitStageDeliveryTests: XCTestCase {
     }
 
     func test_replayKeepsCommandAndNeverMergesHistoricalStage() async throws {
-        let command = makeCommand()
-        let operation = try makeOperation(command)
-        let schema = Schema([SyncOperation.self, Opportunity.self])
-        let container = try ModelContainer(for: schema, configurations: [ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)])
-        let context = container.mainContext
-        let opportunity = Opportunity(id: lead, companyId: company, contactName: "Synthetic", stage: .negotiation)
-        context.insert(opportunity); context.insert(operation); try context.save()
-        var deliveries: [SiteVisitStageCommand] = []
-        let executor = SiteVisitOutboundSync(repositoryFactory: { _ in
-            XCTFail("Stage command must use its own typed transport")
-            return SiteVisitRepository(companyId: "fixture", transport: RejectNetwork())
-        }, sessionUserId: { self.actor }, deliverStage: { cmd in
-            deliveries.append(cmd)
-            return try self.result(command: cmd, outcome: "already_applied")
-        })
-        let first = try await executor.executeIfHandled(operation: operation, context: context, activeCompanyId: company)
-        let replay = try await executor.executeIfHandled(operation: operation, context: context, activeCompanyId: company)
-        XCTAssertTrue(first)
-        XCTAssertTrue(replay)
-        XCTAssertEqual(deliveries, [command, command])
-        XCTAssertEqual(opportunity.stage, .negotiation)
+        for outcome in ["already_applied", "already_satisfied"] {
+            let command = makeCommand()
+            let operation = try makeOperation(command)
+            let schema = Schema([SyncOperation.self, Opportunity.self])
+            let container = try ModelContainer(for: schema, configurations: [ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)])
+            let context = container.mainContext
+            let opportunity = Opportunity(id: lead, companyId: company, contactName: "Synthetic", stage: .negotiation)
+            context.insert(opportunity); context.insert(operation); try context.save()
+            var deliveries: [SiteVisitStageCommand] = []
+            let executor = SiteVisitOutboundSync(repositoryFactory: { _ in
+                XCTFail("Stage command must use its own typed transport")
+                return SiteVisitRepository(companyId: "fixture", transport: RejectNetwork())
+            }, sessionUserId: { self.actor }, deliverStage: { cmd in
+                deliveries.append(cmd)
+                return try self.result(command: cmd, outcome: outcome, transitionId: outcome == "already_satisfied" ? nil : "66666666-6666-6666-6666-666666666666")
+            })
+            let first = try await executor.executeIfHandled(operation: operation, context: context, activeCompanyId: company)
+            let replay = try await executor.executeIfHandled(operation: operation, context: context, activeCompanyId: company)
+            XCTAssertTrue(first)
+            XCTAssertTrue(replay)
+            XCTAssertEqual(deliveries, [command, command])
+            XCTAssertEqual(opportunity.stage, .negotiation)
+        }
     }
 
     func test_otherAccountCannotMakeEvenFirstDelivery() async throws {
@@ -96,6 +98,12 @@ final class SiteVisitStageDeliveryTests: XCTestCase {
         XCTAssertFalse(SiteVisitStageTransport.isRetryableSQLCode("42501"))
     }
 
+    func test_alreadySatisfiedRequiresTruthfulNoTransitionReceipt() throws {
+        let command = makeCommand()
+        try result(command: command, outcome: "already_satisfied", transitionId: nil).validate(for: command)
+        XCTAssertThrowsError(try result(command: command, outcome: "already_satisfied").validate(for: command))
+    }
+
     func test_completionAutoAdvanceConflictDoesNotRebaseExpectedRevision() throws {
         let original = makeCommand()
         let snapshot = SiteVisitStageSnapshot(contractVersion: 1, capability: "site_visit_stage_command_v1",
@@ -131,10 +139,11 @@ final class SiteVisitStageDeliveryTests: XCTestCase {
             payload: try JSONEncoder().encode(SiteVisitSyncOperation.Payload(companyId: company, siteVisitId: visit,
                 entityId: visit, stageCommand: command)), changedFields: ["stage"])
     }
-    private func result(command: SiteVisitStageCommand, outcome: String) throws -> SiteVisitStageCommandResult {
+    private func result(command: SiteVisitStageCommand, outcome: String,
+                        transitionId: String? = "66666666-6666-6666-6666-666666666666") throws -> SiteVisitStageCommandResult {
         let object: [String: Any] = ["contract_version": 1, "command_id": command.commandId, "outcome": outcome,
-            "receipt": ["opportunity_id": lead, "stage": "quoting", "stage_revision": "later-opaque-revision",
-                "stage_entered_at": "2026-09-06T01:02:03.123456Z", "transition_id": "66666666-6666-6666-6666-666666666666",
+            "receipt": ["opportunity_id": lead, "stage": command.targetStage, "stage_revision": "later-opaque-revision",
+                "stage_entered_at": "2026-09-06T01:02:03.123456Z", "transition_id": transitionId as Any? ?? NSNull(),
                 "recorded_at": "2026-09-06T01:02:03.123456Z"]]
         return try JSONDecoder().decode(SiteVisitStageCommandResult.self, from: JSONSerialization.data(withJSONObject: object))
     }

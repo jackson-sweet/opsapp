@@ -79,6 +79,12 @@ struct SiteVisitStageCommandResult: Decodable, Equatable, Sendable {
                   receipt.stage == command.targetStage, receipt.transitionId != nil else {
                 throw SyncError.encodingFailed(detail: "Stage delivery receipt is incomplete")
             }
+        case "already_satisfied":
+            guard reason == nil, let receipt,
+                  receipt.opportunityId.lowercased() == command.opportunityId.lowercased(),
+                  receipt.stage == command.targetStage, receipt.transitionId == nil else {
+                throw SyncError.encodingFailed(detail: "Stage no-change receipt is invalid")
+            }
         case "conflict":
             throw SyncError.serverError(statusCode: 409, message: "STAGE CHANGED · REVIEW LEAD")
         case "not_ready":

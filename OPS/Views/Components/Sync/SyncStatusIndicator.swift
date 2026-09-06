@@ -228,16 +228,60 @@ struct HomeSyncStatusHostTransition: Transition {
 /// discarding a debounced refresh in flight.
 @MainActor
 final class SyncStatusIndicatorModel: ObservableObject {
-    @Published private(set) var attentionCount = 0
-    @Published private(set) var anyParked = false
+    @Published private(set) var summary = RecoveryAttentionSummary()
+    var attentionCount: Int { summary.attentionCount }
+    var anyParked: Bool { summary.anyParked }
+    private var refreshTask: Task<Void, Never>?
+    private var refreshGeneration = 0
+    private var displayedIdentity: String?
+    private var requestedContainer: ModelContainer?
 
     func refresh(from modelContext: ModelContext) {
-        let inventory = RecoveryInventory.load(
-            from: modelContext,
-            queue: ClientLeadAutocreateQueue.shared
-        )
-        attentionCount = inventory.attentionCount
-        anyParked = inventory.attention.contains { $0.tone == .parked }
+        requestedContainer = modelContext.container
+        refreshGeneration += 1
+        let user = UserDefaults.standard.string(forKey: "currentUserId") ?? ""
+        let company = UserDefaults.standard.string(forKey: "currentUserCompanyId") ?? ""
+        let identity = "\(user.lowercased()):\(company.lowercased())"
+        if displayedIdentity != identity {
+            displayedIdentity = identity
+            if summary != RecoveryAttentionSummary() { summary = RecoveryAttentionSummary() }
+        }
+        // A slow read coalesces requests instead of building concurrent inventories.
+        guard refreshTask == nil else { return }
+        refreshTask = Task { [weak self] in
+            guard let self else { return }
+            repeat {
+                let generation = self.refreshGeneration
+                let companyId = UserDefaults.standard.string(forKey: "currentUserCompanyId")?.lowercased() ?? ""
+                let userId = UserDefaults.standard.string(forKey: "currentUserId")?.lowercased() ?? ""
+                guard !companyId.isEmpty, !userId.isEmpty,
+                      let container = self.requestedContainer else { break }
+                let queue = ClientLeadAutocreateQueue.shared
+                let autocreates = (queue.parkedRequests + queue.activeRequests).map(AutocreateSnapshot.init(from:))
+                do {
+                    let quarantines = try await SiteVisitRecoveryVault.shared.quarantinedVisitIds(userId: userId, companyId: companyId)
+                    let snapshot = try await Task.detached(priority: .utility) {
+                        try RecoveryAttentionReader.read(
+                            container: container, companyId: companyId,
+                            autocreates: autocreates, quarantinedVisitIds: quarantines
+                        )
+                    }.value
+                    guard !Task.isCancelled else { break }
+                    let currentCompany = UserDefaults.standard.string(forKey: "currentUserCompanyId")?.lowercased() ?? ""
+                    let currentUser = UserDefaults.standard.string(forKey: "currentUserId")?.lowercased() ?? ""
+                    if generation == self.refreshGeneration,
+                       currentCompany == companyId, currentUser == userId,
+                       self.summary != snapshot {
+                        self.summary = snapshot
+                    }
+                } catch {
+                    // An unreadable snapshot is not evidence of zero attention.
+                    print("[SyncStatus] Compact recovery read failed: \(error)")
+                }
+                if generation == self.refreshGeneration { break }
+            } while !Task.isCancelled
+            self.refreshTask = nil
+        }
     }
 }
 

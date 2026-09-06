@@ -1255,6 +1255,7 @@ struct MainTabView: View {
             remapMountedTabs()
         }
         .onChange(of: dataController.currentUser?.id) { oldUserId, newUserId in
+            syncStatusIndicatorModel.refresh(from: modelContext)
             print("[MAIN_TAB_VIEW] currentUser ID changed")
             print("[MAIN_TAB_VIEW]   Old ID: \(String(describing: oldUserId))")
             print("[MAIN_TAB_VIEW]   New ID: \(String(describing: newUserId))")

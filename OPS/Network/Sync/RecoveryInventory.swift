@@ -46,7 +46,7 @@ import SwiftData
 
 /// A queued outbound sync operation, flattened to the fields the recovery screen
 /// reasons about.
-struct SyncOpSnapshot: Identifiable, Equatable {
+struct SyncOpSnapshot: Identifiable, Equatable, Sendable {
     let id: UUID
     let entityType: String
     let entityId: String
@@ -132,7 +132,7 @@ struct SyncOpSnapshot: Identifiable, Equatable {
 
 /// A durable client→lead autocreate request awaiting delivery. `attempts` is the
 /// request's effective attempt count; `isParked` marks a permanent rejection.
-struct AutocreateSnapshot: Identifiable, Equatable {
+struct AutocreateSnapshot: Identifiable, Equatable, Sendable {
     let clientId: String
     let name: String
     let createdAt: Date
@@ -178,7 +178,7 @@ struct AutocreateSnapshot: Identifiable, Equatable {
 /// polymorphic link back to whatever the photo is attached to. `status` follows
 /// PhotoProcessor's vocabulary — "local" (queued) and "failed" are the two the
 /// recovery screen surfaces; "failed" is the only one that reads as attention.
-struct PhotoSnapshot: Identifiable, Equatable {
+struct PhotoSnapshot: Identifiable, Equatable, Sendable {
     let id: String
     let entityType: String
     let entityId: String
@@ -205,7 +205,7 @@ struct PhotoSnapshot: Identifiable, Equatable {
 }
 
 /// A site-visit identity draft — the spine of a recovery bundle.
-struct DraftSnapshot: Identifiable, Equatable {
+struct DraftSnapshot: Identifiable, Equatable, Sendable {
     let id: String
     let siteVisitId: String
     let clientId: String?
@@ -275,7 +275,7 @@ struct VisitDeliverySnapshot: Identifiable, Equatable {
 
 /// A site-visit capture artifact — used only to resolve which deck designs were
 /// drawn on a visit, so a draft's deck ops can join its bundle.
-struct ArtifactSnapshot: Identifiable, Equatable {
+struct ArtifactSnapshot: Identifiable, Equatable, Sendable {
     let id: String
     let siteVisitId: String
     let deckDesignId: String?
@@ -422,6 +422,7 @@ enum SiteVisitBlockedStage: Int, Comparable, Equatable {
     case visit = 0
     case media = 1
     case completion = 2
+    case leadStage = 3
 
     static func < (lhs: SiteVisitBlockedStage, rhs: SiteVisitBlockedStage) -> Bool {
         lhs.rawValue < rhs.rawValue
@@ -1080,7 +1081,7 @@ extension RecoveryInventory {
         now: Date
     ) -> [RecoveryMember] {
         let grouped = Dictionary(grouping: operations, by: operationStage)
-        return [SiteVisitBlockedStage.visit, .media, .completion].compactMap { stage in
+        return [SiteVisitBlockedStage.visit, .media, .completion, .leadStage].compactMap { stage in
             guard let stageOps = grouped[stage], !stageOps.isEmpty else { return nil }
             let representative = stageOps.sorted(by: preferredRepresentative).first!
             return RecoveryMember(
@@ -1109,6 +1110,7 @@ extension RecoveryInventory {
     }
 
     private static func operationStage(_ operation: SyncOpSnapshot) -> SiteVisitBlockedStage {
+        if operation.operationType == SiteVisitSyncOperation.stageOperationType { return .leadStage }
         if operation.operationType == SiteVisitSyncOperation.completionOperationType { return .completion }
         if operation.operationType == SiteVisitSyncOperation.mediaOperationType { return .media }
         return .visit
@@ -1119,6 +1121,7 @@ extension RecoveryInventory {
         case .visit: return "visit"
         case .media: return "media"
         case .completion: return "completion"
+        case .leadStage: return "lead stage"
         }
     }
 

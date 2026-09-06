@@ -113,6 +113,50 @@ final class SiteVisitRecoveryVault {
         self.fileManager = fileManager
     }
 
+    /// Compact status only needs quarantine identities. Decode the small header
+    /// off main, without materializing packet models or decrypting media files.
+    func quarantinedVisitIds(userId: String, companyId: String) async throws -> Set<String> {
+        let root = rootDirectory
+        let keyProvider = keyProvider
+        let filename = Self.bundleFilename
+        let version = Self.archiveVersion
+        return try await Task.detached(priority: .utility) {
+            struct Header: Decodable {
+                struct Identity: Decodable { let userId: String; let companyId: String }
+                let version: Int
+                let identity: Identity
+                let siteVisitId: String
+                let quarantineReason: String?
+            }
+            let fm = FileManager.default
+            let directories: [URL]
+            do {
+                directories = try fm.contentsOfDirectory(at: root, includingPropertiesForKeys: nil)
+                    .filter { !$0.lastPathComponent.hasPrefix(".tmp-") }
+            } catch let error as NSError where error.domain == NSCocoaErrorDomain && error.code == NSFileReadNoSuchFileError {
+                return [] // Proven absence; permission/protection errors propagate.
+            }
+            guard !directories.isEmpty else { return [] }
+            let keyData = try keyProvider()
+            guard keyData.count == 32 else { throw CocoaError(.fileReadCorruptFile) }
+            let key = SymmetricKey(data: keyData)
+            var ids = Set<String>()
+            for directory in directories {
+                let bytes = try Data(contentsOf: directory.appendingPathComponent(filename))
+                let box = try AES.GCM.SealedBox(combined: bytes)
+                let plaintext = try AES.GCM.open(box, using: key)
+                let header = try JSONDecoder().decode(Header.self, from: plaintext)
+                guard header.version == version else { throw CocoaError(.fileReadCorruptFile) }
+                if header.quarantineReason != nil,
+                   header.identity.userId == userId.lowercased(),
+                   header.identity.companyId == companyId.lowercased() {
+                    ids.insert(header.siteVisitId.lowercased())
+                }
+            }
+            return ids
+        }.value
+    }
+
     /// Returns every same-company visit with local work that is not yet proven
     /// durable on the server. Missing-parent children are included deliberately.
     static func unsentVisitIds(
@@ -365,6 +409,14 @@ final class SiteVisitRecoveryVault {
 
             try modelContext.transaction {
                 for operation in matching {
+                    if operation.operationType == SiteVisitSyncOperation.stageOperationType {
+                        // Restoring packet custody is not renewed authority to
+                        // move a lead to a historical stage. Keep the exact
+                        // original command visible for deliberate review.
+                        operation.status = "parked"
+                        operation.lastError = "STAGE REVIEW REQUIRED · OPEN LEAD"
+                        continue
+                    }
                     operation.status = "pending"
                     operation.retryCount = 0
                     operation.lastAttemptedAt = nil

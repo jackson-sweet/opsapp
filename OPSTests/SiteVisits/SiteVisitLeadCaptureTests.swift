@@ -28,10 +28,16 @@ final class SiteVisitLeadCaptureTests: XCTestCase {
     /// Containers stay alive for the test's duration — handing out only
     /// `mainContext` would let the store deallocate under the context.
     private var liveContainers: [ModelContainer] = []
+    private var liveControllers: [DataController] = []
 
-    override func tearDown() {
+    override func tearDown() async throws {
+        // Invalidate timer/notification work while the fixture stores still
+        // exist. P1-4 separately guards production in-flight row lifetimes.
+        for controller in liveControllers { controller.syncEngine.stopForLogoutSync() }
+        for controller in liveControllers { await controller.syncEngine.stopForLogoutAsync() }
+        liveControllers.removeAll()
         liveContainers.removeAll()
-        super.tearDown()
+        try await super.tearDown()
     }
 
     // MARK: - Bug 5d5df5b0 · non-destructive re-entry
@@ -483,10 +489,11 @@ final class SiteVisitLeadCaptureTests: XCTestCase {
     ) throws -> LeadCreateHarness {
         let context = try makeContext()
         let dataController = DataController()
+        liveControllers.append(dataController)
         dataController.setModelContext(context)
         dataController.syncEngine.configure(
             modelContext: context,
-            connectivity: dataController.connectivity
+            connectivity: SiteVisitFixtureOfflineConnectivity()
         )
 
         let viewModel = makeViewModel(context: context)
@@ -640,4 +647,13 @@ private final class RecordingLeadQueue: ClientLeadAutocreateQueueing {
         enqueuedClientId = client.id
         enqueuedCompanyId = companyId
     }
+}
+
+/// The visibility/lead transports above are injected independently. Background
+/// client/outbox work must stay offline regardless of the Mac's real network.
+@MainActor
+private final class SiteVisitFixtureOfflineConnectivity: ConnectivityManager {
+    override var shouldAttemptSync: Bool { false }
+    override var shouldPullData: Bool { false }
+    override var shouldUploadPhotos: Bool { false }
 }

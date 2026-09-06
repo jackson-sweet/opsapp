@@ -1,6 +1,6 @@
 # IOS PERFORMANCE - P1-2
 
-**READY FOR BUILD BATON.** Owned code is committed and passes lightweight source checks. No worker build baton received. No xcodebuild, test execution, package resolution, simulator/device action, performance benchmark, real pending replay, deployment or release occurred in this worker.
+**READY FOR PARENT COMBINED VERIFICATION.** Owned code is committed and passes lightweight source checks. No worker build baton received. No xcodebuild, test execution, package resolution, simulator/device action, performance benchmark, real pending replay, deployment or release occurred in this worker.
 
 ## Exact integration sequence
 
@@ -14,6 +14,9 @@ Baseline: `94543f955ca8a2ccee4cc148c24c6d33de92cccc`. Apply these local commits 
 6. `fad0e453` — actual entry/template/deck-host isolation, complete Opportunity snapshots, full queue cache-entry isolation and corresponding fixtures.
 7. `9f6c5cdb` — bounded/cancellable search-fixture registration, persisted media readback, and realistic isolated queue-delivery fixture.
 8. `93eac1ec` — first delivery is marked for newly captured blank/scan deck rows before a visit references them.
+9. `26e9936d` — lead fixtures keep background networking offline and retain controllers/stores until synchronous invalidation plus async teardown finish.
+10. `bad6ad3a` — typed visit/media delivery inherits its caller actor and checks current-session validity after every suspension; five explicit-gate regression cases.
+11. `ea5d8798` — CREATE LEAD saves client/contact/notes/subcontacts, draft binding and their standard outbox operations in the capture-owned transaction; actual-entry rollback/retry, deduplication and stopped-parent tests.
 
 P1-3 media APIs through `c528e1b0` are implemented prerequisites. These visit adapters do not depend on P1-3's remaining non-visit camera adapters. New files use existing synchronized Xcode groups; there are no persistent model/schema or project-file changes. P1-5's finalized SQL contract includes `already_satisfied`; production migration is not applied and remains a separate gate.
 
@@ -28,6 +31,7 @@ P1-3 media APIs through `c528e1b0` are implemented prerequisites. These visit ad
 - Completion fetches only the exact visit graph's unresolved tail and inserts a distinct command. Stage commands are excluded from CRUD coalescing and completion's live barrier. Rollback affects only the owned context and rematerializes held row/operation references.
 - `recoverOrphanedWrites(siteVisitIds: Set<String>? = nil)` stays source compatible for P1-4. Candidate/company/UUID scope is supported and existing pending/inProgress/failed/parked/declined owners are preserved. Ordinary save never invokes repair. P1-4 owns the background recovery context and scheduling.
 
+- CREATE LEAD uses SiteVisitIdentityClientStore inside that same owned coordinator transaction. Client creation/contact/notes, deduplicated extra contacts, draft.clientId and standard client/subClient SyncOperations commit together. No DataController create/update/recordOperation save remains in this path. A successful commit wakes the existing engine through notifyDurableOperationQueued only. Retries reuse client/contact/operation identities, union server/local field spellings, retain stopped/in-flight payload ownership, and recheck pending parent visibility. Existing-client selection seeds its notes; deliberately cleared contact fields encode JSON null and cleared notes encode an empty string. No general client or controller path changed.
 - Capture entry's ensureSiteVisitTypesSeeded uses an isolated SiteVisitTypeSeedStore. Templates and queue entries save together, permissions/stopped owners are preserved, and a no-op seed does not save any context. The actual opening path never saves the controller's unrelated pending edits.
 
 ## Product behavior
@@ -49,9 +53,11 @@ The existing Codable outbox payload holds the stable command UUID, original acto
 
 `applied` and `already_applied` require a matching transition receipt. `already_satisfied` requires matching lead/target, null reason and null transition, and settles without claiming a move. All success/replay outcomes settle only and never merge historical stage into a newer local lead. Conflict is permanent review; not-ready and SQL 55P03/40P01/40001 retry the unchanged command. Missing capability/permission/invalid request fails closed. Prior immutable conflicts remain conflicts.
 
+Typed delivery's public executeIfHandled and uploadPendingMedia APIs accept isCurrent: () -> Bool and isolation: isolated (any Actor)? = #isolation. Both are source compatible by default, but P1-4 must supply the real session-generation/registered-operation guard at both production driver callers. Every typed entry and return from an await checks cancellation/current scope before accessing SwiftData. Model work remains on its caller actor; file loading and raster preparation execute on separate actors. Fixture-only synchronous loaders remain injectable.
+
 ## Verification performed and authored
 
-`static-verification.json` records all 27 changed Swift files passing frontend syntax parsing, preserved CRLF boundaries, and zero new literal color/font/spacing/radius violations in changed visit UI. `git diff --check` passes. These are source checks only. The PM's earlier combined compile found a complex predicate and actor-conversion warning; `344c3c7b` splits the predicate and uses the nonisolated classifier. Those fixes have not yet been typechecked by this worker.
+`static-verification.json` records all 31 changed Swift files passing frontend syntax parsing, preserved CRLF boundaries, and zero new literal color/font/spacing/radius violations in changed visit UI. `git diff --check` passes. These are source checks only. The PM's earlier combined compile found a complex predicate and actor-conversion warning; `344c3c7b` splits the predicate and uses the nonisolated classifier. Those fixes have not yet been typechecked by this worker.
 
 Authored synthetic tests cover:
 
@@ -59,15 +65,17 @@ Authored synthetic tests cover:
 - Isolated coordinator and actual VM paths: another visit's pending note, answer and newly inserted draft keep their memory values while its prior stored values remain unchanged on both success and failure. A later deliberate save of B must not overwrite A.
 - 1,000 unsaved unrelated drafts: one owned edit produces one boundary snapshot and no persisted unrelated drafts.
 - Actual entry seed success/failure/no-op with B pending, real deck-host save failure/retry with B pending, full queue arrival cache+binding isolation, and complete initial/reassigned lead snapshots.
+- Actual CREATE LEAD saves and injected failures for both new and existing clients, unrelated caller WIP, atomic client/extra-contact/draft/outbox rollback, retry deduplication, deliberate field clears, phone field protection and stopped-create non-bypass. Retry of a locally saved pending client still probes visibility.
+- Session invalidation while repository acquisition, visit upsert, completion, photo preparation or upload is held behind an explicitly registered gate. Independent reads require original local media, pending operations and untouched sync timestamps.
 - Rollback rematerialization, exact orphan candidates, metadata versus new markup retry, draft versus completion, explicit new/resume, staged-photo deduplication/foreign-owner rejection/failure replay, local suggestions under held networking, frozen late-stage snapshots, durable stage dependency, offline parked custody and settle-only historical receipts.
 
 All fixtures/photo URLs are synthetic. No XCTest has run in this worker, and there is no visual, device-frame-time or customer-live proof. P1-3 owns filesystem/original/thumbnail failure tests; P1-4 owns recovery scheduling and deck/sync tests. PM owns the Bible and final combined proof.
 
 ## Parent combined run and current rerun status
 
-Parent core03 ran an earlier combined snapshot: 292 tests, 287 passed, 5 failed, zero skipped. Two lead tests trapped in SyncOperation backing data through OutboundProcessor; P1-4 owns the sync-driver/lifetime repair, and this worker did not alter the driver or hide the crashes with fixture teardown. Exact retained diagnostics are in the integration checkout under docs/artifacts/ios-performance-combined/core03-relevant-diagnostics/.
+Parent core03 ran an earlier combined snapshot: 292 tests, 287 passed, 5 failed, zero skipped. Two lead tests trapped in SyncOperation backing data through OutboundProcessor; P1-4 owns the real sync-driver/lifetime repair. Separately, 26e9936d makes the synthetic lead fixture hermetic and waits for controller teardown before releasing its containers; this is not production lifetime proof. bad6ad3a adds inner typed-lane guards, which require P1-4's real predicates at both callers. Exact retained diagnostics are in the integration checkout under docs/artifacts/ios-performance-combined/core03-relevant-diagnostics/.
 
-The three assertion failures were both search fixtures and the repeated-URL markup test. Commit 9f6c5cdb replaces the 100-yield polling gate with a MainActor request-registration expectation, a five-second bound and cancellation cleanup; the markup assertion reads the same operation ID from a fresh context and still requires pending status/retryCount zero. The queue-delivery fixture now writes its binding through a separate context, matching production. These amendments, plus the latest entry/deck/snapshot tests, await the focused combined rerun. Syntax parsing passes for the final 27 Swift files; runtime completion is not yet claimed.
+The three assertion failures were both search fixtures and the repeated-URL markup test. Commit 9f6c5cdb replaces the 100-yield polling gate with a MainActor request-registration expectation, a five-second bound and cancellation cleanup; the markup assertion reads the same operation ID from a fresh context and still requires pending status/retryCount zero. The queue-delivery fixture now writes its binding through a separate context, matching production. These amendments, plus the latest entry/deck/snapshot tests, await the focused combined rerun. Syntax parsing passes for the final 31 Swift files; runtime completion is not yet claimed.
 
 ## Exact focused commands — PM only with baton
 
@@ -90,7 +98,9 @@ xcodebuild test -project OPS.xcodeproj -scheme OPS \
   -only-testing:OPSTests/SiteVisitCapturePacketTests \
   -only-testing:OPSTests/SiteVisitActivityPostTests \
   -only-testing:OPSTests/SiteVisitStageDefaultTests \
-  -only-testing:OPSTests/ClientLeadAutocreateParentGateTests
+  -only-testing:OPSTests/ClientLeadAutocreateParentGateTests \
+  -only-testing:OPSTests/SiteVisitOutboundSyncTests \
+  -only-testing:OPSTests/SiteVisitMediaSyncManagerTests
 ```
 
 The device-target compile is shared with other workers, not an extra concurrent build:

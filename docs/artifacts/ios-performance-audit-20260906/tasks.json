@@ -26,8 +26,8 @@
       "hostId": "local",
       "worktree": "/Users/jacksonsweet/Projects/OPS/.worktrees/ios-performance-p1-2",
       "ownership": "Visit edits and continuity",
-      "afterCursor": "7f7ccd51-e735-4480-9895-050cd2f50a85:9",
-      "status": "accepted locally; all assigned proof complete; idle",
+      "afterCursor": "7f7ccd51-e735-4480-9895-050cd2f50a85:11",
+      "status": "bounded shared review-snapshot repair authorized from measured repeated UI scans; fresh runtime checkout; no build baton",
       "sourceCommits": [
         "774a3778",
         "c37d4d91",
@@ -78,8 +78,8 @@
       "hostId": "local",
       "worktree": "/Users/jacksonsweet/Projects/OPS/.worktrees/ios-performance-p1-4",
       "ownership": "Sync and deck responsiveness",
-      "afterCursor": "4c1ff8ae-b6a4-4cc7-8d35-c29379105f0f:10",
-      "status": "accepted locally; all assigned proof complete; idle",
+      "afterCursor": "4c1ff8ae-b6a4-4cc7-8d35-c29379105f0f:13",
+      "status": "executor mechanism: initial 1pass/1fail; expanded 4-case probe queued behind external iOS build; startup repair active",
       "sourceCommits": [
         "047a719798a4aa6f2e6e08a586fed2cdb549e3b6",
         "193f7464b1cd076df9a5d92f96f0541c52543b09",
@@ -87,7 +87,8 @@
         "8e7e2ef1d10e36ed9584632f1a877757c2f7ec28",
         "a021ab0a16a8e5054f7cb17f95b1222782991893",
         "245ac1b786befae4a03ef0b0ea9cb1941476a1d2"
-      ]
+      ],
+      "runtimeWorktree": "/Users/jacksonsweet/Projects/OPS/.worktrees/ios-performance-p1-4-runtime"
     },
     {
       "number": 5,
@@ -107,7 +108,7 @@
       ]
     }
   ],
-  "status": "server_applied_phone_installed_awaiting_physical_unlock_for_measurement",
+  "status": "runtime_stalls_confirmed_background_executor_repair_in_progress",
   "verifiedIOSSource": "622010a01839387a91e6fadbba3444950f6acfff",
   "authorization": {
     "reviewedProductionMigration": true,
@@ -118,5 +119,5 @@
   },
   "serverMigrationVersion": "20260907001000",
   "phoneInstalled": true,
-  "physicalMeasurement": "blocked by locked phone; user unlock and USB requested"
+  "physicalMeasurement": "Valid optimized startup recorded: 5 microhangs; actual upgrade and custody passed. Different Debug warm recording excluded. Manual equivalent-build site-visit/network comparison awaits phone ownership coordination and user readiness."
 }

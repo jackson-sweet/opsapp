@@ -1,0 +1,176 @@
+{
+  "condition": "Online, user-guided site-visit workflow; actual actions pending user confirmation",
+  "configuration": "Debug",
+  "binary": {
+    "name": "OPS.debug.dylib",
+    "UUID": "43B4CF87-BC00-39CE-B46F-B80B93CBFEB3",
+    "arch": "arm64",
+    "matchingLocalBinaryVerified": true,
+    "verifiedRepairSymbols": [
+      "DataActorModelExecutor",
+      "ReviewSnapshotStore",
+      "reportWasSuperseded"
+    ]
+  },
+  "durationSeconds": 181.57214808400002,
+  "cpu": {
+    "weightedAveragePercent": 7.98913100963229,
+    "peakSampledPercent": 148.207576449,
+    "peakSampleAtSeconds": 10.189029,
+    "counterDeltaSeconds": 14.489101166000001,
+    "samplingIntervalMedianApproxSeconds": 1,
+    "sampleCount": 181,
+    "percentageConvention": "100% corresponds to one core; simultaneous multicore use can exceed 100%."
+  },
+  "memoryMiB": {
+    "first": 296.1734390258789,
+    "last": 271.4546890258789,
+    "minimum": 271.4078140258789,
+    "peak": 307.6890640258789
+  },
+  "hangs": [
+    {
+      "startSeconds": 43.770726791,
+      "durationMs": 557.230792
+    }
+  ],
+  "sampledCPU": {
+    "allMs": 14294.0,
+    "mainMs": 2693.0,
+    "hangMainSampledMs": 29.0,
+    "mainFractionOfAllSampledCPUPercent": 18.840072757800474
+  },
+  "topMainAppFramesInclusiveMs": [
+    [
+      "static OPSApp.$main()",
+      2437.0
+    ],
+    [
+      "__debug_main_executable_dylib_entry_point",
+      2437.0
+    ],
+    [
+      "@objc ForwardingDisplayLinkTarget.update(with:)",
+      1091.0
+    ],
+    [
+      "ForwardingDisplayLinkTarget.update(with:)",
+      1088.0
+    ],
+    [
+      "closure #1 in MapView.didMoveToWindow()",
+      1084.0
+    ],
+    [
+      "MapView.updateFromDisplayLink(displayLink:)",
+      1070.0
+    ],
+    [
+      "OS_os_log.withIntervalSignpost<A>(_:_:around:)",
+      748.0
+    ],
+    [
+      "partial apply for closure #1 in MapView.updateFromDisplayLink(displayLink:)",
+      727.0
+    ],
+    [
+      "closure #1 in MapView.updateFromDisplayLink(displayLink:)",
+      727.0
+    ],
+    [
+      "ClosureHandlersStore<>.send()",
+      718.0
+    ],
+    [
+      "ClosureHandlersStore<>.send(_:)",
+      718.0
+    ],
+    [
+      "thunk for @escaping @callee_guaranteed (@in_guaranteed A) -> (@out ())",
+      612.0
+    ],
+    [
+      "thunk for @escaping @callee_guaranteed (@in_guaranteed A) -> ()",
+      611.0
+    ],
+    [
+      "thunk for @escaping @callee_guaranteed () -> ()",
+      608.0
+    ],
+    [
+      "partial apply for closure #1 in closure #1 in Signal.tracingInterval(_:_:log:)",
+      372.0
+    ]
+  ],
+  "topHangMainAppFramesInclusiveMs": [
+    [
+      "closure #1 in MapView.updateFromDisplayLink(displayLink:)",
+      29.0
+    ],
+    [
+      "MapView.updateFromDisplayLink(displayLink:)",
+      29.0
+    ],
+    [
+      "ForwardingDisplayLinkTarget.update(with:)",
+      29.0
+    ],
+    [
+      "thunk for @escaping @callee_guaranteed (@in_guaranteed A) -> ()",
+      29.0
+    ],
+    [
+      "OS_os_log.withIntervalSignpost<A>(_:_:around:)",
+      29.0
+    ],
+    [
+      "@objc ForwardingDisplayLinkTarget.update(with:)",
+      29.0
+    ],
+    [
+      "__debug_main_executable_dylib_entry_point",
+      29.0
+    ],
+    [
+      "closure #1 in AnnotationManagerImpl.init(params:deps:)",
+      29.0
+    ],
+    [
+      "AnnotationManagerImpl.syncSourceAndLayerIfNeeded()",
+      29.0
+    ],
+    [
+      "ClosureHandlersStore<>.send(_:)",
+      29.0
+    ],
+    [
+      "ClosureHandlersStore<>.send()",
+      29.0
+    ],
+    [
+      "thunk for @escaping @callee_guaranteed () -> ()",
+      29.0
+    ],
+    [
+      "thunk for @escaping @callee_guaranteed (@in_guaranteed A) -> (@out ())",
+      29.0
+    ],
+    [
+      "partial apply for closure #1 in MapView.updateFromDisplayLink(displayLink:)",
+      29.0
+    ],
+    [
+      "closure #1 in MapView.didMoveToWindow()",
+      29.0
+    ]
+  ],
+  "thermalState": "Nominal",
+  "limitations": [
+    "Debug build; not a Release performance comparison.",
+    "Source revision not established from version label.",
+    "Activity Monitor CPU counter was already nonzero at attachment; report uses delta, not lifetime total.",
+    "Inclusive stack times overlap and must not be summed.",
+    "Hang detector threshold is 250 ms; smaller hitches may still occur."
+  ],
+  "analysisNote": "Mapbox annotation-update and Swift type-reflection frames appear in the stall; only 29 ms of sampled main CPU lies inside 557 ms of hang time, so the full cause is not established. App-binary stacks include statically linked dependencies."
+}

@@ -512,7 +512,7 @@ final class HomeSyncStatusLayoutTests: XCTestCase {
         )
         XCTAssertEqual(
             HeaderSyncStatusGeometry.trailingInset(headerWidth: 390, trailingSlotMinX: 326),
-            390 - 326 + OPSStyle.Layout.spacing2,
+            CGFloat(390 - 326) + HeaderSyncStatusGeometry.controlClearance,
             "A 44pt avatar inset 20pt reserves its column plus a control gap"
         )
         XCTAssertEqual(

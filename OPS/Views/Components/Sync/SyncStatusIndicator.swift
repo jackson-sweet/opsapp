@@ -2,7 +2,7 @@
 //  SyncStatusIndicator.swift
 //  OPS
 //
-//  Compact sync pill shared by Home's header and the tab-view overlay. Tapping
+//  Compact sync pill superimposed on every root's header. Tapping
 //  opens PENDING WORK (SYNC RECOVERY · T6). Its attention state —
 //  "<n> NEED A LOOK",
 //  tan normally, rose when anything is parked (out of auto-retries) — takes
@@ -26,8 +26,9 @@ import SwiftData
 
 /// The needs-a-look pill — "<n> NEED A LOOK", tan normally, rose when anything
 /// is parked. Extracted from `SyncStatusIndicator` so the visual can be rendered
-/// and geometrically verified without a DataController or a live SwiftData
-/// context (see `SyncPillHeaderLayoutTests`).
+/// and geometrically verified in isolation; the layout proofs measure the whole
+/// shipped control inside the shipped `HeaderSyncStatusOverlay` (see
+/// `SyncPillHeaderLayoutTests` and `HomeSyncStatusLayoutTests`).
 ///
 /// The pill floats above the header's fade — and, on Home, above the live map —
 /// so two things remain deliberate in the shared visual:
@@ -208,7 +209,7 @@ enum HeaderSyncStatusPlacementPolicy {
 /// Dynamic Type size, width and header type by construction.
 enum HeaderSyncStatusGeometry {
     /// Gap kept between the pill and the trailing control cluster.
-    static let controlClearance = OPSStyle.Layout.spacing2
+    static let controlClearance: CGFloat = OPSStyle.Layout.spacing2
 
     /// Trailing inset for the superimposed pill.
     ///
@@ -221,9 +222,9 @@ enum HeaderSyncStatusGeometry {
         headerWidth: CGFloat,
         trailingSlotMinX: CGFloat?
     ) -> CGFloat {
-        let edgeInset = OPSStyle.Layout.spacing3_5
+        let edgeInset: CGFloat = OPSStyle.Layout.spacing3_5
         guard let trailingSlotMinX else { return edgeInset }
-        let clearedColumn = headerWidth - trailingSlotMinX + controlClearance
+        let clearedColumn: CGFloat = headerWidth - trailingSlotMinX + controlClearance
         return min(max(edgeInset, clearedColumn), headerWidth)
     }
 }

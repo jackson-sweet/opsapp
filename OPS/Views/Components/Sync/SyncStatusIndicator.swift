@@ -228,6 +228,21 @@ enum HeaderSyncStatusGeometry {
     }
 }
 
+/// Bounds of the superimposed pill, published by `HeaderSyncStatusOverlay`.
+///
+/// Bug 417aac7b closed wrong twice because nothing measured where the pill
+/// actually LANDED. Publishing its real frame lets the layout proofs assert
+/// non-intersection against the shipped composition — the real `AppHeader`,
+/// the real trailing controls, the real pill — instead of a reconstruction of
+/// it that can drift from what ships.
+struct HeaderSyncStatusPillBoundsKey: PreferenceKey {
+    static let defaultValue: Anchor<CGRect>? = nil
+
+    static func reduce(value: inout Anchor<CGRect>?, nextValue: () -> Anchor<CGRect>?) {
+        value = nextValue() ?? value
+    }
+}
+
 /// The pill's superimposed placement on a root header.
 ///
 /// `AppHeader` and the layout proof (`HomeSyncStatusLayoutTests`) render this
@@ -249,6 +264,10 @@ struct HeaderSyncStatusOverlay<Pill: View>: View {
     var body: some View {
         GeometryReader { proxy in
             pill()
+                .anchorPreference(
+                    key: HeaderSyncStatusPillBoundsKey.self,
+                    value: .bounds
+                ) { $0 }
                 .frame(
                     maxWidth: .infinity,
                     maxHeight: .infinity,

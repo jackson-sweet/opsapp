@@ -1,6 +1,6 @@
 # iOS performance repair acceptance
 
-Current state September6,2026: all authorized local repair implementation and verification complete; source integrated on iOS main622010a0. Final focused rerun127/127passed,0skips; UI2/2passed; unsigned optimized iPhone compile passed; actual copied V25→V26 upgrade/reopen1/1passed. Earlier storage68passed/1optionalV15skip and media35/35passed. Counts overlap across runs. Server34/34passed locally; migration unapplied. Physical-device latency and customer-live status remain unverified.
+Current state September6,2026: all authorized local repair implementation and verification complete; source integrated on iOS main622010a0. Final focused rerun127/127passed,0skips; UI2/2passed; unsigned optimized iPhone compile passed; actual copied V25→V26 upgrade/reopen1/1passed. Earlier storage68passed/1optionalV15skip and media35/35passed. Counts overlap across runs. Server34/34passed locally; approved migration20260907001000applied and independently verified. Signed optimized build installed in place; database byte-identical and saved-file inventory preserved before launch. First launch is blocked by the locked phone; physical latency remains unmeasured. App Store release and push remain unapproved.
 
 | Audit finding | Repair / invariant | Verification coverage |
 |---|---|---|
@@ -16,7 +16,7 @@ Current state September6,2026: all authorized local repair implementation and ve
 | 10 Local search latency | Local clients immediate, independently bounded remote search; obsolete response ignored | SiteVisitSearchSource including delayed/mismatched account responses |
 | 11 Broad entry scans | Exact deck lookup; open owner/company visit candidates; compute draft metadata once | Continuity/entry tests and source review; predicate must compile on actual target |
 | 12 Thumbnail work/fallback | Async downsampling with bounded concurrency, composite precedence, remote fallback, arrival updates | PhotoThumbnailLoader:pixel bound,orientation,fallback,cachearrival,cancellation |
-| 13 Save/stage/required fields | Draft save immediate; completion checks applicable requirements; immutable original stage decision/outbox | Continuity,StageDelivery,StageDefault,CommandRecovery; server34/34verified locally; production RPC unapplied |
+| 13 Save/stage/required fields | Draft save immediate; completion checks applicable requirements; immutable original stage decision/outbox | Continuity,StageDelivery,StageDefault,CommandRecovery; server34/34verified locally; production RPC applied with exact catalog/ledger and anonymous route-denial proof |
 
 Cross-review amendments were included in verified local completion: caller shared-context WIP must never be committed/rolled back by another visit, direct corrupt-manifest recovery must surface uncertainty, every production camera entry needs recoverable custody, project-create interruption needs durable parent command and stale-save tombstone, and stage default/queue condition must use the same snapshot the operator reviewed.
 
@@ -30,11 +30,11 @@ The existing hermetic SiteVisitContactImportUITests executed2cases with0failures
 
 The optional copied-V25 test executed1pass/0failures/0skips against the privately exported phone database, upgrading toV26 and independently reopening. Counts and per-run-keyed content/custody digests matched across16groups, including ProjectPhoto and full outbox state; dirty deck merge bases stayed unknown/unsent. Referenced asset bytes were not read. Original export bytes stayed unchanged during proof; task-created private export/proof copies were removed afterward. The old optional V15 test remains distinct and unchanged. Sanitized result:private-store-upgrade-summary.json.
 
-Verified source is on local iOS main622010a0; software Bible current contracts updated in940c24c. The clean server dependency remains in P1-5's private checkout, preserving unrelated web WIP. No push, production mutation, phone installation or release occurred.
+Verified source is on local iOS main622010a0; software Bible current contracts updated in940c24c. The clean server dependency remains in P1-5's private checkout, preserving unrelated web WIP. Subsequent explicit approval enabled the exact production migration and in-place optimized phone installation; both are complete. No push or App Store release occurred.
 
 ## Physical performance proof and release sequence
 
-Once all local implementation/checks pass, prepare the exact server migration and known optimized device build for approval. No migration, phone install, push or release currently authorized. A production RPC must be applied and independently verified before a dependent client ships. Local-only tests cannot prove production notification/provider fan-out.
+Jackson approved the exact server migration, optimized phone installation, and online/offline measurements. Migration and installation are complete; Apple refused first launch while the phone is locked. User unlock and USB connection are pending. Push and App Store release remain unapproved. A production RPC must be applied and independently verified before a dependent client ships. Local-only tests cannot prove production notification/provider fan-out.
 
 For the authorized device follow-through, use the same representative sequence and record source/build/store shape and network condition: new visit → type checklist →10photos → note/dictation → create/edit deck → return → save → reopen. Repeat Wi-Fi,cellular,high latency/loss,offline,reconnect with queue; include long-lived completed history and exact stopped work. Record signposted local save/recovery attention/discovery, Time Profiler/SwiftUI hitches, allocations and first-frame return. Compare optimized builds, not a debug-vs-release pair. No latency improvement percentage until measured.
 

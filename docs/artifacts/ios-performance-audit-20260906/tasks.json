@@ -97,8 +97,8 @@
       "worktree": "/Users/jacksonsweet/Projects/OPS/.worktrees/ios-performance-p1-5",
       "ownership": "Guarded stage-delivery server contract",
       "baseline": "bcd252e55c6af94a603a04d4d08ad88e7518a34a",
-      "afterCursor": "f6606ba9-32ef-48ad-8bfe-42988bac4962:3",
-      "status": "accepted locally;34 SQL tests pass; migration unapplied; idle",
+      "afterCursor": "f6606ba9-32ef-48ad-8bfe-42988bac4962:7",
+      "status": "production migration applied by PM; independent23dependency/catalog/ledger readback passed; idle",
       "sourceCommits": [
         "caec2dfae3c4adfe4ce5bc987b5d0bd9d4e498d1",
         "e95d12a0650cd09f5095c4e5cd20534f0e1a93d9",
@@ -107,6 +107,16 @@
       ]
     }
   ],
-  "status": "local_complete_external_approval_required",
-  "verifiedIOSSource": "622010a01839387a91e6fadbba3444950f6acfff"
+  "status": "server_applied_phone_installed_awaiting_physical_unlock_for_measurement",
+  "verifiedIOSSource": "622010a01839387a91e6fadbba3444950f6acfff",
+  "authorization": {
+    "reviewedProductionMigration": true,
+    "dataPreservingOptimizedPhoneInstall": true,
+    "onlineOfflineMeasurements": true,
+    "gitPush": false,
+    "appStoreRelease": false
+  },
+  "serverMigrationVersion": "20260907001000",
+  "phoneInstalled": true,
+  "physicalMeasurement": "blocked by locked phone; user unlock and USB requested"
 }

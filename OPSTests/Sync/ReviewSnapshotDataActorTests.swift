@@ -197,6 +197,19 @@ final class ReviewSnapshotDataActorTests: XCTestCase {
         XCTAssertEqual(fixture.controller.getAllTasks().count, 8, "The general getter is unchanged")
     }
 
+    func testRetiredActorRejectsQueuedReviewReadWithoutReturningZero() async throws {
+        let fixture = try fixture(onDisk: true)
+        let actor = try await DataActor.makeBackgroundConfigured(modelContainer: fixture.container)
+        let request = try request(fixture)
+        actor.retireAndDrainModelWork()
+        do {
+            _ = try await actor.reviewSnapshot(for: request)
+            XCTFail("A read entering after retirement must throw before accessing modelContext")
+        } catch is CancellationError {
+            // Expected: cancellation/unavailability can never become zero.
+        }
+    }
+
     func testFlagOffUsesExistingContextAndProducesRealCounts() async throws {
         UserDefaults.standard.set(false, forKey: "feature.useDataActor")
         let fixture = try fixture()

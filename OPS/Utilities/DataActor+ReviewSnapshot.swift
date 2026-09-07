@@ -5,6 +5,9 @@ extension DataActor {
     /// Exactly two scoped reads per refresh. Fetch errors propagate, so a
     /// temporarily unavailable store can never become a false zero rail clear.
     func reviewSnapshot(for request: ReviewSnapshotRequest) throws -> ReviewSnapshot {
+        // Retirement drains an active serial job before the store can be
+        // wiped. A job queued behind that boundary must not enter its context.
+        try checkActiveModelSession()
         let companyID = request.scope.companyID
         let tasks = try modelContext.fetch(FetchDescriptor<ProjectTask>(predicate: #Predicate {
             $0.companyId == companyID && $0.deletedAt == nil

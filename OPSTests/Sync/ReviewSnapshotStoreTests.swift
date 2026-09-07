@@ -106,6 +106,34 @@ final class ReviewSnapshotStoreTests: XCTestCase {
         XCTAssertEqual(store.snapshot, result)
     }
 
+    func testSameContainerActorReplacementRejectsPriorStartupResult() async {
+        let original = request()
+        var oldScope = original.scope
+        oldScope.actorID = ObjectIdentifier(token)
+        let oldRequest = ReviewSnapshotRequest(scope: oldScope, now: now)
+        var current = oldRequest
+        let gate = Gate([expectation(description: "old actor"), expectation(description: "replacement actor")])
+        let store = ReviewSnapshotStore(requestProvider: { current }, reader: gate.read)
+        let old = Task { await store.value() }
+        await fulfillment(of: [gate.started[0]], timeout: 2)
+        var newScope = oldScope
+        newScope.actorID = ObjectIdentifier(otherToken)
+        current = ReviewSnapshotRequest(scope: newScope, now: now)
+        store.scopeDidChange()
+        let new = Task { await store.value() }
+        await fulfillment(of: [gate.started[1]], timeout: 2)
+        let result = snapshot(current, count: 2)
+        gate.finish(1, result)
+        let fresh = await new.value
+        gate.finish(0, snapshot(oldRequest, count: 99))
+        let stale = await old.value
+        XCTAssertNil(stale)
+        XCTAssertEqual(fresh, result)
+        XCTAssertEqual(store.snapshot, result)
+        XCTAssertEqual(oldRequest.scope.containerID, result.scope.containerID)
+        XCTAssertNotEqual(oldRequest.scope.actorID, result.scope.actorID)
+    }
+
     func testPermissionContainerThresholdAndDayChangesEachRetireOldSnapshot() async {
         var current = request()
         var reads = 0

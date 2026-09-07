@@ -57,6 +57,7 @@ struct ReviewSnapshotScope: Equatable, Sendable {
     let taskUnlockThreshold: Int
     let paymentUnlockThreshold: Int
     var usesDataActor: Bool = true
+    var actorID: ObjectIdentifier? = nil
 }
 
 struct ReviewSnapshotRequest: Sendable {
@@ -83,7 +84,8 @@ struct ReviewSnapshotRequest: Sendable {
             reminderFrequencyDays: company?.overdueReminderFrequencyDays ?? 7,
             taskUnlockThreshold: ReviewUnlockThresholds.taskReview,
             paymentUnlockThreshold: ReviewUnlockThresholds.paymentReview,
-            usesDataActor: FeatureFlags.useDataActor
+            usesDataActor: FeatureFlags.useDataActor,
+            actorID: FeatureFlags.useDataActor ? dataController.dataActor.map { ObjectIdentifier($0) } : nil
         ), now: now)
     }
 }

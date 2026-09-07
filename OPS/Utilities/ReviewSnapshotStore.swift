@@ -74,14 +74,19 @@ final class ReviewSnapshotStore: ObservableObject {
                 return ReviewSnapshotCalculator.compute(tasks: tasks, projects: projects, request: request)
             }
             guard let actor = await dataController.readyDataActor(),
-                  !Task.isCancelled, isCurrent() else { return nil }
+                  !Task.isCancelled, dataController.dataActor === actor, isCurrent() else { return nil }
             let result = try await actor.reviewSnapshot(for: request)
-            guard !Task.isCancelled, isCurrent() else { return nil }
+            guard !Task.isCancelled, dataController.dataActor === actor, isCurrent() else { return nil }
             return result
         }
         // @Published emits before the value is installed. Read the resolved
         // user/permissions on the next actor turn, never from willSet.
         dataController.$currentUser.dropFirst().sink { [weak self] _ in
+            Task { @MainActor [weak self] in self?.scopeDidChange() }
+        }.store(in: &observers)
+        dataController.$dataActor.dropFirst().sink { [weak self] _ in
+            // A new startup may reuse the same container/account. Actor
+            // identity retires that startup's cached and in-flight counts too.
             Task { @MainActor [weak self] in self?.scopeDidChange() }
         }.store(in: &observers)
         permissionStore.objectWillChange.sink { [weak self] _ in
@@ -127,6 +132,7 @@ final class ReviewSnapshotStore: ObservableObject {
               snapshot.scope.companyID == dataController.currentUser?.companyId,
               snapshot.scope.access == ReviewSnapshotAccess(permissionStore: permissionStore),
               snapshot.scope.usesDataActor == FeatureFlags.useDataActor,
+              snapshot.scope.actorID == (FeatureFlags.useDataActor ? dataController.dataActor.map { ObjectIdentifier($0) } : nil),
               snapshot.scope.calendar == Calendar.current,
               snapshot.scope.day == Calendar.current.startOfDay(for: Date()) else { return nil }
         return snapshot

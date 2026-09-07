@@ -2371,7 +2371,9 @@ final class SyncEngine {
         }
 
         guard let ctx = modelContext else { return }
-        await spotlightTracker.dispatch(context: ctx)
+        await spotlightTracker.dispatch(context: ctx, isCurrent: { [weak self] in
+            self?.sessionIsCurrent(session) == true
+        })
         guard sessionIsCurrent(session) else { return }
 
     }

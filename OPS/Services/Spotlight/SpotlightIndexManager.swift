@@ -23,6 +23,20 @@ final class SpotlightIndexManager {
 
     private init() {}
 
+    #if DEBUG
+    private var avatarForTesting: (@MainActor (String) async -> Void)?
+    private var submissionForTesting: (@MainActor ([CSSearchableItem]) async -> Void)?
+    static func makeForTesting(
+        avatar: @escaping @MainActor (String) async -> Void,
+        submit: @escaping @MainActor ([CSSearchableItem]) async -> Void
+    ) -> SpotlightIndexManager {
+        let manager = SpotlightIndexManager()
+        manager.avatarForTesting = avatar
+        manager.submissionForTesting = submit
+        return manager
+    }
+    #endif
+
     // MARK: - Permission Gates
 
     /// Determines which entity types the current user is allowed to have indexed.
@@ -283,79 +297,92 @@ final class SpotlightIndexManager {
     /// Index a single project. If the project no longer passes the scope filter
     /// (e.g. user's role changed, project is deleted), REMOVE it from the index.
     /// Never a no-op — stale data in Spotlight is a bug.
-    func indexProject(_ project: Project) async {
+    func indexProject(_ project: Project, isCurrent: @MainActor () -> Bool = { true }) async {
+        guard !Task.isCancelled, isCurrent() else { return }
         guard allowedDomains().contains(SpotlightDomain.project),
               project.deletedAt == nil,
               passesProjectScopeFilter(project) else {
-            await remove(domain: SpotlightDomain.project, id: project.id)
+            await remove(domain: SpotlightDomain.project, id: project.id, isCurrent: isCurrent)
             return
         }
         let item = SpotlightItemBuilder.buildProject(project)
-        await indexInBatches([item])
+        await indexInBatches([item], isCurrent: isCurrent)
     }
 
-    func indexClient(_ client: Client) async {
+    func indexClient(_ client: Client, isCurrent: @MainActor () -> Bool = { true }) async {
+        guard !Task.isCancelled, isCurrent() else { return }
         guard allowedDomains().contains(SpotlightDomain.client),
               client.deletedAt == nil,
               passesClientScopeFilter(client) else {
-            await remove(domain: SpotlightDomain.client, id: client.id)
+            await remove(domain: SpotlightDomain.client, id: client.id, isCurrent: isCurrent)
             return
         }
         if let url = client.profileImageURL, !url.isEmpty,
            !ClientAvatarCache.shared.exists(remoteURL: url) {
+            #if DEBUG
+            if let avatarForTesting { await avatarForTesting(url) }
+            else { _ = await ClientAvatarCache.shared.ensureCached(remoteURL: url) }
+            #else
             _ = await ClientAvatarCache.shared.ensureCached(remoteURL: url)
+            #endif
+            guard !Task.isCancelled, isCurrent() else { return }
         }
         let item = SpotlightItemBuilder.buildClient(client)
-        await indexInBatches([item])
+        await indexInBatches([item], isCurrent: isCurrent)
     }
 
     /// Bug G4 — incremental upsert for a single sub-client. Mirrors `indexClient`:
     /// removes the entry outright if scope no longer passes (parent gone /
     /// soft-deleted / company mismatch) so stale data doesn't linger.
-    func indexSubClient(_ subClient: SubClient) async {
+    func indexSubClient(_ subClient: SubClient, isCurrent: @MainActor () -> Bool = { true }) async {
+        guard !Task.isCancelled, isCurrent() else { return }
         guard allowedDomains().contains(SpotlightDomain.subClient),
               subClient.deletedAt == nil,
               passesSubClientScopeFilter(subClient) else {
-            await remove(domain: SpotlightDomain.subClient, id: subClient.id)
+            await remove(domain: SpotlightDomain.subClient, id: subClient.id, isCurrent: isCurrent)
             return
         }
         let item = SpotlightItemBuilder.buildSubClient(subClient, parentClientName: subClient.client?.name)
-        await indexInBatches([item])
+        await indexInBatches([item], isCurrent: isCurrent)
     }
 
-    func indexTask(_ task: ProjectTask) async {
+    func indexTask(_ task: ProjectTask, isCurrent: @MainActor () -> Bool = { true }) async {
+        guard !Task.isCancelled, isCurrent() else { return }
         guard allowedDomains().contains(SpotlightDomain.task),
               task.deletedAt == nil,
               passesTaskScopeFilter(task) else {
-            await remove(domain: SpotlightDomain.task, id: task.id)
+            await remove(domain: SpotlightDomain.task, id: task.id, isCurrent: isCurrent)
             return
         }
         let item = SpotlightItemBuilder.buildTask(task)
-        await indexInBatches([item])
+        await indexInBatches([item], isCurrent: isCurrent)
     }
 
-    func indexInvoice(_ invoice: Invoice, clientName: String?) async {
+    func indexInvoice(_ invoice: Invoice, clientName: String?, isCurrent: @MainActor () -> Bool = { true }) async {
+        guard !Task.isCancelled, isCurrent() else { return }
         guard allowedDomains().contains(SpotlightDomain.invoice),
               invoice.deletedAt == nil else {
-            await remove(domain: SpotlightDomain.invoice, id: invoice.id)
+            await remove(domain: SpotlightDomain.invoice, id: invoice.id, isCurrent: isCurrent)
             return
         }
         let item = SpotlightItemBuilder.buildInvoice(invoice, clientName: clientName)
-        await indexInBatches([item])
+        await indexInBatches([item], isCurrent: isCurrent)
     }
 
-    func indexEstimate(_ estimate: Estimate, clientName: String?) async {
+    func indexEstimate(_ estimate: Estimate, clientName: String?, isCurrent: @MainActor () -> Bool = { true }) async {
+        guard !Task.isCancelled, isCurrent() else { return }
         guard allowedDomains().contains(SpotlightDomain.estimate),
               estimate.deletedAt == nil else {
-            await remove(domain: SpotlightDomain.estimate, id: estimate.id)
+            await remove(domain: SpotlightDomain.estimate, id: estimate.id, isCurrent: isCurrent)
             return
         }
         let item = SpotlightItemBuilder.buildEstimate(estimate, clientName: clientName)
-        await indexInBatches([item])
+        await indexInBatches([item], isCurrent: isCurrent)
     }
 
     /// Remove a specific entity from the index.
-    func remove(domain: String, id: String) async {
+    func remove(domain: String, id: String, isCurrent: @MainActor () -> Bool = { true }) async {
+        guard !Task.isCancelled, isCurrent() else { return }
         let itemId = SpotlightItemId.make(domain: domain, id: id)
         await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
             index.deleteSearchableItems(withIdentifiers: [itemId]) { error in
@@ -528,12 +555,23 @@ final class SpotlightIndexManager {
 
     // MARK: - Batching
 
-    private func indexInBatches(_ items: [CSSearchableItem], batchSize: Int = 100) async {
-        guard !items.isEmpty else { return }
+    private func indexInBatches(
+        _ items: [CSSearchableItem], batchSize: Int = 100,
+        isCurrent: @MainActor () -> Bool = { true }
+    ) async {
+        guard !Task.isCancelled, isCurrent(), !items.isEmpty else { return }
         var offset = 0
         while offset < items.count {
+            guard !Task.isCancelled, isCurrent() else { return }
             let end = min(offset + batchSize, items.count)
             let batch = Array(items[offset..<end])
+            #if DEBUG
+            if let submissionForTesting {
+                await submissionForTesting(batch)
+                offset = end
+                continue
+            }
+            #endif
             await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
                 index.indexSearchableItems(batch) { error in
                     if let error = error {

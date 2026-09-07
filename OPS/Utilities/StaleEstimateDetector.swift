@@ -29,8 +29,9 @@ struct StaleEstimateDetector {
             .filter { $0.status == .estimated }
             .filter { project in
                 let recency = project.lastSyncedAt ?? project.startDate ?? .distantPast
-                let daysSince = calendar.dateComponents([.day], from: recency, to: now).day ?? Int.max
-                return daysSince >= thresholdDays
+                return ReviewEligibility.staleEstimate(
+                    recency: recency, thresholdDays: thresholdDays, now: now, calendar: calendar
+                )
             }
             .sorted { (lhs, rhs) in
                 let lhsStamp = lhs.lastSyncedAt ?? lhs.startDate ?? .distantPast

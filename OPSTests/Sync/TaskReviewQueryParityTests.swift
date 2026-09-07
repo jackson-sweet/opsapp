@@ -99,8 +99,8 @@ final class TaskReviewQueryParityTests: XCTestCase {
         let tasks = fixture.dataController.getAllTasks()
         XCTAssertEqual(
             Set(TaskReviewQuery.scopedTasks(tasks: tasks, dataController: fixture.dataController).map(\.id)),
-            Set(fixture.liveTaskIDs),
-            "tasks.view=all sees every non-deleted task in the store, both companies"
+            Set(fixture.liveTaskIDs.filter { !$0.hasPrefix("t-beta-") }),
+            "tasks.view=all sees only the current company even when another company remains cached"
         )
         XCTAssertEqual(
             Set(TaskReviewQuery.overdueReviewTasks(tasks: tasks, dataController: fixture.dataController).map(\.id)),
@@ -110,7 +110,6 @@ final class TaskReviewQueryParityTests: XCTestCase {
                 "t-overdue-tie-a",
                 "t-overdue-tie-b",
                 "t-on-completed-project",
-                "t-beta-overdue",
             ],
             "Every active, dated task whose scheduled completion is before end of today"
         )
@@ -120,7 +119,6 @@ final class TaskReviewQueryParityTests: XCTestCase {
                 "t-overdue-5d",           // dated, but no crew
                 "t-unscheduled-assigned", // crewed, but no date
                 "t-unscheduled-nocrew",
-                "t-beta-unscheduled",
             ],
             "Active tasks on an ACTIVE project missing a date or a crew"
         )
@@ -238,6 +236,15 @@ final class TaskReviewQueryParityTests: XCTestCase {
         )
     }
 
+    func testReviewQueriesReturnNoRowsWithoutAnActiveCompany() throws {
+        let fixture = try makeFixture()
+        PermissionStore.shared.permissions = fullAccess
+        fixture.dataController.currentUser?.companyId = nil
+        XCTAssertTrue(TaskReviewQuery.overdueReviewTasks(dataController: fixture.dataController).isEmpty)
+        XCTAssertTrue(TaskReviewQuery.unscheduledReviewTasks(dataController: fixture.dataController).isEmpty)
+        XCTAssertTrue(ProjectReviewQuery.snapshot(dataController: fixture.dataController).projects.isEmpty)
+    }
+
     // MARK: - The soft-delete predicate
 
     func test_getAllTasksDropsExactlyTheRowsTheInMemoryFilterDropped() throws {
@@ -306,8 +313,7 @@ final class TaskReviewQueryParityTests: XCTestCase {
     }
 
     /// The review stacks unlock at five pieces of completed work. This is the
-    /// expression both gates read — `FloatingActionMenu.refreshReviewCounts()`
-    /// and `JobBoardView.completedProjectCount` — and before the fetch
+    /// membership the shared ReviewSnapshot computes — before the fetch
     /// predicate it counted deleted jobs toward the threshold.
     func test_theReviewUnlockCountIgnoresDeletedJobs() throws {
         let fixture = try makeFixture()

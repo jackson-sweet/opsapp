@@ -1,0 +1,17 @@
+# Bible additions for parent integration
+
+Destination: `ops-software-bible/07_SPECIALIZED_FEATURES.md`, iOS review queues / FloatingActionMenu review unlock section. This task has not edited the shared Bible checkout.
+
+## Shared review snapshot (2026-09-06, local implementation pending parent runtime proof)
+
+`ReviewSnapshotStore.shared` is the single passive source for the FAB, JobBoard header, three persistent review-stack rail reports, and periodic payment/task/stale-estimate/projects-without-tasks reminders. The default path awaits the current configured `DataController.readyDataActor()` and calls `DataActor.reviewSnapshot(for:)` on the explicit background executor. It returns Sendable scalar counts; SwiftData models never cross the actor boundary. A refresh fetches live current-company tasks and projects once each. Explicit sheet entry resolves its row arrays on the main context; passive render/refresh paths do not.
+
+Scope identity includes container, company, user, effective review permissions, calendar/time zone/day, company reminder thresholds/frequency, unlock thresholds, and actor execution mode. Scope replacement clears the displayed snapshot; reads recheck scope before/after readiness and completion. Invalidations during an active read reject that result and coalesce into one follow-up read. Relevant schedule/project changes use the existing scheduledTasksDidChange signal; Company inbound and local saves update threshold identity. Foreground forces a refresh. A snapshot also records its next eligibility transition (next day or earlier completedAt/estimate-recency threshold crossing); one RunLoop-default timer expires it then, and every value/report checks expiry independently.
+
+A valid zero still reports all three stack counts, allowing server-owned rail clear/dedupe/threshold rules to operate. Loading or fetch failure never becomes zero. Reports are serialized and coalesced, with identity checks before each RPC. Last successful same-scope counts remain visible during refresh/failure, while failed or stale counts cannot trigger reporting. Review-entry loading is explicit and does not claim that no work has been completed. Completed-task/project unlock thresholds remain separate from server-owned rail loudness.
+
+When `FeatureFlags.useDataActor` is explicitly false, the documented rollback uses two throwing reads from the existing main context and the same calculator/cache. Missing readiness while the flag is enabled does not silently use this fallback.
+
+Intentional correctness correction approved by the parent: review tasks now exclude cached rows from other companies, including completed-task unlock counts. Explicit task sheet queries and the snapshot share this scope. An unresolved company returns no review rows. The global `DataController.getAllTasks()` API retains its existing behavior outside review.
+
+Authored verification: `ReviewSnapshotStoreTests` (coalescing, freshness, identity, failure/zero/report order), `ReviewSnapshotDataActorTests` (membership parity, scoped unlocks, same-day expiry, flag-off and registered-actor read/edit/read), existing `TaskReviewQueryParityTests`, `ReviewThresholdServiceTests`, `AppStateNotificationRPCTests`, and `ReviewCountRefreshMonitorTests`. Worker verification is syntax parse and diff inspection only; the parent must record compilation/test results and Release device timings before claiming runtime improvement.

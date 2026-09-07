@@ -28,6 +28,7 @@ struct MainTabView: View {
     @EnvironmentObject private var appState: AppState
     @EnvironmentObject private var locationManager: LocationManager
     @EnvironmentObject private var permissionStore: PermissionStore
+    @ObservedObject private var reviewSnapshots = ReviewSnapshotStore.shared
     @Environment(\.modelContext) private var modelContext
     @Environment(\.wizardTriggerService) private var wizardTriggerService
     @Environment(\.wizardStateManager) private var wizardStateManager
@@ -82,6 +83,17 @@ struct MainTabView: View {
     @State private var showAssignRoleSheet = false
     @State private var assignRoleMemberId: String?
     @State private var assignRoleWasSeated: Bool = false
+
+    private struct ReviewSnapshotOwner: Hashable {
+        let container: ObjectIdentifier
+        let userID: String?
+        let companyID: String?
+    }
+
+    private var reviewSnapshotOwner: ReviewSnapshotOwner {
+        ReviewSnapshotOwner(container: ObjectIdentifier(modelContext.container),
+            userID: dataController.currentUser?.id, companyID: dataController.currentUser?.companyId)
+    }
 
     private var hasCatalogAccess: Bool {
         permissionStore.can("catalog.view", requiredScope: "all")
@@ -1156,6 +1168,8 @@ struct MainTabView: View {
         // ran at launch and a queue that crossed threshold overnight would
         // stay silent until the next cold start.
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
+            reviewSnapshots.bind(dataController: dataController, permissionStore: permissionStore)
+            reviewSnapshots.invalidate()
             ReviewThresholdService.evaluate(dataController: dataController)
             // Around-call lead capture (154cb8a3) — if the operator just called
             // a lead from inside OPS and returned, offer to log it; and drain any
@@ -1212,13 +1226,6 @@ struct MainTabView: View {
             print("[MAIN_TAB_VIEW] onAppear - Current user: \(String(describing: dataController.currentUser?.fullName))")
             print("[MAIN_TAB_VIEW] onAppear - Tab count: \(tabs.count)")
 
-            // Check for overdue payment reviews after giving sync time to complete.
-            // This also kicks ReviewThresholdService via checkOverdueProjects so
-            // the initial evaluation runs once sync has had time to populate.
-            DispatchQueue.main.asyncAfter(deadline: .now() + 5.0) {
-                appState.checkOverdueProjects(dataController: dataController)
-            }
-
             // Evaluate wizard triggers after data has had time to load
             if !hasEvaluatedWizards {
                 hasEvaluatedWizards = true
@@ -1235,6 +1242,25 @@ struct MainTabView: View {
             DispatchQueue.main.async {
                 DeepLinkCoordinator.shared.drain(context: "main_tab_appear")
             }
+        }
+        // One cancellable startup consumer per account/container. All passive
+        // consumers join the same scalar read, including the delayed reminders.
+        .task(id: reviewSnapshotOwner) {
+            reviewSnapshots.bind(dataController: dataController, permissionStore: permissionStore)
+            reviewSnapshots.scopeDidChange()
+            _ = await reviewSnapshots.value()
+            do { try await Task.sleep(for: .seconds(5)) } catch { return }
+            guard !Task.isCancelled else { return }
+            let reminders = appState.checkOverdueProjects(dataController: dataController)
+            await withTaskCancellationHandler {
+                await reminders.value
+            } onCancel: {
+                reminders.cancel()
+            }
+        }
+        .onReceive(reviewSnapshots.$snapshot) { snapshot in
+            guard snapshot != nil else { return }
+            ReviewThresholdService.evaluate(dataController: dataController)
         }
         .onReceive(syncStatusRefreshMonitor.output) { _ in
             syncStatusIndicatorModel.refresh(from: modelContext)

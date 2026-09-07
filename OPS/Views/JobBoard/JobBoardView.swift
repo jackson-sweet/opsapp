@@ -1521,5 +1521,7 @@ struct TaskListSheet: View {
     JobBoardView()
         .environmentObject(DataController())
         .environmentObject(AppState())
+        .environmentObject(SubscriptionManager.shared)
+        .environmentObject(SyncStatusIndicatorModel())
         .preferredColorScheme(.dark)
 }

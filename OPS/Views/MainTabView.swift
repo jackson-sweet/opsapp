@@ -12,17 +12,6 @@ import SwiftData
 import Combine
 import MapKit
 
-/// Every root floats the recovery pill in the app-level band below its
-/// measured header — including normal Home (bug 417aac7b: the pill must
-/// never displace Home content; it overlays it, pinned to the header's
-/// lower edge). The one exception is Home project mode, whose owned
-/// project stack hosts the same control after AppHeader leaves the screen.
-enum SyncStatusPlacementPolicy {
-    static func showsMainTabOverlay(selectedTab: Int, isInProjectMode: Bool) -> Bool {
-        selectedTab != 0 || !isInProjectMode
-    }
-}
-
 struct MainTabView: View {
     @EnvironmentObject private var dataController: DataController
     @EnvironmentObject private var appState: AppState
@@ -61,11 +50,11 @@ struct MainTabView: View {
     @State private var inFlightDeepLinkTask: Task<Void, Never>?
     // PermissionChangeOverlay moved to PINGatedView (ContentView.swift) so it sits above all sheets
     @StateObject private var imageSyncProgressManager = ImageSyncProgressManager()
-    /// One durable inventory model/monitor feeds both visual placements. Tab
+    /// One durable inventory model/monitor feeds every visual placement — each
+    /// root's superimposed header pill and Home project mode's own stack. Tab
     /// switches must never pay the multi-fetch recovery load or drop debounce.
     @StateObject private var syncStatusIndicatorModel = SyncStatusIndicatorModel()
     @StateObject private var syncStatusRefreshMonitor = RecoveryRefreshMonitor()
-    @ObservedObject private var toastCenter = ToastCenter.shared
     // Drives the global tab-bar overlay's visibility. Pushed detail screens with a
     // bottom action bar fade the tab bar out via `.hidesGlobalTabBar()` so their
     // primary CTA isn't occluded by the 100pt overlay.
@@ -504,44 +493,17 @@ struct MainTabView: View {
             // pin the band for the rest of the session.
             .onPreferenceChange(AppHeaderHeightKey.self) { headerBandHeight = $0 }
 
-            // Image sync progress is always banded directly below the active
-            // measured header. Every root — including normal Home (bug
-            // 417aac7b) — floats the sync-status pill here; Home project mode
-            // hosts it in the project stack instead.
+            // Image sync progress is banded directly below the active measured
+            // header, which is why the header publishes its height at all.
             //
-            // This band used to start at the top safe area — the same rectangle
-            // the header's trailing action cluster occupies — so the attention
-            // pill and the 44pt search button (or Home's avatar) were laid out
-            // on top of each other: the pill's trailing edge sits 16pt from the
-            // screen edge, the button's 20pt, and a "<n> NEED A LOOK" pill is far
-            // wider than the 4pt between them. Whichever won the paint order, one
-            // element covered the other and swallowed its taps. Offsetting the
-            // whole band by the header's measured height makes the collision
-            // impossible rather than merely re-ordered — both keep their own
-            // hit areas, and the band follows the header down when Dynamic Type
-            // grows the title block.
+            // The recovery pill is NOT here. It used to be, and that is bug
+            // 417aac7b's second wrong close: a band starting exactly where the
+            // header ends puts the pill straight on top of whatever control the
+            // root parks under its header — on Home, the ALL filter chip. The
+            // pill is now superimposed on the header itself by `AppHeader`,
+            // where it reserves no layout and cannot reach the row below.
             VStack(spacing: OPSStyle.Layout.spacing2) {
                 ImageSyncProgressView(syncManager: imageSyncProgressManager)
-
-                // Hidden while the restored banner speaks, and suppressed only
-                // in Home project mode, whose project stack owns an in-flow host.
-                if !dataController.showSyncRestoredAlert,
-                   !toastCenter.isSuppressingSyncStatusIndicator,
-                   SyncStatusPlacementPolicy.showsMainTabOverlay(
-                       selectedTab: selectedTab,
-                       isInProjectMode: appState.isInProjectMode
-                   ) {
-                    // Trailing-aligned compact pill; the full-width expanded
-                    // variant that accessibility sizes select gets a leading
-                    // inset here instead of touching the screen edge.
-                    HStack {
-                        Spacer(minLength: 0)
-                        SyncStatusIndicator()
-                            .environmentObject(dataController)
-                            .environmentObject(syncStatusIndicatorModel)
-                    }
-                    .padding(.horizontal, OPSStyle.Layout.spacing3)
-                }
 
                 Spacer()
             }

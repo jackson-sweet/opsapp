@@ -1320,5 +1320,7 @@ struct SettingsView: View {
     SettingsView()
         .environmentObject(DataController())
         .environmentObject(AppState())
+        .environmentObject(SubscriptionManager.shared)
+        .environmentObject(SyncStatusIndicatorModel())
         .preferredColorScheme(.dark)
 }

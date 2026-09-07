@@ -331,6 +331,16 @@ final class SyncStatusIndicatorModel: ObservableObject {
     private var displayedIdentity: String?
     private var requestedContainer: ModelContainer?
 
+#if DEBUG
+    /// Test seam for the layout proofs. Seeds the displayed summary directly so
+    /// the REAL `SyncStatusIndicator` can be rendered and measured — rather than
+    /// a hand-copied stand-in that drifts from it — without standing up a live
+    /// SwiftData inventory read. Never called from app code.
+    func seedAttentionForLayoutProof(_ summary: RecoveryAttentionSummary) {
+        self.summary = summary
+    }
+#endif
+
     func refresh(from modelContext: ModelContext) {
         requestedContainer = modelContext.container
         refreshGeneration += 1

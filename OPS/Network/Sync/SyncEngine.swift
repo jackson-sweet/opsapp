@@ -121,7 +121,7 @@ final class SyncEngine {
                     if self.recoveryRequested && !Task.isCancelled { self.requestRecovery() }
                 }
             }
-            func scopeIsCurrent() -> Bool {
+            @MainActor func scopeIsCurrent() -> Bool {
                 !Task.isCancelled && generation == self.lifecycleGeneration
                     && self.currentUserId?.lowercased() == userID
                     && UserDefaults.standard.string(forKey: "currentUserCompanyId")?.lowercased() == companyID

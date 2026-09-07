@@ -89,6 +89,42 @@ final class DataActorInboundLifetimeTests: XCTestCase {
         catch { XCTAssertTrue(error is CancellationError) }
     }
 
+    func testCancelledCurrentSyncReleasesBusyStateAndAllowsNextSync() async throws {
+        let container = try makeContainer()
+        let actor = try await DataActor.makeBackgroundConfigured(modelContainer: container)
+        let entered = expectation(description: "first cycle pull held")
+        let restarted = expectation(description: "later cycle reached pull")
+        let firstGate = InboundLifetimeGate()
+        let secondGate = InboundLifetimeGate()
+        let calls = InboundLifetimeCounter()
+        await actor.setInboundDeltaForTesting {
+            if await calls.next() == 1 {
+                entered.fulfill()
+                await firstGate.wait()
+            } else {
+                restarted.fulfill()
+                await secondGate.wait()
+            }
+            return []
+        }
+        let engine = SyncEngine(dimensionedPendingSyncer: LifetimeNoopDimensionedSyncer())
+        engine.configure(modelContext: container.mainContext, connectivity: LifetimeOnlineConnectivity(), dataActor: actor)
+        defer { engine.stopForLogoutSync() }
+        let first = Task { await engine.triggerSync() }
+        await fulfillment(of: [entered], timeout: 3)
+        XCTAssertTrue(engine.isSyncing)
+        first.cancel() // Mirrors BackgroundSyncScheduler's expiration handler.
+        await firstGate.release()
+        await first.value
+        XCTAssertFalse(engine.isSyncing, "The cancelled cycle still owns cleanup")
+        let second = Task { await engine.triggerSync() }
+        await fulfillment(of: [restarted], timeout: 3)
+        second.cancel()
+        await secondGate.release()
+        await second.value
+        XCTAssertFalse(engine.isSyncing)
+    }
+
     func testOldDeltaCannotAdvanceCursorOrPublishErrorIntoReplacementSession() async throws {
         let container = try makeContainer()
         let actor = try await DataActor.makeBackgroundConfigured(modelContainer: container)
@@ -192,4 +228,14 @@ private actor InboundLifetimeGate {
         continuation?.resume()
         continuation = nil
     }
+}
+
+private actor InboundLifetimeCounter {
+    private var count = 0
+    func next() -> Int { count += 1; return count }
+}
+
+private final class LifetimeNoopDimensionedSyncer: DimensionedPendingSyncing {
+    func pendingDimensionedAnnotationCount(modelContext: ModelContext) -> Int { 0 }
+    func syncPendingDimensions(modelContext: ModelContext) async {}
 }

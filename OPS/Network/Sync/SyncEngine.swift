@@ -79,6 +79,7 @@ final class SyncEngine {
 
     private var modelContext: ModelContext?
     private var connectivity: ConnectivityManager?
+    private var syncCycleID: UUID?
     private var syncInProgress: Bool = false
     private var syncRequestedWhileInProgress: Bool = false
     private let pushDrainCoordinator = SyncPushDrainCoordinator()
@@ -291,6 +292,11 @@ final class SyncEngine {
         self.modelContext = modelContext
         self.connectivity = connectivity
         self.dataActor = dataActor
+        syncCycleID = nil
+        syncInProgress = false
+        syncRequestedWhileInProgress = false
+        isSyncing = false
+        isPerformingInitialSync = false
         dataActor?.resumeOutboundWork()
 
         // One-time recovery for the poisoned deck-design cursor (the crew
@@ -472,6 +478,7 @@ final class SyncEngine {
         self.dataActor?.retireAndDrainModelWork()
         self.dataActor = nil
         self.dataActorStartup = startup
+        syncCycleID = nil
         // The old pass no longer owns these flags, so its guarded defer will
         // intentionally leave replacement state alone.
         syncInProgress = false
@@ -586,6 +593,7 @@ final class SyncEngine {
     ///
     /// Safe to call multiple times.
     func stopForLogoutSync() {
+        syncCycleID = nil
         retireRealtimeProcessor()
         dataActorStartup?.invalidate()
         outboundProcessor?.invalidate()
@@ -1411,13 +1419,17 @@ final class SyncEngine {
             return
         }
 
+        let cycleID = UUID()
+        syncCycleID = cycleID
         syncInProgress = true
         isSyncing = true
         hasError = false
         statusText = "Syncing…"
 
         defer {
-            if sessionIsCurrent(session) {
+            // Cleanup is governed by ownership, even when this task expired.
+            if syncCycleID == cycleID {
+                syncCycleID = nil
                 syncInProgress = false
                 isSyncing = false
                 refreshPendingCount()
@@ -1532,6 +1544,8 @@ final class SyncEngine {
             return
         }
 
+        let cycleID = UUID()
+        syncCycleID = cycleID
         syncInProgress = true
         isSyncing = true
         isPerformingInitialSync = true
@@ -1539,7 +1553,9 @@ final class SyncEngine {
         statusText = "Performing full sync…"
 
         defer {
-            if sessionIsCurrent(session) {
+            // Cleanup is governed by ownership, even when this task expired.
+            if syncCycleID == cycleID {
+                syncCycleID = nil
                 isPerformingInitialSync = false
                 syncInProgress = false
                 isSyncing = false
@@ -1676,13 +1692,17 @@ final class SyncEngine {
             return false
         }
 
+        let cycleID = UUID()
+        syncCycleID = cycleID
         syncInProgress = true
         isSyncing = true
         hasError = false
         statusText = "Checking for schedule updates…"
 
         defer {
-            if sessionIsCurrent(session) {
+            // Cleanup is governed by ownership, even when this task expired.
+            if syncCycleID == cycleID {
+                syncCycleID = nil
                 syncInProgress = false
                 isSyncing = false
                 refreshPendingCount()

@@ -49,48 +49,30 @@ enum ReviewThresholdService {
 
     // MARK: - Entry Point
 
-    /// Compute all three review-stack counts from local state and report them
-    /// to the server, which surfaces / keeps / clears the matching rail
-    /// notifications. Safe to call after every sync.
-    ///
-    /// The SwiftData reads are synchronous on the caller's thread; the RPC
-    /// calls run on a background `Task` (returned for tests to await —
-    /// production call sites discard it).
-    ///
-    /// - Returns: the reporting task, or `nil` when no operator is resolved.
+    /// Report the shared actor-computed snapshot. Loading/failure is never
+    /// reported as zero; a valid drained stack still reports all three zeros.
+    @MainActor
     @discardableResult
     static func evaluate(
         dataController: DataController,
-        syncer: ReviewStackSyncing = NotificationRepository.shared
+        syncer: ReviewStackSyncing = NotificationRepository.shared,
+        snapshotStore: ReviewSnapshotStore? = nil
     ) -> Task<Void, Never>? {
-        guard dataController.currentUser != nil else {
-            print("[REVIEW_STACK] Skipped — no current user")
-            return nil
-        }
-
-        let taskReviewCount        = computeTaskReviewCount(dataController: dataController)
-        let paymentReviewCount     = computePaymentReviewCount(dataController: dataController)
-        let unscheduledReviewCount = computeUnscheduledReviewCount(dataController: dataController)
-
-        print("[REVIEW_STACK] counts — task=\(taskReviewCount) payment=\(paymentReviewCount) unscheduled=\(unscheduledReviewCount)")
-
-        return Task {
-            await syncAll(
-                taskReviewCount: taskReviewCount,
-                paymentReviewCount: paymentReviewCount,
-                unscheduledReviewCount: unscheduledReviewCount,
-                syncer: syncer
-            )
-        }
+        guard dataController.currentUser != nil else { return nil }
+        let store = snapshotStore ?? .shared
+        if snapshotStore == nil { store.bind(dataController: dataController) }
+        return store.report(syncer: syncer)
     }
 
     /// Report every stack, every evaluation. One stack's transport failure
     /// must not starve the rest — each report is isolated.
+    @MainActor
     static func syncAll(
         taskReviewCount: Int,
         paymentReviewCount: Int,
         unscheduledReviewCount: Int,
-        syncer: ReviewStackSyncing
+        syncer: ReviewStackSyncing,
+        isCurrent: () -> Bool = { true }
     ) async {
         let reports: [(StackType, Int)] = [
             (.taskReview, taskReviewCount),
@@ -98,6 +80,7 @@ enum ReviewThresholdService {
             (.unscheduledReview, unscheduledReviewCount),
         ]
         for (stack, count) in reports {
+            guard !Task.isCancelled, isCurrent() else { return }
             do {
                 let action = try await syncer.syncReviewStack(
                     stack: stack.rawValue,
@@ -110,20 +93,4 @@ enum ReviewThresholdService {
         }
     }
 
-    // MARK: - Count Sources
-    // Task counts delegate to TaskReviewQuery — the single source of truth the
-    // FAB badge, JobBoard entries, and periodic push all share — so every rail
-    // count agrees with the in-app review stack the user actually opens.
-
-    private static func computeTaskReviewCount(dataController: DataController) -> Int {
-        TaskReviewQuery.overdueReviewTasks(dataController: dataController).count
-    }
-
-    private static func computePaymentReviewCount(dataController: DataController) -> Int {
-        ProjectReviewQuery.snapshot(dataController: dataController).count
-    }
-
-    private static func computeUnscheduledReviewCount(dataController: DataController) -> Int {
-        TaskReviewQuery.unscheduledReviewTasks(dataController: dataController).count
-    }
 }

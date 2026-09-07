@@ -236,13 +236,75 @@ struct PendingPhotoSoftDelete: Equatable {
     var key: String { "\(projectId)|\(url)" }
 }
 
+/// Revocable trigger ownership. Cancellation runs synchronously on main when
+/// the manager is replaced; deinit is a fallback for an abandoned owner.
+@MainActor
+final class ImageSyncCancellation {
+    private var action: (@MainActor @Sendable () -> Void)?
+    init(_ action: @escaping @MainActor @Sendable () -> Void) { self.action = action }
+    func cancel() { let action = action; self.action = nil; action?() }
+    deinit {
+        if let action { Task { @MainActor in action() } }
+    }
+}
+
+@MainActor
+protocol ImageSyncScheduling {
+    func schedule(after: TimeInterval, repeating: Bool, action: @escaping @MainActor () -> Void) -> ImageSyncCancellation
+    func observeConnectivity(action: @escaping @MainActor () -> Void) -> ImageSyncCancellation
+}
+
+@MainActor
+private struct FoundationImageSyncScheduler: ImageSyncScheduling {
+    func schedule(after: TimeInterval, repeating: Bool, action: @escaping @MainActor () -> Void) -> ImageSyncCancellation {
+        let timer = Timer.scheduledTimer(withTimeInterval: after, repeats: repeating) { _ in
+            Task { @MainActor in action() }
+        }
+        return ImageSyncCancellation { timer.invalidate() }
+    }
+    func observeConnectivity(action: @escaping @MainActor () -> Void) -> ImageSyncCancellation {
+        let token = NotificationCenter.default.addObserver(forName: ConnectivityManager.connectivityChangedNotification, object: nil, queue: .main) { _ in
+            Task { @MainActor in action() }
+        }
+        return ImageSyncCancellation { NotificationCenter.default.removeObserver(token) }
+    }
+}
+
 /// Manager for handling image synchronization between local storage, S3, and Supabase
 @MainActor
 class ImageSyncManager: ObservableObject {
     // Dependencies
     private let modelContext: ModelContext?
+    // ModelContext alone does not own its container. Old in-flight model
+    // references remain valid until this manager and its tasks are released.
+    private let retainedContainer: ModelContainer?
     private let connectivity: ConnectivityManager
     private let presignedURLService = PresignedURLUploadService.shared
+    private let defaults: UserDefaults
+    private let currentAccount: @MainActor () -> CaptureAccountIdentity?
+    private let connectionState: @MainActor () -> Bool
+    private let scheduler: any ImageSyncScheduling
+    private(set) var isInvalidated = false
+    private struct WorkLease { let account: CaptureAccountIdentity? }
+    private var startupTrigger: ImageSyncCancellation?
+    private var connectivityTrigger: ImageSyncCancellation?
+    private var ownedTasks: [UUID: Task<Void, Never>] = [:]
+    private var activeSyncID: UUID?
+
+    /// Existing service operations behind narrow ports for suspended-response
+    /// lifecycle tests. Production request shapes and routes are unchanged.
+    var projectImageUpload: @MainActor ([UIImage], Project, String) async -> [ProjectImageUploadOutcome] = {
+        await PresignedURLUploadService.shared.uploadProjectImages($0, for: $1, companyId: $2)
+    }
+    var photoSoftDelete: @MainActor (String, String) async throws -> Void = { url, projectId in
+        struct Payload: Encodable { let deleted_at: String }
+        try await SupabaseService.shared.client.from("project_photos")
+            .update(Payload(deleted_at: ISO8601DateFormatter().string(from: Date())))
+            .eq("project_id", value: projectId).eq("url", value: url).is("deleted_at", value: nil).execute()
+    }
+    var photosAddedPush: @MainActor ([String]) async throws -> Void = {
+        try await OneSignalService.shared.notifyPhotosAdded(userIds: $0)
+    }
 
     /// Creator of the crew photos-added rail rows. Production talks to the
     /// narrow server RPC; tests substitute a spy.
@@ -293,13 +355,20 @@ class ImageSyncManager: ObservableObject {
     /// untouched until the next app launch. This timer kicks in whenever
     /// the queue is non-empty and retries every 30 seconds, regardless of
     /// the connectivity state vector. Stops itself once the queue drains.
-    private var retryTimer: Timer?
+    private var retryTimer: ImageSyncCancellation?
     private static let retryInterval: TimeInterval = 30
 
     /// Initialize the ImageSyncManager with required dependencies
-    init(modelContext: ModelContext?, connectivity: ConnectivityManager) {
+    init(modelContext: ModelContext?, connectivity: ConnectivityManager, defaults: UserDefaults = .standard,
+        currentAccount: (@MainActor () -> CaptureAccountIdentity?)? = nil,
+        isConnected: (@MainActor () -> Bool)? = nil, scheduler: (any ImageSyncScheduling)? = nil) {
         self.modelContext = modelContext
+        self.retainedContainer = modelContext?.container
         self.connectivity = connectivity
+        self.defaults = defaults
+        self.currentAccount = currentAccount ?? { CaptureAccountIdentity.current(defaults: defaults) }
+        self.connectionState = isConnected ?? { connectivity.isConnected }
+        self.scheduler = scheduler ?? FoundationImageSyncScheduler()
 
         // Clean up UserDefaults bloat first
         cleanupUserDefaultsImageData()
@@ -312,11 +381,9 @@ class ImageSyncManager: ObservableObject {
         setupConnectivityObserver()
 
         // If we're already connected and have pending uploads, try to sync them
-        if connectivity.isConnected && !(pendingUploads.isEmpty && pendingPortalMirrors.isEmpty) {
-            Task {
-                // Small delay to ensure everything is initialized
-                try? await Task.sleep(nanoseconds: 2_000_000_000) // 2 seconds
-                await syncPendingImages()
+        if connectionState() && !(pendingUploads.isEmpty && pendingPortalMirrors.isEmpty) {
+            startupTrigger = self.scheduler.schedule(after: 2, repeating: false) { [weak self] in
+                self?.requestScheduledDrain()
             }
         }
 
@@ -328,20 +395,49 @@ class ImageSyncManager: ObservableObject {
 
     /// Setup observer for connectivity changes to trigger syncs when coming online
     private func setupConnectivityObserver() {
-        NotificationCenter.default.addObserver(
-            self,
-            selector: #selector(connectivityChanged),
-            name: ConnectivityManager.connectivityChangedNotification,
-            object: nil
-        )
+        connectivityTrigger = scheduler.observeConnectivity { [weak self] in self?.requestScheduledDrain() }
     }
 
-    @objc private func connectivityChanged() {
-        if connectivity.isConnected {
-            Task {
-                await syncPendingImages()
-            }
+    /// Terminal and synchronous. No queue, tombstone, photo, or capture journal
+    /// is cleared; the replacement manager reloads the same durable obligations.
+    func invalidate() {
+        guard !isInvalidated else { return }
+        isInvalidated = true
+        startupTrigger?.cancel(); startupTrigger = nil
+        connectivityTrigger?.cancel(); connectivityTrigger = nil
+        stopRetryTimer()
+        for task in ownedTasks.values { task.cancel() }
+        ownedTasks.removeAll()
+        activeSyncID = nil
+        isSyncing = false
+    }
+
+    private var canUseContext: Bool { !isInvalidated && !Task.isCancelled }
+    private func beginWork() -> WorkLease? {
+        guard canUseContext else { return nil }
+        return WorkLease(account: currentAccount())
+    }
+    private func isCurrent(_ lease: WorkLease) -> Bool {
+        canUseContext && currentAccount() == lease.account
+    }
+
+    @discardableResult
+    private func startOwnedTask(_ body: @escaping @MainActor (ImageSyncManager, WorkLease) async -> Void) -> Task<Void, Never>? {
+        guard let lease = beginWork() else { return nil }
+        let id = UUID()
+        let task = Task { [weak self] in
+            guard let self else { return }
+            defer { self.ownedTasks.removeValue(forKey: id) }
+            guard self.isCurrent(lease) else { return }
+            await body(self, lease)
         }
+        ownedTasks[id] = task
+        return task
+    }
+
+    private func requestScheduledDrain() {
+        guard canUseContext, connectionState() else { return }
+        startOwnedTask { manager, _ in await manager.syncPendingImages() }
     }
 
     // MARK: - The create barrier, asked from outside the queue
@@ -353,6 +449,7 @@ class ImageSyncManager: ObservableObject {
     /// table that has never held a row, and this runs on every photo save.
     /// See the note on `ProjectCacheMerge.operations`.
     private func queuedOperations() -> [SyncOperation] {
+        guard canUseContext else { return [] }
         guard let modelContext else { return [] }
         return (try? modelContext.fetch(FetchDescriptor<SyncOperation>())) ?? []
     }
@@ -378,7 +475,8 @@ class ImageSyncManager: ObservableObject {
     /// stored `private(set)` property), so a `saveImages` test would pass
     /// vacuously through the offline branch and prove nothing.
     func projectAwaitsItsOwnCreate(_ projectId: String) -> Bool {
-        SyncCrossEntityDependency.hasUnresolvedCreate(
+        guard canUseContext else { return true }
+        return SyncCrossEntityDependency.hasUnresolvedCreate(
             entityType: .project,
             entityId: projectId,
             in: queuedOperations()
@@ -399,6 +497,7 @@ class ImageSyncManager: ObservableObject {
     /// Bug e5310f3d — in-flight placeholder tiles (one per image) are resolved
     /// individually by each photo's fate rather than cleared en masse.
     func saveImages(_ images: [UIImage], for project: Project, notifyCrew: Bool = true) async -> [String] {
+        guard let lease = beginWork() else { return [] }
         let companyId = project.companyId
         guard !companyId.isEmpty else {
             return []
@@ -420,9 +519,9 @@ class ImageSyncManager: ObservableObject {
         // delivers it the moment the project lands. Nothing is shown to the
         // operator, because there is nothing for them to do.
         let awaitsProjectCreate = projectAwaitsItsOwnCreate(project.id)
-        guard connectivity.isConnected, !awaitsProjectCreate else {
+        guard connectionState(), !awaitsProjectCreate else {
             for (index, image) in images.enumerated() {
-                if let localURL = await saveImageLocally(image, for: project, index: index) {
+                if let localURL = saveImageLocally(image, for: project, index: index) {
                     savedURLs.append(localURL)
                 }
             }
@@ -439,9 +538,10 @@ class ImageSyncManager: ObservableObject {
 
         // Online — resilient concurrent upload. One outcome per input image, in
         // input order, so placeholders/images/outcomes all align by index.
-        let outcomes = await presignedURLService.uploadProjectImages(images, for: project, companyId: companyId)
+        let outcomes = await projectImageUpload(images, project, companyId)
+        guard isCurrent(lease) else { return [] }
         let successURLs = outcomes.compactMap { $0.url }
-        let uploaderId = UserDefaults.standard.string(forKey: "currentUserId") ?? ""
+        let uploaderId = defaults.string(forKey: "currentUserId") ?? ""
         var mirrorOutcome: PortalMirrorOutcome = .delivered
 
         // 1) Record the photos that DID upload — immediately. Their S3 bytes are
@@ -473,6 +573,7 @@ class ImageSyncManager: ObservableObject {
                 source: "in_progress"
             )
 
+            guard isCurrent(lease) else { return [] }
             project.lastSyncedAt = Date()
             if let modelContext = modelContext {
                 try? modelContext.save()
@@ -526,7 +627,7 @@ class ImageSyncManager: ObservableObject {
                         level: .warning,
                         category: "ImageSyncManager"
                     )
-                    if let localURL = await saveImageLocally(image, for: project, index: index) {
+                    if let localURL = saveImageLocally(image, for: project, index: index) {
                         savedURLs.append(localURL)
                     }
                     endInFlightUploads([tileId], for: project.id)
@@ -549,6 +650,7 @@ class ImageSyncManager: ObservableObject {
             )
         }
 
+        guard isCurrent(lease) else { return [] }
         return savedURLs
     }
 
@@ -576,14 +678,14 @@ class ImageSyncManager: ObservableObject {
     ///   sites discard it (the upload return must not block on the rail).
     @discardableResult
     func notifyCrewOfAddedPhotos(project: Project, uploaderId: String, photoCount: Int, firstURL: String?) -> Task<Void, Never>? {
-        guard photoCount > 0 else { return nil }
+        guard canUseContext, photoCount > 0 else { return nil }
         let projectId = project.id
 
         // No display name or title is resolved here any more: the companion
         // push carries the rail row's own server-rendered copy.
         let syncer = photosAddedSyncer
 
-        return Task {
+        return startOwnedTask { manager, lease in
             let created: [String]
             do {
                 created = try await syncer.notifyProjectPhotosAdded(
@@ -597,10 +699,10 @@ class ImageSyncManager: ObservableObject {
 
             // The server's list is the dedupe truth. No new rail rows — no crew
             // to reach, or a repeat inside the server's window — means no push.
-            guard !created.isEmpty else { return }
+            guard manager.isCurrent(lease), !created.isEmpty else { return }
 
             do {
-                try await OneSignalService.shared.notifyPhotosAdded(userIds: created)
+                try await manager.photosAddedPush(created)
             } catch {
                 print("[IMAGE_SYNC] Failed to send photos-added companion push: \(error)")
             }
@@ -673,6 +775,7 @@ class ImageSyncManager: ObservableObject {
         source: String,
         takenAt: Date = Date()
     ) async -> PortalMirrorOutcome {
+        guard let lease = beginWork() else { return .retryQueued }
         guard !urls.isEmpty else { return .delivered }
         let projectId = project.id
         let companyId = project.companyId
@@ -698,6 +801,7 @@ class ImageSyncManager: ObservableObject {
         // with the verdict: a debt is recorded exactly while delivery is still
         // owed and something might still change the answer.
         func settle(_ outcome: PortalMirrorOutcome) -> PortalMirrorOutcome {
+            guard isCurrent(lease) else { return .retryQueued }
             switch outcome {
             case .delivered, .alreadyMirrored:
                 removePortalMirrors(urls: urls)
@@ -725,10 +829,14 @@ class ImageSyncManager: ObservableObject {
             return outcome
         }
 
+        // Record the obligation before suspension. A replacement manager must
+        // inherit it even when the old request completes after invalidation.
+        enqueuePortalMirrors(urls: urls, projectId: projectId, companyId: companyId, uploadedBy: uploadedBy, source: source, takenAt: takenAt)
         do {
             try await portalMirrorInserter.insertProjectPhotoRows(rows)
             return settle(.delivered)
         } catch {
+            guard isCurrent(lease) else { return .retryQueued }
             // Both spellings are searched: the raw error carries the Postgres
             // text, the localized description is what string-only surfaces see.
             let description = "\(error) \(error.localizedDescription)"
@@ -772,6 +880,7 @@ class ImageSyncManager: ObservableObject {
         project: Project,
         source: String
     ) async -> PortalMirrorOutcome {
+        guard let lease = beginWork() else { return .retryQueued }
         let projectId = project.id
         let companyId = project.companyId
 
@@ -787,6 +896,7 @@ class ImageSyncManager: ObservableObject {
             return .retryQueued
         }
 
+        guard isCurrent(lease) else { return .retryQueued }
         if isVisible {
             // Unexpected, and therefore loud. The insert policy needs company +
             // uploader identity + project view, and view is proven right here —
@@ -822,6 +932,7 @@ class ImageSyncManager: ObservableObject {
             return .retryQueued
         }
 
+        guard isCurrent(lease) else { return .retryQueued }
         switch state {
         case .active:
             // The job is live for the company; this account's view scope no
@@ -911,6 +1022,7 @@ class ImageSyncManager: ObservableObject {
     /// Best-effort write: an error logs but does not surface to the user
     /// because the local UI has already moved.
     func setPhotoClientVisibility(url: String, isVisible: Bool, projectId: String) async throws {
+        guard let lease = beginWork() else { throw CancellationError() }
         struct ProjectPhotoVisibilityUpdate: Codable {
             let is_client_visible: Bool
         }
@@ -921,6 +1033,7 @@ class ImageSyncManager: ObservableObject {
             .eq("project_id", value: projectId)
             .eq("url", value: url)
             .execute()
+        guard isCurrent(lease) else { throw CancellationError() }
     }
 
     /// Bug 7b43be32 — pull the live client-visibility set for a project
@@ -930,6 +1043,8 @@ class ImageSyncManager: ObservableObject {
     /// failure leaves the existing local values in place rather than
     /// emptying them.
     func refreshClientVisibility(for project: Project) async {
+        guard let lease = beginWork() else { return }
+        let projectId = project.id
         struct VisibilityRow: Decodable {
             let url: String
             let is_client_visible: Bool
@@ -944,16 +1059,19 @@ class ImageSyncManager: ObservableObject {
                 .execute()
                 .value
 
+            guard isCurrent(lease) else { return }
             let visibleURLs = rows.filter { $0.is_client_visible }.map { $0.url }
             project.setClientVisibleImages(visibleURLs)
             try? modelContext?.save()
         } catch {
-            print("[IMAGE_SYNC] Failed to refresh client visibility for \(project.id): \(error)")
+            guard isCurrent(lease) else { return }
+            print("[IMAGE_SYNC] Failed to refresh client visibility for \(projectId): \(error)")
         }
     }
     
     /// Save a single image locally for offline use
-    private func saveImageLocally(_ image: UIImage, for project: Project, index: Int) async -> String? {
+    private func saveImageLocally(_ image: UIImage, for project: Project, index: Int) -> String? {
+        guard canUseContext else { return nil }
         // Resize image if it's too large
         let resizedImage = resizeImageIfNeeded(image)
 
@@ -1032,29 +1150,16 @@ class ImageSyncManager: ObservableObject {
     }
 
     private func startRetryTimerIfNeeded() {
-        guard retryTimer == nil, hasQueuedDeliveryWork else { return }
-        retryTimer = Timer.scheduledTimer(
-            withTimeInterval: Self.retryInterval,
-            repeats: true
-        ) { [weak self] _ in
-            Task { @MainActor [weak self] in
-                guard let self = self else { return }
-                if !self.hasQueuedDeliveryWork {
-                    self.stopRetryTimer()
-                    return
-                }
-                if self.connectivity.isConnected {
-                    await self.syncPendingImages()
-                }
-                if !self.hasQueuedDeliveryWork {
-                    self.stopRetryTimer()
-                }
-            }
+        guard canUseContext, retryTimer == nil, hasQueuedDeliveryWork else { return }
+        retryTimer = scheduler.schedule(after: Self.retryInterval, repeating: true) { [weak self] in
+            guard let self, self.canUseContext else { return }
+            guard self.hasQueuedDeliveryWork else { self.stopRetryTimer(); return }
+            self.requestScheduledDrain()
         }
     }
 
     private func stopRetryTimer() {
-        retryTimer?.invalidate()
+        retryTimer?.cancel()
         retryTimer = nil
     }
 
@@ -1071,6 +1176,7 @@ class ImageSyncManager: ObservableObject {
     /// by URL, drained by the same retry timer / connectivity passes as every
     /// other pending upload.
     func enqueueExistingLocalImage(localURL: String, projectId: String, companyId: String) {
+        guard canUseContext else { return }
         guard localURL.hasPrefix("local://") else { return }
         guard ImageFileManager.shared.imageExists(localID: localURL) else { return }
         guard !pendingUploads.contains(where: { $0.localURL == localURL }) else { return }
@@ -1098,6 +1204,7 @@ class ImageSyncManager: ObservableObject {
     /// on success — queueing them here too would upload the same photo twice
     /// and double-tile every teammate's gallery.
     func reconcileStrandedProjectPhotos() {
+        guard canUseContext else { return }
         guard let modelContext = modelContext else { return }
 
         let stranded: [ProjectPhoto]
@@ -1168,13 +1275,14 @@ class ImageSyncManager: ObservableObject {
     /// active-(project_id, url) arbiter, so a row the PM repair already
     /// inserted comes back `.alreadyMirrored` rather than duplicating.
     func reconcileStrandedPortalMirrors() async {
+        guard let lease = beginWork() else { return }
         guard !didReconcileStrandedPortalMirrors else { return }
         guard let modelContext else { return }
 
         // Attribution is truthful only because this strand class is created by
         // THIS device's own writes. With no operator id there is nothing
         // honest to attribute, and the insert would be refused anyway.
-        let uploaderId = UserDefaults.standard.string(forKey: "currentUserId") ?? ""
+        let uploaderId = defaults.string(forKey: "currentUserId") ?? ""
         guard !uploaderId.isEmpty else { return }
 
         let projects: [Project]
@@ -1207,6 +1315,7 @@ class ImageSyncManager: ObservableObject {
         let serverRows: [String: Set<String>]
         do {
             serverCSV = try await strandedMirrorReader.serverProjectImages(projectIds: projectIds)
+            guard isCurrent(lease) else { return }
             // Only projects this account can actually see are worth asking
             // about — and only those can receive an insert.
             let visible = Array(serverCSV.keys)
@@ -1224,6 +1333,7 @@ class ImageSyncManager: ObservableObject {
             return
         }
 
+        guard isCurrent(lease) else { return }
         let companyIdByProject = Dictionary(
             projects.map { ($0.id.lowercased(), $0.companyId) },
             uniquingKeysWith: { first, _ in first }
@@ -1351,6 +1461,7 @@ class ImageSyncManager: ObservableObject {
 
     /// Local ProjectPhoto rows (site-visit handoff) keyed by their local:// url.
     private func handoffPhotoRows(projectId: String, localURLs: [String]) -> [String: ProjectPhoto] {
+        guard canUseContext else { return [:] }
         guard let modelContext = modelContext, !localURLs.isEmpty else { return [:] }
         let urls = localURLs
         let descriptor = FetchDescriptor<ProjectPhoto>(
@@ -1365,14 +1476,16 @@ class ImageSyncManager: ObservableObject {
     /// row (and drops the queue entry) on success, so a failed insert retries
     /// on the next drain pass instead of silently losing portal visibility.
     private func insertHandoffPhotoRow(_ row: ProjectPhoto, remoteURL: String) async -> Bool {
+        guard let lease = beginWork() else { return false }
         let insert = Self.handoffPhotoInsert(for: row, remoteURL: remoteURL)
         do {
             try await SupabaseService.shared.client
                 .from("project_photos")
                 .insert(insert)
                 .execute()
-            return true
+            return isCurrent(lease)
         } catch {
+            guard isCurrent(lease) else { return false }
             // A duplicate-key reject means a prior drain's insert DID land and
             // only the response was lost — the server row exists, so heal.
             if "\(error)".contains("23505") { return true }
@@ -1387,6 +1500,7 @@ class ImageSyncManager: ObservableObject {
                     "photo_id": row.id
                 ]
             )
+            guard isCurrent(lease) else { return false }
             DebugLogger.shared.log(
                 "handoff project_photos insert failed (\(kind)) for \(row.projectId): \(error)",
                 level: .error,
@@ -1398,6 +1512,7 @@ class ImageSyncManager: ObservableObject {
 
     /// Delete an image from S3 and locally
     func deleteImage(_ urlString: String, from project: Project) async -> Bool {
+        guard canUseContext else { return false }
         // Check if it's a local URL
         if urlString.starts(with: "local://") {
             _ = ImageFileManager.shared.deleteImage(localID: urlString)
@@ -1448,6 +1563,7 @@ class ImageSyncManager: ObservableObject {
     /// Gated by the caller on `projects.edit`; this method assumes authorization.
     @discardableResult
     func deleteProjectPhoto(_ url: String, from project: Project, dataController: DataController) async -> Bool {
+        guard let lease = beginWork() else { return false }
         // 1a. Legacy CSV — optimistic local removal for the @Query-backed UI.
         var images = project.getProjectImages()
         let removedFromCSV = images.contains(url)
@@ -1495,9 +1611,11 @@ class ImageSyncManager: ObservableObject {
             }
         }
 
+        guard isCurrent(lease) else { return false }
         // 2. Remote project_photos soft-delete (best-effort).
         await softDeleteProjectPhotoRow(url: url, projectId: project.id)
 
+        guard isCurrent(lease) else { return false }
         // 3. Best-effort S3 object delete (orphan cleanup).
         do {
             try await presignedURLService.deleteImage(url: url)
@@ -1509,6 +1627,7 @@ class ImageSyncManager: ObservableObject {
             )
         }
 
+        guard isCurrent(lease) else { return false }
         // 4. Local cache + file cleanup.
         _ = ImageFileManager.shared.deleteImage(localID: url)
         let cacheKey = url.hasPrefix("//") ? "https:" + url : url
@@ -1526,18 +1645,14 @@ class ImageSyncManager: ObservableObject {
     /// (May-12 class: silent RLS swallow).
     @discardableResult
     private func softDeleteProjectPhotoRow(url: String, projectId: String) async -> Bool {
-        struct ProjectPhotoSoftDelete: Codable { let deleted_at: String }
+        guard let lease = beginWork() else { return false }
         do {
-            try await SupabaseService.shared.client
-                .from("project_photos")
-                .update(ProjectPhotoSoftDelete(deleted_at: ISO8601DateFormatter().string(from: Date())))
-                .eq("project_id", value: projectId)
-                .eq("url", value: url)
-                .is("deleted_at", value: nil)
-                .execute()
+            try await photoSoftDelete(url, projectId)
+            guard isCurrent(lease) else { return false }
             markPhotoSoftDeleteSynced(url: url, projectId: projectId)
             return true
         } catch {
+            guard isCurrent(lease) else { return false }
             let kind = await AutoBugReporter.shared.reportIfPermanent(
                 error,
                 screen: "ImageSyncManager.softDeleteProjectPhotoRow",
@@ -1560,6 +1675,7 @@ class ImageSyncManager: ObservableObject {
     /// Clears the retry flag on the local rows a confirmed remote soft-delete
     /// covered.
     private func markPhotoSoftDeleteSynced(url: String, projectId: String) {
+        guard canUseContext else { return }
         guard let modelContext else { return }
         Self.clearPendingSoftDelete(url: url, projectId: projectId, in: modelContext)
     }
@@ -1617,23 +1733,24 @@ class ImageSyncManager: ObservableObject {
     /// `deleteProjectPhoto` already stamped `deletedAt`/`needsSync` on the local
     /// row, but nothing ever drained that flag (bug 1154fe67).
     private func drainPendingPhotoSoftDeletes() async {
-        guard let modelContext, connectivity.isConnected else { return }
+        guard let lease = beginWork() else { return }
+        guard let modelContext, connectionState() else { return }
         let targets = Self.pendingSoftDeleteTargets(in: modelContext)
         guard !targets.isEmpty else { return }
         for target in targets {
             _ = await softDeleteProjectPhotoRow(url: target.url, projectId: target.projectId)
+            guard isCurrent(lease) else { return }
         }
     }
 
     /// Sync all pending images to S3 and Supabase
     func syncPendingImages() async {
-
-        guard !isSyncing, connectivity.isConnected else {
-            if isSyncing {
-            }
-            if !connectivity.isConnected {
-            }
-            return
+        guard let lease = beginWork(), !isSyncing, connectionState() else { return }
+        let syncID = UUID()
+        activeSyncID = syncID
+        isSyncing = true
+        defer {
+            if activeSyncID == syncID { activeSyncID = nil; isSyncing = false }
         }
 
         // Stranded-photo recovery runs on every drain pass (startup, reconnect,
@@ -1647,12 +1764,14 @@ class ImageSyncManager: ObservableObject {
         // what re-delivers the affected photos without anyone touching the
         // phone they are stranded on.
         await reconcileStrandedPortalMirrors()
+        guard isCurrent(lease) else { return }
 
         // Unconfirmed soft-deletes drain on the same schedule and for the same
         // reason: a delete that raced a dead spot must not leave the photo alive
         // on the server. Runs BEFORE the empty-queue check — a launch with no
         // pending uploads but an undelivered tombstone must still push it.
         await drainPendingPhotoSoftDeletes()
+        guard isCurrent(lease) else { return }
 
         // Owed portal rows drain on the same schedule and BEFORE the
         // empty-queue check: a photo whose bytes are already in S3 has no
@@ -1660,14 +1779,13 @@ class ImageSyncManager: ObservableObject {
         // it. This is what finally makes the tile's "It'll retry automatically"
         // true for the online path (bug 16d487c4).
         await drainPendingPortalMirrors()
+        guard isCurrent(lease) else { return }
 
         if pendingUploads.isEmpty {
             if !hasQueuedDeliveryWork { stopRetryTimer() }
             return
         }
-        
-        isSyncing = true
-        
+
         // Group by project for batch uploading
         var uploadsByProject: [String: [PendingImageUpload]] = [:]
         for upload in pendingUploads {
@@ -1681,21 +1799,21 @@ class ImageSyncManager: ObservableObject {
         // Process each project's uploads
         for (projectId, uploads) in uploadsByProject {
             await syncImagesForProject(projectId: projectId, uploads: uploads)
+            guard isCurrent(lease) else { return }
         }
-        
-        isSyncing = false
     }
     
     /// Sync images for a specific project
     private func syncImagesForProject(projectId: String, uploads: [PendingImageUpload]) async {
+        guard let lease = beginWork() else { return }
         guard let project = getProject(by: projectId) else {
             return
         }
 
         let companyId = project.companyId
         guard !companyId.isEmpty,
-              let captureAccount = CaptureAccountIdentity.current(), captureAccount.companyID == companyId.lowercased() else { return }
-        func accountIsCurrent() -> Bool { !Task.isCancelled && CaptureAccountIdentity.current() == captureAccount }
+              let captureAccount = lease.account, captureAccount.companyID == companyId.lowercased() else { return }
+        func accountIsCurrent() -> Bool { isCurrent(lease) }
 
         let captureRows = handoffPhotoRows(projectId: projectId, localURLs: uploads.map(\.localURL))
         let uploads = uploads.filter { upload in
@@ -1770,7 +1888,7 @@ class ImageSyncManager: ObservableObject {
         // Resilient per-photo upload — one failure never aborts the batch.
         let images = pairs.map { $0.image }
         guard accountIsCurrent() else { return }
-        let outcomes = await presignedURLService.uploadProjectImages(images, for: project, companyId: companyId)
+        let outcomes = await projectImageUpload(images, project, companyId)
         guard accountIsCurrent() else { return }
 
         // Reconcile by IDENTITY: each upload's local:// URL is swapped for ITS
@@ -1806,7 +1924,7 @@ class ImageSyncManager: ObservableObject {
 
             // Canonical portal rows for the newly landed URLs, through the same
             // classification chokepoint the online path uses.
-            let uploaderId = UserDefaults.standard.string(forKey: "currentUserId") ?? ""
+            let uploaderId = defaults.string(forKey: "currentUserId") ?? ""
             guard accountIsCurrent() else { return }
             await deliverPortalMirror(
                 urls: reconciled.newRemoteURLs,
@@ -1903,6 +2021,7 @@ class ImageSyncManager: ObservableObject {
             )
         }
 
+        guard accountIsCurrent() else { return }
         // Keep the periodic retry timer alive only while delivery is still owed
         // — bytes to upload OR a portal row to insert; otherwise stop waking the
         // runloop every 30s.
@@ -1925,12 +2044,14 @@ class ImageSyncManager: ObservableObject {
     /// false — the same answer, with one fewer branch that no test can reach.
     /// Internal so the settle decision is provable through the probe seam.
     func projectIsSettledAsDeleted(_ project: Project) async -> Bool {
+        guard let lease = beginWork() else { return false }
         if project.deletedAt != nil { return true }
 
         let state: SyncOperationReconcilers.ProjectServerState?
         do {
             state = try await projectServerStateProbe.projectServerState(projectId: project.id)
         } catch {
+            guard isCurrent(lease) else { return false }
             DebugLogger.shared.log(
                 "pre-drain project state probe failed for \(project.id): \(error)",
                 level: .warning,
@@ -1938,7 +2059,7 @@ class ImageSyncManager: ObservableObject {
             )
             return false
         }
-        guard state == .deleted else { return false }
+        guard isCurrent(lease), state == .deleted else { return false }
 
         if let modelContext {
             try? SyncOperationReconcilers.applyProjectTombstone(
@@ -1953,6 +2074,7 @@ class ImageSyncManager: ObservableObject {
 
     /// Helper to get project by ID
     private func getProject(by id: String) -> Project? {
+        guard canUseContext else { return nil }
         guard let modelContext = modelContext else { return nil }
         
         do {
@@ -1968,7 +2090,7 @@ class ImageSyncManager: ObservableObject {
     
     /// Helper to load pending uploads from UserDefaults
     private func loadPendingUploads() {
-        if let data = UserDefaults.standard.data(forKey: "pendingImageUploads"),
+        if let data = defaults.data(forKey: "pendingImageUploads"),
            let uploads = try? JSONDecoder().decode([PendingImageUpload].self, from: data) {
             pendingUploads = uploads
         }
@@ -1976,8 +2098,9 @@ class ImageSyncManager: ObservableObject {
     
     /// Helper to save pending uploads to UserDefaults
     private func savePendingUploads() {
+        guard canUseContext else { return }
         if let data = try? JSONEncoder().encode(pendingUploads) {
-            UserDefaults.standard.set(data, forKey: "pendingImageUploads")
+            defaults.set(data, forKey: "pendingImageUploads")
         }
     }
 
@@ -1986,15 +2109,16 @@ class ImageSyncManager: ObservableObject {
     static let pendingPortalMirrorsKey = "pendingPortalMirrors"
 
     private func loadPendingPortalMirrors() {
-        if let data = UserDefaults.standard.data(forKey: Self.pendingPortalMirrorsKey),
+        if let data = defaults.data(forKey: Self.pendingPortalMirrorsKey),
            let mirrors = try? JSONDecoder().decode([PendingPortalMirror].self, from: data) {
             pendingPortalMirrors = mirrors
         }
     }
 
     private func savePendingPortalMirrors() {
+        guard canUseContext else { return }
         if let data = try? JSONEncoder().encode(pendingPortalMirrors) {
-            UserDefaults.standard.set(data, forKey: Self.pendingPortalMirrorsKey)
+            defaults.set(data, forKey: Self.pendingPortalMirrorsKey)
         }
     }
 
@@ -2014,6 +2138,7 @@ class ImageSyncManager: ObservableObject {
         source: String,
         takenAt: Date
     ) {
+        guard canUseContext else { return }
         var added = 0
         for url in urls where !pendingPortalMirrors.contains(where: { $0.url == url }) {
             pendingPortalMirrors.append(PendingPortalMirror(
@@ -2034,6 +2159,7 @@ class ImageSyncManager: ObservableObject {
     /// Settles delivery for these urls — delivered, already held server-side, or
     /// held for a reason no retry can change.
     private func removePortalMirrors(urls: [String]) {
+        guard canUseContext else { return }
         let settled = Set(urls)
         guard pendingPortalMirrors.contains(where: { settled.contains($0.url) }) else { return }
         pendingPortalMirrors.removeAll { settled.contains($0.url) }
@@ -2044,6 +2170,7 @@ class ImageSyncManager: ObservableObject {
     /// says the job is deleted: there is nothing left to deliver it to, and
     /// re-uploading its bytes every 30s would be pure waste.
     private func dropQueuedWork(forProject projectId: String) {
+        guard canUseContext else { return }
         let hadMirrors = pendingPortalMirrors.contains { $0.projectId == projectId }
         let hadUploads = pendingUploads.contains { $0.projectId == projectId }
         if hadMirrors {
@@ -2069,6 +2196,7 @@ class ImageSyncManager: ObservableObject {
     /// `reconcileStrandedProjectPhotos` uses. Internal so the redelivery is
     /// provable without a live network stack.
     func drainPendingPortalMirrors() async {
+        guard let lease = beginWork() else { return }
         guard !pendingPortalMirrors.isEmpty else { return }
 
         struct BatchKey: Hashable {
@@ -2090,6 +2218,7 @@ class ImageSyncManager: ObservableObject {
         }
 
         for (key, mirrors) in batches {
+            guard isCurrent(lease) else { return }
             guard let project = getProject(by: key.projectId) else {
                 // No local row to deliver against. Keep the debt: the project
                 // may still arrive from an authoritative pull, and dropping it
@@ -2109,7 +2238,7 @@ class ImageSyncManager: ObservableObject {
     /// Clean up UserDefaults from image data bloat
     private func cleanupUserDefaultsImageData() {
         
-        let defaults = UserDefaults.standard
+        let defaults = self.defaults
         var removedCount = 0
         var totalSizeSaved = 0
         
@@ -2135,6 +2264,7 @@ class ImageSyncManager: ObservableObject {
     
     /// Clear all pending image syncs
     func clearAllPendingUploads() {
+        guard canUseContext else { return }
 
         // Clear from memory
         let count = pendingUploads.count
@@ -2145,8 +2275,8 @@ class ImageSyncManager: ObservableObject {
         pendingPortalMirrors.removeAll()
 
         // Clear from UserDefaults
-        UserDefaults.standard.removeObject(forKey: "pendingImageUploads")
-        UserDefaults.standard.removeObject(forKey: Self.pendingPortalMirrorsKey)
+        defaults.removeObject(forKey: "pendingImageUploads")
+        defaults.removeObject(forKey: Self.pendingPortalMirrorsKey)
         stopRetryTimer()
 
         // Reset sync state
@@ -2177,6 +2307,7 @@ class ImageSyncManager: ObservableObject {
     /// Returns the placeholders (id + UIImage) so the caller can clear
     /// them when the upload settles. Always called on the main actor.
     private func beginInFlightUploads(_ images: [UIImage], for project: Project) -> [InFlightUpload] {
+        guard canUseContext else { return [] }
         let projectId = project.id
         let placeholders = images.map { InFlightUpload(id: UUID().uuidString, image: $0) }
         var current = inFlightUploads[projectId] ?? []
@@ -2189,6 +2320,7 @@ class ImageSyncManager: ObservableObject {
     /// re-render with only the resolved S3 URLs left in the project's
     /// project_images list.
     private func endInFlightUploads(_ ids: [String], for projectId: String) {
+        guard canUseContext else { return }
         guard var current = inFlightUploads[projectId] else { return }
         let idSet = Set(ids)
         current.removeAll { idSet.contains($0.id) }
@@ -2208,6 +2340,7 @@ class ImageSyncManager: ObservableObject {
         for projectId: String,
         lastError: String?
     ) {
+        guard canUseContext else { return }
         guard var current = inFlightUploads[projectId] else { return }
         let idSet = Set(ids)
         for index in current.indices where idSet.contains(current[index].id) {
@@ -2238,6 +2371,7 @@ class ImageSyncManager: ObservableObject {
     /// for the duration of the upload (the old failed one and the new
     /// spinning one) — confusing.
     func retryFailedInFlightUpload(id: String, for projectId: String) async {
+        guard canUseContext else { return }
         guard let current = inFlightUploads[projectId],
               let upload = current.first(where: { $0.id == id }),
               upload.failed else { return }

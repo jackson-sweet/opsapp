@@ -110,21 +110,18 @@ struct FloatingActionMenu: View {
     @State private var showPaymentReviewIntroFAB: Bool = false
     @State private var showTaskReviewIntroFAB: Bool = false
 
-    /// Coalesces the three recount triggers into one pass; see
-    /// `ReviewCountRefreshMonitor`. It has to be a `@StateObject` and not a
-    /// stored publisher: this view re-renders on every `DataController` publish,
-    /// which is exactly when a recount is pending, and a re-rendered pipeline
-    /// would drop the signal it is waiting on.
-    @StateObject private var reviewCountRefreshMonitor = ReviewCountRefreshMonitor()
+    @ObservedObject private var reviewSnapshots = ReviewSnapshotStore.shared
+    @State private var taskReviewRows: [ProjectTask] = []
+    @State private var incompleteReviewRows: [ProjectTask] = []
+    @State private var paymentReviewRows: ProjectReviewSnapshot?
 
-    // Cached review counts — computed on appear, not every render
-    @State private var cachedTaskReviewCount: Int = 0
-    @State private var cachedUnassignedCount: Int = 0
-    @State private var cachedCompletionReviewCount: Int = 0
-    @State private var cachedIsTaskReviewLocked: Bool = true
-    @State private var cachedIsPaymentReviewLocked: Bool = true
-    @State private var cachedCompletedTaskCount: Int = 0
-    @State private var cachedCompletedProjectCount: Int = 0
+    private var reviewSnapshot: ReviewSnapshot? {
+        reviewSnapshots.visibleSnapshot(dataController: dataController, permissionStore: permissionStore)
+    }
+
+    private var reviewUnavailableMessage: String {
+        reviewSnapshots.isUnavailable ? "Review counts are unavailable." : "Review counts are loading."
+    }
 
     // Sheet presentation states
     @State private var showingCreateProject = false
@@ -544,18 +541,18 @@ struct FloatingActionMenu: View {
         )
 
         // Use cached review counts (refreshed on appear / data change, not every render)
-        let completedTaskCount = cachedCompletedTaskCount
-        let completedProjectCount = cachedCompletedProjectCount
+        let completedTaskCount = (reviewSnapshot?.counts.completedTaskCount ?? 0)
+        let completedProjectCount = (reviewSnapshot?.counts.completedProjectCount ?? 0)
         // Rendered into the locked copy below; the verdict itself was computed
-        // against the same constants in refreshReviewCounts().
+        // against the same constants in the shared snapshot.
         let taskReviewThreshold = ReviewUnlockThresholds.taskReview
         let paymentReviewThreshold = ReviewUnlockThresholds.paymentReview
-        let isTaskReviewLocked = cachedIsTaskReviewLocked
-        let isPaymentReviewLocked = cachedIsPaymentReviewLocked
+        let isTaskReviewLocked = (reviewSnapshot?.isTaskReviewLocked ?? true)
+        let isPaymentReviewLocked = (reviewSnapshot?.isPaymentReviewLocked ?? true)
 
-        let taskReviewCount = cachedTaskReviewCount
-        let unassignedReviewCount = cachedUnassignedCount
-        let completionReviewCount = cachedCompletionReviewCount
+        let taskReviewCount = (reviewSnapshot?.taskBadgeCount ?? 0)
+        let unassignedReviewCount = (reviewSnapshot?.counts.unscheduledReviewCount ?? 0)
+        let completionReviewCount = (reviewSnapshot?.paymentBadgeCount ?? 0)
 
         groups.append(
             FABMenuGroup(id: "review", title: "REVIEW", items: [
@@ -565,7 +562,7 @@ struct FloatingActionMenu: View {
                     label: "Task Review",
                     permission: nil,
                     disabledInTutorial: true,
-                    lockedMessage: isTaskReviewLocked ? "Complete \(taskReviewThreshold) tasks to unlock task review. You've completed \(completedTaskCount) so far." : nil,
+                    lockedMessage: reviewSnapshot == nil ? reviewUnavailableMessage : isTaskReviewLocked ? "Complete \(taskReviewThreshold) tasks to unlock task review. You've completed \(completedTaskCount) so far." : nil,
                     badge: taskReviewCount > 0 ? taskReviewCount : nil,
                     action: {
                         showCreateMenu = false
@@ -573,7 +570,7 @@ struct FloatingActionMenu: View {
                             UserDefaults.standard.set(true, forKey: "review_task_intro_shown")
                             showTaskReviewIntroFAB = true
                         } else {
-                            showTaskReviewFromFAB = true
+                            openTaskReviewFromFAB()
                         }
                     }
                 ),
@@ -586,10 +583,11 @@ struct FloatingActionMenu: View {
                         permissionStore.scope(for: "tasks.edit") != nil
                     },
                     disabledInTutorial: true,
+                    lockedMessage: reviewSnapshot == nil ? reviewUnavailableMessage : nil,
                     badge: unassignedReviewCount > 0 ? unassignedReviewCount : nil,
                     action: {
                         showCreateMenu = false
-                        showIncompleteReviewFromFAB = true
+                        openIncompleteReviewFromFAB()
                     }
                 ),
                 FABMenuItem(
@@ -601,7 +599,7 @@ struct FloatingActionMenu: View {
                         permissionStore.scope(for: "projects.edit") != nil
                     },
                     disabledInTutorial: true,
-                    lockedMessage: isPaymentReviewLocked ? "Complete \(paymentReviewThreshold) projects to unlock payment review. You've completed \(completedProjectCount) so far." : nil,
+                    lockedMessage: reviewSnapshot == nil ? reviewUnavailableMessage : isPaymentReviewLocked ? "Complete \(paymentReviewThreshold) projects to unlock payment review. You've completed \(completedProjectCount) so far." : nil,
                     badge: completionReviewCount > 0 ? completionReviewCount : nil,
                     action: {
                         showCreateMenu = false
@@ -609,7 +607,7 @@ struct FloatingActionMenu: View {
                             UserDefaults.standard.set(true, forKey: "review_payment_intro_shown")
                             showPaymentReviewIntroFAB = true
                         } else {
-                            showPaymentReviewFromFAB = true
+                            openPaymentReviewFromFAB()
                         }
                     }
                 ),
@@ -814,20 +812,20 @@ struct FloatingActionMenu: View {
         // TODO: Wire up when InvoiceFormSheet is implemented
         // .sheet(isPresented: $showingCreateInvoice) { InvoiceFormSheet() }
         .sheet(isPresented: $showTaskReviewFromFAB) {
-            TaskCompletionReviewView(tasks: computeFABReviewableTasks())
+            TaskCompletionReviewView(tasks: taskReviewRows)
                 .environmentObject(appState)
                 .environmentObject(PermissionStore.shared)
         }
         .sheet(isPresented: $showPaymentReviewFromFAB) {
             ProjectPaymentReviewView(
-                overdueProjects: computeFABOverdueProjects(),
-                completedProjects: computeFABCompletedProjects()
+                overdueProjects: paymentReviewRows?.overdueProjects ?? [],
+                completedProjects: paymentReviewRows?.completedProjects ?? []
             )
             .environmentObject(appState)
             .environmentObject(PermissionStore.shared)
         }
         .sheet(isPresented: $showIncompleteReviewFromFAB) {
-            UnscheduledTaskReviewView(tasks: computeFABIncompleteTasks())
+            UnscheduledTaskReviewView(tasks: incompleteReviewRows)
                 .environmentObject(dataController)
                 .environmentObject(appState)
                 .environmentObject(PermissionStore.shared)
@@ -846,7 +844,7 @@ struct FloatingActionMenu: View {
                 Toast(label: "// PAYMENT REVIEW READY", tone: .success, autoDismissAfter: 4,
                       action: ToastAction(label: "OPEN") {
                           showPaymentReviewIntroFAB = false
-                          showPaymentReviewFromFAB = true
+                          openPaymentReviewFromFAB()
                       })
             )
             showPaymentReviewIntroFAB = false
@@ -857,7 +855,7 @@ struct FloatingActionMenu: View {
                 Toast(label: "// TASK REVIEW READY", tone: .success, autoDismissAfter: 4,
                       action: ToastAction(label: "OPEN") {
                           showTaskReviewIntroFAB = false
-                          showTaskReviewFromFAB = true
+                          openTaskReviewFromFAB()
                       })
             )
             showTaskReviewIntroFAB = false
@@ -979,72 +977,21 @@ struct FloatingActionMenu: View {
             calendarViewModel.setDataController(dataController)
             refreshHiddenItemsCache()
             refreshOrderCaches()
-            // First paint needs the badge immediately; every later trigger goes
-            // through the debounce.
-            refreshReviewCounts()
+            reviewSnapshots.bind(dataController: dataController, permissionStore: permissionStore)
+            Task { _ = await reviewSnapshots.value() }
         }
-        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("DataSyncCompleted"))) { _ in
-            scheduleReviewCountRefresh()
+        .onChange(of: showCreateMenu) { _, isOpen in
+            if isOpen { Task { _ = await reviewSnapshots.value() } }
         }
-        // Live refresh: scheduledTasksDidChange fires on any local task mutation
-        // (complete / cancel / reschedule / reassign) AND on inbound/realtime
-        // task changes (via InboundChangeRouter). Without this the cached badge
-        // counts only refreshed on .onAppear, which does not re-fire when a
-        // review sheet dismisses over the FAB.
-        .onChange(of: dataController.scheduledTasksDidChange) { _, _ in
-            scheduleReviewCountRefresh()
+        .onChange(of: showTaskReviewFromFAB) { _, isOpen in
+            if !isOpen { taskReviewRows = [] }
         }
-        .onReceive(reviewCountRefreshMonitor.output) { _ in
-            refreshReviewCounts()
+        .onChange(of: showPaymentReviewFromFAB) { _, isOpen in
+            if !isOpen { paymentReviewRows = nil }
         }
-    }
-
-    // MARK: - Review Count Refresh
-
-    /// Coalesces the recount triggers. A sync completion posts
-    /// `DataSyncCompleted` AND toggles `scheduledTasksDidChange`, and an inbound
-    /// merge toggles the flag once per batch — undebounced, each of those was a
-    /// separate pass over the task and project tables, on the main thread, from
-    /// whichever tab the operator happened to be on.
-    private func scheduleReviewCountRefresh() {
-        reviewCountRefreshMonitor.signal()
-    }
-
-    private func refreshReviewCounts() {
-        let taskReviewThreshold = ReviewUnlockThresholds.taskReview
-        let paymentReviewThreshold = ReviewUnlockThresholds.paymentReview
-
-        // One pass over each table for all five cached values. Every count below
-        // derives from these two arrays — the review queries take them as input
-        // rather than re-fetching per count.
-        let allTasks = dataController.getAllTasks()
-        let allProjects = dataController.getProjects()
-
-        let completedTasks = allTasks.filter { $0.status == .completed }.count
-        let completedProjects = allProjects.filter { $0.status == .completed || $0.status == .closed }.count
-
-        cachedCompletedTaskCount = completedTasks
-        cachedCompletedProjectCount = completedProjects
-        cachedIsTaskReviewLocked = completedTasks < taskReviewThreshold
-        cachedIsPaymentReviewLocked = completedProjects < paymentReviewThreshold
-
-        cachedTaskReviewCount = cachedIsTaskReviewLocked
-            ? 0
-            : TaskReviewQuery.overdueReviewTasks(
-                tasks: allTasks,
-                dataController: dataController
-            ).count
-        cachedUnassignedCount = TaskReviewQuery.unscheduledReviewTasks(
-            tasks: allTasks,
-            dataController: dataController
-        ).count
-        cachedCompletionReviewCount = cachedIsPaymentReviewLocked
-            ? 0
-            : ProjectReviewQuery.snapshot(
-                projects: allProjects,
-                dataController: dataController,
-                permissionStore: permissionStore
-            ).count
+        .onChange(of: showIncompleteReviewFromFAB) { _, isOpen in
+            if !isOpen { incompleteReviewRows = [] }
+        }
     }
 
     // MARK: - Review Badge Count
@@ -1052,7 +999,7 @@ struct FloatingActionMenu: View {
     /// Total outstanding review items across all review types (for FAB badge)
     private var totalReviewBadgeCount: Int {
         guard !tutorialMode else { return 0 }
-        return cachedTaskReviewCount + cachedUnassignedCount + cachedCompletionReviewCount
+        return reviewSnapshot?.totalBadgeCount ?? 0
     }
 
     // MARK: - FAB Button
@@ -1291,27 +1238,24 @@ struct FloatingActionMenu: View {
 
     // MARK: - Review Helpers
 
-    private func computeFABReviewableTasks() -> [ProjectTask] {
-        TaskReviewQuery.overdueReviewTasks(dataController: dataController)
+    // Main-context rows are resolved once at explicit sheet entry. Passive
+    // snapshot updates while a sheet is open must not refetch its model arrays.
+    private func openTaskReviewFromFAB() {
+        guard let snapshot = reviewSnapshot, !snapshot.isTaskReviewLocked else { return }
+        taskReviewRows = TaskReviewQuery.overdueReviewTasks(dataController: dataController)
+        showTaskReviewFromFAB = true
     }
 
-    private func computeFABOverdueProjects() -> [Project] {
-        computeFABPaymentSnapshot().overdueProjects
+    private func openPaymentReviewFromFAB() {
+        guard let snapshot = reviewSnapshot, !snapshot.isPaymentReviewLocked else { return }
+        paymentReviewRows = ProjectReviewQuery.snapshot(dataController: dataController, permissionStore: permissionStore)
+        showPaymentReviewFromFAB = true
     }
 
-    private func computeFABCompletedProjects() -> [Project] {
-        computeFABPaymentSnapshot().completedProjects
-    }
-
-    private func computeFABPaymentSnapshot() -> ProjectReviewSnapshot {
-        ProjectReviewQuery.snapshot(
-            dataController: dataController,
-            permissionStore: permissionStore
-        )
-    }
-
-    private func computeFABIncompleteTasks() -> [ProjectTask] {
-        TaskReviewQuery.unscheduledReviewTasks(dataController: dataController)
+    private func openIncompleteReviewFromFAB() {
+        guard reviewSnapshot != nil else { return }
+        incompleteReviewRows = TaskReviewQuery.unscheduledReviewTasks(dataController: dataController)
+        showIncompleteReviewFromFAB = true
     }
 
     // MARK: - Item Drag Reorder (within section)

@@ -40,8 +40,7 @@ final class SiteVisitInboundSyncTests: XCTestCase {
 
     func test_dataActorRealtimeReconstructsCanonicalParentAndChildren() async throws {
         let container = try makeContainer()
-        let actor = DataActor(modelContainer: container)
-        await actor.configure()
+        let actor = try await DataActor.makeBackgroundConfigured(modelContainer: container)
         let bundle = try makeBundle()
 
         await actor.handleRealtimeUpdate(.siteVisit(bundle.visit))
@@ -82,8 +81,7 @@ final class SiteVisitInboundSyncTests: XCTestCase {
 
     func test_dataActorRealtimeDeleteTombstonesSiteVisitRows() async throws {
         let container = try makeContainer()
-        let actor = DataActor(modelContainer: container)
-        await actor.configure()
+        let actor = try await DataActor.makeBackgroundConfigured(modelContainer: container)
         let bundle = try makeBundle()
         await actor.handleRealtimeUpdate(.siteVisit(bundle.visit))
         await actor.handleRealtimeUpdate(.siteVisitArtifact(bundle.artifacts[0]))
@@ -129,7 +127,7 @@ final class SiteVisitInboundSyncTests: XCTestCase {
             else { defaults.removeObject(forKey: "currentUserCompanyId") }
         }
         let container = try makeContainer()
-        let actor = await Task.detached { DataActor(modelContainer: container) }.value
+        let actor = try await DataActor.makeBackgroundConfigured(modelContainer: container)
         let bundle = try makeBundle()
         let counter = VisitInvalidationCounter()
         let observer = NotificationCenter.default.addObserver(forName: .inboundDataMerged, object: nil, queue: nil) { note in

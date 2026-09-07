@@ -37,6 +37,10 @@ enum ProjectReviewQuery {
         dataController: DataController,
         permissionStore: PermissionStore = .shared
     ) -> ProjectReviewSnapshot {
+        guard let companyID = dataController.currentUser?.companyId, !companyID.isEmpty else {
+            return ProjectReviewSnapshot(overdueProjects: [], completedProjects: [], projects: [])
+        }
+        let projects = projects.filter { $0.companyId == companyID }
         let threshold: Int
         if let companyID = dataController.currentUser?.companyId,
            let company = dataController.getCompany(id: companyID) {
@@ -67,11 +71,10 @@ enum ProjectReviewQuery {
         accessPolicy: PaymentReviewAccessPolicy
     ) -> ProjectReviewSnapshot {
         let completed = projects.filter { project in
-            project.status == .completed
-                && project.deletedAt == nil
-                && accessPolicy.canClose(
-                    projectTeamMemberIDs: projectAccessIDs(project)
-                )
+            ReviewEligibility.paymentProject(
+                isCompleted: project.status == .completed, isDeleted: project.deletedAt != nil,
+                teamIDs: projectAccessIDs(project), policy: accessPolicy
+            )
         }
         let overdue = OverdueProjectDetector.overdueProjects(
             from: completed,

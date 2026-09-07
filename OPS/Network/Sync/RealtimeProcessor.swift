@@ -176,6 +176,7 @@ final class RealtimeProcessor: ObservableObject {
     /// Supabase's channel subscription must stay on @MainActor (this class),
     /// but the SwiftData write inside each event handler dispatches to this actor.
     private weak var dataActor: DataActor?
+    private let bindingLifetime = OutboundSessionLifetime()
 
     private let supabase: SupabaseClient
     private let decoder = JSONDecoder()
@@ -242,7 +243,25 @@ final class RealtimeProcessor: ObservableObject {
     /// FeatureFlags.useDataActor is enabled. Absent this, handleUpsert/handleDelete
     /// fall back to the legacy @MainActor path.
     func setDataActor(_ actor: DataActor) {
+        guard bindingLifetime.snapshot() != nil else { return }
         self.dataActor = actor
+    }
+
+    /// Close model ingress immediately; network teardown can finish afterward.
+    /// A retired processor is never reused for another container or account.
+    func retireModelBinding() {
+        bindingLifetime.invalidate()
+        intendsToListen = false
+        subscribeRetryTask?.cancel()
+        subscribeRetryTask = nil
+        clearPostgresChangeSubscriptions()
+        socketStatusObservation?.cancel()
+        socketStatusObservation = nil
+        channelStatusObservation?.cancel()
+        channelStatusObservation = nil
+        dataActor = nil
+        modelContext = nil
+        isConnected = false
     }
 
     // MARK: - Start Listening
@@ -268,6 +287,7 @@ final class RealtimeProcessor: ObservableObject {
         context: ModelContext,
         cancelPendingRetry: Bool = true
     ) async {
+        guard bindingLifetime.snapshot() != nil, !Task.isCancelled else { return }
         self.companyId = companyId
         self.userId = userId
         self.modelContext = context
@@ -311,9 +331,11 @@ final class RealtimeProcessor: ObservableObject {
         let authenticatedAccessToken: String
         do {
             let token = try await realtimeAccessToken(for: firebaseUser)
+            guard bindingLifetime.snapshot() != nil, !Task.isCancelled else { return }
             authenticatedAccessToken = token
             print("[RealtimeProcessor] Firebase JWT ready — \(Self.describeJWT(token, firebaseUID: firebaseUser.uid))")
             await supabase.realtimeV2.setAuth(token)
+            guard bindingLifetime.snapshot() != nil, !Task.isCancelled else { return }
         } catch let error as RealtimeAuthGateError {
             isConnected = false
             let reason = error.errorDescription ?? String(describing: error)
@@ -331,7 +353,9 @@ final class RealtimeProcessor: ObservableObject {
 
         // Tear down any previous channel (without clearing listen intent).
         await teardownChannel()
+        guard bindingLifetime.snapshot() != nil, !Task.isCancelled else { return }
         await removeRetainedChannels(named: channelName)
+        guard bindingLifetime.snapshot() != nil, !Task.isCancelled else { return }
 
         // Observe socket-level status so a silent websocket drop self-heals.
         observeSocketStatus()
@@ -373,6 +397,10 @@ final class RealtimeProcessor: ObservableObject {
         do {
             let subscribeStartedAt = Date()
             try await channel.subscribeWithError()
+            guard bindingLifetime.snapshot() != nil, !Task.isCancelled else {
+                await discardFailedChannel(channel)
+                return
+            }
             let elapsed = Date().timeIntervalSince(subscribeStartedAt)
             self.channel = channel
             self.isConnected = true
@@ -902,6 +930,7 @@ final class RealtimeProcessor: ObservableObject {
     // MARK: - Change Routing
 
     private func handleChange(table: String, action: AnyAction) {
+        guard bindingLifetime.snapshot() != nil else { return }
         lastEventTimestamp = Date()
         print("[RealtimeProcessor] Event received - table=\(table), action=\(Self.actionDescription(action))")
 
@@ -1346,10 +1375,15 @@ final class RealtimeProcessor: ObservableObject {
         companyId: String,
         context: ModelContext
     ) {
+        let bindingLifetime = self.bindingLifetime
+        let container = context.container
         Task { @MainActor in
+            defer { withExtendedLifetime(container) {} }
+            guard bindingLifetime.snapshot() != nil, !Task.isCancelled else { return }
             do {
                 let repository = SiteVisitRepository(companyId: companyId)
                 let bundle = try await repository.fetchBundle(siteVisitId: siteVisitId)
+                guard bindingLifetime.snapshot() != nil, !Task.isCancelled else { return }
                 _ = try SiteVisitServerMerge.merge(bundle: bundle, into: context)
                 InboundChangeSignal.post(entityNames: [
                     "SiteVisit",
@@ -1389,20 +1423,22 @@ final class RealtimeProcessor: ObservableObject {
     /// calendar_user_events, notifications, permissions)
     /// bypass the actor entirely — they just post NotificationCenter events on main.
     private func dispatchUpsertToActor<R: HasRecord>(table: String, record: R, actor: DataActor) {
+        let bindingLifetime = self.bindingLifetime
         do {
             switch table {
             case "projects":
                 // Bug G9 — client-side scope guards removed. RLS (migration 074)
                 // enforces team-based and mention-based grant server-side.
                 let dto = try record.decodeRecord(as: SupabaseProjectDTO.self, decoder: decoder)
-                Task { await actor.handleRealtimeUpdate(.project(dto)) }
+                Task { await actor.handleRealtimeUpdate(.project(dto), isCurrent: { bindingLifetime.snapshot() != nil }) }
 
             case "project_tasks":
                 // Bug G9 — client-side scope guards removed. See "projects" case.
                 let dto = try record.decodeRecord(as: SupabaseProjectTaskDTO.self, decoder: decoder)
                 print("[DUPE_TRACE] RT.dispatch id=\(dto.id) → DataActor.handleRealtimeUpdate(.task)")
                 Task {
-                    await actor.handleRealtimeUpdate(.task(dto))
+                    await actor.handleRealtimeUpdate(.task(dto), isCurrent: { bindingLifetime.snapshot() != nil })
+                    guard bindingLifetime.snapshot() != nil, !Task.isCancelled else { return }
                     // Legacy-path parity (see handleUpsert): refresh the
                     // iPhone-Calendar mirror AFTER the merge lands so a
                     // teammate's reschedule moves the mirrored event too.
@@ -1411,32 +1447,32 @@ final class RealtimeProcessor: ObservableObject {
 
             case "users":
                 let dto = try record.decodeRecord(as: SupabaseUserDTO.self, decoder: decoder)
-                Task { await actor.handleRealtimeUpdate(.user(dto)) }
+                Task { await actor.handleRealtimeUpdate(.user(dto), isCurrent: { bindingLifetime.snapshot() != nil }) }
 
             case "clients":
                 // Scope enforcement for clients is server-side (RLS) — no client-side filter.
                 let dto = try record.decodeRecord(as: SupabaseClientDTO.self, decoder: decoder)
-                Task { await actor.handleRealtimeUpdate(.client(dto)) }
+                Task { await actor.handleRealtimeUpdate(.client(dto), isCurrent: { bindingLifetime.snapshot() != nil }) }
 
             case "companies":
                 let dto = try record.decodeRecord(as: SupabaseCompanyDTO.self, decoder: decoder)
-                Task { await actor.handleRealtimeUpdate(.company(dto)) }
+                Task { await actor.handleRealtimeUpdate(.company(dto), isCurrent: { bindingLifetime.snapshot() != nil }) }
 
             case "task_types":
                 let dto = try record.decodeRecord(as: SupabaseTaskTypeDTO.self, decoder: decoder)
-                Task { await actor.handleRealtimeUpdate(.taskType(dto)) }
+                Task { await actor.handleRealtimeUpdate(.taskType(dto), isCurrent: { bindingLifetime.snapshot() != nil }) }
 
             case "site_visit_types":
                 let dto = try record.decodeRecord(as: SiteVisitTypeDTO.self, decoder: decoder)
-                Task { await actor.handleRealtimeUpdate(.siteVisitType(dto)) }
+                Task { await actor.handleRealtimeUpdate(.siteVisitType(dto), isCurrent: { bindingLifetime.snapshot() != nil }) }
 
             case "sub_clients":
                 let dto = try record.decodeRecord(as: SupabaseSubClientDTO.self, decoder: decoder)
-                Task { await actor.handleRealtimeUpdate(.subClient(dto)) }
+                Task { await actor.handleRealtimeUpdate(.subClient(dto), isCurrent: { bindingLifetime.snapshot() != nil }) }
 
             case "project_notes":
                 let dto = try record.decodeRecord(as: ProjectNoteDTO.self, decoder: decoder)
-                Task { await actor.handleRealtimeUpdate(.projectNote(dto)) }
+                Task { await actor.handleRealtimeUpdate(.projectNote(dto), isCurrent: { bindingLifetime.snapshot() != nil }) }
                 // Preserve legacy side-effect: notify views listening for new notes.
                 NotificationCenter.default.post(
                     name: .projectNoteReceived,
@@ -1450,70 +1486,70 @@ final class RealtimeProcessor: ObservableObject {
 
             case "project_photos":
                 let dto = try record.decodeRecord(as: ProjectPhotoDTO.self, decoder: decoder)
-                Task { await actor.handleRealtimeUpdate(.projectPhoto(dto)) }
+                Task { await actor.handleRealtimeUpdate(.projectPhoto(dto), isCurrent: { bindingLifetime.snapshot() != nil }) }
 
             case "project_photo_annotations":
                 let dto = try record.decodeRecord(as: PhotoAnnotationDTO.self, decoder: decoder)
-                Task { await actor.handleRealtimeUpdate(.photoAnnotation(dto)) }
+                Task { await actor.handleRealtimeUpdate(.photoAnnotation(dto), isCurrent: { bindingLifetime.snapshot() != nil }) }
 
             case "deck_designs":
                 let dto = try record.decodeRecord(as: SupabaseDeckDesignDTO.self, decoder: decoder)
-                Task { await actor.handleRealtimeUpdate(.deckDesign(dto)) }
+                Task { await actor.handleRealtimeUpdate(.deckDesign(dto), isCurrent: { bindingLifetime.snapshot() != nil }) }
 
             case "site_visits":
                 let dto = try record.decodeRecord(as: SiteVisitDTO.self, decoder: decoder)
                 guard activeSiteVisitCompanyId(matching: dto.companyId) != nil else { return }
-                Task { await actor.handleRealtimeUpdate(.siteVisit(dto)) }
+                Task { await actor.handleRealtimeUpdate(.siteVisit(dto), isCurrent: { bindingLifetime.snapshot() != nil }) }
 
             case "site_visit_artifacts":
                 let dto = try record.decodeRecord(as: SiteVisitArtifactDTO.self, decoder: decoder)
                 guard activeSiteVisitCompanyId(matching: dto.companyId) != nil else { return }
-                Task { await actor.handleRealtimeUpdate(.siteVisitArtifact(dto)) }
+                Task { await actor.handleRealtimeUpdate(.siteVisitArtifact(dto), isCurrent: { bindingLifetime.snapshot() != nil }) }
 
             case "site_visit_checklist_answers":
                 let dto = try record.decodeRecord(as: SiteVisitChecklistAnswerDTO.self, decoder: decoder)
                 guard activeSiteVisitCompanyId(matching: dto.companyId) != nil else { return }
-                Task { await actor.handleRealtimeUpdate(.siteVisitChecklistAnswer(dto)) }
+                Task { await actor.handleRealtimeUpdate(.siteVisitChecklistAnswer(dto), isCurrent: { bindingLifetime.snapshot() != nil }) }
 
             case "site_visit_identity_drafts":
                 let dto = try record.decodeRecord(as: SiteVisitIdentityDraftDTO.self, decoder: decoder)
                 guard activeSiteVisitCompanyId(matching: dto.companyId) != nil else { return }
-                Task { await actor.handleRealtimeUpdate(.siteVisitIdentityDraft(dto)) }
+                Task { await actor.handleRealtimeUpdate(.siteVisitIdentityDraft(dto), isCurrent: { bindingLifetime.snapshot() != nil }) }
 
             // Catalog parents — Option A: only parent tables fire realtime;
             // their children (option values, joins, snapshot items, order
             // items, product extension rows) refetch on the next pullDelta.
             case "catalog_categories":
                 let dto = try record.decodeRecord(as: CatalogCategoryDTO.self, decoder: decoder)
-                Task { await actor.handleRealtimeUpdate(.catalogCategory(dto)) }
+                Task { await actor.handleRealtimeUpdate(.catalogCategory(dto), isCurrent: { bindingLifetime.snapshot() != nil }) }
 
             case "catalog_units":
                 let dto = try record.decodeRecord(as: CatalogUnitDTO.self, decoder: decoder)
-                Task { await actor.handleRealtimeUpdate(.catalogUnit(dto)) }
+                Task { await actor.handleRealtimeUpdate(.catalogUnit(dto), isCurrent: { bindingLifetime.snapshot() != nil }) }
 
             case "catalog_tags":
                 let dto = try record.decodeRecord(as: CatalogTagDTO.self, decoder: decoder)
-                Task { await actor.handleRealtimeUpdate(.catalogTag(dto)) }
+                Task { await actor.handleRealtimeUpdate(.catalogTag(dto), isCurrent: { bindingLifetime.snapshot() != nil }) }
 
             case "catalog_items":
                 let dto = try record.decodeRecord(as: CatalogItemDTO.self, decoder: decoder)
-                Task { await actor.handleRealtimeUpdate(.catalogItem(dto)) }
+                Task { await actor.handleRealtimeUpdate(.catalogItem(dto), isCurrent: { bindingLifetime.snapshot() != nil }) }
 
             case "catalog_variants":
                 let dto = try record.decodeRecord(as: CatalogVariantDTO.self, decoder: decoder)
-                Task { await actor.handleRealtimeUpdate(.catalogVariant(dto)) }
+                Task { await actor.handleRealtimeUpdate(.catalogVariant(dto), isCurrent: { bindingLifetime.snapshot() != nil }) }
 
             case "catalog_snapshots":
                 let dto = try record.decodeRecord(as: CatalogSnapshotDTO.self, decoder: decoder)
-                Task { await actor.handleRealtimeUpdate(.catalogSnapshot(dto)) }
+                Task { await actor.handleRealtimeUpdate(.catalogSnapshot(dto), isCurrent: { bindingLifetime.snapshot() != nil }) }
 
             case "catalog_orders":
                 let dto = try record.decodeRecord(as: CatalogOrderDTO.self, decoder: decoder)
-                Task { await actor.handleRealtimeUpdate(.catalogOrder(dto)) }
+                Task { await actor.handleRealtimeUpdate(.catalogOrder(dto), isCurrent: { bindingLifetime.snapshot() != nil }) }
 
             case "company_default_products":
                 let dto = try record.decodeRecord(as: CompanyDefaultProductDTO.self, decoder: decoder)
-                Task { await actor.handleRealtimeUpdate(.companyDefaultProduct(dto)) }
+                Task { await actor.handleRealtimeUpdate(.companyDefaultProduct(dto), isCurrent: { bindingLifetime.snapshot() != nil }) }
 
             // Non-merge tables (incl. opportunities/activities/follow_ups):
             // no actor involvement, just post events on main.
@@ -1537,7 +1573,8 @@ final class RealtimeProcessor: ObservableObject {
                 let dto = try record.decodeRecord(as: CalendarUserEventDTO.self, decoder: Self.userEventDecoder)
                 if let userId = self.userId, dto.userId == userId {
                     Task {
-                        await actor.handleRealtimeUpdate(.calendarUserEvent(dto))
+                        await actor.handleRealtimeUpdate(.calendarUserEvent(dto), isCurrent: { bindingLifetime.snapshot() != nil })
+                    guard bindingLifetime.snapshot() != nil, !Task.isCancelled else { return }
                         // Legacy-path parity: refresh the iPhone-Calendar mirror.
                         await CalendarMirrorService.shared.reconcileAll()
                     }
@@ -1558,6 +1595,7 @@ final class RealtimeProcessor: ObservableObject {
     }
 
     private func dispatchDeleteToActor(table: String, action: DeleteAction, actor: DataActor) {
+        let bindingLifetime = self.bindingLifetime
         struct IdPayload: Decodable { let id: String }
         do {
             switch table {
@@ -1573,12 +1611,13 @@ final class RealtimeProcessor: ObservableObject {
                  "catalog_categories", "catalog_units", "catalog_tags",
                  "catalog_items", "catalog_variants", "catalog_orders":
                 let payload = try action.decodeOldRecord(as: IdPayload.self, decoder: decoder)
-                Task { await actor.softDeleteFromRealtime(table: table, id: payload.id) }
+                Task { await actor.softDeleteFromRealtime(table: table, id: payload.id, isCurrent: { bindingLifetime.snapshot() != nil }) }
 
             case "project_tasks":
                 let payload = try action.decodeOldRecord(as: IdPayload.self, decoder: decoder)
                 Task {
-                    await actor.softDeleteFromRealtime(table: table, id: payload.id)
+                    await actor.softDeleteFromRealtime(table: table, id: payload.id, isCurrent: { bindingLifetime.snapshot() != nil })
+                    guard bindingLifetime.snapshot() != nil, !Task.isCancelled else { return }
                     // Legacy-path parity (see handleDelete): drop the mirrored
                     // iPhone-Calendar event for the deleted task.
                     await CalendarMirrorService.shared.unmirrorEvent(opsId: payload.id)
@@ -1600,7 +1639,8 @@ final class RealtimeProcessor: ObservableObject {
                 // iPhone-Calendar event. Legacy parity plus live local removal.
                 let payload = try action.decodeOldRecord(as: IdPayload.self, decoder: decoder)
                 Task {
-                    await actor.softDeleteFromRealtime(table: table, id: payload.id)
+                    await actor.softDeleteFromRealtime(table: table, id: payload.id, isCurrent: { bindingLifetime.snapshot() != nil })
+                    guard bindingLifetime.snapshot() != nil, !Task.isCancelled else { return }
                     await CalendarMirrorService.shared.unmirrorEvent(opsId: payload.id)
                 }
                 NotificationCenter.default.post(name: .calendarEventUpdated, object: nil)
@@ -1642,9 +1682,14 @@ final class RealtimeProcessor: ObservableObject {
         if alreadyCached { return }
 
         guard let companyId = self.companyId else { return }
+        let bindingLifetime = self.bindingLifetime
+        let container = context.container
         Task { @MainActor in
+            defer { withExtendedLifetime(container) {} }
+            guard bindingLifetime.snapshot() != nil, !Task.isCancelled else { return }
             do {
                 let dto = try await ProjectRepository(companyId: companyId).fetchOne(projectId)
+                guard bindingLifetime.snapshot() != nil, !Task.isCancelled else { return }
                 let pendingFields = self.protectedFieldsForEntity(
                     entityType: .project, entityId: dto.id, context: context
                 )

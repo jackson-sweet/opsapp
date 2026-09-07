@@ -37,7 +37,8 @@ extension DataActor {
         projectIds: [String],
         companyId: String?,
         today: Date = Date()
-    ) -> HomeRollupSnapshot {
+    ) throws -> HomeRollupSnapshot {
+        try checkActiveModelSession()
         let projects = fetchProjects(ids: projectIds)
 
         var invoiceDescriptor = FetchDescriptor<Invoice>(
@@ -72,8 +73,9 @@ extension DataActor {
 
     /// Needs-tasks count alone — the review-sheet-dismiss recompute needs the
     /// count without paying for the invoice/estimate fetches.
-    func projectsNeedingTasksCount(projectIds: [String]) -> Int {
-        ProjectsWithoutTasksDetector
+    func projectsNeedingTasksCount(projectIds: [String]) throws -> Int {
+        try checkActiveModelSession()
+        return ProjectsWithoutTasksDetector
             .projectsWithoutTasks(from: fetchProjects(ids: projectIds))
             .count
     }

@@ -195,17 +195,28 @@ class MonthGridCache: ObservableObject {
         isLoading = true
 
         Task { @MainActor in
+            let context = dataController.modelContext
+            let userID = dataController.currentUser?.id
+            let companyID = dataController.currentUser?.companyId
+            let isCurrent: @MainActor () -> Bool = {
+                !Task.isCancelled && dataController.modelContext === context
+                    && dataController.currentUser?.id == userID
+                    && dataController.currentUser?.companyId == companyID
+            }
+            defer { if isCurrent() { isLoading = false } }
             let cutoff = calendar.date(byAdding: .year, value: -1, to: Date()) ?? Date()
             let scope = viewModel.currentTaskScope()
 
             let taskPreviews: [String: [ScheduledTaskPreview]]
-            if let actor = dataController.dataActor {
-                taskPreviews = await actor.calendarMonthPreviews(
+            if FeatureFlags.useDataActor {
+                guard let actor = await dataController.readyDataActor(), isCurrent(),
+                      let previews = try? await actor.calendarMonthPreviews(
                     scope: scope,
                     since: cutoff,
                     tutorialOnly: tutorialMode,
                     calendar: calendar
-                )
+                ), isCurrent(), dataController.dataActor === actor else { return }
+                taskPreviews = previews
             } else {
                 // No actor yet (pre-login, or the DataActor flag is off): same
                 // builders, same order, on the main context.

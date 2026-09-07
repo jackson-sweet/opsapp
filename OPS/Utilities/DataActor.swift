@@ -99,6 +99,12 @@ actor DataActor {
         (modelExecutor as? DataActorModelExecutor)?.drain()
     }
 
+    /// Synchronous read entry guard. A retired/cancelled reader must report
+    /// cancellation, never a successful empty snapshot that clears UI state.
+    func checkActiveModelSession() throws {
+        guard outboundScope() != nil else { throw CancellationError() }
+    }
+
     private func requireInboundScope() throws -> OutboundScope {
         guard let scope = outboundScope() else { throw CancellationError() }
         return scope

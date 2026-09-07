@@ -555,13 +555,16 @@ class CalendarViewModel: ObservableObject {
             }
             guard isCurrent() else { return }
         }
-        let snapshot = await actor.calendarLoadSnapshot(
+        guard let snapshot = try? await actor.calendarLoadSnapshot(
             taskScope: taskScope,
             auxiliaryScope: auxiliaryScope,
             weekStart: weekStart,
             centerDate: centerDate
-        )
-        guard isCurrent() else { return }
+        ) else {
+            if isCurrent() { isLoading = false }
+            return
+        }
+        guard isCurrent(), !FeatureFlags.useDataActor || dataController.dataActor === actor else { return }
 
         // Resolve exactly the actor-approved ids into main-context models. No
         // actor-owned @Model crosses isolation and no unbounded relationship

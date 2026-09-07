@@ -71,6 +71,24 @@ final class DataActorInboundLifetimeTests: XCTestCase {
         XCTAssertEqual(try container.mainContext.fetchCount(FetchDescriptor<Client>()), 0)
     }
 
+    func testRetiredHomeAndCalendarReadsThrowInsteadOfPublishingZero() async throws {
+        let container = try makeContainer()
+        let actor = try await DataActor.makeBackgroundConfigured(modelContainer: container)
+        try await actor.checkActiveModelSession()
+        actor.retireAndDrainModelWork()
+        do { _ = try await actor.projectsNeedingTasksCount(projectIds: []); XCTFail("Retirement is not a zero count") }
+        catch { XCTAssertTrue(error is CancellationError) }
+        do { _ = try await actor.computeHomeRollup(projectIds: [], companyId: "lifetime-company"); XCTFail("Retirement is not an empty rollup") }
+        catch { XCTAssertTrue(error is CancellationError) }
+        let scope = CalendarTaskScope(mode: .all, userId: "lifetime-user", companyId: "lifetime-company",
+            canViewAllCalendar: true, hasFullTaskAccess: true, selectedTeamMemberIds: [],
+            selectedTaskTypeIds: [], selectedClientIds: [], selectedStatuses: [])
+        do { _ = try await actor.calendarWeekCache(scope: scope, weekStart: Date()); XCTFail("Retirement is not an empty calendar") }
+        catch { XCTAssertTrue(error is CancellationError) }
+        do { _ = try await actor.calendarMonthPreviews(scope: scope, since: Date(), tutorialOnly: false); XCTFail("Retirement is not an empty month") }
+        catch { XCTAssertTrue(error is CancellationError) }
+    }
+
     func testOldDeltaCannotAdvanceCursorOrPublishErrorIntoReplacementSession() async throws {
         let container = try makeContainer()
         let actor = try await DataActor.makeBackgroundConfigured(modelContainer: container)

@@ -31,7 +31,7 @@ final class DeckEditingSessionTests: XCTestCase {
         try await OutboundProcessor().executeOperation(operation, context: context)
         XCTAssertEqual(operation.status, "pending")
         XCTAssertNil(operation.lastAttemptedAt)
-        let actor = await Task.detached { DataActor(modelContainer: container) }.value
+        let actor = try await DataActor.makeBackgroundConfigured(modelContainer: container)
         _ = await actor.processPendingOperations()
         let fresh = ModelContext(container)
         let stored = try XCTUnwrap(fresh.fetch(FetchDescriptor<SyncOperation>()).first)

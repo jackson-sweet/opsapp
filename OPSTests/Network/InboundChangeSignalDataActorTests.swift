@@ -14,6 +14,8 @@ import SwiftData
 import XCTest
 @testable import OPS
 
+// UI fixture models stay on main while the production worker reads its own context.
+@MainActor
 final class InboundChangeSignalDataActorTests: XCTestCase {
 
     func test_fullSyncOrdersIncludeReminderDependencies() throws {
@@ -145,8 +147,7 @@ final class InboundChangeSignalDataActorTests: XCTestCase {
 
     func test_realtimeTaskMerge_postsProjectTaskSignal_andPersistsRow() async throws {
         let container = try makeInMemoryContainer()
-        let actor = DataActor(modelContainer: container)
-        await actor.configure()
+        let actor = try await DataActor.makeBackgroundConfigured(modelContainer: container)
 
         let signal = expectInboundSignal(containing: "ProjectTask")
 
@@ -175,8 +176,7 @@ final class InboundChangeSignalDataActorTests: XCTestCase {
         seedContext.insert(task)
         try seedContext.save()
 
-        let actor = DataActor(modelContainer: container)
-        await actor.configure()
+        let actor = try await DataActor.makeBackgroundConfigured(modelContainer: container)
 
         let signal = expectInboundSignal(containing: "ProjectTask")
 
@@ -195,8 +195,7 @@ final class InboundChangeSignalDataActorTests: XCTestCase {
 
     func test_realtimeUserEventMerge_insertsRow_andPostsCalendarUserEventSignal() async throws {
         let container = try makeInMemoryContainer()
-        let actor = DataActor(modelContainer: container)
-        await actor.configure()
+        let actor = try await DataActor.makeBackgroundConfigured(modelContainer: container)
 
         let signal = expectInboundSignal(containing: "CalendarUserEvent")
 
@@ -233,8 +232,7 @@ final class InboundChangeSignalDataActorTests: XCTestCase {
         seedContext.insert(local)
         try seedContext.save()
 
-        let actor = DataActor(modelContainer: container)
-        await actor.configure()
+        let actor = try await DataActor.makeBackgroundConfigured(modelContainer: container)
 
         let dto = try makeUserEventDTO(id: eventId, userId: "user-1", title: "Server title")
         await actor.handleRealtimeUpdate(.calendarUserEvent(dto))
@@ -249,8 +247,7 @@ final class InboundChangeSignalDataActorTests: XCTestCase {
 
     func test_realtimeUserEventMerge_skipsInsertOfSoftDeletedRow() async throws {
         let container = try makeInMemoryContainer()
-        let actor = DataActor(modelContainer: container)
-        await actor.configure()
+        let actor = try await DataActor.makeBackgroundConfigured(modelContainer: container)
 
         let eventId = "4e345678-90ab-cdef-0123-456789abcdef"
         let dto = try makeUserEventDTO(

@@ -118,8 +118,7 @@ final class MainContextActorUpdatePropagationTests: XCTestCase {
         XCTAssertEqual(before, originalStart, "precondition: main context holds the OLD date")
 
         // Teammate reschedules → actor merges on its own context (same container).
-        let actor = DataActor(modelContainer: container)
-        await actor.configure()
+        let actor = try await DataActor.makeBackgroundConfigured(modelContainer: container)
         await actor.handleRealtimeUpdate(
             .task(makeTaskDTO(id: taskId, startDate: rescheduledStartISO, endDate: "2026-06-21T00:00:00+00:00"))
         )

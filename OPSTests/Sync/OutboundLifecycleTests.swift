@@ -136,7 +136,7 @@ final class OutboundLifecycleTests: XCTestCase {
         for shouldFail in [false, true] {
             let container = try makeContainer()
             _ = try makeOperation(in: container.mainContext)
-            let actor = await Task.detached { DataActor(modelContainer: container) }.value
+            let actor = try await DataActor.makeBackgroundConfigured(modelContainer: container)
             let started = expectation(description: "actor request suspended")
             let gate = OutboundLifecycleGate()
             await actor.setOutboundPushForTesting { _, _, _, _ in
@@ -162,7 +162,7 @@ final class OutboundLifecycleTests: XCTestCase {
     func testActorDrainCompletesCurrentSession() async throws {
         let container = try makeContainer()
         _ = try makeOperation(in: container.mainContext)
-        let actor = await Task.detached { DataActor(modelContainer: container) }.value
+        let actor = try await DataActor.makeBackgroundConfigured(modelContainer: container)
         await actor.setOutboundPushForTesting { _, _, _, _ in }
         _ = await actor.processPendingOperations()
         let fresh = ModelContext(container)

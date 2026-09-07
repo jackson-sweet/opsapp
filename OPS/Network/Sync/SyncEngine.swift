@@ -83,6 +83,7 @@ final class SyncEngine {
     private var syncRequestedWhileInProgress: Bool = false
     private let pushDrainCoordinator = SyncPushDrainCoordinator()
     private var recoveryTask: Task<Void, Never>?
+    private var recoveryTaskID: UUID?
     private var uploadWakeupTask: Task<Void, Never>?
     private var lifecycleGeneration = 0
     private var recoveryRequested = false
@@ -104,20 +105,41 @@ final class SyncEngine {
     func requestRecovery() {
         recoveryRequested = true
         guard recoveryTask == nil else { return }
+        let taskID = UUID()
+        recoveryTaskID = taskID
         let generation = lifecycleGeneration
+        let userID = currentUserId?.lowercased()
+        let companyID = UserDefaults.standard.string(forKey: "currentUserCompanyId")?.lowercased()
         recoveryTask = Task { [weak self] in
             guard let self else { return }
+            defer {
+                // Only this task may clear its slot. An obsolete first turn
+                // must not permanently block later account/company recovery.
+                if self.recoveryTaskID == taskID {
+                    self.recoveryTask = nil
+                    self.recoveryTaskID = nil
+                    if self.recoveryRequested && !Task.isCancelled { self.requestRecovery() }
+                }
+            }
+            func scopeIsCurrent() -> Bool {
+                !Task.isCancelled && generation == self.lifecycleGeneration
+                    && self.currentUserId?.lowercased() == userID
+                    && UserDefaults.standard.string(forKey: "currentUserCompanyId")?.lowercased() == companyID
+            }
+            guard scopeIsCurrent() else { return }
             repeat {
                 self.recoveryRequested = false
                 await self.runRecoveryPass()
-            } while self.recoveryRequested && !Task.isCancelled
-            guard generation == self.lifecycleGeneration else { return }
+            } while self.recoveryRequested && scopeIsCurrent()
+            guard scopeIsCurrent(), self.recoveryTaskID == taskID else { return }
             self.recoveryTask = nil
-            if !Task.isCancelled { await self.pushPending() }
+            self.recoveryTaskID = nil
+            await self.pushPending()
         }
     }
 
     private func runRecoveryPass() async {
+        guard await awaitDataActorReadiness() else { return }
         guard let context = modelContext else { return }
         let generation = lifecycleGeneration
         let companyId = UserDefaults.standard.string(forKey: "currentUserCompanyId")?.lowercased() ?? ""
@@ -224,6 +246,7 @@ final class SyncEngine {
     /// Background data actor — when present, sync ops route through this actor
     /// instead of the MainActor processors. Injected by DataController via configure.
     private weak var dataActor: DataActor?
+    private var dataActorStartup: DataActorStartup?
 
     /// SyncEngine-owned spotlight tracker used to dispatch DataActor's accumulated
     /// spotlight diff. Distinct from InboundProcessor's tracker so actor-path and
@@ -253,6 +276,10 @@ final class SyncEngine {
         connectivity: ConnectivityManager,
         dataActor: DataActor? = nil
     ) {
+        if let startup = self.dataActorStartup, !startup.matches(modelContext.container) {
+            startup.invalidate()
+            self.dataActorStartup = nil
+        }
         outboundProcessor?.invalidate()
         self.dataActor?.invalidateOutboundWork()
         lifecycleGeneration += 1
@@ -304,6 +331,8 @@ final class SyncEngine {
             )
             UserDefaults.standard.set(true, forKey: stockEventCursorRecoveryKey)
         }
+
+        retireRealtimeProcessor()
 
         // Initialize processors
         self.outboundProcessor = OutboundProcessor()
@@ -429,25 +458,57 @@ final class SyncEngine {
     }
 
     /// Late-binds the background DataActor after configure() has already run.
-    ///
-    /// Required because DataController.fetchUserFromAPI (at auth check) can call
-    /// initializeSyncManager — and therefore configure — BEFORE setModelContext's
-    /// async Task block finishes creating the actor. Without this setter, subsequent
-    /// initializeSyncManager calls early-return on the imageSyncManager guard and
-    /// the actor never gets wired in. Also pushes the actor reference to the
-    /// already-created RealtimeProcessor so its flag-gated dispatch engages.
+    /// Pending startup is registered before auth/reconnect can request sync.
+    /// Configuration can then finish asynchronously without exposing legacy.
+    func setDataActorStartup(_ startup: DataActorStartup) {
+        guard self.dataActorStartup !== startup else { return }
+        let needsRealtimeProcessor = realtimeProcessor != nil
+        retireRealtimeProcessor()
+        if needsRealtimeProcessor { realtimeProcessor = RealtimeProcessor() }
+        outboundProcessor?.invalidate()
+        self.dataActorStartup?.invalidate()
+        self.dataActor?.invalidateOutboundWork()
+        self.dataActor = nil
+        self.dataActorStartup = startup
+        lifecycleGeneration += 1
+        recoveryTask?.cancel()
+        recoveryTask = nil
+        recoveryRequested = false
+    }
+
+    /// Existing callers can provide an already-ready actor. Multiple readiness
+    /// waiters binding the same instance must not invalidate each other's work.
     func setDataActor(_ actor: DataActor?) {
+        guard self.dataActor !== actor else { return }
         self.dataActor?.invalidateOutboundWork()
         self.dataActor = actor
         actor?.resumeOutboundWork()
-        if let actor = actor {
-            self.realtimeProcessor?.setDataActor(actor)
+        if let actor { self.realtimeProcessor?.setDataActor(actor) }
+    }
+
+    private func awaitDataActorReadiness() async -> Bool {
+        guard !Task.isCancelled else { return false }
+        guard FeatureFlags.useDataActor, let startup = dataActorStartup else {
+            return true // Explicit legacy/standalone integrations keep their existing path.
         }
-        print("[SYNC_ENGINE] DataActor reference \(actor == nil ? "cleared" : "set — actor path now active")")
+        guard let context = modelContext, startup.matches(context.container) else { return false }
+        let generation = lifecycleGeneration
+        let userID = currentUserId?.lowercased()
+        let companyID = UserDefaults.standard.string(forKey: "currentUserCompanyId")?.lowercased()
+        guard let actor = await startup.value(), !Task.isCancelled,
+              generation == lifecycleGeneration, dataActorStartup === startup,
+              modelContext === context,
+              currentUserId?.lowercased() == userID,
+              UserDefaults.standard.string(forKey: "currentUserCompanyId")?.lowercased() == companyID else {
+            return false
+        }
+        setDataActor(actor)
+        return true
     }
 
     /// Starts Realtime subscriptions for the given company (forced resubscribe).
     func startRealtime(companyId: String, userId: String? = nil) async {
+        guard await awaitDataActorReadiness() else { return }
         guard let modelContext else { return }
         await realtimeProcessor?.startListening(companyId: companyId, userId: userId, context: modelContext)
     }
@@ -456,8 +517,17 @@ final class SyncEngine {
     /// isn't already. Idempotent — safe to call on cold launch, login, every
     /// foreground, and connectivity-restore without churning the channel.
     func ensureRealtime(companyId: String, userId: String? = nil) async {
+        guard await awaitDataActorReadiness() else { return }
         guard let modelContext else { return }
         await realtimeProcessor?.ensureListening(companyId: companyId, userId: userId, context: modelContext)
+    }
+
+    private func retireRealtimeProcessor() {
+        guard let retired = realtimeProcessor else { return }
+        retired.retireModelBinding()
+        realtimeProcessor = nil
+        // Capture the retired instance, never a replacement installed later.
+        Task { await retired.stopListening() }
     }
 
     /// Stops Realtime subscriptions.
@@ -475,6 +545,8 @@ final class SyncEngine {
     ///
     /// Safe to call multiple times.
     func stopForLogoutSync() {
+        retireRealtimeProcessor()
+        dataActorStartup?.invalidate()
         outboundProcessor?.invalidate()
         self.dataActor?.invalidateOutboundWork()
         lifecycleGeneration += 1
@@ -1215,6 +1287,7 @@ final class SyncEngine {
             return
         }
 
+        guard await awaitDataActorReadiness() else { return }
         do {
             if FeatureFlags.useDataActor, let actor = dataActor {
                 let companyId = UserDefaults.standard.string(forKey: "currentUserCompanyId") ?? ""
@@ -1254,6 +1327,7 @@ final class SyncEngine {
             return
         }
 
+        guard await awaitDataActorReadiness() else { return }
         do {
             if FeatureFlags.useDataActor, let actor = dataActor {
                 let companyId = UserDefaults.standard.string(forKey: "currentUserCompanyId") ?? ""
@@ -1272,6 +1346,7 @@ final class SyncEngine {
 
     /// Triggers a full push-then-pull cycle, guarding against concurrent syncs.
     func triggerSync() async {
+        guard await awaitDataActorReadiness() else { return }
         guard !syncInProgress else {
             syncRequestedWhileInProgress = true
             print(
@@ -1370,6 +1445,7 @@ final class SyncEngine {
     /// Performs a full sync of all entities in dependency order.
     /// Used for initial sync or manual full-refresh.
     func fullSync() async {
+        guard await awaitDataActorReadiness() else { return }
         requestRecovery()
         // One-time migration cleanup (gated by UserDefaults flag)
         let migrationKey = "sync.migrationCleanupV1"
@@ -1500,6 +1576,7 @@ final class SyncEngine {
     /// Still pushes pending local ops so an offline edit isn't stranded.
     @discardableResult
     func refreshScheduleData(companyId requestedCompanyId: String? = nil) async -> Bool {
+        guard await awaitDataActorReadiness() else { return false }
         // Briefly defer to an in-flight sync rather than racing it.
         if syncInProgress {
             for _ in 0..<30 {
@@ -1596,6 +1673,7 @@ final class SyncEngine {
     func pushPending() async {
         guard let modelContext, let connectivity else { return }
         guard connectivity.shouldAttemptSync else { return }
+        guard await awaitDataActorReadiness() else { return }
         let generation = lifecycleGeneration
         // Legacy children need their recovered parent before the first send.
         // The recovery task clears this slot before its own final upload wakeup.
@@ -2048,6 +2126,7 @@ final class SyncEngine {
 
     /// Pulls delta changes from the server since the last sync timestamp via InboundProcessor.
     func pullDelta() async {
+        guard await awaitDataActorReadiness() else { return }
         guard let modelContext else {
             print("[SYNC_ENGINE] Cannot pull — not configured")
             return
@@ -2112,6 +2191,7 @@ final class SyncEngine {
 
     /// Pulls delta changes from a specific timestamp (used for Realtime catch-up).
     private func deltaSyncSince(_ date: Date) async {
+        guard await awaitDataActorReadiness() else { return }
         guard let modelContext else { return }
 
         print("[SYNC_ENGINE] Catch-up delta sync from \(date)")
@@ -2581,8 +2661,11 @@ final class SyncEngine {
         // itself with no user action (bug ba75732a). Best-effort, and off the
         // sweep's critical path — every other parked class stays parked.
         guard connectivity?.shouldAttemptSync == true else { return }
+        let generation = lifecycleGeneration
         Task { [weak self] in
-            guard let self else { return }
+            guard let self, generation == self.lifecycleGeneration,
+                  await self.awaitDataActorReadiness(),
+                  generation == self.lifecycleGeneration else { return }
             if FeatureFlags.useDataActor, let actor = self.dataActor {
                 await actor.resolveReconcilableParkedOperations()
             } else if let processor = self.outboundProcessor {

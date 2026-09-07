@@ -163,7 +163,12 @@ class DataController: ObservableObject {
 
     /// Background SwiftData actor — owns all sync/cleanup/background writes.
     /// Created once in setModelContext. Gated behind FeatureFlags.useDataActor.
-    private(set) var dataActor: DataActor?
+    @Published private(set) var dataActor: DataActor?
+    private var dataActorStartup: DataActorStartup?
+    private var dataActorBindingTask: Task<Void, Never>?
+    private var legacyBootstrapTask: Task<Void, Never>?
+    private var configuredSyncContext: ModelContext?
+    private let dataActorPreparation: DataActorStartup.Preparation
 
     /// Bridges DataActor.didSave → main context @Query refresh.
     /// Created alongside dataActor; published for views to observe.
@@ -204,7 +209,12 @@ class DataController: ObservableObject {
     @Published var simplePINManager = SimplePINManager()
     
     // MARK: - Initialization
-    init() {
+    init(
+        dataActorPreparation: @escaping DataActorStartup.Preparation = { actor, isCurrent in
+            try await actor.prepareForFirstSync(isCurrent: isCurrent)
+        }
+    ) {
+        self.dataActorPreparation = dataActorPreparation
         // Create dependencies in a predictable order
         self.keychainManager = KeychainManager()
         self.authManager = AuthManager()
@@ -312,6 +322,10 @@ class DataController: ObservableObject {
     
     @MainActor
     func setModelContext(_ context: ModelContext) {
+        if self.modelContext !== context {
+            invalidateDataActorStartup()
+            syncEngine?.stopForLogoutSync()
+        }
         self.modelContext = context
 
         // Rehydrate the V25 sibling projection before any screen can read the
@@ -356,16 +370,6 @@ class DataController: ObservableObject {
             AutoBugReporter.shared.configure(connectivity: self.connectivity)
         }
 
-        // Create the DataActor + refresh bridge SYNCHRONOUSLY (flag-gated).
-        //
-        // Must happen before any other code path can race to sync. Specifically:
-        //   - DataController.fetchUserFromAPI calls initializeSyncManager at
-        //     line 843 during auth check — configure() must see a non-nil
-        //     self.dataActor.
-        //   - ConnectivityManager.onStateChanged callbacks can trigger a sync
-        //     immediately upon connectivity restore; SyncEngine.dataActor
-        //     must be bound before that happens.
-        //
         // Route inbound merge signals (Realtime / delta / full sync) to the
         // calendar's existing refresh chains. Created on BOTH the actor and
         // legacy paths — every inbound merge site posts the same signal.
@@ -401,79 +405,93 @@ class DataController: ObservableObject {
             )
         }
 
-        // The @ModelActor-synthesized init runs synchronously; only configure()
-        // is async. Actor methods are FIFO-serialized, so scheduling configure()
-        // first guarantees it runs before any queued cleanup/sync method.
-        if FeatureFlags.useDataActor && self.dataActor == nil {
-            let actor = DataActor(modelContainer: context.container)
-
-            let bridge = MainContextRefreshBridge(
-                mainContext: context,
-                listeningTo: .dataActorDidSave
-            )
-
-            self.dataActor = actor
-            self.refreshBridge = bridge
-
-            // Bind the actor to SyncEngine synchronously so the first sync
-            // trigger (network reconnect, auth completion) sees the actor path.
-            self.syncEngine.setDataActor(actor)
-
-            // configure() sets autosave off and installs the didSave → main
-            // rebroadcast observer. Runs async on the actor's executor; any
-            // subsequent actor method queues behind it.
-            Task { await actor.configure() }
-
-            print("[DATA_CONTROLLER] DataActor created — actor path is active for this session")
-        }
-
-        // Cleanup + initializeSyncManager remain in a Task because cleanup is
-        // async and we don't want to block setModelContext's caller.
-        Task { @MainActor in
-            if FeatureFlags.useDataActor, let actor = self.dataActor {
-                // Canonicalize task UUIDs to lowercase BEFORE dedup so
-                // `7F7C90FF-...` and `7f7c90ff-...` (same underlying task)
-                // group together in `cleanupDuplicateTasks`. Must run before
-                // any sync so outbound pushes use canonicalized ids too.
-                await actor.normalizeTaskIdsToLowercase()
-
-                // Same casing fix for task types: collapse uppercase/lowercase id
-                // variants onto one id BEFORE cleanupDuplicateTaskTypes so its
-                // exact-id grouping sees the case-variant duplicate as one group.
-                await actor.normalizeTaskTypeIdsToLowercase()
-
-                await actor.cleanupDuplicateUsers()
+        if FeatureFlags.useDataActor {
+            // Register pending readiness before setModelContext returns. Any
+            // auth/reconnect sync waits for it instead of selecting legacy.
+            ensureDataActorStartup(for: context)
+        } else {
+            legacyBootstrapTask?.cancel()
+            legacyBootstrapTask = Task { @MainActor [weak self] in
+                guard let self else { return }
+                func isCurrent() -> Bool {
+                    !Task.isCancelled && self.modelContext === context
+                }
+                guard isCurrent() else { return }
+                await self.cleanupDuplicateUsers()
                 #if DEBUG
-                await actor.cleanupDuplicateProjects()
+                guard isCurrent() else { return }
+                await self.cleanupDuplicateProjects()
                 #endif
-                await actor.cleanupDuplicateTasks()
-                await actor.cleanupDuplicateClients()
-                await actor.cleanupDuplicateTaskTypes()
-
-                // After dedup, rewire relationships from the stored id-string
-                // columns (Project.teamMemberIdsString, ProjectTask.teamMemberIdsString,
-                // ProjectTask.taskTypeId, etc.) into `@Relationship` arrays. The
-                // dedup's `pickFreshestIndex` may retain the copy that was
-                // inserted via a realtime echo — which never had its `[User]`
-                // relationship wired (DTO→model only copies the id string).
-                // Without this pass the UI would show no avatars until the
-                // next full/delta sync runs, which could be minutes or a
-                // foreground-resume away.
-                await actor.rewireRelationships()
-            } else {
-                await cleanupDuplicateUsers()
-                #if DEBUG
-                await cleanupDuplicateProjects()
-                #endif
-                await cleanupDuplicateTasks()
-                await cleanupDuplicateClients()
-                await cleanupDuplicateTaskTypes()
-            }
-
-            if isAuthenticated || currentUser != nil {
-                initializeSyncManager()
+                guard isCurrent() else { return }
+                await self.cleanupDuplicateTasks()
+                guard isCurrent() else { return }
+                await self.cleanupDuplicateClients()
+                guard isCurrent() else { return }
+                await self.cleanupDuplicateTaskTypes()
+                guard isCurrent() else { return }
+                if self.isAuthenticated || self.currentUser != nil {
+                    self.initializeSyncManager()
+                }
             }
         }
+    }
+
+    /// Await the current container's configured and prepared actor. A cancelled
+    /// or replaced session returns nil; callers must not manufacture a legacy
+    /// model actor while this one is still starting.
+    @MainActor
+    func readyDataActor() async -> DataActor? {
+        guard FeatureFlags.useDataActor, let context = modelContext,
+              let startup = dataActorStartup else { return nil }
+        let userID = currentUser?.id
+        let companyID = currentUser?.companyId
+        guard let actor = await startup.value(), !Task.isCancelled,
+              self.dataActorStartup === startup, self.modelContext === context,
+              currentUser?.id == userID, currentUser?.companyId == companyID,
+              startup.matches(context.container) else { return nil }
+        if self.dataActor !== actor { self.dataActor = actor }
+        return actor
+    }
+
+    @MainActor
+    private func ensureDataActorStartup(for context: ModelContext) {
+        guard FeatureFlags.useDataActor else { return }
+        if let startup = dataActorStartup,
+           startup.isCurrent, startup.matches(context.container) {
+            return
+        }
+        invalidateDataActorStartup()
+        // Install the listener before preparation can save anything.
+        self.refreshBridge = MainContextRefreshBridge(
+            mainContext: context, listeningTo: .dataActorDidSave
+        )
+        let startup = DataActorStartup(
+            modelContainer: context.container, prepare: dataActorPreparation
+        )
+        self.dataActorStartup = startup
+        self.syncEngine.setDataActorStartup(startup)
+        dataActorBindingTask = Task { @MainActor [weak self] in
+            guard let actor = await startup.value(), !Task.isCancelled,
+                  let self, self.dataActorStartup === startup,
+                  self.modelContext === context else { return }
+            if self.dataActor !== actor { self.dataActor = actor }
+            if self.isAuthenticated || self.currentUser != nil {
+                self.initializeSyncManager()
+            }
+        }
+    }
+
+    private func invalidateDataActorStartup() {
+        dataActorStartup?.invalidate()
+        dataActorBindingTask?.cancel()
+        legacyBootstrapTask?.cancel()
+        dataActor?.invalidateOutboundWork()
+        dataActorStartup = nil
+        dataActorBindingTask = nil
+        legacyBootstrapTask = nil
+        dataActor = nil
+        refreshBridge = nil
+        configuredSyncContext = nil
     }
     
     @MainActor
@@ -481,6 +499,23 @@ class DataController: ObservableObject {
         guard let modelContext = modelContext else {
             print("[DATA_CONTROLLER] ⚠️ Cannot initialize sync system - no modelContext")
             return
+        }
+
+        // Authentication may complete after a cancelled startup on the same
+        // container. Install its new readiness boundary before any sync setup.
+        ensureDataActorStartup(for: modelContext)
+
+        // Engine configuration belongs to a context, independently of the
+        // older image-manager sentinel. Replacement and reauthentication must
+        // rebind sync even when an image manager already exists.
+        if configuredSyncContext !== modelContext {
+            syncEngine.configure(
+                modelContext: modelContext,
+                connectivity: connectivity,
+                dataActor: self.dataActor
+            )
+            configuredSyncContext = modelContext
+            syncEngine.registerBackgroundTasks()
         }
 
         // Skip if already configured (syncEngine.isSyncing is observable after configure)
@@ -496,16 +531,6 @@ class DataController: ObservableObject {
             modelContext: modelContext,
             connectivity: connectivity
         )
-
-        // Configure the sync engine (already created eagerly). Pass dataActor when
-        // the feature flag is on and the actor has been created in setModelContext;
-        // SyncEngine routes fullSync/pullDelta/pushPending/etc. through the actor.
-        syncEngine.configure(
-            modelContext: modelContext,
-            connectivity: connectivity,
-            dataActor: self.dataActor
-        )
-        syncEngine.registerBackgroundTasks()
 
         // Calibrate the photo storage budget on first authenticated launch.
         // Idempotent — a StorageProfiler already-calibrated guard makes subsequent
@@ -1535,6 +1560,7 @@ class DataController: ObservableObject {
         // timer could fire mid-wipe and crash accessing invalidated SwiftData
         // models, and connectivity/permission observers could re-arm sync
         // activity while deletions are in flight.
+        invalidateDataActorStartup()
         syncEngine.stopForLogoutSync()
         // Fire-and-forget the realtime teardown; it doesn't block logout.
         Task { @MainActor [weak self] in
@@ -1668,6 +1694,7 @@ class DataController: ObservableObject {
 
         // Belt-and-suspenders: re-halt the sync engine in case logout() ran
         // before stopForLogoutSync landed, or something rearmed it.
+        invalidateDataActorStartup()
         syncEngine.stopForLogoutSync()
 
         print("[LOGOUT] Deleting all SwiftData models...")
@@ -1851,6 +1878,7 @@ class DataController: ObservableObject {
     }
     
     private func clearAuthentication() {
+        invalidateDataActorStartup()
         isAuthenticated = false
         currentUser = nil
         

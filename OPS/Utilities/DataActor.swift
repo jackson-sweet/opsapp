@@ -6,8 +6,8 @@
 //  Part of the C-pragmatic ModelActor refactor (Phase 1).
 //
 //  Design invariants:
-//   - One instance per app lifetime, created in DataController.setModelContext.
-//   - Uses its own ModelContext (created by @ModelActor macro) — NOT mainContext.
+//   - Production uses makeBackgroundConfigured, then DataActorStartup readiness.
+//   - Its context is created and used on a private serial executor, never mainContext.
 //   - All external callers use async methods; internal work uses
 //     ModelContext.transaction { } for atomicity.
 //   - Accepts PersistentIdentifier across the actor boundary, never @Model.
@@ -33,6 +33,31 @@ extension Notification.Name {
 
 @ModelActor
 actor DataActor {
+    /// The macro's ordinary initializer remains available for isolated legacy
+    /// fixtures. Production uses the factory and explicitly supplied executor.
+    init(backgroundModelContainer: ModelContainer, executor: DataActorModelExecutor) {
+        self.modelContainer = backgroundModelContainer
+        self.modelExecutor = executor
+    }
+
+    nonisolated var unownedExecutor: UnownedSerialExecutor {
+        // Both supported initializers install a SerialModelExecutor. Spell out
+        // the witness so actor hops honor the supplied queue executor.
+        (modelExecutor as! any SerialModelExecutor).asUnownedSerialExecutor()
+    }
+
+    nonisolated static func makeBackgroundConfigured(modelContainer: ModelContainer) async throws -> DataActor {
+        let executor = try await DataActorModelExecutor.make(modelContainer: modelContainer)
+        try Task.checkCancellation()
+        let actor = DataActor(backgroundModelContainer: modelContainer, executor: executor)
+        await actor.configure()
+        guard !Task.isCancelled else {
+            actor.invalidateOutboundWork()
+            throw CancellationError()
+        }
+        return actor
+    }
+
     private nonisolated let outboundLifetime = OutboundSessionLifetime()
     nonisolated func invalidateOutboundWork() { outboundLifetime.invalidate() }
     nonisolated func resumeOutboundWork() { outboundLifetime.resume() }
@@ -85,6 +110,7 @@ actor DataActor {
     /// Must be called before any transaction is run.
     func configure() {
         modelContext.autosaveEnabled = false
+        guard didSaveObserver == nil else { return }
 
         // Subscribe to self's didSave and re-broadcast a Sendable notification on main.
         // This avoids passing the non-Sendable ModelContext across the actor boundary,
@@ -112,6 +138,35 @@ actor DataActor {
                 )
             }
         }
+    }
+
+    /// All local normalization precedes first sync. Each awaited step has an
+    /// explicit cancellation/session boundary; no unstructured-task FIFO claim
+    /// is needed to order configuration, cleanup, relationship wiring and sends.
+    func prepareForFirstSync(isCurrent: @Sendable () -> Bool) async throws {
+        func checkCurrent() throws {
+            try Task.checkCancellation()
+            guard isCurrent() else { throw CancellationError() }
+        }
+        try checkCurrent()
+        await normalizeTaskIdsToLowercase()
+        try checkCurrent()
+        await normalizeTaskTypeIdsToLowercase()
+        try checkCurrent()
+        await cleanupDuplicateUsers()
+        #if DEBUG
+        try checkCurrent()
+        await cleanupDuplicateProjects()
+        #endif
+        try checkCurrent()
+        await cleanupDuplicateTasks()
+        try checkCurrent()
+        await cleanupDuplicateClients()
+        try checkCurrent()
+        await cleanupDuplicateTaskTypes()
+        try checkCurrent()
+        await rewireRelationships()
+        try checkCurrent()
     }
 
     deinit {
@@ -323,6 +378,10 @@ actor DataActor {
             return []
         }
 
+        guard let scope = outboundScope() else { throw CancellationError() }
+        let telemetryUserID = await MainActor.run { SupabaseService.shared.currentUserId }
+        guard outboundIsCurrent(scope) else { throw CancellationError() }
+
         print("[DataActor] ======== FULL SYNC STARTED ========")
         var failedEntities = Set<SyncEntityType>()
 
@@ -356,7 +415,7 @@ actor DataActor {
                     error: error,
                     isFullSync: true,
                     companyId: companyId,
-                    userId: SupabaseService.shared.currentUserId
+                    userId: telemetryUserID
                 )
             }
         }
@@ -387,6 +446,10 @@ actor DataActor {
             print("[DataActor] DELTA SYNC ABORTED — no companyId available")
             return []
         }
+
+        guard let scope = outboundScope() else { throw CancellationError() }
+        let telemetryUserID = await MainActor.run { SupabaseService.shared.currentUserId }
+        guard outboundIsCurrent(scope) else { throw CancellationError() }
 
         print("[DataActor] ======== DELTA SYNC STARTED ========")
         var failedEntities = Set<SyncEntityType>()
@@ -419,7 +482,7 @@ actor DataActor {
                     error: error,
                     isFullSync: false,
                     companyId: companyId,
-                    userId: SupabaseService.shared.currentUserId
+                    userId: telemetryUserID
                 )
             }
         }
@@ -446,6 +509,10 @@ actor DataActor {
             return []
         }
 
+        guard let scope = outboundScope() else { throw CancellationError() }
+        let telemetryUserID = await MainActor.run { SupabaseService.shared.currentUserId }
+        guard outboundIsCurrent(scope) else { throw CancellationError() }
+
         let entities: [SyncEntityType] = [.project, .projectTask, .taskType, .calendarUserEvent]
         print("[DataActor] ======== SCHEDULE SYNC STARTED ========")
         var failedEntities = Set<SyncEntityType>()
@@ -468,7 +535,7 @@ actor DataActor {
                     error: error,
                     isFullSync: false,
                     companyId: companyId,
-                    userId: SupabaseService.shared.currentUserId
+                    userId: telemetryUserID
                 )
             }
         }
@@ -4478,14 +4545,21 @@ actor DataActor {
     /// Non-throwing by design: realtime events are fire-and-forget from the caller's
     /// perspective. A failed merge is logged and skipped; the next delta sync will
     /// re-pull the affected row.
-    func handleRealtimeUpdate(_ update: RealtimeUpdate) async {
+    func handleRealtimeUpdate(
+        _ update: RealtimeUpdate,
+        isCurrent: @Sendable () -> Bool = { true }
+    ) async {
+        guard let scope = outboundScope(), isCurrent() else { return }
+        func scopeIsCurrent() -> Bool { isCurrent() && outboundIsCurrent(scope) }
         do {
-            if let report = try await mergeSiteVisitRealtimeIfHandled(update) {
+            if let report = try await mergeSiteVisitRealtimeIfHandled(update, isCurrent: scopeIsCurrent) {
+                guard scopeIsCurrent() else { return }
                 if report.inserted > 0 || report.updated > 0 {
                     InboundChangeSignal.post(entityNames: [update.mergedEntityName])
                 }
                 return
             }
+            guard scopeIsCurrent() else { return }
             try modelContext.transaction {
                 switch update {
                 case .project(let dto):                 try mergeProject(dto: dto)
@@ -4525,8 +4599,10 @@ actor DataActor {
     }
 
     private func mergeSiteVisitRealtimeIfHandled(
-        _ update: RealtimeUpdate
+        _ update: RealtimeUpdate,
+        isCurrent: () -> Bool
     ) async throws -> SiteVisitMergeReport? {
+        guard isCurrent() else { throw CancellationError() }
         switch update {
         case .siteVisit(let dto):
             return try SiteVisitServerMerge.merge(
@@ -4545,7 +4621,8 @@ actor DataActor {
             } catch SiteVisitMergeError.orphanedChild {
                 return try await recoverSiteVisitBundle(
                     siteVisitId: dto.siteVisitId,
-                    companyId: companyId
+                    companyId: companyId,
+                    isCurrent: isCurrent
                 )
             }
         case .siteVisitChecklistAnswer(let dto):
@@ -4559,7 +4636,8 @@ actor DataActor {
             } catch SiteVisitMergeError.orphanedChild {
                 return try await recoverSiteVisitBundle(
                     siteVisitId: dto.siteVisitId,
-                    companyId: companyId
+                    companyId: companyId,
+                    isCurrent: isCurrent
                 )
             }
         case .siteVisitIdentityDraft(let dto):
@@ -4573,7 +4651,8 @@ actor DataActor {
             } catch SiteVisitMergeError.orphanedChild {
                 return try await recoverSiteVisitBundle(
                     siteVisitId: dto.siteVisitId,
-                    companyId: companyId
+                    companyId: companyId,
+                    isCurrent: isCurrent
                 )
             }
         default:
@@ -4584,12 +4663,16 @@ actor DataActor {
     @discardableResult
     private func recoverSiteVisitBundle(
         siteVisitId: String,
-        companyId: String
+        companyId: String,
+        isCurrent: () -> Bool
     ) async throws -> SiteVisitMergeReport {
+        guard isCurrent() else { throw CancellationError() }
         let repository = await MainActor.run {
             SiteVisitRepository(companyId: companyId)
         }
+        guard isCurrent() else { throw CancellationError() }
         let bundle = try await repository.fetchBundle(siteVisitId: siteVisitId)
+        guard isCurrent() else { throw CancellationError() }
         let report = try SiteVisitServerMerge.merge(bundle: bundle, into: modelContext)
         if report.inserted > 0 || report.updated > 0 {
             inboundMergedEntityNames.formUnion(Self.siteVisitEntityNames)
@@ -4609,7 +4692,11 @@ actor DataActor {
     /// Apply a realtime soft-delete by table name. Sets deletedAt on the matching row
     /// inside a transaction. Non-throwing — a missing row or transaction failure is
     /// logged; the next delta sync re-reconciles.
-    func softDeleteFromRealtime(table: String, id: String) async {
+    func softDeleteFromRealtime(
+        table: String, id: String,
+        isCurrent: @Sendable () -> Bool = { true }
+    ) async {
+        guard outboundScope() != nil, isCurrent() else { return }
         do {
             try modelContext.transaction {
                 switch table {
@@ -5479,7 +5566,9 @@ actor DataActor {
         let siteVisitId = payload["site_visit_id"] as? String
 
         do {
-            var query = SupabaseService.shared.client
+            let client = await MainActor.run { SupabaseService.shared.client }
+            guard isCurrent() else { return false }
+            var query = client
                 .from("project_photos")
                 .select("id, caption, taken_at, thumbnail_url, rendered_url")
                 .eq("project_id", value: projectId)
@@ -5510,7 +5599,7 @@ actor DataActor {
             // for a non-uploader — acceptable, the operation is already resolved
             // and the photo is already safe.
             if !patch.isEmpty {
-                try? await SupabaseService.shared.client
+                try? await client
                     .from("project_photos")
                     .update(patch)
                     .eq("id", value: serverId)
@@ -5714,7 +5803,7 @@ actor DataActor {
         guard isCurrent() else { throw CancellationError() }
         guard let syncEntityType = SyncEntityType(rawValue: entityType) else {
             print("[DataActor] Unknown entity type: \(entityType) — using generic table push")
-            try await genericTablePush(entityType: entityType, entityId: entityId, operationType: operationType, payload: payload)
+            try await genericTablePush(entityType: entityType, entityId: entityId, operationType: operationType, payload: payload, isCurrent: isCurrent)
             return
         }
 
@@ -5749,7 +5838,8 @@ actor DataActor {
                 entityId: entityId,
                 operationType: operationType,
                 payload: payload,
-                tableName: syncEntityType.supabaseTable
+                tableName: syncEntityType.supabaseTable,
+                isCurrent: isCurrent
             )
         }
     }
@@ -6040,10 +6130,15 @@ actor DataActor {
 
     /// Generic update for tables without a dedicated updateFields method.
     /// Ported verbatim from OutboundProcessor.genericUpdateFields.
-    private func genericUpdateFields(table: String, entityId: String, fields: [String: AnyJSON]) async throws {
+    private func genericUpdateFields(table: String, entityId: String, fields: [String: AnyJSON], client: SupabaseClient? = nil) async throws {
         var payload = fields
         payload["updated_at"] = .string(ISO8601DateFormatter().string(from: Date()))
-        let response = try await SupabaseService.shared.client
+        guard let scope = outboundScope() else { throw CancellationError() }
+        let capturedClient: SupabaseClient
+        if let client { capturedClient = client }
+        else { capturedClient = await MainActor.run { SupabaseService.shared.client } }
+        guard outboundIsCurrent(scope) else { throw CancellationError() }
+        let response = try await capturedClient
             .from(table)
             .update(payload)
             .eq("id", value: entityId)
@@ -6064,10 +6159,12 @@ actor DataActor {
         entityId: String,
         operationType: String,
         payload: [String: Any],
-        tableName: String? = nil
+        tableName: String? = nil,
+        isCurrent: () -> Bool
     ) async throws {
         let table = tableName ?? entityType
-        let client = SupabaseService.shared.client
+        let client = await MainActor.run { SupabaseService.shared.client }
+        guard isCurrent() else { throw CancellationError() }
         let fields = payloadToAnyJSON(payload)
 
         switch operationType {
@@ -6080,7 +6177,7 @@ actor DataActor {
                 .execute()
 
         case "update":
-            try await genericUpdateFields(table: table, entityId: entityId, fields: fields)
+            try await genericUpdateFields(table: table, entityId: entityId, fields: fields, client: client)
 
         case "delete":
             let deletePayload: [String: AnyJSON] = [

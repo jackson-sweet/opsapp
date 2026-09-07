@@ -9,31 +9,15 @@ final class DataActorExecutorTests: XCTestCase {
         let actor = DataActor(modelContainer: container)
         await actor.configure()
         let result = try await actor.transactionExecutorProbe()
-        XCTAssertTrue(result.ranOnMain, "Control reproduces setModelContext's old construction site")
+        XCTAssertTrue(result.ranOnMain, "Control reproduces the old main-thread execution")
         XCTAssertTrue(result.bodyStartedOnMain)
         XCTAssertFalse(result.autosaveEnabled)
         XCTAssertEqual(result.persistedCount, 1)
     }
 
-    func testBackgroundConstructedActorKeepsTransactionOffMainWhenCalledFromMain() async throws {
+    func testProductionFactoryTransactsOffMainWhenCalledFromMain() async throws {
         let container = try makeContainer()
-        let construction = await Task.detached {
-            let constructedOnMain = Thread.isMainThread
-            let actor = DataActor(modelContainer: container)
-            await actor.configure()
-            return (actor, constructedOnMain)
-        }.value
-        XCTAssertFalse(construction.1, "Constructor itself must run off main")
-        let actor = construction.0
-        let result = try await actor.transactionExecutorProbe()
-        XCTAssertFalse(result.ranOnMain, "bodyStartedOnMain=\(result.bodyStartedOnMain); transaction must stay off main")
-        XCTAssertFalse(result.autosaveEnabled)
-        XCTAssertEqual(result.persistedCount, 1)
-    }
-
-    func testExplicitSerialModelExecutorTransactsOffMainWhenCalledFromMain() async throws {
-        let container = try makeContainer()
-        let actor = await Task.detached { ExplicitQueueModelActorProbe(modelContainer: container) }.value
+        let actor = try await DataActor.makeBackgroundConfigured(modelContainer: container)
         let result = try await actor.transactionExecutorProbe()
         XCTAssertFalse(result.bodyStartedOnMain)
         XCTAssertFalse(result.ranOnMain)
@@ -41,30 +25,39 @@ final class DataActorExecutorTests: XCTestCase {
         XCTAssertEqual(result.persistedCount, 1)
     }
 
-    func testBackgroundContainerAndActorKeepTransactionOffMainWhenCalledFromMain() async throws {
-        let construction = try await Task.detached {
-            let constructedOnMain = Thread.isMainThread
-            let container = try ModelContainer(for: SyncOperation.self,
-                configurations: ModelConfiguration(isStoredInMemoryOnly: true))
-            let actor = DataActor(modelContainer: container)
-            await actor.configure()
-            return (container, actor, constructedOnMain)
-        }.value
-        XCTAssertFalse(construction.2)
-        let result = try await construction.1.transactionExecutorProbe()
-        XCTAssertFalse(result.ranOnMain, "background container; bodyStartedOnMain=\(result.bodyStartedOnMain)")
-        XCTAssertFalse(result.autosaveEnabled)
-        XCTAssertEqual(result.persistedCount, 1)
-        withExtendedLifetime(construction.0) {}
+    func testConcurrentProductionActorCallsSerializeRealTransactions() async throws {
+        let container = try makeContainer()
+        let actor = try await DataActor.makeBackgroundConfigured(modelContainer: container)
+        let results = try await withThrowingTaskGroup(of: DataActorExecutorProbe.self) { group in
+            for _ in 0..<16 { group.addTask { try await actor.transactionExecutorProbe() } }
+            var results: [DataActorExecutorProbe] = []
+            for try await result in group { results.append(result) }
+            return results
+        }
+        XCTAssertEqual(results.map(\.persistedCount).sorted(), Array(1...16))
+        XCTAssertTrue(results.allSatisfy { !$0.bodyStartedOnMain && !$0.ranOnMain && !$0.autosaveEnabled })
+        let readback = ModelContext(container)
+        XCTAssertEqual(try readback.fetchCount(FetchDescriptor<SyncOperation>()), 16)
     }
 
-    func testExplicitDefaultExecutorWitnessTransactsOffMainWhenCalledFromMain() async throws {
-        let container = try makeContainer()
-        let actor = await Task.detached { ExplicitDefaultModelActorProbe(modelContainer: container) }.value
+    func testProductionActorTransactionPersistsAcrossContainerReopen() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let url = directory.appendingPathComponent("executor.store")
+        try await writeProductionTransaction(url: url)
+        let reopened = try ModelContainer(for: SyncOperation.self,
+            configurations: ModelConfiguration(url: url))
+        XCTAssertEqual(try reopened.mainContext.fetchCount(FetchDescriptor<SyncOperation>()), 1)
+    }
+
+    private func writeProductionTransaction(url: URL) async throws {
+        let container = try ModelContainer(for: SyncOperation.self,
+            configurations: ModelConfiguration(url: url))
+        let actor = try await DataActor.makeBackgroundConfigured(modelContainer: container)
         let result = try await actor.transactionExecutorProbe()
-        XCTAssertFalse(result.bodyStartedOnMain, "Default executor with explicit witness: actor body")
-        XCTAssertFalse(result.ranOnMain, "Default executor with explicit witness: real transaction")
-        XCTAssertFalse(result.autosaveEnabled)
+        XCTAssertFalse(result.bodyStartedOnMain)
+        XCTAssertFalse(result.ranOnMain)
         XCTAssertEqual(result.persistedCount, 1)
     }
 
@@ -97,73 +90,3 @@ private extension DataActor {
             persistedCount: try modelContext.fetchCount(FetchDescriptor<SyncOperation>()))
     }
 }
-
-private actor ExplicitQueueModelActorProbe: ModelActor {
-    nonisolated let modelContainer: ModelContainer
-    nonisolated let modelExecutor: any ModelExecutor
-    nonisolated var unownedExecutor: UnownedSerialExecutor {
-        (modelExecutor as! ExplicitQueueModelExecutorProbe).asUnownedSerialExecutor()
-    }
-    init(modelContainer: ModelContainer) {
-        self.modelContainer = modelContainer
-        let context = ModelContext(modelContainer)
-        context.autosaveEnabled = false
-        self.modelExecutor = ExplicitQueueModelExecutorProbe(modelContext: context)
-    }
-    func transactionExecutorProbe() throws -> DataActorExecutorProbe {
-        let bodyStartedOnMain = Thread.isMainThread
-        var ranOnMain = false
-        try modelContext.transaction {
-            ranOnMain = Thread.isMainThread
-            let operation = SyncOperation(entityType: "client", entityId: UUID().uuidString.lowercased(),
-                operationType: "create", payload: Data("{}".utf8), changedFields: [])
-            operation.status = "completed"
-            modelContext.insert(operation)
-        }
-        return DataActorExecutorProbe(bodyStartedOnMain: bodyStartedOnMain, ranOnMain: ranOnMain,
-            autosaveEnabled: modelContext.autosaveEnabled,
-            persistedCount: try modelContext.fetchCount(FetchDescriptor<SyncOperation>()))
-    }
-}
-
-private final class ExplicitQueueModelExecutorProbe: SerialModelExecutor, @unchecked Sendable {
-    let modelContext: ModelContext
-    private let queue = DispatchQueue(label: "com.ops.tests.model-executor", qos: .userInitiated)
-    init(modelContext: ModelContext) { self.modelContext = modelContext }
-    func enqueue(_ job: consuming ExecutorJob) {
-        let job = UnownedJob(job)
-        queue.async { job.runSynchronously(on: self.asUnownedSerialExecutor()) }
-    }
-    func asUnownedSerialExecutor() -> UnownedSerialExecutor {
-        UnownedSerialExecutor(ordinary: self)
-    }
-}
-
-private actor ExplicitDefaultModelActorProbe: ModelActor {
-    nonisolated let modelContainer: ModelContainer
-    nonisolated let modelExecutor: any ModelExecutor
-    nonisolated var unownedExecutor: UnownedSerialExecutor {
-        (modelExecutor as! any SerialModelExecutor).asUnownedSerialExecutor()
-    }
-    init(modelContainer: ModelContainer) {
-        self.modelContainer = modelContainer
-        let context = ModelContext(modelContainer)
-        context.autosaveEnabled = false
-        self.modelExecutor = DefaultSerialModelExecutor(modelContext: context)
-    }
-    func transactionExecutorProbe() throws -> DataActorExecutorProbe {
-        let bodyStartedOnMain = Thread.isMainThread
-        var ranOnMain = false
-        try modelContext.transaction {
-            ranOnMain = Thread.isMainThread
-            let operation = SyncOperation(entityType: "client", entityId: UUID().uuidString.lowercased(),
-                operationType: "create", payload: Data("{}".utf8), changedFields: [])
-            operation.status = "completed"
-            modelContext.insert(operation)
-        }
-        return DataActorExecutorProbe(bodyStartedOnMain: bodyStartedOnMain, ranOnMain: ranOnMain,
-            autosaveEnabled: modelContext.autosaveEnabled,
-            persistedCount: try modelContext.fetchCount(FetchDescriptor<SyncOperation>()))
-    }
-}
-

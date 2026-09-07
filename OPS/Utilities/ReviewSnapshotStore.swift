@@ -56,7 +56,7 @@ final class ReviewSnapshotStore: ObservableObject {
         }
         reader = { [weak dataController, weak permissionStore] request in
             guard let dataController, let permissionStore else { return nil }
-            func isCurrent() -> Bool {
+            @MainActor func isCurrent() -> Bool {
                 ReviewSnapshotRequest.capture(dataController: dataController, permissionStore: permissionStore)?.scope == request.scope
             }
             guard isCurrent() else { return nil }

@@ -18,76 +18,14 @@ extension DataController {
             throw SiteVisitTypeSettingsError.unavailable
         }
 
-        let canonicalCompanyId = companyId.lowercased()
-        let existing = try context.fetch(FetchDescriptor<SiteVisitType>()).filter {
-            $0.companyId.lowercased() == canonicalCompanyId
+        let result = try SiteVisitTypeSeedStore.seed(from: context, companyId: companyId,
+            deckBuilderEnabled: deckBuilderEnabled,
+            canManageTemplates: PermissionStore.shared.can("settings.company"))
+        if result.didChange {
+            NotificationCenter.default.post(name: .siteVisitTypesChanged, object: nil)
+            if result.queuedWork { Task { await syncEngine.triggerSync() } }
         }
-        let builtIns = SiteVisitType.builtInTemplates(
-            companyId: canonicalCompanyId,
-            deckBuilderEnabled: deckBuilderEnabled
-        )
-        var existingBySlug: [String: SiteVisitType] = [:]
-        for type in existing {
-            let current = existingBySlug[type.slug]
-            if current == nil || (current?.isSystemTemplate == false && type.isSystemTemplate) {
-                existingBySlug[type.slug] = type
-            }
-        }
-        var mutations: [(SiteVisitType, String)] = []
-
-        for canonical in builtIns {
-            if let type = existingBySlug[canonical.slug], type.isSystemTemplate {
-                let reconciled = SiteVisitTypeTemplateReconciler.reconciledFields(
-                    existing: type.fields,
-                    canonical: canonical.fields
-                )
-                let needsMetadataRefresh = type.name != canonical.name
-                    || type.descriptionText != canonical.descriptionText
-                    || type.sortOrder != canonical.sortOrder
-                    || type.fields != reconciled
-                if needsMetadataRefresh {
-                    type.name = canonical.name
-                    type.descriptionText = canonical.descriptionText
-                    type.sortOrder = canonical.sortOrder
-                    type.fields = reconciled
-                    type.needsSync = true
-                    mutations.append((type, type.lastSyncedAt == nil ? "create" : "update"))
-                } else if type.lastSyncedAt == nil {
-                    mutations.append((type, "create"))
-                }
-            } else if existingBySlug[canonical.slug] == nil {
-                context.insert(canonical)
-                mutations.append((canonical, "create"))
-            }
-        }
-
-        let builtInSlugs = Set(builtIns.map(\.slug))
-        for type in existing where type.isSystemTemplate
-            && type.deletedAt == nil
-            && !builtInSlugs.contains(type.slug) {
-            type.deletedAt = Date()
-            type.updatedAt = Date()
-            type.needsSync = true
-            mutations.append((type, "delete"))
-        }
-
-        try context.save()
-        let canManageTemplates = PermissionStore.shared.can("settings.company")
-        if canManageTemplates {
-            for (type, operation) in mutations {
-                try queueSiteVisitType(type, operationType: operation)
-            }
-        }
-        if !mutations.isEmpty {
-            NotificationCenter.default.post(
-                name: .siteVisitTypesChanged,
-                object: nil
-            )
-            if canManageTemplates {
-                Task { await syncEngine.triggerSync() }
-            }
-        }
-        return try activeSiteVisitTypes(companyId: canonicalCompanyId, context: context)
+        return try activeSiteVisitTypes(companyId: companyId.lowercased(), context: context)
     }
 
     @MainActor

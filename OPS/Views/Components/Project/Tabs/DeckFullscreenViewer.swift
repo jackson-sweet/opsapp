@@ -60,6 +60,16 @@ struct DeckFullscreenViewer: View {
             chrome
                 .opacity(chromeOpacity)
                 .animation(reduceMotion ? nil : OPSStyle.Animation.fast, value: isViewportInteracting)
+
+            // Bottom-right is free in 3D — the tool rail only occupies it in 2D.
+            if viewMode == .threeD, drawingData.hasAnyClosedSurface {
+                FramingIllustrationBadge(drawingData: drawingData)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
+                    .padding(.trailing, OPSStyle.Layout.spacing2_5)
+                    .padding(.bottom, OPSStyle.Layout.spacing2_5)
+                    .opacity(chromeOpacity)
+                    .animation(reduceMotion ? nil : OPSStyle.Animation.fast, value: isViewportInteracting)
+            }
         }
         .hidesGlobalTabBar()
         .offset(y: dragOffset)

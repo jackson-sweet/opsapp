@@ -2,29 +2,28 @@
 //  SyncPillHeaderLayoutTests.swift
 //  OPSTests
 //
-//  Regression proof for the sync attention pill colliding with the tab header.
+//  The non-Home half of bug 417aac7b's proof, rendered against the REAL
+//  `AppHeader` for every root that carries a trailing action cluster.
 //
-//  Reported symptom: on a header carrying the circular search button, the
-//  "2 NEED A LOOK" pill was overlapped by that button — the translucent 44pt
-//  disc sat on the pill, visually clipping "LOOK" and stealing taps there.
+//  History. The pill first floated in an app-level band starting at the top
+//  safe area — the same rectangle `AppHeader` lays its trailing actions into —
+//  so the "2 NEED A LOOK" pill and the 44pt search button were laid out on top
+//  of each other and one swallowed the other's taps. The band was then offset
+//  by the header's measured height, which moved the collision one row down onto
+//  whatever control the root parks under its header (on Home, the ALL filter
+//  chip). The pill is now superimposed on the header itself, hung off its
+//  bottom edge, reserving no layout and reserving the trailing cluster's own
+//  column so it can never reach those buttons at any Dynamic Type size.
 //
-//  Cause: `MainTabView` floated the status band from the top safe area, the same
-//  rectangle `AppHeader` lays its trailing action cluster into. The pill's
-//  trailing edge sits `spacing3` (16pt) from the screen edge and the search
-//  button's sits `spacing3_5` (20pt) from it, so any pill wider than 4pt runs
-//  straight through the disc.
-//
-//  Fix: the header publishes its measured height (`AppHeaderHeightKey`) and the
-//  band is offset by it. The invariant asserted here is therefore stronger than
-//  "the pill misses the search button": the pill must clear the ENTIRE header.
-//  Every trailing action button is laid out inside the header, so its maxY is by
-//  construction <= the header height — clearing the header clears the button at
-//  any Dynamic Type size.
+//  What is asserted here is therefore the invariant, not a symptom: the pill's
+//  frame must not intersect the header's trailing controls, must not reach past
+//  the header into the content below it, and must cost the header no height.
 //
 //  Frames are captured with SwiftUI anchor preferences rather than the UIKit
 //  accessibility tree: SwiftUI publishes most controls as synthesized
 //  UIAccessibilityElements that a `subviews` / `accessibilityElements` walk does
-//  not reliably surface.
+//  not reliably surface. `AppHeader` renders the shipped
+//  `HeaderSyncStatusOverlay`, which publishes the pill's real bounds.
 //
 //  Extract: xcrun xcresulttool export attachments --path <dd>/Logs/Test/*.xcresult --output-path <dir>
 //
@@ -34,21 +33,24 @@ import XCTest
 import SwiftUI
 @testable import OPS
 
+private let pillHarnessSpace = "sync-pill-header-harness"
+
 @MainActor
 final class SyncPillHeaderLayoutTests: XCTestCase {
 
-    private let captureHeight: CGFloat = 260
+    /// Taller than a phone viewport on purpose: accessibility-size headers wrap
+    /// their Cake Mono titles over several lines and the control below the
+    /// header still has to be measured, never cropped by the proof harness.
+    private let captureHeight: CGFloat = 844
 
-    /// Every header type that carries the circular search button in its trailing
-    /// cluster — the surfaces the bug was reported on.
+    /// Every header type whose trailing cluster the pill must clear.
     ///
-    /// `.home` takes the same floating band as of bug 417aac7b, but it is still
-    /// absent here for a harness reason, not a design one: its avatar branch
-    /// reads `dataController.syncEngine`, an implicitly-unwrapped property that a
-    /// bare `DataController()` leaves nil, so rendering `AppHeader(.home)` in a
-    /// unit-test host traps. Home's identical clearance invariant is proven in
-    /// `HomeSyncStatusLayoutTests`, which rebuilds the same header band from the
-    /// primitives `AppHeader` composes.
+    /// `.home` is absent for a harness reason, not a design one: its avatar
+    /// branch reads `dataController.syncEngine`, which only `setModelContext`
+    /// creates, so rendering `AppHeader(.home)` in a unit-test host traps.
+    /// Home's identical invariant is proven in `HomeSyncStatusLayoutTests`,
+    /// which rebuilds the same header band from the primitives `AppHeader`
+    /// composes.
     private let searchHeaders: [(type: AppHeader.HeaderType, name: String)] = [
         (.jobBoard, "jobBoard"),
         (.schedule, "schedule"),
@@ -56,85 +58,95 @@ final class SyncPillHeaderLayoutTests: XCTestCase {
         (.books, "books"),
         (.inventory, "inventory"),
         (.settings, "settings"),
+        (.pipeline, "pipeline"),
     ]
 
     // MARK: - Measurement plumbing
 
-    /// Carries the pill's bounds anchor out of the view tree.
-    private struct PillBoundsKey: PreferenceKey {
-        static let defaultValue: [String: Anchor<CGRect>] = [:]
-        static func reduce(
-            value: inout [String: Anchor<CGRect>],
-            nextValue: () -> [String: Anchor<CGRect>]
-        ) {
-            value.merge(nextValue()) { _, new in new }
-        }
-    }
-
-    /// Sink the harness writes into on each layout pass; read after quiescence.
     private final class Measurements {
         var pill: CGRect?
-        var headerHeight: CGFloat?
+        var trailingControl: CGRect?
+        var header: CGRect?
+        var contentControl: CGRect?
+        var publishedHeaderHeight: CGFloat?
+    }
+
+    /// Model already carrying attention, so the real `SyncStatusIndicator`
+    /// inside the real `AppHeader` is visible on the first layout pass.
+    private static func seededModel(count: Int, isParked: Bool) -> SyncStatusIndicatorModel {
+        let model = SyncStatusIndicatorModel()
+        model.seedAttentionForLayoutProof(
+            RecoveryAttentionSummary(attentionCount: count, anyParked: isParked)
+        )
+        return model
     }
 
     // MARK: - Harness
 
-    /// Mirrors `MainTabView`'s composition: the tab's header at the top of the
-    /// sliding container, and the app-level status band floating above it —
-    /// offset by the header's own published height.
+    /// The real header, plus the first control a root parks underneath it. The
+    /// retired band placement landed on exactly that control; the superimposed
+    /// pill must not be able to reach it.
     private struct Harness: View {
         let headerType: AppHeader.HeaderType
-        let count: Int
         var width: CGFloat = 390
-        var isParked: Bool = false
         var typeSize: DynamicTypeSize = .large
         var sink: Measurements?
 
-        @State private var headerBandHeight: CGFloat = AppHeaderHeightKey.defaultValue
+        @State private var publishedHeaderHeight: CGFloat = AppHeaderHeightKey.defaultValue
 
         var body: some View {
-            ZStack(alignment: .top) {
-                VStack(spacing: 0) {
-                    configuredHeader
-                    Spacer(minLength: 0)
-                }
-                .onPreferenceChange(AppHeaderHeightKey.self) { headerBandHeight = $0 }
-
-                VStack(spacing: OPSStyle.Layout.spacing2) {
-                    HStack {
-                        Spacer(minLength: 0)
-                        // Mirrors the production band exactly: accessibility
-                        // sizes get the full-width expanded variant, inset on
-                        // both edges rather than trailing-only (bug 417aac7b).
-                        SyncAttentionPill(
-                            count: count,
-                            isParked: isParked,
-                            adaptsForAccessibility: true
-                        )
-                        .anchorPreference(key: PillBoundsKey.self, value: .bounds) {
-                            ["pill": $0]
+            VStack(spacing: 0) {
+                configuredHeader
+                    .background(
+                        GeometryReader { proxy -> Color in
+                            sink?.header = proxy.frame(in: .named(pillHarnessSpace))
+                            sink?.publishedHeaderHeight = publishedHeaderHeight
+                            return Color.clear
                         }
-                    }
-                    .padding(.horizontal, OPSStyle.Layout.spacing3)
-                    Spacer(minLength: 0)
-                }
-                .padding(.top, headerBandHeight)
-                .zIndex(1)
+                    )
+
+                contentControl
+
+                Spacer(minLength: 0)
             }
+            .onPreferenceChange(AppHeaderHeightKey.self) { publishedHeaderHeight = $0 }
             .frame(width: width, alignment: .top)
             .background(OPSStyle.Colors.background)
+            .coordinateSpace(name: pillHarnessSpace)
             .environment(\.colorScheme, .dark)
             .dynamicTypeSize(typeSize)
-            .overlayPreferenceValue(PillBoundsKey.self) { anchors in
+            .overlayPreferenceValue(HeaderSyncStatusPillBoundsKey.self) { anchor in
                 GeometryReader { proxy -> Color in
-                    if let sink, let anchor = anchors["pill"] {
-                        sink.pill = proxy[anchor]
-                        sink.headerHeight = headerBandHeight
-                    }
+                    if let sink, let anchor { sink.pill = proxy[anchor] }
                     return Color.clear
                 }
                 .allowsHitTesting(false)
             }
+            .overlayPreferenceValue(OPSHeaderTrailingSlotBoundsKey.self) { anchor in
+                GeometryReader { proxy -> Color in
+                    if let sink, let anchor { sink.trailingControl = proxy[anchor] }
+                    return Color.clear
+                }
+                .allowsHitTesting(false)
+            }
+        }
+
+        /// Stands in for the first control every root parks under its header —
+        /// Home's TODAY [TASKS] / ACTIVE / ALL chips, Books' segmented control,
+        /// Job Board's lane picker. Only its frame matters.
+        private var contentControl: some View {
+            Button("FILTER") {}
+                .font(OPSStyle.Typography.smallCaption)
+                .foregroundColor(OPSStyle.Colors.primaryText)
+                .frame(maxWidth: .infinity, minHeight: OPSStyle.Layout.touchTargetMin)
+                .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+                .padding(.top, OPSStyle.Layout.spacing1)
+                .background(
+                    GeometryReader { proxy -> Color in
+                        sink?.contentControl = proxy.frame(in: .named(pillHarnessSpace))
+                        return Color.clear
+                    }
+                )
         }
 
         @ViewBuilder
@@ -180,19 +192,16 @@ final class SyncPillHeaderLayoutTests: XCTestCase {
     ) -> some View {
         Harness(
             headerType: headerType,
-            count: count,
             width: width,
-            isParked: isParked,
             typeSize: typeSize,
             sink: sink
         )
         .environmentObject(DataController())
         .environmentObject(SubscriptionManager.shared)
         .environmentObject(AppState())
+        .environmentObject(Self.seededModel(count: count, isParked: isParked))
     }
 
-    /// Renders the harness at a fixed size (settling on layout quiescence) and
-    /// returns what it measured.
     private func measure(
         _ headerType: AppHeader.HeaderType,
         count: Int,
@@ -201,49 +210,121 @@ final class SyncPillHeaderLayoutTests: XCTestCase {
         typeSize: DynamicTypeSize = .large
     ) throws -> Measurements {
         let sink = Measurements()
-        let view = harness(
-            headerType,
-            count: count,
-            width: width,
-            isParked: isParked,
-            typeSize: typeSize,
-            sink: sink
-        )
         _ = try FixedSizeSnapshot.render(
-            view,
+            harness(
+                headerType,
+                count: count,
+                width: width,
+                isParked: isParked,
+                typeSize: typeSize,
+                sink: sink
+            ),
             size: CGSize(width: width, height: captureHeight)
         )
         return sink
     }
 
-    // MARK: - The bug
+    // MARK: - The invariant
 
-    /// The pill must sit entirely below the header on every surface that carries
-    /// the search button. This is exactly what was broken.
-    func testPillClearsHeaderOnEverySearchHeader() throws {
+    /// The pill may cover header TEXT; it may never cover a CONTROL. Proven
+    /// against the real `AppHeader` on every root that carries a trailing
+    /// cluster, at the narrowest shipping width and at accessibility sizes,
+    /// where the pill grows tall enough to reach the cluster's row.
+    func testPillNeverCoversAHeaderControlOnAnySearchHeader() throws {
+        let sizes: [DynamicTypeSize] = [.large, .xxxLarge, .accessibility3, .accessibility5]
+
         for width in [CGFloat(320), CGFloat(390)] {
             for header in searchHeaders {
-                let measured = try measure(header.type, count: 2, width: width)
+                for typeSize in sizes {
+                    let measured = try measure(
+                        header.type,
+                        count: 128,
+                        width: width,
+                        typeSize: typeSize
+                    )
 
-                let label = "\(header.name) @ \(Int(width))pt"
+                    let label = "\(header.name) @ \(Int(width))pt \(typeSize)"
+                    let pill = try XCTUnwrap(measured.pill, "\(label): pill was never measured")
+                    let control = try XCTUnwrap(
+                        measured.trailingControl,
+                        "\(label): the trailing action cluster was never measured"
+                    )
+
+                    XCTAssertFalse(pill.isEmpty, "\(label): pill has an empty frame")
+                    XCTAssertFalse(
+                        pill.intersects(control),
+                        """
+                        \(label): the pill covers the header's trailing actions \
+                        (pill \(pill), control \(control)) — it would swallow \
+                        their taps, which is the reported bug.
+                        """
+                    )
+                }
+            }
+        }
+    }
+
+    /// Anchored to the header's bottom edge, the pill cannot reach the first
+    /// control the root parks below the header. That is the collision the
+    /// retired band placement shipped.
+    func testPillStaysInsideTheHeaderAndClearsTheContentBelowIt() throws {
+        for header in searchHeaders {
+            for typeSize in [DynamicTypeSize.large, .accessibility5] {
+                let measured = try measure(header.type, count: 128, typeSize: typeSize)
+
+                let label = "\(header.name) \(typeSize)"
                 let pill = try XCTUnwrap(measured.pill, "\(label): pill was never measured")
-                let headerHeight = try XCTUnwrap(
-                    measured.headerHeight, "\(label): header height was never published"
+                let headerFrame = try XCTUnwrap(
+                    measured.header, "\(label): header was never measured"
+                )
+                let contentControl = try XCTUnwrap(
+                    measured.contentControl, "\(label): content control was never measured"
                 )
 
-                XCTAssertGreaterThan(
-                    headerHeight, 0,
-                    "\(label): header reported zero height — the band would collapse onto it"
+                XCTAssertLessThanOrEqual(
+                    pill.maxY, headerFrame.maxY + 0.5,
+                    "\(label): the pill hangs below the header instead of inside it"
                 )
-                XCTAssertFalse(pill.isEmpty, "\(label): pill has an empty frame")
-                XCTAssertGreaterThanOrEqual(
-                    pill.minY, headerHeight,
+                XCTAssertFalse(
+                    pill.intersects(contentControl),
                     """
-                    \(label): the pill starts at \(pill.minY) but the header runs to \
-                    \(headerHeight) — they overlap, which is the reported bug.
+                    \(label): the pill covers the first control under the header \
+                    (pill \(pill), control \(contentControl)).
                     """
                 )
             }
+        }
+    }
+
+    /// The pill costs the header nothing: an attention item must not move a
+    /// single point of layout on any root.
+    func testHeaderHeightIsIdenticalWithAndWithoutAnAttentionItem() throws {
+        for header in searchHeaders {
+            let loud = try measure(header.type, count: 128)
+            let quiet = try measure(header.type, count: 0)
+
+            let label = header.name
+            let loudHeader = try XCTUnwrap(loud.header, "\(label): header was never measured")
+            let quietHeader = try XCTUnwrap(quiet.header, "\(label): quiet header was never measured")
+            let loudContent = try XCTUnwrap(loud.contentControl, "\(label): content was never measured")
+            let quietContent = try XCTUnwrap(
+                quiet.contentControl, "\(label): quiet content was never measured"
+            )
+
+            // The overlay is always mounted, so the quiet state publishes an
+            // EMPTY frame rather than none at all — the pill draws nothing.
+            XCTAssertTrue(
+                quiet.pill?.isEmpty ?? true,
+                "\(label): the zero-attention state must render no pill, measured \(String(describing: quiet.pill))"
+            )
+            XCTAssertEqual(
+                loudHeader.height, quietHeader.height, accuracy: 0.5,
+                "\(label): the header grew for the pill — that is bug 417aac7b"
+            )
+            XCTAssertEqual(
+                loudContent.minY, quietContent.minY, accuracy: 0.5,
+                "\(label): content below the header moved when an attention item appeared"
+            )
         }
     }
 
@@ -255,8 +336,8 @@ final class SyncPillHeaderLayoutTests: XCTestCase {
             width: 320,
             typeSize: .accessibility5
         )
-        let nominalHeight = try XCTUnwrap(nominal.headerHeight)
-        let accessibilityHeight = try XCTUnwrap(accessibility.headerHeight)
+        let nominalHeight = try XCTUnwrap(nominal.header?.height)
+        let accessibilityHeight = try XCTUnwrap(accessibility.header?.height)
 
         XCTAssertEqual(
             nominalHeight,
@@ -268,11 +349,15 @@ final class SyncPillHeaderLayoutTests: XCTestCase {
             nominalHeight,
             "AppHeader must grow with Dynamic Type rather than clipping the Cake Mono title"
         )
+        XCTAssertEqual(
+            try XCTUnwrap(nominal.publishedHeaderHeight), nominalHeight, accuracy: 0.5,
+            "The published band height must match the header's real height"
+        )
     }
 
     /// The reported clip was the word "LOOK" vanishing. The pill must render its
     /// label whole — growing rather than truncating — at a wide count and at an
-    /// accessibility type size, staying on screen and clear of the header.
+    /// accessibility type size, staying on screen and clear of the controls.
     func testPillLabelGrowsAndIsNeverTruncated() throws {
         var widths: [Int: CGFloat] = [:]
 
@@ -285,19 +370,17 @@ final class SyncPillHeaderLayoutTests: XCTestCase {
         ]
 
         for testCase in cases {
-            let measured = try measure(.jobBoard, count: testCase.count, typeSize: testCase.typeSize)
-            let pill = try XCTUnwrap(measured.pill, "\(testCase.name): pill was never measured")
-            let headerHeight = try XCTUnwrap(
-                measured.headerHeight, "\(testCase.name): header height was never published"
+            let measured = try measure(
+                .jobBoard,
+                count: testCase.count,
+                typeSize: testCase.typeSize
             )
+            let pill = try XCTUnwrap(measured.pill, "\(testCase.name): pill was never measured")
 
             XCTAssertGreaterThan(pill.width, 0, "\(testCase.name): pill has no width")
             XCTAssertGreaterThan(pill.height, 0, "\(testCase.name): pill has no height")
             XCTAssertGreaterThanOrEqual(
-                pill.minY, headerHeight, "\(testCase.name): pill overlaps the header"
-            )
-            XCTAssertGreaterThanOrEqual(
-                pill.minX, 0,
+                pill.minX, OPSStyle.Layout.spacing3_5 - 0.5,
                 "\(testCase.name): pill runs off the leading edge — the label is being cut"
             )
             XCTAssertLessThanOrEqual(
@@ -330,6 +413,11 @@ final class SyncPillHeaderLayoutTests: XCTestCase {
             harness(.leads, count: 2),
             width: 390
         )
+        try snapshot(
+            "sync-pill-header-books-quiet-no-pill",
+            harness(.books, count: 0),
+            width: 390
+        )
     }
 
     func testSnapshotPillAtLargeCountAndType() throws {
@@ -343,6 +431,11 @@ final class SyncPillHeaderLayoutTests: XCTestCase {
             "sync-pill-header-a11y3-count-99",
             harness(.jobBoard, count: 99, typeSize: .accessibility3),
             width: 390
+        )
+        try snapshot(
+            "sync-pill-header-a11y5-count-99-320",
+            harness(.jobBoard, count: 99, width: 320, typeSize: .accessibility5),
+            width: 320
         )
     }
 

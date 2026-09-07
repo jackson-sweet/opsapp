@@ -1,0 +1,31 @@
+{
+  "installed": true,
+  "bundleId": "co.opsapp.ops.OPS",
+  "version": "3.0.5",
+  "source": "622010a01839387a91e6fadbba3444950f6acfff",
+  "configuration": "Release",
+  "binaryUUID": "639B0831-CC55-3666-8C84-3C4C034753E7",
+  "signatureVerified": true,
+  "prePostInstallDatabaseByteIdentical": true,
+  "databaseQuickCheck": "ok",
+  "postInstallWalBytes": 0,
+  "documentsInventory": {
+    "expectedFiles": 1664,
+    "missingFiles": 0,
+    "sameSizeAndModificationDate": true
+  },
+  "protectedRecoveryInventory": {
+    "expectedFiles": 2,
+    "missingFiles": 0,
+    "sameSizeAndModificationDate": true
+  },
+  "protectedRecoveryContentRead": true,
+  "physicalLatencyMeasured": true,
+  "appStoreReleased": false,
+  "privateBackupRetainedPendingFirstLaunch": false,
+  "firstLaunch": "Optimized build launched; actual V25 to V26 upgrade and original data custody verified",
+  "equivalentWorkflowComparisonMeasured": false,
+  "privateBackupRetainedForActiveDiagnosis": true,
+  "currentInstalledConfiguration": "Different Debug build; excluded from performance comparisons",
+  "optimizedStartupMicrohangs": 5
+}

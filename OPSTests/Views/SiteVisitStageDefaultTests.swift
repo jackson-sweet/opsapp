@@ -48,12 +48,13 @@ final class SiteVisitStageDefaultTests: XCTestCase {
 
     func testSelectableStagesExcludeTerminalStates() {
         let selectable = Set(SiteVisitStageDefault.selectableStages)
+        XCTAssertFalse(selectable.contains(.newLead))
         XCTAssertFalse(selectable.contains(.won))
         XCTAssertFalse(selectable.contains(.lost))
         XCTAssertFalse(selectable.contains(.discarded))
         XCTAssertEqual(
             SiteVisitStageDefault.selectableStages,
-            [.newLead, .qualifying, .quoting, .quoted, .followUp, .negotiation]
+            [.qualifying, .quoting, .quoted, .followUp, .negotiation]
         )
     }
 }

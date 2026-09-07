@@ -24,15 +24,34 @@ import UIKit
 /// Full-screen multi-shot camera. Hand it a closure and it gives back the
 /// final batch when the user taps Done. Cancel returns nothing.
 struct CameraBatchView: View {
-    let onUpload: ([UIImage]) -> Void
+    private let onUpload: (([UIImage]) -> Void)?
+    private let onStagedUpload: ((StagedCaptureBatch) async -> Bool)?
+    @StateObject private var capture: CameraCaptureSession
+
+    init(onUpload: @escaping ([UIImage]) -> Void) {
+        self.onUpload = onUpload
+        self.onStagedUpload = nil
+        let owner = StagedCaptureOwner(
+            companyID: UserDefaults.standard.string(forKey: "currentUserCompanyId") ?? "legacy",
+            userID: UserDefaults.standard.string(forKey: "currentUserId") ?? "legacy",
+            contextID: "legacy-camera-" + UUID().uuidString.lowercased()
+        )
+        _capture = StateObject(wrappedValue: CameraCaptureSession(owner: owner))
+    }
+
+    init(owner: StagedCaptureOwner, onStagedUpload: @escaping (StagedCaptureBatch) async -> Bool) {
+        self.onUpload = nil
+        self.onStagedUpload = onStagedUpload
+        _capture = StateObject(wrappedValue: CameraCaptureSession(owner: owner))
+    }
 
     @Environment(\.dismiss) private var dismiss
-    @State private var capturedImages: [UIImage] = []
+    @State private var showingExitConfirmation = false
+    @State private var cameraIsCapturing = false
     @State private var showingGallery = false
-    @State private var galleryImages: [UIImage] = []
     @State private var showingReview = false
     /// Bumped every time a photo lands so the stack can play its
-    /// "incoming" animation. We can't observe `capturedImages.count`
+    /// "incoming" animation. We can't observe `capture.photos.count`
     /// alone because adding two photos in quick succession could share
     /// the same animation transaction.
     @State private var captureBeat: Int = 0
@@ -42,7 +61,9 @@ struct CameraBatchView: View {
             // Live AVFoundation preview takes the full screen.
             CameraPreviewLayer(
                 onCapture: handleCapture,
-                onCancel: { dismiss() }
+                canCapture: capture.canCapture,
+                onCaptureStateChanged: { cameraIsCapturing = $0 },
+                onCancel: requestExit
             )
             .ignoresSafeArea()
 
@@ -56,37 +77,46 @@ struct CameraBatchView: View {
         }
         .statusBar(hidden: true)
         .preferredColorScheme(.dark)
+        .task { await capture.prepare() }
+        .interactiveDismissDisabled(!capture.photos.isEmpty || capture.isWorking || cameraIsCapturing)
         .sheet(isPresented: $showingGallery) {
-            GalleryPickerWrapper(images: $galleryImages) {
-                if !galleryImages.isEmpty {
-                    capturedImages.append(contentsOf: galleryImages)
-                    galleryImages = []
-                    bumpCaptureBeat()
-                }
-            }
+            GalleryPickerWrapper(onCapture: handleCapture)
         }
         .fullScreenCover(isPresented: $showingReview) {
             CapturedStackReview(
-                images: $capturedImages,
+                capture: capture,
                 onDone: { showingReview = false },
                 onClearAll: {
-                    capturedImages.removeAll()
-                    showingReview = false
+                    Task {
+                        if await capture.remove(Set(capture.photos.map(\.id))) { showingReview = false }
+                    }
                 }
             )
         }
+        .confirmationDialog("Leave this photo batch?", isPresented: $showingExitConfirmation, titleVisibility: .visible) {
+            if onStagedUpload != nil && !capture.hasFailures { Button("Keep photos on device") { dismiss() } }
+            Button("Discard photos", role: .destructive) {
+                Task { if await capture.remove(Set(capture.photos.map(\.id))) { dismiss() } }
+            }
+            Button("Continue capture", role: .cancel) {}
+        }
+        .alert("PHOTO SAVE FAILED", isPresented: Binding(
+            get: { capture.errorMessage != nil },
+            set: { if !$0 { capture.errorMessage = nil } }
+        )) {
+            Button("Retry") { Task { await capture.retry() } }
+            Button("Keep camera open", role: .cancel) {}
+        } message: { Text(capture.errorMessage ?? "Retry saving this photo.") }
     }
 
     // MARK: - Top Bar
 
     private var topBar: some View {
         HStack {
-            // Cancel — drops every captured image and dismisses the
-            // camera. Confirms with a haptic so the user feels the
-            // exit deliberate even on a glove tap.
+            // A nonempty batch requires a deliberate custody decision.
             Button(action: {
                 UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                dismiss()
+                requestExit()
             }) {
                 Text("CANCEL")
                     .font(OPSStyle.Typography.captionBold)
@@ -105,8 +135,8 @@ struct CameraBatchView: View {
 
             // Live count badge — always visible so the user knows
             // exactly how many photos are queued up.
-            if !capturedImages.isEmpty {
-                Text("\(capturedImages.count) PHOTO\(capturedImages.count == 1 ? "" : "S")")
+            if !capture.photos.isEmpty {
+                Text("\(capture.photos.count) PHOTO\(capture.photos.count == 1 ? "" : "S")")
                     .font(OPSStyle.Typography.captionBold)
                     .tracking(0.8)
                     .foregroundColor(OPSStyle.Colors.primaryText)
@@ -127,7 +157,7 @@ struct CameraBatchView: View {
                 Text("DONE")
                     .font(OPSStyle.Typography.captionBold)
                     .tracking(0.8)
-                    .foregroundColor(capturedImages.isEmpty
+                    .foregroundColor(capture.photos.isEmpty
                         ? OPSStyle.Colors.tertiaryText
                         : OPSStyle.Colors.primaryAccent)
                     .padding(.horizontal, OPSStyle.Layout.spacing3)
@@ -138,10 +168,11 @@ struct CameraBatchView: View {
                     )
             }
             .frame(minWidth: OPSStyle.Layout.touchTargetMin, minHeight: OPSStyle.Layout.touchTargetMin)
-            .disabled(capturedImages.isEmpty)
+            .disabled(capture.photos.isEmpty || capture.isWorking || capture.hasFailures || cameraIsCapturing)
         }
         .padding(.horizontal, OPSStyle.Layout.spacing3)
         .padding(.top, OPSStyle.Layout.spacing4)
+        .disabled(capture.isWorking || cameraIsCapturing)
     }
 
     // MARK: - Bottom HUD
@@ -181,10 +212,10 @@ struct CameraBatchView: View {
             // Captured-photo stack — bottom-right per the spec. Hidden
             // when no photos have been captured yet so the empty state
             // doesn't draw attention to nothing.
-            if let topImage = capturedImages.last {
+            if !capture.photos.isEmpty {
                 CapturedStackThumbnail(
-                    topImage: topImage,
-                    count: capturedImages.count,
+                    topImage: capture.photos.last?.thumbnail,
+                    count: capture.photos.count,
                     captureBeat: captureBeat,
                     onTap: {
                         UIImpactFeedbackGenerator(style: .light).impactOccurred()
@@ -199,33 +230,32 @@ struct CameraBatchView: View {
         }
         .padding(.horizontal, OPSStyle.Layout.spacing4)
         .padding(.bottom, OPSStyle.Layout.spacing4)
+        .disabled(capture.isWorking || cameraIsCapturing)
     }
 
     // MARK: - Capture Handling
 
-    private func handleCapture(_ image: UIImage) {
-        capturedImages.append(image)
-        bumpCaptureBeat()
-        ToastCenter.shared.present(Feedback.Photo.captured)
+    private func handleCapture(_ data: Data) async {
+        if await capture.capture(data) {
+            captureBeat &+= 1
+            UINotificationFeedbackGenerator().notificationOccurred(.success)
+            ToastCenter.shared.present(Feedback.Photo.captured)
+        }
     }
 
-    private func bumpCaptureBeat() {
-        // Bumping a tracked counter makes the stack thumbnail's
-        // `.onChange` fire even when two photos are appended in quick
-        // succession (where the count may not be reflected yet).
-        captureBeat &+= 1
+    private func requestExit() {
+        guard !capture.isWorking, !cameraIsCapturing else { return }
+        if capture.photos.isEmpty { dismiss() }
+        else { showingExitConfirmation = true }
     }
 
     private func commitBatch() {
-        guard !capturedImages.isEmpty else { return }
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-        let batch = capturedImages
-        // Clear before dismiss so a quick reopen of the camera doesn't
-        // briefly show the previous session's stack.
-        capturedImages.removeAll()
-        onUpload(batch)
-        dismiss()
+        Task {
+            if await capture.commit(onStaged: onStagedUpload, onLegacy: onUpload) { dismiss() }
+        }
     }
+
 }
 
 // MARK: - CapturedStackThumbnail
@@ -235,7 +265,7 @@ struct CameraBatchView: View {
 /// tactical "stack" look — three offset rounded tiles behind the photo
 /// when there's more than one item, so the user feels the pile growing.
 private struct CapturedStackThumbnail: View {
-    let topImage: UIImage
+    let topImage: UIImage?
     let count: Int
     let captureBeat: Int
     let onTap: () -> Void
@@ -259,8 +289,10 @@ private struct CapturedStackThumbnail: View {
 
                 // Top photo — fully opaque, with a 1pt accent ring so it
                 // reads against busy outdoor backgrounds.
-                Image(uiImage: topImage)
-                    .resizable()
+                Group {
+                    if let topImage { Image(uiImage: topImage).resizable() }
+                    else { Image(systemName: "photo").foregroundColor(OPSStyle.Colors.secondaryText) }
+                }
                     .aspectRatio(contentMode: .fill)
                     .frame(width: 56, height: 56)
                     .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.cardCornerRadius))
@@ -326,7 +358,7 @@ private struct CapturedStackThumbnail: View {
 /// remove individual photos or clear the lot. Done returns to the
 /// camera so they can keep shooting.
 private struct CapturedStackReview: View {
-    @Binding var images: [UIImage]
+    @ObservedObject var capture: CameraCaptureSession
     let onDone: () -> Void
     let onClearAll: () -> Void
 
@@ -355,7 +387,7 @@ private struct CapturedStackReview: View {
 
                     Spacer()
 
-                    Text("\(images.count) PHOTO\(images.count == 1 ? "" : "S")")
+                    Text("\(capture.photos.count) PHOTO\(capture.photos.count == 1 ? "" : "S")")
                         .font(OPSStyle.Typography.captionBold)
                         .foregroundColor(OPSStyle.Colors.primaryText)
 
@@ -368,7 +400,7 @@ private struct CapturedStackReview: View {
                             .foregroundColor(OPSStyle.Colors.errorStatus)
                     }
                     .frame(minWidth: OPSStyle.Layout.touchTargetMin, minHeight: OPSStyle.Layout.touchTargetMin)
-                    .disabled(images.isEmpty)
+                    .disabled(capture.photos.isEmpty || capture.isWorking)
                 }
                 .padding(.horizontal, OPSStyle.Layout.spacing3)
                 .padding(.vertical, OPSStyle.Layout.spacing2)
@@ -379,10 +411,15 @@ private struct CapturedStackReview: View {
                 // Grid
                 ScrollView {
                     LazyVGrid(columns: columns, spacing: 6) {
-                        ForEach(Array(images.enumerated()), id: \.offset) { index, image in
+                        ForEach(capture.photos) { photo in
                             ZStack(alignment: .topTrailing) {
-                                Image(uiImage: image)
-                                    .resizable()
+                                Group {
+                                    if let thumbnail = photo.thumbnail {
+                                        Image(uiImage: thumbnail).resizable()
+                                    } else {
+                                        Image(systemName: "photo").foregroundColor(OPSStyle.Colors.secondaryText)
+                                    }
+                                }
                                     .aspectRatio(1, contentMode: .fill)
                                     .frame(maxWidth: .infinity)
                                     .clipped()
@@ -390,7 +427,7 @@ private struct CapturedStackReview: View {
 
                                 Button(action: {
                                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                                    images.remove(at: index)
+                                    Task { _ = await capture.remove([photo.id]) }
                                 }) {
                                     Image(systemName: "xmark.circle.fill")
                                         .font(.system(size: 22))
@@ -410,6 +447,7 @@ private struct CapturedStackReview: View {
                 }
             }
         }
+        .disabled(capture.isWorking)
         .alert("Clear All Photos?", isPresented: $showingClearConfirmation) {
             Button("Cancel", role: .cancel) {}
             Button("Clear All", role: .destructive) {
@@ -427,21 +465,31 @@ private struct CapturedStackReview: View {
 /// running across captures so the user never sees a flash-to-black
 /// transition between shots.
 private struct CameraPreviewLayer: UIViewControllerRepresentable {
-    let onCapture: (UIImage) -> Void
+    let onCapture: (Data) async -> Void
+    let canCapture: Bool
+    let onCaptureStateChanged: (Bool) -> Void
     let onCancel: () -> Void
 
     func makeUIViewController(context: Context) -> CameraPreviewViewController {
         let vc = CameraPreviewViewController()
         vc.onCapture = onCapture
         vc.onCancel = onCancel
+        vc.onCaptureStateChanged = onCaptureStateChanged
+        vc.canCapture = canCapture
         return vc
     }
 
-    func updateUIViewController(_ uiViewController: CameraPreviewViewController, context: Context) {}
+    func updateUIViewController(_ uiViewController: CameraPreviewViewController, context: Context) {
+        uiViewController.canCapture = canCapture
+    }
 }
 
 private final class CameraPreviewViewController: UIViewController, AVCapturePhotoCaptureDelegate {
-    var onCapture: ((UIImage) -> Void)?
+    var onCapture: ((Data) async -> Void)?
+    var onCaptureStateChanged: ((Bool) -> Void)?
+    var canCapture = false {
+        didSet { shutterButton?.isEnabled = canCapture && !isCapturing }
+    }
     var onCancel: (() -> Void)?
 
     private let session = AVCaptureSession()
@@ -810,11 +858,12 @@ private final class CameraPreviewViewController: UIViewController, AVCapturePhot
     }
 
     @objc private func shutterTapped() {
-        guard !isCapturing else { return }
+        guard canCapture, !isCapturing else { return }
         if let last = lastCaptureStartedAt, Date().timeIntervalSince(last) < Self.minCaptureInterval {
             return
         }
         isCapturing = true
+        onCaptureStateChanged?(true)
         lastCaptureStartedAt = Date()
         shutterButton?.isEnabled = false
         shutterInnerCircle?.backgroundColor = UIColor.white.withAlphaComponent(0.4)
@@ -847,30 +896,21 @@ private final class CameraPreviewViewController: UIViewController, AVCapturePhot
     }
 
     func photoOutput(_ output: AVCapturePhotoOutput, didFinishProcessingPhoto photo: AVCapturePhoto, error: Error?) {
-        defer {
-            // Always re-enable the shutter even on failure so the user
-            // isn't stranded with an unresponsive button mid-job.
-            DispatchQueue.main.async {
-                self.resetShutter()
-            }
-        }
-
-        if error != nil { return }
-
-        guard let data = photo.fileDataRepresentation(),
-              let image = UIImage(data: data) else {
+        // Keep the shutter/Done gate closed until durable staging acknowledges.
+        guard error == nil, let data = photo.fileDataRepresentation() else {
+            Task { @MainActor in self.resetShutter() }
             return
         }
-
-        DispatchQueue.main.async {
-            UINotificationFeedbackGenerator().notificationOccurred(.success)
-            self.onCapture?(image)
+        Task { @MainActor in
+            await self.onCapture?(data)
+            self.resetShutter()
         }
     }
 
     private func resetShutter() {
         isCapturing = false
-        shutterButton?.isEnabled = true
+        shutterButton?.isEnabled = canCapture
+        onCaptureStateChanged?(false)
         shutterInnerCircle?.backgroundColor = .white
     }
 }
@@ -881,8 +921,7 @@ private final class CameraPreviewViewController: UIViewController, AVCapturePhot
 /// to pull existing library photos into the same batch as the live
 /// captures.
 private struct GalleryPickerWrapper: UIViewControllerRepresentable {
-    @Binding var images: [UIImage]
-    let onComplete: () -> Void
+    let onCapture: (Data) async -> Void
 
     func makeUIViewController(context: Context) -> PHPickerViewController {
         var config = PHPickerConfiguration()
@@ -893,49 +932,30 @@ private struct GalleryPickerWrapper: UIViewControllerRepresentable {
         picker.delegate = context.coordinator
         return picker
     }
-
     func updateUIViewController(_ uiViewController: PHPickerViewController, context: Context) {}
-
-    func makeCoordinator() -> Coordinator {
-        Coordinator(parent: self)
-    }
+    func makeCoordinator() -> Coordinator { Coordinator(parent: self) }
 
     class Coordinator: NSObject, PHPickerViewControllerDelegate {
         let parent: GalleryPickerWrapper
-        // Bug 35c400c2 mirror — same hasFinished guard as the main
-        // ImagePicker so a flaky double-fire from PHPicker can't double
-        // a library import either.
         var hasFinished = false
-
-        init(parent: GalleryPickerWrapper) {
-            self.parent = parent
-        }
+        init(parent: GalleryPickerWrapper) { self.parent = parent }
 
         func picker(_ picker: PHPickerViewController, didFinishPicking results: [PHPickerResult]) {
             guard !hasFinished else { return }
             hasFinished = true
-
-            picker.dismiss(animated: true)
-            guard !results.isEmpty else { return }
-
-            // Slot-indexed loading so order is preserved regardless of
-            // which loadDataRepresentation resolves first.
-            var loaded: [UIImage?] = Array(repeating: nil, count: results.count)
-            let group = DispatchGroup()
-
-            for (index, result) in results.enumerated() {
-                guard result.itemProvider.hasItemConformingToTypeIdentifier("public.image") else { continue }
-                group.enter()
-                result.itemProvider.loadDataRepresentation(forTypeIdentifier: "public.image") { data, _ in
-                    defer { group.leave() }
-                    guard let data = data, let image = UIImage(data: data) else { return }
-                    loaded[index] = image
+            // Sequential import bounds source-data memory and preserves order.
+            // Keep the picker up while imports are accepted so Done cannot race.
+            Task { @MainActor in
+                for result in results {
+                    guard result.itemProvider.hasItemConformingToTypeIdentifier("public.image") else { continue }
+                    let data: Data? = await withCheckedContinuation { continuation in
+                        result.itemProvider.loadDataRepresentation(forTypeIdentifier: "public.image") { data, _ in
+                            continuation.resume(returning: data)
+                        }
+                    }
+                    if let data { await parent.onCapture(data) }
                 }
-            }
-
-            group.notify(queue: .main) {
-                self.parent.images = loaded.compactMap { $0 }
-                self.parent.onComplete()
+                picker.dismiss(animated: true)
             }
         }
     }

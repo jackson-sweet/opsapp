@@ -208,33 +208,23 @@ final class PhotoPrefetchService: ObservableObject {
         let profiler = StorageProfiler.shared
         let downloader = PhotoDownloadManager.shared
 
-        let startUsage = profiler.currentUsageBytes()
+        let startUsage = await profiler.backgroundUsageBytes(reconcile: true)
         let budget = profiler.budgetBytes
         print("[PhotoPrefetch] Starting pass — \(StorageProfiler.formatBytes(startUsage)) of \(StorageProfiler.formatBytes(budget)) used")
 
-        // Pull all local projects — sync layer has already scope-filtered, so
-        // this list reflects the user's permission scope.
-        let projects: [Project]
+        let plan: PhotoPrefetchPlan
         do {
-            projects = try modelContext.fetch(FetchDescriptor<Project>())
+            plan = try await PhotoPrefetchProjectReader.plan(
+                container: modelContext.container, now: Date(),
+                warmupProjectCap: firstLoadWarmupProjectCap, warmupPhotoCap: firstLoadWarmupPhotoCap
+            )
         } catch {
-            print("[PhotoPrefetch] Fetch projects failed: \(error)")
+            print("[PhotoPrefetch] Project snapshot failed: \(error)")
             return
         }
-
-        // Sort projects by proximity to "now" (smallest distance first). See
-        // `priorityDistance` for the scoring rules.
-        let ordered = projects
-            .filter { $0.deletedAt == nil }
-            .sorted { lhs, rhs in
-                priorityDistance(for: lhs) < priorityDistance(for: rhs)
-            }
-
         let warmup = await runCriticalWarmup(
-            projects: ordered,
-            connectivity: connectivity,
-            profiler: profiler,
-            downloader: downloader
+            urls: plan.warmupURLs, connectivity: connectivity,
+            profiler: profiler, downloader: downloader
         )
         if warmup.planned > 0 {
             print("[PhotoPrefetch] First-load warmup — planned \(warmup.planned), downloaded \(warmup.downloaded), already \(warmup.alreadyOnDevice), budget \(warmup.skippedForBudget), timedOut=\(warmup.timedOut), \(String(format: "%.2f", warmup.duration))s")
@@ -243,50 +233,27 @@ final class PhotoPrefetchService: ObservableObject {
         var downloaded = 0
         var skippedForBudget = 0
 
-        for project in ordered {
-            // Cooperative cancellation: bail if prefetch was disabled or the
-            // network flipped mid-pass.
+        for (index, url) in plan.orderedURLs.enumerated() {
             if Task.isCancelled { break }
-            guard isEnabled, shouldRunOnCurrentNetwork(connectivity) else {
-                print("[PhotoPrefetch] Conditions changed mid-pass — stopping")
+            guard isEnabled, shouldRunOnCurrentNetwork(connectivity) else { break }
+            guard !(await Self.isOnDisk(url)) else { continue }
+            let probedSize = await probeContentLength(urlString: url) ?? fallbackSizeEstimate
+            if Task.isCancelled { break }
+            guard let reservation = await PhotoCacheLedger.shared.reserveInBackground(bytes: probedSize, budget: profiler.budgetBytes) else {
+                skippedForBudget += 1
+                let remaining = await Self.missingCount(Array(plan.orderedURLs[index...]))
+                let usage = await profiler.backgroundUsageBytes()
+                postBudgetExceededNotification(currentUsage: usage, budget: budget, remaining: remaining,
+                    estimatedRemaining: Int64(remaining) * fallbackSizeEstimate)
                 break
             }
-
-            let photoURLs = project.getProjectImages()
-            guard !photoURLs.isEmpty else { continue }
-
-            for url in photoURLs {
-                // Skip asset catalog / non-http URLs — they're local-only anyway
-                guard url.contains("://") || url.hasPrefix("//") else { continue }
-                // Skip if already on disk
-                guard !downloader.isOnDevice(url) else { continue }
-
-                // Probe the photo's actual size via HEAD before committing the
-                // download. S3 / ops-web presigned URLs both return Content-Length
-                // on HEAD. Fall back to a 2.5 MB estimate if HEAD fails so the
-                // prefetch still progresses — we just use the less-accurate value
-                // for the budget check.
-                let probedSize = await probeContentLength(urlString: url) ?? fallbackSizeEstimate
-
-                if profiler.wouldExceedBudget(adding: probedSize) {
-                    skippedForBudget += 1
-                    let remaining = countRemainingPhotos(from: ordered, startingFrom: project, skippingUpTo: url)
-                    postBudgetExceededNotification(
-                        currentUsage: profiler.currentUsageBytes(),
-                        budget: budget,
-                        remaining: remaining,
-                        estimatedRemaining: Int64(remaining) * fallbackSizeEstimate
-                    )
-                    lastRunDownloaded = downloaded
-                    lastRunSkippedForBudget = skippedForBudget
-                    lastRunAt = Date()
-                    print("[PhotoPrefetch] Paused at budget — downloaded \(downloaded), next photo would need \(StorageProfiler.formatBytes(probedSize))")
-                    return
-                }
-
-                let success = await downloader.downloadPhoto(url)
-                if success { downloaded += 1 }
+            if Task.isCancelled || !isEnabled || !shouldRunOnCurrentNetwork(connectivity) {
+                PhotoCacheLedger.shared.release(reservation)
+                break
             }
+            let success = await downloader.downloadPhoto(url, cacheReservation: reservation)
+            PhotoCacheLedger.shared.release(reservation)
+            if success { downloaded += 1 }
         }
 
         lastRunDownloaded = downloaded
@@ -316,27 +283,21 @@ final class PhotoPrefetchService: ObservableObject {
     // MARK: - Helpers
 
     private func runCriticalWarmup(
-        projects: [Project],
+        urls: [String],
         connectivity: ConnectivityManager,
         profiler: StorageProfiler,
         downloader: PhotoDownloadManager
     ) async -> PhotoPrefetchWarmupResult {
         let startedAt = Date()
-        let plan = PhotoPrefetchWarmupPlanner.plan(
-            projects: projects,
-            now: startedAt,
-            maxProjects: firstLoadWarmupProjectCap,
-            maxPhotos: firstLoadWarmupPhotoCap
-        )
 
         var downloaded = 0
         var alreadyOnDevice = 0
         var skippedForBudget = 0
         var timedOut = false
 
-        for candidate in plan {
+        for url in urls {
             if Task.isCancelled { break }
-            guard shouldRunOnCurrentNetwork(connectivity) else { break }
+            guard isEnabled, shouldRunOnCurrentNetwork(connectivity) else { break }
 
             let elapsed = Date().timeIntervalSince(startedAt)
             guard elapsed < firstLoadWarmupDuration else {
@@ -344,24 +305,29 @@ final class PhotoPrefetchService: ObservableObject {
                 break
             }
 
-            guard !downloader.isOnDevice(candidate.url) else {
+            guard !(await Self.isOnDisk(url)) else {
                 alreadyOnDevice += 1
                 continue
             }
 
-            if profiler.wouldExceedBudget(adding: fallbackSizeEstimate) {
+            guard let reservation = await PhotoCacheLedger.shared.reserveInBackground(bytes: fallbackSizeEstimate, budget: profiler.budgetBytes) else {
                 skippedForBudget += 1
                 continue
             }
+            if Task.isCancelled {
+                PhotoCacheLedger.shared.release(reservation)
+                break
+            }
 
             let remaining = max(0.5, firstLoadWarmupDuration - elapsed)
-            if await downloader.downloadPhoto(candidate.url, timeout: min(4, remaining)) {
+            if await downloader.downloadPhoto(url, timeout: min(4, remaining), cacheReservation: reservation) {
                 downloaded += 1
             }
+            PhotoCacheLedger.shared.release(reservation)
         }
 
         return PhotoPrefetchWarmupResult(
-            planned: plan.count,
+            planned: urls.count,
             downloaded: downloaded,
             alreadyOnDevice: alreadyOnDevice,
             skippedForBudget: skippedForBudget,
@@ -401,35 +367,12 @@ final class PhotoPrefetchService: ObservableObject {
         }
     }
 
-    /// Distance from "now" to the project's most relevant date, in seconds.
-    /// Smaller = higher priority. Rules:
-    ///
-    /// 1. Project is active today (start ≤ now ≤ end) → distance 0.
-    /// 2. Project has start/end → distance to the nearer of the two
-    ///    (so an upcoming next-week start and a just-finished end both
-    ///    rank ahead of a project that ended three months ago).
-    /// 3. Project is undated → fall back to lastSyncedAt plus a fixed
-    ///    penalty so any dated project outranks an undated one. This
-    ///    keeps brand-new projects visible without letting a stale
-    ///    server-side lastSyncedAt refresh masquerade as active work.
-    private func priorityDistance(for project: Project) -> TimeInterval {
-        let now = Date()
+    private nonisolated static func isOnDisk(_ url: String) async -> Bool {
+        ImageFileManager.shared.imageExists(localID: url)
+    }
 
-        if let start = project.startDate, let end = project.endDate,
-           start <= now && now <= end {
-            return 0
-        }
-
-        let startDist = project.startDate.map { abs(now.timeIntervalSince($0)) }
-        let endDist = project.endDate.map { abs(now.timeIntervalSince($0)) }
-        if let nearest = [startDist, endDist].compactMap({ $0 }).min() {
-            return nearest
-        }
-
-        // Undated — 90-day penalty keeps these behind any dated project.
-        let undatedPenalty: TimeInterval = 90 * 86_400
-        let syncDist = project.lastSyncedAt.map { abs(now.timeIntervalSince($0)) } ?? .greatestFiniteMagnitude
-        return undatedPenalty + syncDist
+    private nonisolated static func missingCount(_ urls: [String]) async -> Int {
+        urls.filter { !ImageFileManager.shared.imageExists(localID: $0) }.count
     }
 
     /// WiFi-only by default. Returns true if prefetch should proceed given the
@@ -439,31 +382,6 @@ final class PhotoPrefetchService: ObservableObject {
         guard connectivity.shouldAttemptSync else { return false }
         if allowCellular { return true }
         return connectivity.state.type == .wifi || connectivity.state.type == .wiredEthernet
-    }
-
-    /// Counts the photos across `projects` from `startingFrom` onward that
-    /// aren't yet on disk. Used to populate the cap-hit report.
-    private func countRemainingPhotos(
-        from projects: [Project],
-        startingFrom current: Project,
-        skippingUpTo url: String
-    ) -> Int {
-        guard let startIdx = projects.firstIndex(where: { $0.id == current.id }) else { return 0 }
-        let downloader = PhotoDownloadManager.shared
-        var count = 0
-        var seenStartURL = false
-
-        for project in projects[startIdx...] {
-            for candidate in project.getProjectImages() {
-                if project.id == current.id && !seenStartURL {
-                    if candidate == url { seenStartURL = true }
-                    else { continue }
-                }
-                guard candidate.contains("://") || candidate.hasPrefix("//") else { continue }
-                if !downloader.isOnDevice(candidate) { count += 1 }
-            }
-        }
-        return count
     }
 
     private func postBudgetExceededNotification(

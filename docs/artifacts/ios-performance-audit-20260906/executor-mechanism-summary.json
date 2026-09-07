@@ -1,0 +1,101 @@
+{
+  "runtime": "iOS Simulator26.5; Swift6.3.3; app Swift language5",
+  "runs": [
+    {
+      "name": "executor-probe-01",
+      "source": "3078bc4d4776d08c2411c4ac11449ba295babc6b",
+      "passed": 1,
+      "failed": 1,
+      "skipped": 0,
+      "finding": "Main constructor control reproduces main transactions; detached constructor also runs transaction on main."
+    },
+    {
+      "name": "executor-probe-02",
+      "source": "7462292de57777b56985d624422939db22f107ab",
+      "passed": 2,
+      "failed": 2,
+      "skipped": 0,
+      "finding": "Both detached-construction variants actually construct off-main, but actor entry and transaction run on main. Explicit SerialModelExecutor control runs both off-main and persists the row."
+    },
+    {
+      "name": "executor-concurrency-probe-03",
+      "source": "7462292de57777b56985d624422939db22f107ab",
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "launchArguments": [
+        "-com.apple.CoreData.ConcurrencyDebug",
+        "1"
+      ],
+      "diagnosticActivationConfirmed": true,
+      "finding": "Explicit serial executor control passed with database threading assertions enabled."
+    },
+    {
+      "name": "executor-witness-probe-04",
+      "source": "e696ffa3fbc3cec01a14b71dec14a6401decb38c",
+      "passed": 0,
+      "failed": 1,
+      "skipped": 0,
+      "finding": "DefaultSerialModelExecutor still runs actor work on main with an explicit unowned executor witness; custom queue remains necessary in this runtime."
+    }
+  ],
+  "status": "Final production executor, snapshot and lifecycle suite passed; physical equivalent-workflow speed still unmeasured.",
+  "limitations": [
+    "Synthetic store mechanism proof; no claim of physical speed improvement.",
+    "Failed diagnostic controls disprove detached construction; they are not accepted production regression failures.",
+    "Earlier combined review reporting failure was repaired and its unchanged assertion passed in runtime-final-13.",
+    "Concurrency diagnostics ran at e80350dd; final source changes only review reporting and its tests."
+  ],
+  "productionVerification": [
+    {
+      "name": "executor-production-06",
+      "source": "ddf14ecee8fa51b9da68be7fa183f7341fc856d3",
+      "passed": 44,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "name": "review-snapshot-freshness-08",
+      "source": "2993b0c0de0d888f609beae39f927c3e3995b2c6",
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "name": "review-snapshot-suite-09",
+      "source": "2993b0c0de0d888f609beae39f927c3e3995b2c6",
+      "passed": 41,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "name": "runtime-lifetimes-11",
+      "source": "e80350dd24a0a40614aaeb3ce72605b4e2a16266",
+      "passed": 163,
+      "failed": 1,
+      "skipped": 0,
+      "failure": "ReviewThresholdServiceTests/test_evaluateFeedsStoreCountsToTheSyncer returned no calls; under diagnosis."
+    },
+    {
+      "name": "runtime-concurrency-12",
+      "source": "e80350dd24a0a40614aaeb3ce72605b4e2a16266",
+      "passed": 38,
+      "failed": 0,
+      "skipped": 0,
+      "diagnosticActivationConfirmed": true,
+      "launchArguments": [
+        "-com.apple.CoreData.ConcurrencyDebug",
+        "1"
+      ]
+    },
+    {
+      "name": "runtime-final-13",
+      "source": "993ca64133060d0c5184cc30526d76430923ba39",
+      "passed": 168,
+      "failed": 0,
+      "skipped": 0,
+      "elapsedSeconds": 59.2,
+      "closes": "Original populated-store review assertion and four new deterministic report tests; all prior lifetime selectors retained."
+    }
+  ]
+}

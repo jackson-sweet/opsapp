@@ -3173,6 +3173,7 @@ final class ProjectNoteMentionEditTests: XCTestCase {
             "the actor must first register D1 as ready"
         )
         let staleEligibleSnapshot = Set([firstDispatch.id])
+        XCTAssertEqual(firstDispatch.status, "pending", "This case retargets unclaimed work")
 
         harness.dataController.updateProjectNoteContent(
             note: harness.note,
@@ -3191,6 +3192,17 @@ final class ProjectNoteMentionEditTests: XCTestCase {
             }
         )
         XCTAssertEqual(firstDispatch.dependsOnId, secondUpdate.id.uuidString)
+        let persistedContext = ModelContext(harness.context.container)
+        let persistedDispatch = try XCTUnwrap(
+            persistedContext.fetch(FetchDescriptor<SyncOperation>()).first {
+                $0.id == firstDispatch.id
+            }
+        )
+        XCTAssertEqual(
+            persistedDispatch.dependsOnId,
+            secondUpdate.id.uuidString,
+            "Retarget must reach the store before the actor refreshes its registered snapshot"
+        )
         XCTAssertTrue(staleEligibleSnapshot.contains(firstDispatch.id))
         XCTAssertFalse(
             ProjectNoteMentionEditSync.isReadyForExecution(
@@ -4076,7 +4088,7 @@ final class ProjectNoteMentionEditTests: XCTestCase {
         relaunchedController.setModelContext(relaunchedContext)
         relaunchedController.syncEngine.configure(
             modelContext: relaunchedContext,
-            connectivity: relaunchedController.connectivity
+            connectivity: OfflineMentionEditConnectivity()
         )
         XCTAssertTrue(
             relaunchedController.syncEngine
@@ -4459,7 +4471,9 @@ final class ProjectNoteMentionEditTests: XCTestCase {
         dataController.setModelContext(context)
         dataController.syncEngine.configure(
             modelContext: context,
-            connectivity: dataController.connectivity
+            // These fixtures exercise local queue mutations and actor cache
+            // refresh. A real reconnect must never claim their dispatches.
+            connectivity: OfflineMentionEditConnectivity()
         )
 
         return (dataController, context, note)
@@ -4507,6 +4521,13 @@ final class ProjectNoteMentionEditTests: XCTestCase {
         )
         return try ModelContainer(for: schema, configurations: [configuration])
     }
+}
+
+@MainActor
+private final class OfflineMentionEditConnectivity: ConnectivityManager {
+    override var shouldAttemptSync: Bool { false }
+    override var shouldPullData: Bool { false }
+    override var shouldUploadPhotos: Bool { false }
 }
 
 private final class ThreadSafeErrorBox: @unchecked Sendable {

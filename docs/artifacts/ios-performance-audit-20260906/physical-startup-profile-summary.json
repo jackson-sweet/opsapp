@@ -1,0 +1,226 @@
+{
+  "source": "622010a01839387a91e6fadbba3444950f6acfff",
+  "binary": {
+    "name": "OPS",
+    "uuid": "639B0831-CC55-3666-8C84-3C4C034753E7"
+  },
+  "build": "Release",
+  "device": "iPhone16Pro",
+  "os": "26.6.1",
+  "nominalRecordingSeconds": 60,
+  "recordedTimelineSeconds": 62.045324087,
+  "thermalState": "Nominal",
+  "scenario": "first optimized launch with V25-to-V26 upgrade and pending queue; no manual site-visit sequence confirmed",
+  "transport": "localNetwork",
+  "networkCondition": "network active; not airplane-mode comparison",
+  "hangThresholdMs": 250,
+  "mainThreadMicrohangs": [
+    {
+      "startSeconds": 5.477866541,
+      "durationMs": 379.321709
+    },
+    {
+      "startSeconds": 6.060576083,
+      "durationMs": 383.55
+    },
+    {
+      "startSeconds": 8.161864291,
+      "durationMs": 252.604417
+    },
+    {
+      "startSeconds": 8.414469708,
+      "durationMs": 278.93675
+    },
+    {
+      "startSeconds": 12.188522,
+      "durationMs": 276.874333
+    }
+  ],
+  "sampleWeights": {
+    "allThreadsSampleWeightMs": 16482.0,
+    "mainThreadSampleWeightMs": 4068.0,
+    "mainThreadSampleWeightAfter15sMs": 1432.0
+  },
+  "mainThreadInclusiveAppFramesMs": [
+    [
+      "SyncPushDrainCoordinator.run(recovery:_:)",
+      1307.0
+    ],
+    [
+      "closure #1 in SyncEngine.requestRecovery()",
+      1301.0
+    ],
+    [
+      "SyncEngine.pushPending()",
+      1125.0
+    ],
+    [
+      "closure #1 in SyncEngine.pushPending()",
+      1125.0
+    ],
+    [
+      "DataActor.processPendingOperations()",
+      1117.0
+    ],
+    [
+      "DataActor.processPendingOperationsPass()",
+      891.0
+    ],
+    [
+      "DataActor.executeOperation(_:)",
+      816.0
+    ],
+    [
+      "SiteVisitOutboundSync.executeIfHandled(operation:context:activeCompanyId:isCurrent:isolation:)",
+      435.0
+    ],
+    [
+      "SiteVisitMediaSyncManager.uploadPendingMedia(artifactId:mediaOperation:context:isCurrent:isolation:)",
+      432.0
+    ],
+    [
+      "partial apply for closure #3 in SiteVisitMediaSyncManager.uploadPendingMedia(artifactId:mediaOperation:context:isCurrent:isolation:)",
+      417.0
+    ],
+    [
+      "closure #3 in SiteVisitMediaSyncManager.uploadPendingMedia(artifactId:mediaOperation:context:isCurrent:isolation:)",
+      417.0
+    ],
+    [
+      "specialized SiteVisitMediaSyncManager.queueArtifactURLUpsert(_:dependsOn:context:)",
+      414.0
+    ],
+    [
+      "DataActor.claimForExecution(_:)",
+      379.0
+    ],
+    [
+      "@objc ForwardingDisplayLinkTarget.update(with:)",
+      276.0
+    ],
+    [
+      "closure #1 in MapView.didMoveToWindow()",
+      271.0
+    ],
+    [
+      "MapView.updateFromDisplayLink(displayLink:)",
+      262.0
+    ],
+    [
+      "specialized static ReviewThresholdService.evaluate(dataController:syncer:)",
+      203.0
+    ],
+    [
+      "closure #2 in SyncEngine.runRecoveryPass()",
+      182.0
+    ],
+    [
+      "SyncEngine.runRecoveryPass()",
+      182.0
+    ],
+    [
+      "SyncEngine.enqueueOrphanedSiteVisitWrites(siteVisitIds:)",
+      179.0
+    ],
+    [
+      "specialized static SiteVisitOrphanRecovery.recover(in:activeUserId:activeCompanyId:siteVisitIds:quarantine:)",
+      178.0
+    ],
+    [
+      "DataController.getAllTasks()",
+      167.0
+    ],
+    [
+      "static ReviewThresholdService.evaluate(dataController:syncer:)",
+      159.0
+    ],
+    [
+      "closure #7 in DataController.setModelContext(_:)",
+      152.0
+    ],
+    [
+      "SiteVisitRecoveryVault.recordQuarantine(_:from:)",
+      143.0
+    ],
+    [
+      "SiteVisitRecoveryVault.makeArchive(id:identity:siteVisitId:quarantineReason:createdAt:childIds:modelContext:)",
+      135.0
+    ],
+    [
+      "DataActor.readyPendingProjectNoteMentionOperationIds(now:)",
+      135.0
+    ],
+    [
+      "DataController.getProjects(for:assignedTo:)",
+      114.0
+    ],
+    [
+      "FloatingActionMenu.refreshReviewCounts()",
+      100.0
+    ],
+    [
+      "closure #2 in closure #53 in MainTabView.body.getter",
+      97.0
+    ],
+    [
+      "AppState.checkOverdueProjects(dataController:)",
+      97.0
+    ],
+    [
+      "DataActor.linkAllRelationships()",
+      86.0
+    ],
+    [
+      "MetalView.draw(_:)",
+      79.0
+    ],
+    [
+      "DataController.checkExistingAuth()",
+      75.0
+    ],
+    [
+      "DataController.initializeSyncManager()",
+      73.0
+    ],
+    [
+      "SyncEngine.configure(modelContext:connectivity:dataActor:)",
+      72.0
+    ],
+    [
+      "specialized closure #1 in closure #1 in closure #1 in Signal.tracingInterval(_:_:log:)",
+      67.0
+    ],
+    [
+      "closure #1 in ReviewCountRefreshMonitor.init<A>(scheduler:)",
+      67.0
+    ],
+    [
+      "partial apply for closure #31 in FloatingActionMenu.body.getter",
+      67.0
+    ],
+    [
+      "SyncEngine.purgeExpiredPendingWork(now:)",
+      63.0
+    ],
+    [
+      "specialized closure #1 in AnnotationManagerImpl.init(params:deps:)",
+      57.0
+    ],
+    [
+      "partial apply for specialized closure #1 in AnnotationManagerImpl.init(params:deps:)",
+      55.0
+    ],
+    [
+      "specialized AnnotationManagerImpl.syncSourceAndLayerIfNeeded()",
+      52.0
+    ]
+  ],
+  "limitations": [
+    "one startup run",
+    "inclusive frame weights overlap",
+    "sample weights estimate CPU rather than interaction latency",
+    "not equivalent-condition speedup",
+    "later attached run used a different Debug binary and is excluded from comparisons"
+  ],
+  "symbolication": "Matching Release UUID; xctrace export supplemented with atos and matching dSYM. Inclusive per-sample unique symbols."
+}

@@ -15,6 +15,7 @@ import UIKit
 struct SiteVisitCaptureView: View {
     let opportunity: Opportunity?
     let initialSiteVisitType: SiteVisitType?
+    let resumingSiteVisitId: String?
     let onCreateProject: (Opportunity) -> Void
 
     @Environment(\.dismiss) private var dismiss
@@ -25,8 +26,10 @@ struct SiteVisitCaptureView: View {
     init(
         opportunity: Opportunity? = nil,
         onCreateProject: @escaping (Opportunity) -> Void,
-        initialSiteVisitType: SiteVisitType? = nil
+        initialSiteVisitType: SiteVisitType? = nil,
+        resumingSiteVisitId: String? = nil
     ) {
+        self.resumingSiteVisitId = resumingSiteVisitId
         self.opportunity = opportunity
         self.onCreateProject = onCreateProject
         self.initialSiteVisitType = initialSiteVisitType
@@ -43,6 +46,7 @@ struct SiteVisitCaptureView: View {
                         onCreateProject(lead)
                     }
                 )
+                .environment(\.modelContext, viewModel.modelContext)
             } else {
                 ZStack {
                     OPSStyle.Colors.background.ignoresSafeArea()
@@ -61,7 +65,8 @@ struct SiteVisitCaptureView: View {
                         opportunity: opportunity,
                         companyId: companyId,
                         userId: dataController.currentUser?.id,
-                        modelContext: modelContext
+                        modelContext: modelContext,
+                        entryIntent: resumingSiteVisitId.map { .resume(visitId: $0) } ?? .newVisit
                     )
                     vm.loadOrCreateVisit()
                     if let initialSiteVisitType {
@@ -103,6 +108,7 @@ private struct SiteVisitCaptureConsole: View {
 
     @Environment(\.modelContext) private var modelContext
     @EnvironmentObject private var dataController: DataController
+    @Environment(\.scenePhase) private var scenePhase
     @StateObject private var speechManager = SpeechRecognitionManager()
     @FocusState private var focusedField: SiteVisitCaptureField?
 
@@ -245,17 +251,25 @@ private struct SiteVisitCaptureConsole: View {
                 viewModel.autosaveNote()
             }
         }
+        .task(id: viewModel.currentOpportunity?.id) {
+            await viewModel.prepareStageSnapshot()
+        }
+        .task(id: viewModel.siteVisit?.id) {
+            await viewModel.recoverStagedPhotos()
+            await viewModel.discoverInterruptedPhotoVisits()
+        }
+        .onChange(of: scenePhase) { _, phase in
+            if phase != .active { _ = viewModel.preserveDraft() }
+        }
         .onDisappear {
             noteAutosaveTask?.cancel()
-            viewModel.autosaveNote()
+            _ = viewModel.preserveDraft()
         }
         .fullScreenCover(isPresented: $showingCamera) {
-            CameraBatchView { images in
-                viewModel.addPhotos(images)
-                if !images.isEmpty {
-                    UINotificationFeedbackGenerator().notificationOccurred(.success)
-                }
-                showingCamera = false
+            if let owner = viewModel.captureOwner {
+                CameraBatchView(owner: owner, onStagedUpload: { batch in
+                    viewModel.attachStagedPhotos(batch)
+                })
             }
         }
         .sheet(isPresented: $showingDeckCreationPicker, onDismiss: {
@@ -376,10 +390,11 @@ private struct SiteVisitCaptureConsole: View {
             titleVisibility: .visible
         ) {
             Button("SAVE DRAFT & CLOSE") {
-                onClose()
+                if viewModel.preserveDraft() { onClose() }
             }
             Button("DISCARD VISIT", role: .destructive) {
                 viewModel.discardVisit()
+                guard viewModel.errorMessage == nil else { return }
                 UINotificationFeedbackGenerator().notificationOccurred(.warning)
                 onClose()
             }
@@ -396,23 +411,23 @@ private struct SiteVisitCaptureConsole: View {
             leading: { OPSHeaderCloseButton(action: attemptClose) },
             trailing: {
                 Button {
-                    showingReview = true
+                    if viewModel.preserveDraft() { showingReview = true }
                 } label: {
                     Text("DONE")
                         .font(OPSStyle.Typography.captionBold)
                         .tracking(1.2)
                         .lineLimit(1)
                         .fixedSize()
-                        .foregroundColor(viewModel.canComplete ? OPSStyle.Colors.invertedText : OPSStyle.Colors.text3)
+                        .foregroundColor(viewModel.hasCapturedAnything ? OPSStyle.Colors.invertedText : OPSStyle.Colors.text3)
                         .padding(.horizontal, OPSStyle.Layout.spacing3)
                         .frame(height: 40)
                         .background(
                             RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius, style: .continuous)
-                                .fill(viewModel.canComplete ? OPSStyle.Colors.opsAccent : OPSStyle.Colors.surfaceHover)
+                                .fill(viewModel.hasCapturedAnything ? OPSStyle.Colors.opsAccent : OPSStyle.Colors.surfaceHover)
                         )
                 }
                 .buttonStyle(.plain)
-                .disabled(!viewModel.canComplete)
+                .disabled(!viewModel.hasCapturedAnything)
             }
         )
         .padding(.top, OPSStyle.Layout.spacing2)
@@ -654,7 +669,7 @@ private struct SiteVisitCaptureConsole: View {
                         .foregroundColor(OPSStyle.Colors.textMute)
                         .frame(maxWidth: .infinity, minHeight: 72, alignment: .center)
                 } else {
-                    VStack(spacing: 8) {
+                    LazyVStack(spacing: OPSStyle.Layout.spacing2) {
                         ForEach(viewModel.activeArtifacts) { artifact in
                             SiteVisitArtifactRow(
                                 artifact: artifact,
@@ -768,9 +783,11 @@ private struct SiteVisitCaptureConsole: View {
                     ForEach(viewModel.checklistAnswers) { answer in
                         SiteVisitChecklistAnswerRow(
                             answer: answer,
+                            value: viewModel.checklistValue(for: answer),
                             onUpdate: { value in
-                                viewModel.updateChecklistAnswer(answer, value: value)
+                                viewModel.bufferChecklistAnswer(answer, value: value)
                             },
+                            onFlush: { _ = viewModel.flushChecklistEdits() },
                             onStartDeckDesign: {
                                 // EDIT opens the design linked to THIS row, not a
                                 // re-derived (blank) one. START passes nil → create.
@@ -862,6 +879,10 @@ private struct SiteVisitCaptureConsole: View {
         OPSActionBar {
             HStack(spacing: OPSStyle.Layout.spacing1) {
                 OPSActionBarButton(icon: "camera.fill", label: "PHOTO") {
+                    guard viewModel.captureOwner != nil else {
+                        viewModel.errorMessage = "PHOTO CAPTURE UNAVAILABLE · SIGN IN AGAIN"
+                        return
+                    }
                     showingCamera = true
                 }
                 Spacer(minLength: 0)
@@ -926,6 +947,7 @@ private struct SiteVisitCaptureConsole: View {
     }
 
     private func attemptClose() {
+        guard viewModel.preserveDraft() else { return }
         if viewModel.hasCapturedAnything {
             showingCloseConfirm = true
         } else {
@@ -978,23 +1000,36 @@ private struct SiteVisitCaptureConsole: View {
             viewModel.errorMessage = "DECK DESIGN UNAVAILABLE"
             return
         }
+        guard viewModel.preserveDraft() else { return }
+        if let pending = viewModel.pendingDeckCreation {
+            guard let saved = viewModel.saveDeckForCapture(pending) else { return }
+            activeDeckDesign = saved
+            return
+        }
 
         // Continue before create: the exact design the caller asked for
         // (checklist EDIT), then the visit's own sketch, then the lead's
         // design (same display-candidate rule the lead page uses). DECK never
         // forks a duplicate — and the checklist row's EDIT genuinely edits the
         // linked design instead of quietly replacing it with a blank one.
-        let allDesigns = (try? modelContext.fetch(FetchDescriptor<DeckDesign>())) ?? []
         let visitDesignIds = viewModel.activeArtifacts
             .filter { $0.kind == .deckDesign }
             .compactMap(\.deckDesignId)
+        let ids = Set(([preferredDesignId].compactMap { $0 } + visitDesignIds).map { $0.lowercased() })
+        let exactIds = Array(ids.union(ids.map { $0.uppercased() }))
+        let leadId = viewModel.currentOpportunity?.id
+        let company = viewModel.companyIdentifier
+        let allDesigns = (try? modelContext.fetch(FetchDescriptor<DeckDesign>(predicate: #Predicate {
+            $0.companyId == company && $0.deletedAt == nil
+                && (exactIds.contains($0.id) || (leadId != nil && $0.opportunityId == leadId))
+        }))) ?? []
         if let existing = SiteVisitDeckDesignResolver.existingDesign(
             preferredDesignId: preferredDesignId,
             artifactDesignIds: visitDesignIds,
             opportunityId: viewModel.currentOpportunity?.id,
             in: allDesigns
         ) {
-            viewModel.attachDeckDesign(existing)   // idempotent — links, never dupes
+            guard viewModel.attachDeckDesign(existing) else { return }
             activeDeckDesign = existing
             return
         }
@@ -1020,15 +1055,8 @@ private struct SiteVisitCaptureConsole: View {
             companyId: viewModel.companyIdentifier,
             userId: dataController.currentUser?.id,
             onDesignCreated: { design in
-                // A blank design is handed over unsaved on purpose (the builder
-                // persists it on the first real edit), but a visit artifact has
-                // to point at a row that exists.
-                if design.modelContext == nil {
-                    modelContext.insert(design)
-                }
-                try? modelContext.save()
-                viewModel.attachDeckDesign(design)
-                deckDesignPendingOpen = design
+                guard let saved = viewModel.saveDeckForCapture(design) else { return }
+                deckDesignPendingOpen = saved
                 showingDeckCreationPicker = false
             }
         )
@@ -1145,8 +1173,9 @@ private struct SiteVisitIdentityPanel: View {
     @State private var phoneNumber = ""
     @State private var address = ""
     @State private var notes = ""
-    @State private var activeLeads: [Opportunity] = []
-    @State private var clients: [Client] = []
+    @StateObject private var searchSource = SiteVisitSearchSource()
+    private var activeLeads: [Opportunity] { searchSource.leads }
+    private var clients: [Client] { searchSource.clients }
     @State private var autosaveTask: Task<Void, Never>?
     /// Until the fields above have been filled from the saved draft they hold
     /// empty strings, not edits. Committing them would erase the draft — the
@@ -1346,6 +1375,7 @@ private struct SiteVisitIdentityPanel: View {
             // straight over a saved draft (bug 5d5df5b0).
             syncFromDraft()
             hasHydrated = true
+            viewModel.flushIdentityEdits = { commitDraft() }
             await loadSearchSources()
         }
         .onChange(of: viewModel.contactImportGeneration) { _, _ in
@@ -1357,6 +1387,17 @@ private struct SiteVisitIdentityPanel: View {
         .onDisappear {
             autosaveTask?.cancel()
             commitDraft()
+            viewModel.flushIdentityEdits = nil
+        }
+        .onChange(of: viewModel.siteVisit?.id) { _, _ in
+            autosaveTask?.cancel()
+            syncFromDraft()
+        }
+        .task(id: searchText) {
+            try? await Task.sleep(for: .milliseconds(250))
+            guard !Task.isCancelled else { return }
+            await searchSource.refresh(query: searchText, companyId: viewModel.companyIdentifier,
+                userId: dataController.currentUser?.id ?? "")
         }
         .onChange(of: searchText) { _, _ in scheduleAutosave() }
         .onChange(of: clientName) { _, _ in scheduleAutosave() }
@@ -1783,37 +1824,11 @@ private struct SiteVisitIdentityPanel: View {
     }
 
     private func loadSearchSources() async {
-        // Bug (site-visit report) — leads are network-only; they are not
-        // persisted in SwiftData (see [[opportunities-not-in-swiftdata]]), so
-        // the old `FetchDescriptor<Opportunity>` always came back empty and
-        // search never matched a lead. Pull the live opportunity store, and
-        // fall back to whatever SwiftData holds only when offline.
-        let repo = OpportunityRepository(companyId: viewModel.companyIdentifier)
-        if let dtos = try? await repo.fetchAll() {
-            activeLeads = dtos
-                .map { $0.toModel() }
-                .filter { !$0.stage.isTerminal && !$0.isDeleted && !$0.isArchived }
-        } else {
-            let opportunityDescriptor = FetchDescriptor<Opportunity>(
-                sortBy: [SortDescriptor(\.updatedAt, order: .reverse)]
-            )
-            activeLeads = ((try? modelContext.fetch(opportunityDescriptor)) ?? [])
-                .filter { lead in
-                    lead.companyId == viewModel.companyIdentifier
-                    && !lead.stage.isTerminal
-                    && !lead.isDeleted
-                    && !lead.isArchived
-                }
-        }
-
-        let clientDescriptor = FetchDescriptor<Client>(
-            sortBy: [SortDescriptor(\.name)]
-        )
-        clients = ((try? modelContext.fetch(clientDescriptor)) ?? [])
-            .filter { client in
-                (client.companyId == nil || client.companyId == viewModel.companyIdentifier)
-                && client.deletedAt == nil
-            }
+        searchSource.loadLocalClients(context: modelContext, companyId: viewModel.companyIdentifier)
+        await searchSource.loadCachedLeads(companyId: viewModel.companyIdentifier,
+            userId: dataController.currentUser?.id ?? "")
+        await searchSource.refresh(query: searchText, companyId: viewModel.companyIdentifier,
+            userId: dataController.currentUser?.id ?? "")
     }
 
     private func matches(_ query: String, values: [String?]) -> Bool {
@@ -1865,7 +1880,10 @@ private struct SiteVisitIdentitySuggestion: Identifiable {
 
 private struct SiteVisitChecklistAnswerRow: View {
     let answer: SiteVisitChecklistAnswer
+    let value: SiteVisitChecklistValue
+    @FocusState private var isFocused: Bool
     let onUpdate: (SiteVisitChecklistValue) -> Void
+    let onFlush: () -> Void
     let onStartDeckDesign: () -> Void
 
     var body: some View {
@@ -1900,7 +1918,7 @@ private struct SiteVisitChecklistAnswerRow: View {
         )
         .overlay(
             RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius, style: .continuous)
-                .strokeBorder(answer.required && !answer.isAnswered ? OPSStyle.Colors.tanTextM : OPSStyle.Colors.line, lineWidth: 1)
+                .strokeBorder(answer.required && !value.isAnswered ? OPSStyle.Colors.tanTextM : OPSStyle.Colors.line, lineWidth: 1)
         )
     }
 
@@ -1909,7 +1927,7 @@ private struct SiteVisitChecklistAnswerRow: View {
         switch answer.kind {
         case .checkbox:
             Toggle(isOn: Binding(
-                get: { answer.answerValue.boolValue ?? false },
+                get: { value.boolValue ?? false },
                 set: { onUpdate(.bool($0)) }
             )) {
                 Text("CONFIRMED")
@@ -1927,37 +1945,40 @@ private struct SiteVisitChecklistAnswerRow: View {
             // Measurement auto-fills from captured measurements; all three remain
             // freely editable.
             TextField("ANSWER", text: Binding(
-                get: { answer.answerValue.text ?? "" },
+                get: { value.text ?? "" },
                 set: { onUpdate(.text($0)) }
             ), axis: .vertical)
             .font(OPSStyle.Typography.body)
             .foregroundColor(OPSStyle.Colors.text)
             .textInputAutocapitalization(.sentences)
+            .focused($isFocused)
+            .onChange(of: isFocused) { _, focused in if !focused { onFlush() } }
+            .onDisappear(perform: onFlush)
             .frame(minHeight: answer.kind == .longText ? 72 : 42, alignment: .topLeading)
         case .photo:
             // Site photos link automatically as they're captured — no action needed.
             capturedStatus(
-                answer.answerValue.artifactIds.isEmpty
+                value.artifactIds.isEmpty
                     ? "TAKE PHOTOS — THEY LINK HERE AUTOMATICALLY"
-                    : "\(answer.answerValue.artifactIds.count) PHOTOS LINKED",
-                linked: !answer.answerValue.artifactIds.isEmpty
+                    : "\(value.artifactIds.count) PHOTOS LINKED",
+                linked: !value.artifactIds.isEmpty
             )
         case .photoMarkup:
             capturedStatus(
-                answer.answerValue.artifactIds.isEmpty
+                value.artifactIds.isEmpty
                     ? "TAKE PHOTOS — THEY LINK HERE AUTOMATICALLY"
-                    : "\(answer.answerValue.artifactIds.count) ITEMS LINKED",
-                linked: !answer.answerValue.artifactIds.isEmpty
+                    : "\(value.artifactIds.count) ITEMS LINKED",
+                linked: !value.artifactIds.isEmpty
             )
         case .deckDesign:
             HStack(spacing: OPSStyle.Layout.spacing1) {
                 capturedStatus(
-                    answer.answerValue.deckDesignId == nil ? "NO DESIGN YET" : "DESIGN LINKED",
-                    linked: answer.answerValue.deckDesignId != nil
+                    value.deckDesignId == nil ? "NO DESIGN YET" : "DESIGN LINKED",
+                    linked: value.deckDesignId != nil
                 )
                 Spacer(minLength: OPSStyle.Layout.spacing1)
                 Button(action: onStartDeckDesign) {
-                    Text(answer.answerValue.deckDesignId == nil ? "START" : "EDIT")
+                    Text(value.deckDesignId == nil ? "START" : "EDIT")
                         .font(OPSStyle.Typography.miniLabel)
                         .foregroundColor(OPSStyle.Colors.invertedText)
                         .frame(height: OPSStyle.Layout.touchTargetMin)
@@ -1980,17 +2001,17 @@ private struct SiteVisitChecklistAnswerRow: View {
     }
 
     private var statusLabel: String {
-        if answer.isAnswered { return "DONE" }
+        if value.isAnswered { return "DONE" }
         return answer.required ? "REQUIRED" : answer.kind.displayName
     }
 
     private var statusColor: Color {
-        if answer.isAnswered { return OPSStyle.Colors.oliveTextM }
+        if value.isAnswered { return OPSStyle.Colors.oliveTextM }
         return answer.required ? OPSStyle.Colors.tanTextM : OPSStyle.Colors.text3
     }
 
     private func choiceButton(_ choice: String) -> some View {
-        let selected = answer.answerValue.choice.map {
+        let selected = value.choice.map {
             $0.caseInsensitiveCompare(choice) == .orderedSame
         } ?? false
         return Button {
@@ -2235,7 +2256,9 @@ private struct SiteVisitArtifactThumbnail: View {
     let fallbackIcon: String
     let iconColor: Color
 
+    @Environment(\.displayScale) private var displayScale
     @State private var image: UIImage?
+    @State private var sourceRevision = 0
 
     var body: some View {
         ZStack {
@@ -2248,28 +2271,35 @@ private struct SiteVisitArtifactThumbnail: View {
                     .scaledToFill()
             } else {
                 Image(systemName: fallbackIcon)
-                    .font(.system(size: 17, weight: .semibold))
+                    .font(OPSStyle.Typography.bodyBold)
                     .foregroundColor(iconColor)
             }
         }
-        .frame(width: 54, height: 54)
+        .frame(width: OPSStyle.Layout.touchTargetStandard, height: OPSStyle.Layout.touchTargetStandard)
         .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius, style: .continuous)
-                .strokeBorder(OPSStyle.Colors.line, lineWidth: 1)
+                .strokeBorder(OPSStyle.Colors.line, lineWidth: OPSStyle.Layout.hairlineWidth)
         )
-        .task(id: artifact.previewAssetURL ?? artifact.id) {
-            loadImage()
+        .task(id: "\(artifact.previewAssetURL ?? artifact.id)::\(artifact.localAssetURL ?? "")::\(sourceRevision)::\(displayScale)") {
+            await loadImage()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .photoThumbnailSourceChanged)) { notification in
+            let source = notification.userInfo?["sourceURL"] as? String
+            if source == "*" || source == artifact.previewAssetURL || source == artifact.localAssetURL { sourceRevision += 1 }
         }
     }
 
-    private func loadImage() {
+    private func loadImage() async {
         guard let url = artifact.previewAssetURL else {
             image = nil
             return
         }
-        image = ImageFileManager.shared.loadCompositedImage(forURL: url)
-            ?? ImageFileManager.shared.loadImage(localID: url)
+        let request = PhotoThumbnailRequest(sourceURL: url, fallbackURL: artifact.localAssetURL,
+            maxPixelSize: Int(ceil(OPSStyle.Layout.touchTargetStandard * displayScale)))
+        let loaded = try? await PhotoThumbnailLoader.shared.image(for: request)
+        guard !Task.isCancelled else { return }
+        image = loaded
     }
 }
 
@@ -2285,10 +2315,8 @@ private struct SiteVisitReviewSheet: View {
     @State private var editingNoteArtifact: SiteVisitCaptureArtifact?
     @State private var isCreatingLead = false
     @State private var isSaving = false
-    // Bug (site-visit report) — the lead stage the visit will leave the lead
-    // in. Seeded from SiteVisitStageDefault (QUALIFYING for a new lead; held
-    // otherwise); the operator can change it. Never WON.
-    @State private var selectedStage: PipelineStage?
+    // Freeze the displayed stage and revision together for this review.
+    @State private var stageDecision: SiteVisitStageDecision?
 
     init(
         viewModel: SiteVisitCaptureViewModel,
@@ -2314,7 +2342,8 @@ private struct SiteVisitReviewSheet: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing3) {
                         summaryCard
-                        if viewModel.hasBoundOpportunity {
+                        if viewModel.hasBoundOpportunity && viewModel.canComplete,
+                           stageDecision?.currentStage.isTerminal == false {
                             stageCard
                         }
                         includedList
@@ -2335,13 +2364,13 @@ private struct SiteVisitReviewSheet: View {
                 }
             } primary: {
                 SheetCTAButton(
-                    label: isSaving ? "SAVING…" : "SAVE VISIT",
+                    label: isSaving ? "SAVING…" : (viewModel.canComplete ? "COMPLETE VISIT" : "SAVE DRAFT"),
                     icon: "checkmark",
                     variant: .primary,
                     action: saveVisit
                 )
-                .disabled(!viewModel.canComplete || isSaving)
-                .opacity(viewModel.canComplete && !isSaving ? 1 : 0.5)
+                .disabled(!viewModel.hasCapturedAnything || isSaving)
+                .opacity(viewModel.hasCapturedAnything && !isSaving ? 1 : 0.5)
             }
             .padding(.horizontal, OPSStyle.Layout.spacing3_5)
             .padding(.bottom, 28)
@@ -2358,9 +2387,10 @@ private struct SiteVisitReviewSheet: View {
         }
         .preferredColorScheme(.dark)
         .onAppear {
-            if selectedStage == nil, let current = viewModel.currentOpportunity?.stage {
-                selectedStage = SiteVisitStageDefault.defaultStage(current: current)
-            }
+            if stageDecision == nil { stageDecision = viewModel.makeStageDecision() }
+        }
+        .onChange(of: viewModel.currentOpportunity?.id) { _, _ in
+            stageDecision = viewModel.makeStageDecision()
         }
         .sheet(item: $previewArtifact) { artifact in
             SiteVisitPhotoPreviewSheet(artifact: artifact, onMarkup: nil)
@@ -2606,7 +2636,7 @@ private struct SiteVisitReviewSheet: View {
             HStack(spacing: 0) {
                 Text("// ")
                     .foregroundColor(OPSStyle.Colors.textMute)
-                Text("LEAD STAGE AFTER VISIT")
+                Text("LEAD STAGE")
                     .foregroundColor(OPSStyle.Colors.text)
             }
             .font(OPSStyle.Typography.metadata)
@@ -2614,9 +2644,9 @@ private struct SiteVisitReviewSheet: View {
             ScrollView(.horizontal) {
                 HStack(spacing: OPSStyle.Layout.spacing1) {
                     ForEach(SiteVisitStageDefault.selectableStages) { stage in
-                        let isSelected = selectedStage == stage
+                        let isSelected = stageDecision?.targetStage == stage
                         Button {
-                            selectedStage = stage
+                            stageDecision?.targetStage = stage
                             UISelectionFeedbackGenerator().selectionChanged()
                         } label: {
                             Text(stage.displayName)
@@ -2638,6 +2668,11 @@ private struct SiteVisitReviewSheet: View {
                 }
             }
             .scrollIndicators(.hidden)
+            if stageDecision?.snapshot?.canMove != true {
+                Text("VISIT SAVES NOW · REVIEW LEAD STAGE AFTER SYNC")
+                    .font(OPSStyle.Typography.metadata)
+                    .foregroundColor(OPSStyle.Colors.tanTextM)
+            }
         }
         .padding(OPSStyle.Layout.spacing3)
         .glassSurface()
@@ -2680,13 +2715,15 @@ private struct SiteVisitReviewSheet: View {
     /// to the selected stage (QUALIFYING by default). The lifeline: a visit is
     /// saved, the lead advances a notch, nobody is auto-marked WON.
     private func saveVisit() {
-        guard viewModel.canComplete, !isSaving else { return }
+        guard viewModel.hasCapturedAnything, !isSaving else { return }
         isSaving = true
-        let stage = selectedStage
+        let decision = stageDecision
         Task {
             let result: SiteVisitSaveResult
-            if let stage {
-                result = await viewModel.saveVisit(movingLeadTo: stage)
+            if let decision {
+                result = await viewModel.saveVisit(stageDecision: decision)
+            } else if !viewModel.canComplete {
+                result = viewModel.preserveDraft() ? .draftSaved : .notCommitted(.persistence)
             } else {
                 // Unbound visit — nothing to re-stage; just complete it.
                 let completion = await viewModel.completeVisit()
@@ -2705,7 +2742,11 @@ private struct SiteVisitReviewSheet: View {
                 }
                 UINotificationFeedbackGenerator().notificationOccurred(.success)
                 if result == .committedStageUpdateFailed {
-                    ToastCenter.shared.present(Feedback.SiteVisit.savedStageNotUpdated)
+                    ToastCenter.shared.present(Feedback.SiteVisit.savedStageReviewRequired)
+                } else if result == .committedStageUpdatePending {
+                    ToastCenter.shared.present(Feedback.SiteVisit.savedStagePending)
+                } else if result == .draftSaved {
+                    ToastCenter.shared.present(Feedback.SiteVisit.draftSaved)
                 } else {
                     ToastCenter.shared.present(Feedback.SiteVisit.saved)
                 }
@@ -2842,7 +2883,8 @@ private struct SiteVisitPhotoMarkupView: View {
             return
         }
 
-        let localID = "site_visit_markup_\(artifact.id).jpg"
+        // A failed packet transaction must not overwrite the previous markup.
+        let localID = "site_visit_markup_\(artifact.id)_\(UUID().uuidString.lowercased()).jpg"
         let url = "local://project_images/\(localID)"
         guard ImageFileManager.shared.saveImage(data: data, localID: url) else {
             errorMessage = "MARKUP SAVE FAILED"

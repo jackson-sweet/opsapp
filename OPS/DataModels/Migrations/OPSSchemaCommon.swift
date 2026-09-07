@@ -276,6 +276,50 @@ enum OPSSchemaLegacyDeckDesignV15 {
     }
 }
 
+/// Released V16–V25 deck shape, before the local server merge base.
+/// Keep this graph immutable: the September 4 in-place field addition changed
+/// all ten released checksums and prevented installed V25 stores from opening.
+enum OPSSchemaLegacyDeckDesignV25 {
+    @Model
+    final class DeckDesign: Identifiable {
+        @Attribute(.unique) var id: String
+        var companyId: String
+        var projectId: String?
+        var opportunityId: String?
+        var title: String
+        var drawingDataJSON: String
+        var thumbnailURL: String?
+        var localThumbnailPath: String?
+        var version: Int = 1
+        var createdBy: String?
+        var needsSync: Bool = false
+        var lastSyncedAt: Date?
+        var syncPriority: Int = 1
+        var deletedAt: Date?
+        var createdAt: Date
+        var updatedAt: Date?
+
+        init(
+            id: String = UUID().uuidString,
+            companyId: String,
+            projectId: String? = nil,
+            opportunityId: String? = nil,
+            title: String = "Untitled Deck",
+            drawingDataJSON: String = "{}",
+            createdBy: String? = nil
+        ) {
+            self.id = id
+            self.companyId = companyId
+            self.projectId = projectId
+            self.opportunityId = opportunityId
+            self.title = title
+            self.drawingDataJSON = drawingDataJSON
+            self.createdBy = createdBy
+            self.createdAt = Date()
+        }
+    }
+}
+
 /// ProjectVinylOrderMarker as it shipped V7 through V16. The live model gained
 /// `vinylColor` / `vinylPO` (projections of `projects.vinyl_color` /
 /// `vinyl_po`, VINYL ORDERS board 2026-07-16) after V16 was already on
@@ -1436,8 +1480,13 @@ enum OPSSchemaCommon {
         OPSSchemaLegacyDeckDesignV15.DeckDesign.self
     ]
 
-    /// DeckDesign from V16 onward, including nullable `opportunityId`.
+    /// DeckDesign as released in V16–V25, including nullable `opportunityId`.
     static let v16DeckDesignModel: [any PersistentModel.Type] = [
+        OPSSchemaLegacyDeckDesignV25.DeckDesign.self
+    ]
+
+    /// V26 adds the nullable server merge base without rewriting released shapes.
+    static let v26DeckDesignModel: [any PersistentModel.Type] = [
         DeckDesign.self
     ]
 

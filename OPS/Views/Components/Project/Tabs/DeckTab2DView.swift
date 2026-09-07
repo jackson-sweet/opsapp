@@ -605,6 +605,7 @@ struct DeckTab2DView: View {
         // no longer matches the geometry has to be visible on the edge — not
         // announced by a blocker on some other screen (bug 59d7f468).
         let isOverridden = DeckStaleDimensionPresenter.isOverridden(edge)
+        let customLabel = edge.label?.trimmingCharacters(in: .whitespacesAndNewlines)
         let text = DimensionEngine.format(dim, system: drawingData.config.measurementSystem)
         let inverseScale = 1 / max(abs(canvasScale), CGFloat.ulpOfOne.squareRoot())
         context.drawLayer { layer in
@@ -643,10 +644,28 @@ struct DeckTab2DView: View {
             )
             layer.draw(resolved, at: .zero, anchor: .center)
 
-            guard isOverridden else { return }
-            let caption = layer.resolve(Text(DeckStaleDimensionPresenter.caption)
+            // The operator's custom edge label is part of the saved drawing,
+            // not builder-only chrome. Keep the field annotation attached to
+            // its dimension in both inline and fullscreen read-only viewers.
+            // A stale-dimension caption remains the higher-priority warning,
+            // matching the builder canvas' secondary-label contract.
+            let secondaryText: String?
+            let secondaryColor: Color
+            if isOverridden {
+                secondaryText = DeckStaleDimensionPresenter.caption
+                secondaryColor = DeckStaleDimensionPresenter.valueColor
+            } else if let customLabel, !customLabel.isEmpty {
+                secondaryText = customLabel.uppercased()
+                secondaryColor = OPSStyle.Colors.primaryAccent
+            } else {
+                secondaryText = nil
+                secondaryColor = OPSStyle.Colors.secondaryText
+            }
+
+            guard let secondaryText else { return }
+            let caption = layer.resolve(Text(secondaryText)
                 .font(OPSStyle.Typography.microLabel)
-                .foregroundColor(DeckStaleDimensionPresenter.valueColor))
+                .foregroundColor(secondaryColor))
             layer.draw(
                 caption,
                 at: CGPoint(x: 0, y: bgRect.maxY + CGFloat(OPSStyle.Layout.spacing1)),

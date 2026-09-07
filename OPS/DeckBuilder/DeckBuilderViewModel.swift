@@ -65,17 +65,18 @@ class DeckBuilderViewModel: ObservableObject {
 
     let deckDesign: DeckDesign
     private var modelContext: ModelContext?
-    /// Weak ref to the offline sync queue. Active editing never touches it:
-    /// `save()` is strictly a local SwiftData durability boundary. The latest
-    /// local revision is recorded once when the builder exits, then pushed in
-    /// the background after dismissal. Optional so previews / tests can run
-    /// without wiring the network stack.
+    /// Weak ref to the durable outbox. Autosave and interruptions enqueue local
+    /// revisions while an editor-session hold prevents upload. Disappearance
+    /// releases the hold and wakes the shared upload drain.
     private weak var syncEngine: SyncEngine?
     /// Thumbnail work is injectable so exit-save behavior can be proven
     /// without touching the renderer or network. Production defaults preserve
     /// the shipped renderer and S3 upload path.
-    private let thumbnailRenderer: (DeckDrawingData) -> UIImage?
-    private let thumbnailUploader: (UIImage, DeckDesign) async throws -> String
+    private let thumbnailRenderer: @Sendable (DeckDrawingData) -> UIImage?
+    private var editingSessionToken: UUID?
+    private var didExitEditor = false
+    private var exitWaiters: [CheckedContinuation<Void, Never>] = []
+    private let thumbnailUploader: @MainActor (UIImage, DeckDesign) async throws -> String
     private let drawingEncoder: (DeckDrawingData) -> String
     /// True after we've enqueued at least one create op for `deckDesign.id`.
     /// Subsequent edits enqueue updates instead. Persists across app launches
@@ -93,8 +94,6 @@ class DeckBuilderViewModel: ObservableObject {
     /// sync queue. Close, onDisappear, and scene-inactive can all report the
     /// same exit; only the first boundary may record it.
     private var lastQueuedSyncPayloadKey: String?
-    /// Coalesces repeated exit signals into one post-dismissal push attempt.
-    private var pendingSyncTriggerTask: Task<Void, Never>?
 
     // MARK: - Drawing State
 
@@ -769,14 +768,15 @@ class DeckBuilderViewModel: ObservableObject {
         modelContext: ModelContext? = nil,
         syncEngine: SyncEngine? = nil,
         drawingEncoder: @escaping (DeckDrawingData) -> String = { $0.toJSON() },
-        thumbnailRenderer: @escaping (DeckDrawingData) -> UIImage? = { drawingData in
+        thumbnailRenderer: @escaping @Sendable (DeckDrawingData) -> UIImage? = { drawingData in
             DeckRenderer.renderToPNG(drawingData: drawingData)
         },
-        thumbnailUploader: @escaping (UIImage, DeckDesign) async throws -> String = { image, design in
-            try await DeckRenderer.saveToS3(image: image, deckDesign: design)
+        thumbnailUploader: @escaping @MainActor (UIImage, DeckDesign) async throws -> String = { image, design in
+            try await DeckThumbnailWorker.upload(image: image, designId: design.id, companyId: design.companyId)
         }
     ) {
         self.deckDesign = deckDesign
+        self.editingSessionToken = DeckEditingSessionRegistry.shared.begin(designId: deckDesign.id)
         self.modelContext = modelContext
         self.syncEngine = syncEngine
         self.drawingEncoder = drawingEncoder
@@ -828,14 +828,13 @@ class DeckBuilderViewModel: ObservableObject {
     }
 
     deinit {
+        if let editingSessionToken { DeckEditingSessionRegistry.shared.end(editingSessionToken) }
         // Invalidate the measurement buffer timer so a deck builder dismissed
         // mid-measurement doesn't leave a Timer running against a deallocated
         // owner. Timer.invalidate() is safe to call from any actor context.
         bufferTimer?.invalidate()
         autosaveTimer?.invalidate()
-        // Do not cancel `pendingSyncTriggerTask`: after dismissal the view model
-        // may deallocate before its one-yield background push begins. The task
-        // owns no editor state and must be allowed to drain the durable queue.
+        // SyncEngine owns deferred upload wakeups after this model disappears.
         // Set<AnyCancellable> auto-cancels its members on deinit.
     }
 
@@ -892,6 +891,12 @@ class DeckBuilderViewModel: ObservableObject {
         return drawingData.levels.contains { !$0.vertices.isEmpty || !$0.edges.isEmpty }
     }
 
+    func resumeEditingSession() {
+        guard editingSessionToken == nil else { return }
+        editingSessionToken = DeckEditingSessionRegistry.shared.begin(designId: deckDesign.id)
+        didExitEditor = false
+    }
+
     /// Final persistence guard used when the designer is dismissed or the app
     /// leaves the foreground. The timer is crash recovery; exit/background
     /// must commit the current drawing immediately.
@@ -901,6 +906,12 @@ class DeckBuilderViewModel: ObservableObject {
             save()
         }
         enqueueLatestDeckDesignIfNeeded()
+        didExitEditor = true
+        if let editingSessionToken { DeckEditingSessionRegistry.shared.end(editingSessionToken) }
+        editingSessionToken = nil
+        let waiters = exitWaiters
+        exitWaiters.removeAll()
+        waiters.forEach { $0.resume() }
         schedulePendingDeckDesignSync()
     }
 
@@ -933,17 +944,12 @@ class DeckBuilderViewModel: ObservableObject {
     }
 
     private func schedulePendingDeckDesignSync() {
-        guard let syncEngine else { return }
-        pendingSyncTriggerTask?.cancel()
-        pendingSyncTriggerTask = Task { [weak self, weak syncEngine] in
-            // Dismissal and tab rendering get the first turn. The queue record
-            // is already durable locally; network work is never on the editor's
-            // gesture or close path.
-            await Task.yield()
-            guard !Task.isCancelled, let syncEngine else { return }
-            await syncEngine.triggerSync()
-            self?.pendingSyncTriggerTask = nil
-        }
+        syncEngine?.scheduleUploadWakeup()
+    }
+
+    private func waitForEditorExit() async {
+        guard !didExitEditor else { return }
+        await withCheckedContinuation { exitWaiters.append($0) }
     }
 
     func setVinylCatalogItemId(_ itemId: String?) {
@@ -3925,6 +3931,10 @@ class DeckBuilderViewModel: ObservableObject {
     // MARK: - Persistence
 
     func save() {
+        let signposter = CapturePerformanceTrace.signposter
+        let span = signposter.beginInterval("DeckLocalSave", id: signposter.makeSignpostID())
+        defer { signposter.endInterval("DeckLocalSave", span) }
+
         // A queued write only ever holds state this save is about to persist
         // anyway — let it go so it can't land again behind an undo.
         cancelPendingSave()
@@ -4144,7 +4154,9 @@ class DeckBuilderViewModel: ObservableObject {
         // precisely when the server copy is the user's only remaining copy; the
         // old guard turned a save failure into a silent sync skip. Bug 9f4aeaf8.
         guard hasAnyCommittedGeometry || deckDesign.modelContext != nil else { return }
-        let drawingJSONString = drawingEncoder(drawingData)
+        // save() already reconciled and encoded this exact local revision.
+        // Reuse its bytes for identity and the outbox; never encode on exit twice.
+        let drawingJSONString = deckDesign.drawingDataJSON
         // `version` is deliberately absent from the identity key. It is now
         // client-incremented by the enqueue itself, so including it would make
         // every key differ from the last one recorded and re-enqueue an
@@ -4222,7 +4234,6 @@ class DeckBuilderViewModel: ObservableObject {
         // primary save.
         save()
         enqueueLatestDeckDesignIfNeeded()
-        schedulePendingDeckDesignSync()
         // DESIGN SAVED used to be presented whenever the drawing had geometry —
         // including when the save() above it threw. Reporting a save that did
         // not happen is worse than reporting nothing. Bug 9f4aeaf8.
@@ -4239,37 +4250,53 @@ class DeckBuilderViewModel: ObservableObject {
         // tab updates.
         guard hasGeometry else { return nil }
 
-        let drawingSnapshot = drawingData
+        guard saveFailure == nil else { return nil }
+        let drawingJSON = deckDesign.drawingDataJSON
+        let render = thumbnailRenderer
         return Task {
-            // Let the close action finish its dismissal transaction before
-            // starting even the local render. The drawing is already durable.
-            await Task.yield()
-
-            guard let image = thumbnailRenderer(drawingSnapshot) else {
-                print("[DeckBuilder] Thumbnail render returned nil — drawing already saved, skipping S3 upload")
-                return
-            }
+            // onDisappear is the actual cloud boundary. Task.yield alone says
+            // nothing about dismissal completion or which executor does work.
+            await waitForEditorExit()
+            guard !Task.isCancelled else { return }
+            let image = await DeckThumbnailWorker.shared.render(drawingJSON: drawingJSON, using: render)
+            guard !Task.isCancelled, let image else { return }
 
             do {
                 let url = try await thumbnailUploader(image, deckDesign)
+                // A reopened editor or later revision owns its own thumbnail.
+                // Never save the old view model's drawing after an upload awaits.
+                guard deckDesign.drawingDataJSON == drawingJSON,
+                      !DeckEditingSessionRegistry.shared.isHeld(
+                        entityType: "deckDesign", entityId: deckDesign.id
+                      ) else { return }
+                let previousThumbnail = deckDesign.thumbnailURL
                 deckDesign.thumbnailURL = url
-                // Re-save locally, then hand the new thumbnail revision to the
-                // deferred queue. This work only exists after editor exit.
-                save()
-                enqueueLatestDeckDesignIfNeeded()
-                schedulePendingDeckDesignSync()
-
-                // Insert project_photos row so the deck drawing appears in the project gallery
+                do {
+                    try modelContext?.save()
+                } catch {
+                    deckDesign.thumbnailURL = previousThumbnail
+                    print("[DeckBuilder] Thumbnail metadata save failed; drawing remains durable: \(error)")
+                    return
+                }
+                if let syncEngine {
+                    _ = syncEngine.recordOperation(
+                        entityType: .deckDesign,
+                        entityId: deckDesign.id,
+                        operationType: "update",
+                        changedFields: ["thumbnail_url": url],
+                        deferPush: true
+                    )
+                    schedulePendingDeckDesignSync()
+                }
                 if let projectId = deckDesign.projectId {
                     try await insertProjectPhoto(
-                        url: url,
-                        projectId: projectId,
+                        url: url, projectId: projectId,
                         companyId: deckDesign.companyId,
                         uploadedBy: deckDesign.createdBy ?? ""
                     )
                 }
             } catch {
-                print("[DeckBuilder] Failed to save thumbnail: \(error) — drawing was already persisted by the initial save()")
+                print("[DeckBuilder] Thumbnail upload failed; drawing remains durable: \(error)")
             }
         }
     }

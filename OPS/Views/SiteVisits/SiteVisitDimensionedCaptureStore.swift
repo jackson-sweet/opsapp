@@ -83,11 +83,15 @@ enum SiteVisitDimensionedCaptureStore {
         let coordinator = SiteVisitPersistenceCoordinator(
             modelContext: modelContext,
             companyId: companyId
-        )
+        ).isolatedSession()
         try coordinator.commit {
-            modelContext.insert(artifact)
+            coordinator.modelContext.insert(artifact)
         }
-        return artifact
+        let artifactId = artifact.id
+        let descriptor = FetchDescriptor<SiteVisitCaptureArtifact>(predicate: #Predicate { $0.id == artifactId })
+        // Resolve the persisted identity in the caller's context, never insert
+        // a model already registered to the independent transaction context.
+        return try modelContext.fetch(descriptor).first ?? artifact
     }
 
     private static func savePrimaryPhotoToImageCache(_ captured: CapturedAssets) throws -> SavedAssets {

@@ -40,8 +40,7 @@ final class SiteVisitInboundSyncTests: XCTestCase {
 
     func test_dataActorRealtimeReconstructsCanonicalParentAndChildren() async throws {
         let container = try makeContainer()
-        let actor = DataActor(modelContainer: container)
-        await actor.configure()
+        let actor = try await DataActor.makeBackgroundConfigured(modelContainer: container)
         let bundle = try makeBundle()
 
         await actor.handleRealtimeUpdate(.siteVisit(bundle.visit))
@@ -82,8 +81,7 @@ final class SiteVisitInboundSyncTests: XCTestCase {
 
     func test_dataActorRealtimeDeleteTombstonesSiteVisitRows() async throws {
         let container = try makeContainer()
-        let actor = DataActor(modelContainer: container)
-        await actor.configure()
+        let actor = try await DataActor.makeBackgroundConfigured(modelContainer: container)
         let bundle = try makeBundle()
         await actor.handleRealtimeUpdate(.siteVisit(bundle.visit))
         await actor.handleRealtimeUpdate(.siteVisitArtifact(bundle.artifacts[0]))
@@ -118,6 +116,31 @@ final class SiteVisitInboundSyncTests: XCTestCase {
             RealtimeUpdate.siteVisitIdentityDraft(bundle.identityDrafts[0]).mergedEntityName,
             "SiteVisitIdentityDraft"
         )
+    }
+
+    func testUnchangedRealtimeEchoDoesNotPublishAnotherVisitInvalidation() async throws {
+        let defaults = UserDefaults.standard
+        let previousCompany = defaults.string(forKey: "currentUserCompanyId")
+        defaults.set(companyId, forKey: "currentUserCompanyId")
+        defer {
+            if let previousCompany { defaults.set(previousCompany, forKey: "currentUserCompanyId") }
+            else { defaults.removeObject(forKey: "currentUserCompanyId") }
+        }
+        let container = try makeContainer()
+        let actor = try await DataActor.makeBackgroundConfigured(modelContainer: container)
+        let bundle = try makeBundle()
+        let counter = VisitInvalidationCounter()
+        let observer = NotificationCenter.default.addObserver(forName: .inboundDataMerged, object: nil, queue: nil) { note in
+            if (note.userInfo?[InboundChangeSignal.entityNamesKey] as? [String])?.contains("SiteVisit") == true {
+                counter.increment()
+            }
+        }
+        defer { NotificationCenter.default.removeObserver(observer) }
+        await actor.handleRealtimeUpdate(.siteVisit(bundle.visit))
+        let initial = counter.value
+        XCTAssertEqual(initial, 1)
+        await actor.handleRealtimeUpdate(.siteVisit(bundle.visit))
+        XCTAssertEqual(counter.value, initial, "A no-op echo must not rebuild mounted capture views")
     }
 
     private func makeContainer() throws -> ModelContainer {
@@ -192,4 +215,11 @@ final class SiteVisitInboundSyncTests: XCTestCase {
         """
         return try JSONDecoder().decode(SiteVisitBundleDTO.self, from: Data(json.utf8))
     }
+}
+
+private final class VisitInvalidationCounter: @unchecked Sendable {
+    private let lock = NSLock()
+    private var count = 0
+    func increment() { lock.lock(); count += 1; lock.unlock() }
+    var value: Int { lock.lock(); defer { lock.unlock() }; return count }
 }

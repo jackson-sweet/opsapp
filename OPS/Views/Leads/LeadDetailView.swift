@@ -587,13 +587,13 @@ struct LeadDetailView: View {
             Button("CANCEL", role: .cancel) {}
         }
         .fullScreenCover(isPresented: $showingCameraCapture) {
-            CameraBatchView { images in
-                showingCameraCapture = false
-                guard !images.isEmpty else { return }
-                let reservationIDs = images.map { _ in UUID().uuidString }
-                importingPhotoIDs.append(contentsOf: reservationIDs)
-                addPhotos(images, reservationIDs: reservationIDs)
+            CameraBatchView(owner: leadCameraOwner) { batch in
+                await LeadImageService.shared.acceptCapture(batch, opportunity: opportunity, userID: dataController.currentUser?.id ?? "")
             }
+        }
+        .task(id: opportunity.id) {
+            do { try await LeadImageService.shared.recoverCaptures(opportunity: opportunity, userID: dataController.currentUser?.id ?? "") }
+            catch { ToastCenter.shared.present(Toast(label: Feedback.Err.saveFailed, tone: .error)) }
         }
         .photosPicker(
             isPresented: $showingPhotoLibrary,
@@ -667,6 +667,10 @@ struct LeadDetailView: View {
     }
 
     // MARK: - Photos
+
+    private var leadCameraOwner: StagedCaptureOwner {
+        StagedPhotoDestinations.owner(companyID: opportunity.companyId, userID: dataController.currentUser?.id ?? "", kind: "lead", id: opportunity.id)
+    }
 
     private func addPhotos(_ images: [UIImage], reservationIDs: [String]) {
         Task {

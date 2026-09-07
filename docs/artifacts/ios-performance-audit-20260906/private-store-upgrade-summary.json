@@ -1,0 +1,15 @@
+{
+  "result": "Passed",
+  "totalTestCount": 1,
+  "passedTests": 1,
+  "failedTests": 0,
+  "skippedTests": 0,
+  "sourceHead": "622010a01839387a91e6fadbba3444950f6acfff",
+  "schemaFrom": "25.0.0",
+  "schemaTo": "26.0.0",
+  "digestGroups": 16,
+  "independentReopen": true,
+  "originalStoreUnchanged": true,
+  "referencedAssetBytesVerified": false,
+  "phoneModified": false
+}

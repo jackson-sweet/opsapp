@@ -520,28 +520,51 @@ class CalendarViewModel: ObservableObject {
             return
         }
 
-        let actor: DataActor
-        if let existing = dataController.dataActor {
-            actor = existing
-        } else {
-            actor = DataActor(modelContainer: context.container)
-            await actor.configure()
-        }
-
+        // Capture scope before readiness can suspend; a logout may invalidate
+        // the old User model while the actor is being prepared.
+        let userID = user.id
         let taskScope = currentTaskScope()
         let auxiliaryScope = CalendarAuxiliaryScope(
-            userId: user.id,
+            userId: userID,
             companyId: companyId,
             canViewAllCalendar: PermissionStore.shared.can("calendar.view", requiredScope: "all"),
             canApproveTimeOff: PermissionStore.shared.can("time_off.approve")
         )
-        let snapshot = await actor.calendarLoadSnapshot(
+        func isCurrent() -> Bool {
+            !Task.isCancelled && generation == calendarLoadGeneration
+                && self.dataController === dataController
+                && dataController.modelContext === context
+                && dataController.currentUser?.id == userID
+                && dataController.currentUser?.companyId == companyId
+        }
+        let actor: DataActor
+        if FeatureFlags.useDataActor {
+            guard let ready = await dataController.readyDataActor(), isCurrent() else {
+                if generation == calendarLoadGeneration { isLoading = false }
+                return
+            }
+            actor = ready
+        } else {
+            // Flag-off still uses an independent background reader, preserving
+            // the calendar's existing off-main fallback contract.
+            do {
+                actor = try await DataActor.makeBackgroundConfigured(modelContainer: context.container)
+            } catch {
+                if generation == calendarLoadGeneration { isLoading = false }
+                return
+            }
+            guard isCurrent() else { return }
+        }
+        guard let snapshot = try? await actor.calendarLoadSnapshot(
             taskScope: taskScope,
             auxiliaryScope: auxiliaryScope,
             weekStart: weekStart,
             centerDate: centerDate
-        )
-        guard !Task.isCancelled, generation == calendarLoadGeneration else { return }
+        ) else {
+            if isCurrent() { isLoading = false }
+            return
+        }
+        guard isCurrent(), !FeatureFlags.useDataActor || dataController.dataActor === actor else { return }
 
         // Resolve exactly the actor-approved ids into main-context models. No
         // actor-owned @Model crosses isolation and no unbounded relationship

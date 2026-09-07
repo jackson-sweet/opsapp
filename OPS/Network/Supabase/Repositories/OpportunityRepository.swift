@@ -81,6 +81,27 @@ class OpportunityRepository {
             .value
     }
 
+    /// A bounded, company-scoped suggestion page. Quoted filter values keep
+    /// punctuation in user input out of PostgREST's filter grammar.
+    func searchForSiteVisit(_ query: String) async throws -> [OpportunityDTO] {
+        let text = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        var request = client.from("opportunities").select()
+            .eq("company_id", value: companyId)
+            .is("deleted_at", value: nil)
+            .is("archived_at", value: nil)
+            .not("stage", operator: .in, value: "(won,lost,discarded)")
+        if !text.isEmpty {
+            let literal = text.replacingOccurrences(of: "\\", with: "\\\\")
+                .replacingOccurrences(of: "\"", with: "\\\"")
+                .replacingOccurrences(of: "%", with: "\\%")
+                .replacingOccurrences(of: "_", with: "\\_")
+            let pattern = "\"%\(literal)%\""
+            request = request.or(["contact_name", "contact_email", "contact_phone", "title", "address"]
+                .map { "\($0).ilike.\(pattern)" }.joined(separator: ","))
+        }
+        return try await request.order("created_at", ascending: false).limit(50).execute().value
+    }
+
     func fetchOne(_ opportunityId: String) async throws -> OpportunityDTO {
         try await client
             .from("opportunities")

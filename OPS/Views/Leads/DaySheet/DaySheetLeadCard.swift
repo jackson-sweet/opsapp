@@ -501,6 +501,7 @@ private struct DaySheetCardHeaderShell: ViewModifier {
 /// scrolling list would be the wrong trade.
 private struct DaySheetPhotoStrip: View {
 
+    @EnvironmentObject private var dataController: DataController
     let opportunity: Opportunity
     let canEdit: Bool
 
@@ -550,13 +551,13 @@ private struct DaySheetPhotoStrip: View {
             Button("CANCEL", role: .cancel) {}
         }
         .fullScreenCover(isPresented: $showingCamera) {
-            CameraBatchView { images in
-                showingCamera = false
-                guard !images.isEmpty else { return }
-                let reservationIDs = images.map { _ in UUID().uuidString }
-                importingPhotoIDs.append(contentsOf: reservationIDs)
-                addPhotos(images, reservationIDs: reservationIDs)
+            CameraBatchView(owner: StagedPhotoDestinations.owner(companyID: opportunity.companyId, userID: dataController.currentUser?.id ?? "", kind: "lead", id: opportunity.id)) { batch in
+                await imageService.acceptCapture(batch, opportunity: opportunity, userID: dataController.currentUser?.id ?? "")
             }
+        }
+        .task(id: opportunity.id) {
+            do { try await imageService.recoverCaptures(opportunity: opportunity, userID: dataController.currentUser?.id ?? "") }
+            catch { ToastCenter.shared.present(Toast(label: Feedback.Err.saveFailed, tone: .error)) }
         }
         .photosPicker(
             isPresented: $showingLibrary,

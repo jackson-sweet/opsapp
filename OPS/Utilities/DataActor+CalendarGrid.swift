@@ -28,7 +28,8 @@ extension DataActor {
         scope: CalendarTaskScope,
         weekStart: Date,
         calendar: Calendar = .current
-    ) -> CalendarWeekCacheSnapshot {
+    ) throws -> CalendarWeekCacheSnapshot {
+        try checkActiveModelSession()
         let window = CalendarWeekWindow(weekStart: weekStart, calendar: calendar)
         let start = window.start
         let endExclusive = window.endExclusive
@@ -80,8 +81,9 @@ extension DataActor {
         weekStart: Date,
         centerDate: Date,
         calendar: Calendar = .current
-    ) -> CalendarLoadSnapshot {
-        CalendarLoadSnapshot(
+    ) throws -> CalendarLoadSnapshot {
+        try checkActiveModelSession()
+        return try CalendarLoadSnapshot(
             week: calendarWeekCache(scope: taskScope, weekStart: weekStart, calendar: calendar),
             auxiliary: calendarAuxiliarySnapshot(
                 scope: auxiliaryScope,
@@ -154,7 +156,8 @@ extension DataActor {
         since cutoff: Date,
         tutorialOnly: Bool,
         calendar: Calendar = .current
-    ) -> [String: [ScheduledTaskPreview]] {
+    ) throws -> [String: [ScheduledTaskPreview]] {
+        try checkActiveModelSession()
         // `?? unscheduledFloor` only satisfies the optional comparison — the
         // `!= nil` conjunct means it never decides a row.
         let unscheduledFloor = Date.distantPast

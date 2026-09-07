@@ -1108,6 +1108,7 @@ final class DeckBuilderRegressionTests: XCTestCase {
         XCTAssertEqual(design.drawingData.edges.count, 2)
         XCTAssertTrue(design.needsSync)
         XCTAssertNotNil(thumbnailWork)
+        viewModel.flushBeforeExit() // the view's actual onDisappear boundary
         await fulfillment(of: [uploadStarted], timeout: 1)
         XCTAssertNil(
             design.thumbnailURL,

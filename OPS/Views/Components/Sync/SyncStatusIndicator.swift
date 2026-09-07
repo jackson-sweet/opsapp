@@ -2,19 +2,22 @@
 //  SyncStatusIndicator.swift
 //  OPS
 //
-//  Compact sync pill shared by Home's header and the tab-view overlay. Tapping
+//  Compact sync pill superimposed on every root's header. Tapping
 //  opens PENDING WORK (SYNC RECOVERY · T6). Its attention state —
 //  "<n> NEED A LOOK",
 //  tan normally, rose when anything is parked (out of auto-retries) — takes
 //  precedence over the existing pending/syncing states, and its count comes from
 //  the same `RecoveryInventory` the recovery screen reads (not raw pending).
 //
-//  Placement: every root floats this in the app-level band below its measured
-//  header — Home included (bug 417aac7b: the pill overlays Home's content
-//  instead of displacing it; it no longer owns an in-flow header row). Home
-//  project mode is the sole exception and keeps the same control inside the top
-//  project stack after AppHeader leaves the screen. See
-//  `SyncPillHeaderLayoutTests` and `HomeSyncStatusLayoutTests`.
+//  Placement: every root superimposes this on its own `AppHeader`, hanging off
+//  the header's bottom edge (bug 417aac7b). It reserves no layout — nothing
+//  below the header moves when an attention item appears — and it is allowed to
+//  cover header TEXT (the greeting, the company line, the screen title) because
+//  something needing attention outranks a greeting. It is never allowed to
+//  cover a CONTROL, so it reserves the trailing cluster's column; see
+//  `HeaderSyncStatusGeometry`. Home project mode is the sole exception and
+//  keeps the same control inside the top project stack after AppHeader leaves
+//  the screen. See `SyncPillHeaderLayoutTests` and `HomeSyncStatusLayoutTests`.
 //
 
 import Combine
@@ -23,11 +26,12 @@ import SwiftData
 
 /// The needs-a-look pill — "<n> NEED A LOOK", tan normally, rose when anything
 /// is parked. Extracted from `SyncStatusIndicator` so the visual can be rendered
-/// and geometrically verified without a DataController or a live SwiftData
-/// context (see `SyncPillHeaderLayoutTests`).
+/// and geometrically verified in isolation; the layout proofs measure the whole
+/// shipped control inside the shipped `HeaderSyncStatusOverlay` (see
+/// `SyncPillHeaderLayoutTests` and `HomeSyncStatusLayoutTests`).
 ///
-/// The pill still floats above scrolling content on non-Home roots, so two
-/// things remain deliberate in the shared visual:
+/// The pill floats above the header's fade — and, on Home, above the live map —
+/// so two things remain deliberate in the shared visual:
 ///
 /// * **Opaque base under the tone wash.** The tint alone let the
 ///   content behind bleed through and made the label unreadable over a busy
@@ -114,10 +118,10 @@ struct SyncAttentionPill: View {
         )
     }
 
-    /// Accessibility fallback for Home's measured header. The label keeps the
-    /// user's chosen text size and full count, wrapping inside the 20pt header
-    /// inset instead of painting beyond the screen. A button surface replaces
-    /// the capsule because the control can now be taller than one text line.
+    /// Accessibility fallback. The label keeps the user's chosen text size and
+    /// full count, wrapping inside the insets its host offers instead of
+    /// painting beyond the screen. A button surface replaces the capsule
+    /// because the control can now be taller than one text line.
     private var expandedPill: some View {
         HStack(alignment: .center, spacing: OPSStyle.Layout.spacing2) {
             statusIcon
@@ -168,8 +172,119 @@ struct SyncAttentionPill: View {
 }
 
 enum SyncStatusIndicatorPlacement: Equatable {
-    case appOverlay
+    /// Superimposed on a root's `AppHeader`, hanging off its bottom edge.
+    case header
+    /// Home project mode's owned project stack, after `AppHeader` leaves.
     case projectHeader
+}
+
+/// Whether a root's header may superimpose the pill at all.
+///
+/// The pill is the most urgent thing on screen, so it outranks the greeting,
+/// the company line and the screen title it covers. It yields only to another
+/// sync voice: the restored banner, or a toast that has claimed the topic.
+enum HeaderSyncStatusPlacementPolicy {
+    static func showsHeaderOverlay(
+        isSyncRestoredAlertVisible: Bool,
+        isSuppressedByToast: Bool
+    ) -> Bool {
+        !isSyncRestoredAlertVisible && !isSuppressedByToast
+    }
+}
+
+/// Geometry of the pill superimposed on `AppHeader`.
+///
+/// Bug 417aac7b closed wrong twice. The first fix put the pill in flow inside
+/// Home's measured header, which pushed TODAY / ACTIVE / ALL and the map down.
+/// The second floated it in the app-level band starting exactly at the header's
+/// lower edge — where it landed on top of the ALL filter chip. It now hangs off
+/// the header's own bottom edge as an overlay: zero reserved layout, and no
+/// reach past the header into the filter row.
+///
+/// The one control sharing that rectangle is the header's trailing cluster —
+/// Home's 44pt avatar, every other root's search / action buttons — and it sits
+/// in the TOP band row. A short pill stays below it; a tall one (accessibility
+/// sizes wrap the label) does not. Rather than depend on which, the overlay
+/// reserves the cluster's column outright, so the invariant holds at every
+/// Dynamic Type size, width and header type by construction.
+enum HeaderSyncStatusGeometry {
+    /// Gap kept between the pill and the trailing control cluster.
+    static let controlClearance: CGFloat = OPSStyle.Layout.spacing2
+
+    /// Trailing inset for the superimposed pill.
+    ///
+    /// - Parameters:
+    ///   - headerWidth: width of the header the pill is superimposed on.
+    ///   - trailingSlotMinX: leading edge of the trailing control cluster in the
+    ///     header's own coordinate space, or `nil` when the header carries no
+    ///     trailing control (Settings' expanded search field, for instance).
+    static func trailingInset(
+        headerWidth: CGFloat,
+        trailingSlotMinX: CGFloat?
+    ) -> CGFloat {
+        let edgeInset: CGFloat = OPSStyle.Layout.spacing3_5
+        guard let trailingSlotMinX else { return edgeInset }
+        let clearedColumn: CGFloat = headerWidth - trailingSlotMinX + controlClearance
+        return min(max(edgeInset, clearedColumn), headerWidth)
+    }
+}
+
+/// Bounds of the superimposed pill, published by `HeaderSyncStatusOverlay`.
+///
+/// Bug 417aac7b closed wrong twice because nothing measured where the pill
+/// actually LANDED. Publishing its real frame lets the layout proofs assert
+/// non-intersection against the shipped composition — the real `AppHeader`,
+/// the real trailing controls, the real pill — instead of a reconstruction of
+/// it that can drift from what ships.
+struct HeaderSyncStatusPillBoundsKey: PreferenceKey {
+    static let defaultValue: Anchor<CGRect>? = nil
+
+    static func reduce(value: inout Anchor<CGRect>?, nextValue: () -> Anchor<CGRect>?) {
+        value = nextValue() ?? value
+    }
+}
+
+/// The pill's superimposed placement on a root header.
+///
+/// `AppHeader` and the layout proof (`HomeSyncStatusLayoutTests`) render this
+/// same view, so the regression test measures the SHIPPED geometry rather than
+/// a copy of it that can drift. Hosts it as an overlay on the header content —
+/// never in flow — and hands it the header's trailing-slot anchor.
+struct HeaderSyncStatusOverlay<Pill: View>: View {
+    private let trailingSlot: Anchor<CGRect>?
+    private let pill: () -> Pill
+
+    init(
+        trailingSlot: Anchor<CGRect>?,
+        @ViewBuilder pill: @escaping () -> Pill
+    ) {
+        self.trailingSlot = trailingSlot
+        self.pill = pill
+    }
+
+    var body: some View {
+        GeometryReader { proxy in
+            pill()
+                .anchorPreference(
+                    key: HeaderSyncStatusPillBoundsKey.self,
+                    value: .bounds
+                ) { $0 }
+                .frame(
+                    maxWidth: .infinity,
+                    maxHeight: .infinity,
+                    alignment: .bottomTrailing
+                )
+                .padding(.leading, OPSStyle.Layout.spacing3_5)
+                .padding(
+                    .trailing,
+                    HeaderSyncStatusGeometry.trailingInset(
+                        headerWidth: proxy.size.width,
+                        trailingSlotMinX: trailingSlot.map { proxy[$0].minX }
+                    )
+                )
+                .padding(.bottom, OPSStyle.Layout.spacing2)
+        }
+    }
 }
 
 enum HomeSyncStatusPlacementPolicy {
@@ -228,16 +343,70 @@ struct HomeSyncStatusHostTransition: Transition {
 /// discarding a debounced refresh in flight.
 @MainActor
 final class SyncStatusIndicatorModel: ObservableObject {
-    @Published private(set) var attentionCount = 0
-    @Published private(set) var anyParked = false
+    @Published private(set) var summary = RecoveryAttentionSummary()
+    var attentionCount: Int { summary.attentionCount }
+    var anyParked: Bool { summary.anyParked }
+    private var refreshTask: Task<Void, Never>?
+    private var refreshGeneration = 0
+    private var displayedIdentity: String?
+    private var requestedContainer: ModelContainer?
+
+#if DEBUG
+    /// Test seam for the layout proofs. Seeds the displayed summary directly so
+    /// the REAL `SyncStatusIndicator` can be rendered and measured — rather than
+    /// a hand-copied stand-in that drifts from it — without standing up a live
+    /// SwiftData inventory read. Never called from app code.
+    func seedAttentionForLayoutProof(_ summary: RecoveryAttentionSummary) {
+        self.summary = summary
+    }
+#endif
 
     func refresh(from modelContext: ModelContext) {
-        let inventory = RecoveryInventory.load(
-            from: modelContext,
-            queue: ClientLeadAutocreateQueue.shared
-        )
-        attentionCount = inventory.attentionCount
-        anyParked = inventory.attention.contains { $0.tone == .parked }
+        requestedContainer = modelContext.container
+        refreshGeneration += 1
+        let user = UserDefaults.standard.string(forKey: "currentUserId") ?? ""
+        let company = UserDefaults.standard.string(forKey: "currentUserCompanyId") ?? ""
+        let identity = "\(user.lowercased()):\(company.lowercased())"
+        if displayedIdentity != identity {
+            displayedIdentity = identity
+            if summary != RecoveryAttentionSummary() { summary = RecoveryAttentionSummary() }
+        }
+        // A slow read coalesces requests instead of building concurrent inventories.
+        guard refreshTask == nil else { return }
+        refreshTask = Task { [weak self] in
+            guard let self else { return }
+            repeat {
+                let generation = self.refreshGeneration
+                let companyId = UserDefaults.standard.string(forKey: "currentUserCompanyId")?.lowercased() ?? ""
+                let userId = UserDefaults.standard.string(forKey: "currentUserId")?.lowercased() ?? ""
+                guard !companyId.isEmpty, !userId.isEmpty,
+                      let container = self.requestedContainer else { break }
+                let queue = ClientLeadAutocreateQueue.shared
+                let autocreates = (queue.parkedRequests + queue.activeRequests).map(AutocreateSnapshot.init(from:))
+                do {
+                    let quarantines = try await SiteVisitRecoveryVault.shared.quarantinedVisitIds(userId: userId, companyId: companyId)
+                    let snapshot = try await Task.detached(priority: .utility) {
+                        try RecoveryAttentionReader.read(
+                            container: container, companyId: companyId,
+                            autocreates: autocreates, quarantinedVisitIds: quarantines
+                        )
+                    }.value
+                    guard !Task.isCancelled else { break }
+                    let currentCompany = UserDefaults.standard.string(forKey: "currentUserCompanyId")?.lowercased() ?? ""
+                    let currentUser = UserDefaults.standard.string(forKey: "currentUserId")?.lowercased() ?? ""
+                    if generation == self.refreshGeneration,
+                       currentCompany == companyId, currentUser == userId,
+                       self.summary != snapshot {
+                        self.summary = snapshot
+                    }
+                } catch {
+                    // An unreadable snapshot is not evidence of zero attention.
+                    print("[SyncStatus] Compact recovery read failed: \(error)")
+                }
+                if generation == self.refreshGeneration { break }
+            } while !Task.isCancelled
+            self.refreshTask = nil
+        }
     }
 }
 
@@ -279,7 +448,7 @@ struct ProjectModeSyncStatusActions<Status: View, ExitAction: View>: View {
 
 /// Compact indicator showing pending / attention sync status. Tap → PENDING WORK.
 struct SyncStatusIndicator: View {
-    var placement: SyncStatusIndicatorPlacement = .appOverlay
+    var placement: SyncStatusIndicatorPlacement = .header
 
     @EnvironmentObject private var dataController: DataController
     @EnvironmentObject private var statusModel: SyncStatusIndicatorModel
@@ -311,6 +480,14 @@ struct SyncStatusIndicator: View {
 
     // MARK: - Pill variants
 
+    /// Superimposed on a header the pill hangs off its BOTTOM edge, so the
+    /// glove-safe frame has to grow upward over header text rather than
+    /// re-centring the capsule halfway up the band. In the project stack the
+    /// pill shares a normal action row with EXIT PROJECT and stays centred.
+    private var touchTargetAlignment: Alignment {
+        placement == .header ? .bottom : .center
+    }
+
     private var indicatorButton: some View {
         Button {
             showPendingWork = true
@@ -320,7 +497,8 @@ struct SyncStatusIndicator: View {
         .buttonStyle(.plain)
         .frame(
             minWidth: OPSStyle.Layout.touchTargetMin,
-            minHeight: OPSStyle.Layout.touchTargetMin
+            minHeight: OPSStyle.Layout.touchTargetMin,
+            alignment: touchTargetAlignment
         )
         .accessibilityHint("Opens pending work")
     }
@@ -338,16 +516,17 @@ struct SyncStatusIndicator: View {
 
     /// NEW — needs-a-look state. Tan, or rose when a permanent rejection is parked.
     ///
-    /// Every placement adapts for accessibility now that the floating band is
-    /// the pill's only normal-mode home (bug 417aac7b): at accessibility sizes
-    /// it renders the full-width `expandedPill`, wrapping its label inside the
-    /// band's insets instead of painting past the screen edge. The floating
-    /// shadow stays band-only — MOBILE.md §8's single documented exception.
+    /// Every placement adapts for accessibility (bug 417aac7b): at accessibility
+    /// sizes it renders the full-width `expandedPill`, wrapping its label inside
+    /// whatever insets its host gives it instead of painting past the screen
+    /// edge. Superimposed on a header the capsule sits over the header's own
+    /// fade and, on Home, over the live map, so it keeps MOBILE.md §8's single
+    /// documented shadow; inside the project stack it is a plain row member.
     private var attentionPill: some View {
         SyncAttentionPill(
             count: statusModel.attentionCount,
             isParked: statusModel.anyParked,
-            isElevated: placement == .appOverlay,
+            isElevated: placement == .header,
             adaptsForAccessibility: true
         )
     }

@@ -12,6 +12,8 @@ import XCTest
 import SwiftData
 @testable import OPS
 
+// UI fixture models stay on main while the production worker reads its own context.
+@MainActor
 final class HomeRollupDataActorTests: XCTestCase {
 
     /// Containers outlive the contexts they vend, for the whole test case. A
@@ -104,9 +106,8 @@ final class HomeRollupDataActorTests: XCTestCase {
             .count
 
         // Actual: the actor path.
-        let actor = DataActor(modelContainer: container)
-        await actor.configure()
-        let snapshot = await actor.computeHomeRollup(
+        let actor = try await DataActor.makeBackgroundConfigured(modelContainer: container)
+        let snapshot = try await actor.computeHomeRollup(
             projectIds: projectIds,
             companyId: "company-1",
             today: today
@@ -170,9 +171,8 @@ final class HomeRollupDataActorTests: XCTestCase {
             .projectsWithoutTasks(from: try fetchProjects(ids: ids, in: mainContext))
             .count
 
-        let actor = DataActor(modelContainer: container)
-        await actor.configure()
-        let actorCount = await actor.projectsNeedingTasksCount(projectIds: ids)
+        let actor = try await DataActor.makeBackgroundConfigured(modelContainer: container)
+        let actorCount = try await actor.projectsNeedingTasksCount(projectIds: ids)
 
         XCTAssertEqual(actorCount, 2)
         XCTAssertEqual(actorCount, detectorCount)
@@ -247,11 +247,10 @@ final class HomeRollupDataActorTests: XCTestCase {
         // (b) The new cost from the caller's side: wall time of the awaited
         // actor call. This is latency, not main-thread time — the caller
         // suspends, it does not block.
-        let actor = DataActor(modelContainer: container)
-        await actor.configure()
+        let actor = try await DataActor.makeBackgroundConfigured(modelContainer: container)
         var snapshot = HomeRollupSnapshot(rollup: .empty, projectsNeedingTasksCount: 0)
-        let actorDuration = await clock.measure {
-            snapshot = await actor.computeHomeRollup(
+        let actorDuration = try await clock.measure {
+            snapshot = try await actor.computeHomeRollup(
                 projectIds: projectIds,
                 companyId: "company-1",
                 today: today

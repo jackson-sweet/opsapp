@@ -29,6 +29,65 @@ struct OPSApp: App {
         AnalyticsService.shared.start()
     }
     
+    // Released SwiftData shapes stay immutable. Only a successfully opened
+    // current container may enter ContentView or configure auth/sync services.
+    // Opening/migration is owned off-main; failures remain visible and retryable
+    // without resetting, deleting, or replacing potentially unsent installed data.
+    @StateObject private var storage = OPSStorageBootstrap(configuration: Self.storeConfiguration())
+
+    private static func storeConfiguration() -> ModelConfiguration {
+        let schema = Schema(versionedSchema: OPSSchemaCurrent.self)
+        let isHostedXCTest = ProcessInfo.processInfo.environment["XCTestBundlePath"] != nil
+        #if DEBUG
+        let isHermeticQALaunch = ClientSearchActionsQARuntime.isEnabled() ||
+            CatalogSetupQARuntime.isEnabled() ||
+            ScheduleLongPressQARuntime.isEnabled() ||
+            SiteVisitCaptureQARuntime.isEnabled()
+        #else
+        let isHermeticQALaunch = false
+        #endif
+        return OPSModelStore.configuration(
+            schema: schema,
+            isStoredInMemoryOnly: isHostedXCTest || isHermeticQALaunch
+        )
+    }
+
+    var body: some Scene {
+        WindowGroup {
+            storageRootView
+        }
+    }
+
+    private var storageRootView: some View {
+        Group {
+            switch storage.state {
+            case .loading:
+                ProgressView("Opening local data")
+                    .font(OPSStyle.Typography.body)
+                    .tint(OPSStyle.Colors.primaryText)
+                    .foregroundStyle(OPSStyle.Colors.primaryText)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(OPSStyle.Colors.background.ignoresSafeArea())
+                    .preferredColorScheme(.dark)
+            case .failed:
+                StorageRecoveryView {
+                    Task { await storage.open() }
+                }
+            case .ready(let container):
+                OPSInitializedRoot(sharedModelContainer: container)
+            }
+        }
+        .task { await storage.open() }
+    }
+
+}
+
+/// Installing this view is the storage-success boundary. Keep state objects here:
+/// even an unread @StateObject on App can initialize when SwiftUI installs it,
+/// and DataController.init performs auth and image migration work.
+private struct OPSInitializedRoot: View {
+    let sharedModelContainer: ModelContainer
+
     // Observe scene phase for app lifecycle events
     @Environment(\.scenePhase) private var scenePhase
 
@@ -52,66 +111,7 @@ struct OPSApp: App {
     /// screen and perfectly healthy.
     @State private var deckCanaryEvidenceChecked = false
 
-    // Create the model container for SwiftData.
-    // Schema is driven by the LATEST VersionedSchema via the `OPSSchemaCurrent`
-    // alias (OPSSchemaCurrent.swift — the single head declaration every
-    // current-schema surface shares) and the container runs `OPSMigrationPlan`
-    // on launch so stores written by earlier builds (e.g. pre-`WizardState.id`,
-    // pre-catalog, pre-reminders) are migrated in place. **When you add a new
-    // VersionedSchema, repoint the alias** — leaving it stale produces the
-    // "Duplicate version checksums across stages detected" runtime crash
-    // because the migration plan validates from-version/to-version pairs that
-    // overshoot the declared schema. Released schemas are immutable: adding a
-    // persistent property to a live `@Model` referenced by any historical
-    // VersionedSchema changes its absolute fingerprint, so installed stores no
-    // longer match even if every adjacent schema remains distinct. Freeze the
-    // released model shape, scope the widened live model to a new schema, add an
-    // adjacent migration stage, and extend the committed checksum fixture.
-    //
-    // Error 134504 ("unknown model version") means the on-disk fingerprint does
-    // not match a schema in the plan. The store may contain valid local-only or
-    // unsynced data, so startup must preserve it and fail visibly rather than
-    // attempting destructive recovery.
-    var sharedModelContainer: ModelContainer = {
-        let schema = Schema(versionedSchema: OPSSchemaCurrent.self)
-
-        let isHostedXCTest = ProcessInfo.processInfo.environment["XCTestBundlePath"] != nil
-        #if DEBUG
-        let isHermeticQALaunch = ClientSearchActionsQARuntime.isEnabled() ||
-            CatalogSetupQARuntime.isEnabled() ||
-            ScheduleLongPressQARuntime.isEnabled() ||
-            SiteVisitCaptureQARuntime.isEnabled()
-        #else
-        let isHermeticQALaunch = false
-        #endif
-        let modelConfiguration = OPSModelStore.configuration(
-            schema: schema,
-            isStoredInMemoryOnly: isHostedXCTest || isHermeticQALaunch
-        )
-
-        func makeContainer() throws -> ModelContainer {
-            try ModelContainer(
-                for: schema,
-                migrationPlan: OPSMigrationPlan.self,
-                configurations: [modelConfiguration]
-            )
-        }
-
-        do {
-            return try makeContainer()
-        } catch {
-            fatalError(
-                "Failed to open SwiftData store at \(modelConfiguration.url.path). "
-                    + "The store was preserved. \(error)"
-            )
-        }
-    }()
-    
-    var body: some Scene {
-        WindowGroup {
-            rootView
-        }
-    }
+    var body: some View { rootView }
 
     @ViewBuilder
     private var rootView: some View {

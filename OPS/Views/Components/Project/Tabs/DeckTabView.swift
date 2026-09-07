@@ -379,6 +379,19 @@ struct DeckTabView: View {
                 .animation(reduceMotion ? nil : OPSStyle.Animation.standard,
                            value: isViewportInteracting)
         }
+        // Diagonally opposite the title, so the two never collide. Present only
+        // while generated framing is on screen; it inherits the same fade so it
+        // never obscures the geometry being inspected.
+        .overlay(alignment: .bottomTrailing) {
+            if viewMode == .threeD, design.drawingData.hasAnyClosedSurface {
+                FramingIllustrationBadge(drawingData: design.drawingData)
+                    .padding(.trailing, OPSStyle.Layout.spacing2_5)
+                    .padding(.bottom, OPSStyle.Layout.spacing2_5)
+                    .opacity(isViewportInteracting ? 0 : 1)
+                    .animation(reduceMotion ? nil : OPSStyle.Animation.standard,
+                               value: isViewportInteracting)
+            }
+        }
         .padding(.horizontal, OPSStyle.Layout.spacing3)
         .accessibilityAction(named: Text("Expand deck to fullscreen")) { onRequestFullscreen() }
     }

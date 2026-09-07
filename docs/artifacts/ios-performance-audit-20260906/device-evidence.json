@@ -1,0 +1,162 @@
+{
+  "source_review_commit": "94543f955ca8a2ccee4cc148c24c6d33de92cccc",
+  "cpu_report": {
+    "source_filename": "OPS.cpu_resource-2026-09-04-140631.ips",
+    "start_pacific": "2026-09-04 14:03:47.645 -0700",
+    "end_pacific": "2026-09-04 14:06:30.865 -0700",
+    "cpu_seconds": 90,
+    "duration_seconds": 163.22,
+    "reported_average_cpu_percent": 55,
+    "footprint_start_mb": 361.47,
+    "footprint_end_mb": 444.62,
+    "sample_count": 31,
+    "frontmost_active_sample_count": 31,
+    "action_taken": "none",
+    "symbolication": "App-code UUID did not match available local binary; no function attribution inferred."
+  },
+  "crash_reports": [
+    {
+      "source_file": "crash-sep04.ips",
+      "captured_at": "2026-09-04 19:22:32.4485 -0700",
+      "app_version": {
+        "CFBundleShortVersionString": "3.0.5",
+        "CFBundleVersion": "3.0.5",
+        "CFBundleIdentifier": "co.opsapp.ops.OPS"
+      },
+      "exception": {
+        "codes": "0x0000000000000001, 0x0000000195acc878",
+        "rawCodes": [
+          1,
+          6806095992
+        ],
+        "type": "EXC_BREAKPOINT",
+        "signal": "SIGTRAP"
+      },
+      "termination": {
+        "flags": 0,
+        "code": 5,
+        "namespace": "SIGNAL",
+        "indicator": "Trace/BPT trap: 5",
+        "byProc": "exc handler",
+        "byPid": 65826
+      },
+      "faulting_queue": "com.apple.main-thread",
+      "faulting_frames": [
+        {
+          "symbol": "_assertionFailure(_:_:file:line:flags:)",
+          "symbol_offset": 168
+        },
+        {
+          "symbol": "closure #1 in variable initialization expression of OPSApp.sharedModelContainer",
+          "symbol_offset": 2632
+        },
+        {
+          "symbol": "OPSApp.init()",
+          "symbol_offset": 792
+        },
+        {
+          "symbol": "protocol witness for App.init() in conformance OPSApp",
+          "symbol_offset": 12
+        },
+        {
+          "symbol": "static App.main()",
+          "symbol_offset": 156
+        },
+        {
+          "symbol": "static OPSApp.$main()",
+          "symbol_offset": 40
+        },
+        {
+          "symbol": "__debug_main_executable_dylib_entry_point",
+          "symbol_offset": 12
+        },
+        {
+          "symbol": "start",
+          "symbol_offset": 6928
+        }
+      ],
+      "ops_images": [
+        {
+          "name": "OPS",
+          "uuid": "bcac0526-5a98-37fb-8a67-93c3993f7dbd"
+        },
+        {
+          "name": "OPS.debug.dylib",
+          "uuid": "2a642b33-71a1-374b-b24c-522af370f074"
+        }
+      ]
+    },
+    {
+      "source_file": "crash-sep05.ips",
+      "captured_at": "2026-09-05 16:21:19.1488 -0700",
+      "app_version": {
+        "CFBundleShortVersionString": "3.0.5",
+        "CFBundleVersion": "3.0.5",
+        "CFBundleIdentifier": "co.opsapp.ops.OPS"
+      },
+      "exception": {
+        "codes": "0x0000000000000001, 0x0000000195acc878",
+        "rawCodes": [
+          1,
+          6806095992
+        ],
+        "type": "EXC_BREAKPOINT",
+        "signal": "SIGTRAP"
+      },
+      "termination": {
+        "flags": 0,
+        "code": 5,
+        "namespace": "SIGNAL",
+        "indicator": "Trace/BPT trap: 5",
+        "byProc": "exc handler",
+        "byPid": 73148
+      },
+      "faulting_queue": "com.apple.main-thread",
+      "faulting_frames": [
+        {
+          "symbol": "_assertionFailure(_:_:file:line:flags:)",
+          "symbol_offset": 168
+        },
+        {
+          "symbol": "closure #1 in variable initialization expression of OPSApp.sharedModelContainer",
+          "symbol_offset": 2632
+        },
+        {
+          "symbol": "OPSApp.init()",
+          "symbol_offset": 792
+        },
+        {
+          "symbol": "protocol witness for App.init() in conformance OPSApp",
+          "symbol_offset": 12
+        },
+        {
+          "symbol": "static App.main()",
+          "symbol_offset": 156
+        },
+        {
+          "symbol": "static OPSApp.$main()",
+          "symbol_offset": 40
+        },
+        {
+          "symbol": "__debug_main_executable_dylib_entry_point",
+          "symbol_offset": 12
+        },
+        {
+          "symbol": "start",
+          "symbol_offset": 6928
+        }
+      ],
+      "ops_images": [
+        {
+          "name": "OPS",
+          "uuid": "bcac0526-5a98-37fb-8a67-93c3993f7dbd"
+        },
+        {
+          "name": "OPS.debug.dylib",
+          "uuid": "2a642b33-71a1-374b-b24c-522af370f074"
+        }
+      ]
+    }
+  ],
+  "scope": "Diagnostic metadata and selected symbol names only; no database contents exported."
+}

@@ -118,6 +118,15 @@ struct DeckBuilderView: View {
                     screenshot3DButton
                         .padding(.trailing, OPSStyle.Layout.spacing4)
                         .padding(.top, OPSStyle.Layout.spacing2)
+
+                    // The builder renders the same generated framing, so it
+                    // carries the same stamp.
+                    if viewModel.drawingData.hasAnyClosedSurface {
+                        FramingIllustrationBadge(drawingData: viewModel.drawingData)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
+                            .padding(.trailing, OPSStyle.Layout.spacing4)
+                            .padding(.bottom, OPSStyle.Layout.spacing2)
+                    }
                 }
                 .ignoresSafeArea(edges: .horizontal)
 
@@ -490,6 +499,7 @@ struct DeckBuilderView: View {
         }
         .statusBarHidden(true)
         .onAppear {
+            viewModel.resumeEditingSession()
             // Defense-in-depth: prevent deep-link or programmatic access bypassing UI gate
             if !PermissionStore.shared.isFeatureEnabled("deck_builder") {
                 dismiss()
@@ -600,7 +610,7 @@ struct DeckBuilderView: View {
             // Close
             Button {
                 viewModel.saveForExit()
-                dismiss()
+                if viewModel.saveFailure == nil { dismiss() }
             } label: {
                 Image(systemName: OPSStyle.Icons.xmark)
                     .font(.system(size: OPSStyle.Layout.IconSize.md))

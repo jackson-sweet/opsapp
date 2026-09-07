@@ -584,6 +584,7 @@ enum SyncStatusCopy {
             case .visit: return "VISIT"
             case .media: return "MEDIA"
             case .completion: return "COMPLETION"
+            case .leadStage: return "LEAD STAGE"
             }
         }
 

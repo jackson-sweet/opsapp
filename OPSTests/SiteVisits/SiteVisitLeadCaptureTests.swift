@@ -28,15 +28,248 @@ final class SiteVisitLeadCaptureTests: XCTestCase {
     /// Containers stay alive for the test's duration — handing out only
     /// `mainContext` would let the store deallocate under the context.
     private var liveContainers: [ModelContainer] = []
+    private var liveControllers: [DataController] = []
 
-    override func tearDown() {
+    override func tearDown() async throws {
+        // Invalidate timer/notification work while the fixture stores still
+        // exist. P1-4 separately guards production in-flight row lifetimes.
+        for controller in liveControllers { controller.syncEngine.stopForLogoutSync() }
+        for controller in liveControllers { await controller.syncEngine.stopForLogoutAsync() }
+        liveControllers.removeAll()
         liveContainers.removeAll()
-        super.tearDown()
+        try await super.tearDown()
+    }
+
+    func test_createLead_commitsClientContactsAndDraftAtomicallyWithoutSavingCallerWork() async throws {
+        for failFirst in [false, true] {
+            var fail = false
+            let harness = try makeLeadCreateHarness(validateCommit: {
+                if fail { throw URLError(.cannotWriteToFile) }
+            })
+            let vm = harness.viewModel
+            vm.updateIdentityDraft(searchText: "", clientName: "Synthetic company",
+                contactName: "Site person", preferredEmail: "primary@example.com",
+                additionalEmailsText: "crew@example.com, CREW@example.com, second@example.com, primary@example.com",
+                phoneNumber: "250-555-0100", address: "Synthetic address", notes: "Site notes")
+            var probes = 0
+            vm.probeClientVisibility = { _, _ in probes += 1; throw URLError(.notConnectedToInternet) }
+            vm.createOpportunityRemotely = { _, _ in throw TestServerError.guardedCreateRejected }
+            let caller = harness.context
+            caller.autosaveEnabled = false
+            let other = Client(id: UUID().uuidString.lowercased(), name: "Stored B", companyId: Self.companyId)
+            caller.insert(other)
+            try caller.save()
+            other.name = "Pending B"
+            let pendingDraft = SiteVisitIdentityDraft(siteVisitId: UUID().uuidString.lowercased(),
+                companyId: Self.companyId, notes: "Uncommitted B draft")
+            caller.insert(pendingDraft)
+            let otherId = other.id
+            let pendingDraftId = pendingDraft.id
+            let visitId = try XCTUnwrap(vm.siteVisit?.id)
+            fail = failFirst
+            let outcome = await vm.createLeadFromIdentityDraft(dataController: harness.dataController)
+            if failFirst {
+                guard case .failed = outcome else { return XCTFail("Failed transaction must not hand off a client") }
+                XCTAssertNil(vm.identityDraft?.clientId)
+                XCTAssertNil(harness.queue.enqueuedClientId)
+                XCTAssertEqual(probes, 0)
+                let failedReadback = ModelContext(caller.container)
+                XCTAssertEqual(try failedReadback.fetch(FetchDescriptor<Client>()).count, 1)
+                XCTAssertTrue(try failedReadback.fetch(FetchDescriptor<SubClient>()).isEmpty)
+                XCTAssertFalse(try failedReadback.fetch(FetchDescriptor<SyncOperation>()).contains {
+                    $0.entityType == SyncEntityType.client.rawValue || $0.entityType == SyncEntityType.subClient.rawValue
+                })
+                fail = false
+                let retry = await vm.createLeadFromIdentityDraft(dataController: harness.dataController)
+                guard case .queued = retry else { return XCTFail("Retry must save the whole packet") }
+            } else {
+                guard case .queued = outcome else { return XCTFail("Offline packet must be queued") }
+            }
+            let clientId = try XCTUnwrap(vm.identityDraft?.clientId)
+            let fresh = ModelContext(caller.container)
+            let savedClients = try fresh.fetch(FetchDescriptor<Client>())
+            let client = try XCTUnwrap(savedClients.first { $0.id == clientId })
+            XCTAssertEqual(savedClients.count, 2)
+            XCTAssertEqual(client.name, "Synthetic company")
+            XCTAssertEqual(client.notes, "Site notes")
+            XCTAssertEqual(client.subClients.count, 2)
+            XCTAssertTrue(client.subClients.allSatisfy { $0.client?.id == clientId && $0.needsSync })
+            let operations = try fresh.fetch(FetchDescriptor<SyncOperation>())
+            let clientOperation = try XCTUnwrap(operations.first { $0.entityType == SyncEntityType.client.rawValue })
+            XCTAssertEqual(clientOperation.entityId, clientId)
+            XCTAssertEqual(clientOperation.operationType, "create")
+            XCTAssertTrue(SyncFieldGuard.protectedFields(from: [clientOperation], now: Date()).contains("phoneNumber"))
+            XCTAssertEqual(operations.filter { $0.entityType == SyncEntityType.subClient.rawValue }.count, 2)
+            XCTAssertEqual(try fresh.fetch(FetchDescriptor<SiteVisitIdentityDraft>()).first { $0.siteVisitId == visitId }?.clientId, clientId)
+            XCTAssertEqual(savedClients.first { $0.id == otherId }?.name, "Stored B")
+            XCTAssertFalse(try fresh.fetch(FetchDescriptor<SiteVisitIdentityDraft>()).contains { $0.id == pendingDraftId })
+            XCTAssertEqual(other.name, "Pending B")
+            XCTAssertEqual(pendingDraft.notes, "Uncommitted B draft")
+            XCTAssertTrue(caller.hasChanges)
+            // Tapping again while the client create is pending must reuse it,
+            // recheck visibility and deduplicate both extra contacts and outbox.
+            let retry = await vm.createLeadFromIdentityDraft(dataController: harness.dataController)
+            guard case .queued = retry else { return XCTFail("Pending parent still needs delivery") }
+            XCTAssertEqual(vm.identityDraft?.clientId, clientId)
+            XCTAssertEqual(probes, 2)
+            let retried = ModelContext(caller.container)
+            XCTAssertEqual(try retried.fetch(FetchDescriptor<Client>()).count, 2)
+            XCTAssertEqual(try retried.fetch(FetchDescriptor<SubClient>()).count, 2)
+            let sends = try retried.fetch(FetchDescriptor<SyncOperation>())
+            XCTAssertEqual(sends.filter { $0.entityType == SyncEntityType.client.rawValue }.count, 1)
+            XCTAssertEqual(sends.filter { $0.entityType == SyncEntityType.subClient.rawValue }.count, 2)
+        }
+    }
+
+    func test_createLead_updatesExistingClientAndClearsContactFieldsWhilePreservingBlankNotes() async throws {
+        var fail = false
+        let harness = try makeLeadCreateHarness(validateCommit: {
+            if fail { throw URLError(.cannotWriteToFile) }
+        })
+        let client = Client(id: UUID().uuidString.lowercased(), name: "Original", email: "old@example.com",
+            phoneNumber: "250-555-0101", address: "Old address", companyId: Self.companyId, notes: "Old notes")
+        harness.context.insert(client)
+        try harness.context.save()
+        let clientId = client.id
+        harness.viewModel.bindClient(client)
+        harness.viewModel.updateIdentityDraft(searchText: "", clientName: "Updated", contactName: "Person",
+            preferredEmail: "", additionalEmailsText: "extra@example.com", phoneNumber: "250-555-0199",
+            address: "", notes: "")
+        client.name = "Pending elsewhere"
+        harness.viewModel.probeClientVisibility = { _, _ in XCTFail("An already landed parent needs no wait") }
+        harness.viewModel.createOpportunityRemotely = { _, _ in throw URLError(.notConnectedToInternet) }
+        fail = true
+        let failed = await harness.viewModel.createLeadFromIdentityDraft(dataController: harness.dataController)
+        guard case .failed = failed else { return XCTFail("Existing-client edits must fail atomically") }
+        let failedReadback = ModelContext(harness.context.container)
+        let unchanged = try XCTUnwrap(try failedReadback.fetch(FetchDescriptor<Client>()).first)
+        XCTAssertEqual(unchanged.name, "Original")
+        XCTAssertEqual(unchanged.notes, "Old notes")
+        XCTAssertEqual(unchanged.phoneNumber, "250-555-0101")
+        XCTAssertTrue(try failedReadback.fetch(FetchDescriptor<SubClient>()).isEmpty)
+        XCTAssertFalse(try failedReadback.fetch(FetchDescriptor<SyncOperation>()).contains {
+            $0.entityType == SyncEntityType.client.rawValue || $0.entityType == SyncEntityType.subClient.rawValue
+        })
+        XCTAssertEqual(client.name, "Pending elsewhere")
+        XCTAssertEqual(harness.viewModel.identityDraft?.clientId, clientId)
+        fail = false
+        let outcome = await harness.viewModel.createLeadFromIdentityDraft(dataController: harness.dataController)
+        guard case .queued = outcome else { return XCTFail("Lead delivery should be queued") }
+        let readback = ModelContext(harness.context.container)
+        let updated = try XCTUnwrap(try readback.fetch(FetchDescriptor<Client>()).first)
+        XCTAssertEqual(updated.id, clientId)
+        XCTAssertEqual(updated.name, "Updated")
+        XCTAssertEqual(updated.phoneNumber, "250-555-0199")
+        XCTAssertNil(updated.email)
+        XCTAssertNil(updated.address)
+        XCTAssertEqual(updated.notes, "Old notes")
+        XCTAssertEqual(client.name, "Pending elsewhere")
+        XCTAssertTrue(harness.context.hasChanges)
+        let operation = try XCTUnwrap(try readback.fetch(FetchDescriptor<SyncOperation>()).first {
+            $0.entityType == SyncEntityType.client.rawValue
+        })
+        let payload = try XCTUnwrap(try JSONSerialization.jsonObject(with: operation.payload) as? [String: Any])
+        XCTAssertTrue(payload["email"] is NSNull)
+        XCTAssertTrue(payload["address"] is NSNull)
+        XCTAssertNil(payload["notes"], "Blank capture notes must not encode a client-note clear")
+        XCTAssertEqual(payload["phone_number"] as? String, "250-555-0199")
+        XCTAssertTrue(operation.getChangedFields().contains("phoneNumber"))
+
+        harness.viewModel.updateIdentityDraft(searchText: "", clientName: "Updated", contactName: "Person",
+            preferredEmail: "", additionalEmailsText: "extra@example.com", phoneNumber: "250-555-0199",
+            address: "", notes: "New captured notes")
+        let noteUpdate = await harness.viewModel.createLeadFromIdentityDraft(dataController: harness.dataController)
+        guard case .queued = noteUpdate else { return XCTFail("Nonblank note update should be queued") }
+        let noteReadback = ModelContext(harness.context.container)
+        XCTAssertEqual(try noteReadback.fetch(FetchDescriptor<Client>()).first?.notes, "New captured notes")
+        let noteOperation = try XCTUnwrap(try noteReadback.fetch(FetchDescriptor<SyncOperation>()).first {
+            $0.entityType == SyncEntityType.client.rawValue
+        })
+        let notePayload = try XCTUnwrap(try JSONSerialization.jsonObject(with: noteOperation.payload) as? [String: Any])
+        XCTAssertEqual(notePayload["notes"] as? String, "New captured notes")
+        XCTAssertTrue(notePayload["email"] is NSNull)
+        XCTAssertTrue(notePayload["address"] is NSNull)
+        XCTAssertEqual(client.name, "Pending elsewhere")
+        XCTAssertTrue(harness.context.hasChanges)
+    }
+
+    func test_createLead_resumedClientBoundBlankDraftPreservesExistingClientNotes() async throws {
+        let harness = try makeLeadCreateHarness()
+        let client = Client(id: UUID().uuidString.lowercased(), name: "Original",
+            email: "legacy@example.com", companyId: Self.companyId, notes: "Existing client notes")
+        harness.context.insert(client)
+        let visit = insertVisit(id: UUID().uuidString.lowercased(), into: harness.context)
+        let draft = SiteVisitIdentityDraft(siteVisitId: visit.id, companyId: Self.companyId,
+            clientId: client.id, clientName: "Updated legacy client", contactName: "Site person",
+            preferredEmail: "legacy@example.com", notes: "", createdBy: "user-operator-1")
+        harness.context.insert(draft)
+        try harness.context.save()
+        let clientId = client.id
+        let visitId = visit.id
+        let draftId = draft.id
+        client.notes = "Uncommitted caller notes"
+
+        // Load the already-bound stored draft directly; do not call bindClient
+        // or updateIdentityDraft, which would bypass the legacy resume path.
+        let resumed = SiteVisitCaptureViewModel(opportunity: nil, companyId: Self.companyId,
+            userId: "user-operator-1", modelContext: harness.context, entryIntent: .resume(visitId: visitId))
+        resumed.leadAutocreateQueue = harness.queue
+        resumed.probeClientVisibility = { _, _ in XCTFail("Existing parent needs no visibility wait") }
+        resumed.createOpportunityRemotely = { _, _ in throw URLError(.notConnectedToInternet) }
+        resumed.loadOrCreateVisit()
+        XCTAssertEqual(resumed.siteVisit?.id, visitId)
+        XCTAssertEqual(resumed.identityDraft?.id, draftId)
+        XCTAssertEqual(resumed.identityDraft?.clientId, clientId)
+        XCTAssertEqual(resumed.identityDraft?.notes, "")
+        let outcome = await resumed.createLeadFromIdentityDraft(dataController: harness.dataController)
+        guard case .queued = outcome else { return XCTFail("Resumed draft must retain durable lead delivery") }
+        let fresh = ModelContext(harness.context.container)
+        let saved = try XCTUnwrap(try fresh.fetch(FetchDescriptor<Client>()).first { $0.id == clientId })
+        XCTAssertEqual(saved.notes, "Existing client notes")
+        XCTAssertEqual(saved.name, "Updated legacy client")
+        XCTAssertEqual(client.notes, "Uncommitted caller notes")
+        XCTAssertTrue(harness.context.hasChanges)
+        let operation = try XCTUnwrap(try fresh.fetch(FetchDescriptor<SyncOperation>()).first {
+            $0.entityType == SyncEntityType.client.rawValue && $0.entityId == clientId
+        })
+        let payload = try XCTUnwrap(try JSONSerialization.jsonObject(with: operation.payload) as? [String: Any])
+        XCTAssertNil(payload["notes"])
+        XCTAssertFalse(operation.getChangedFields().contains("notes"))
+        XCTAssertEqual(try fresh.fetch(FetchDescriptor<SiteVisitIdentityDraft>()).first { $0.id == draftId }?.notes, "")
+    }
+
+    func test_createLead_doesNotReviveOrBypassAStoppedClientCreate() async throws {
+        let harness = try makeLeadCreateHarness()
+        let client = Client(id: UUID().uuidString.lowercased(), name: "Original", email: "one@example.com", companyId: Self.companyId)
+        harness.context.insert(client)
+        let payload = try JSONSerialization.data(withJSONObject: ["id": client.id, "company_id": Self.companyId, "name": "Original"])
+        let stopped = SyncOperation(entityType: SyncEntityType.client.rawValue, entityId: client.id,
+            operationType: "create", payload: payload, changedFields: ["name"])
+        stopped.status = "parked"
+        harness.context.insert(stopped)
+        try harness.context.save()
+        let stoppedId = stopped.id
+        harness.viewModel.bindClient(client)
+        harness.viewModel.probeClientVisibility = { _, _ in XCTFail("Stopped parent must be handed to durable review") }
+        harness.viewModel.createOpportunityRemotely = { _, _ in
+            XCTFail("A stopped client create must not be bypassed by direct lead delivery")
+            throw TestServerError.guardedCreateRejected
+        }
+        let outcome = await harness.viewModel.createLeadFromIdentityDraft(dataController: harness.dataController)
+        guard case .queued = outcome else { return XCTFail("Stopped parent must remain in durable delivery") }
+        let fresh = ModelContext(harness.context.container)
+        let saved = try XCTUnwrap(try fresh.fetch(FetchDescriptor<SyncOperation>()).first { $0.id == stoppedId })
+        XCTAssertEqual(saved.status, "parked")
+        XCTAssertEqual(saved.payload, payload)
+        let followOn = try XCTUnwrap(try fresh.fetch(FetchDescriptor<SyncOperation>()).first {
+            $0.entityType == SyncEntityType.client.rawValue && $0.id != stoppedId
+        })
+        XCTAssertEqual(followOn.dependsOnId, stoppedId.uuidString.lowercased())
     }
 
     // MARK: - Bug 5d5df5b0 · non-destructive re-entry
 
-    func test_reentry_autoResumesRecentUnlinkedVisitThatHoldsContent() throws {
+    func test_reentry_resumesExactInterruptedVisitIdentity() throws {
         let context = try makeContext()
         let prior = insertVisit(id: "visit-prior", into: context)
         insertDraft(
@@ -47,20 +280,55 @@ final class SiteVisitLeadCaptureTests: XCTestCase {
             into: context
         )
 
-        let viewModel = makeViewModel(context: context)
+        let viewModel = SiteVisitCaptureViewModel(opportunity: nil, companyId: Self.companyId,
+            userId: "user-operator-1", modelContext: context, entryIntent: .resume(visitId: prior.id))
         viewModel.loadOrCreateVisit()
 
         XCTAssertEqual(
             viewModel.siteVisit?.id,
             prior.id,
-            "re-entering within the window continues the SAME visit — a blank one loses the capture"
+            "explicit resume continues the same visit regardless of age"
         )
         XCTAssertEqual(viewModel.identityDraft?.contactName, "Corinne Robertson")
         XCTAssertEqual(viewModel.identityDraft?.address, "972 Lyall St, Esquimalt")
         XCTAssertNil(
             viewModel.resumableVisit,
-            "an auto-resumed visit must not also nag through the resume banner"
+            "an explicitly resumed visit must not also show the resume banner"
         )
+    }
+
+    func test_newVisitNeverReusesRecentIdentityButOffersResume() throws {
+        let context = try makeContext()
+        let prior = insertVisit(id: "recent-visit", into: context)
+        insertDraft(forVisitId: prior.id, contactName: "Synthetic customer", updatedAt: Date(), into: context)
+        let viewModel = makeViewModel(context: context)
+        viewModel.loadOrCreateVisit()
+        XCTAssertNotEqual(viewModel.siteVisit?.id, prior.id)
+        XCTAssertEqual(viewModel.resumableVisit?.id, prior.id)
+    }
+
+    func test_checklistOnlyAndIdentityNotesOnlyRemainResumable() throws {
+        let context = try makeContext()
+        let prior = insertVisit(id: "checklist-only", into: context)
+        let answer = SiteVisitChecklistAnswer(siteVisitId: prior.id, companyId: Self.companyId,
+            opportunityId: nil, siteVisitTypeId: nil, fieldId: "gate", label: "Gate",
+            kind: .shortText, required: false, sortOrder: 1, answerValue: .text("1234"))
+        context.insert(answer)
+        try context.save()
+        let first = makeViewModel(context: context)
+        first.loadOrCreateVisit()
+        XCTAssertEqual(first.resumableVisit?.id, prior.id)
+        first.resumeResumableVisit()
+        XCTAssertTrue(first.hasCapturedAnything)
+        XCTAssertEqual(first.checklistAnswers.first?.answerValue.text, "1234")
+        let noteVisit = insertVisit(id: "identity-notes-only", into: context)
+        let draft = SiteVisitIdentityDraft(siteVisitId: noteVisit.id, companyId: Self.companyId,
+            searchText: "partial lookup", notes: "Call before arrival")
+        context.insert(draft)
+        try context.save()
+        let next = makeViewModel(context: context)
+        next.loadOrCreateVisit()
+        XCTAssertEqual(next.resumableVisit?.id, noteVisit.id)
     }
 
     func test_reentry_startsFreshWhenPriorUnlinkedVisitIsStale() throws {
@@ -90,7 +358,7 @@ final class SiteVisitLeadCaptureTests: XCTestCase {
         )
     }
 
-    func test_reentry_sweepsEmptyAbandonedVisits() throws {
+    func test_reentry_preservesEmptyVisitBecauseCameraJournalCustodyIsUnknown() throws {
         let context = try makeContext()
         let empty = insertVisit(id: "visit-empty", into: context)
 
@@ -100,7 +368,7 @@ final class SiteVisitLeadCaptureTests: XCTestCase {
         XCTAssertNotEqual(viewModel.siteVisit?.id, empty.id)
         XCTAssertNil(viewModel.resumableVisit, "an empty visit is nothing to resume")
         let survivors = try context.fetch(FetchDescriptor<SiteVisit>()).map(\.id)
-        XCTAssertFalse(survivors.contains(empty.id), "empty abandoned visits are swept")
+        XCTAssertTrue(survivors.contains(empty.id), "absence of attached artifacts cannot prove camera custody empty")
     }
 
     func test_reentry_linkedStartIgnoresUnlinkedVisitsEntirely() throws {
@@ -273,30 +541,50 @@ final class SiteVisitLeadCaptureTests: XCTestCase {
     func test_queueDeliveredLeadBindsTheOpenVisit() async throws {
         let harness = try makeLeadCreateHarness()
         let visitId = try XCTUnwrap(harness.viewModel.siteVisit?.id)
-
-        // Exactly what ClientLeadAutocreateQueue does on a successful delivery:
-        // cache the opportunity, bind the waiting draft, then signal the visit.
-        let delivered = try Self.makeOpportunityDTO(
-            id: "opp-delivered",
-            companyId: Self.companyId,
-            clientId: "client-x",
-            title: "Corinne Robertson — lead"
-        ).toModel()
-        harness.context.insert(delivered)
-        harness.viewModel.identityDraft?.opportunityId = "opp-delivered"
+        let client = Client(id: "client-x", name: "Synthetic client", email: "synthetic@example.com",
+            companyId: Self.companyId)
+        harness.context.insert(client)
         try harness.context.save()
-
-        NotificationCenter.default.post(
-            name: Notification.Name("SiteVisitLeadBound"),
-            object: nil,
-            userInfo: ["siteVisitId": visitId]
+        harness.viewModel.bindClient(client)
+        let draftId = try XCTUnwrap(harness.viewModel.identityDraft?.id)
+        let delivered = try Self.makeOpportunityDTO(
+            id: "opp-delivered", companyId: Self.companyId, clientId: client.id,
+            title: "Corinne Robertson — lead"
         )
+        let suite = "SiteVisitLeadCaptureTests.delivery.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let committedAt = Date(timeIntervalSince1970: 1_788_732_345)
+        let queue = ClientLeadAutocreateQueue(defaults: defaults, defaultsKey: "pending",
+            automaticRetry: false, attempt: { _ in
+                ClientLeadAutocreateDelivery(opportunityId: delivered.id,
+                    opportunityDTO: delivered, createdNow: true)
+            })
+        queue.now = { committedAt }
+        queue.configure(modelContext: harness.context, activeCompanyId: { Self.companyId })
+        queue.enqueue(client, companyId: Self.companyId)
 
+        // Exercise the real cache insert, owned binding commit and notification.
+        // Only the remote attempt is synthetic; the open VM receives the same
+        // notification as production and must reread/adopt its durable binding.
+        await queue.drain()
         let bound = await settled { harness.viewModel.currentOpportunity != nil }
         XCTAssertTrue(bound, "the open console must pick up the queue's delivery")
-        XCTAssertEqual(harness.viewModel.currentOpportunity?.id, "opp-delivered")
-        XCTAssertEqual(harness.viewModel.siteVisit?.opportunityId, "opp-delivered")
+        XCTAssertEqual(queue.pendingCount, 0)
+        XCTAssertEqual(harness.viewModel.currentOpportunity?.id, delivered.id)
+        XCTAssertEqual(harness.viewModel.siteVisit?.opportunityId, delivered.id)
+        XCTAssertEqual(harness.viewModel.identityDraft?.opportunityId, delivered.id)
+        XCTAssertEqual(harness.viewModel.identityDraft?.lastCommittedAt, committedAt)
         XCTAssertTrue(harness.viewModel.hasBoundOpportunity)
+        let readback = ModelContext(harness.context.container)
+        XCTAssertEqual(try readback.fetch(FetchDescriptor<SiteVisit>(
+            predicate: #Predicate { $0.id == visitId }
+        )).first?.opportunityId, delivered.id)
+        let storedDraft = try XCTUnwrap(try readback.fetch(FetchDescriptor<SiteVisitIdentityDraft>(
+            predicate: #Predicate { $0.id == draftId }
+        )).first)
+        XCTAssertEqual(storedDraft.opportunityId, delivered.id)
+        XCTAssertEqual(storedDraft.lastCommittedAt, committedAt)
     }
 
     func test_queueDeliveryForAnotherVisitIsIgnored() throws {
@@ -434,17 +722,23 @@ final class SiteVisitLeadCaptureTests: XCTestCase {
         contactName: String = "Corinne Robertson",
         preferredEmail: String = "corinne@example.com",
         phoneNumber: String = "250-555-0142",
-        address: String = "972 Lyall St, Esquimalt"
+        address: String = "972 Lyall St, Esquimalt",
+        validateCommit: @escaping () throws -> Void = {}
     ) throws -> LeadCreateHarness {
         let context = try makeContext()
+        context.autosaveEnabled = false
         let dataController = DataController()
+        liveControllers.append(dataController)
         dataController.setModelContext(context)
         dataController.syncEngine.configure(
             modelContext: context,
-            connectivity: dataController.connectivity
+            connectivity: SiteVisitFixtureOfflineConnectivity()
         )
 
-        let viewModel = makeViewModel(context: context)
+        let coordinator = SiteVisitPersistenceCoordinator(modelContext: context,
+            companyId: Self.companyId, validateCommit: validateCommit)
+        let viewModel = SiteVisitCaptureViewModel(opportunity: nil, companyId: Self.companyId,
+            userId: "user-operator-1", modelContext: context, persistenceCoordinator: coordinator)
         viewModel.loadOrCreateVisit()
         viewModel.updateIdentityDraft(
             searchText: "",
@@ -549,6 +843,7 @@ final class SiteVisitLeadCaptureTests: XCTestCase {
             opportunityId: nil,
             companyId: Self.companyId,
             status: .scheduled,
+            createdBy: "user-operator-1",
             createdAt: createdAt
         )
         context.insert(visit)
@@ -594,4 +889,13 @@ private final class RecordingLeadQueue: ClientLeadAutocreateQueueing {
         enqueuedClientId = client.id
         enqueuedCompanyId = companyId
     }
+}
+
+/// The visibility/lead transports above are injected independently. Background
+/// client/outbox work must stay offline regardless of the Mac's real network.
+@MainActor
+private final class SiteVisitFixtureOfflineConnectivity: ConnectivityManager {
+    override var shouldAttemptSync: Bool { false }
+    override var shouldPullData: Bool { false }
+    override var shouldUploadPhotos: Bool { false }
 }

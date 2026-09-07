@@ -33,6 +33,9 @@ final class SiteVisitActivityPostTests: XCTestCase {
         viewModel.loadOrCreateVisit()
         viewModel.noteDraft = "Confirm stair landing."
         viewModel.addNote()
+        for answer in viewModel.missingRequiredChecklistAnswers {
+            viewModel.updateChecklistAnswer(answer, value: .text("Synthetic required scope"))
+        }
 
         let result = await viewModel.completeVisit()
         XCTAssertTrue(result.isCommitted)
@@ -64,6 +67,9 @@ final class SiteVisitActivityPostTests: XCTestCase {
         viewModel.loadOrCreateVisit()
         viewModel.noteDraft = "Gate code 4812."
         viewModel.addNote()
+        for answer in viewModel.missingRequiredChecklistAnswers {
+            viewModel.updateChecklistAnswer(answer, value: .text("Synthetic required scope"))
+        }
 
         let firstResult = await viewModel.completeVisit()
         let secondResult = await viewModel.completeVisit()
@@ -92,6 +98,9 @@ final class SiteVisitActivityPostTests: XCTestCase {
         viewModel.loadOrCreateVisit()
         viewModel.noteDraft = "Client wants black rail."
         viewModel.addNote()
+        for answer in viewModel.missingRequiredChecklistAnswers {
+            viewModel.updateChecklistAnswer(answer, value: .text("Synthetic required scope"))
+        }
 
         let result = await viewModel.completeVisit()
         XCTAssertTrue(result.isCommitted)

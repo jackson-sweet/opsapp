@@ -73,7 +73,7 @@ final class DataActorStartup: @unchecked Sendable {
             lock.lock()
             if invalidated {
                 lock.unlock()
-                actor.invalidateOutboundWork()
+                actor.retireAndDrainModelWork()
                 return false
             }
             self.actor = actor
@@ -86,7 +86,7 @@ final class DataActorStartup: @unchecked Sendable {
             invalidated = true
             let actor = actor
             lock.unlock()
-            actor?.invalidateOutboundWork()
+            actor?.retireAndDrainModelWork()
         }
     }
 }

@@ -62,7 +62,7 @@ actor DataActor {
     nonisolated func invalidateOutboundWork() { outboundLifetime.invalidate() }
     nonisolated func resumeOutboundWork() { outboundLifetime.resume() }
 
-    private struct OutboundScope {
+    private struct OutboundScope: Sendable {
         let generation: UInt64
         let userID: String?
         let companyID: String?
@@ -92,7 +92,40 @@ actor DataActor {
         return registered === handle.model
     }
 
+    /// Close ingress, then wait for the current serial job to leave its model
+    /// transaction before a caller deletes the shared store on MainActor.
+    nonisolated func retireAndDrainModelWork() {
+        outboundLifetime.invalidate()
+        (modelExecutor as? DataActorModelExecutor)?.drain()
+    }
+
+    private func requireInboundScope() throws -> OutboundScope {
+        guard let scope = outboundScope() else { throw CancellationError() }
+        return scope
+    }
+
+    private func checkInboundScope(_ scope: OutboundScope) throws {
+        guard outboundIsCurrent(scope) else { throw CancellationError() }
+    }
+
+    private func currentModelTransaction(_ block: () throws -> Void) throws {
+        guard outboundScope() != nil else { throw CancellationError() }
+        try modelContext.transaction(block: block)
+    }
+
     #if DEBUG
+    private var inboundClientsForTesting: (() async throws -> [SupabaseClientDTO])?
+    func setInboundClientsForTesting(_ fetch: @escaping () async throws -> [SupabaseClientDTO]) {
+        inboundClientsForTesting = fetch
+    }
+    func syncClientsForTesting(companyId: String) async throws {
+        let scope = try requireInboundScope()
+        try await syncClients(since: nil, repos: repositories(companyId: companyId), inboundScope: scope)
+    }
+    private var inboundDeltaForTesting: (() async throws -> Set<SyncEntityType>)?
+    func setInboundDeltaForTesting(_ pull: @escaping () async throws -> Set<SyncEntityType>) {
+        inboundDeltaForTesting = pull
+    }
     private var outboundPushForTesting: ((String, String, String, [String: Any]) async throws -> Void)?
     func setOutboundPushForTesting(_ push: @escaping (String, String, String, [String: Any]) async throws -> Void) {
         outboundPushForTesting = push
@@ -116,17 +149,20 @@ actor DataActor {
         // This avoids passing the non-Sendable ModelContext across the actor boundary,
         // which would error under Swift 6 strict concurrency. Sendable payload is the
         // PersistentIdentifier arrays from userInfo.
+        let lifetime = outboundLifetime
         didSaveObserver = NotificationCenter.default.addObserver(
             forName: ModelContext.didSave,
             object: modelContext,
             queue: nil
         ) { notification in
+            guard let generation = lifetime.snapshot() else { return }
             let userInfo = notification.userInfo ?? [:]
             let inserted = (userInfo[ModelContext.NotificationKey.insertedIdentifiers.rawValue] as? [PersistentIdentifier]) ?? []
             let updated = (userInfo[ModelContext.NotificationKey.updatedIdentifiers.rawValue] as? [PersistentIdentifier]) ?? []
             let deleted = (userInfo[ModelContext.NotificationKey.deletedIdentifiers.rawValue] as? [PersistentIdentifier]) ?? []
 
             Task { @MainActor in
+                guard lifetime.isCurrent(generation) else { return }
                 NotificationCenter.default.post(
                     name: .dataActorDidSave,
                     object: nil,
@@ -311,12 +347,15 @@ actor DataActor {
     /// + linkAllRelationships pass) since the caller just needs the company row to
     /// land before downstream features query it.
     func syncCompanyOnly(companyId: String) async throws {
+        let inboundScope = try requireInboundScope()
         guard !companyId.isEmpty else {
             print("[DataActor] syncCompanyOnly aborted — no companyId")
             return
         }
         let repos = repositories(companyId: companyId)
-        try await syncCompany(repos: repos)
+        try await syncCompany(repos: repos, inboundScope: inboundScope)
+        try checkInboundScope(inboundScope)
+
     }
 
     // MARK: - Single-Client Sync
@@ -330,12 +369,26 @@ actor DataActor {
     /// `clients` (RealtimeProcessor.companyFilteredTables), and foreground
     /// return / connectivity restore still trigger a full pass.
     func syncClientOnly(clientId: String, companyId: String) async throws {
+        let inboundScope = try requireInboundScope()
         guard !clientId.isEmpty, !companyId.isEmpty else {
             print("[DataActor] syncClientOnly aborted — missing clientId or companyId")
             return
         }
         let repos = repositories(companyId: companyId)
-        let dto = try await repos.client.fetchOne(clientId)
+        let dto: SupabaseClientDTO
+        #if DEBUG
+        if let fetch = inboundClientsForTesting {
+            let rows = try await fetch()
+            try checkInboundScope(inboundScope)
+            guard let first = rows.first else { return }
+            dto = first
+        } else {
+            dto = try await repos.client.fetchOne(clientId)
+        }
+        #else
+        dto = try await repos.client.fetchOne(clientId)
+        #endif
+        try checkInboundScope(inboundScope)
         try mergeClientSnapshot(dto)
     }
 
@@ -345,7 +398,7 @@ actor DataActor {
     /// suppression, field-level conflict acceptance and Spotlight marking all
     /// apply unchanged.
     func mergeClientSnapshot(_ dto: SupabaseClientDTO) throws {
-        try modelContext.transaction {
+        try currentModelTransaction {
             try mergeClient(dto: dto)
             try ProjectClientRelationshipHydrator.attach(
                 clientId: dto.id,
@@ -373,6 +426,7 @@ actor DataActor {
         companyId: String,
         onProgress: (@Sendable (SyncEntityType, Double) -> Void)? = nil
     ) async throws -> Set<SyncEntityType> {
+        let inboundScope = try requireInboundScope()
         guard !companyId.isEmpty else {
             print("[DataActor] FULL SYNC ABORTED — no companyId available")
             return []
@@ -380,6 +434,7 @@ actor DataActor {
 
         guard let scope = outboundScope() else { throw CancellationError() }
         let telemetryUserID = await MainActor.run { SupabaseService.shared.currentUserId }
+        try checkInboundScope(inboundScope)
         guard outboundIsCurrent(scope) else { throw CancellationError() }
 
         print("[DataActor] ======== FULL SYNC STARTED ========")
@@ -391,6 +446,7 @@ actor DataActor {
         inboundMergedEntityNames.removeAll()
 
         let capabilities = await CatalogSchemaCapabilityGate.refresh(companyId: companyId)
+        try checkInboundScope(inboundScope)
         let repos = repositories(companyId: companyId)
         let order = Self.syncOrder.filter { capabilities.supportsSync($0) }
         let totalSteps = Double(order.count)
@@ -405,9 +461,12 @@ actor DataActor {
             // InboundProcessor.fullSync — telemetry captures the failure for
             // offline diagnosis, the loop continues to the next entity type.
             do {
-                try await syncEntityType(entityType, since: nil, repos: repos)
+                try await syncEntityType(entityType, since: nil, repos: repos, inboundScope: inboundScope)
+                try checkInboundScope(inboundScope)
                 print("[DataActor] \(entityType.rawValue) complete")
             } catch {
+                try checkInboundScope(inboundScope)
+                if error is CancellationError { throw error }
                 print("[DataActor] FAILED \(entityType.rawValue): \(error)")
                 failedEntities.insert(entityType)
                 SyncTelemetry.logError(
@@ -442,6 +501,14 @@ actor DataActor {
         companyId: String,
         since timestamps: [SyncEntityType: Date]
     ) async throws -> Set<SyncEntityType> {
+        let inboundScope = try requireInboundScope()
+        #if DEBUG
+        if let pull = inboundDeltaForTesting {
+            let result = try await pull()
+            try checkInboundScope(inboundScope)
+            return result
+        }
+        #endif
         guard !companyId.isEmpty else {
             print("[DataActor] DELTA SYNC ABORTED — no companyId available")
             return []
@@ -449,6 +516,7 @@ actor DataActor {
 
         guard let scope = outboundScope() else { throw CancellationError() }
         let telemetryUserID = await MainActor.run { SupabaseService.shared.currentUserId }
+        try checkInboundScope(inboundScope)
         guard outboundIsCurrent(scope) else { throw CancellationError() }
 
         print("[DataActor] ======== DELTA SYNC STARTED ========")
@@ -460,6 +528,7 @@ actor DataActor {
         inboundMergedEntityNames.removeAll()
 
         let capabilities = await CatalogSchemaCapabilityGate.refresh(companyId: companyId)
+        try checkInboundScope(inboundScope)
         let repos = repositories(companyId: companyId)
 
         for entityType in Self.syncOrder {
@@ -473,8 +542,11 @@ actor DataActor {
             // outbound op) aborts the whole delta and downstream entries
             // (estimate, invoice, catalog*) never sync.
             do {
-                try await syncEntityType(entityType, since: sinceDate, repos: repos)
+                try await syncEntityType(entityType, since: sinceDate, repos: repos, inboundScope: inboundScope)
+                try checkInboundScope(inboundScope)
             } catch {
+                try checkInboundScope(inboundScope)
+                if error is CancellationError { throw error }
                 print("[DataActor] FAILED delta \(entityType.rawValue): \(error)")
                 failedEntities.insert(entityType)
                 SyncTelemetry.logError(
@@ -504,6 +576,7 @@ actor DataActor {
     /// the entity types whose sync THREW (isolated per-entity).
     @discardableResult
     func syncScheduleEntities(companyId: String) async throws -> Set<SyncEntityType> {
+        let inboundScope = try requireInboundScope()
         guard !companyId.isEmpty else {
             print("[DataActor] SCHEDULE SYNC ABORTED — no companyId available")
             return []
@@ -511,6 +584,7 @@ actor DataActor {
 
         guard let scope = outboundScope() else { throw CancellationError() }
         let telemetryUserID = await MainActor.run { SupabaseService.shared.currentUserId }
+        try checkInboundScope(inboundScope)
         guard outboundIsCurrent(scope) else { throw CancellationError() }
 
         let entities: [SyncEntityType] = [.project, .projectTask, .taskType, .calendarUserEvent]
@@ -522,12 +596,16 @@ actor DataActor {
         inboundMergedEntityNames.removeAll()
 
         let capabilities = await CatalogSchemaCapabilityGate.refresh(companyId: companyId)
+        try checkInboundScope(inboundScope)
         let repos = repositories(companyId: companyId)
 
         for entityType in entities where capabilities.supportsSync(entityType) {
             do {
-                try await syncEntityType(entityType, since: nil, repos: repos)
+                try await syncEntityType(entityType, since: nil, repos: repos, inboundScope: inboundScope)
+                try checkInboundScope(inboundScope)
             } catch {
+                try checkInboundScope(inboundScope)
+                if error is CancellationError { throw error }
                 print("[DataActor] FAILED schedule \(entityType.rawValue): \(error)")
                 failedEntities.insert(entityType)
                 SyncTelemetry.logError(
@@ -564,108 +642,158 @@ actor DataActor {
     private func syncEntityType(
         _ entityType: SyncEntityType,
         since: Date?,
-        repos: InboundRepositories
+        repos: InboundRepositories,
+        inboundScope: OutboundScope
     ) async throws {
+        try checkInboundScope(inboundScope)
         switch entityType {
         case .company:
-            try await syncCompany(repos: repos)
+            try await syncCompany(repos: repos, inboundScope: inboundScope)
+            try checkInboundScope(inboundScope)
         case .user:
-            try await syncUsers(since: since, repos: repos)
+            try await syncUsers(since: since, repos: repos, inboundScope: inboundScope)
+            try checkInboundScope(inboundScope)
         case .client:
-            try await syncClients(since: since, repos: repos)
+            try await syncClients(since: since, repos: repos, inboundScope: inboundScope)
+            try checkInboundScope(inboundScope)
         case .taskType:
-            try await syncTaskTypes(since: since, repos: repos)
+            try await syncTaskTypes(since: since, repos: repos, inboundScope: inboundScope)
+            try checkInboundScope(inboundScope)
         case .siteVisitType:
-            try await syncSiteVisitTypes(since: since, repos: repos)
+            try await syncSiteVisitTypes(since: since, repos: repos, inboundScope: inboundScope)
+            try checkInboundScope(inboundScope)
         case .project:
-            try await syncProjects(since: since, repos: repos)
+            try await syncProjects(since: since, repos: repos, inboundScope: inboundScope)
+            try checkInboundScope(inboundScope)
         case .projectTask:
-            try await syncTasks(since: since, repos: repos)
+            try await syncTasks(since: since, repos: repos, inboundScope: inboundScope)
+            try checkInboundScope(inboundScope)
         case .calendarUserEvent:
-            try await syncCalendarUserEvents(repos: repos)
+            try await syncCalendarUserEvents(repos: repos, inboundScope: inboundScope)
+            try checkInboundScope(inboundScope)
         case .subClient:
-            try await syncSubClients(since: since, repos: repos)
+            try await syncSubClients(since: since, repos: repos, inboundScope: inboundScope)
+            try checkInboundScope(inboundScope)
         case .projectNote:
-            try await syncProjectNotes(since: since, repos: repos)
+            try await syncProjectNotes(since: since, repos: repos, inboundScope: inboundScope)
+            try checkInboundScope(inboundScope)
         case .projectPhoto:
-            try await syncProjectPhotos(since: since, repos: repos)
+            try await syncProjectPhotos(since: since, repos: repos, inboundScope: inboundScope)
+            try checkInboundScope(inboundScope)
         case .photoAnnotation:
-            try await syncPhotoAnnotations(since: since, repos: repos)
+            try await syncPhotoAnnotations(since: since, repos: repos, inboundScope: inboundScope)
+            try checkInboundScope(inboundScope)
         case .deckDesign:
-            try await syncDeckDesigns(since: since, repos: repos)
+            try await syncDeckDesigns(since: since, repos: repos, inboundScope: inboundScope)
+            try checkInboundScope(inboundScope)
         case .siteVisit:
-            try await syncSiteVisits(since: since, companyId: repos.companyId)
+            try await syncSiteVisits(since: since, companyId: repos.companyId, inboundScope: inboundScope)
+            try checkInboundScope(inboundScope)
         case .wizardState:
-            try await syncWizardStates(since: since, repos: repos)
+            try await syncWizardStates(since: since, repos: repos, inboundScope: inboundScope)
+            try checkInboundScope(inboundScope)
         case .estimate:
-            try await syncEstimates(since: since, repos: repos)
+            try await syncEstimates(since: since, repos: repos, inboundScope: inboundScope)
+            try checkInboundScope(inboundScope)
         case .invoice:
-            try await syncInvoices(since: since, repos: repos)
+            try await syncInvoices(since: since, repos: repos, inboundScope: inboundScope)
+            try checkInboundScope(inboundScope)
         case .catalogCategory:
-            try await syncCatalogCategories(since: since, repos: repos)
+            try await syncCatalogCategories(since: since, repos: repos, inboundScope: inboundScope)
+            try checkInboundScope(inboundScope)
         case .catalogUnit:
-            try await syncCatalogUnits(since: since, repos: repos)
+            try await syncCatalogUnits(since: since, repos: repos, inboundScope: inboundScope)
+            try checkInboundScope(inboundScope)
         case .catalogTag:
-            try await syncCatalogTags(since: since, repos: repos)
+            try await syncCatalogTags(since: since, repos: repos, inboundScope: inboundScope)
+            try checkInboundScope(inboundScope)
         case .catalogItem:
-            try await syncCatalogItems(since: since, repos: repos)
+            try await syncCatalogItems(since: since, repos: repos, inboundScope: inboundScope)
+            try checkInboundScope(inboundScope)
         case .catalogVariant:
-            try await syncCatalogVariants(since: since, repos: repos)
+            try await syncCatalogVariants(since: since, repos: repos, inboundScope: inboundScope)
+            try checkInboundScope(inboundScope)
         case .catalogStockUnit:
             guard CatalogSchemaCapabilityGate.supportsSync(.catalogStockUnit) else { return }
-            try await syncCatalogStockUnits(since: since, repos: repos)
+            try await syncCatalogStockUnits(since: since, repos: repos, inboundScope: inboundScope)
+            try checkInboundScope(inboundScope)
         case .catalogStockUnitEvent:
             guard CatalogSchemaCapabilityGate.supportsSync(.catalogStockUnitEvent) else { return }
-            try await syncCatalogStockUnitEvents(since: since, repos: repos)
+            try await syncCatalogStockUnitEvents(since: since, repos: repos, inboundScope: inboundScope)
+            try checkInboundScope(inboundScope)
         case .catalogOption:
-            try await syncCatalogOptions(repos: repos)
+            try await syncCatalogOptions(repos: repos, inboundScope: inboundScope)
+            try checkInboundScope(inboundScope)
         case .catalogOptionValue:
-            try await syncCatalogOptionValues(repos: repos)
+            try await syncCatalogOptionValues(repos: repos, inboundScope: inboundScope)
+            try checkInboundScope(inboundScope)
         case .catalogVariantOptionValue:
-            try await syncCatalogVariantOptionValues(repos: repos)
+            try await syncCatalogVariantOptionValues(repos: repos, inboundScope: inboundScope)
+            try checkInboundScope(inboundScope)
         case .catalogItemTag:
-            try await syncCatalogItemTags(repos: repos)
+            try await syncCatalogItemTags(repos: repos, inboundScope: inboundScope)
+            try checkInboundScope(inboundScope)
         case .catalogSnapshot:
-            try await syncCatalogSnapshots(since: since, repos: repos)
+            try await syncCatalogSnapshots(since: since, repos: repos, inboundScope: inboundScope)
+            try checkInboundScope(inboundScope)
         case .catalogSnapshotItem:
-            try await syncCatalogSnapshotItems(repos: repos)
+            try await syncCatalogSnapshotItems(repos: repos, inboundScope: inboundScope)
+            try checkInboundScope(inboundScope)
         case .catalogOrder:
-            try await syncCatalogOrders(repos: repos)
+            try await syncCatalogOrders(repos: repos, inboundScope: inboundScope)
+            try checkInboundScope(inboundScope)
         case .catalogOrderItem:
-            try await syncCatalogOrderItems(repos: repos)
+            try await syncCatalogOrderItems(repos: repos, inboundScope: inboundScope)
+            try checkInboundScope(inboundScope)
         case .companyDefaultProduct:
-            try await syncCompanyDefaultProducts(repos: repos)
+            try await syncCompanyDefaultProducts(repos: repos, inboundScope: inboundScope)
+            try checkInboundScope(inboundScope)
         case .product:
-            try await syncProducts(repos: repos)
+            try await syncProducts(repos: repos, inboundScope: inboundScope)
+            try checkInboundScope(inboundScope)
         case .productOption:
-            try await syncProductOptions(repos: repos)
+            try await syncProductOptions(repos: repos, inboundScope: inboundScope)
+            try checkInboundScope(inboundScope)
         case .productOptionValue:
-            try await syncProductOptionValues(repos: repos)
+            try await syncProductOptionValues(repos: repos, inboundScope: inboundScope)
+            try checkInboundScope(inboundScope)
         case .catalogProductOptionMapping:
             guard CatalogSchemaCapabilityGate.supportsSync(.catalogProductOptionMapping) else { return }
-            try await syncCatalogProductOptionMappings(since: since, repos: repos)
+            try await syncCatalogProductOptionMappings(since: since, repos: repos, inboundScope: inboundScope)
+            try checkInboundScope(inboundScope)
         case .productPricingModifier:
-            try await syncProductPricingModifiers(repos: repos)
+            try await syncProductPricingModifiers(repos: repos, inboundScope: inboundScope)
+            try checkInboundScope(inboundScope)
         case .productMaterial:
-            try await syncProductMaterials(repos: repos)
+            try await syncProductMaterials(repos: repos, inboundScope: inboundScope)
+            try checkInboundScope(inboundScope)
         case .productBundleItem:
-            try await syncProductBundleItems(repos: repos)
+            try await syncProductBundleItems(repos: repos, inboundScope: inboundScope)
+            try checkInboundScope(inboundScope)
         case .inventoryUnit:
-            try await syncInventoryUnits(since: since, repos: repos)
+            try await syncInventoryUnits(since: since, repos: repos, inboundScope: inboundScope)
+            try checkInboundScope(inboundScope)
         case .inventoryTag:
-            try await syncInventoryTags(since: since, repos: repos)
+            try await syncInventoryTags(since: since, repos: repos, inboundScope: inboundScope)
+            try checkInboundScope(inboundScope)
         case .inventoryItem:
-            try await syncInventoryItems(since: since, repos: repos)
+            try await syncInventoryItems(since: since, repos: repos, inboundScope: inboundScope)
+            try checkInboundScope(inboundScope)
         case .inventoryItemTag:
-            try await syncInventoryItemTags(repos: repos)
+            try await syncInventoryItemTags(repos: repos, inboundScope: inboundScope)
+            try checkInboundScope(inboundScope)
         case .inventorySnapshot:
-            try await syncInventorySnapshots(since: since, repos: repos)
+            try await syncInventorySnapshots(since: since, repos: repos, inboundScope: inboundScope)
+            try checkInboundScope(inboundScope)
         case .inventorySnapshotItem:
-            try await syncInventorySnapshotItems(repos: repos)
+            try await syncInventorySnapshotItems(repos: repos, inboundScope: inboundScope)
+            try checkInboundScope(inboundScope)
         case .taskTypeReminder:
-            try await syncTaskTypeReminders(since: since, repos: repos)
+            try await syncTaskTypeReminders(since: since, repos: repos, inboundScope: inboundScope)
+            try checkInboundScope(inboundScope)
         case .taskReminder:
-            try await syncTaskReminders(since: since, repos: repos)
+            try await syncTaskReminders(since: since, repos: repos, inboundScope: inboundScope)
+            try checkInboundScope(inboundScope)
         default:
             print("[DataActor] Entity type \(entityType.rawValue) not yet supported for inbound sync")
         }
@@ -675,12 +803,16 @@ actor DataActor {
 
     private func syncSiteVisits(
         since: Date?,
-        companyId: String
+        companyId: String,
+        inboundScope: OutboundScope
     ) async throws {
+        try checkInboundScope(inboundScope)
         let repository = await MainActor.run {
             SiteVisitRepository(companyId: companyId)
         }
+        try checkInboundScope(inboundScope)
         let delta = try await repository.fetchAll(since: since)
+        try checkInboundScope(inboundScope)
         let report = try SiteVisitServerMerge.merge(
             delta: delta,
             companyId: companyId,
@@ -705,14 +837,16 @@ actor DataActor {
 
     /// Fetch and merge the company row identified by repos.companyId.
     /// Also refreshes SubscriptionManager so seat/plan changes land immediately.
-    private func syncCompany(repos: InboundRepositories) async throws {
+    private func syncCompany(repos: InboundRepositories, inboundScope: OutboundScope) async throws {
+        try checkInboundScope(inboundScope)
         guard !repos.companyId.isEmpty else {
             print("[DataActor] No companyId — skipping company sync")
             return
         }
 
         let dto = try await repos.company.fetch(companyId: repos.companyId)
-        try modelContext.transaction {
+        try checkInboundScope(inboundScope)
+        try currentModelTransaction {
             try mergeCompany(dto: dto)
         }
 
@@ -720,7 +854,11 @@ actor DataActor {
         // Fire-and-forget to MainActor: syncCompany doesn't use the result, and the
         // check publishes to @Published UI state which must write on main. Hopping
         // here also avoids blocking sync completion on the subscription fetch.
+        let lifetime = outboundLifetime
         Task { @MainActor in
+            guard lifetime.isCurrent(inboundScope.generation),
+                  inboundScope.userID == UserDefaults.standard.string(forKey: "currentUserId")?.lowercased(),
+                  inboundScope.companyID == UserDefaults.standard.string(forKey: "currentUserCompanyId")?.lowercased() else { return }
             await SubscriptionManager.shared.checkSubscriptionStatus()
         }
     }
@@ -786,11 +924,13 @@ actor DataActor {
 
     // MARK: - Sync: Users
 
-    private func syncUsers(since: Date?, repos: InboundRepositories) async throws {
+    private func syncUsers(since: Date?, repos: InboundRepositories, inboundScope: OutboundScope) async throws {
+        try checkInboundScope(inboundScope)
         let dtos = try await repos.user.fetchAll(since: since)
+        try checkInboundScope(inboundScope)
         guard !dtos.isEmpty else { return }
 
-        try modelContext.transaction {
+        try currentModelTransaction {
             for dto in dtos {
                 try mergeUser(dto: dto)
             }
@@ -862,18 +1002,28 @@ actor DataActor {
 
     // MARK: - Sync: Clients (permission-scoped)
 
-    private func syncClients(since: Date?, repos: InboundRepositories) async throws {
+    private func syncClients(since: Date?, repos: InboundRepositories, inboundScope: OutboundScope) async throws {
+        try checkInboundScope(inboundScope)
         let scope = await MainActor.run {
             PermissionStore.shared.scope(for: "clients.view") ?? "all"
         }
+        try checkInboundScope(inboundScope)
         let userId = await MainActor.run {
             UserDefaults.standard.string(forKey: "currentUserId")
         }
+        try checkInboundScope(inboundScope)
 
-        let dtos = try await repos.client.fetchAll(since: since, scope: scope, userId: userId)
+        let dtos: [SupabaseClientDTO]
+        #if DEBUG
+        if let fetch = inboundClientsForTesting { dtos = try await fetch() }
+        else { dtos = try await repos.client.fetchAll(since: since, scope: scope, userId: userId) }
+        #else
+        dtos = try await repos.client.fetchAll(since: since, scope: scope, userId: userId)
+        #endif
+        try checkInboundScope(inboundScope)
         guard !dtos.isEmpty else { return }
 
-        try modelContext.transaction {
+        try currentModelTransaction {
             for dto in dtos {
                 try mergeClient(dto: dto)
             }
@@ -944,11 +1094,13 @@ actor DataActor {
 
     // MARK: - Sync: SubClients
 
-    private func syncSubClients(since: Date?, repos: InboundRepositories) async throws {
+    private func syncSubClients(since: Date?, repos: InboundRepositories, inboundScope: OutboundScope) async throws {
+        try checkInboundScope(inboundScope)
         let dtos = try await repos.client.fetchAllSubClients(since: since)
+        try checkInboundScope(inboundScope)
         guard !dtos.isEmpty else { return }
 
-        try modelContext.transaction {
+        try currentModelTransaction {
             for dto in dtos {
                 try mergeSubClient(dto: dto)
             }
@@ -1019,12 +1171,15 @@ actor DataActor {
 
     private func syncSiteVisitTypes(
         since: Date?,
-        repos: InboundRepositories
+        repos: InboundRepositories,
+        inboundScope: OutboundScope
     ) async throws {
+        try checkInboundScope(inboundScope)
         let dtos = try await repos.siteVisitType.fetchAll(since: since)
+        try checkInboundScope(inboundScope)
         guard !dtos.isEmpty else { return }
 
-        try modelContext.transaction {
+        try currentModelTransaction {
             for dto in dtos {
                 try mergeSiteVisitType(dto: dto)
             }
@@ -1032,11 +1187,13 @@ actor DataActor {
         inboundMergedEntityNames.insert("SiteVisitType")
     }
 
-    private func syncTaskTypes(since: Date?, repos: InboundRepositories) async throws {
+    private func syncTaskTypes(since: Date?, repos: InboundRepositories, inboundScope: OutboundScope) async throws {
+        try checkInboundScope(inboundScope)
         let dtos = try await repos.taskType.fetchAll(since: since)
+        try checkInboundScope(inboundScope)
         guard !dtos.isEmpty else { return }
 
-        try modelContext.transaction {
+        try currentModelTransaction {
             for dto in dtos {
                 try mergeTaskType(dto: dto)
             }
@@ -1054,7 +1211,8 @@ actor DataActor {
     /// ±12-month window around today; `since` is intentionally unused because
     /// the legacy path re-pulls the window every delta cycle and the actor
     /// path must behave identically.
-    private func syncCalendarUserEvents(repos: InboundRepositories) async throws {
+    private func syncCalendarUserEvents(repos: InboundRepositories, inboundScope: OutboundScope) async throws {
+        try checkInboundScope(inboundScope)
         let userId = UserDefaults.standard.string(forKey: "currentUserId") ?? ""
         guard !userId.isEmpty else { return }
 
@@ -1064,9 +1222,10 @@ actor DataActor {
               let windowEnd   = cal.date(byAdding: .year, value: 1,  to: now) else { return }
 
         let dtos = try await repos.calendarUserEvent.fetchForUser(userId, from: windowStart, to: windowEnd)
+        try checkInboundScope(inboundScope)
         guard !dtos.isEmpty else { return }
 
-        try modelContext.transaction {
+        try currentModelTransaction {
             for dto in dtos {
                 try mergeCalendarUserEvent(dto: dto)
             }
@@ -1176,18 +1335,22 @@ actor DataActor {
 
     // MARK: - Sync: Projects (permission-scoped)
 
-    private func syncProjects(since: Date?, repos: InboundRepositories) async throws {
+    private func syncProjects(since: Date?, repos: InboundRepositories, inboundScope: OutboundScope) async throws {
+        try checkInboundScope(inboundScope)
         let scope = await MainActor.run {
             PermissionStore.shared.scope(for: "projects.view") ?? "all"
         }
+        try checkInboundScope(inboundScope)
         let userId = await MainActor.run {
             UserDefaults.standard.string(forKey: "currentUserId")
         }
+        try checkInboundScope(inboundScope)
 
         let dtos = try await repos.project.fetchAll(since: since, scope: scope, userId: userId)
+        try checkInboundScope(inboundScope)
         guard !dtos.isEmpty else { return }
 
-        try modelContext.transaction {
+        try currentModelTransaction {
             for dto in dtos {
                 try mergeProject(dto: dto)
             }
@@ -1337,18 +1500,22 @@ actor DataActor {
 
     // MARK: - Sync: Tasks (permission-scoped)
 
-    private func syncTasks(since: Date?, repos: InboundRepositories) async throws {
+    private func syncTasks(since: Date?, repos: InboundRepositories, inboundScope: OutboundScope) async throws {
+        try checkInboundScope(inboundScope)
         let scope = await MainActor.run {
             PermissionStore.shared.scope(for: "tasks.view") ?? "all"
         }
+        try checkInboundScope(inboundScope)
         let userId = await MainActor.run {
             UserDefaults.standard.string(forKey: "currentUserId")
         }
+        try checkInboundScope(inboundScope)
 
         let dtos = try await repos.task.fetchAll(since: since, scope: scope, userId: userId)
+        try checkInboundScope(inboundScope)
         guard !dtos.isEmpty else { return }
 
-        try modelContext.transaction {
+        try currentModelTransaction {
             for dto in dtos {
                 try mergeTask(dto: dto)
             }
@@ -1530,11 +1697,13 @@ actor DataActor {
 
     // MARK: - Sync: Project Notes
 
-    private func syncProjectNotes(since: Date?, repos: InboundRepositories) async throws {
+    private func syncProjectNotes(since: Date?, repos: InboundRepositories, inboundScope: OutboundScope) async throws {
+        try checkInboundScope(inboundScope)
         let dtos = try await repos.projectNote.fetchAll(since: since)
+        try checkInboundScope(inboundScope)
         guard !dtos.isEmpty else { return }
 
-        try modelContext.transaction {
+        try currentModelTransaction {
             for dto in dtos {
                 try mergeProjectNote(dto: dto)
             }
@@ -1598,11 +1767,13 @@ actor DataActor {
 
     // MARK: - Sync: Project Photos
 
-    private func syncProjectPhotos(since: Date?, repos: InboundRepositories) async throws {
+    private func syncProjectPhotos(since: Date?, repos: InboundRepositories, inboundScope: OutboundScope) async throws {
+        try checkInboundScope(inboundScope)
         let dtos = try await repos.projectPhoto.fetchAll(since: since)
+        try checkInboundScope(inboundScope)
         guard !dtos.isEmpty else { return }
 
-        try modelContext.transaction {
+        try currentModelTransaction {
             for dto in dtos {
                 try mergeProjectPhoto(dto: dto)
             }
@@ -1651,11 +1822,13 @@ actor DataActor {
 
     // MARK: - Sync: Photo Annotations
 
-    private func syncPhotoAnnotations(since: Date?, repos: InboundRepositories) async throws {
+    private func syncPhotoAnnotations(since: Date?, repos: InboundRepositories, inboundScope: OutboundScope) async throws {
+        try checkInboundScope(inboundScope)
         let dtos = try await repos.photoAnnotation.fetchAll(since: since)
+        try checkInboundScope(inboundScope)
         guard !dtos.isEmpty else { return }
 
-        try modelContext.transaction {
+        try currentModelTransaction {
             for dto in dtos {
                 try mergePhotoAnnotation(dto: dto)
             }
@@ -1722,11 +1895,13 @@ actor DataActor {
 
     // MARK: - Sync: Deck Designs
 
-    private func syncDeckDesigns(since: Date?, repos: InboundRepositories) async throws {
+    private func syncDeckDesigns(since: Date?, repos: InboundRepositories, inboundScope: OutboundScope) async throws {
+        try checkInboundScope(inboundScope)
         let dtos = try await repos.deckDesign.fetchAll(since: since)
+        try checkInboundScope(inboundScope)
         guard !dtos.isEmpty else { return }
 
-        try modelContext.transaction {
+        try currentModelTransaction {
             for dto in dtos {
                 try mergeDeckDesign(dto: dto)
             }
@@ -1777,7 +1952,8 @@ actor DataActor {
 
     // MARK: - Sync: Wizard States
 
-    private func syncWizardStates(since: Date?, repos: InboundRepositories) async throws {
+    private func syncWizardStates(since: Date?, repos: InboundRepositories, inboundScope: OutboundScope) async throws {
+        try checkInboundScope(inboundScope)
         // Resolve userId at call time — wizard_states is user-scoped, so a fresh
         // login needs the correct id even if the repos struct was built earlier.
         let userId = UserDefaults.standard.string(forKey: "currentUserId") ?? ""
@@ -1787,9 +1963,10 @@ actor DataActor {
         }
 
         let dtos = try await repos.wizardState.fetchForUser(userId, since: since)
+        try checkInboundScope(inboundScope)
         guard !dtos.isEmpty else { return }
 
-        try modelContext.transaction {
+        try currentModelTransaction {
             for dto in dtos {
                 try mergeWizardState(dto: dto)
             }
@@ -1854,10 +2031,12 @@ actor DataActor {
 
     // MARK: - Sync: Estimates (+ soft-deletes on delta)
 
-    private func syncEstimates(since: Date?, repos: InboundRepositories) async throws {
+    private func syncEstimates(since: Date?, repos: InboundRepositories, inboundScope: OutboundScope) async throws {
+        try checkInboundScope(inboundScope)
         let dtos = try await repos.estimate.fetchAll(since: since)
+        try checkInboundScope(inboundScope)
 
-        try modelContext.transaction {
+        try currentModelTransaction {
             for dto in dtos {
                 try mergeEstimate(dto: dto)
             }
@@ -1866,8 +2045,9 @@ actor DataActor {
         // Handle soft deletes for delta sync
         if let sinceDate = since {
             let deletedIds = try await repos.estimate.fetchDeletedIds(since: sinceDate)
+            try checkInboundScope(inboundScope)
             if !deletedIds.isEmpty {
-                try modelContext.transaction {
+                try currentModelTransaction {
                     for id in deletedIds {
                         try markEstimateDeleted(id: id)
                     }
@@ -1953,10 +2133,12 @@ actor DataActor {
 
     // MARK: - Sync: Invoices (+ line items + payments + soft-deletes)
 
-    private func syncInvoices(since: Date?, repos: InboundRepositories) async throws {
+    private func syncInvoices(since: Date?, repos: InboundRepositories, inboundScope: OutboundScope) async throws {
+        try checkInboundScope(inboundScope)
         let dtos = try await repos.invoice.fetchAll(since: since)
+        try checkInboundScope(inboundScope)
 
-        try modelContext.transaction {
+        try currentModelTransaction {
             for dto in dtos {
                 try mergeInvoice(dto: dto)
                 try mergeInvoiceLineItems(dto: dto)
@@ -1966,8 +2148,9 @@ actor DataActor {
 
         if let sinceDate = since {
             let deletedIds = try await repos.invoice.fetchDeletedIds(since: sinceDate)
+            try checkInboundScope(inboundScope)
             if !deletedIds.isEmpty {
-                try modelContext.transaction {
+                try currentModelTransaction {
                     for id in deletedIds {
                         try markInvoiceDeleted(id: id)
                     }
@@ -2124,18 +2307,21 @@ actor DataActor {
 
     /// Mirrors InboundProcessor.syncCatalogCategories: merge by id with
     /// field-level pending-op protection, then tombstone server soft-deletes.
-    private func syncCatalogCategories(since: Date?, repos: InboundRepositories) async throws {
+    private func syncCatalogCategories(since: Date?, repos: InboundRepositories, inboundScope: OutboundScope) async throws {
+        try checkInboundScope(inboundScope)
         let dtos = try await repos.catalog.fetchCategoriesForSync(since: since)
+        try checkInboundScope(inboundScope)
         let deletedIds: [String]
         if let sinceDate = since {
             deletedIds = try await repos.catalog.fetchDeletedCategoryIds(since: sinceDate)
+            try checkInboundScope(inboundScope)
         } else {
             deletedIds = []
         }
 
         guard !dtos.isEmpty || !deletedIds.isEmpty else { return }
 
-        try modelContext.transaction {
+        try currentModelTransaction {
             for dto in dtos {
                 try mergeCatalogCategory(dto: dto)
             }
@@ -2192,11 +2378,13 @@ actor DataActor {
     /// catalog_units lacks a `fetchDeletedUnitIds` repo method; the table has a
     /// soft-delete column but no dedicated delta endpoint yet. Tombstones come
     /// through as `updated_at` bumps via the deletedAt field on the row payload.
-    private func syncCatalogUnits(since: Date?, repos: InboundRepositories) async throws {
+    private func syncCatalogUnits(since: Date?, repos: InboundRepositories, inboundScope: OutboundScope) async throws {
+        try checkInboundScope(inboundScope)
         let dtos = try await repos.catalog.fetchUnitsForSync(since: since)
+        try checkInboundScope(inboundScope)
         guard !dtos.isEmpty else { return }
 
-        try modelContext.transaction {
+        try currentModelTransaction {
             for dto in dtos {
                 try mergeCatalogUnit(dto: dto)
             }
@@ -2238,11 +2426,13 @@ actor DataActor {
 
     // MARK: - Sync: Catalog Tags
 
-    private func syncCatalogTags(since: Date?, repos: InboundRepositories) async throws {
+    private func syncCatalogTags(since: Date?, repos: InboundRepositories, inboundScope: OutboundScope) async throws {
+        try checkInboundScope(inboundScope)
         let dtos = try await repos.catalog.fetchTagsForSync(since: since)
+        try checkInboundScope(inboundScope)
         guard !dtos.isEmpty else { return }
 
-        try modelContext.transaction {
+        try currentModelTransaction {
             for dto in dtos {
                 try mergeCatalogTag(dto: dto)
             }
@@ -2279,18 +2469,21 @@ actor DataActor {
 
     // MARK: - Sync: Catalog Items (variant families)
 
-    private func syncCatalogItems(since: Date?, repos: InboundRepositories) async throws {
+    private func syncCatalogItems(since: Date?, repos: InboundRepositories, inboundScope: OutboundScope) async throws {
+        try checkInboundScope(inboundScope)
         let dtos = try await repos.catalog.fetchItemsForSync(since: since)
+        try checkInboundScope(inboundScope)
         let deletedIds: [String]
         if let sinceDate = since {
             deletedIds = try await repos.catalog.fetchDeletedItemIds(since: sinceDate)
+            try checkInboundScope(inboundScope)
         } else {
             deletedIds = []
         }
 
         guard !dtos.isEmpty || !deletedIds.isEmpty else { return }
 
-        try modelContext.transaction {
+        try currentModelTransaction {
             for dto in dtos {
                 try mergeCatalogItem(dto: dto)
             }
@@ -2351,18 +2544,21 @@ actor DataActor {
 
     // MARK: - Sync: Catalog Variants
 
-    private func syncCatalogVariants(since: Date?, repos: InboundRepositories) async throws {
+    private func syncCatalogVariants(since: Date?, repos: InboundRepositories, inboundScope: OutboundScope) async throws {
+        try checkInboundScope(inboundScope)
         let dtos = try await repos.catalog.fetchVariantsForSync(since: since)
+        try checkInboundScope(inboundScope)
         let deletedIds: [String]
         if let sinceDate = since {
             deletedIds = try await repos.catalog.fetchDeletedVariantIds(since: sinceDate)
+            try checkInboundScope(inboundScope)
         } else {
             deletedIds = []
         }
 
         guard !dtos.isEmpty || !deletedIds.isEmpty else { return }
 
-        try modelContext.transaction {
+        try currentModelTransaction {
             for dto in dtos {
                 try mergeCatalogVariant(dto: dto)
             }
@@ -2421,18 +2617,21 @@ actor DataActor {
 
     // MARK: - Sync: Catalog Stock Units
 
-    private func syncCatalogStockUnits(since: Date?, repos: InboundRepositories) async throws {
+    private func syncCatalogStockUnits(since: Date?, repos: InboundRepositories, inboundScope: OutboundScope) async throws {
+        try checkInboundScope(inboundScope)
         let dtos = try await repos.catalogStockUnit.fetchForSync(since: since)
+        try checkInboundScope(inboundScope)
         let deletedIds: [String]
         if let sinceDate = since {
             deletedIds = try await repos.catalogStockUnit.fetchDeletedIds(since: sinceDate)
+            try checkInboundScope(inboundScope)
         } else {
             deletedIds = []
         }
 
         guard !dtos.isEmpty || !deletedIds.isEmpty else { return }
 
-        try modelContext.transaction {
+        try currentModelTransaction {
             for dto in dtos {
                 try mergeCatalogStockUnit(dto: dto)
             }
@@ -2497,10 +2696,12 @@ actor DataActor {
 
     /// Insert-or-skip mirror of the immutable `catalog_stock_unit_events` ledger.
     /// Keyed off `created_at`; no tombstone path (rows are never deleted).
-    private func syncCatalogStockUnitEvents(since: Date?, repos: InboundRepositories) async throws {
+    private func syncCatalogStockUnitEvents(since: Date?, repos: InboundRepositories, inboundScope: OutboundScope) async throws {
+        try checkInboundScope(inboundScope)
         let dtos = try await repos.catalogStockUnitEvent.fetchForSync(since: since)
+        try checkInboundScope(inboundScope)
         guard !dtos.isEmpty else { return }
-        try modelContext.transaction {
+        try currentModelTransaction {
             for dto in dtos {
                 try mergeCatalogStockUnitEvent(dto: dto)
             }
@@ -2524,8 +2725,10 @@ actor DataActor {
     /// catalog_options has no updated_at — full reconcile: pull every option for
     /// the company, prune local rows missing from the response. Mirrors
     /// InboundProcessor.syncCatalogOptions verbatim.
-    private func syncCatalogOptions(repos: InboundRepositories) async throws {
+    private func syncCatalogOptions(repos: InboundRepositories, inboundScope: OutboundScope) async throws {
+        try checkInboundScope(inboundScope)
         let dtos = try await repos.catalog.fetchOptionsForCompany()
+        try checkInboundScope(inboundScope)
         try mergeCatalogOptions(dtos: dtos, companyId: repos.companyId)
         print("[DataActor] Merged \(dtos.count) catalog options")
     }
@@ -2568,7 +2771,7 @@ actor DataActor {
 
         guard !updates.isEmpty || !inserts.isEmpty || !deletions.isEmpty else { return }
 
-        try modelContext.transaction {
+        try currentModelTransaction {
             for (row, dto) in updates {
                 row.catalogItemId = dto.catalogItemId
                 row.name = dto.name
@@ -2590,8 +2793,10 @@ actor DataActor {
 
     // MARK: - Sync: Catalog Option Values
 
-    private func syncCatalogOptionValues(repos: InboundRepositories) async throws {
+    private func syncCatalogOptionValues(repos: InboundRepositories, inboundScope: OutboundScope) async throws {
+        try checkInboundScope(inboundScope)
         let dtos = try await repos.catalog.fetchOptionValuesForCompany()
+        try checkInboundScope(inboundScope)
         try mergeCatalogOptionValues(dtos: dtos)
         print("[DataActor] Merged \(dtos.count) catalog option values")
     }
@@ -2627,7 +2832,7 @@ actor DataActor {
 
         guard !updates.isEmpty || !inserts.isEmpty || !deletions.isEmpty else { return }
 
-        try modelContext.transaction {
+        try currentModelTransaction {
             for (row, dto) in updates {
                 row.optionId = dto.optionId
                 row.value = dto.value
@@ -2651,8 +2856,10 @@ actor DataActor {
 
     /// Junction has no surrogate id from the server; uniqueness is the
     /// (variantId, optionValueId) pair.
-    private func syncCatalogVariantOptionValues(repos: InboundRepositories) async throws {
+    private func syncCatalogVariantOptionValues(repos: InboundRepositories, inboundScope: OutboundScope) async throws {
+        try checkInboundScope(inboundScope)
         let dtos = try await repos.catalog.fetchVariantOptionValuesForCompany()
+        try checkInboundScope(inboundScope)
         try mergeCatalogVariantOptionValues(dtos: dtos, companyId: repos.companyId)
         print("[DataActor] Merged \(dtos.count) variant option-value joins")
     }
@@ -2696,7 +2903,7 @@ actor DataActor {
 
         guard !deletions.isEmpty || !insertions.isEmpty else { return }
 
-        try modelContext.transaction {
+        try currentModelTransaction {
             for row in deletions {
                 modelContext.delete(row)
             }
@@ -2711,8 +2918,10 @@ actor DataActor {
 
     // MARK: - Sync: Catalog Item Tags
 
-    private func syncCatalogItemTags(repos: InboundRepositories) async throws {
+    private func syncCatalogItemTags(repos: InboundRepositories, inboundScope: OutboundScope) async throws {
+        try checkInboundScope(inboundScope)
         let dtos = try await repos.catalog.fetchItemTagsForCompany()
+        try checkInboundScope(inboundScope)
         try mergeCatalogItemTags(dtos: dtos, companyId: repos.companyId)
         print("[DataActor] Merged \(dtos.count) catalog item-tag joins")
     }
@@ -2745,7 +2954,7 @@ actor DataActor {
 
         guard !updates.isEmpty || !inserts.isEmpty || !deletions.isEmpty else { return }
 
-        try modelContext.transaction {
+        try currentModelTransaction {
             for (row, dto) in updates {
                 row.catalogItemId = dto.catalogItemId
                 row.tagId = dto.tagId
@@ -2765,11 +2974,13 @@ actor DataActor {
     // MARK: - Sync: Catalog Snapshots
 
     /// Snapshots are append-only — no updates, no soft-deletes. Just upsert by id.
-    private func syncCatalogSnapshots(since: Date?, repos: InboundRepositories) async throws {
+    private func syncCatalogSnapshots(since: Date?, repos: InboundRepositories, inboundScope: OutboundScope) async throws {
+        try checkInboundScope(inboundScope)
         let dtos = try await repos.catalog.fetchSnapshotsForSync(since: since)
+        try checkInboundScope(inboundScope)
         guard !dtos.isEmpty else { return }
 
-        try modelContext.transaction {
+        try currentModelTransaction {
             for dto in dtos {
                 try mergeCatalogSnapshot(dto: dto)
             }
@@ -2793,7 +3004,8 @@ actor DataActor {
     /// Snapshot items are immutable. For any local snapshot belonging to this
     /// company whose item count is non-zero but whose items are missing
     /// locally, pull its rows in one batched query.
-    private func syncCatalogSnapshotItems(repos: InboundRepositories) async throws {
+    private func syncCatalogSnapshotItems(repos: InboundRepositories, inboundScope: OutboundScope) async throws {
+        try checkInboundScope(inboundScope)
         let companyId = repos.companyId
         let snapshots = try modelContext.fetch(FetchDescriptor<CatalogSnapshot>())
             .filter { $0.companyId == companyId }
@@ -2815,8 +3027,9 @@ actor DataActor {
 
         let snapshotIds = needsBackfill.map(\.id)
         let dtos = try await repos.catalog.fetchSnapshotItemsForSnapshots(snapshotIds)
+        try checkInboundScope(inboundScope)
 
-        try modelContext.transaction {
+        try currentModelTransaction {
             let allItemIds = Set(dtos.map(\.id))
             let existingDescriptor = FetchDescriptor<CatalogSnapshotItem>(
                 predicate: #Predicate { allItemIds.contains($0.id) }
@@ -2840,8 +3053,10 @@ actor DataActor {
     /// id we see here is live. Local rows missing from the response are pruned
     /// (treated as server-side deletes) — apart from rows with pending local
     /// SyncOperations, which we leave untouched.
-    private func syncCatalogOrders(repos: InboundRepositories) async throws {
+    private func syncCatalogOrders(repos: InboundRepositories, inboundScope: OutboundScope) async throws {
+        try checkInboundScope(inboundScope)
         let dtos = try await repos.order.fetchAll()
+        try checkInboundScope(inboundScope)
         try mergeCatalogOrders(dtos: dtos, companyId: repos.companyId)
         print("[DataActor] Merged \(dtos.count) catalog orders")
     }
@@ -2886,7 +3101,7 @@ actor DataActor {
 
         guard !updates.isEmpty || !inserts.isEmpty || !tombstones.isEmpty else { return }
 
-        try modelContext.transaction {
+        try currentModelTransaction {
             for update in updates {
                 applyCatalogOrder(dto: update.dto, to: update.row, accepting: update.accept)
             }
@@ -2986,7 +3201,8 @@ actor DataActor {
 
     /// Pull items for every local order belonging to this company. Server is
     /// authoritative — we replace the children for each order in one pass.
-    private func syncCatalogOrderItems(repos: InboundRepositories) async throws {
+    private func syncCatalogOrderItems(repos: InboundRepositories, inboundScope: OutboundScope) async throws {
+        try checkInboundScope(inboundScope)
         let companyId = repos.companyId
         let companyOrders = try modelContext.fetch(FetchDescriptor<CatalogOrder>())
             .filter { $0.companyId == companyId }
@@ -2998,6 +3214,7 @@ actor DataActor {
         // orders; mirrors InboundProcessor's per-order save granularity.
         for order in companyOrders {
             let dtos = try await repos.order.fetchOrderItems(orderId: order.id)
+            try checkInboundScope(inboundScope)
             try mergeCatalogOrderItems(dtos: dtos, orderId: order.id)
             totalMerged += dtos.count
         }
@@ -3041,7 +3258,7 @@ actor DataActor {
 
         guard !updates.isEmpty || !inserts.isEmpty || !deletions.isEmpty else { return }
 
-        try modelContext.transaction {
+        try currentModelTransaction {
             for (row, dto) in updates {
                 row.orderId = dto.orderId
                 row.catalogVariantId = dto.catalogVariantId
@@ -3065,8 +3282,10 @@ actor DataActor {
 
     // MARK: - Sync: Company Default Products
 
-    private func syncCompanyDefaultProducts(repos: InboundRepositories) async throws {
+    private func syncCompanyDefaultProducts(repos: InboundRepositories, inboundScope: OutboundScope) async throws {
+        try checkInboundScope(inboundScope)
         let dtos = try await repos.defaultProduct.fetchAll()
+        try checkInboundScope(inboundScope)
         try mergeCompanyDefaultProducts(dtos: dtos, companyId: repos.companyId)
         print("[DataActor] Merged \(dtos.count) company default products")
     }
@@ -3118,7 +3337,7 @@ actor DataActor {
 
         guard !updates.isEmpty || !inserts.isEmpty || !deletions.isEmpty else { return }
 
-        try modelContext.transaction {
+        try currentModelTransaction {
             for (row, dto) in updates {
                 applyCompanyDefaultProduct(dto: dto, to: row)
             }
@@ -3175,8 +3394,10 @@ actor DataActor {
 
     // MARK: - Sync: Products
 
-    private func syncProducts(repos: InboundRepositories) async throws {
+    private func syncProducts(repos: InboundRepositories, inboundScope: OutboundScope) async throws {
+        try checkInboundScope(inboundScope)
         let dtos = try await repos.product.fetchAll(includeInactive: true)
+        try checkInboundScope(inboundScope)
         try mergeProducts(dtos: dtos, companyId: repos.companyId)
         print("[DataActor] Merged \(dtos.count) products")
     }
@@ -3217,7 +3438,7 @@ actor DataActor {
 
         guard !work.isEmpty || !deactivations.isEmpty else { return }
 
-        try modelContext.transaction {
+        try currentModelTransaction {
             for item in work {
                 try ProductSyncLocalStore.merge(dto: item.dto, context: modelContext, accepting: item.accept)
             }
@@ -3229,8 +3450,10 @@ actor DataActor {
 
     // MARK: - Sync: Product Options
 
-    private func syncProductOptions(repos: InboundRepositories) async throws {
+    private func syncProductOptions(repos: InboundRepositories, inboundScope: OutboundScope) async throws {
+        try checkInboundScope(inboundScope)
         let dtos = try await repos.productRichness.fetchOptionsForCompany()
+        try checkInboundScope(inboundScope)
         try mergeProductOptions(dtos: dtos, companyId: repos.companyId)
         print("[DataActor] Merged \(dtos.count) product options")
     }
@@ -3272,7 +3495,7 @@ actor DataActor {
 
         guard !updates.isEmpty || !inserts.isEmpty || !deletions.isEmpty else { return }
 
-        try modelContext.transaction {
+        try currentModelTransaction {
             for (row, dto) in updates {
                 row.productId = dto.productId
                 row.name = dto.name
@@ -3300,8 +3523,10 @@ actor DataActor {
 
     // MARK: - Sync: Product Option Values
 
-    private func syncProductOptionValues(repos: InboundRepositories) async throws {
+    private func syncProductOptionValues(repos: InboundRepositories, inboundScope: OutboundScope) async throws {
+        try checkInboundScope(inboundScope)
         let dtos = try await repos.productRichness.fetchOptionValuesForCompany()
+        try checkInboundScope(inboundScope)
         try mergeProductOptionValues(dtos: dtos)
         print("[DataActor] Merged \(dtos.count) product option values")
     }
@@ -3335,7 +3560,7 @@ actor DataActor {
 
         guard !updates.isEmpty || !inserts.isEmpty || !deletions.isEmpty else { return }
 
-        try modelContext.transaction {
+        try currentModelTransaction {
             for (row, dto) in updates {
                 row.optionId = dto.optionId
                 row.value = dto.value
@@ -3357,18 +3582,21 @@ actor DataActor {
 
     // MARK: - Sync: Catalog Product Option Mappings
 
-    private func syncCatalogProductOptionMappings(since: Date?, repos: InboundRepositories) async throws {
+    private func syncCatalogProductOptionMappings(since: Date?, repos: InboundRepositories, inboundScope: OutboundScope) async throws {
+        try checkInboundScope(inboundScope)
         let dtos = try await repos.catalogProductOptionMapping.fetchForSync(since: since)
+        try checkInboundScope(inboundScope)
         let deletedIds: [String]
         if let sinceDate = since {
             deletedIds = try await repos.catalogProductOptionMapping.fetchDeletedIds(since: sinceDate)
+            try checkInboundScope(inboundScope)
         } else {
             deletedIds = []
         }
 
         guard !dtos.isEmpty || !deletedIds.isEmpty else { return }
 
-        try modelContext.transaction {
+        try currentModelTransaction {
             for dto in dtos {
                 try mergeCatalogProductOptionMapping(dto: dto)
             }
@@ -3423,8 +3651,10 @@ actor DataActor {
 
     // MARK: - Sync: Product Pricing Modifiers
 
-    private func syncProductPricingModifiers(repos: InboundRepositories) async throws {
+    private func syncProductPricingModifiers(repos: InboundRepositories, inboundScope: OutboundScope) async throws {
+        try checkInboundScope(inboundScope)
         let dtos = try await repos.productRichness.fetchPricingModifiersForCompany()
+        try checkInboundScope(inboundScope)
         try mergeProductPricingModifiers(dtos: dtos, companyId: repos.companyId)
         print("[DataActor] Merged \(dtos.count) product pricing modifiers")
     }
@@ -3464,7 +3694,7 @@ actor DataActor {
 
         guard !updates.isEmpty || !inserts.isEmpty || !deletions.isEmpty else { return }
 
-        try modelContext.transaction {
+        try currentModelTransaction {
             for (row, dto) in updates {
                 row.productId = dto.productId
                 row.optionId = dto.optionId
@@ -3490,8 +3720,10 @@ actor DataActor {
 
     // MARK: - Sync: Product Materials (recipes)
 
-    private func syncProductMaterials(repos: InboundRepositories) async throws {
+    private func syncProductMaterials(repos: InboundRepositories, inboundScope: OutboundScope) async throws {
+        try checkInboundScope(inboundScope)
         let dtos = try await repos.productRichness.fetchMaterialsForCompany()
+        try checkInboundScope(inboundScope)
         try mergeProductMaterials(dtos: dtos, companyId: repos.companyId)
         print("[DataActor] Merged \(dtos.count) product materials")
     }
@@ -3532,7 +3764,7 @@ actor DataActor {
 
         guard !updates.isEmpty || !inserts.isEmpty || !deletions.isEmpty else { return }
 
-        try modelContext.transaction {
+        try currentModelTransaction {
             for (row, dto) in updates {
                 row.productId = dto.productId
                 row.catalogVariantId = dto.catalogVariantId
@@ -3559,8 +3791,10 @@ actor DataActor {
 
     // MARK: - Sync: Product Bundle Items
 
-    private func syncProductBundleItems(repos: InboundRepositories) async throws {
+    private func syncProductBundleItems(repos: InboundRepositories, inboundScope: OutboundScope) async throws {
+        try checkInboundScope(inboundScope)
         let dtos = try await repos.productBundleItem.fetchAll()
+        try checkInboundScope(inboundScope)
         try mergeProductBundleItems(dtos: dtos, companyId: repos.companyId)
         print("[DataActor] Merged \(dtos.count) product bundle items")
     }
@@ -3626,7 +3860,7 @@ actor DataActor {
 
         guard !updates.isEmpty || !inserts.isEmpty || !deletions.isEmpty else { return }
 
-        try modelContext.transaction {
+        try currentModelTransaction {
             for update in updates {
                 let row = update.row
                 row.bundleProductId = update.dto.bundleProductId
@@ -3658,11 +3892,13 @@ actor DataActor {
     /// Pulls `inventory_units` rows from Supabase and upserts into the local
     /// SwiftData store. Distinct from CatalogUnit — these back the Inventory
     /// tab and were silently absent from sync prior to bug 2837ddae.
-    private func syncInventoryUnits(since: Date?, repos: InboundRepositories) async throws {
+    private func syncInventoryUnits(since: Date?, repos: InboundRepositories, inboundScope: OutboundScope) async throws {
+        try checkInboundScope(inboundScope)
         let dtos = try await repos.inventory.fetchUnitsForSync(since: since)
+        try checkInboundScope(inboundScope)
         guard !dtos.isEmpty else { return }
 
-        try modelContext.transaction {
+        try currentModelTransaction {
             for dto in dtos {
                 try mergeInventoryUnit(dto: dto)
             }
@@ -3699,11 +3935,13 @@ actor DataActor {
 
     // MARK: - Sync: Inventory Tags (legacy)
 
-    private func syncInventoryTags(since: Date?, repos: InboundRepositories) async throws {
+    private func syncInventoryTags(since: Date?, repos: InboundRepositories, inboundScope: OutboundScope) async throws {
+        try checkInboundScope(inboundScope)
         let dtos = try await repos.inventory.fetchTagsForSync(since: since)
+        try checkInboundScope(inboundScope)
         guard !dtos.isEmpty else { return }
 
-        try modelContext.transaction {
+        try currentModelTransaction {
             for dto in dtos {
                 try mergeInventoryTag(dto: dto)
             }
@@ -3740,18 +3978,21 @@ actor DataActor {
 
     // MARK: - Sync: Inventory Items (legacy)
 
-    private func syncInventoryItems(since: Date?, repos: InboundRepositories) async throws {
+    private func syncInventoryItems(since: Date?, repos: InboundRepositories, inboundScope: OutboundScope) async throws {
+        try checkInboundScope(inboundScope)
         let dtos = try await repos.inventory.fetchItemsForSync(since: since)
+        try checkInboundScope(inboundScope)
         let deletedIds: [String]
         if let sinceDate = since {
             deletedIds = (try? await repos.inventory.fetchDeletedItemIds(since: sinceDate)) ?? []
+            try checkInboundScope(inboundScope)
         } else {
             deletedIds = []
         }
 
         guard !dtos.isEmpty || !deletedIds.isEmpty else { return }
 
-        try modelContext.transaction {
+        try currentModelTransaction {
             for dto in dtos {
                 try mergeInventoryItem(dto: dto)
             }
@@ -3814,8 +4055,10 @@ actor DataActor {
     /// authoritative row set drives both insertions (tag is added to
     /// `tagIds`) and deletions (tag is removed). This mirrors how
     /// `syncCatalogItemTags` handles the catalog_item_tags table.
-    private func syncInventoryItemTags(repos: InboundRepositories) async throws {
+    private func syncInventoryItemTags(repos: InboundRepositories, inboundScope: OutboundScope) async throws {
+        try checkInboundScope(inboundScope)
         let dtos = try await repos.inventory.fetchItemTagsForCompany()
+        try checkInboundScope(inboundScope)
 
         // Group server rows by item id for O(1) per-item reconcile.
         var serverByItem: [String: Set<String>] = [:]
@@ -3823,7 +4066,7 @@ actor DataActor {
             serverByItem[dto.itemId, default: []].insert(dto.tagId)
         }
 
-        try modelContext.transaction {
+        try currentModelTransaction {
             let companyId = repos.companyId
             let allItems = try modelContext.fetch(FetchDescriptor<InventoryItem>())
                 .filter { $0.companyId == companyId }
@@ -3842,11 +4085,13 @@ actor DataActor {
 
     // MARK: - Sync: Inventory Snapshots (legacy)
 
-    private func syncInventorySnapshots(since: Date?, repos: InboundRepositories) async throws {
+    private func syncInventorySnapshots(since: Date?, repos: InboundRepositories, inboundScope: OutboundScope) async throws {
+        try checkInboundScope(inboundScope)
         let dtos = try await repos.inventory.fetchSnapshotsForSync(since: since)
+        try checkInboundScope(inboundScope)
         guard !dtos.isEmpty else { return }
 
-        try modelContext.transaction {
+        try currentModelTransaction {
             for dto in dtos {
                 try mergeInventorySnapshot(dto: dto)
             }
@@ -3868,7 +4113,8 @@ actor DataActor {
         // a local row exists, there's nothing to update. Skip the existing path.
     }
 
-    private func syncInventorySnapshotItems(repos: InboundRepositories) async throws {
+    private func syncInventorySnapshotItems(repos: InboundRepositories, inboundScope: OutboundScope) async throws {
+        try checkInboundScope(inboundScope)
         // Find snapshots that exist locally but have no items yet. Snapshot
         // items are fetched on-demand per snapshot id to avoid a full table
         // scan on accounts with hundreds of snapshots.
@@ -3885,9 +4131,10 @@ actor DataActor {
         guard !needsItems.isEmpty else { return }
 
         let dtos = try await repos.inventory.fetchSnapshotItemsForSnapshots(needsItems)
+        try checkInboundScope(inboundScope)
         guard !dtos.isEmpty else { return }
 
-        try modelContext.transaction {
+        try currentModelTransaction {
             for dto in dtos {
                 let model = dto.toModel()
                 model.lastSyncedAt = Date()
@@ -3900,10 +4147,12 @@ actor DataActor {
 
     // MARK: - Sync: Task Reminders (bug 4f00c2d7)
 
-    private func syncTaskTypeReminders(since: Date?, repos: InboundRepositories) async throws {
+    private func syncTaskTypeReminders(since: Date?, repos: InboundRepositories, inboundScope: OutboundScope) async throws {
+        try checkInboundScope(inboundScope)
         let dtos = try await TaskReminderRepository.shared.fetchTemplates(companyId: repos.companyId, since: since)
+        try checkInboundScope(inboundScope)
         guard !dtos.isEmpty else { return }
-        try modelContext.transaction {
+        try currentModelTransaction {
             for dto in dtos {
                 let id = dto.id
                 let descriptor = FetchDescriptor<TaskTypeReminder>(predicate: #Predicate { $0.id == id })
@@ -3918,10 +4167,12 @@ actor DataActor {
         print("[DataActor] Merged \(dtos.count) task reminder templates")
     }
 
-    private func syncTaskReminders(since: Date?, repos: InboundRepositories) async throws {
+    private func syncTaskReminders(since: Date?, repos: InboundRepositories, inboundScope: OutboundScope) async throws {
+        try checkInboundScope(inboundScope)
         let dtos = try await TaskReminderRepository.shared.fetchInstances(companyId: repos.companyId, since: since)
+        try checkInboundScope(inboundScope)
         guard !dtos.isEmpty else { return }
-        try modelContext.transaction {
+        try currentModelTransaction {
             for dto in dtos {
                 let id = dto.id
                 let descriptor = FetchDescriptor<TaskReminder>(predicate: #Predicate { $0.id == id })
@@ -4166,7 +4417,7 @@ actor DataActor {
             let duplicateIDs = usersByID.filter { $0.value.count > 1 }.keys
             guard !duplicateIDs.isEmpty else { return }
 
-            try modelContext.transaction {
+            try currentModelTransaction {
                 for id in duplicateIDs {
                     guard let duplicates = usersByID[id], duplicates.count > 1 else { continue }
 
@@ -4217,7 +4468,7 @@ actor DataActor {
 
             print("[DataActor] Found \(duplicateGroups.count) project IDs with duplicates")
 
-            try modelContext.transaction {
+            try currentModelTransaction {
                 var totalDeleted = 0
                 for (id, copies) in duplicateGroups {
                     let winnerIdx = pickFreshestIndex(
@@ -4277,7 +4528,7 @@ actor DataActor {
     /// Idempotent — safe to run on every launch.
     func normalizeTaskIdsToLowercase() async {
         do {
-            try modelContext.transaction {
+            try currentModelTransaction {
                 let allTasks = try modelContext.fetch(FetchDescriptor<ProjectTask>())
                 var taskIdCount = 0
                 var taskMemberStringCount = 0
@@ -4363,7 +4614,7 @@ actor DataActor {
 
             print("[DataActor] Found \(duplicateGroups.count) task IDs with duplicates")
 
-            try modelContext.transaction {
+            try currentModelTransaction {
                 var totalDeleted = 0
                 for (id, copies) in duplicateGroups {
                     let winnerIdx = pickFreshestIndex(
@@ -4400,7 +4651,7 @@ actor DataActor {
 
             print("[DataActor] Found \(duplicateGroups.count) client IDs with duplicates")
 
-            try modelContext.transaction {
+            try currentModelTransaction {
                 var totalDeleted = 0
                 for (id, copies) in duplicateGroups {
                     let winnerIdx = pickFreshestIndex(
@@ -4453,7 +4704,7 @@ actor DataActor {
     /// onto the surviving row. Idempotent — safe to run on every launch.
     func normalizeTaskTypeIdsToLowercase() async {
         do {
-            try modelContext.transaction {
+            try currentModelTransaction {
                 let allTaskTypes = try modelContext.fetch(FetchDescriptor<TaskType>())
                 var typeIdCount = 0
                 for taskType in allTaskTypes {
@@ -4502,7 +4753,7 @@ actor DataActor {
 
             print("[DataActor] Found \(duplicateGroups.count) task type IDs with duplicates")
 
-            try modelContext.transaction {
+            try currentModelTransaction {
                 var totalDeleted = 0
                 for (id, copies) in duplicateGroups {
                     let winnerIdx = pickFreshestIndex(
@@ -4560,7 +4811,7 @@ actor DataActor {
                 return
             }
             guard scopeIsCurrent() else { return }
-            try modelContext.transaction {
+            try currentModelTransaction {
                 switch update {
                 case .project(let dto):                 try mergeProject(dto: dto)
                 case .task(let dto):                    try mergeTask(dto: dto)
@@ -4698,7 +4949,7 @@ actor DataActor {
     ) async {
         guard outboundScope() != nil, isCurrent() else { return }
         do {
-            try modelContext.transaction {
+            try currentModelTransaction {
                 switch table {
                 case "projects":
                     if let m = try modelContext.fetch(FetchDescriptor<Project>(predicate: #Predicate { $0.id == id })).first {
@@ -5018,7 +5269,7 @@ actor DataActor {
         //    mutations persist atomically before we begin executing survivors.
         var coalesced: [SyncOperation] = []
         do {
-            try modelContext.transaction {
+            try currentModelTransaction {
                 coalesced = coalesceOperations(eligible)
             }
         } catch {
@@ -5121,7 +5372,7 @@ actor DataActor {
         ) ?? []
         guard !operations.isEmpty else { return }
         var released: [SyncOperation] = []
-        try? modelContext.transaction {
+        try? currentModelTransaction {
             released = SyncCrossEntityDependency.releaseParkedOperations(
                 in: operations
             )
@@ -5162,7 +5413,7 @@ actor DataActor {
     /// spanning the network call.
     ///
     /// Ported from OutboundProcessor.executeOperation. Context parameter removed;
-    /// state mutations now wrapped in `modelContext.transaction { }` blocks.
+    /// state mutations now wrapped in `currentModelTransaction { }` blocks.
     private func executeOperation(_ operation: SyncOperation) async throws {
         guard let scope = outboundScope() else { throw CancellationError() }
         guard !DeckEditingSessionRegistry.shared.isHeld(
@@ -5215,7 +5466,7 @@ actor DataActor {
             // MUST run before disposition routing — a 23505 classifies permanent.
             if operation.operationType == "create",
                errorIndicatesPrimaryKeyViolation(error) {
-                try? modelContext.transaction {
+                try? currentModelTransaction {
                     operation.status = "completed"
                     operation.completedAt = Date()
                     operation.lastError = nil
@@ -5256,7 +5507,7 @@ actor DataActor {
             // routes to the existing re-auth branch.
             let disposition = SyncErrorClassifier.disposition(for: error)
             var outcome: SyncFailureOutcome = .retryScheduled(retryCount: operation.retryCount)
-            try? modelContext.transaction {
+            try? currentModelTransaction {
                 outcome = SyncOperationFailurePolicy.apply(
                     disposition,
                     to: operation,
@@ -5273,7 +5524,7 @@ actor DataActor {
                let operations = try? modelContext.fetch(
                 FetchDescriptor<SyncOperation>()
                ) {
-                try? modelContext.transaction {
+                try? currentModelTransaction {
                     parkedMentionWasSuperseded = ProjectNoteMentionEditSync
                         .supersedeParkedUpdatesReplacedByLaterEdits(
                             in: operations
@@ -5408,7 +5659,7 @@ actor DataActor {
         // — the idempotency and reconciler paths absorb the re-push.
         do {
             let completedAt = Date()
-            try modelContext.transaction {
+            try currentModelTransaction {
                 operation.status = "completed"
                 operation.completedAt = completedAt
                 try TaskTypeMutationSync.completeProtectionOperations(
@@ -5508,7 +5759,7 @@ actor DataActor {
                 .value
             guard isCurrent() else { return false }
             if !rows.isEmpty {
-                try modelContext.transaction {
+                try currentModelTransaction {
                     SyncOperationReconcilers.applyEditRefusedVerdict(
                         operation,
                         table: SyncEntityType.project.supabaseTable
@@ -5532,7 +5783,7 @@ actor DataActor {
                 return false
             }
 
-            try modelContext.transaction {
+            try currentModelTransaction {
                 _ = try SyncOperationReconcilers.applyProjectTombstone(
                     projectId: operation.entityId,
                     deletedAt: Date(),
@@ -5585,7 +5836,7 @@ actor DataActor {
 
             let serverId = server.id.lowercased()
             var patch: [String: String] = [:]
-            try modelContext.transaction {
+            try currentModelTransaction {
                 patch = try SyncOperationReconcilers.adoptServerPhotoRow(
                     localId: operation.entityId,
                     server: server,
@@ -5643,7 +5894,7 @@ actor DataActor {
                 // is gone from this caller's world and a retry can never succeed.
                 // Retire the operation; leave local task data untouched so a
                 // permission eclipse (not a deletion) self-corrects on later pulls.
-                try modelContext.transaction {
+                try currentModelTransaction {
                     SyncOperationReconcilers.markResolved(operation)
                 }
                 print("[DataActor] projectTask update \(operation.entityId) retired: server row invisible after task_not_found")
@@ -5653,7 +5904,7 @@ actor DataActor {
                   let deletedAtRaw = server.deleted_at,
                   let deletedAt = SupabaseDate.parse(deletedAtRaw) else { return false }
 
-            try modelContext.transaction {
+            try currentModelTransaction {
                 _ = try SyncOperationReconcilers.applyTaskTombstone(
                     taskId: operation.entityId,
                     deletedAt: deletedAt,
@@ -6209,7 +6460,7 @@ actor DataActor {
     ///     the all-updates survivor (which would lose the link or the edit).
     ///
     /// Superseded ops are mutated to status="completed"; callers must wrap in
-    /// `modelContext.transaction { }` so those mutations persist.
+    /// `currentModelTransaction { }` so those mutations persist.
     ///
     /// Ported verbatim from OutboundProcessor.coalesceOperations.
     private func coalesceOperations(_ operations: [SyncOperation]) -> [SyncOperation] {
@@ -6464,7 +6715,7 @@ actor DataActor {
     ///
     /// Ported from InboundProcessor.linkAllRelationships. All `context` references
     /// become `self.modelContext`; manual `try context.save()` is replaced by the
-    /// surrounding `modelContext.transaction { }` block.
+    /// surrounding `currentModelTransaction { }` block.
     ///
     /// Public wrapper so callers outside the sync flow can trigger a rewire —
     /// specifically after `cleanupDuplicateTasks` deletes a duplicate, since
@@ -6481,7 +6732,7 @@ actor DataActor {
         print("[DataActor] Linking all relationships...")
 
         do {
-            try modelContext.transaction {
+            try currentModelTransaction {
                 let projects = try modelContext.fetch(FetchDescriptor<Project>())
                 let tasks = try modelContext.fetch(FetchDescriptor<ProjectTask>())
                 let clients = try modelContext.fetch(FetchDescriptor<Client>())
@@ -6571,7 +6822,7 @@ actor DataActor {
             // chips + unit display). The scalar `unitId` / `tagIds` are the
             // server-authoritative state — wire the @Relationships up after
             // every sync so the queries don't see stale references.
-            try modelContext.transaction {
+            try currentModelTransaction {
                 let inventoryItems = try modelContext.fetch(FetchDescriptor<InventoryItem>())
                 let inventoryUnits = try modelContext.fetch(FetchDescriptor<InventoryUnit>())
                 let inventoryTags = try modelContext.fetch(FetchDescriptor<InventoryTag>())

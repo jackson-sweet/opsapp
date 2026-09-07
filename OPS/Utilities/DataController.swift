@@ -482,10 +482,12 @@ class DataController: ObservableObject {
     }
 
     private func invalidateDataActorStartup() {
+        imageSyncManager?.invalidate()
+        imageSyncManager = nil
         dataActorStartup?.invalidate()
         dataActorBindingTask?.cancel()
         legacyBootstrapTask?.cancel()
-        dataActor?.invalidateOutboundWork()
+        dataActor?.retireAndDrainModelWork()
         dataActorStartup = nil
         dataActorBindingTask = nil
         legacyBootstrapTask = nil

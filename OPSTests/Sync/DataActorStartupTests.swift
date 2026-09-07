@@ -138,6 +138,28 @@ final class DataActorStartupTests: XCTestCase {
         controller.syncEngine.stopForLogoutSync()
     }
 
+    func testAlreadyConfiguredControllerRebindsEngineToReplacementStore() async throws {
+        let first = try makeContainer()
+        let replacement = try makeContainer()
+        let oldOperation = try makeOperation(in: first.mainContext)
+        let newOperation = try makeOperation(in: replacement.mainContext)
+        let controller = DataController(dataActorPreparation: { _, _ in })
+        controller.setModelContext(first.mainContext)
+        _ = await controller.readyDataActor()
+        controller.isAuthenticated = true
+        controller.initializeSyncManager()
+        XCTAssertNotNil(controller.imageSyncManager)
+        XCTAssertEqual(controller.syncEngine.getPendingOperations().map(\.id), [oldOperation.id])
+        controller.setModelContext(replacement.mainContext)
+        let actor = await controller.readyDataActor()
+        controller.initializeSyncManager()
+        XCTAssertTrue(actor?.modelContainer === replacement)
+        XCTAssertNotNil(controller.imageSyncManager)
+        XCTAssertEqual(controller.syncEngine.getPendingOperations().map(\.id), [newOperation.id])
+        controller.imageSyncManager?.invalidate()
+        controller.syncEngine.stopForLogoutSync()
+    }
+
     func testLogoutStopsPendingControllerPublication() async throws {
         let container = try makeContainer()
         let preparing = expectation(description: "controller preparation suspended")

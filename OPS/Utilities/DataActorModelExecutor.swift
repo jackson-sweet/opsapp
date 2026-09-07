@@ -7,10 +7,12 @@ import SwiftData
 final class DataActorModelExecutor: SerialModelExecutor, @unchecked Sendable {
     let modelContext: ModelContext
     private let queue: DispatchQueue
+    private let queueKey = DispatchSpecificKey<Bool>()
 
     private init(modelContext: ModelContext, queue: DispatchQueue) {
         self.modelContext = modelContext
         self.queue = queue
+        queue.setSpecific(key: queueKey, value: true)
     }
 
     static func make(modelContainer: ModelContainer) async throws -> DataActorModelExecutor {
@@ -35,6 +37,13 @@ final class DataActorModelExecutor: SerialModelExecutor, @unchecked Sendable {
         } onCancel: {
             lifetime.invalidate()
         }
+    }
+
+    /// This is used only after lifetime invalidation. Jobs already executing
+    /// finish before teardown; later jobs resume and observe the closed lifetime.
+    func drain() {
+        guard DispatchQueue.getSpecific(key: queueKey) == nil else { return }
+        queue.sync {}
     }
 
     func enqueue(_ job: consuming ExecutorJob) {

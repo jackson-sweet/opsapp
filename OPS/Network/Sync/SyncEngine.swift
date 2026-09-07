@@ -203,6 +203,8 @@ final class SyncEngine {
     nonisolated(unsafe) private var syncRetryTimer: Timer?
 
     #if DEBUG
+    var hasRecoveryTaskForTesting: Bool { recoveryTask != nil }
+    func awaitScheduledRecoveryForTesting() async { await recoveryTask?.value }
     /// Deterministic test seam invoked after every discard mutation and delete
     /// registration, immediately before SwiftData commits the transaction.
     var projectNoteDiscardFailureInjector: (() throws -> Void)?
@@ -281,7 +283,7 @@ final class SyncEngine {
             self.dataActorStartup = nil
         }
         outboundProcessor?.invalidate()
-        self.dataActor?.invalidateOutboundWork()
+        self.dataActor?.retireAndDrainModelWork()
         lifecycleGeneration += 1
         recoveryTask?.cancel()
         recoveryTask = nil
@@ -467,9 +469,15 @@ final class SyncEngine {
         if needsRealtimeProcessor { realtimeProcessor = RealtimeProcessor() }
         outboundProcessor?.invalidate()
         self.dataActorStartup?.invalidate()
-        self.dataActor?.invalidateOutboundWork()
+        self.dataActor?.retireAndDrainModelWork()
         self.dataActor = nil
         self.dataActorStartup = startup
+        // The old pass no longer owns these flags, so its guarded defer will
+        // intentionally leave replacement state alone.
+        syncInProgress = false
+        syncRequestedWhileInProgress = false
+        isSyncing = false
+        isPerformingInitialSync = false
         lifecycleGeneration += 1
         recoveryTask?.cancel()
         recoveryTask = nil
@@ -480,10 +488,43 @@ final class SyncEngine {
     /// waiters binding the same instance must not invalidate each other's work.
     func setDataActor(_ actor: DataActor?) {
         guard self.dataActor !== actor else { return }
-        self.dataActor?.invalidateOutboundWork()
+        self.dataActor?.retireAndDrainModelWork()
         self.dataActor = actor
         actor?.resumeOutboundWork()
         if let actor { self.realtimeProcessor?.setDataActor(actor) }
+    }
+
+    private struct SessionScope: Sendable {
+        let generation: Int
+        let contextID: ObjectIdentifier
+        let container: ModelContainer
+        let startupID: ObjectIdentifier?
+        let actorID: ObjectIdentifier?
+        let userID: String?
+        let companyID: String?
+        let usesActor: Bool
+    }
+
+    private func sessionScope() -> SessionScope? {
+        guard !Task.isCancelled, let context = modelContext else { return nil }
+        return SessionScope(generation: lifecycleGeneration,
+            contextID: ObjectIdentifier(context), container: context.container,
+            startupID: dataActorStartup.map(ObjectIdentifier.init),
+            actorID: dataActor.map(ObjectIdentifier.init),
+            userID: currentUserId?.lowercased(),
+            companyID: UserDefaults.standard.string(forKey: "currentUserCompanyId")?.lowercased(),
+            usesActor: FeatureFlags.useDataActor)
+    }
+
+    private func sessionIsCurrent(_ scope: SessionScope) -> Bool {
+        guard !Task.isCancelled, let context = modelContext else { return false }
+        return lifecycleGeneration == scope.generation
+            && ObjectIdentifier(context) == scope.contextID
+            && dataActorStartup.map(ObjectIdentifier.init) == scope.startupID
+            && dataActor.map(ObjectIdentifier.init) == scope.actorID
+            && currentUserId?.lowercased() == scope.userID
+            && UserDefaults.standard.string(forKey: "currentUserCompanyId")?.lowercased() == scope.companyID
+            && FeatureFlags.useDataActor == scope.usesActor
     }
 
     private func awaitDataActorReadiness() async -> Bool {
@@ -548,7 +589,7 @@ final class SyncEngine {
         retireRealtimeProcessor()
         dataActorStartup?.invalidate()
         outboundProcessor?.invalidate()
-        self.dataActor?.invalidateOutboundWork()
+        self.dataActor?.retireAndDrainModelWork()
         lifecycleGeneration += 1
         recoveryRequested = false
         recoveryTask?.cancel()
@@ -1288,18 +1329,22 @@ final class SyncEngine {
         }
 
         guard await awaitDataActorReadiness() else { return }
+        guard let session = sessionScope() else { return }
         do {
             if FeatureFlags.useDataActor, let actor = dataActor {
                 let companyId = UserDefaults.standard.string(forKey: "currentUserCompanyId") ?? ""
                 try await actor.syncCompanyOnly(companyId: companyId)
+                guard sessionIsCurrent(session) else { return }
             } else {
                 guard let modelContext, let inboundProcessor else {
                     print("[SYNC_ENGINE] syncCompanyNow: not configured")
                     return
                 }
                 try await inboundProcessor.syncCompany(context: modelContext)
+                guard sessionIsCurrent(session) else { return }
             }
         } catch {
+            guard sessionIsCurrent(session) else { return }
             print("[SYNC_ENGINE] syncCompanyNow error: \(error)")
         }
     }
@@ -1328,18 +1373,22 @@ final class SyncEngine {
         }
 
         guard await awaitDataActorReadiness() else { return }
+        guard let session = sessionScope() else { return }
         do {
             if FeatureFlags.useDataActor, let actor = dataActor {
                 let companyId = UserDefaults.standard.string(forKey: "currentUserCompanyId") ?? ""
                 try await actor.syncClientOnly(clientId: clientId, companyId: companyId)
+                guard sessionIsCurrent(session) else { return }
             } else {
                 guard let modelContext, let inboundProcessor else {
                     print("[SYNC_ENGINE] syncClientNow: not configured")
                     return
                 }
                 try await inboundProcessor.syncClient(clientId: clientId, context: modelContext)
+                guard sessionIsCurrent(session) else { return }
             }
         } catch {
+            guard sessionIsCurrent(session) else { return }
             print("[SYNC_ENGINE] syncClientNow error: \(error)")
         }
     }
@@ -1347,6 +1396,7 @@ final class SyncEngine {
     /// Triggers a full push-then-pull cycle, guarding against concurrent syncs.
     func triggerSync() async {
         guard await awaitDataActorReadiness() else { return }
+        guard let session = sessionScope() else { return }
         guard !syncInProgress else {
             syncRequestedWhileInProgress = true
             print(
@@ -1367,22 +1417,28 @@ final class SyncEngine {
         statusText = "Syncing…"
 
         defer {
-            syncInProgress = false
-            isSyncing = false
-            refreshPendingCount()
-            drainQueuedSyncRequest()
+            if sessionIsCurrent(session) {
+                syncInProgress = false
+                isSyncing = false
+                refreshPendingCount()
+                drainQueuedSyncRequest()
+            }
         }
 
         // Push local changes first, then pull server changes
         await pushPending()
+        guard sessionIsCurrent(session) else { return }
         await syncPendingLocalArtifacts()
+        guard sessionIsCurrent(session) else { return }
         await pullDelta()
+        guard sessionIsCurrent(session) else { return }
 
         // This cycle pushes before it pulls. If the pull restored a parent that
         // had been in deleted-parent custody, release and drain that exact packet
         // now instead of waiting for the next periodic trigger.
         if releaseRestoredParentSiteVisitChains() {
             await pushPending()
+            guard sessionIsCurrent(session) else { return }
         }
 
         if !hasError {
@@ -1446,6 +1502,7 @@ final class SyncEngine {
     /// Used for initial sync or manual full-refresh.
     func fullSync() async {
         guard await awaitDataActorReadiness() else { return }
+        guard let session = sessionScope() else { return }
         requestRecovery()
         // One-time migration cleanup (gated by UserDefaults flag)
         let migrationKey = "sync.migrationCleanupV1"
@@ -1460,6 +1517,7 @@ final class SyncEngine {
             print("[SYNC_ENGINE] Sync in progress — waiting for it to finish before full sync")
             for _ in 0..<30 { // Wait up to 3 seconds
                 try? await Task.sleep(for: .milliseconds(100))
+                guard sessionIsCurrent(session) else { return }
                 if !syncInProgress { break }
             }
             guard !syncInProgress else {
@@ -1481,11 +1539,13 @@ final class SyncEngine {
         statusText = "Performing full sync…"
 
         defer {
-            isPerformingInitialSync = false
-            syncInProgress = false
-            isSyncing = false
-            refreshPendingCount()
-            drainQueuedSyncRequest()
+            if sessionIsCurrent(session) {
+                isPerformingInitialSync = false
+                syncInProgress = false
+                isSyncing = false
+                refreshPendingCount()
+                drainQueuedSyncRequest()
+            }
         }
 
         // Pull all entities via DataActor (flag-on) or InboundProcessor (legacy).
@@ -1499,20 +1559,26 @@ final class SyncEngine {
                     companyId: companyId,
                     onProgress: { [weak self] entityType, _ in
                         Task { @MainActor [weak self] in
-                            self?.statusText = "Syncing \(entityType.rawValue)…"
+                            guard let self, self.sessionIsCurrent(session) else { return }
+                            self.statusText = "Syncing \(entityType.rawValue)…"
                         }
                     }
                 )
+                guard sessionIsCurrent(session) else { return }
                 await applySpotlightSnapshot(from: actor)
+                guard sessionIsCurrent(session) else { return }
             } else {
                 failedEntities = try await inboundProcessor?.fullSync(
                     context: ctx,
                     onProgress: { [weak self] entityType, _ in
-                        self?.statusText = "Syncing \(entityType.rawValue)…"
+                        guard let self, self.sessionIsCurrent(session) else { return }
+                        self.statusText = "Syncing \(entityType.rawValue)…"
                     }
                 ) ?? []
+                guard sessionIsCurrent(session) else { return }
             }
         } catch {
+            guard sessionIsCurrent(session) else { return }
             print("[SYNC_ENGINE] Full sync pull error: \(error)")
             hasError = true
 
@@ -1545,7 +1611,9 @@ final class SyncEngine {
 
         // Push any pending local operations
         await pushPending()
+        guard sessionIsCurrent(session) else { return }
         await syncPendingLocalArtifacts()
+        guard sessionIsCurrent(session) else { return }
 
         statusText = hasError ? "Sync error" : "Full sync complete"
         print("[SYNC_ENGINE] Full sync complete")
@@ -1567,6 +1635,8 @@ final class SyncEngine {
         // who finished onboarding offline gets their server ACK re-sent and the
         // pending flag cleared as soon as connectivity returns.
         await retryPendingOnboardingCompletion()
+        guard sessionIsCurrent(session) else { return }
+
     }
 
     /// Schedule-only refresh backing pull-to-refresh — projects, tasks, task
@@ -1577,10 +1647,12 @@ final class SyncEngine {
     @discardableResult
     func refreshScheduleData(companyId requestedCompanyId: String? = nil) async -> Bool {
         guard await awaitDataActorReadiness() else { return false }
+        guard let session = sessionScope() else { return false }
         // Briefly defer to an in-flight sync rather than racing it.
         if syncInProgress {
             for _ in 0..<30 {
                 try? await Task.sleep(for: .milliseconds(100))
+                guard sessionIsCurrent(session) else { return false }
                 if !syncInProgress { break }
             }
             guard !syncInProgress else {
@@ -1610,10 +1682,12 @@ final class SyncEngine {
         statusText = "Checking for schedule updates…"
 
         defer {
-            syncInProgress = false
-            isSyncing = false
-            refreshPendingCount()
-            drainQueuedSyncRequest()
+            if sessionIsCurrent(session) {
+                syncInProgress = false
+                isSyncing = false
+                refreshPendingCount()
+                drainQueuedSyncRequest()
+            }
         }
 
         guard let ctx = modelContext else { return false }
@@ -1622,6 +1696,7 @@ final class SyncEngine {
             let failedEntities: Set<SyncEntityType>
             if FeatureFlags.useDataActor, let actor = dataActor {
                 failedEntities = try await actor.syncScheduleEntities(companyId: companyId)
+                guard sessionIsCurrent(session) else { return false }
             } else {
                 // Legacy path has no scoped pull — fall back to a full inbound
                 // sync (rare: the actor path is the default).
@@ -1629,10 +1704,12 @@ final class SyncEngine {
                     context: ctx,
                     onProgress: { _, _ in }
                 ) ?? [.taskType]
+                guard sessionIsCurrent(session) else { return false }
             }
             taskTypesRefreshed = !failedEntities.contains(.taskType)
             hasError = !failedEntities.isEmpty
         } catch {
+            guard sessionIsCurrent(session) else { return false }
             print("[SYNC_ENGINE] Schedule refresh error: \(error)")
             hasError = true
             let classified = classifySyncError(error)
@@ -1645,6 +1722,7 @@ final class SyncEngine {
         // Push any pending local schedule edits so a manual refresh reconciles
         // both directions, not just inbound.
         await pushPending()
+        guard sessionIsCurrent(session) else { return false }
 
         statusText = hasError ? "Sync error" : "Schedule up to date"
         return taskTypesRefreshed
@@ -1655,6 +1733,7 @@ final class SyncEngine {
     /// success. No-op when nothing is queued. Best-effort: failures are swallowed and
     /// retried on the next sweep.
     private func retryPendingOnboardingCompletion() async {
+        guard let session = sessionScope() else { return }
         guard UserDefaults.standard.bool(forKey: OnboardingStorageKeys.completionPending) else {
             return
         }
@@ -1662,9 +1741,11 @@ final class SyncEngine {
 
         do {
             try await OnboardingService().markOnboardingComplete(userId: userId)
+            guard sessionIsCurrent(session) else { return }
             UserDefaults.standard.removeObject(forKey: OnboardingStorageKeys.completionPending)
             print("[SYNC_ENGINE] Queued onboarding completion ACK delivered — flag cleared")
         } catch {
+            guard sessionIsCurrent(session) else { return }
             print("[SYNC_ENGINE] Queued onboarding completion ACK still failing — will retry: \(error.localizedDescription)")
         }
     }
@@ -1674,13 +1755,15 @@ final class SyncEngine {
         guard let modelContext, let connectivity else { return }
         guard connectivity.shouldAttemptSync else { return }
         guard await awaitDataActorReadiness() else { return }
+        guard let session = sessionScope() else { return }
         let generation = lifecycleGeneration
         // Legacy children need their recovered parent before the first send.
         // The recovery task clears this slot before its own final upload wakeup.
         if let recoveryTask { await recoveryTask.value }
+        guard sessionIsCurrent(session) else { return }
         guard generation == lifecycleGeneration, !Task.isCancelled else { return }
         await pushDrainCoordinator.run {
-            guard !Task.isCancelled, generation == self.lifecycleGeneration,
+            guard self.sessionIsCurrent(session), generation == self.lifecycleGeneration,
                   connectivity.shouldAttemptSync else { return }
             let pending = self.getPendingOperations()
             guard !pending.isEmpty else {
@@ -1711,13 +1794,15 @@ final class SyncEngine {
                 )
             }
 
-            guard generation == self.lifecycleGeneration, !Task.isCancelled else { return }
+            guard self.sessionIsCurrent(session) else { return }
             self.clearCompletedProjectTaskSyncFlags(
                 since: pushStartedAt,
                 completedProjectTaskIds: completedProjectTaskIds
             )
             self.refreshPendingCount()
         }
+        guard sessionIsCurrent(session) else { return }
+
     }
 
     /// Safety net for the persistence invariant. Task sync runs off the
@@ -2110,23 +2195,27 @@ final class SyncEngine {
     /// HEIC/depth/sidecar assets survive annotation dismissal and retry here
     /// during the same pending-sync sweep as standard offline operations.
     func syncPendingLocalArtifacts() async {
+        guard let session = sessionScope() else { return }
         guard let modelContext else {
             print("[SYNC_ENGINE] Cannot sync local artifacts — not configured")
             return
         }
         await dimensionedPendingSyncer.syncPendingDimensions(modelContext: modelContext)
+        guard sessionIsCurrent(session) else { return }
         // Pending PencilKit annotation writes (offline edits + soft-delete
         // tombstones) track `PhotoAnnotation.needsSync` the same way but
         // previously only retried when a photo viewer happened to open —
         // drain them on this same sweep so a stuck tombstone converges on
         // the next sync cycle instead of waiting for a viewer visit.
         await PhotoAnnotationSyncManager.shared.syncPendingAnnotations(modelContext: modelContext)
+        guard sessionIsCurrent(session) else { return }
         refreshPendingCount()
     }
 
     /// Pulls delta changes from the server since the last sync timestamp via InboundProcessor.
     func pullDelta() async {
         guard await awaitDataActorReadiness() else { return }
+        guard let session = sessionScope() else { return }
         guard let modelContext else {
             print("[SYNC_ENGINE] Cannot pull — not configured")
             return
@@ -2154,12 +2243,15 @@ final class SyncEngine {
             if FeatureFlags.useDataActor, let actor = dataActor {
                 let companyId = UserDefaults.standard.string(forKey: "currentUserCompanyId") ?? ""
                 failedEntities = try await actor.deltaSync(companyId: companyId, since: sinceTimestamps)
+                guard sessionIsCurrent(session) else { return }
                 await applySpotlightSnapshot(from: actor)
+                guard sessionIsCurrent(session) else { return }
             } else {
                 failedEntities = try await inboundProcessor?.deltaSync(
                     context: modelContext,
                     since: sinceTimestamps
                 ) ?? []
+                guard sessionIsCurrent(session) else { return }
             }
 
             // Advance the cursor only for entities that did NOT fail this pull.
@@ -2168,6 +2260,7 @@ final class SyncEngine {
             // rows (the deck-design blackout bug).
             advanceSyncCursors(SyncEntityType.allCases, excluding: failedEntities, to: syncStartedAt)
         } catch {
+            guard sessionIsCurrent(session) else { return }
             print("[SYNC_ENGINE] pullDelta error: \(error)")
             hasError = true
             statusText = "Sync error"
@@ -2192,6 +2285,7 @@ final class SyncEngine {
     /// Pulls delta changes from a specific timestamp (used for Realtime catch-up).
     private func deltaSyncSince(_ date: Date) async {
         guard await awaitDataActorReadiness() else { return }
+        guard let session = sessionScope() else { return }
         guard let modelContext else { return }
 
         print("[SYNC_ENGINE] Catch-up delta sync from \(date)")
@@ -2210,12 +2304,15 @@ final class SyncEngine {
             if FeatureFlags.useDataActor, let actor = dataActor {
                 let companyId = UserDefaults.standard.string(forKey: "currentUserCompanyId") ?? ""
                 failedEntities = try await actor.deltaSync(companyId: companyId, since: sinceTimestamps)
+                guard sessionIsCurrent(session) else { return }
                 await applySpotlightSnapshot(from: actor)
+                guard sessionIsCurrent(session) else { return }
             } else {
                 failedEntities = try await inboundProcessor?.deltaSync(
                     context: modelContext,
                     since: sinceTimestamps
                 ) ?? []
+                guard sessionIsCurrent(session) else { return }
             }
 
             // Advance the cursor only for entities that did NOT fail this catch-up
@@ -2224,6 +2321,7 @@ final class SyncEngine {
             statusText = "Synced"
             kickoffPhotoPrefetch()
         } catch {
+            guard sessionIsCurrent(session) else { return }
             print("[SYNC_ENGINE] Catch-up delta error: \(error)")
         }
     }
@@ -2235,7 +2333,9 @@ final class SyncEngine {
     /// (fullSync/pullDelta/deltaSyncSince). Gated on `hasCompletedInitialBackfill`
     /// so we don't fire targeted updates before the full initial index exists.
     private func applySpotlightSnapshot(from actor: DataActor) async {
+        guard let session = sessionScope() else { return }
         let snapshot = await actor.extractAndResetSpotlight()
+        guard sessionIsCurrent(session) else { return }
         guard SpotlightIndexManager.shared.hasCompletedInitialBackfill else { return }
         guard !snapshot.isEmpty else { return }
 
@@ -2252,6 +2352,8 @@ final class SyncEngine {
 
         guard let ctx = modelContext else { return }
         await spotlightTracker.dispatch(context: ctx)
+        guard sessionIsCurrent(session) else { return }
+
     }
 
     // MARK: - Timestamp Persistence

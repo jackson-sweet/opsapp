@@ -9,12 +9,15 @@
 //  precedence over the existing pending/syncing states, and its count comes from
 //  the same `RecoveryInventory` the recovery screen reads (not raw pending).
 //
-//  Placement: every root floats this in the app-level band below its measured
-//  header — Home included (bug 417aac7b: the pill overlays Home's content
-//  instead of displacing it; it no longer owns an in-flow header row). Home
-//  project mode is the sole exception and keeps the same control inside the top
-//  project stack after AppHeader leaves the screen. See
-//  `SyncPillHeaderLayoutTests` and `HomeSyncStatusLayoutTests`.
+//  Placement: every root superimposes this on its own `AppHeader`, hanging off
+//  the header's bottom edge (bug 417aac7b). It reserves no layout — nothing
+//  below the header moves when an attention item appears — and it is allowed to
+//  cover header TEXT (the greeting, the company line, the screen title) because
+//  something needing attention outranks a greeting. It is never allowed to
+//  cover a CONTROL, so it reserves the trailing cluster's column; see
+//  `HeaderSyncStatusGeometry`. Home project mode is the sole exception and
+//  keeps the same control inside the top project stack after AppHeader leaves
+//  the screen. See `SyncPillHeaderLayoutTests` and `HomeSyncStatusLayoutTests`.
 //
 
 import Combine
@@ -26,8 +29,8 @@ import SwiftData
 /// and geometrically verified without a DataController or a live SwiftData
 /// context (see `SyncPillHeaderLayoutTests`).
 ///
-/// The pill still floats above scrolling content on non-Home roots, so two
-/// things remain deliberate in the shared visual:
+/// The pill floats above the header's fade — and, on Home, above the live map —
+/// so two things remain deliberate in the shared visual:
 ///
 /// * **Opaque base under the tone wash.** The tint alone let the
 ///   content behind bleed through and made the label unreadable over a busy
@@ -114,10 +117,10 @@ struct SyncAttentionPill: View {
         )
     }
 
-    /// Accessibility fallback for Home's measured header. The label keeps the
-    /// user's chosen text size and full count, wrapping inside the 20pt header
-    /// inset instead of painting beyond the screen. A button surface replaces
-    /// the capsule because the control can now be taller than one text line.
+    /// Accessibility fallback. The label keeps the user's chosen text size and
+    /// full count, wrapping inside the insets its host offers instead of
+    /// painting beyond the screen. A button surface replaces the capsule
+    /// because the control can now be taller than one text line.
     private var expandedPill: some View {
         HStack(alignment: .center, spacing: OPSStyle.Layout.spacing2) {
             statusIcon
@@ -168,8 +171,61 @@ struct SyncAttentionPill: View {
 }
 
 enum SyncStatusIndicatorPlacement: Equatable {
-    case appOverlay
+    /// Superimposed on a root's `AppHeader`, hanging off its bottom edge.
+    case header
+    /// Home project mode's owned project stack, after `AppHeader` leaves.
     case projectHeader
+}
+
+/// Whether a root's header may superimpose the pill at all.
+///
+/// The pill is the most urgent thing on screen, so it outranks the greeting,
+/// the company line and the screen title it covers. It yields only to another
+/// sync voice: the restored banner, or a toast that has claimed the topic.
+enum HeaderSyncStatusPlacementPolicy {
+    static func showsHeaderOverlay(
+        isSyncRestoredAlertVisible: Bool,
+        isSuppressedByToast: Bool
+    ) -> Bool {
+        !isSyncRestoredAlertVisible && !isSuppressedByToast
+    }
+}
+
+/// Geometry of the pill superimposed on `AppHeader`.
+///
+/// Bug 417aac7b closed wrong twice. The first fix put the pill in flow inside
+/// Home's measured header, which pushed TODAY / ACTIVE / ALL and the map down.
+/// The second floated it in the app-level band starting exactly at the header's
+/// lower edge — where it landed on top of the ALL filter chip. It now hangs off
+/// the header's own bottom edge as an overlay: zero reserved layout, and no
+/// reach past the header into the filter row.
+///
+/// The one control sharing that rectangle is the header's trailing cluster —
+/// Home's 44pt avatar, every other root's search / action buttons — and it sits
+/// in the TOP band row. A short pill stays below it; a tall one (accessibility
+/// sizes wrap the label) does not. Rather than depend on which, the overlay
+/// reserves the cluster's column outright, so the invariant holds at every
+/// Dynamic Type size, width and header type by construction.
+enum HeaderSyncStatusGeometry {
+    /// Gap kept between the pill and the trailing control cluster.
+    static let controlClearance = OPSStyle.Layout.spacing2
+
+    /// Trailing inset for the superimposed pill.
+    ///
+    /// - Parameters:
+    ///   - headerWidth: width of the header the pill is superimposed on.
+    ///   - trailingSlotMinX: leading edge of the trailing control cluster in the
+    ///     header's own coordinate space, or `nil` when the header carries no
+    ///     trailing control (Settings' expanded search field, for instance).
+    static func trailingInset(
+        headerWidth: CGFloat,
+        trailingSlotMinX: CGFloat?
+    ) -> CGFloat {
+        let edgeInset = OPSStyle.Layout.spacing3_5
+        guard let trailingSlotMinX else { return edgeInset }
+        let clearedColumn = headerWidth - trailingSlotMinX + controlClearance
+        return min(max(edgeInset, clearedColumn), headerWidth)
+    }
 }
 
 enum HomeSyncStatusPlacementPolicy {
@@ -323,7 +379,7 @@ struct ProjectModeSyncStatusActions<Status: View, ExitAction: View>: View {
 
 /// Compact indicator showing pending / attention sync status. Tap → PENDING WORK.
 struct SyncStatusIndicator: View {
-    var placement: SyncStatusIndicatorPlacement = .appOverlay
+    var placement: SyncStatusIndicatorPlacement = .header
 
     @EnvironmentObject private var dataController: DataController
     @EnvironmentObject private var statusModel: SyncStatusIndicatorModel
@@ -355,6 +411,14 @@ struct SyncStatusIndicator: View {
 
     // MARK: - Pill variants
 
+    /// Superimposed on a header the pill hangs off its BOTTOM edge, so the
+    /// glove-safe frame has to grow upward over header text rather than
+    /// re-centring the capsule halfway up the band. In the project stack the
+    /// pill shares a normal action row with EXIT PROJECT and stays centred.
+    private var touchTargetAlignment: Alignment {
+        placement == .header ? .bottom : .center
+    }
+
     private var indicatorButton: some View {
         Button {
             showPendingWork = true
@@ -364,7 +428,8 @@ struct SyncStatusIndicator: View {
         .buttonStyle(.plain)
         .frame(
             minWidth: OPSStyle.Layout.touchTargetMin,
-            minHeight: OPSStyle.Layout.touchTargetMin
+            minHeight: OPSStyle.Layout.touchTargetMin,
+            alignment: touchTargetAlignment
         )
         .accessibilityHint("Opens pending work")
     }
@@ -382,16 +447,17 @@ struct SyncStatusIndicator: View {
 
     /// NEW — needs-a-look state. Tan, or rose when a permanent rejection is parked.
     ///
-    /// Every placement adapts for accessibility now that the floating band is
-    /// the pill's only normal-mode home (bug 417aac7b): at accessibility sizes
-    /// it renders the full-width `expandedPill`, wrapping its label inside the
-    /// band's insets instead of painting past the screen edge. The floating
-    /// shadow stays band-only — MOBILE.md §8's single documented exception.
+    /// Every placement adapts for accessibility (bug 417aac7b): at accessibility
+    /// sizes it renders the full-width `expandedPill`, wrapping its label inside
+    /// whatever insets its host gives it instead of painting past the screen
+    /// edge. Superimposed on a header the capsule sits over the header's own
+    /// fade and, on Home, over the live map, so it keeps MOBILE.md §8's single
+    /// documented shadow; inside the project stack it is a plain row member.
     private var attentionPill: some View {
         SyncAttentionPill(
             count: statusModel.attentionCount,
             isParked: statusModel.anyParked,
-            isElevated: placement == .appOverlay,
+            isElevated: placement == .header,
             adaptsForAccessibility: true
         )
     }

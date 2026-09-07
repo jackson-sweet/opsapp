@@ -16,14 +16,13 @@ import SwiftUI
 // shared two-slot policy in OPSScreenHeader.
 
 /// Measured height of the tab's `AppHeader`, published so app-level overlays can
-/// park BENEATH the header band instead of colliding with it. On Home this
-/// includes the in-flow recovery-status row when that row is visible.
+/// park BENEATH the header band instead of colliding with it.
 ///
-/// `MainTabView` floats the non-Home sync attention pill beneath each active
+/// `MainTabView` bands the global image-sync progress beneath each active
 /// header. Publishing the real measured height lets that overlay start where the
-/// header ends at every Dynamic Type size. Home owns the pill inside this header
-/// instead; its measured height then keeps the map filters and global image-sync
-/// progress below the in-flow row.
+/// header ends at every Dynamic Type size. The recovery pill is NOT in that band
+/// — it is superimposed on this header (see `statusOverlay`) and therefore
+/// contributes nothing to this height.
 ///
 /// Reduced with `max`, which only works because inactive headers stay silent.
 /// MainTabView keeps every visited tab mounted, so several headers are alive and
@@ -65,6 +64,8 @@ struct AppHeader: View {
     @EnvironmentObject private var dataController: DataController
     @EnvironmentObject private var subscriptionManager: SubscriptionManager
     @EnvironmentObject private var appState: AppState
+    /// Silences the superimposed pill while a toast is speaking for sync.
+    @ObservedObject private var toastCenter = ToastCenter.shared
     /// Only the header in the tab on screen may claim the band height — see
     /// `AppHeaderHeightKey`.
     @Environment(\.isActiveTab) private var isActiveTab
@@ -129,6 +130,9 @@ struct AppHeader: View {
     
     var body: some View {
         headerContent
+            .overlayPreferenceValue(OPSHeaderTrailingSlotBoundsKey.self) { anchor in
+                statusOverlay(trailingSlot: anchor)
+            }
             .background(
                 GeometryReader { proxy in
                     Color.clear.preference(
@@ -152,15 +156,67 @@ struct AppHeader: View {
             }
     }
 
-    /// No header hosts the recovery pill in flow. Home used to reserve a row
+    /// No header hosts the recovery pill IN FLOW. Home used to reserve a row
     /// here, which pushed TODAY / ACTIVE / ALL and the map down the moment an
-    /// attention item existed (bug 417aac7b); every root now floats the pill in
-    /// the app-level band below this measured boundary. Home project mode is
-    /// the sole exception and hosts it in its own project stack.
+    /// attention item existed (bug 417aac7b). It is superimposed instead — see
+    /// `statusOverlay` — so this stays the header's true, pill-independent
+    /// height. Home project mode drops the header entirely and hosts the same
+    /// control in its own project stack.
     private var headerContent: some View {
         VStack(spacing: 0) {
             headerBand
             contextStrip
+        }
+    }
+
+    // MARK: - Superimposed recovery status (bug 417aac7b)
+
+    /// Settings' expanded search turns the whole band into a focused text field
+    /// with its own clear and CANCEL controls and no text worth covering. The
+    /// pill stands down for the duration rather than landing on an input.
+    private var headerIsSearchInput: Bool {
+        headerType == .settings && appState.isSettingsSearchActive
+    }
+
+    /// The needs-a-look pill, hung off the header's BOTTOM edge.
+    ///
+    /// Jackson's direction: the pill is the most urgent thing on screen, so it
+    /// superimposes over header content and is addressed or cancelled. It is
+    /// therefore free to cover header TEXT — the greeting, the company line,
+    /// the screen title — and reserves no layout of its own, so nothing below
+    /// the header moves when it appears or leaves.
+    ///
+    /// It is never free to cover a CONTROL. The header's trailing cluster
+    /// (Home's avatar, every other root's search / action buttons) lives in the
+    /// top band row, and at accessibility sizes the pill is tall enough to
+    /// reach that row — so the overlay reserves the cluster's whole column via
+    /// its measured bounds rather than relying on the pill staying short.
+    /// Anchored to the bottom edge, it also cannot reach the filter row below
+    /// the header, which is what the previous fix got wrong.
+    @ViewBuilder
+    private func statusOverlay(trailingSlot: Anchor<CGRect>?) -> some View {
+        if !headerIsSearchInput,
+           HeaderSyncStatusPlacementPolicy.showsHeaderOverlay(
+               isSyncRestoredAlertVisible: dataController.showSyncRestoredAlert,
+               isSuppressedByToast: toastCenter.isSuppressingSyncStatusIndicator
+           ) {
+            GeometryReader { proxy in
+                SyncStatusIndicator(placement: .header)
+                    .frame(
+                        maxWidth: .infinity,
+                        maxHeight: .infinity,
+                        alignment: .bottomTrailing
+                    )
+                    .padding(.leading, OPSStyle.Layout.spacing3_5)
+                    .padding(
+                        .trailing,
+                        HeaderSyncStatusGeometry.trailingInset(
+                            headerWidth: proxy.size.width,
+                            trailingSlotMinX: trailingSlot.map { proxy[$0].minX }
+                        )
+                    )
+                    .padding(.bottom, OPSStyle.Layout.spacing2)
+            }
         }
     }
 

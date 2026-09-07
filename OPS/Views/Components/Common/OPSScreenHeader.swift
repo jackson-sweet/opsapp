@@ -20,6 +20,24 @@
 
 import SwiftUI
 
+/// Bounds of the header's trailing control cluster, published so anything
+/// superimposed on the header can keep clear of it.
+///
+/// `AppHeader` hangs the recovery pill off the header's bottom edge (bug
+/// 417aac7b). The pill is allowed to cover header TEXT — the greeting, the
+/// company line, the screen title — but never a control, and the trailing
+/// cluster (Home's avatar, every other root's search/action buttons) is the one
+/// control living in the same rectangle. Publishing the cluster's real frame
+/// lets the overlay reserve its column at every Dynamic Type size instead of
+/// hoping a tall pill happens to stay below it.
+struct OPSHeaderTrailingSlotBoundsKey: PreferenceKey {
+    static let defaultValue: Anchor<CGRect>? = nil
+
+    static func reduce(value: inout Anchor<CGRect>?, nextValue: () -> Anchor<CGRect>?) {
+        value = nextValue() ?? value
+    }
+}
+
 /// Shared, testable policy for the mobile header's trailing edge. The visual
 /// spec permits no more than two actions; extra actions must move into one of
 /// those slots (normally an overflow menu) rather than widening the band.
@@ -207,6 +225,7 @@ struct OPSScreenHeader<Leading: View, Trailing: View>: View {
             OPSHeaderControlSlot(position: .trailing(0), alignment: .trailing) {
                 trailing
             }
+            .anchorPreference(key: OPSHeaderTrailingSlotBoundsKey.self, value: .bounds) { $0 }
         }
     }
 }

@@ -58,6 +58,16 @@ final class DataActorExecutorTests: XCTestCase {
         withExtendedLifetime(construction.0) {}
     }
 
+    func testExplicitDefaultExecutorWitnessTransactsOffMainWhenCalledFromMain() async throws {
+        let container = try makeContainer()
+        let actor = await Task.detached { ExplicitDefaultModelActorProbe(modelContainer: container) }.value
+        let result = try await actor.transactionExecutorProbe()
+        XCTAssertFalse(result.bodyStartedOnMain, "Default executor with explicit witness: actor body")
+        XCTAssertFalse(result.ranOnMain, "Default executor with explicit witness: real transaction")
+        XCTAssertFalse(result.autosaveEnabled)
+        XCTAssertEqual(result.persistedCount, 1)
+    }
+
     private func makeContainer() throws -> ModelContainer {
         try ModelContainer(for: SyncOperation.self,
             configurations: ModelConfiguration(isStoredInMemoryOnly: true))
@@ -128,3 +138,32 @@ private final class ExplicitQueueModelExecutorProbe: SerialModelExecutor, @unche
         UnownedSerialExecutor(ordinary: self)
     }
 }
+
+private actor ExplicitDefaultModelActorProbe: ModelActor {
+    nonisolated let modelContainer: ModelContainer
+    nonisolated let modelExecutor: any ModelExecutor
+    nonisolated var unownedExecutor: UnownedSerialExecutor {
+        (modelExecutor as! any SerialModelExecutor).asUnownedSerialExecutor()
+    }
+    init(modelContainer: ModelContainer) {
+        self.modelContainer = modelContainer
+        let context = ModelContext(modelContainer)
+        context.autosaveEnabled = false
+        self.modelExecutor = DefaultSerialModelExecutor(modelContext: context)
+    }
+    func transactionExecutorProbe() throws -> DataActorExecutorProbe {
+        let bodyStartedOnMain = Thread.isMainThread
+        var ranOnMain = false
+        try modelContext.transaction {
+            ranOnMain = Thread.isMainThread
+            let operation = SyncOperation(entityType: "client", entityId: UUID().uuidString.lowercased(),
+                operationType: "create", payload: Data("{}".utf8), changedFields: [])
+            operation.status = "completed"
+            modelContext.insert(operation)
+        }
+        return DataActorExecutorProbe(bodyStartedOnMain: bodyStartedOnMain, ranOnMain: ranOnMain,
+            autosaveEnabled: modelContext.autosaveEnabled,
+            persistedCount: try modelContext.fetchCount(FetchDescriptor<SyncOperation>()))
+    }
+}
+

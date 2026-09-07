@@ -200,22 +200,8 @@ struct AppHeader: View {
                isSyncRestoredAlertVisible: dataController.showSyncRestoredAlert,
                isSuppressedByToast: toastCenter.isSuppressingSyncStatusIndicator
            ) {
-            GeometryReader { proxy in
+            HeaderSyncStatusOverlay(trailingSlot: trailingSlot) {
                 SyncStatusIndicator(placement: .header)
-                    .frame(
-                        maxWidth: .infinity,
-                        maxHeight: .infinity,
-                        alignment: .bottomTrailing
-                    )
-                    .padding(.leading, OPSStyle.Layout.spacing3_5)
-                    .padding(
-                        .trailing,
-                        HeaderSyncStatusGeometry.trailingInset(
-                            headerWidth: proxy.size.width,
-                            trailingSlotMinX: trailingSlot.map { proxy[$0].minX }
-                        )
-                    )
-                    .padding(.bottom, OPSStyle.Layout.spacing2)
             }
         }
     }

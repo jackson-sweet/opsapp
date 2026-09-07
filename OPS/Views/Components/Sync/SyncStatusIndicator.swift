@@ -228,6 +228,45 @@ enum HeaderSyncStatusGeometry {
     }
 }
 
+/// The pill's superimposed placement on a root header.
+///
+/// `AppHeader` and the layout proof (`HomeSyncStatusLayoutTests`) render this
+/// same view, so the regression test measures the SHIPPED geometry rather than
+/// a copy of it that can drift. Hosts it as an overlay on the header content —
+/// never in flow — and hands it the header's trailing-slot anchor.
+struct HeaderSyncStatusOverlay<Pill: View>: View {
+    private let trailingSlot: Anchor<CGRect>?
+    private let pill: () -> Pill
+
+    init(
+        trailingSlot: Anchor<CGRect>?,
+        @ViewBuilder pill: @escaping () -> Pill
+    ) {
+        self.trailingSlot = trailingSlot
+        self.pill = pill
+    }
+
+    var body: some View {
+        GeometryReader { proxy in
+            pill()
+                .frame(
+                    maxWidth: .infinity,
+                    maxHeight: .infinity,
+                    alignment: .bottomTrailing
+                )
+                .padding(.leading, OPSStyle.Layout.spacing3_5)
+                .padding(
+                    .trailing,
+                    HeaderSyncStatusGeometry.trailingInset(
+                        headerWidth: proxy.size.width,
+                        trailingSlotMinX: trailingSlot.map { proxy[$0].minX }
+                    )
+                )
+                .padding(.bottom, OPSStyle.Layout.spacing2)
+        }
+    }
+}
+
 enum HomeSyncStatusPlacementPolicy {
     static func showsProjectModeFallback(
         isInProjectMode: Bool,

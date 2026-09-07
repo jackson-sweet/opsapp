@@ -251,6 +251,22 @@ final class ReviewSnapshotStore: ObservableObject {
             && request.now < snapshot.nextEligibilityChangeAt
     }
 
+    /// Retain a one-shot report when its read/transport was superseded for
+    /// the same account. A stable read failure gets no automatic retry, and
+    /// an old account's request cannot authorize reporting for its replacement.
+    private func reportWasSuperseded(
+        scope requestedScope: ReviewSnapshotScope,
+        revision requestedRevision: UInt64,
+        snapshot: ReviewSnapshot?
+    ) -> Bool {
+        guard let current = requestProvider(),
+              current.scope.containerID == requestedScope.containerID,
+              current.scope.companyID == requestedScope.companyID,
+              current.scope.userID == requestedScope.userID else { return false }
+        if current.scope != requestedScope || revision != requestedRevision { return true }
+        return snapshot.map { current.now >= $0.nextEligibilityChangeAt } ?? false
+    }
+
     /// Only one three-stack report is in flight. A newer demand runs afterward,
     /// so an older network completion cannot overwrite newer counts. Check
     /// identity before every RPC as auth can change across any suspension.
@@ -263,16 +279,29 @@ final class ReviewSnapshotStore: ObservableObject {
             defer { self.reportWork = nil }
             while self.reportPending && !Task.isCancelled {
                 self.reportPending = false
-                guard let snapshot = await self.value(), self.isCurrent(snapshot) else { continue }
+                guard let request = self.requestProvider() else { continue }
+                self.replaceScopeIfNeeded(request.scope)
+                let requestedRevision = self.revision
+                let result = await self.value()
+                guard let snapshot = result, self.isCurrent(snapshot) else {
+                    if self.reportWasSuperseded(scope: request.scope, revision: requestedRevision, snapshot: result) {
+                        self.reportPending = true
+                    }
+                    continue
+                }
                 // Demands arriving while we awaited this read are served by
                 // this value; only demands during transport need another pass.
                 self.reportPending = false
+                let reportingRevision = self.revision
                 await ReviewThresholdService.syncAll(
                     taskReviewCount: snapshot.counts.taskReviewCount,
                     paymentReviewCount: snapshot.counts.paymentReviewCount,
                     unscheduledReviewCount: snapshot.counts.unscheduledReviewCount,
                     syncer: syncer, isCurrent: { self.isCurrent(snapshot) }
                 )
+                if self.reportWasSuperseded(scope: snapshot.scope, revision: reportingRevision, snapshot: snapshot) {
+                    self.reportPending = true
+                }
             }
         }
         reportWork = task

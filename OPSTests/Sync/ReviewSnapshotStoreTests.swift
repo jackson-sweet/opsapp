@@ -218,6 +218,69 @@ final class ReviewSnapshotStoreTests: XCTestCase {
         }
     }
 
+    func testOneShotReportSurvivesNilToReadyActorBindingDuringRead() async {
+        let original = request()
+        var current = original
+        let gate = Gate([expectation(description: "startup read"), expectation(description: "ready actor read")])
+        let store = ReviewSnapshotStore(requestProvider: { current }, reader: gate.read)
+        let spy = SyncSpy()
+        let reporting = store.report(syncer: spy)
+        await fulfillment(of: [gate.started[0]], timeout: 2)
+        var readyScope = original.scope
+        readyScope.actorID = ObjectIdentifier(token)
+        current = ReviewSnapshotRequest(scope: readyScope, now: now)
+        // Production readiness binds the actor while the reader is suspended;
+        // that reader rejects its obsolete nil-actor request and returns nil.
+        gate.finish(0, nil)
+        await fulfillment(of: [gate.started[1]], timeout: 2)
+        XCTAssertTrue(spy.calls.isEmpty)
+        let result = ReviewSnapshot(scope: readyScope,
+            counts: .init(taskReviewCount: 2, unscheduledReviewCount: 1, paymentReviewCount: 1), computedAt: now)
+        gate.finish(1, result)
+        await reporting.value
+        XCTAssertEqual(gate.requests.count, 2)
+        XCTAssertEqual(spy.calls.map(\.0), ["task_review_stack", "payment_review_stack", "unscheduled_review_stack"])
+        XCTAssertEqual(spy.calls.map(\.1), [2, 1, 1])
+        XCTAssertEqual(store.snapshot, result)
+    }
+
+    func testOneShotReportDoesNotTransferToAReplacementAccount() async {
+        let original = request()
+        var current: ReviewSnapshotRequest? = original
+        let gate = Gate([expectation(description: "original account read")])
+        let store = ReviewSnapshotStore(requestProvider: { current }, reader: { request in
+            if request.scope.userID == original.scope.userID { return try await gate.read(request) }
+            return ReviewSnapshot(scope: request.scope, counts: .init(taskReviewCount: 99), computedAt: request.now)
+        })
+        let spy = SyncSpy()
+        let reporting = store.report(syncer: spy)
+        await fulfillment(of: gate.started, timeout: 2)
+        current = request(user: "replacement", company: "replacement-company")
+        gate.finish(0, nil)
+        await reporting.value
+        XCTAssertTrue(spy.calls.isEmpty)
+        // Cache refresh for the replacement is allowed, but the old report
+        // cannot send for it. End that fixture session without a pending read.
+        current = nil
+        store.scopeDidChange()
+        XCTAssertNil(store.snapshot)
+    }
+
+    func testStableInitialReadFailureTerminatesWithoutRetryOrZeroReport() async {
+        let request = request()
+        var reads = 0
+        let store = ReviewSnapshotStore(requestProvider: { request }, reader: { _ in
+            reads += 1
+            throw URLError(.cannotOpenFile)
+        })
+        let spy = SyncSpy()
+        await store.report(syncer: spy).value
+        XCTAssertEqual(reads, 1)
+        XCTAssertTrue(spy.calls.isEmpty)
+        XCTAssertNil(store.snapshot)
+        XCTAssertTrue(store.isUnavailable)
+    }
+
     private final class PausingSyncer: ReviewStackSyncing {
         let started: XCTestExpectation
         var calls: [(String, Int)] = []
@@ -255,6 +318,43 @@ final class ReviewSnapshotStoreTests: XCTestCase {
         await reporting.value
         XCTAssertEqual(syncer.calls.map(\.0), ["task_review_stack", "task_review_stack", "payment_review_stack", "unscheduled_review_stack"])
         XCTAssertEqual(syncer.calls.map(\.1), [8, 0, 0, 0], "Only one fresh three-stack follow-up serves the burst")
+    }
+
+    func testOneShotReportSurvivesSameOwnerChangesDuringTransport() async {
+        for change in ["invalidation", "expiry", "actor replacement"] {
+            let original = request()
+            var current = original
+            var count = 8
+            var reads = 0
+            let expiry = now.addingTimeInterval(60)
+            let store = ReviewSnapshotStore(requestProvider: { current }, reader: { request in
+                reads += 1
+                return ReviewSnapshot(scope: request.scope, counts: .init(taskReviewCount: count),
+                    computedAt: request.now, nextEligibilityChangeAt: reads == 1 ? expiry : .distantFuture)
+            })
+            let syncer = PausingSyncer(started: expectation(description: "transport before \(change)"))
+            let reporting = store.report(syncer: syncer)
+            await fulfillment(of: [syncer.started], timeout: 2)
+            count = 0
+            switch change {
+            case "invalidation":
+                store.invalidate()
+            case "expiry":
+                current = request(at: expiry)
+            default:
+                var readyScope = original.scope
+                readyScope.actorID = ObjectIdentifier(token)
+                current = ReviewSnapshotRequest(scope: readyScope, now: now)
+            }
+            // No second report() demand: the original intent must carry the
+            // fresh read and all three final reports through this suspension.
+            syncer.continuation?.resume()
+            syncer.continuation = nil
+            await reporting.value
+            XCTAssertEqual(reads, 2, change)
+            XCTAssertEqual(syncer.calls.map(\.0), ["task_review_stack", "task_review_stack", "payment_review_stack", "unscheduled_review_stack"], change)
+            XCTAssertEqual(syncer.calls.map(\.1), [8, 0, 0, 0], change)
+        }
     }
 
     func testValidZeroReportsAllStacksAndAccountChangeStopsRemainingCalls() async {

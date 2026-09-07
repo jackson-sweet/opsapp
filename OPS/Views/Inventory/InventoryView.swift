@@ -1377,4 +1377,6 @@ struct InventoryView: View {
     InventoryView()
         .environmentObject(DataController())
         .environmentObject(AppState())
+        .environmentObject(SubscriptionManager.shared)
+        .environmentObject(SyncStatusIndicatorModel())
 }

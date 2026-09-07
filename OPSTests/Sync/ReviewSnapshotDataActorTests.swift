@@ -114,7 +114,7 @@ final class ReviewSnapshotDataActorTests: XCTestCase {
         deleted.deletedAt = Date()
         fixture.context.insert(deleted)
         try fixture.context.save()
-        let actor = DataActor(modelContainer: fixture.container)
+        let actor = try await DataActor.makeBackgroundConfigured(modelContainer: fixture.container)
         for permissions in [PermissionStore.shared.permissions,
             ["tasks.edit": "assigned", "tasks.change_status": "assigned", "projects.edit": "assigned"],
             ["tasks.view": "all"]] {
@@ -142,7 +142,7 @@ final class ReviewSnapshotDataActorTests: XCTestCase {
     /// verification context would conceal the stale-model failure being tested.
     func testActorReadEditReadReflectsMainContextTaskAndProjectSaves() async throws {
         let fixture = try fixture(onDisk: true)
-        let actor = DataActor(modelContainer: fixture.container)
+        let actor = try await DataActor.makeBackgroundConfigured(modelContainer: fixture.container)
         let request = try request(fixture)
         let before = try await actor.reviewSnapshotWithThreadProbe(request)
         XCTAssertFalse(before.isMainThread, "Production actor must enumerate off the UI thread")
@@ -184,7 +184,7 @@ final class ReviewSnapshotDataActorTests: XCTestCase {
         foreignActive.startDate = Date(timeIntervalSinceNow: -2 * 86_400)
         fixture.context.insert(foreignActive)
         try fixture.context.save()
-        let actor = DataActor(modelContainer: fixture.container)
+        let actor = try await DataActor.makeBackgroundConfigured(modelContainer: fixture.container)
         let snapshot = try await actor.reviewSnapshot(for: request(fixture))
         let rows = TaskReviewQuery.overdueReviewTasks(dataController: fixture.controller)
         XCTAssertEqual(rows.map(\.id), [fixture.task.id])

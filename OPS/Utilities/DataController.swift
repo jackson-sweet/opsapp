@@ -481,6 +481,7 @@ class DataController: ObservableObject {
         }
     }
 
+    @MainActor
     private func invalidateDataActorStartup() {
         imageSyncManager?.invalidate()
         imageSyncManager = nil
@@ -1879,6 +1880,7 @@ class DataController: ObservableObject {
         print("[LOGOUT] All caches cleared")
     }
     
+    @MainActor
     private func clearAuthentication() {
         invalidateDataActorStartup()
         isAuthenticated = false

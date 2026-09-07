@@ -1,52 +1,53 @@
-# iOS performance repair — phone diagnosis and local repairs
+# iOS performance investigation and repairs
 
-The diagnosis found several overlapping causes of lag: ordinary edits could rebuild broad queues, online upload wakes could run historical recovery on the UI thread, photo capture and cache scans could block interactions, and leaving the deck editor could repeat expensive work. Your exported store contains 2,625 completed sync records and 11 unresolved records; repeatedly inspecting the whole history is unnecessary work even at this ordinary data volume. Airplane mode reduces some triggers, but it is not a complete explanation.
+The investigation confirmed several causes of lag and continuity problems. All reviewed repairs are implemented on local iOS main at `a2e0e55f`, with the same app and test source that passed final verification. The signed optimized build succeeded with zero errors; its signature and matching debug symbols are verified. It reports 199 compiler warnings, including existing Swift 6 migration notices, so this is not a warning-free build. Nothing has been pushed or released through the App Store.
 
-The repair sessions implemented the thirteen initial audit recommendations. Subsequent on-phone profiling found another confirmed issue: the database worker still executes sync work on the UI thread. The executor/readiness repair and shared review-count cache are now implemented and verified in the integration checkout at `993ca641`. The initial repairs remain on local main at `622010a0`; final runtime integration follows the optimized build. The reviewed server migration remains in its clean isolated checkout because the shared web checkout contains unrelated work. With Jackson's subsequent approval, the exact server migration is applied and verified, and the signed optimized development build is installed in place on his iPhone. Nothing has been pushed or released through the App Store. The original audit and its evidence remain in [REPORT.md](REPORT.md).
+The remaining question is how much smoother the complete site-visit workflow feels on the phone. That requires a controlled recording of the final optimized build; the tests alone cannot establish a speed percentage or that all lag is gone.
 
-## Changes prepared
+## What caused the lag
+
+The strongest new evidence is from the actual phone: a known optimized build recorded **five UI-thread stalls lasting 253–384 milliseconds**, with normal thermal conditions. Database queue processing and photo-sync bookkeeping were running on the thread responsible for drawing the screen. The supposed background worker was still using that thread. A simple detached-constructor change failed its mechanism test; the accepted repair explicitly controls the worker's executor and waits for startup readiness.
+
+The trace also showed repeated task/project reads for review counts. Those counts now share one background snapshot across the action menu, Job Board header and notifications. Passive screen rendering no longer enumerates those tables.
+
+Earlier source investigation found costly work concentrated in visits: broad queue rebuilding after small edits, repeated historical recovery during ordinary uploads, image processing and storage scans, and duplicate work when returning from the deck editor. Airplane mode reduces several online triggers, which fits the observation. It does not account for all of these paths.
+
+The database was healthy on inspection. Its size alone was not the diagnosis, and a reset was not needed.
+
+## Improvements implemented
 
 | Area | Resulting behavior |
 |---|---|
-| Database opening | Previously released database shapes stay frozen; a new V26 upgrade adds the deck merge base. Opening failures get a recoverable screen while preserving the store. |
-| Typing and saving | Checklist edits are buffered; unchanged writes are skipped; the transaction builds the visit's affected work instead of rebuilding every dirty visit. |
-| Unfinished and stopped work | Saving a visit preserves other screens' unsaved edits and other visits' stopped uploads. Actual host, deck, seed and lead-client entry paths use owned transactions. |
-| Online syncing | Upload wakes are separated from controlled background recovery discovery. Session/account changes prevent stale upload callbacks from touching retired data. |
-| Taking photos | Original bytes are stored before accepting each capture; bounded previews replace retained full-size batches. Interrupted and partial batches remain recoverable across visit, lead and project flows. |
-| Resuming visits | Checklist-only and identity-only work is preserved. Deliberately starting a new visit is distinct from resuming the interrupted visit. |
-| Photo storage | One background reconciliation plus incremental byte accounting replaces repeated directory scans for each download. |
-| Deck editor | Exit avoids duplicate JSON work, renders thumbnails off the UI thread, and keeps active editor autosaves from being uploaded prematurely. |
-| Sync status | A small background summary drives the badge; detailed recovery inventory is loaded when needed. |
-| Search and opening | Cached clients appear before remote search; obsolete responses are ignored; visit/deck lookups use scoped candidates and exact identities. |
-| Thumbnails | Bounded async downsampling includes local markup precedence, remote fallback and cache-arrival refresh. |
-| Completion | Local save acknowledges durable work independently of stage delivery. Required answers govern completion while incomplete work remains savable. |
-| Stage delivery | The applied server guard preserves the original operator decision, safely handles retries, and prevents an old command from overwriting a later stage. The server migration is applied and independently verified. |
+| Typing and saving visits | Checklist edits are buffered, unchanged writes are skipped, and saves prepare the affected visit's work instead of rebuilding all dirty visits. |
+| Background sync | Database transactions run on an explicit background executor. Ordinary upload wakes avoid broad historical recovery; startup and account changes have defined ownership. |
+| Taking photos | Original captures become durable before acceptance. Bounded previews and background image preparation reduce memory and UI work; interrupted or failed captures remain recoverable. |
+| Photo storage and thumbnails | Incremental storage accounting replaces repeated cache scans. Thumbnails load asynchronously with bounded decoding, remote fallback and refresh when cached images arrive. |
+| Deck editor | Exit avoids duplicate drawing encoding and prepares thumbnails off the UI thread. Durable autosaves remain protected while the editor is active. |
+| Opening and searching | Cached clients appear before the network response. Visit/deck queries use scoped candidates and exact identities. Obsolete responses cannot replace current edits. |
+| Review and sync indicators | Shared background summaries drive passive counts and status. Stale, failed or retired reads do not become false empty results. |
+| Data continuity | Editing one visit preserves other unsaved edits and stopped uploads. Checklist-only and identity-only drafts survive re-entry; explicitly starting a new visit remains distinct from resuming one. |
+| Save and completion UX | A durable local save is acknowledged independently of stage delivery. Incomplete work can be preserved while completion respects required answers. |
+| Database upgrades | Released database shapes stay frozen; V26 adds the deck merge base through an explicit upgrade. Opening failures preserve the store and expose recovery. |
 
-Additional review repairs preserve nonblank existing client notes when resuming older blank drafts, save client/contact/outbox/draft linkage atomically, and preserve complete lead assignment snapshots. Earlier calendar, retained-tab and deck caching improvements are retained.
+Additional corrections prevent old image/network callbacks from changing retired data, stop cancelled syncs from leaving a permanent busy state, and preserve new Spotlight changes while an earlier batch is suspended. Existing nonblank client notes and contact/draft linkage are also preserved during resume and import.
 
-## Evidence so far
+The original thirteen ranked findings, source evidence and broader observations remain in [REPORT.md](REPORT.md).
 
-- Storage: 68 passed, 0 failed, 1 optional old V15 fixture skipped. Released fingerprints, synthetic V16/V25 upgrades, dirty merge-base preservation and recoverable startup behavior passed. The actual exported V25 store also passed its separate upgrade test: 1 executed pass, 0 failures, 0 skips. A disposable copy upgraded to V26 and reopened independently while counts and keyed content/custody digests matched across 16 groups. The exported original remained unchanged during the check. All task-created private database/proof copies were then removed; only the aggregate result remains.
-- First combined run:287 passed,5 failed. All35 media cases passed. All five failing visit cases passed on the subsequent run.
-- Subsequent focused run:306 passed,3 failed. The three failures were isolated to stale fixture observations, live connectivity interfering with a local test, and a test reopening a deliberately destroyed container. The final corrected rerun passed 127/127, with no skips, including every previously failing case and the real queue-to-open-visit notification path. Those regression failures are closed; the later physical trace identified the additional executor performance defect described above.
-- Real screen flow on the task-owned simulator:2 passed,0 failed,0 skipped. Importing a contact retained the visit and populated its details; cancelling retained the intact visit. Screenshots were inspected: [after import](contact-import-preserved.png), [after cancel](contact-cancel-preserved.png).
-- Server guard:34 local PostgreSQL cases passed. The approved production migration was applied as ledger20260907001000; independent catalog comparison,23 unchanged dependency functions and anonymous route-denial checks passed. Authenticated snapshot and provider delivery remain separate from this proof.
-- Optimized generic iPhone compile passed with signing disabled:arm64, 0 errors. The build reports 204 warnings, including Swift 6 actor-isolation notices; this is not a warning-free build or a completed Swift 6 migration. Subsequent changes were only tests/documentation, verified by source diff. The same optimized source was then signed with existing development profiles, passed deep/strict signature validation, and installed in place on the paired iPhone. No App Store distribution occurred.
+## What is verified
 
-- Final runtime repairs: 168/168 focused tests passed with no skips, covering the actual background executor, startup, incoming updates, cancellation/logout, photo obligations, Spotlight and shared review counts. A separate 38/38 run passed with Core Data threading assertions independently confirmed active. One earlier review-report failure exposed a startup race; the correction passed the original unchanged assertion plus deterministic readiness, transport, account-replacement and failure tests. [Runtime evidence](executor-mechanism-summary.json).
+- **Final runtime checks:** 168 tests passed, zero failed or skipped. They cover real background transactions, startup, incoming updates, cancellation/logout, photos, Spotlight and shared review counts. A separate 38-test run passed with Core Data threading assertions independently confirmed active. An earlier reporting failure was corrected; its original assertion and four new deterministic regression tests passed.
+- **Earlier repair checks:** storage, visit persistence/recovery, media, deck and search tests passed their final focused runs. The actual contact-import/cancel screens passed two UI tests, with screenshots inspected. Counts overlap across runs; they are not a cumulative total.
+- **Actual phone upgrade and custody:** V25 upgraded to V26 and opened successfully. All original visit, artifact, answer, draft, deck, photo and outbox identities were retained. All 153 original deck drawings were unchanged. Ten queued operations completed through ordinary online sync, while the deliberately parked operation kept its original payload and status. Both protected recovery files were copied after unlock.
+- **Approved server update:** the exact reviewed stage-delivery migration is applied. Independent catalog/dependency readback and anonymous route-denial checks passed. Local server tests passed 34/34. This does not establish authenticated provider delivery.
 
-These counts overlap across runs and should not be added together. Exact revisions, test selectors and result bundles are recorded in [PM-STATUS.md](PM-STATUS.md) and [REPAIR-ACCEPTANCE.md](REPAIR-ACCEPTANCE.md).
+Exact revisions and test scope are recorded in [PM-STATUS.md](PM-STATUS.md), [REPAIR-ACCEPTANCE.md](REPAIR-ACCEPTANCE.md) and the [runtime evidence](executor-mechanism-summary.json). Signed candidate evidence: [build and signature](runtime-signed-build-summary.json). Phone evidence: [startup recording](physical-startup-profile-summary.json), [upgrade](physical-upgrade-summary.json), [custody](physical-custody-summary.json).
 
-## What the actual phone confirmed
+## Remaining phone validation
 
-The optimized build opened the real phone database and completed its V25 to V26 upgrade. All original visit, artifact, answer, draft, deck, photo and outbox identities were retained. All 153 original deck drawings were unchanged; the deliberately parked operation kept its exact payload and status. Ten queued operations completed through normal online sync. Both protected recovery files were backed up after the phone was unlocked. Sanitized evidence: [upgrade](physical-upgrade-summary.json), [custody](physical-custody-summary.json).
+Another Xcode run replaced the first optimized phone build with a different Debug build. Its warm recording is excluded from comparisons. Phone ownership must be coordinated before replacing it.
 
-The first optimized launch recording captured five main-thread stalls lasting 253–384 milliseconds while the phone's thermal state was normal. Database queue processing, claims and media bookkeeping appeared on the thread responsible for drawing the screen. This is direct evidence of another performance defect, beyond the thirteen initial recommendations. The simple proposed detached-constructor fix failed its mechanism test, so it is not accepted. The explicit serial executor now passes real off-main transaction, concurrent-call and persistence/reopen checks; startup waits for configuration before sync. The passive review-count cache also removes repeated whole-table work from UI rendering. [Recording summary](physical-startup-profile-summary.json).
+A separate task merged a header-layout repair after this candidate was built. That work is preserved on main and is outside this candidate's verification. Coordinate the next phone build with that task so both repairs are included.
 
-A later recording used a different Debug build that another Xcode run had installed. It is excluded from performance comparisons. No speed percentage or claim that the lag is resolved is supported yet.
+Once the phone is available and connected by USB, record the same visit → checklist → photos → notes → deck → return → save/reopen workflow online, offline and after reconnect using the final optimized build. A read-only stage snapshot through the actual signed-in session also remains unverified.
 
-## Remaining work
-
-Local executor, startup, review-count and lifetime repairs are verified. The final signed optimized phone build is in progress. Coordinate phone ownership before replacing the separate task's Debug build. With the phone connected by USB and the user ready, record the same visit, photo, note and deck workflow online, offline and after reconnect. The earlier first-launch lock requirement has been resolved; the manual workflow and equivalent-build comparison are still outstanding. A read-only stage snapshot through the actual signed-in session also remains unverified.
-
-The approved server update is applied and verified. No git push or App Store release has occurred. Private database copies and traces remain protected outside the repositories while diagnosis is active.
+Private app-data copies and traces remain protected outside the repositories while device diagnosis is active. The authorized server update is applied; no push or App Store release has occurred.

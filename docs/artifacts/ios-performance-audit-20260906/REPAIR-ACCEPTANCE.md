@@ -1,6 +1,6 @@
 # iOS performance repair acceptance
 
-Current state September7,2026: initial thirteen local repairs are integrated on main; additional measured executor/review/lifetime repairs at integration993ca641 passed168/168 focused tests,0skips. A separate38/38 concurrency run passed with assertions independently confirmed active. The final signed optimized build is in progress. Actual phoneV25→V26 upgrade and original data custody passed. Equivalent-workflow physical speed remains unmeasured, and a different Debug build from another task must not be replaced until ownership is coordinated. The approved server migration20260907001000 is applied and independently verified. Push and App Store release remain unapproved.
+Current state September7,2026: initial thirteen local repairs are integrated on main; additional measured executor/review/lifetime repairs at integration993ca641 passed168/168 focused tests,0skips. A separate38/38 concurrency run passed with assertions independently confirmed active. The signed optimized Release candidate from993ca641 passed with0errors/199warnings; strict deep signature verification and matching dSYM UUID passed. It has not replaced the phone's different Debug build. Actual phoneV25→V26 upgrade and original data custody passed. Equivalent-workflow physical speed remains unmeasured, and a different Debug build from another task must not be replaced until ownership is coordinated. The approved server migration20260907001000 is applied and independently verified. Push and App Store release remain unapproved.
 
 | Audit finding | Repair / invariant | Verification coverage |
 |---|---|---|
@@ -55,3 +55,5 @@ Final evidence: combined-core03/04/05-summary.json,contact-ui-summary.json,devic
 | Reporting intent lost at startup | Same-owner progress preserves one-shot reports; stable failure stops; account replacement stays isolated | Original failed2/1/1assertion unchanged and passing;4new gated tests |
 
 Final combined runtime-final-13 at993ca641:168executed/168passed/0failed/0skipped. Runtime-concurrency-12 ate80350dd:38/38passed, assertions independently confirmed enabled; subsequent source changes were limited to review reporting and tests. These counts overlap. Sanitized provenance: executor-mechanism-summary.json. Final build result and source integration are maintained in PM-STATUS.md.
+
+Final signed candidate UUID4FA92CA0-B0BA-3814-AE5A-EBFB3F2337CF, arm64, version/build3.0.5; build910.2seconds. Local mergea2e0e55f exactly matches candidate source. A later separate header-layout merge1e244d9b is preserved on main but excluded from this candidate's verification. Coordinate an inclusive phone build after the pending device-ownership answer.

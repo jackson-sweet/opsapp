@@ -1,6 +1,6 @@
-# IOS PERFORMANCE — runtime repair verification
+# IOS PERFORMANCE — local repairs complete; device coordination pending
 
-Updated September 7, 2026. Parent task `01a0779e-54bf-72a3-976c-81c692990d23`. Current source: integration `993ca64133060d0c5184cc30526d76430923ba39`; shared main `00e2bc11` contains the initial thirteen repairs at `622010a0` plus documentation. Runtime repairs are not yet merged to main. Founder report: REPAIR-RESULTS.md. Original diagnosis: REPORT.md. Detailed initial acceptance: REPAIR-ACCEPTANCE.md.
+Updated September 7, 2026. Parent task `01a0779e-54bf-72a3-976c-81c692990d23`. Verified source: integration `993ca64133060d0c5184cc30526d76430923ba39`; local merge `a2e0e55fa086ffc3276a3bac3dbf63c73e7e7f37` contains all initial and runtime repairs with independently verified app/test/project source equality. A subsequent separate header-overlay merge `1e244d9b` is preserved on main but not included in this candidate's verification. No push or App Store release. Founder report: REPAIR-RESULTS.md. Original diagnosis: REPORT.md. Detailed initial acceptance: REPAIR-ACCEPTANCE.md.
 
 ## Current verified state
 
@@ -8,7 +8,7 @@ The optimized phone startup recorded five main-thread stalls of 253–384 ms wit
 
 Production executor/startup checkpoint: 44/44 passed. Review checkpoint: 41/41 passed, plus a separate persisted warm-context read/edit/read test passed. Combined runtime-lifetimes-11: 164 executed, 163 passed, one failed, no skips. The failure is ReviewThresholdServiceTests/test_evaluateFeedsStoreCountsToTheSyncer. All executor/startup/inbound/lifetime/photo/Spotlight cases passed. Runtime-concurrency-12: 38/38 passed with Core Data multithreading assertions independently confirmed active. Counts overlap; do not add them.
 
-The earlier failing review fixture exposed a real report-intent gap at actor readiness. P1-2 correctiona91e1001 (integrated993ca641) preserves same-owner intent across superseded reads and transport, stops stable failures and isolates account replacement. Final combined runtime-final-13 passed168/168,0failures/0skips in59.2seconds, including the unchanged original2/1/1assertion and4new deterministic gated tests. All workers are accepted and idle. Parent final signed optimized build device-signed-runtime-release-02 is running from993ca641; shellsession8160. No other build baton is active.
+The earlier failing review fixture exposed a real report-intent gap at actor readiness. P1-2 correctiona91e1001 (integrated993ca641) preserves same-owner intent across superseded reads and transport, stops stable failures and isolates account replacement. Final combined runtime-final-13 passed168/168,0failures/0skips in59.2seconds, including the unchanged original2/1/1assertion and4new deterministic gated tests. All workers are accepted and idle. Final signed optimized build device-signed-runtime-release-02 completed from993ca641 in910.2seconds with0errors/199warnings. Strict deep codesign validation and matching dSYM UUID passed:4FA92CA0-B0BA-3814-AE5A-EBFB3F2337CF,arm64,version/build3.0.5. Session8160 is finished; no active initiative build or worker remains. A separate external build ran concurrently after ours began and was left untouched. Candidate summary:runtime-signed-build-summary.json. This candidate is NOT installed on the phone.
 
 P1-1's final exact read-only review closed all concrete findings, including cancelled current sync busy-state cleanup (`18ca2a12`) and Spotlight nested-await/batch ownership (`34cbdbc`). P1-3 image retirement and P1-4 executor/startup/inbound/readers/realtime/Spotlight work are accepted and idle. P1-5 remains complete and idle. Task IDs and cursors are in tasks.json. Reuse these tasks; no new workers are required.
 
@@ -44,8 +44,8 @@ Private app safety copies/traces live at `/private/tmp/ops-ios-device-update-202
 
 ## Remaining sequence
 
-1. Finish signed optimized build device-signed-runtime-release-02 and independently verify signature/UUID. Final168/168 tests are already complete. Parent alone runs expensive checks.
-2. Update Bible/report with actual final evidence; integrate runtime repairs on local main, preserving unrelated work. No push or App Store action.
-3. Await the pending phone ownership/readiness answer. Once resolved, install the approved optimized build in place and capture the same manual visit/checklist/photo/note/deck/save/reopen sequence online, offline and after reconnect. No comparison to a different Debug binary or idle trace.
+1. Local implementation,168/168 final tests,38/38 concurrency proof, signed optimized build/signature and source integration are complete. Do not rerun this proof without a new change or failure.
+2. Await the pending phone ownership/readiness answer. Coordinate the separate header-overlay task before the next inclusive build/install. That later main change is outside the verified candidate; preserve it.
+3. Once coordinated, install the approved optimized build in place and capture the same manual visit/checklist/photo/note/deck/save/reopen sequence online, offline and after reconnect. No comparison to a different Debug binary or idle trace.
 4. An actual signed-in read-only stage snapshot remains unverified; never substitute privileged SQL impersonation or synthetic JWTs.
-5. Pause ios-performance-pm when local authorized implementation/proof is complete and only the reported physical/coordination step remains. Stay quiet on unchanged state; do not repeatedly prompt.
+5. ios-performance-pm is paused because local authorized implementation/proof is complete and only the reported physical/coordination step remains. Resume on the user's ownership/readiness response; do not repeatedly prompt. Keep protected diagnostic copies until the outstanding phone comparison no longer needs them.

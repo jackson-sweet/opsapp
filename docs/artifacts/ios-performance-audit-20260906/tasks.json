@@ -26,7 +26,7 @@
       "hostId": "local",
       "worktree": "/Users/jacksonsweet/Projects/OPS/.worktrees/ios-performance-p1-2",
       "ownership": "Visit edits and continuity",
-      "afterCursor": "7f7ccd51-e735-4480-9895-050cd2f50a85:11",
+      "afterCursor": "7f7ccd51-e735-4480-9895-050cd2f50a85:14",
       "status": "All snapshot/reporting repairs integrated; final combined168/168passed including unchanged original failed test; idle.",
       "sourceCommits": [
         "774a3778",
@@ -63,7 +63,7 @@
       "hostId": "local",
       "worktree": "/Users/jacksonsweet/Projects/OPS/.worktrees/ios-performance-p1-3",
       "ownership": "Photos and cache",
-      "afterCursor": "d2806c80-f6cd-4da1-85bf-756571d6464e:7",
+      "afterCursor": "d2806c80-f6cd-4da1-85bf-756571d6464e:11",
       "status": "Image manager lifetime integrated; all lifecycle/adjacent/concurrency cases passed; idle.",
       "sourceCommits": [
         "e2a71a7e",
@@ -88,7 +88,7 @@
       "hostId": "local",
       "worktree": "/Users/jacksonsweet/Projects/OPS/.worktrees/ios-performance-p1-4",
       "ownership": "Sync and deck responsiveness",
-      "afterCursor": "4c1ff8ae-b6a4-4cc7-8d35-c29379105f0f:13",
+      "afterCursor": "4c1ff8ae-b6a4-4cc7-8d35-c29379105f0f:16",
       "status": "All executor/startup/inbound/cancellation/Spotlight changes integrated, peer review closed and focused/concurrency tests passed; idle.",
       "sourceCommits": [
         "047a719798a4aa6f2e6e08a586fed2cdb549e3b6",
@@ -125,8 +125,8 @@
       ]
     }
   ],
-  "status": "runtime_repairs_verified_optimized_build_in_progress",
-  "verifiedIOSSource": "622010a01839387a91e6fadbba3444950f6acfff",
+  "status": "local_repairs_integrated_and_verified_waiting_for_phone_coordination",
+  "verifiedIOSSource": "a2e0e55fa086ffc3276a3bac3dbf63c73e7e7f37",
   "authorization": {
     "reviewedProductionMigration": true,
     "dataPreservingOptimizedPhoneInstall": true,
@@ -137,5 +137,13 @@
   "serverMigrationVersion": "20260907001000",
   "phoneInstalled": true,
   "physicalMeasurement": "Valid optimized startup recorded: 5 microhangs; actual upgrade and custody passed. Different Debug warm recording excluded. Manual equivalent-build site-visit/network comparison awaits phone ownership coordination and user readiness.",
-  "runtimeIntegrationSource": "993ca64133060d0c5184cc30526d76430923ba39"
+  "runtimeIntegrationSource": "993ca64133060d0c5184cc30526d76430923ba39",
+  "sourceEqualityVerified": true,
+  "currentMainAtCloseout": "1e244d9b",
+  "signedCandidateSource": "993ca64133060d0c5184cc30526d76430923ba39",
+  "signedCandidateUUID": "4FA92CA0-B0BA-3814-AE5A-EBFB3F2337CF",
+  "signedCandidateInstalled": false,
+  "laterHeaderMergeExcludedFromCandidate": true,
+  "activeBuild": null,
+  "heartbeatStatus": "PAUSED"
 }

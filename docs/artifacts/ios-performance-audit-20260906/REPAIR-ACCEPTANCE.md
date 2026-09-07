@@ -1,10 +1,10 @@
 # iOS performance repair acceptance
 
-Current state September6,2026: all authorized local repair implementation and verification complete; source integrated on iOS main622010a0. Final focused rerun127/127passed,0skips; UI2/2passed; unsigned optimized iPhone compile passed; actual copied V25→V26 upgrade/reopen1/1passed. Earlier storage68passed/1optionalV15skip and media35/35passed. Counts overlap across runs. Server34/34passed locally; approved migration20260907001000applied and independently verified. Signed optimized build installed in place; database byte-identical and saved-file inventory preserved before launch. First launch is blocked by the locked phone; physical latency remains unmeasured. App Store release and push remain unapproved.
+Current state September7,2026: initial thirteen local repairs are integrated on main; additional measured executor/review/lifetime repairs at integration993ca641 passed168/168 focused tests,0skips. A separate38/38 concurrency run passed with assertions independently confirmed active. The final signed optimized build is in progress. Actual phoneV25→V26 upgrade and original data custody passed. Equivalent-workflow physical speed remains unmeasured, and a different Debug build from another task must not be replaced until ownership is coordinated. The approved server migration20260907001000 is applied and independently verified. Push and App Store release remain unapproved.
 
 | Audit finding | Repair / invariant | Verification coverage |
 |---|---|---|
-| 1 Database compatibility | Frozen released schemas; V26 nullable merge base; recoverable same-store bootstrap | VERIFIED68 storage tests pass,1optional skipped; physical upgrade remains separate |
+| 1 Database compatibility | Frozen released schemas; V26 nullable merge base; recoverable same-store bootstrap | VERIFIED68 storage tests pass,1optional skipped; separate real phone upgrade/custody also passed |
 | 2 Visit edit cost | Buffered checklist, unchanged guards, exact owned-context entity/outbox transaction | Coordinator/Continuity suites; pre-existing unsaved B remains pending and unchanged on disk after A success/failure; counts include unsaved-heavy graph |
 | 3 Stopped work revived | A edit cannot revive B parked/declined work | Coordinator,OrphanRecovery,CommandRecovery and stage tests |
 | 4 Main-thread recovery on every push | Ordinary upload wake separated from controlled background discovery and scoped repair | SyncRecoveryScheduling,RecoveryStoreQueries,OrphanRecovery; synthetic2636operations return11unresolved off main |
@@ -34,7 +34,7 @@ Verified source is on local iOS main622010a0; software Bible current contracts u
 
 ## Physical performance proof and release sequence
 
-Jackson approved the exact server migration, optimized phone installation, and online/offline measurements. Migration and installation are complete; Apple refused first launch while the phone is locked. User unlock and USB connection are pending. Push and App Store release remain unapproved. A production RPC must be applied and independently verified before a dependent client ships. Local-only tests cannot prove production notification/provider fan-out.
+Jackson approved the exact server migration, optimized phone installation, and online/offline measurements. Migration, initial optimized installation and actual first-launch upgrade/custody are complete. A valid startup recording exposed the additional executor defect now repaired locally. USB/manual workflow readiness and ownership coordination for the different Debug build remain pending. Push and App Store release remain unapproved. A production RPC must be applied and independently verified before a dependent client ships. Local-only tests cannot prove production notification/provider fan-out.
 
 For the authorized device follow-through, use the same representative sequence and record source/build/store shape and network condition: new visit → type checklist →10photos → note/dictation → create/edit deck → return → save → reopen. Repeat Wi-Fi,cellular,high latency/loss,offline,reconnect with queue; include long-lived completed history and exact stopped work. Record signposted local save/recovery attention/discovery, Time Profiler/SwiftUI hitches, allocations and first-frame return. Compare optimized builds, not a debug-vs-release pair. No latency improvement percentage until measured.
 
@@ -42,3 +42,16 @@ Acceptance: every acknowledged photo/answer survives termination/reopen; failed 
 
 
 Final evidence: combined-core03/04/05-summary.json,contact-ui-summary.json,device-release-summary.json,private-store-upgrade-summary.json. Full general test/build bundles remain in the integration checkout; private proof diagnostics were removed.
+
+
+## Additional runtime acceptance — September 7
+
+| Runtime finding | Accepted correction | Evidence |
+|---|---|---|
+| Database actor jobs still on main | Explicit serial executor, awaited configured startup, no early legacy fallback | Actual production transaction affinity,16concurrent writes,persist/reopen and startup tests; concurrency assertions active |
+| Repeated passive review scans | Shared scoped scalar snapshot, coalesced refresh, timer/permission/account invalidation | Persisted warm-context edit/delete freshness; exact counts and report behavior |
+| Stale work during replacement | Retired readers throw, inbound post-await scope checks, queue drain before wipe, revoked image/realtime ownership | Held-response/cancellation/replacement tests preserve queues and prevent obsolete writes |
+| Interrupted sync and Spotlight | Cycle-owned busy cleanup; validity inside avatar/submission; batch-owned tracker cleanup | Exact peer review plus deterministic cancellation/avatar/overlapping-batch tests |
+| Reporting intent lost at startup | Same-owner progress preserves one-shot reports; stable failure stops; account replacement stays isolated | Original failed2/1/1assertion unchanged and passing;4new gated tests |
+
+Final combined runtime-final-13 at993ca641:168executed/168passed/0failed/0skipped. Runtime-concurrency-12 ate80350dd:38/38passed, assertions independently confirmed enabled; subsequent source changes were limited to review reporting and tests. These counts overlap. Sanitized provenance: executor-mechanism-summary.json. Final build result and source integration are maintained in PM-STATUS.md.

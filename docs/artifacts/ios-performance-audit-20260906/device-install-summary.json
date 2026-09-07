@@ -19,10 +19,13 @@
     "missingFiles": 0,
     "sameSizeAndModificationDate": true
   },
-  "protectedRecoveryContentRead": false,
-  "physicalLatencyMeasured": false,
+  "protectedRecoveryContentRead": true,
+  "physicalLatencyMeasured": true,
   "appStoreReleased": false,
-  "privateBackupRetainedPendingFirstLaunch": true,
-  "firstLaunch": "Apple denied launch because phone is locked",
-  "launchError": "FBSOpenApplicationErrorDomain7 Locked"
+  "privateBackupRetainedPendingFirstLaunch": false,
+  "firstLaunch": "Optimized build launched; actual V25 to V26 upgrade and original data custody verified",
+  "equivalentWorkflowComparisonMeasured": false,
+  "privateBackupRetainedForActiveDiagnosis": true,
+  "currentInstalledConfiguration": "Different Debug build; excluded from performance comparisons",
+  "optimizedStartupMicrohangs": 5
 }

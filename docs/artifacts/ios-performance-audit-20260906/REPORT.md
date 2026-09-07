@@ -4,7 +4,7 @@ The app still has substantial work on the thread responsible for typing, scrolli
 
 **Recommended order:** repair the database compatibility regression and capture-loss paths; make site-visit persistence proportional to the actual edit; remove sync recovery, image preparation, and repeated storage scans from interaction paths; then verify the complete visit flow on an optimized device build under several network conditions.
 
-This records the original audit against the source revision below. The later authorized repairs are now verified and integrated locally; see [REPAIR-RESULTS.md](REPAIR-RESULTS.md). No build has been installed on the paired phone or released, and no production records were edited. Source line references below describe the audited baseline; those files now contain repaired code on local main.
+This records the original audit against the source revision below. The later authorized repairs are now verified and integrated locally; see [REPAIR-RESULTS.md](REPAIR-RESULTS.md). The subsequently approved server update and optimized development install were completed; physical upgrade/custody passed. No App Store release occurred. The runtime follow-up below records the additional findings. Source line references below describe the audited baseline; those files now contain repaired code on local main.
 
 ## Evidence and limits
 
@@ -183,4 +183,15 @@ Apple's guidance specifically distinguishes asynchronous work from work executed
 
 ## Verified local repair closeout
 
-The thirteen ranked findings are dispositioned in REPAIR-RESULTS.md and REPAIR-ACCEPTANCE.md. All final focused checks passed; the actual copied V25 store upgraded toV26 and independently reopened while preserving checked content/custody across16groups. The phone and production were not modified. Private export/proof copies were removed after the check. Optimized on-device speed remains to be measured after explicit installation/server-update approval.
+The thirteen ranked findings are dispositioned in REPAIR-RESULTS.md and REPAIR-ACCEPTANCE.md. All final focused checks passed; the actual copied V25 store upgraded toV26 and independently reopened while preserving checked content/custody across16groups. Those initial checks used a disposable copy. Subsequent installation and the reviewed server update were explicitly approved and completed. The real phone upgrade retained the original data, and an optimized startup trace exposed additional work on the UI thread. Final equivalent-build workflow speed remains unmeasured; current private custody copies are retained only while that diagnostic work remains active.
+
+
+## Physical runtime follow-up — September 6–7, 2026
+
+**P1 — The database worker still ran on the UI thread.** The known optimized phone binary recorded five main-thread stalls of 253–384 ms during startup under nominal thermal conditions. Symbolicated samples include queue processing, claims and media bookkeeping in `DataActor`. Synthetic probes reproduced the mechanism: detached construction alone still ran actor transactions on main. The accepted local repair uses an explicit serial executor and awaited configured startup; the production factory, concurrent real transactions and persistence/reopen checkpoint passed. The repair also closes stale session callbacks before logout/store replacement. See [executor mechanism evidence](executor-mechanism-summary.json) and [physical startup evidence](physical-startup-profile-summary.json).
+
+**P2 — Passive review counts repeatedly enumerated task/project models.** The physical trace also includes review threshold evaluation and task/project reads from the main UI path. The repair shares a current-company scalar snapshot across the FAB, Job Board header and review notifications. Its background actor reads tasks and projects once per refresh; loading, failed or retired reads do not become false zero counts. Company/account/permissions/time changes invalidate the cache. A persisted warm-context read/edit/read check and 41 focused tests passed before the final combined lifetime check. Review sheets still resolve their actual rows on entry.
+
+**Continuity — Interrupted work must belong to the original session.** Review of the real background transition found account/context replacement hazards in inbound sync, image callbacks and incremental Spotlight avatar loading. The repair revokes old work, preserves durable photo obligations and checks validity after suspension before accessing old models. A cancelled current sync releases its busy flag without clearing a replacement cycle. These are concrete lifecycle corrections associated with moving the measured work off main; no server or product flow redesign is included.
+
+The later warm recording ran a different Debug binary and is excluded from comparisons. Neither these samples nor simulator tests establish the percentage improvement during the user's visit/photo/note/deck sequence. See [current repair results](REPAIR-RESULTS.md) for final verification status.

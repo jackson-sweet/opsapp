@@ -107,7 +107,7 @@ final class HomeRollupDataActorTests: XCTestCase {
 
         // Actual: the actor path.
         let actor = try await DataActor.makeBackgroundConfigured(modelContainer: container)
-        let snapshot = await actor.computeHomeRollup(
+        let snapshot = try await actor.computeHomeRollup(
             projectIds: projectIds,
             companyId: "company-1",
             today: today
@@ -172,7 +172,7 @@ final class HomeRollupDataActorTests: XCTestCase {
             .count
 
         let actor = try await DataActor.makeBackgroundConfigured(modelContainer: container)
-        let actorCount = await actor.projectsNeedingTasksCount(projectIds: ids)
+        let actorCount = try await actor.projectsNeedingTasksCount(projectIds: ids)
 
         XCTAssertEqual(actorCount, 2)
         XCTAssertEqual(actorCount, detectorCount)
@@ -249,8 +249,8 @@ final class HomeRollupDataActorTests: XCTestCase {
         // suspends, it does not block.
         let actor = try await DataActor.makeBackgroundConfigured(modelContainer: container)
         var snapshot = HomeRollupSnapshot(rollup: .empty, projectsNeedingTasksCount: 0)
-        let actorDuration = await clock.measure {
-            snapshot = await actor.computeHomeRollup(
+        let actorDuration = try await clock.measure {
+            snapshot = try await actor.computeHomeRollup(
                 projectIds: projectIds,
                 companyId: "company-1",
                 today: today

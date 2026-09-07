@@ -86,7 +86,7 @@ final class CalendarGridDataActorTests: XCTestCase {
 
         let scope = makeScope(mode: .all, canViewAllCalendar: true, hasFullTaskAccess: true)
         let actor = try await DataActor.makeBackgroundConfigured(modelContainer: container)
-        let snapshot = await actor.calendarWeekCache(scope: scope, weekStart: monday)
+        let snapshot = try await actor.calendarWeekCache(scope: scope, weekStart: monday)
 
         XCTAssertEqual(snapshot.weekStart, monday)
         XCTAssertEqual(snapshot.taskIdsByDay[key(day(monday, 0))], ["t-mon"])
@@ -133,7 +133,7 @@ final class CalendarGridDataActorTests: XCTestCase {
 
         let scope = makeScope(mode: .mine, canViewAllCalendar: false, hasFullTaskAccess: false)
         let actor = try await DataActor.makeBackgroundConfigured(modelContainer: container)
-        let snapshot = await actor.calendarWeekCache(scope: scope, weekStart: monday)
+        let snapshot = try await actor.calendarWeekCache(scope: scope, weekStart: monday)
 
         XCTAssertEqual(
             Set(snapshot.taskIdsByDay[key(day(monday, 0))] ?? []),
@@ -171,7 +171,7 @@ final class CalendarGridDataActorTests: XCTestCase {
         )
 
         let actor = try await DataActor.makeBackgroundConfigured(modelContainer: container)
-        let snapshot = await actor.calendarWeekCache(scope: scope, weekStart: monday)
+        let snapshot = try await actor.calendarWeekCache(scope: scope, weekStart: monday)
 
         XCTAssertEqual(snapshot.taskIdsByDay[key(day(monday, 0))], ["t-theirs"])
     }
@@ -238,7 +238,7 @@ final class CalendarGridDataActorTests: XCTestCase {
         try context.save()
 
         let actor = try await DataActor.makeBackgroundConfigured(modelContainer: container)
-        let snapshot = await actor.calendarLoadSnapshot(
+        let snapshot = try await actor.calendarLoadSnapshot(
             taskScope: makeScope(mode: .mine, canViewAllCalendar: false, hasFullTaskAccess: false),
             auxiliaryScope: CalendarAuxiliaryScope(
                 userId: "user-1",
@@ -271,7 +271,7 @@ final class CalendarGridDataActorTests: XCTestCase {
 
         let scope = makeScope(mode: .all, canViewAllCalendar: true, hasFullTaskAccess: true)
         let actor = try await DataActor.makeBackgroundConfigured(modelContainer: container)
-        let previews = await actor.calendarMonthPreviews(
+        let previews = try await actor.calendarMonthPreviews(
             scope: scope,
             since: day(monday, -365),
             tutorialOnly: false
@@ -310,7 +310,7 @@ final class CalendarGridDataActorTests: XCTestCase {
 
         let scope = makeScope(mode: .all, canViewAllCalendar: true, hasFullTaskAccess: true)
         let actor = try await DataActor.makeBackgroundConfigured(modelContainer: container)
-        let previews = await actor.calendarMonthPreviews(
+        let previews = try await actor.calendarMonthPreviews(
             scope: scope,
             since: day(monday, -365),
             tutorialOnly: true

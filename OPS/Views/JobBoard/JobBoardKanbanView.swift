@@ -17,6 +17,12 @@ struct JobBoardKanbanView: View {
     var assignedToMe: Bool = false
     var selectedStatuses: Set<Status> = []
     var selectedTeamMemberIds: Set<String> = []
+    /// Bug 52b3ebe5 — the cards inside an expanded bar used to arrive in
+    /// store order (the unsorted `@Query`), so a job the owner had just
+    /// touched could sit anywhere in its column. The board now orders through
+    /// the same persisted sort the project list uses, `.latestEdited` by
+    /// default, so both surfaces answer "what did I just work on" identically.
+    var sortOption: ProjectSortOption = .latestEdited
 
     /// Active statuses only (no Closed, Archived)
     private let displayStatuses: [Status] = [
@@ -46,7 +52,8 @@ struct JobBoardKanbanView: View {
             assignedToMe: assignedToMe,
             currentUserId: dataController.currentUser?.id,
             selectedStatuses: selectedStatuses,
-            selectedTeamMemberIds: selectedTeamMemberIds
+            selectedTeamMemberIds: selectedTeamMemberIds,
+            sortOption: sortOption
         )
     }
 

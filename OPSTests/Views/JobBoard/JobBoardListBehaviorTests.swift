@@ -253,6 +253,40 @@ final class JobBoardListBehaviorTests: XCTestCase {
         )
     }
 
+    /// Bug 52b3ebe5 — the status board's expanded cards arrived in store order,
+    /// so a just-touched job could sit anywhere in its bar. The board now orders
+    /// through the list's rule, most recently touched first by default, and a
+    /// bar shows its jobs in that same order.
+    func testKanbanProjectsFollowTheListRecencyOrderByDefault() {
+        let stale = makeProject(id: "stale", status: .accepted, updatedAt: Date(timeIntervalSince1970: 1_000))
+        let fresh = makeProject(id: "fresh", status: .accepted, updatedAt: Date(timeIntervalSince1970: 3_000))
+        let middle = makeProject(id: "middle", status: .inProgress, updatedAt: Date(timeIntervalSince1970: 2_000))
+        let createdOnly = makeProject(id: "created-only", status: .accepted, createdAt: Date(timeIntervalSince1970: 2_500))
+
+        let board = JobBoardProjectFiltering.kanbanProjects(
+            from: [stale, createdOnly, fresh, middle],
+            assignedToMe: false,
+            currentUserId: nil,
+            selectedStatuses: [],
+            selectedTeamMemberIds: []
+        )
+        XCTAssertEqual(board.map(\.id), ["fresh", "created-only", "middle", "stale"])
+
+        // A bar filters the ordered list by status, so its cards keep the order.
+        XCTAssertEqual(board.filter { $0.status == .accepted }.map(\.id), ["fresh", "created-only", "stale"])
+
+        // The board honours the operator's persisted choice exactly as the list does.
+        let earliest = JobBoardProjectFiltering.kanbanProjects(
+            from: [stale, createdOnly, fresh, middle],
+            assignedToMe: false,
+            currentUserId: nil,
+            selectedStatuses: [],
+            selectedTeamMemberIds: [],
+            sortOption: .earliestEdited
+        )
+        XCTAssertEqual(earliest.map(\.id), ["stale", "middle", "created-only", "fresh"])
+    }
+
     private func makeProject(
         id: String,
         status: Status,

@@ -109,10 +109,25 @@ enum RecoveryAttentionReader {
         if deckIds.isEmpty || drafts.isEmpty {
             artifacts = []
         } else {
+            // Bug 7a726160 — this predicate used `deckIds.contains($0.deckDesignId ?? "")`.
+            // SwiftData lowers `??` to a TERNARY that Core Data's SQL generator
+            // rejects ("unimplemented SQL generation for predicate … (bad LHS)"),
+            // and the rejection is an Objective-C exception inside
+            // `performAndWait` — uncatchable from Swift, so it aborted the
+            // process on the utility thread this reader runs on. It fired only
+            // once something needed attention (a backgrounded upload failing was
+            // enough), which is why every home-swipe killed the app. Fetch the
+            // company's deck-bound artifacts with a nil test the store can
+            // compile, then match ids in Swift.
             artifacts = try context.fetch(FetchDescriptor<SiteVisitCaptureArtifact>(predicate: #Predicate {
                 $0.deletedAt == nil && ($0.companyId == lower || $0.companyId == upper)
-                    && deckIds.contains($0.deckDesignId ?? "")
-            })).map(ArtifactSnapshot.init(from:))
+                    && $0.deckDesignId != nil
+            }))
+            .filter { artifact in
+                guard let deckDesignId = artifact.deckDesignId else { return false }
+                return deckIds.contains(deckDesignId)
+            }
+            .map(ArtifactSnapshot.init(from:))
         }
         return RecoveryInventory.attentionSummary(
             ops: ops, autocreates: autocreates, photos: photos, drafts: drafts,

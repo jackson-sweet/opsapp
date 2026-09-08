@@ -64,6 +64,47 @@ final class RecoveryAttentionSummaryTests: XCTestCase {
         XCTAssertTrue(compact.anyParked)
     }
 
+    /// Bug 7a726160 — every home-swipe killed the app. Backgrounding fails an
+    /// in-flight upload, the save wakes `RecoveryRefreshMonitor`, and the compact
+    /// reader finally reaches its deck-artifact join — whose `#Predicate` used
+    /// `deckDesignId ?? ""`. SwiftData cannot translate nil-coalescing, Core Data
+    /// raised an Objective-C exception inside `performAndWait`, and the process
+    /// aborted on a utility thread (eleven identical crash reports on the
+    /// founder's phone, 2026-09-08). The healthy-path test above never reaches
+    /// this branch; this one seeds exactly the store shape that does.
+    @MainActor
+    func testAttentionBranchJoinsDeckArtifactsWithoutTrapping() async throws {
+        let schema = Schema([SyncOperation.self, LocalPhoto.self, SiteVisitIdentityDraft.self, SiteVisitCaptureArtifact.self])
+        let container = try ModelContainer(for: schema, configurations: ModelConfiguration(schema: schema, isStoredInMemoryOnly: true))
+        let context = ModelContext(container)
+        context.autosaveEnabled = false
+
+        // A live deck-design operation makes `deckIds` non-empty; a failed
+        // client operation gets the reader past its "nothing needs attention"
+        // early return — the two conditions the crashing branch requires.
+        let deckOp = SyncOperation(entityType: "deckDesign", entityId: "DECK-1", operationType: "update", payload: Data(), changedFields: [])
+        let failedClientOp = SyncOperation(entityType: "client", entityId: "client-1", operationType: "create", payload: Data(), changedFields: [])
+        failedClientOp.status = "failed"
+        context.insert(deckOp)
+        context.insert(failedClientOp)
+        // An uncommitted identity draft is what pulls the deck artifacts in.
+        context.insert(SiteVisitIdentityDraft(siteVisitId: "visit-1", companyId: "company", notes: "Synthetic"))
+        context.insert(SiteVisitCaptureArtifact(
+            siteVisitId: "visit-1", companyId: "company",
+            kind: .deckDesign, source: .deckBuilder, deckDesignId: "deck-1"
+        ))
+        try context.save()
+
+        let summary = try await Task.detached(priority: .utility) {
+            try RecoveryAttentionReader.read(container: container, companyId: "company", autocreates: [], quarantinedVisitIds: [])
+        }.value
+
+        // The deck op joins the draft's packet (pending tone, no attention);
+        // the failed client op stands alone as the single attention item.
+        XCTAssertEqual(summary.attentionCount, 1)
+        XCTAssertFalse(summary.anyParked)
+    }
+
     private func op(_ type: String, _ id: String, _ status: String, _ date: Date, visit: String? = nil) -> SyncOpSnapshot {
         SyncOpSnapshot(id: UUID(), entityType: type, entityId: id, operationType: "update", status: status, retryCount: 0, lastAttemptedAt: nil, lastError: nil, createdAt: date, siteVisitId: visit)
     }

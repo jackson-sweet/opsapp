@@ -6,18 +6,22 @@
 //  `AppHeader` for every root that carries a trailing action cluster.
 //
 //  History. The pill first floated in an app-level band starting at the top
-//  safe area — the same rectangle `AppHeader` lays its trailing actions into —
-//  so the "2 NEED A LOOK" pill and the 44pt search button were laid out on top
-//  of each other and one swallowed the other's taps. The band was then offset
-//  by the header's measured height, which moved the collision one row down onto
-//  whatever control the root parks under its header (on Home, the ALL filter
-//  chip). The pill is now superimposed on the header itself, hung off its
-//  bottom edge, reserving no layout and reserving the trailing cluster's own
-//  column so it can never reach those buttons at any Dynamic Type size.
+//  safe area, then in a band offset by the header's measured height — which
+//  moved the collision one row down onto whatever control the root parks under
+//  its header (on Home, the ALL filter chip). The third close superimposed it
+//  on the header but reserved the trailing cluster's own column, and Jackson
+//  rejected that on sight (2026-09-08): "It is being influenced by the avatar.
+//  It should appear ONTOP of the avatar" — "with a dropshadow".
+//
+//  The pill now shares the title band's control row with the trailing cluster
+//  and is painted OVER it. Both are flush to the band's trailing inset and both
+//  end on the same row edge, so the overlap is structural, not incidental.
 //
 //  What is asserted here is therefore the invariant, not a symptom: the pill's
-//  frame must not intersect the header's trailing controls, must not reach past
-//  the header into the content below it, and must cost the header no height.
+//  frame MUST intersect the header's trailing controls on every root, must NOT
+//  reach past the header into the content below it, and must cost the header no
+//  height. The first of those is the one that pins Jackson's direction — the
+//  close before this asserted its exact opposite, and passed.
 //
 //  Frames are captured with SwiftUI anchor preferences rather than the UIKit
 //  accessibility tree: SwiftUI publishes most controls as synthesized
@@ -226,11 +230,21 @@ final class SyncPillHeaderLayoutTests: XCTestCase {
 
     // MARK: - The invariant
 
-    /// The pill may cover header TEXT; it may never cover a CONTROL. Proven
-    /// against the real `AppHeader` on every root that carries a trailing
-    /// cluster, at the narrowest shipping width and at accessibility sizes,
-    /// where the pill grows tall enough to reach the cluster's row.
-    func testPillNeverCoversAHeaderControlOnAnySearchHeader() throws {
+    /// The pill covers header TEXT and the header's own trailing CONTROL.
+    /// Proven against the real `AppHeader` on every root that carries a
+    /// trailing cluster, at the narrowest shipping width and at accessibility
+    /// sizes, where the pill wraps its label and grows tall.
+    ///
+    /// This asserts the exact opposite of what it asserted before 2026-09-08,
+    /// deliberately. Overlapping the trailing cluster is now the requirement:
+    /// while the pill is up it is the most urgent thing on screen, it owns
+    /// that region's taps, and it disappears once the work is addressed. A
+    /// change that re-teaches the pill to dodge the cluster fails here.
+    ///
+    /// The trailing-edge check is the sharper of the two. Pill and cluster are
+    /// both flush to the band's own inset, so their right edges coincide; an
+    /// inset, an offset or a reserved column shows up here first.
+    func testPillIsPaintedOverTheTrailingActionsOnEverySearchHeader() throws {
         let sizes: [DynamicTypeSize] = [.large, .xxxLarge, .accessibility3, .accessibility5]
 
         for width in [CGFloat(320), CGFloat(390)] {
@@ -251,12 +265,21 @@ final class SyncPillHeaderLayoutTests: XCTestCase {
                     )
 
                     XCTAssertFalse(pill.isEmpty, "\(label): pill has an empty frame")
-                    XCTAssertFalse(
+                    XCTAssertGreaterThanOrEqual(
+                        pill.maxX, control.maxX - 0.5,
+                        """
+                        \(label): the pill stops short of the trailing cluster's \
+                        edge (pill \(pill), control \(control)) — something is \
+                        reserving the control's column again, which is the \
+                        placement Jackson rejected.
+                        """
+                    )
+                    XCTAssertTrue(
                         pill.intersects(control),
                         """
-                        \(label): the pill covers the header's trailing actions \
-                        (pill \(pill), control \(control)) — it would swallow \
-                        their taps, which is the reported bug.
+                        \(label): the pill does NOT overlap the header's trailing \
+                        actions (pill \(pill), control \(control)). It is meant to \
+                        sit ON them and own their taps until the work is addressed.
                         """
                     )
                 }
@@ -264,9 +287,10 @@ final class SyncPillHeaderLayoutTests: XCTestCase {
         }
     }
 
-    /// Anchored to the header's bottom edge, the pill cannot reach the first
+    /// Sitting on the band's control row, the pill cannot reach the first
     /// control the root parks below the header. That is the collision the
-    /// retired band placement shipped.
+    /// retired band placement shipped, and it is the half of the contract that
+    /// covering the trailing cluster must never be allowed to cost.
     func testPillStaysInsideTheHeaderAndClearsTheContentBelowIt() throws {
         for header in searchHeaders {
             for typeSize in [DynamicTypeSize.large, .accessibility5] {
@@ -401,15 +425,18 @@ final class SyncPillHeaderLayoutTests: XCTestCase {
 
     // MARK: - Visual proof
 
-    func testSnapshotPillAndSearchButtonCoexist() throws {
-        try snapshot("sync-pill-header-reported-count-2", harness(.jobBoard, count: 2), width: 390)
+    /// The pill over the real trailing actions, on the real `AppHeader`. The
+    /// `floatingElevation` shadow reads against the buttons underneath — which
+    /// is the point of keeping it (Jackson: "with a dropshadow").
+    func testSnapshotPillOverTheTrailingActions() throws {
+        try snapshot("sync-pill-header-over-actions-count-2", harness(.jobBoard, count: 2), width: 390)
         try snapshot(
-            "sync-pill-header-schedule-two-actions-320",
+            "sync-pill-header-over-actions-schedule-320",
             harness(.schedule, count: 2, width: 320),
             width: 320
         )
         try snapshot(
-            "sync-pill-header-leads-plus-and-search",
+            "sync-pill-header-over-actions-leads-plus-and-search",
             harness(.leads, count: 2),
             width: 390
         )

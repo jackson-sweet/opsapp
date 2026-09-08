@@ -106,6 +106,7 @@ struct ScheduleView: View {
                             showFilterSheet = true
                         },
                         onMonthTapped: { viewModel.toggleMonthExpanded() },
+                        isMonthExpanded: viewModel.isMonthExpanded,
                         // Bug 294ea224 — quick in-place ALL/MINE flip. The
                         // legacy ScheduleTeamScopeSheet was removed; team
                         // member multi-select lives in the unified filter

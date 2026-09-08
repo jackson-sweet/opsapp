@@ -39,6 +39,42 @@ struct AppHeaderHeightKey: PreferenceKey {
     }
 }
 
+enum ScheduleHeaderAction: Equatable {
+    case month
+    case search
+    case filters
+    case scope
+}
+
+struct ScheduleHeaderActionPlacement: Equatable {
+    let primary: [ScheduleHeaderAction]
+    let secondary: [ScheduleHeaderAction]
+}
+
+/// Schedule keeps its two highest-frequency actions in the title band. Lower-
+/// frequency configuration stays grouped in the header's context strip rather
+/// than hiding the month-grid toggle or exceeding the mobile two-action limit.
+enum ScheduleHeaderActionPlacementPolicy {
+    static func placement(
+        hasMonthAction: Bool,
+        hasFilterAction: Bool,
+        hasScopeAction: Bool
+    ) -> ScheduleHeaderActionPlacement {
+        var primary: [ScheduleHeaderAction] = []
+        if hasMonthAction { primary.append(.month) }
+        primary.append(.search)
+
+        var secondary: [ScheduleHeaderAction] = []
+        if hasFilterAction { secondary.append(.filters) }
+        if hasScopeAction { secondary.append(.scope) }
+
+        return ScheduleHeaderActionPlacement(
+            primary: primary,
+            secondary: secondary
+        )
+    }
+}
+
 struct AppHeader: View {
     enum HeaderType {
         case home
@@ -52,7 +88,7 @@ struct AppHeader: View {
     }
 
     private enum TrailingAction: String, Identifiable {
-        case scheduleMenu
+        case scheduleMonth
         case jobBoardMenu
         case inventoryInsights
         case newLead
@@ -89,6 +125,7 @@ struct AppHeader: View {
     var onFilterTapped: (() -> Void)? = nil
     var onInsightsTapped: (() -> Void)? = nil
     var onMonthTapped: (() -> Void)? = nil
+    var isMonthExpanded: Bool = false
     var onScopeToggled: (() -> Void)? = nil
     var onPaymentReviewTapped: (() -> Void)? = nil
     var paymentReviewBadgeCount: Int = 0
@@ -259,23 +296,39 @@ struct AppHeader: View {
             .accessibilityElement(children: .combine)
         } else if headerType == .schedule {
             HStack(spacing: OPSStyle.Layout.spacing2) {
-                Text("TODAY")
-                Text("·")
-                Text(todayDateString)
+                HStack(spacing: OPSStyle.Layout.spacing2) {
+                    Text("TODAY")
+                    Text("·")
+                    Text(todayDateString)
+                }
+                .accessibilityElement(children: .combine)
+
                 Spacer(minLength: 0)
+
+                if hasScheduleMenuActions {
+                    scheduleMenu
+                }
             }
             .font(OPSStyle.Typography.caption)
             .foregroundColor(OPSStyle.Colors.secondaryText)
             .padding(.horizontal, OPSStyle.Layout.spacing3_5)
             .padding(.bottom, OPSStyle.Layout.spacing2)
-            .accessibilityElement(children: .combine)
         }
     }
 
     private var trailingActions: [TrailingAction] {
         switch headerType {
         case .schedule:
-            return hasScheduleMenuActions ? [.scheduleMenu, .search] : [.search]
+            return scheduleHeaderPlacement.primary.compactMap { action in
+                switch action {
+                case .month:
+                    return .scheduleMonth
+                case .search:
+                    return .search
+                case .filters, .scope:
+                    return nil
+                }
+            }
         case .jobBoard:
             return hasJobBoardMenuActions ? [.jobBoardMenu, .search] : [.search]
         case .inventory:
@@ -289,8 +342,16 @@ struct AppHeader: View {
         }
     }
 
+    private var scheduleHeaderPlacement: ScheduleHeaderActionPlacement {
+        ScheduleHeaderActionPlacementPolicy.placement(
+            hasMonthAction: onMonthTapped != nil,
+            hasFilterAction: onFilterTapped != nil,
+            hasScopeAction: onScopeToggled != nil
+        )
+    }
+
     private var hasScheduleMenuActions: Bool {
-        onMonthTapped != nil || onFilterTapped != nil || onScopeToggled != nil
+        !scheduleHeaderPlacement.secondary.isEmpty
     }
 
     private var hasJobBoardMenuActions: Bool {
@@ -304,8 +365,18 @@ struct AppHeader: View {
     @ViewBuilder
     private func trailingAction(_ action: TrailingAction) -> some View {
         switch action {
-        case .scheduleMenu:
-            scheduleMenu
+        case .scheduleMonth:
+            Button(action: { onMonthTapped?() }) {
+                headerActionIcon(
+                    symbol: isMonthExpanded
+                        ? OPSStyle.Icons.calendarFill
+                        : OPSStyle.Icons.calendar
+                )
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Month view")
+            .accessibilityAddTraits(isMonthExpanded ? .isSelected : [])
+            .wizardTarget("toggle_month", style: .circle)
         case .jobBoardMenu:
             jobBoardMenu
         case .inventoryInsights:
@@ -330,11 +401,6 @@ struct AppHeader: View {
 
     private var scheduleMenu: some View {
         Menu {
-            if let onMonthTapped {
-                Button(action: onMonthTapped) {
-                    Label("MONTH VIEW", systemImage: OPSStyle.Icons.calendar)
-                }
-            }
             if let onFilterTapped {
                 Button(action: onFilterTapped) {
                     Label(scheduleFilterMenuTitle, systemImage: OPSStyle.Icons.filter)
@@ -358,7 +424,6 @@ struct AppHeader: View {
             )
         }
         .buttonStyle(.plain)
-        .wizardTarget("toggle_month", style: .circle)
     }
 
     private var jobBoardMenu: some View {

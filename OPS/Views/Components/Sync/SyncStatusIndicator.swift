@@ -9,15 +9,17 @@
 //  precedence over the existing pending/syncing states, and its count comes from
 //  the same `RecoveryInventory` the recovery screen reads (not raw pending).
 //
-//  Placement: every root superimposes this on its own `AppHeader`, hanging off
-//  the header's bottom edge (bug 417aac7b). It reserves no layout — nothing
-//  below the header moves when an attention item appears — and it is allowed to
-//  cover header TEXT (the greeting, the company line, the screen title) because
-//  something needing attention outranks a greeting. It is never allowed to
-//  cover a CONTROL, so it reserves the trailing cluster's column; see
-//  `HeaderSyncStatusGeometry`. Home project mode is the sole exception and
-//  keeps the same control inside the top project stack after AppHeader leaves
-//  the screen. See `SyncPillHeaderLayoutTests` and `HomeSyncStatusLayoutTests`.
+//  Placement: every root superimposes this on its own `AppHeader`, sharing the
+//  title band's control row with the trailing cluster and painting OVER it
+//  (bug 417aac7b). It reserves no layout — nothing below the header moves when
+//  an attention item appears — and it is allowed to cover header TEXT (the
+//  greeting, the company line, the screen title) AND the trailing control
+//  itself, because something needing attention outranks both. It is never
+//  allowed to reach the content BELOW the header; see
+//  `HeaderSyncStatusGeometry` for why that holds by construction. Home project
+//  mode is the sole exception and keeps the same control inside the top project
+//  stack after AppHeader leaves the screen. See `SyncPillHeaderLayoutTests` and
+//  `HomeSyncStatusLayoutTests`.
 //
 
 import Combine
@@ -39,7 +41,13 @@ import SwiftData
 ///   already did, and the shadow reads against a solid edge instead of tinting
 ///   the fill unevenly.
 /// * **The one sanctioned shadow.** `Layout.floatingElevation` — MOBILE.md §8's
-///   documented exception for elements that float over scrolling content.
+///   documented exception for elements that float over other content. This is
+///   NOT a band-only allowance: the pill now floats directly over the header's
+///   trailing CONTROL (Home's avatar, every other root's search button), which
+///   is precisely the case the exception exists for, and Jackson asked for it
+///   in as many words on 2026-09-08 — "with a dropshadow". The shadow is what
+///   separates the pill from the control underneath it. Do not delete it, and
+///   do not pass `isElevated: false` for the `.header` placement.
 enum SyncAttentionPillLayoutStyle: Equatable {
     case compact
     case expanded
@@ -192,50 +200,59 @@ enum HeaderSyncStatusPlacementPolicy {
     }
 }
 
-/// Geometry of the pill superimposed on `AppHeader`.
+/// Geometry of the pill superimposed on `AppHeader`'s title band.
 ///
-/// Bug 417aac7b closed wrong twice. The first fix put the pill in flow inside
-/// Home's measured header, which pushed TODAY / ACTIVE / ALL and the map down.
-/// The second floated it in the app-level band starting exactly at the header's
-/// lower edge — where it landed on top of the ALL filter chip. It now hangs off
-/// the header's own bottom edge as an overlay: zero reserved layout, and no
-/// reach past the header into the filter row.
+/// Bug 417aac7b closed wrong THREE times:
 ///
-/// The one control sharing that rectangle is the header's trailing cluster —
-/// Home's 44pt avatar, every other root's search / action buttons — and it sits
-/// in the TOP band row. A short pill stays below it; a tall one (accessibility
-/// sizes wrap the label) does not. Rather than depend on which, the overlay
-/// reserves the cluster's column outright, so the invariant holds at every
-/// Dynamic Type size, width and header type by construction.
+/// 1. IN FLOW inside Home's measured header — so TODAY / ACTIVE / ALL and the
+///    map under them were pushed down the moment an attention item existed.
+/// 2. Floated in MainTabView's app-level band starting exactly at the header's
+///    lower edge — which put it straight on top of the ALL filter chip.
+/// 3. Superimposed on the header but RESERVING the trailing control cluster's
+///    column, which staggered it below-left of the avatar. Jackson,
+///    2026-09-08: "The needs a look chip is still not in the correct place. It
+///    is being influenced by the avatar. It should appear ONTOP of the avatar."
+///
+/// The pill is the most urgent thing on screen and it is transient — it is
+/// addressed or cancelled, then gone. While it is there it outranks the
+/// greeting, the company line, the screen title AND the trailing control, so
+/// it takes that control's own row and paints over it. It is influenced by
+/// nothing in the band.
+///
+/// **The placement rule, in one line:** the pill's BOTTOM edge sits on the
+/// bottom edge of the `touchTargetMin` control row that `OPSHeaderControlSlot`
+/// centres in the band, and the pill grows UPWARD and LEFTWARD from there.
+///
+/// Two invariants fall out of that by construction — at every width, count,
+/// header type and Dynamic Type size, trusting no font metric:
+///
+/// * **It always covers the trailing control.** Pill and control end on the
+///   same row edge and both are at least `touchTargetMin` tall, so their
+///   frames always intersect. This is the point, not a side effect.
+/// * **It never reaches the content below the header.** The row's bottom edge
+///   is `bandHeight / 2 + controlRowHeight / 2`, which is `<= bandHeight` for
+///   any band at least `controlRowHeight` tall — and the canonical band's
+///   floor is `screenHeaderBandHeight`. The header is the band plus its
+///   context strip, so `pill.maxY <= band.maxY <= header.maxY` always. Moving
+///   the pill up onto the control row makes this bound strictly TIGHTER than
+///   the retired bottom-of-header anchor, which is the original defect's only
+///   permanent guard.
 enum HeaderSyncStatusGeometry {
-    /// Gap kept between the pill and the trailing control cluster.
-    static let controlClearance: CGFloat = OPSStyle.Layout.spacing2
-
-    /// Trailing inset for the superimposed pill.
-    ///
-    /// - Parameters:
-    ///   - headerWidth: width of the header the pill is superimposed on.
-    ///   - trailingSlotMinX: leading edge of the trailing control cluster in the
-    ///     header's own coordinate space, or `nil` when the header carries no
-    ///     trailing control (Settings' expanded search field, for instance).
-    static func trailingInset(
-        headerWidth: CGFloat,
-        trailingSlotMinX: CGFloat?
-    ) -> CGFloat {
-        let edgeInset: CGFloat = OPSStyle.Layout.spacing3_5
-        guard let trailingSlotMinX else { return edgeInset }
-        let clearedColumn: CGFloat = headerWidth - trailingSlotMinX + controlClearance
-        return min(max(edgeInset, clearedColumn), headerWidth)
-    }
+    /// Height of the band's control row — the row `OPSHeaderControlSlot`
+    /// centres the trailing cluster inside, and the row the pill now shares
+    /// with it.
+    static let controlRowHeight: CGFloat = OPSStyle.Layout.touchTargetMin
 }
 
 /// Bounds of the superimposed pill, published by `HeaderSyncStatusOverlay`.
 ///
-/// Bug 417aac7b closed wrong twice because nothing measured where the pill
-/// actually LANDED. Publishing its real frame lets the layout proofs assert
-/// non-intersection against the shipped composition — the real `AppHeader`,
-/// the real trailing controls, the real pill — instead of a reconstruction of
-/// it that can drift from what ships.
+/// Bug 417aac7b closed wrong three times because nothing measured where the
+/// pill actually LANDED. Publishing its real frame lets the layout proofs
+/// assert against the shipped composition — the real `AppHeader`, the real
+/// trailing controls, the real pill — instead of a reconstruction of it that
+/// can drift from what ships. The proofs assert BOTH directions: the pill must
+/// overlap the trailing control, and must never reach the content below the
+/// header.
 struct HeaderSyncStatusPillBoundsKey: PreferenceKey {
     static let defaultValue: Anchor<CGRect>? = nil
 
@@ -244,46 +261,47 @@ struct HeaderSyncStatusPillBoundsKey: PreferenceKey {
     }
 }
 
-/// The pill's superimposed placement on a root header.
+/// The pill's superimposed placement on a root header's title band.
 ///
-/// `AppHeader` and the layout proof (`HomeSyncStatusLayoutTests`) render this
-/// same view, so the regression test measures the SHIPPED geometry rather than
-/// a copy of it that can drift. Hosts it as an overlay on the header content —
-/// never in flow — and hands it the header's trailing-slot anchor.
+/// `AppHeader` and both layout proofs (`HomeSyncStatusLayoutTests`,
+/// `SyncPillHeaderLayoutTests`) render this same view, so the regression tests
+/// measure the SHIPPED geometry rather than a copy of it that can drift. It is
+/// hosted as an `.overlay` on the BAND — never in flow, and therefore always
+/// painted above the trailing control it covers.
+///
+/// The composition reads bottom-up as the placement rule in
+/// `HeaderSyncStatusGeometry`: trailing-flush with the band's content inset,
+/// bottom-anchored inside the control row, and that row centred in the band
+/// exactly where `OPSHeaderControlSlot` centres the control.
 struct HeaderSyncStatusOverlay<Pill: View>: View {
-    private let trailingSlot: Anchor<CGRect>?
     private let pill: () -> Pill
 
-    init(
-        trailingSlot: Anchor<CGRect>?,
-        @ViewBuilder pill: @escaping () -> Pill
-    ) {
-        self.trailingSlot = trailingSlot
+    init(@ViewBuilder pill: @escaping () -> Pill) {
         self.pill = pill
     }
 
     var body: some View {
-        GeometryReader { proxy in
-            pill()
-                .anchorPreference(
-                    key: HeaderSyncStatusPillBoundsKey.self,
-                    value: .bounds
-                ) { $0 }
-                .frame(
-                    maxWidth: .infinity,
-                    maxHeight: .infinity,
-                    alignment: .bottomTrailing
-                )
-                .padding(.leading, OPSStyle.Layout.spacing3_5)
-                .padding(
-                    .trailing,
-                    HeaderSyncStatusGeometry.trailingInset(
-                        headerWidth: proxy.size.width,
-                        trailingSlotMinX: trailingSlot.map { proxy[$0].minX }
-                    )
-                )
-                .padding(.bottom, OPSStyle.Layout.spacing2)
-        }
+        pill()
+            .anchorPreference(
+                key: HeaderSyncStatusPillBoundsKey.self,
+                value: .bounds
+            ) { $0 }
+            // Flush to the band's own trailing inset — the very edge the
+            // control cluster ends on, so the pill lands ON the control rather
+            // than staggered beside it. As the count grows the pill extends
+            // leftward over the greeting; that is intended.
+            .frame(maxWidth: .infinity, alignment: .trailing)
+            // Bottom-anchored inside the control row: an accessibility-size
+            // pill grows UPWARD over the title, never downward toward the
+            // filter row and the content under the header.
+            .frame(
+                height: HeaderSyncStatusGeometry.controlRowHeight,
+                alignment: .bottom
+            )
+            // ...and that row is centred in the band, which is where
+            // `OPSHeaderControlSlot` centres the control being covered.
+            .frame(maxHeight: .infinity, alignment: .center)
+            .padding(.horizontal, OPSStyle.Layout.spacing3_5)
     }
 }
 
@@ -480,14 +498,15 @@ struct SyncStatusIndicator: View {
 
     // MARK: - Pill variants
 
-    /// Superimposed on a header the pill hangs off its BOTTOM edge, so the
-    /// glove-safe frame has to grow upward over header text rather than
-    /// re-centring the capsule halfway up the band. In the project stack the
-    /// pill shares a normal action row with EXIT PROJECT and stays centred.
-    private var touchTargetAlignment: Alignment {
-        placement == .header ? .bottom : .center
-    }
-
+    /// The capsule is centred in its glove-safe frame in BOTH placements.
+    ///
+    /// It used to be bottom-aligned for `.header`, because the pill then hung
+    /// off the header's bottom edge and had to grow upward over header text.
+    /// The pill now shares the band's control row with the trailing control it
+    /// covers (`HeaderSyncStatusGeometry`), and that control is centred in the
+    /// row — so centring the capsule is what lands it ON the control instead of
+    /// low against its bottom edge. In the project stack the pill shares a
+    /// normal action row with EXIT PROJECT and was always centred.
     private var indicatorButton: some View {
         Button {
             showPendingWork = true
@@ -498,7 +517,7 @@ struct SyncStatusIndicator: View {
         .frame(
             minWidth: OPSStyle.Layout.touchTargetMin,
             minHeight: OPSStyle.Layout.touchTargetMin,
-            alignment: touchTargetAlignment
+            alignment: .center
         )
         .accessibilityHint("Opens pending work")
     }
@@ -519,9 +538,16 @@ struct SyncStatusIndicator: View {
     /// Every placement adapts for accessibility (bug 417aac7b): at accessibility
     /// sizes it renders the full-width `expandedPill`, wrapping its label inside
     /// whatever insets its host gives it instead of painting past the screen
-    /// edge. Superimposed on a header the capsule sits over the header's own
-    /// fade and, on Home, over the live map, so it keeps MOBILE.md §8's single
-    /// documented shadow; inside the project stack it is a plain row member.
+    /// edge.
+    ///
+    /// Superimposed on a header the capsule floats over the header's own fade,
+    /// over the live map on Home, and — since 2026-09-08 — directly over the
+    /// header's trailing CONTROL. That is MOBILE.md §8's documented shadow
+    /// exception at its most literal, and Jackson asked for it explicitly
+    /// ("with a dropshadow"), so `isElevated` is TRUE for `.header` and must
+    /// stay that way: the elevation is what separates the pill from the avatar
+    /// underneath it. Inside the project stack the pill is a plain row member
+    /// with nothing beneath it, so it takes no shadow.
     private var attentionPill: some View {
         SyncAttentionPill(
             count: statusModel.attentionCount,

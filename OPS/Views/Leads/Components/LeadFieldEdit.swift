@@ -56,6 +56,10 @@ import CoreLocation
 /// have their own guarded flows and side effects, and a casual hold must never
 /// reach them.
 enum LeadEditableField: String, Identifiable, CaseIterable {
+    /// `opportunities.title` — the dossier's header. Named JOB DESCRIPTION
+    /// everywhere the operator meets it, because that is what the lead form
+    /// has always called this column (bug 53e869f6).
+    case title
     case client
     case address
     case contact
@@ -69,6 +73,7 @@ enum LeadEditableField: String, Identifiable, CaseIterable {
     /// accessibility action.
     var accessibilityActionName: String {
         switch self {
+        case .title:    return "Edit job description"
         case .client:   return "Change client"
         case .address:  return "Edit address"
         case .contact:  return "Edit contact details"
@@ -262,6 +267,7 @@ enum LeadFieldSaveFailure: Equatable {
 /// narrow patch that emits explicit nulls for its OWN keys only, so clearing a
 /// field persists and no concurrent edit to a neighbouring column is clobbered.
 enum LeadFieldChange: Equatable {
+    case title(String)
     case address(String?, latitude: Double?, longitude: Double?)
     case contact(phone: String?, email: String?)
     case value(Double?)
@@ -360,6 +366,11 @@ final class LeadFieldEditController: ObservableObject {
             let repository = OpportunityRepository(companyId: companyId)
             let dto: OpportunityDTO
             switch change {
+            case let .title(title):
+                dto = try await repository.update(
+                    opportunityId,
+                    patch: LeadTitlePatch(title: title)
+                )
             case let .address(address, latitude, longitude):
                 dto = try await repository.update(
                     opportunityId,
@@ -423,6 +434,18 @@ final class LeadFieldEditController: ObservableObject {
     }
 
     // MARK: Committing
+
+    /// JOB DESCRIPTION — the dossier's header (bug 53e869f6).
+    ///
+    /// `opportunities.title` is NOT NULL, so unlike every other field here a
+    /// blank is not a clear: it is a write the server would refuse. The block
+    /// is local and silent because the editor already disables its confirm on
+    /// an empty field — an empty box explains itself, and an error line under
+    /// one the operator cannot submit anyway would be noise.
+    func saveTitle(_ raw: String) async {
+        guard let title = LeadFieldValue.normalised(raw) else { return }
+        await commit(.title(title))
+    }
 
     /// ADDRESS. Clearing the street clears the pin with it — a coordinate with
     /// no address is a map hero pointing at nothing.
@@ -923,6 +946,110 @@ struct LeadMoneyInput: View {
 // free rather than engineered: a failed write leaves the editor mounted, so
 // what the operator typed is simply still on screen. Nothing is restored,
 // because nothing was ever thrown away.
+
+/// JOB DESCRIPTION — the dossier's header, corrected where it is read.
+///
+/// The header is the one fact on this screen that is usually MACHINE-WRITTEN:
+/// a lead arriving from email is auto-named `JAIME TAYLOR - LEAD`, which says
+/// who but never what. Correcting it used to mean opening the whole edit sheet
+/// and finding a field labelled something else (bug 53e869f6). It now takes
+/// the dossier's own gesture, in place, at the header's own type size — the
+/// title keeps its screen-title face while it is being typed, so the operator
+/// is editing the thing they are looking at rather than a copy of it.
+struct LeadTitleInlineEditor: View {
+    @ObservedObject var controller: LeadFieldEditController
+
+    @State private var draft: String
+
+    /// Seeded from what the HEADER is showing, not from the raw column. A lead
+    /// with no title of its own displays its contact name up there; starting
+    /// the editor blank would ask the operator to retype what is on screen.
+    init(controller: LeadFieldEditController) {
+        self.controller = controller
+        _draft = State(initialValue: LeadHeroTitle.resolve(controller.opportunity))
+    }
+
+    static let accessibilityID = "lead-title-inline-editor"
+
+    private var isSaving: Bool { controller.isSaving(.title) }
+    private var isBlank: Bool { LeadFieldValue.normalised(draft) == nil }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
+            HStack(alignment: .center, spacing: OPSStyle.Layout.spacing2) {
+                LeadTitleInput(text: $draft)
+                    .disabled(isSaving)
+
+                LeadInlineEditControls(
+                    isSaving: isSaving,
+                    canSave: !isBlank,
+                    onCancel: { controller.cancel() },
+                    onSave: { save() }
+                )
+            }
+
+            if let failure = controller.failure(for: .title) {
+                LeadInlineEditError(failure: failure) { save() }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityIdentifier(Self.accessibilityID)
+    }
+
+    private func save() {
+        guard !isBlank else { return }
+        Task { await controller.saveTitle(draft) }
+    }
+}
+
+/// The header's own field. Screen-title type, uppercase, on the dossier's
+/// input chrome — so the line the operator is typing sits exactly where the
+/// title sat, at the size the title was.
+private struct LeadTitleInput: View {
+    @Binding var text: String
+
+    @FocusState private var isFocused: Bool
+
+    var body: some View {
+        TextField("", text: $text, prompt:
+            Text(LeadHeroTitle.placeholder)
+                .font(OPSStyle.Typography.screenTitle(for: LeadHeroTitle.placeholder))
+                .foregroundColor(OPSStyle.Colors.text3)
+        )
+        .font(OPSStyle.Typography.screenTitle(for: text))
+        .textCase(.uppercase)
+        .foregroundColor(OPSStyle.Colors.text)
+        .tint(OPSStyle.Colors.text)
+        .textInputAutocapitalization(.characters)
+        .autocorrectionDisabled()
+        .lineLimit(1)
+        .focused($isFocused)
+        .padding(.horizontal, OPSStyle.Layout.spacing2_5)
+        .frame(minHeight: OPSStyle.Layout.inputHeight)
+        .background(
+            RoundedRectangle(
+                cornerRadius: OPSStyle.Layout.buttonRadius,
+                style: .continuous
+            )
+            .fill(OPSStyle.Colors.surfaceInput)
+        )
+        .overlay(
+            RoundedRectangle(
+                cornerRadius: OPSStyle.Layout.buttonRadius,
+                style: .continuous
+            )
+            .strokeBorder(
+                // Focus brightens the hairline. No accent on focus — accent is
+                // CTA-only (DESIGN.md §9).
+                isFocused ? OPSStyle.Colors.inputFieldBorderFocus : OPSStyle.Colors.line,
+                lineWidth: OPSStyle.Layout.Border.standard
+            )
+        )
+        .animation(OPSStyle.Animation.hover, value: isFocused)
+        .onAppear { isFocused = true }
+        .accessibilityLabel("Job description")
+    }
+}
 
 /// ADDRESS — the shared MapKit autocomplete every other address input in the
 /// app uses (projects, clients, site visits, company setup). A lead address is

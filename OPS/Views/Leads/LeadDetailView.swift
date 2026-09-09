@@ -400,7 +400,9 @@ struct LeadDetailView: View {
                             } header: {
                                 LeadDetailStickyHeader(
                                     opportunity: opportunity,
-                                    clientName: vm.client?.name
+                                    clientName: vm.client?.name,
+                                    canEdit: canEdit,
+                                    fieldEdit: fieldEdit
                                 )
                             }
                         }

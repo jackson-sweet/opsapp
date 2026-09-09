@@ -368,18 +368,52 @@ struct DetailHero: View {
 /// A solid identity foundation keeps the title stable while the canonical
 /// fade tail lets the scrolling document disappear softly beneath the pinned
 /// edge.
+/// What the dossier header displays as the lead's name.
+///
+/// One definition, because two things now read it: the header renders it, and
+/// the header's inline editor seeds from it (bug 53e869f6). A lead with no
+/// title of its own still shows a name up there, so an editor that started
+/// blank would ask the operator to retype what is already on screen.
+enum LeadHeroTitle {
+    /// The placeholder for an untitled lead — the lead form's own words for
+    /// this column, so one field reads the same wherever it is edited.
+    static let placeholder = "Tear-off + reshingle, 28 sq"
+
+    /// The job leads (spec §5.3): title → description → contact name.
+    static func resolve(_ lead: Opportunity) -> String {
+        if let title = lead.title, !title.isEmpty { return title }
+        if let description = lead.descriptionText, !description.isEmpty { return description }
+        if !lead.contactName.isEmpty { return lead.contactName }
+        return "Unnamed lead"
+    }
+}
+
 struct LeadDetailStickyHeader: View {
     let opportunity: Opportunity
     /// Resolved client name (LeadDetailViewModel.client) — nil until loaded or
     /// when the lead has no client.
     let clientName: String?
+    /// Hold-to-edit on the header (bug 53e869f6). The dossier's header is
+    /// usually machine-written — an emailed lead is auto-named
+    /// `JAIME TAYLOR - LEAD` — so it takes the same hold the dossier's other
+    /// correctable facts take. Nil controller (snapshot and preview hosts)
+    /// renders a plain, inert title.
+    let canEdit: Bool
+    var fieldEdit: LeadFieldEditController? = nil
 
     static let accessibilityID = "lead-detail-sticky-header"
     static let titleAccessibilityID = "lead-detail-sticky-title"
 
-    init(opportunity: Opportunity, clientName: String? = nil) {
+    init(
+        opportunity: Opportunity,
+        clientName: String? = nil,
+        canEdit: Bool = false,
+        fieldEdit: LeadFieldEditController? = nil
+    ) {
         self.opportunity = opportunity
         self.clientName = clientName
+        self.canEdit = canEdit
+        self.fieldEdit = fieldEdit
     }
 
     var body: some View {
@@ -409,15 +443,29 @@ struct LeadDetailStickyHeader: View {
             // Title as header — the JOB leads the dossier. Fallback chain:
             // title → description → contact name → "Unnamed lead"; the
             // detail view never renders blank.
-            Text(heroTitle)
-                .font(OPSStyle.Typography.screenTitle(for: heroTitle))
-                .foregroundColor(OPSStyle.Colors.text)
-                .textCase(.uppercase)
-                .lineLimit(2)
-                .multilineTextAlignment(.leading)
-                .fixedSize(horizontal: false, vertical: true)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .accessibilityIdentifier(Self.titleAccessibilityID)
+            //
+            // Hold corrects it in place, at its own type size (bug 53e869f6).
+            // The header is the ONE fact on this screen that is usually
+            // machine-written, so it is the one most likely to be wrong.
+            if let fieldEdit, fieldEdit.isEditing(.title) {
+                LeadTitleInlineEditor(controller: fieldEdit)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            } else {
+                Text(heroTitle)
+                    .font(OPSStyle.Typography.screenTitle(for: heroTitle))
+                    .foregroundColor(OPSStyle.Colors.text)
+                    .textCase(.uppercase)
+                    .lineLimit(2)
+                    .multilineTextAlignment(.leading)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .accessibilityIdentifier(Self.titleAccessibilityID)
+                    .holdToEdit(
+                        .title,
+                        offersEdit: offersTitleEditing,
+                        onEdit: beginTitleEdit
+                    )
+            }
 
             if let people = peopleSubtitle {
                 Text(people)
@@ -437,13 +485,44 @@ struct LeadDetailStickyHeader: View {
                     .padding(.top, 3)
             }
         }
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel(identityLabel)
+        // The identity reads as ONE element (review W-3) — except while the
+        // title is being typed, when combining would swallow the live field.
+        .accessibilityElement(
+            children: isEditingTitle ? .contain : .combine
+        )
+        .accessibilityLabel(isEditingTitle ? "" : identityLabel)
+        // The combined element eats its children's custom actions, so the edit
+        // capability is republished here. A long press is unreachable with
+        // VoiceOver on; without this line the header would be correctable by
+        // sighted operators only.
+        .accessibilityAction(named: Text(LeadEditableField.title.accessibilityActionName)) {
+            if offersTitleEditing { beginTitleEdit() }
+        }
         // The identifier belongs on the element the combine above creates —
         // SwiftUI drops an identifier applied to a container that is not itself
         // an accessibility element, which is what made the pinned header
         // unfindable from tests.
         .accessibilityIdentifier(LeadDetailStickyHeader.accessibilityID)
+    }
+
+    /// The header offers the hold whenever this operator may edit the lead.
+    /// `hasValue` is structurally true — the header ALWAYS states a name, from
+    /// the title or the fallback chain behind it — so the shared gate answers
+    /// on permission alone here.
+    private var offersTitleEditing: Bool {
+        InfoRowEdit.offersLongPressEdit(
+            canEdit: canEdit && fieldEdit != nil,
+            hasValue: true,
+            isEditing: isEditingTitle
+        )
+    }
+
+    private var isEditingTitle: Bool {
+        fieldEdit?.isEditing(.title) ?? false
+    }
+
+    private func beginTitleEdit() {
+        fieldEdit?.begin(.title)
     }
 
     private var identityLabel: String {
@@ -482,13 +561,9 @@ struct LeadDetailStickyHeader: View {
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    /// The job leads (spec §5.3): title → description → contact name.
-    private var heroTitle: String {
-        if let t = opportunity.title, !t.isEmpty { return t }
-        if let d = opportunity.descriptionText, !d.isEmpty { return d }
-        if !opportunity.contactName.isEmpty { return opportunity.contactName }
-        return "Unnamed lead"
-    }
+    /// The job leads (spec §5.3): title → description → contact name. Shared
+    /// with the header's inline editor, which seeds from the same rule.
+    private var heroTitle: String { LeadHeroTitle.resolve(opportunity) }
 
     /// "Contact · Client" — the contact drops out when it IS the header
     /// (nothing else to lead with) or when it mirrors the client name

@@ -28,7 +28,7 @@ final class DeckMergeBaseMigrationTests: XCTestCase {
                 ObjectIdentifier($0) == ObjectIdentifier(OPSSchemaLegacyDeckDesignV25.DeckDesign.self)
             })
         }
-        XCTAssertEqual(OPSSchemaCurrent.versionIdentifier, Schema.Version(26, 0, 0))
+        XCTAssertEqual(OPSSchemaCurrent.versionIdentifier, Schema.Version(27, 0, 0))
         XCTAssertEqual(OPSMigrationPlan.schemas.count, OPSMigrationPlan.stages.count + 1)
     }
 

@@ -37,9 +37,9 @@ final class VinylPreviewDimensionLabelTests: XCTestCase {
         }
     }
 
-    /// The ring clears the wrap band AND the lap leader that sits one step off
-    /// it, so a wrapped edge never stacks two labels on top of each other.
-    func testDimensionRingClearsTheWrapBandAndTheLapLeader() {
+    /// Every dimension label clears the wrap band — it is a callout about the
+    /// deck, not something painted over the material.
+    func testDimensionLabelsClearTheWrapBand() {
         let surface = rectangularSurface()
         let plan = VinylPreviewAnnotationPlanner.plan(
             surface: surface,
@@ -57,14 +57,56 @@ final class VinylPreviewDimensionLabelTests: XCTestCase {
             band.polygon[3].y - band.polygon[0].y
         )
 
-        // Outermost point the lap leader's label reaches, measured from the edge.
-        let leader = try! XCTUnwrap(plan.leaders.first { $0.edgeType == .deckEdge })
-        let leaderReach = wrapDepth + leader.centerLineLength + (leader.labelRect.height / 2)
-
         XCTAssertFalse(plan.dimensionLabels.isEmpty)
         for label in plan.dimensionLabels {
             XCTAssertGreaterThan(label.distanceFromEdge, wrapDepth)
-            XCTAssertGreaterThan(label.distanceFromEdge, leaderReach)
+        }
+    }
+
+    /// The deck's dimensions are the INNER ring; the lap callout steps outside
+    /// them. The old precedence was the other way round, and one `DECK LAP 6"`
+    /// label set a worst-case ring the fit then honoured on all four sides.
+    func testTheLapCalloutStandsOutsideTheDimensionOnTheSameEdge() {
+        let dimensionReach = VinylPreviewAnnotationPlanner
+            .dimensionRing(for: rectangularSurface(), measurementSystem: .imperial)
+            .reachPoints
+
+        let standoff = VinylPreviewAnnotationPlanner.leaderStandoffPoints(
+            clearingPoints: dimensionReach,
+            halfExtentAlongNormal: 0
+        )
+
+        XCTAssertGreaterThan(dimensionReach, 0)
+        XCTAssertGreaterThan(standoff, dimensionReach)
+    }
+
+    /// The callout is centred on its edge's normal, so half of a wide label used
+    /// to land back INSIDE the deck on a vertical edge — `DECK LAP 6"` printed
+    /// straight over the cut widths. It now carries its own half-extent.
+    func testALapCalloutNeverPaintsBackOverTheDeck() {
+        for surface in [rectangularSurface(), tallSurface()] {
+            let plan = VinylPreviewAnnotationPlanner.plan(
+                surface: surface,
+                settings: .default,
+                viewportScale: 1,
+                measurementSystem: .imperial
+            )
+
+            XCTAssertFalse(plan.leaders.isEmpty)
+            for leader in plan.leaders {
+                let rect = leader.labelRect
+                for corner in [
+                    CGPoint(x: rect.minX, y: rect.minY),
+                    CGPoint(x: rect.maxX, y: rect.minY),
+                    CGPoint(x: rect.minX, y: rect.maxY),
+                    CGPoint(x: rect.maxX, y: rect.maxY)
+                ] {
+                    XCTAssertFalse(
+                        PolygonMath.pointInPolygon(corner, vertices: surface.positions),
+                        "\(leader.label) painted back over the deck at \(corner)"
+                    )
+                }
+            }
         }
     }
 
@@ -88,56 +130,61 @@ final class VinylPreviewDimensionLabelTests: XCTestCase {
 
     // MARK: - The ring is computed, not assumed
 
-    /// A lap leader's label reaches out along its edge's normal — sideways on a
-    /// vertical edge, where it is nearly four times as far as on a horizontal
-    /// one. A fixed ring offset collided there; the computed ring clears it.
-    func testTheRingClearsALapLeaderOnAVerticalEdgeToo() {
-        let tall = VinylPreviewAnnotationPlanner.dimensionRing(
-            for: tallSurface(),
-            settings: .default,
-            measurementSystem: .imperial
-        )
-        let wide = VinylPreviewAnnotationPlanner.dimensionRing(
+    /// The ring is the label's own text, nothing else: a dimension stands one
+    /// `spacing2` off the band plus half its own extent along the normal. It no
+    /// longer inherits a lap callout's width, which is what used to cost the
+    /// drawing ~30% of the phone's width on every side.
+    func testTheRingIsTheDimensionTextAndNothingElse() {
+        let ring = VinylPreviewAnnotationPlanner.dimensionRing(
             for: rectangularSurface(),
-            settings: .default,
             measurementSystem: .imperial
         )
 
-        // The lap label on the tall deck's longest (vertical) edge pushes the
-        // ring materially further out than the wide deck's horizontal one.
-        XCTAssertGreaterThan(tall.offsetPoints, wide.offsetPoints)
-        XCTAssertGreaterThan(tall.reachPoints, tall.offsetPoints)
+        let standoff = VinylPreviewAnnotationPlanner.dimensionLabelStandoffPoints
+        XCTAssertGreaterThan(ring.offsetPoints, standoff)
+        XCTAssertEqual(ring.reachPoints, (ring.offsetPoints - standoff) * 2 + standoff, accuracy: 0.001)
+
+        // A `24'`-class callout is a handful of mono glyphs — the whole ring
+        // stays inside one 44pt touch target's worth of canvas.
+        XCTAssertLessThan(ring.reachPoints, CGFloat(OPSStyle.Layout.touchTargetMin))
     }
 
-    /// With no edge wrap there are no bands and no leaders, so the ring collapses
-    /// back to its stand-off — the drawing gets that room back.
-    func testNoWrapPullsTheRingBackToItsStandoff() {
+    /// The wrap band is added by the drawing in source units, so the ring the
+    /// planner reports in POINTS does not move when the wrap does.
+    func testTheDimensionRingIsIndependentOfTheWrapSetting() {
+        let ring = VinylPreviewAnnotationPlanner.dimensionRing(
+            for: rectangularSurface(),
+            measurementSystem: .imperial
+        )
+
+        XCTAssertGreaterThanOrEqual(
+            ring.offsetPoints,
+            VinylPreviewAnnotationPlanner.dimensionLabelStandoffPoints
+        )
+
+        // The reserve the fit honours DOES fall back when the wrap goes away —
+        // no bands, no lap callouts, so only the dimensions need clearing.
         var noWrap = VinylOrderSettings.default
         noWrap.edgeWrapInches = 0
-
-        let bare = VinylPreviewAnnotationPlanner.dimensionRing(
-            for: rectangularSurface(),
+        let bare = VinylPreviewAnnotationPlanner.dimensionRingReachPoints(
+            for: [rectangularSurface()],
             settings: noWrap,
             measurementSystem: .imperial
         )
-        let wrapped = VinylPreviewAnnotationPlanner.dimensionRing(
-            for: rectangularSurface(),
+        let wrapped = VinylPreviewAnnotationPlanner.dimensionRingReachPoints(
+            for: [rectangularSurface()],
             settings: .default,
             measurementSystem: .imperial
         )
 
-        XCTAssertLessThan(bare.offsetPoints, wrapped.offsetPoints)
-        XCTAssertGreaterThanOrEqual(
-            bare.offsetPoints,
-            VinylPreviewAnnotationPlanner.dimensionLabelStandoffPoints
-        )
+        XCTAssertEqual(bare, ring.reachPoints, accuracy: 0.001)
+        XCTAssertGreaterThan(wrapped, bare)
     }
 
     /// A surface with nothing worth labelling reserves nothing.
     func testASurfaceWithNoLabelledEdgesReservesNothing() {
         let ring = VinylPreviewAnnotationPlanner.dimensionRing(
             for: tinySurface(),
-            settings: .default,
             measurementSystem: .imperial
         )
 
@@ -153,21 +200,18 @@ final class VinylPreviewDimensionLabelTests: XCTestCase {
             measurementSystem: .imperial
         )
 
-        XCTAssertEqual(
+        XCTAssertGreaterThanOrEqual(
             reach,
             max(
                 VinylPreviewAnnotationPlanner.dimensionRing(
                     for: rectangularSurface(),
-                    settings: .default,
                     measurementSystem: .imperial
                 ).reachPoints,
                 VinylPreviewAnnotationPlanner.dimensionRing(
                     for: tallSurface(),
-                    settings: .default,
                     measurementSystem: .imperial
                 ).reachPoints
-            ),
-            accuracy: 0.001
+            )
         )
     }
 

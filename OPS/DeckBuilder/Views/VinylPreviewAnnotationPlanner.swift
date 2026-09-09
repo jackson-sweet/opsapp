@@ -98,10 +98,10 @@ enum VinylPreviewAnnotationPlanner {
 
     /// Screen-point gap between the wrap band and the NEAR edge of a dimension
     /// label. The ring's own radius is derived from this — see `dimensionRing`.
-    static let dimensionLabelStandoffPoints = CGFloat(OPSStyle.Layout.spacing3)
+    static let dimensionLabelStandoffPoints = CGFloat(OPSStyle.Layout.spacing2)
 
-    /// Screen-point clearance kept between a lap leader's label and a dimension
-    /// label, so a wrapped edge never stacks two callouts on one another.
+    /// Screen-point clearance kept between a dimension label and the lap callout
+    /// that steps outside it, so a wrapped edge never stacks two on one another.
     static let dimensionLabelClearancePoints = CGFloat(OPSStyle.Layout.spacing2)
 
     /// Edges under two feet are structure — a notch return, a stair nosing —
@@ -192,6 +192,7 @@ enum VinylPreviewAnnotationPlanner {
         let sourceUnitsPerScreenPoint = 1 / max(viewportScale, 0.001)
         let layouts = edgeLayouts(for: surface)
         let wrapCanvas = CGFloat(settings.edgeWrapInches * surfaceScale(surface))
+        let placements = dimensionPlacements(for: surface, measurementSystem: measurementSystem)
 
         let bands: [VinylPreviewBand]
         if settings.edgeWrapInches > 0 {
@@ -224,6 +225,7 @@ enum VinylPreviewAnnotationPlanner {
                         for: $0,
                         tone: .deck,
                         wrapCanvas: wrapCanvas,
+                        clearingPoints: placements[$0.edge.id]?.reachPoints ?? 0,
                         sourceUnitsPerScreenPoint: sourceUnitsPerScreenPoint
                     )
                 },
@@ -233,6 +235,7 @@ enum VinylPreviewAnnotationPlanner {
                         for: $0,
                         tone: .neutral,
                         wrapCanvas: wrapCanvas,
+                        clearingPoints: placements[$0.edge.id]?.reachPoints ?? 0,
                         sourceUnitsPerScreenPoint: sourceUnitsPerScreenPoint
                     )
                 }
@@ -257,12 +260,7 @@ enum VinylPreviewAnnotationPlanner {
             },
             dimensionLabels: dimensionLabels(
                 for: layouts,
-                placements: dimensionPlacements(
-                    for: surface,
-                    settings: settings,
-                    measurementSystem: measurementSystem,
-                    sourceUnitsPerScreenPoint: sourceUnitsPerScreenPoint
-                ),
+                placements: placements,
                 wrapCanvas: wrapCanvas,
                 sourceUnitsPerScreenPoint: sourceUnitsPerScreenPoint,
                 measurementSystem: measurementSystem
@@ -272,96 +270,52 @@ enum VinylPreviewAnnotationPlanner {
 
     // MARK: - Deck dimensions
 
-    /// Where one edge's dimension label sits, in screen points.
-    ///
-    /// `standoff` is measured out along the edge's outward normal; `slide` runs
-    /// ALONG the edge, and is non-zero only where the edge also carries a lap
-    /// leader.
+    /// Where one edge's dimension label sits, in screen points measured out
+    /// along the edge's outward normal from the wrap band.
     struct VinylPreviewDimensionPlacement: Equatable {
+        /// Distance from the band to the label's CENTRE.
         let standoffPoints: CGFloat
-        let slidePoints: CGFloat
-        /// Outermost screen point the label paints, measured from the edge.
+        /// Outermost screen point the label paints, measured from the band.
         let reachPoints: CGFloat
     }
 
     /// Where one surface's dimension labels sit, in screen points measured from
     /// the OUTER edge of the wrap band.
     ///
-    /// Each label stands off its OWN edge — a `spacing3` gap and nothing more.
-    /// The two edges that also carry a lap leader step their label ALONG the
-    /// edge to clear it rather than out past it: a `DECK LAP 6"` callout is
-    /// ~68pt of text projecting sideways from a vertical edge, and pushing the
-    /// dimension beyond it used to drive a single worst-case ring that every
-    /// other edge then paid for. On the founder's phone that ring cost ~30% of
-    /// the drawing's width and left the labels adrift ~78pt off the deck. An
-    /// edge with no room to slide falls back to the radial push.
+    /// The deck's dimensions are the INNERMOST ring — one `spacing2` off the
+    /// band and nothing more. They are what the operator opened the drawing to
+    /// read (bug 1a8e48af), so they get the tightest, most legible position and
+    /// everything else clears them: the lap callouts step outside them (see
+    /// `leader`), rather than the other way round. Under the old precedence a
+    /// `DECK LAP 6"` label — ~68pt of text thrown sideways off a vertical edge —
+    /// set a single worst-case ring that the fit then honoured on all four
+    /// sides, and the deck was drawn at barely half the width it had.
     ///
     /// Scale-free by construction: every term is a screen-point size, so the
     /// caller multiplies by its own source-units-per-point, and
     /// `VinylCutPreview` reserves `reachPoints` when it fits the drawing.
     static func dimensionPlacements(
         for surface: VinylSurfaceCutPlan,
-        settings: VinylOrderSettings,
-        measurementSystem: MeasurementSystem,
-        sourceUnitsPerScreenPoint: CGFloat
+        measurementSystem: MeasurementSystem
     ) -> [String: VinylPreviewDimensionPlacement] {
-        let layouts = edgeLayouts(for: surface)
-        let lapEdgeIds = lapLeaderEdgeIds(in: layouts, settings: settings)
         var placements: [String: VinylPreviewDimensionPlacement] = [:]
 
-        for layout in layouts {
+        for layout in edgeLayouts(for: surface) {
             guard let inches = edgeLengthInches(for: layout),
                   inches >= dimensionLabelMinimumInches else { continue }
 
             // The label's own reach along the outward normal: a vertical edge
-            // pushes its text out sideways (half the width), a horizontal edge
+            // throws its text out sideways (half the width), a horizontal edge
             // upward (half the line height).
             let text = DimensionEngine.format(inches, system: measurementSystem)
             let labelSize = labelSourceSize(for: text, sourceUnitsPerScreenPoint: 1)
             let halfExtent = self.halfExtent(of: labelSize, along: layout.outwardNormal)
-
-            // Floor: the label's near edge stands one `spacing3` off the band.
             let standoff = dimensionLabelStandoffPoints + halfExtent
 
-            guard let lapLabel = lapEdgeIds[layout.edge.id] else {
-                placements[layout.edge.id] = VinylPreviewDimensionPlacement(
-                    standoffPoints: standoff,
-                    slidePoints: 0,
-                    reachPoints: standoff + halfExtent
-                )
-                continue
-            }
-
-            // This edge carries a lap leader on the same midpoint. Step the
-            // dimension sideways along the edge if the edge is long enough to
-            // hold both without either running off its own end.
-            let leaderSize = labelSourceSize(for: lapLabel, sourceUnitsPerScreenPoint: 1)
-            let edgeDirection = self.edgeDirection(of: layout)
-            let slide = halfExtent(of: leaderSize, along: edgeDirection)
-                + dimensionLabelClearancePoints
-                + halfExtent(of: labelSize, along: edgeDirection)
-            let edgeLengthPoints = layout.length / max(sourceUnitsPerScreenPoint, 0.0001)
-
-            if (slide + halfExtent(of: labelSize, along: edgeDirection)) * 2 <= edgeLengthPoints {
-                placements[layout.edge.id] = VinylPreviewDimensionPlacement(
-                    standoffPoints: standoff,
-                    slidePoints: slide,
-                    reachPoints: standoff + halfExtent
-                )
-            } else {
-                // No room to slide — clear the leader radially instead.
-                let leaderOuterEdge = CGFloat(OPSStyle.Layout.spacing3)
-                    + self.halfExtent(of: leaderSize, along: layout.outwardNormal)
-                let pushed = max(
-                    standoff,
-                    leaderOuterEdge + dimensionLabelClearancePoints + halfExtent
-                )
-                placements[layout.edge.id] = VinylPreviewDimensionPlacement(
-                    standoffPoints: pushed,
-                    slidePoints: 0,
-                    reachPoints: pushed + halfExtent
-                )
-            }
+            placements[layout.edge.id] = VinylPreviewDimensionPlacement(
+                standoffPoints: standoff,
+                reachPoints: standoff + halfExtent
+            )
         }
 
         return placements
@@ -371,30 +325,16 @@ enum VinylPreviewAnnotationPlanner {
     /// points, and the widest stand-off among them.
     static func dimensionRing(
         for surface: VinylSurfaceCutPlan,
-        settings: VinylOrderSettings,
-        measurementSystem: MeasurementSystem,
-        sourceUnitsPerScreenPoint: CGFloat = 1
+        measurementSystem: MeasurementSystem
     ) -> VinylPreviewDimensionRing {
         let placements = dimensionPlacements(
             for: surface,
-            settings: settings,
-            measurementSystem: measurementSystem,
-            sourceUnitsPerScreenPoint: sourceUnitsPerScreenPoint
+            measurementSystem: measurementSystem
         )
         return VinylPreviewDimensionRing(
             offsetPoints: placements.values.map(\.standoffPoints).max() ?? 0,
             reachPoints: placements.values.map(\.reachPoints).max() ?? 0
         )
-    }
-
-    /// Unit vector along the edge, start → end.
-    private static func edgeDirection(
-        of layout: VinylPreviewAnnotationEdgeLayout
-    ) -> CGVector {
-        let dx = layout.edge.end.x - layout.edge.start.x
-        let dy = layout.edge.end.y - layout.edge.start.y
-        let length = max(hypot(dx, dy), 0.0001)
-        return CGVector(dx: dx / length, dy: dy / length)
     }
 
     /// The widest reach any surface's dimension ring needs, in screen points.
@@ -403,35 +343,46 @@ enum VinylPreviewAnnotationPlanner {
     static func dimensionRingReachPoints(
         for surfaces: [VinylSurfaceCutPlan],
         settings: VinylOrderSettings,
-        measurementSystem: MeasurementSystem,
-        sourceUnitsPerScreenPoint: CGFloat = 1
+        measurementSystem: MeasurementSystem
     ) -> CGFloat {
-        surfaces
-            .map {
-                dimensionRing(
-                    for: $0,
-                    settings: settings,
-                    measurementSystem: measurementSystem,
-                    sourceUnitsPerScreenPoint: sourceUnitsPerScreenPoint
-                ).reachPoints
-            }
+        let dimensions = surfaces
+            .map { dimensionRing(for: $0, measurementSystem: measurementSystem).reachPoints }
             .max() ?? 0
-    }
 
-    /// The lap-leader label each edge carries, keyed by edge id. Empty when the
-    /// order has no edge wrap — there are no bands and no leaders to clear.
-    private static func lapLeaderEdgeIds(
-        in layouts: [VinylPreviewAnnotationEdgeLayout],
-        settings: VinylOrderSettings
-    ) -> [String: String] {
-        guard settings.edgeWrapInches > 0 else { return [:] }
-        var ids: [String: String] = [:]
-        for type in [EdgeType.deckEdge, .houseEdge] {
-            if let layout = representativeLayout(in: layouts, type: type) {
-                ids[layout.edge.id] = lapLabel(for: type, settings: settings)
+        // The lap callouts sit outside the dimensions on the two edges that
+        // carry them, so the reserve has to cover the outer ring, not the inner
+        // one — otherwise `HOUSE LAP 6"` is the text that falls off the canvas.
+        guard settings.edgeWrapInches > 0 else { return dimensions }
+
+        let laps = surfaces.flatMap { surface -> [CGFloat] in
+            let layouts = edgeLayouts(for: surface)
+            let placements = dimensionPlacements(for: surface, measurementSystem: measurementSystem)
+            return [EdgeType.deckEdge, .houseEdge].compactMap { type in
+                guard let layout = representativeLayout(in: layouts, type: type) else { return nil }
+                let label = lapLabel(for: type, settings: settings)
+                let size = labelSourceSize(for: label, sourceUnitsPerScreenPoint: 1)
+                let halfExtent = self.halfExtent(of: size, along: layout.outwardNormal)
+                return leaderStandoffPoints(
+                    clearingPoints: placements[layout.edge.id]?.reachPoints ?? 0,
+                    halfExtentAlongNormal: halfExtent
+                ) + halfExtent
             }
         }
-        return ids
+
+        return max(dimensions, laps.max() ?? 0)
+    }
+
+    /// How far a lap leader's label centre stands off the wrap band, in screen
+    /// points. It clears the edge's dimension label where there is one, and
+    /// always clears its own half-width so a wide callout on a vertical edge
+    /// cannot paint back over the deck.
+    static func leaderStandoffPoints(
+        clearingPoints: CGFloat,
+        halfExtentAlongNormal: CGFloat
+    ) -> CGFloat {
+        let floor = CGFloat(OPSStyle.Layout.spacing3)
+        let cleared = clearingPoints + dimensionLabelClearancePoints
+        return max(floor, cleared) + halfExtentAlongNormal
     }
 
     private static func lapLabel(
@@ -458,24 +409,17 @@ enum VinylPreviewAnnotationPlanner {
             guard let inches = edgeLengthInches(for: layout),
                   let placement = placements[layout.edge.id] else { return nil }
 
-            // Out along the normal past the wrap band, then along the edge to
-            // clear a lap leader where there is one.
+            // Straight out along the edge's own normal, past the wrap band.
             let distance = wrapCanvas
                 + (placement.standoffPoints * sourceUnitsPerScreenPoint)
-            let base = offset(
-                midpoint(layout.edge.start, layout.edge.end),
-                normal: layout.outwardNormal,
-                distance: distance
-            )
-            let slide = placement.slidePoints * sourceUnitsPerScreenPoint
-            let direction = edgeDirection(of: layout)
 
             return VinylPreviewDimensionLabel(
                 edgeId: layout.edge.id,
                 text: DimensionEngine.format(inches, system: measurementSystem),
-                point: CGPoint(
-                    x: base.x + (direction.dx * slide),
-                    y: base.y + (direction.dy * slide)
+                point: offset(
+                    midpoint(layout.edge.start, layout.edge.end),
+                    normal: layout.outwardNormal,
+                    distance: distance
                 ),
                 distanceFromEdge: distance
             )
@@ -538,11 +482,22 @@ enum VinylPreviewAnnotationPlanner {
         for layout: VinylPreviewAnnotationEdgeLayout,
         tone: VinylPreviewAnnotationTone,
         wrapCanvas: CGFloat,
+        clearingPoints: CGFloat,
         sourceUnitsPerScreenPoint: CGFloat
     ) -> VinylPreviewLeader {
         let edgeMidpoint = midpoint(layout.edge.start, layout.edge.end)
-        let labelGap = CGFloat(OPSStyle.Layout.spacing3) * sourceUnitsPerScreenPoint
         let labelSize = labelSourceSize(for: label, sourceUnitsPerScreenPoint: sourceUnitsPerScreenPoint)
+        // The callout used to be centred one `spacing3` off the band, which put
+        // half of a wide label back INSIDE the deck on a vertical edge — the
+        // `DECK LAP 6"` text ran over the cut widths. Stand it off by its own
+        // half-extent as well, and past the edge's dimension label.
+        let labelGap = leaderStandoffPoints(
+            clearingPoints: clearingPoints,
+            halfExtentAlongNormal: halfExtent(
+                of: labelSourceSize(for: label, sourceUnitsPerScreenPoint: 1),
+                along: layout.outwardNormal
+            )
+        ) * sourceUnitsPerScreenPoint
         let labelPoint = offset(
             edgeMidpoint,
             normal: layout.outwardNormal,
@@ -657,13 +612,22 @@ enum VinylPreviewAnnotationPlanner {
         return PolygonMath.pointInPolygon(probeA, vertices: surface.positions) ? normalB : normalA
     }
 
+    /// The edge that carries a type's single lap callout.
+    ///
+    /// A horizontal edge wins over a longer vertical one. The callout is drawn
+    /// along its edge's outward normal, so a vertical edge throws ~68pt of text
+    /// sideways into the width the drawing needs, while a horizontal edge costs
+    /// one line's height — and on a phone the drawing is always width-starved
+    /// and height-rich. Longest wins within whichever pool applies.
     private static func representativeLayout(
         in layouts: [VinylPreviewAnnotationEdgeLayout],
         type: EdgeType
     ) -> VinylPreviewAnnotationEdgeLayout? {
-        layouts
-            .filter { $0.edge.edgeType == type }
-            .max { $0.length < $1.length }
+        let candidates = layouts.filter { $0.edge.edgeType == type }
+        let horizontal = candidates.filter {
+            abs($0.outwardNormal.dy) >= abs($0.outwardNormal.dx)
+        }
+        return (horizontal.isEmpty ? candidates : horizontal).max { $0.length < $1.length }
     }
 
     private static func surfaceScale(_ surface: VinylSurfaceCutPlan) -> Double {

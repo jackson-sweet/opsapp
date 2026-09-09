@@ -22,7 +22,8 @@ struct OPSApp: App {
         if ClientSearchActionsQARuntime.isEnabled() ||
             CatalogSetupQARuntime.isEnabled() ||
             ScheduleLongPressQARuntime.isEnabled() ||
-            SiteVisitCaptureQARuntime.isEnabled() {
+            SiteVisitCaptureQARuntime.isEnabled() ||
+            VinylOrderQARuntime.isEnabled() {
             return
         }
         #endif
@@ -42,7 +43,8 @@ struct OPSApp: App {
         let isHermeticQALaunch = ClientSearchActionsQARuntime.isEnabled() ||
             CatalogSetupQARuntime.isEnabled() ||
             ScheduleLongPressQARuntime.isEnabled() ||
-            SiteVisitCaptureQARuntime.isEnabled()
+            SiteVisitCaptureQARuntime.isEnabled() ||
+            VinylOrderQARuntime.isEnabled()
         #else
         let isHermeticQALaunch = false
         #endif
@@ -128,6 +130,10 @@ private struct OPSInitializedRoot: View {
             SiteVisitCaptureQAHost()
                 .environmentObject(dataController)
                 .environmentObject(permissionStore)
+                .preferredColorScheme(.dark)
+        } else if VinylOrderQARuntime.isEnabled() {
+            // The workspace takes plain values — no controller, no store.
+            VinylOrderQAHost()
                 .preferredColorScheme(.dark)
         } else if CatalogSetupQARuntime.isEnabled() {
             CatalogSetupQALocalHost()

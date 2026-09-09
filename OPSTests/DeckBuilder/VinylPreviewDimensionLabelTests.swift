@@ -80,6 +80,39 @@ final class VinylPreviewDimensionLabelTests: XCTestCase {
         XCTAssertGreaterThan(standoff, dimensionReach)
     }
 
+    /// A lap callout runs its leader line out along the same normal the edge's
+    /// dimension sits on, so the line used to be drawn straight THROUGH the
+    /// dimension text. The dimension steps along its edge to leave a lane.
+    func testALapLeadersLineHasAClearLaneThroughTheDimensions() {
+        for surface in [rectangularSurface(), tallSurface(), notchedSurface()] {
+            let plan = VinylPreviewAnnotationPlanner.plan(
+                surface: surface,
+                settings: .default,
+                viewportScale: 1,
+                measurementSystem: .imperial
+            )
+
+            for leader in plan.leaders {
+                for label in plan.dimensionLabels {
+                    XCTAssertGreaterThanOrEqual(
+                        distance(from: label.point, toSegment: leader.lineStart, leader.labelPoint),
+                        VinylPreviewAnnotationPlanner.dimensionLabelClearancePoints,
+                        "\(label.text) sits on \(leader.label)'s leader line"
+                    )
+                }
+            }
+        }
+    }
+
+    private func distance(from point: CGPoint, toSegment a: CGPoint, _ b: CGPoint) -> CGFloat {
+        let dx = b.x - a.x
+        let dy = b.y - a.y
+        let lengthSquared = (dx * dx) + (dy * dy)
+        guard lengthSquared > 0 else { return hypot(point.x - a.x, point.y - a.y) }
+        let t = max(0, min(1, (((point.x - a.x) * dx) + ((point.y - a.y) * dy)) / lengthSquared))
+        return hypot(point.x - (a.x + t * dx), point.y - (a.y + t * dy))
+    }
+
     /// The callout is centred on its edge's normal, so half of a wide label used
     /// to land back INSIDE the deck on a vertical edge — `DECK LAP 6"` printed
     /// straight over the cut widths. It now carries its own half-extent.

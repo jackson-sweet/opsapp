@@ -261,6 +261,7 @@ enum VinylPreviewAnnotationPlanner {
             dimensionLabels: dimensionLabels(
                 for: layouts,
                 placements: placements,
+                leaderEdgeIds: leaderEdgeIds(in: layouts, settings: settings),
                 wrapCanvas: wrapCanvas,
                 sourceUnitsPerScreenPoint: sourceUnitsPerScreenPoint,
                 measurementSystem: measurementSystem
@@ -401,6 +402,7 @@ enum VinylPreviewAnnotationPlanner {
     private static func dimensionLabels(
         for layouts: [VinylPreviewAnnotationEdgeLayout],
         placements: [String: VinylPreviewDimensionPlacement],
+        leaderEdgeIds: Set<String>,
         wrapCanvas: CGFloat,
         sourceUnitsPerScreenPoint: CGFloat,
         measurementSystem: MeasurementSystem
@@ -412,18 +414,76 @@ enum VinylPreviewAnnotationPlanner {
             // Straight out along the edge's own normal, past the wrap band.
             let distance = wrapCanvas
                 + (placement.standoffPoints * sourceUnitsPerScreenPoint)
+            let text = DimensionEngine.format(inches, system: measurementSystem)
+            let base = offset(
+                midpoint(layout.edge.start, layout.edge.end),
+                normal: layout.outwardNormal,
+                distance: distance
+            )
+
+            // A lap callout on this edge runs its leader line out along the same
+            // normal, from the band to a label beyond this one — straight
+            // THROUGH the dimension. Step the dimension a hair along the edge so
+            // the line has a clear lane. Far cheaper than pushing either callout
+            // further out, and at a couple of dozen points on a deck edge the
+            // label still reads as that edge's.
+            let slide = leaderEdgeIds.contains(layout.edge.id)
+                ? leaderLaneSlide(
+                    for: text,
+                    along: layout.outwardNormal,
+                    sourceUnitsPerScreenPoint: sourceUnitsPerScreenPoint
+                )
+                : 0
+            let direction = edgeDirection(of: layout)
 
             return VinylPreviewDimensionLabel(
                 edgeId: layout.edge.id,
-                text: DimensionEngine.format(inches, system: measurementSystem),
-                point: offset(
-                    midpoint(layout.edge.start, layout.edge.end),
-                    normal: layout.outwardNormal,
-                    distance: distance
+                text: text,
+                point: CGPoint(
+                    x: base.x + (direction.dx * slide),
+                    y: base.y + (direction.dy * slide)
                 ),
                 distanceFromEdge: distance
             )
         }
+    }
+
+    /// How far along its edge a dimension steps to clear a lap leader's line.
+    /// The line is a hairline, so this is only the label's own half-extent
+    /// ACROSS the normal plus one `spacing2`.
+    private static func leaderLaneSlide(
+        for text: String,
+        along normal: CGVector,
+        sourceUnitsPerScreenPoint: CGFloat
+    ) -> CGFloat {
+        let size = labelSourceSize(for: text, sourceUnitsPerScreenPoint: 1)
+        // Across the normal is along the edge: swap the vector's components.
+        let alongEdge = CGVector(dx: normal.dy, dy: normal.dx)
+        return (halfExtent(of: size, along: alongEdge) + dimensionLabelClearancePoints)
+            * sourceUnitsPerScreenPoint
+    }
+
+    /// The edges that carry a lap callout, and therefore a leader line running
+    /// out along their normal. Empty when the order has no edge wrap.
+    private static func leaderEdgeIds(
+        in layouts: [VinylPreviewAnnotationEdgeLayout],
+        settings: VinylOrderSettings
+    ) -> Set<String> {
+        guard settings.edgeWrapInches > 0 else { return [] }
+        return Set(
+            [EdgeType.deckEdge, .houseEdge]
+                .compactMap { representativeLayout(in: layouts, type: $0)?.edge.id }
+        )
+    }
+
+    /// Unit vector along the edge, start → end.
+    private static func edgeDirection(
+        of layout: VinylPreviewAnnotationEdgeLayout
+    ) -> CGVector {
+        let dx = layout.edge.end.x - layout.edge.start.x
+        let dy = layout.edge.end.y - layout.edge.start.y
+        let length = max(hypot(dx, dy), 0.0001)
+        return CGVector(dx: dx / length, dy: dy / length)
     }
 
     /// The deck's measured dimension when it has one, else canvas length ÷ the

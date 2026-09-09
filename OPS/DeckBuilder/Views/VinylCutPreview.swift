@@ -272,11 +272,23 @@ enum VinylPreviewFit {
     }
 }
 
+/// How much of the annotation ring a drawing carries.
+enum VinylPreviewAnnotationDetail {
+    /// Bands, cuts and every callout — the workspace, where the order is read.
+    case full
+    /// Bands and cuts only. The inline card is a short thumbnail the operator
+    /// taps to OPEN the drawing; six dimension callouts and two lap labels at
+    /// that size squeeze the deck down to a smudge and print over each other.
+    /// A thumbnail's whole job is the shape.
+    case shape
+}
+
 struct VinylCutPreview: View {
     let plan: VinylCutPlan
     /// The drawing's own imperial/metric preference, so an edge reads the same
     /// here as it does on the deck canvas.
     var measurementSystem: MeasurementSystem = .imperial
+    var annotationDetail: VinylPreviewAnnotationDetail = .full
 
     var body: some View {
         Canvas { context, size in
@@ -295,6 +307,12 @@ struct VinylCutPreview: View {
                 )
             }
         }
+        // A scale drawing's callouts are part of the GRAPHIC, not body copy —
+        // tripling them at accessibility sizes collides every label and destroys
+        // the thing being read. The drawing keeps drafting scale and the
+        // workspace carries the accessible path instead: pinch, double-tap, and
+        // a VoiceOver adjustable zoom action on the drawing itself.
+        .dynamicTypeSize(...DynamicTypeSize.large)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Vinyl cut preview")
     }
@@ -308,11 +326,13 @@ struct VinylCutPreview: View {
             content: content,
             wrapCanvas: wrapCanvas,
             wrapReserve: wrapReserve,
-            ringReachPoints: VinylPreviewAnnotationPlanner.dimensionRingReachPoints(
-                for: plan.surfaces,
-                settings: plan.settings,
-                measurementSystem: measurementSystem
-            ),
+            ringReachPoints: annotationDetail == .full
+                ? VinylPreviewAnnotationPlanner.dimensionRingReachPoints(
+                    for: plan.surfaces,
+                    settings: plan.settings,
+                    measurementSystem: measurementSystem
+                )
+                : 0,
             target: CGRect(
                 x: VinylOrderLayout.previewInset,
                 y: VinylOrderLayout.previewInset,
@@ -376,6 +396,8 @@ struct VinylCutPreview: View {
         drawCuts(surface, clippedTo: path, in: &context, bounds: bounds, origin: origin, scale: scale)
         drawDirectionTransitions(annotationPlan, in: &context, bounds: bounds, origin: origin, scale: scale)
         context.stroke(path, with: .color(OPSStyle.Colors.secondaryText), lineWidth: OPSStyle.Layout.Border.standard)
+
+        guard annotationDetail == .full else { return }
         drawHouseEdgeLabels(annotationPlan, in: &context, bounds: bounds, origin: origin, scale: scale)
         drawOverlapLeaders(annotationPlan, in: &context, bounds: bounds, origin: origin, scale: scale)
         drawDimensionLabels(annotationPlan, in: &context, bounds: bounds, origin: origin, scale: scale)
@@ -886,9 +908,13 @@ struct VinylOrderLayoutWindow: View {
                 .padding(.trailing, OPSStyle.Layout.spacing2)
                 .frame(minHeight: OPSStyle.Layout.touchTargetMin)
 
-                VinylCutPreview(plan: plan, measurementSystem: measurementSystem)
-                    .frame(height: VinylOrderLayout.previewHeight)
-                    .background(OPSStyle.Colors.background)
+                VinylCutPreview(
+                    plan: plan,
+                    measurementSystem: measurementSystem,
+                    annotationDetail: .shape
+                )
+                .frame(height: VinylOrderLayout.previewHeight)
+                .background(OPSStyle.Colors.background)
             }
             .glassSurface(cornerRadius: OPSStyle.Layout.panelRadius)
         }

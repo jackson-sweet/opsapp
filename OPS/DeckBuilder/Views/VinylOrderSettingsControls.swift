@@ -60,6 +60,11 @@ struct VinylOrderSettingsControls: View {
     /// Re-plan. Fires once per accepted edit — never on a no-op tap.
     let onChange: () -> Void
 
+    /// At accessibility sizes the label column and the segments cannot both fit
+    /// on one line: `PATTERN` broke mid-word into `PATT`/`ERN` and `LENGTH` /
+    /// `WIDTH` truncated to `LEN…` / `WID…`. The row stacks instead.
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
     // MARK: Bounds — the ranges the sheet and the wizard have always used
 
     static let rollWidthRange: ClosedRange<Double> = 24...144
@@ -147,39 +152,49 @@ struct VinylOrderSettingsControls: View {
         optionLabel: KeyPath<Option, String>,
         edit: @escaping (Option) -> VinylOrderSettingsEdit
     ) -> some View {
-        HStack(spacing: OPSStyle.Layout.spacing2) {
-            rowLabel(label)
+        let segments = HStack(spacing: 0) {
+            ForEach(options, id: \.self) { option in
+                Button {
+                    apply(edit(option))
+                } label: {
+                    Text(option[keyPath: optionLabel])
+                        .font(OPSStyle.Typography.smallCaption)
+                        .foregroundColor(
+                            option == selected
+                                ? OPSStyle.Colors.text
+                                : OPSStyle.Colors.text2
+                        )
+                        .frame(maxWidth: .infinity)
+                        .frame(minHeight: OPSStyle.Layout.touchTargetMin)
+                        .background(
+                            option == selected
+                                ? OPSStyle.Colors.surfaceActive
+                                : Color.clear
+                        )
+                }
+                .buttonStyle(.plain)
+                .accessibilityAddTraits(option == selected ? [.isSelected] : [])
+            }
+        }
+        .background(OPSStyle.Colors.subtleBackground)
+        .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius))
+        .overlay(
+            RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
+                .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
+        )
 
-            HStack(spacing: 0) {
-                ForEach(options, id: \.self) { option in
-                    Button {
-                        apply(edit(option))
-                    } label: {
-                        Text(option[keyPath: optionLabel])
-                            .font(OPSStyle.Typography.smallCaption)
-                            .foregroundColor(
-                                option == selected
-                                    ? OPSStyle.Colors.text
-                                    : OPSStyle.Colors.text2
-                            )
-                            .frame(maxWidth: .infinity)
-                            .frame(height: OPSStyle.Layout.touchTargetMin)
-                            .background(
-                                option == selected
-                                    ? OPSStyle.Colors.surfaceActive
-                                    : Color.clear
-                            )
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityAddTraits(option == selected ? [.isSelected] : [])
+        return Group {
+            if dynamicTypeSize.isAccessibilitySize {
+                VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
+                    rowLabel(label)
+                    segments
+                }
+            } else {
+                HStack(spacing: OPSStyle.Layout.spacing2) {
+                    rowLabel(label)
+                    segments
                 }
             }
-            .background(OPSStyle.Colors.subtleBackground)
-            .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius))
-            .overlay(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-            )
         }
         .accessibilityElement(children: .contain)
         .accessibilityLabel(label)
@@ -230,11 +245,18 @@ struct VinylOrderSettingsControls: View {
         )
     }
 
+    /// The fixed label column is what keeps the stack reading as one column —
+    /// but it is only wide enough for the default type scale, so a stacked
+    /// accessibility row lets the label take the width the word needs.
     private func rowLabel(_ text: String) -> some View {
         Text(text)
             .font(OPSStyle.Typography.smallCaption)
             .foregroundColor(OPSStyle.Colors.text3)
-            .frame(width: VinylOrderLayout.labelWidth, alignment: .leading)
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(
+                width: dynamicTypeSize.isAccessibilitySize ? nil : VinylOrderLayout.labelWidth,
+                alignment: .leading
+            )
     }
 
     // MARK: Applying

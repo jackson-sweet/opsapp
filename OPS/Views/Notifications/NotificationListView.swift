@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import SwiftData
 
 struct CatalogSetupNotificationRoute: Equatable {
     let missingMappingKey: String?
@@ -296,6 +297,9 @@ struct NotificationListView: View {
     /// body reads, so a resolution actually redraws the rows (bug 589e3b1e).
     @State private var threadLeadCache = NotificationThreadLeadCache()
     @State private var threadLeads: [String: String?] = [:]
+    /// Lead names for the appointment-review rows, resolved from the local
+    /// store. The server's copy for those rows names nobody (bug 74bbb5b7).
+    @State private var leadNames: [String: String] = [:]
     @State private var isLoading = true
     @State private var showingOlder = false
     // VIEW ALL → PENDING WORK recovery screen (SYNC RECOVERY · T6)
@@ -749,7 +753,11 @@ struct NotificationListView: View {
         ForEach(items, id: \.id) { item in
             switch item {
             case .single(let notification):
-                notificationRow(notification)
+                if AppointmentReviewPresentation.applies(to: notification) {
+                    appointmentReviewRow(notification)
+                } else {
+                    notificationRow(notification)
+                }
             case .unlinkedInbox(let group):
                 unlinkedInboxRow(group)
             }
@@ -845,6 +853,52 @@ struct NotificationListView: View {
         .buttonStyle(PlainButtonStyle())
         .padding(.horizontal, OPSStyle.Layout.spacing3)
         .padding(.top, OPSStyle.Layout.spacing3_5)
+    }
+
+    // MARK: - Appointment review (bug 74bbb5b7)
+
+    /// The `phase_c_appointment_review` row, rewritten to name the customer and
+    /// offer the one remedy a phone has: put a time on this lead's calendar.
+    private func appointmentReviewRow(_ notification: NotificationDTO) -> some View {
+        let isExpanded = expandedId == notification.id
+        let opportunityId = AppointmentReviewPresentation.opportunityId(for: notification)
+        return AppointmentReviewRow(
+            notification: notification,
+            leadName: opportunityId.flatMap { leadNames[$0] },
+            timestamp: relativeTime(notification.createdAt),
+            isExpanded: isExpanded,
+            canSetTime: opportunityId != nil,
+            onToggle: {
+                withAnimation(collapseAnimation) {
+                    if isExpanded {
+                        expandedId = nil
+                    } else {
+                        expandedId = notification.id
+                        markAsRead(notification)
+                    }
+                }
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            },
+            onSetTime: {
+                guard let opportunityId else { return }
+                openVisitBooking(opportunityId: opportunityId)
+            }
+        )
+    }
+
+    /// Dismiss the rail, then post the booking relay once the sheet is gone so
+    /// the LEADS-tab swap and the booking sheet don't race the dismissal — the
+    /// same ordering every other rail deep link uses.
+    private func openVisitBooking(opportunityId: String) {
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        dismiss()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+            NotificationCenter.default.post(
+                name: AppointmentReviewPresentation.bookingRelayName,
+                object: nil,
+                userInfo: ["leadId": opportunityId]
+            )
+        }
     }
 
     // MARK: - Unlinked inbox group (bug 589e3b1e)
@@ -1196,6 +1250,7 @@ struct NotificationListView: View {
             await MainActor.run {
                 notifications = result
                 isLoading = false
+                resolveLeadNames(for: result)
             }
             await resolveThreadLeads(for: result)
         } catch {
@@ -1220,6 +1275,27 @@ struct NotificationListView: View {
         await MainActor.run {
             threadLeads = cache.resolved
         }
+    }
+
+    /// Names for the leads the appointment-review rows are about, read from the
+    /// local store only (bug 74bbb5b7). A lead the device has never synced
+    /// simply yields the name-free sentence — the row stays honest and costs no
+    /// network. Fetches are id-scoped: at most a handful per list.
+    private func resolveLeadNames(for notifications: [NotificationDTO]) {
+        guard let context = dataController.modelContext else { return }
+        let ids = Set(notifications.compactMap {
+            AppointmentReviewPresentation.opportunityId(for: $0)
+        })
+        guard !ids.isEmpty else { return }
+
+        var names = leadNames
+        for id in ids where names[id] == nil {
+            var descriptor = FetchDescriptor<Opportunity>(predicate: #Predicate { $0.id == id })
+            descriptor.fetchLimit = 1
+            guard let lead = try? context.fetch(descriptor).first else { continue }
+            names[id] = lead.displayContactName
+        }
+        leadNames = names
     }
 
     /// Routes an expense notification to its specific batch review when the row

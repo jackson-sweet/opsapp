@@ -322,6 +322,7 @@ struct LeadsTabView: View {
             }
             await resolvePendingLeadDeepLinkIfNeeded()
             await resolvePendingSiteVisitStartIfNeeded()
+            await resolvePendingVisitBookingIfNeeded()
         }
         .modifier(LeadsRefreshListeners(viewModel: viewModel))
         .onChange(of: isActiveTab) { _, active in
@@ -341,6 +342,10 @@ struct LeadsTabView: View {
         .onChange(of: appState.pendingSiteVisitStartLeadId) { _, newValue in
             guard newValue != nil else { return }
             Task { await resolvePendingSiteVisitStartIfNeeded() }
+        }
+        .onChange(of: appState.pendingVisitBookingLeadId) { _, newValue in
+            guard newValue != nil else { return }
+            Task { await resolvePendingVisitBookingIfNeeded() }
         }
         .onChange(of: showsDaySheet) { _, isDaySheet in
             // Permissions can hydrate after the tab's first `.task` — a store
@@ -849,6 +854,34 @@ struct LeadsTabView: View {
             activeSiteVisitLead = lead
         } catch {
             print("[Pipeline] START-visit lead \(leadId) not resolvable: \(error)")
+        }
+    }
+
+    @MainActor
+    /// Drain a BOOK-a-time intent into the tab's booking sheet (bug 74bbb5b7).
+    /// Same resolve-local-then-fetch shape as the START-visit drain. The sheet
+    /// is state-aware, so a lead that already holds an open booking opens THAT
+    /// booking — the operator reschedules rather than stacking a second one.
+    private func resolvePendingVisitBookingIfNeeded() async {
+        guard let leadId = appState.pendingVisitBookingLeadId, !leadId.isEmpty else { return }
+        appState.pendingVisitBookingLeadId = nil
+
+        // Never stomp a sheet already up — a booking mid-edit outranks a relay.
+        guard bookingRequest == nil, activeSiteVisitLead == nil else { return }
+
+        if let lead = viewModel.allOpportunities.first(where: { $0.id == leadId }) {
+            bookingRequest = BookSiteVisitRequest(lead: lead, existing: openBookingSnapshot(for: lead))
+            return
+        }
+        guard let companyId = dataController.currentUser?.companyId else { return }
+        let repo = OpportunityRepository(companyId: companyId)
+        do {
+            let dto = try await repo.fetchOne(leadId)
+            let lead = dto.toModel()
+            guard !lead.isDeleted else { return }
+            bookingRequest = BookSiteVisitRequest(lead: lead, existing: openBookingSnapshot(for: lead))
+        } catch {
+            print("[Pipeline] BOOK-visit lead \(leadId) not resolvable: \(error)")
         }
     }
 

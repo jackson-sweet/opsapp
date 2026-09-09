@@ -293,6 +293,13 @@ enum OPSStyle {
 
         // Borders & neutral fills
         static let line           = Color.white.opacity(0.10)  // Standard hairline — panels, inputs, L1 dividers
+        /// The hairline on a control that is currently the emphasised one —
+        /// an active filter chip, the lead verb in a row of verbs. Sits
+        /// between MOBILE.md §4.3's chip edge (0.18) and §4.1's segment edge
+        /// (0.22); one value so emphasised controls match across the app, and
+        /// the way emphasis is spent WITHOUT the accent (accent is CTA + focus
+        /// only, DESIGN.md §3).
+        static let lineActive     = text.opacity(0.20)
         static let glassBorder    = Color.white.opacity(0.09)  // L1 glass panel edge (MOBILE.md §3)
         static let nestedBorder   = Color.white.opacity(0.08)  // L2 nested-card edge (MOBILE.md §3)
         static let fillNeutral    = Color.white.opacity(0.14)  // Bar fills, progress tracks

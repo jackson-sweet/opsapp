@@ -375,12 +375,14 @@ struct LeadsTabView: View {
     @ViewBuilder
     private var surface: some View {
         VStack(spacing: 0) {
-            // Visit-day START cards — pinned above whichever surface is live,
-            // so the morning's appointment leads the tab until it's started
-            // or dismissed. START goes straight into the ONE capture cover.
+            // Today's visits rail — pinned above whichever surface is live,
+            // so the morning's appointments lead the tab until each is started
+            // or dismissed. START goes straight into the ONE capture cover; a
+            // row opens the lead (f77d38fc).
             SiteVisitStartCardsHost(
                 currentUserId: dataController.currentUser?.id,
-                onStart: { activeSiteVisitLead = $0 }
+                onStart: { activeSiteVisitLead = $0 },
+                onOpen: { detailLead = $0 }
             )
             surfaceBody
         }

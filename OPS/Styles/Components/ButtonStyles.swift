@@ -42,6 +42,30 @@ struct OPSButtonStyle {
         }
     }
 
+    /// Secondary, compact — the same hairline vocabulary at the 36pt chip tier
+    /// (MOBILE §4.3, the one sanctioned sub-44pt target) for a verb that sits
+    /// inside a row and must not out-shout the row. Sizes to its label; the
+    /// tappable area is padded out to 44pt.
+    struct SecondaryCompact: ButtonStyle {
+        func makeBody(configuration: Configuration) -> some View {
+            configuration.label
+                .font(OPSStyle.Typography.buttonLabel)
+                .textCase(.uppercase)
+                .foregroundColor(configuration.isPressed ? OPSStyle.Colors.text : OPSStyle.Colors.text2)
+                .padding(.horizontal, OPSStyle.Layout.spacing3)
+                .frame(minHeight: OPSStyle.Layout.chipMinHeight)
+                .background(configuration.isPressed ? OPSStyle.Colors.surfaceHover : Color.clear)
+                .cornerRadius(OPSStyle.Layout.chipRadius)
+                .overlay(
+                    RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius)
+                        .stroke(OPSStyle.Colors.line, lineWidth: OPSStyle.Layout.Border.standard)
+                )
+                .frame(minHeight: OPSStyle.Layout.touchTargetMin)
+                .contentShape(Rectangle())
+                .animation(OPSStyle.Animation.hover, value: configuration.isPressed)
+        }
+    }
+
     /// Secondary button — transparent with hairline border, brightens on press.
     /// No accent color anywhere.
     struct Secondary: ButtonStyle {
@@ -119,6 +143,12 @@ extension View {
     /// Apply the secondary button style (hairline border, brightens on press).
     func opsSecondaryButtonStyle() -> some View {
         self.buttonStyle(OPSButtonStyle.Secondary())
+    }
+
+    /// Apply the compact secondary style — the 36pt chip tier (MOBILE §4.3),
+    /// for a small verb sitting inside a row. The hit area stays 44pt.
+    func opsSecondaryCompactButtonStyle() -> some View {
+        self.buttonStyle(OPSButtonStyle.SecondaryCompact())
     }
 
     /// Apply the destructive button style (rose earth-tone).

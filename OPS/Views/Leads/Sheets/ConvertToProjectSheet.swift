@@ -623,13 +623,17 @@ struct ConvertToProjectSheet: View {
                                 .lineLimit(1)
                                 .truncationMode(.middle)
 
-                            if let address = candidate.address, !address.isEmpty {
-                                Text(address)
+                            // WHO it is for, then WHERE. Tail truncation, not
+                            // middle: the client leads the line because it is
+                            // what the operator searched by, and it must
+                            // survive the squeeze (bug 18dea542).
+                            if let subtitle = candidate.subtitle {
+                                Text(subtitle)
                                     .font(OPSStyle.Typography.miniLabel)
                                     .kerning(1.0)
                                     .foregroundColor(OPSStyle.Colors.text3)
                                     .lineLimit(1)
-                                    .truncationMode(.middle)
+                                    .truncationMode(.tail)
                                     .textCase(.uppercase)
                             }
 
@@ -1297,7 +1301,12 @@ struct ConvertToProjectSheet: View {
                 preflight,
                 manualCandidates: manualCandidates,
                 candidateLoadFailed: candidateLoadFailed,
-                unavailableMatchProjectIds: unavailableMatchProjectIds
+                unavailableMatchProjectIds: unavailableMatchProjectIds,
+                rowFacts: await Self.localRowFacts(
+                    projectIds: manualCandidates.map(\.projectId),
+                    companyId: opportunity.companyId,
+                    in: modelContext
+                )
             )
             creationBlocker = state.creationBlocker
             linkCandidates = state.candidates
@@ -1786,7 +1795,12 @@ struct ConvertToProjectSheet: View {
                 )
                 let resolved = Self.reduceLinkCandidates(
                     manualCandidates: candidates,
-                    unavailableMatchProjectIds: unavailableMatchProjectIds
+                    unavailableMatchProjectIds: unavailableMatchProjectIds,
+                    rowFacts: await Self.localRowFacts(
+                        projectIds: candidates.map(\.projectId),
+                        companyId: opportunity.companyId,
+                        in: modelContext
+                    )
                 )
                 candidateLoadFailed = false
                 linkCandidates = resolved
@@ -2304,11 +2318,13 @@ extension ConvertToProjectSheet {
         _ preflight: ConversionPreflight,
         manualCandidates: [ManualProjectLinkCandidate],
         candidateLoadFailed: Bool,
-        unavailableMatchProjectIds: Set<String>
+        unavailableMatchProjectIds: Set<String>,
+        rowFacts: [String: ProjectRowFacts] = [:]
     ) -> PreflightViewState {
         let candidates = reduceLinkCandidates(
             manualCandidates: manualCandidates,
-            unavailableMatchProjectIds: unavailableMatchProjectIds
+            unavailableMatchProjectIds: unavailableMatchProjectIds,
+            rowFacts: rowFacts
         )
 
         return PreflightViewState(
@@ -2333,7 +2349,8 @@ extension ConvertToProjectSheet {
     /// list can never show a row the operator is not allowed to choose.
     static func reduceLinkCandidates(
         manualCandidates: [ManualProjectLinkCandidate],
-        unavailableMatchProjectIds: Set<String>
+        unavailableMatchProjectIds: Set<String>,
+        rowFacts: [String: ProjectRowFacts] = [:]
     ) -> [ProjectLinkCandidate] {
         var seen = Set<String>()
         var candidates: [ProjectLinkCandidate] = []
@@ -2342,16 +2359,69 @@ extension ConvertToProjectSheet {
             let id = candidate.projectId.lowercased()
             guard !unavailableMatchProjectIds.contains(id) else { continue }
             guard seen.insert(id).inserted else { continue }
+            let facts = rowFacts[id]
             candidates.append(ProjectLinkCandidate(
                 id: candidate.projectId,
                 title: candidate.title ?? "",
                 address: candidate.address,
                 status: candidate.status.flatMap { Status(rawValue: $0) },
                 sameAddress: candidate.sameAddress,
-                sameClient: candidate.sameClient
+                sameClient: candidate.sameClient,
+                clientName: facts?.clientName,
+                contactName: facts?.contactName
             ))
         }
         return candidates
+    }
+
+    /// Who a candidate project is for — the two facts the server's ranked read
+    /// does not carry, read off the device's own roster instead.
+    struct ProjectRowFacts: Equatable {
+        let clientName: String?
+        let contactName: String?
+    }
+
+    /// Resolve `ProjectRowFacts` for the candidate ids from local SwiftData,
+    /// keyed by LOWERCASED project id (Postgres uuids are lowercase; a locally
+    /// minted id may not be).
+    ///
+    /// Fails soft in both directions: a project this phone has not cached
+    /// simply has no entry, and the row renders exactly as it did before.
+    @MainActor
+    static func localRowFacts(
+        projectIds: [String],
+        companyId: String,
+        in context: ModelContext
+    ) -> [String: ProjectRowFacts] {
+        let wanted = Set(projectIds.map { $0.lowercased() })
+        guard !wanted.isEmpty else { return [:] }
+
+        // Fetched by company and filtered in Swift rather than with an `IN`
+        // predicate: SwiftData's lowering of `contains` over a collection is
+        // the shape that has aborted the process before (bug 7a726160), and a
+        // company's project list is small enough that it is not worth the risk.
+        let descriptor = FetchDescriptor<Project>(
+            predicate: #Predicate<Project> { $0.companyId == companyId }
+        )
+        guard let all = try? context.fetch(descriptor) else { return [:] }
+        let matched = all.filter { wanted.contains($0.id.lowercased()) }
+        guard !matched.isEmpty else { return [:] }
+
+        // The selected project contact lives in the additive V25 projection,
+        // not on Project itself — hydrate before reading it.
+        try? ProjectPrimaryContactProjection.hydrate(projects: matched, in: context)
+
+        var facts: [String: ProjectRowFacts] = [:]
+        for project in matched {
+            let client = project.client?.name.trimmingCharacters(in: .whitespacesAndNewlines)
+            let contact = project.effectiveProjectContactName
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            facts[project.id.lowercased()] = ProjectRowFacts(
+                clientName: (client?.isEmpty ?? true) ? nil : client,
+                contactName: contact.isEmpty ? nil : contact
+            )
+        }
+        return facts
     }
 
     /// One honest line about the state the operator is actually in. Every
@@ -2565,10 +2635,29 @@ extension ConvertToProjectSheet {
         let status: Status?
         let sameAddress: Bool
         let sameClient: Bool
+        /// Who the project is FOR. The server's ranked read carries only
+        /// `same_client`, never the name, so this is resolved from the device's
+        /// own roster — nil for a project this phone has not cached, which
+        /// reads as an address-only row rather than a claim about an unknown
+        /// client (bug 18dea542).
+        var clientName: String?
+        /// The person on the project — the selected sub-contact, or the client
+        /// when the project has no separate one. Searchable for the same
+        /// reason the client is: it is how an operator remembers a job.
+        var contactName: String?
 
         var displayTitle: String {
             let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
             return trimmed.isEmpty ? "Untitled project" : trimmed
+        }
+
+        /// The row's identity line: who it is for, then where it is. Either
+        /// half stands alone; `nil` when the row knows neither.
+        var subtitle: String? {
+            let parts = [clientName, address]
+                .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
+                .filter { !$0.isEmpty }
+            return parts.isEmpty ? nil : parts.joined(separator: " · ")
         }
 
         /// The evidence behind this row's rank, in the operator's terms.
@@ -2588,10 +2677,63 @@ extension ConvertToProjectSheet {
 
         /// Search matches what the operator can actually see on the row.
         func matches(_ query: String) -> Bool {
-            let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !trimmed.isEmpty else { return true }
-            if displayTitle.localizedCaseInsensitiveContains(trimmed) { return true }
-            return address?.localizedCaseInsensitiveContains(trimmed) ?? false
+            ProjectLinkSearch.matches(
+                query: query,
+                in: [displayTitle, address, clientName, contactName]
+            )
+        }
+    }
+
+    /// The rule behind the Link Project search box.
+    ///
+    /// Bug 18dea542: it matched the project title and the address string only,
+    /// so typing a client's name — the thing an operator actually remembers
+    /// about a job — returned nothing at all.
+    ///
+    /// Two changes, both about how a query is typed rather than how a row is
+    /// stored. It searches every fact the row states, and it searches by
+    /// TOKEN: "maple vancouver" finds a Maple Ave project in Vancouver even
+    /// though no stored field contains that phrase, and "v6k2e5" finds the
+    /// postal code stored as "V6K 2E5", because a query typed from memory
+    /// rarely matches a stored string character for character.
+    enum ProjectLinkSearch {
+        /// True when EVERY token in the query appears somewhere in the row.
+        /// All-tokens rather than any-token: each word an operator adds is
+        /// them narrowing the list, never widening it.
+        static func matches(query: String, in fields: [String?]) -> Bool {
+            let tokens = query
+                .split(whereSeparator: \.isWhitespace)
+                .map { fold(String($0)) }
+                .filter { !$0.isEmpty }
+            guard !tokens.isEmpty else { return true }
+
+            let haystack = fold(
+                fields
+                    .compactMap { $0 }
+                    .joined(separator: " ")
+            )
+            let squashedHaystack = squash(haystack)
+
+            return tokens.allSatisfy { token in
+                if haystack.contains(token) { return true }
+                let squashedToken = squash(token)
+                guard !squashedToken.isEmpty else { return true }
+                return squashedHaystack.contains(squashedToken)
+            }
+        }
+
+        /// Case and accents removed — "Renée" is found by typing "renee".
+        private static func fold(_ text: String) -> String {
+            text.folding(
+                options: [.caseInsensitive, .diacriticInsensitive],
+                locale: .current
+            )
+        }
+
+        /// Letters and digits only. What makes "V6K 2E5" and "v6k2e5" the same
+        /// postal code, and "maple-ave" the same street as "Maple Ave".
+        private static func squash(_ text: String) -> String {
+            String(text.filter { $0.isLetter || $0.isNumber })
         }
     }
 }

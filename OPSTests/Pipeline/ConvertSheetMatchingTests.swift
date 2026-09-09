@@ -387,6 +387,137 @@ final class ConvertSheetMatchingTests: XCTestCase {
         XCTAssertFalse(candidate.matches("pergola"))
     }
 
+    // MARK: - 2b. Link Project search (bug 18dea542)
+
+    private func searchCandidate(
+        title: String = "Rear deck rebuild",
+        address: String? = "3998 Holland Ave, Victoria BC V8X 1V4",
+        clientName: String? = "Traditional Homes",
+        contactName: String? = "Helen Calloway"
+    ) -> ConvertToProjectSheet.ProjectLinkCandidate {
+        ConvertToProjectSheet.ProjectLinkCandidate(
+            id: "project-a",
+            title: title,
+            address: address,
+            status: nil,
+            sameAddress: false,
+            sameClient: false,
+            clientName: clientName,
+            contactName: contactName
+        )
+    }
+
+    /// The filed defect, verbatim: "Link project search does not seem to index
+    /// client names or other fields." A project is remembered by who it is
+    /// for at least as often as by what it was called.
+    func testSearchFindsAProjectByItsClient() {
+        let candidate = searchCandidate()
+
+        XCTAssertTrue(candidate.matches("traditional"))
+        XCTAssertTrue(candidate.matches("Traditional Homes"))
+        // A client this project is NOT for excludes it — provided the name is
+        // not also spelled out across the row's other facts. (This row's
+        // contact is a Calloway, so "calloway" alone deliberately still hits;
+        // see testEveryTokenMustMatchButTheyMayMatchDifferentFields.)
+        XCTAssertFalse(candidate.matches("Barksdale"))
+    }
+
+    /// And by the person on it, which is what an operator has in their head
+    /// after a phone call.
+    func testSearchFindsAProjectByItsContact() {
+        XCTAssertTrue(searchCandidate().matches("helen"))
+    }
+
+    /// Every word narrows. Two tokens that live in two DIFFERENT fields still
+    /// match — no single stored string contains "traditional deck".
+    func testEveryTokenMustMatchButTheyMayMatchDifferentFields() {
+        let candidate = searchCandidate()
+
+        XCTAssertTrue(candidate.matches("traditional deck"))
+        XCTAssertTrue(candidate.matches("deck victoria"))
+        XCTAssertFalse(
+            candidate.matches("deck pergola"),
+            "a token that matches nothing must exclude the row — search narrows"
+        )
+    }
+
+    /// A postal code typed from memory rarely carries the stored spacing.
+    func testPostalCodeMatchesWithOrWithoutItsSpace() {
+        let candidate = searchCandidate()
+
+        XCTAssertTrue(candidate.matches("V8X 1V4"))
+        XCTAssertTrue(candidate.matches("v8x1v4"))
+    }
+
+    /// City is inside the address string and stays findable.
+    func testCityStillMatches() {
+        XCTAssertTrue(searchCandidate().matches("victoria"))
+    }
+
+    /// Accents are a spelling detail, not a barrier.
+    func testAccentsAreFolded() {
+        let candidate = searchCandidate(clientName: "Renée Roofing")
+        XCTAssertTrue(candidate.matches("renee"))
+        XCTAssertTrue(candidate.matches("Renée"))
+    }
+
+    /// A project this phone has not cached carries no client name. The row
+    /// must keep working as it always did rather than matching nothing.
+    func testARowWithNoLocalFactsStillSearchesTitleAndAddress() {
+        let candidate = searchCandidate(clientName: nil, contactName: nil)
+
+        XCTAssertTrue(candidate.matches("holland"))
+        XCTAssertTrue(candidate.matches("rebuild"))
+        XCTAssertFalse(candidate.matches("traditional"))
+    }
+
+    /// The row states who it is for and where it is, in that order — the
+    /// search can only match what the operator can see.
+    func testSubtitleLeadsWithTheClient() {
+        XCTAssertEqual(
+            searchCandidate().subtitle,
+            "Traditional Homes · 3998 Holland Ave, Victoria BC V8X 1V4"
+        )
+        XCTAssertEqual(
+            searchCandidate(clientName: nil).subtitle,
+            "3998 Holland Ave, Victoria BC V8X 1V4",
+            "an unknown client leaves the address standing alone, not a stray separator"
+        )
+        XCTAssertEqual(searchCandidate(address: nil).subtitle, "Traditional Homes")
+        XCTAssertNil(
+            searchCandidate(address: nil, clientName: nil).subtitle,
+            "a row that knows neither renders no second line at all"
+        )
+        XCTAssertNil(searchCandidate(address: "   ", clientName: "  ").subtitle)
+    }
+
+    /// Local facts are keyed by lowercased id — Postgres hands back lowercase
+    /// uuids and a locally minted id may not be.
+    func testLocalFactsAreAppliedByLowercasedId() {
+        let resolved = ConvertToProjectSheet.reduceLinkCandidates(
+            manualCandidates: [
+                ManualProjectLinkCandidate(
+                    projectId: "AAAAAAAA-1111-1111-1111-111111111111",
+                    title: "Rear deck rebuild",
+                    address: "3998 Holland Ave",
+                    status: nil,
+                    sameAddress: false,
+                    sameClient: true
+                )
+            ],
+            unavailableMatchProjectIds: [],
+            rowFacts: [
+                "aaaaaaaa-1111-1111-1111-111111111111": ConvertToProjectSheet.ProjectRowFacts(
+                    clientName: "Traditional Homes",
+                    contactName: "Helen Calloway"
+                )
+            ]
+        )
+
+        XCTAssertEqual(resolved.first?.clientName, "Traditional Homes")
+        XCTAssertTrue(resolved.first?.matches("traditional") ?? false)
+    }
+
     // MARK: - 3. The already-converted branch is not an access denial
 
     /// The exact prod shape of the idempotent branch: real project id, real

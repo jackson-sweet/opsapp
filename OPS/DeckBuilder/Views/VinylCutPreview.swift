@@ -1016,8 +1016,8 @@ struct VinylOrderWorkspace: View {
         GeometryReader { geometry in
             let layout = VinylOrderWorkspaceGeometry(
                 containerSize: geometry.size,
-                topInset: geometry.safeAreaInsets.top,
-                bottomInset: geometry.safeAreaInsets.bottom
+                topInset: max(geometry.safeAreaInsets.top, Self.windowSafeAreaInsets.top),
+                bottomInset: max(geometry.safeAreaInsets.bottom, Self.windowSafeAreaInsets.bottom)
             )
             let panelHeight = VinylOrderSettingsPanel.height(
                 detent: panelDetent,
@@ -1108,6 +1108,24 @@ struct VinylOrderWorkspace: View {
         .accessibilityAdjustableAction { direction in
             adjustZoom(direction, viewportSize: size)
         }
+    }
+
+    /// The workspace runs bezel to bezel, so its `GeometryReader` sits inside an
+    /// `ignoresSafeArea` context — and a proxy read there reports ZERO insets,
+    /// because the safe area has already been consumed by the time it is asked.
+    /// The header then sat under the status bar on a real phone while every
+    /// fixed-size snapshot looked correct, which is exactly the class of bug a
+    /// live launch catches and a render cannot. The window is the honest source
+    /// left, and it is the same window this screen is presented in; the caller
+    /// takes whichever value is larger, so a context that DOES report insets
+    /// keeps winning.
+    private static var windowSafeAreaInsets: UIEdgeInsets {
+        UIApplication.shared.connectedScenes
+            .compactMap { $0 as? UIWindowScene }
+            .first { $0.activationState == .foregroundActive }?
+            .windows
+            .first { $0.isKeyWindow }?
+            .safeAreaInsets ?? .zero
     }
 
     /// Changes exactly when the drawing would look different — the settings

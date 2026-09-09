@@ -20,16 +20,21 @@
 
 import SwiftUI
 
-/// Bounds of the header's trailing control cluster, published so anything
-/// superimposed on the header can keep clear of it.
+/// Bounds of the header's trailing control cluster, published so the layout
+/// proofs can measure where it actually lands.
 ///
-/// `AppHeader` hangs the recovery pill off the header's bottom edge (bug
-/// 417aac7b). The pill is allowed to cover header TEXT — the greeting, the
-/// company line, the screen title — but never a control, and the trailing
-/// cluster (Home's avatar, every other root's search/action buttons) is the one
-/// control living in the same rectangle. Publishing the cluster's real frame
-/// lets the overlay reserve its column at every Dynamic Type size instead of
-/// hoping a tall pill happens to stay below it.
+/// This is NOT an avoidance contract. It used to be one: `AppHeader` consumed
+/// it to reserve the cluster's column for the recovery pill, which staggered
+/// the pill below-left of Home's avatar and was rejected (bug 417aac7b,
+/// 2026-09-08 — "It is being influenced by the avatar. It should appear ONTOP
+/// of the avatar"). Production now positions the pill from the band's own
+/// geometry alone and paints it OVER this cluster; see
+/// `HeaderSyncStatusGeometry`.
+///
+/// The key survives because `SyncPillHeaderLayoutTests` measures the shipped
+/// cluster through it to prove the pill overlaps the control on every root —
+/// the assertion that keeps a fourth wrong close from landing. Nothing in
+/// production reads it; do not reintroduce a consumer that moves the pill.
 struct OPSHeaderTrailingSlotBoundsKey: PreferenceKey {
     static let defaultValue: Anchor<CGRect>? = nil
 

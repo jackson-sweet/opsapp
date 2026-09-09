@@ -41,9 +41,16 @@ final class VinylOrderWorkspaceSnapshotTests: XCTestCase {
     /// iPhone 16 Pro portrait — the founder's device.
     private let frameSize = CGSize(width: 393, height: 852)
 
+    /// The repo's own artifact folder, not the simulator's temp directory —
+    /// a proof nobody can find is not a proof, and a stale copy in the repo is
+    /// worse than none. `#filePath` is the only handle a unit test has on the
+    /// checkout it was built from.
     private var outDir: URL {
-        let dir = URL(fileURLWithPath: NSTemporaryDirectory())
-            .appendingPathComponent("ops-vinyl-workspace-shots", isDirectory: true)
+        let dir = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()   // OPSTests/Views
+            .deletingLastPathComponent()   // OPSTests
+            .deletingLastPathComponent()   // repo root
+            .appendingPathComponent("docs/artifacts/vinyl-order-workspace-20260908", isDirectory: true)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         return dir
     }

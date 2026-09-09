@@ -562,6 +562,12 @@ class DataController: ObservableObject {
     // Method to perform sync on app launch
     func performAppLaunchSync() {
         print("[APP_LAUNCH_SYNC] 🚀 Starting app launch sync")
+        // Bug eed3f552 — any task create recorded without its required fields
+        // is rebuilt from the local row before the first push.
+        let repairedCreates = repairStrandedProjectTaskCreates()
+        if repairedCreates > 0 {
+            print("[APP_LAUNCH_SYNC] 🔧 Rebuilt \(repairedCreates) stranded task create(s)")
+        }
         print("[APP_LAUNCH_SYNC] - isConnected: \(isConnected)")
         print("[APP_LAUNCH_SYNC] - isAuthenticated: \(isAuthenticated)")
         print("[APP_LAUNCH_SYNC] - currentUser: \(currentUser != nil ? currentUser!.fullName : "nil")")
@@ -5726,18 +5732,20 @@ class DataController: ObservableObject {
     @MainActor
     func createTask(task: ProjectTask) async throws {
         // Apply locally
+        if task.createdAt == nil { task.createdAt = Date() }
         modelContext?.insert(task)
         task.needsSync = true
         try? modelContext?.save()
 
-        // Record for async sync
-        var changedFields: [String: Any] = [
-            "id": task.id,
-            "project_id": task.projectId,
-            "status": task.status.rawValue
-        ]
-        if let notes = task.taskNotes { changedFields["task_notes"] = notes }
-        if !task.taskTypeId.isEmpty { changedFields["task_type_id"] = task.taskTypeId }
+        // Bug eed3f552 — this path used to record only id / project_id /
+        // status / task_type_id. The outbound push decodes a create payload
+        // into `SupabaseProjectTaskDTO`, whose `company_id` is required, so
+        // every task added from the NEEDS TASKS review screen failed to decode
+        // ("The data couldn't be read because it is missing") and retried
+        // forever without ever reaching the server — five of the founder's
+        // tasks, twelve attempts each. Creates now record the same canonical
+        // DTO fields the sheet and quick-add paths record.
+        let changedFields = try Self.projectTaskCreateFields(for: task)
 
         syncEngine.recordOperation(
             entityType: .projectTask,
@@ -5747,6 +5755,97 @@ class DataController: ObservableObject {
         )
 
         await spawnPairsForPredecessor(task)
+    }
+
+    /// The canonical create payload for a task that already exists as a
+    /// model — the review screen's path. Built through the DTO so it can never
+    /// diverge from `createTask(dto:)`.
+    static func projectTaskCreateFields(for task: ProjectTask) throws -> [String: Any] {
+        try projectTaskCreateFields(for: projectTaskCreateDTO(for: task))
+    }
+
+    /// A faithful DTO of the task's current definition and schedule. Unlike
+    /// `ProjectTaskDuplication.makeDTO`, nothing is reset: this describes the
+    /// row the operator just made, not a copy of it.
+    static func projectTaskCreateDTO(
+        for task: ProjectTask,
+        createdAt: Date = Date()
+    ) throws -> SupabaseProjectTaskDTO {
+        let dependencyOverrides: [TaskTypeDependency]?
+        if let json = task.dependencyOverridesJSON, let data = json.data(using: .utf8) {
+            dependencyOverrides = try JSONDecoder().decode([TaskTypeDependency].self, from: data)
+        } else {
+            dependencyOverrides = nil
+        }
+        let teamMemberIds = task.getTeamMemberIds()
+        return SupabaseProjectTaskDTO(
+            id: task.id,
+            bubbleId: nil,
+            companyId: task.companyId,
+            projectId: task.projectId,
+            taskTypeId: task.taskTypeId.isEmpty ? nil : task.taskTypeId,
+            customTitle: task.customTitle,
+            taskNotes: task.taskNotes,
+            status: task.status.rawValue,
+            taskColor: task.taskColor,
+            displayOrder: task.displayOrder,
+            teamMemberIds: teamMemberIds.isEmpty ? nil : teamMemberIds,
+            sourceLineItemId: task.sourceLineItemId,
+            sourceEstimateId: task.sourceEstimateId,
+            startDate: task.startDate.map(SupabaseDate.format),
+            endDate: task.endDate.map(SupabaseDate.format),
+            duration: task.duration,
+            dependencyOverrides: dependencyOverrides,
+            startTime: nil,
+            endTime: nil,
+            pairedFromTaskId: task.pairedFromTaskId,
+            scheduleLocked: task.scheduleLocked,
+            deletedAt: nil,
+            createdAt: SupabaseDate.format(task.createdAt ?? createdAt)
+        )
+    }
+
+    /// Bug eed3f552 — rebuilds queued task creates that were recorded without
+    /// the DTO's required fields, from the task row that still exists locally.
+    /// Runs at launch before the first sync so an installed phone drains its
+    /// stranded tasks on its own; idempotent, and a healthy operation is never
+    /// touched. Returns the number of operations repaired.
+    @discardableResult
+    func repairStrandedProjectTaskCreates() -> Int {
+        guard let context = modelContext else { return 0 }
+        // Predicate-free on purpose: a #Predicate fetch of SyncOperation traps
+        // against a table that has never held a row.
+        let operations = (try? context.fetch(FetchDescriptor<SyncOperation>())) ?? []
+        var repaired = 0
+        for operation in operations
+        where operation.entityType == SyncEntityType.projectTask.rawValue
+            && operation.operationType == "create"
+            && ["pending", "failed"].contains(operation.status)
+            && Self.projectTaskCreatePayloadIsStranded(operation.payload) {
+            let taskId = operation.entityId
+            let descriptor = FetchDescriptor<ProjectTask>(predicate: #Predicate { $0.id == taskId })
+            guard let task = try? context.fetch(descriptor).first,
+                  let fields = try? Self.projectTaskCreateFields(for: task),
+                  let payload = try? JSONSerialization.data(withJSONObject: fields) else { continue }
+            operation.payload = payload
+            operation.changedFields = fields.keys.sorted().joined(separator: ",")
+            operation.retryCount = 0
+            operation.lastAttemptedAt = nil
+            operation.lastError = nil
+            operation.status = "pending"
+            repaired += 1
+        }
+        if repaired > 0 { try? context.save() }
+        return repaired
+    }
+
+    /// A create payload the outbound decoder cannot read: it lacks the
+    /// `company_id` every `SupabaseProjectTaskDTO` requires.
+    static func projectTaskCreatePayloadIsStranded(_ payload: Data) -> Bool {
+        guard let object = try? JSONSerialization.jsonObject(with: payload) as? [String: Any] else {
+            return true
+        }
+        return object["company_id"] == nil
     }
 
     /// Create task from DTO - SINGLE SOURCE OF TRUTH

@@ -550,6 +550,42 @@ final class LeadFieldEditTests: XCTestCase {
         XCTAssertNil(controller.editing)
     }
 
+    /// Bug 908888f6. The dossier's roster fetches the real client row a beat
+    /// after the write lands; until it does, the picked name is the only thing
+    /// the CLIENT row can show. Dropping it on success is a blink back to `—`
+    /// on a row the operator just filled in.
+    func testThePickedClientNameOutlivesTheWrite() async {
+        let lead = makeLead(clientId: nil)
+        let fresh = serverRow(from: lead, clientId: "33333333-3333-3333-3333-333333333333")
+        let spy = WriteSpy(result: .success(fresh))
+        let controller = makeController(lead: lead, spy: spy)
+
+        await controller.commitClient(
+            id: "33333333-3333-3333-3333-333333333333",
+            name: "Calloway Homes"
+        )
+
+        XCTAssertEqual(controller.pendingClientName, "Calloway Homes")
+        XCTAssertFalse(controller.isSaving(.client))
+    }
+
+    /// It is a bridge, not a memory: opening any editor drops it, so a stale
+    /// name can never outlive the correction that produced it.
+    func testOpeningAnotherEditorDropsThePickedClientName() async {
+        let lead = makeLead(clientId: nil)
+        let fresh = serverRow(from: lead, clientId: "33333333-3333-3333-3333-333333333333")
+        let spy = WriteSpy(result: .success(fresh))
+        let controller = makeController(lead: lead, spy: spy)
+
+        await controller.commitClient(
+            id: "33333333-3333-3333-3333-333333333333",
+            name: "Calloway Homes"
+        )
+        controller.begin(.address)
+
+        XCTAssertNil(controller.pendingClientName)
+    }
+
     // MARK: - 5. A failed write surfaces and preserves input
 
     /// The core of the honest-failure contract. The editor STAYS OPEN — which

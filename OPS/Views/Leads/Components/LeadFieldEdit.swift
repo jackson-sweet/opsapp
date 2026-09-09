@@ -327,7 +327,11 @@ final class LeadFieldEditController: ObservableObject {
     @Published private(set) var didCompleteAnEdit = false
 
     /// The client the picker handed back, held so RETRY re-attempts the
-    /// operator's actual choice instead of asking them to pick again.
+    /// operator's actual choice instead of asking them to pick again — and
+    /// held PAST a successful write, because the dossier's roster fetches the
+    /// real client row a beat later and this is the name the CLIENT row shows
+    /// in that gap. Dropping it there is a blink back to `—` on a row the
+    /// operator just filled in. Cleared when any editor opens or is cancelled.
     @Published private(set) var pendingClientName: String?
 
     /// The exact change last attempted, so RETRY resends it byte for byte.
@@ -480,7 +484,7 @@ final class LeadFieldEditController: ObservableObject {
             isSaving = false
             editing = nil
             lastChange = nil
-            pendingClientName = nil
+            // `pendingClientName` deliberately survives — see its declaration.
             didCompleteAnEdit = true
             UINotificationFeedbackGenerator().notificationOccurred(.success)
             // The app's standing lead-write contract: every surface holding

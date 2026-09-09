@@ -531,6 +531,13 @@ struct LeadDetailView: View {
             // for good rather than keep explaining a gesture they now know.
             if completed { holdHintState = LeadHoldHint.retired() }
         }
+        // The roster follows the lead's CURRENT client link — the picker and
+        // its RETRY both write it under the open dossier, and a roster stuck on
+        // the link the screen opened with is what made a landed assignment read
+        // as a failure (bug 908888f6). Idempotent, so an unchanged link is free.
+        .onChange(of: opportunity.clientId) { _, newValue in
+            Task { await vm.clientLinkChanged(to: newValue) }
+        }
         .onReceive(
             NotificationCenter.default.publisher(
                 for: Notification.Name("LeadActivityLoggedSuccess")
@@ -637,7 +644,13 @@ struct LeadDetailView: View {
                 currentClientId: opportunity.clientId,
                 companyId: opportunity.companyId
             ) { client in
-                Task { await fieldEdit.commitClient(id: client.id, name: client.name) }
+                Task {
+                    await fieldEdit.commitClient(id: client.id, name: client.name)
+                    // Pull the roster onto the link the write just made,
+                    // without waiting on an observation hop. Idempotent, so
+                    // the onChange above is not a second fetch.
+                    await vm.clientLinkChanged(to: opportunity.clientId)
+                }
             }
             .environmentObject(dataController)
         }

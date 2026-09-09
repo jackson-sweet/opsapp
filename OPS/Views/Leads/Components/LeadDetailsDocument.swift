@@ -191,13 +191,25 @@ struct LeadDetailsDocument: View {
     /// an em dash would teach nobody anything.
     @ViewBuilder
     private var clientValueLine: some View {
-        let isWorking = fieldEdit?.isSaving(.client) ?? false
-        let hasClient = client != nil
+        let state = Self.clientRowState(
+            clientId: lead.clientId,
+            rosterName: client?.name,
+            pickedName: fieldEdit?.pendingClientName,
+            isSaving: fieldEdit?.isSaving(.client) ?? false
+        )
 
-        if hasClient || isWorking {
-            let displayName = isWorking
-                ? (fieldEdit?.pendingClientName ?? client?.name ?? "—")
-                : (client?.name ?? "—")
+        if case .absent = state {
+            ProjectInfoDoc.empty(
+                canAct: offersFieldEditing,
+                chip: "ASSIGN CLIENT",
+                accessibilityLabel: "Assign a client to this lead"
+            ) {
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                onEditClient()
+            }
+        } else {
+            let isWorking = state.isLinking
+            let displayName = state.name
 
             HStack(spacing: OPSStyle.Layout.spacing2) {
                 Text(displayName)
@@ -212,8 +224,11 @@ struct LeadDetailsDocument: View {
                     ProgressView()
                         .controlSize(.mini)
                         .tint(OPSStyle.Colors.text2)
-                } else {
-                    Image(systemName: "chevron.right")
+                } else if client != nil {
+                    // Only a client whose row this device actually holds can
+                    // be opened — a chevron over a link still resolving would
+                    // point at a screen the tap cannot reach.
+                    Image(systemName: OPSStyle.Icons.chevronRight)
                         .font(.system(size: 11, weight: .regular))
                         .foregroundColor(OPSStyle.Colors.text3)
                 }
@@ -227,23 +242,68 @@ struct LeadDetailsDocument: View {
                 .client,
                 offersEdit: InfoRowEdit.offersLongPressEdit(
                     canEdit: offersFieldEditing,
-                    hasValue: hasClient,
+                    hasValue: true,
                     isEditing: isWorking
                 ),
                 onEdit: onEditClient,
-                onActivate: hasClient ? onOpenClient : nil
+                // Only a client whose row has actually loaded can be opened.
+                onActivate: client != nil ? onOpenClient : nil
             )
             .accessibilityLabel("Client, \(displayName)")
-        } else {
-            ProjectInfoDoc.empty(
-                canAct: offersFieldEditing,
-                chip: "ASSIGN CLIENT",
-                accessibilityLabel: "Assign a client to this lead"
-            ) {
-                UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                onEditClient()
+        }
+    }
+
+    /// What the CLIENT row is showing.
+    ///
+    /// The load-bearing rule is `.linked`: the lead HAS a client the moment
+    /// `client_id` is set, whether or not the client's row has been fetched
+    /// yet. Deciding this from the fetched `Client` alone is what made a
+    /// successful assignment read as a failure — the roster is loaded once
+    /// when the dossier opens, so a lead that gained its first client under
+    /// the open screen kept rendering the ASSIGN CLIENT invitation over a
+    /// client that was already saved (bug 908888f6).
+    ///
+    /// The name resolves in the order the operator's confidence does: the
+    /// client actually on file, else the one they just picked, else `—`.
+    enum ClientRowState: Equatable {
+        case linked(name: String)    // a client is on this lead
+        case linking(name: String)   // the assignment is on the wire
+        case absent                  // no client — offer ASSIGN CLIENT
+
+        /// What the row prints when the lead HAS a client but this device does
+        /// not yet hold its name. The PROJECT row two lines below states an
+        /// unnamed link exactly this way, and for the same reason: the fact of
+        /// the link is the load-bearing half. An em dash here would read as
+        /// "no client" — which is the lie this whole state exists to stop.
+        static let unnamed = "LINKED CLIENT"
+
+        var name: String {
+            switch self {
+            case let .linked(name), let .linking(name): return name
+            case .absent: return "—"
             }
         }
+
+        var isLinking: Bool {
+            if case .linking = self { return true }
+            return false
+        }
+    }
+
+    static func clientRowState(
+        clientId: String?,
+        rosterName: String?,
+        pickedName: String?,
+        isSaving: Bool
+    ) -> ClientRowState {
+        let name = rosterName ?? pickedName ?? ClientRowState.unnamed
+        if isSaving {
+            return .linking(name: pickedName ?? rosterName ?? ClientRowState.unnamed)
+        }
+        if LeadClientLink.isLinked(clientId) || rosterName != nil {
+            return .linked(name: name)
+        }
+        return .absent
     }
 
     /// The lead's person against the roster: ON FILE stamp, an ADD TO CLIENT

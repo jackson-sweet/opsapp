@@ -12,9 +12,18 @@ import UIKit
 struct VinylOrderViewportState: Equatable {
     static let minimumScale: CGFloat = 1
     static let maximumScale: CGFloat = 4
+    /// Where a double-tap lands. 2× is the step that reads as "closer" without
+    /// losing the shape of the deck — the rung a second double-tap returns from.
+    static let doubleTapScale: CGFloat = 2
 
     var scale: CGFloat = minimumScale
     var offset: CGSize = .zero
+
+    /// True while the drawing is showing everything at 1:1 — the state the FIT
+    /// chip returns to, and therefore the state in which it has nothing to do.
+    var isFitted: Bool {
+        self == Self()
+    }
 
     mutating func applyZoom(multiplier: CGFloat, viewportSize: CGSize) {
         scale = min(
@@ -48,6 +57,42 @@ struct VinylOrderViewportState: Equatable {
         self = Self()
     }
 
+    /// Double-tap: fitted → `doubleTapScale` anchored on the tapped point,
+    /// anywhere else → back to fit. Replaces the `+`/`−` rail the founder
+    /// called redundant (bug 317da29f) with the gesture every map and photo
+    /// on the phone already uses.
+    ///
+    /// `point` is in the viewport's own coordinate space (origin top-left).
+    /// The drawing is `scaleEffect`-ed about the viewport centre and then
+    /// offset, so the content under the tap stays under the tap when the new
+    /// offset walks the anchor back by the scale ratio.
+    mutating func toggleFit(at point: CGPoint, viewportSize: CGSize) {
+        guard scale == Self.minimumScale else {
+            fit()
+            return
+        }
+
+        let target = min(Self.maximumScale, Self.doubleTapScale)
+        let ratio = target / max(scale, 0.0001)
+        let fromCenter = CGSize(
+            width: point.x - (viewportSize.width / 2),
+            height: point.y - (viewportSize.height / 2)
+        )
+        let anchor = CGSize(
+            width: fromCenter.width - offset.width,
+            height: fromCenter.height - offset.height
+        )
+
+        scale = target
+        offset = clampedOffset(
+            CGSize(
+                width: fromCenter.width - (anchor.width * ratio),
+                height: fromCenter.height - (anchor.height * ratio)
+            ),
+            viewportSize: viewportSize
+        )
+    }
+
     private func clampedOffset(_ proposedOffset: CGSize, viewportSize: CGSize) -> CGSize {
         let horizontalLimit = max(0, viewportSize.width * (scale - 1) / 2)
         let verticalLimit = max(0, viewportSize.height * (scale - 1) / 2)
@@ -58,93 +103,240 @@ struct VinylOrderViewportState: Equatable {
     }
 }
 
-struct VinylOrderFullscreenGeometry: Equatable {
+/// Layout for the full-screen order workspace.
+///
+/// The drawing owns the **full container width**. The predecessor reserved a
+/// 56pt zoom rail down the right side and drew the layout into what was left,
+/// which read as the drawing being "cut off at about 48px in from the right
+/// edge" (bug 317da29f). The rail is gone — pinch, drag and double-tap carry
+/// zoom now — so only two bands take space: the header at the top and the
+/// settings sheet resting at its peek detent along the bottom. The three bands
+/// tile the container exactly.
+struct VinylOrderWorkspaceGeometry: Equatable {
+    /// Header band — a 44pt control row plus the title/context stack's room.
+    /// This is the CONTENT height; `headerRect` adds the top safe-area inset on
+    /// top of it, because the workspace runs under the status bar.
     static var headerHeight: CGFloat {
         OPSStyle.Layout.touchTargetMin + OPSStyle.Layout.spacing4
     }
 
-    static var controlRailWidth: CGFloat {
-        OPSStyle.Layout.touchTargetMin + OPSStyle.Layout.spacing3
+    /// MOBILE.md §6.1 peek sheet — 80pt: the handle, the summary line, and a
+    /// full content row that still clears the home indicator.
+    static var sheetPeekHeight: CGFloat {
+        OPSStyle.Layout.sheetPeekHeight
     }
 
-    static var fitBarHeight: CGFloat {
-        OPSStyle.Layout.touchTargetMin + OPSStyle.Layout.spacing3
-    }
-
-    let containerSize: CGSize
-
-    var drawingSize: CGSize {
+    /// FIT chip — one 44pt-tall glass chip, wide enough for its icon and label.
+    static var fitChipSize: CGSize {
         CGSize(
-            width: max(1, containerSize.width - Self.controlRailWidth),
+            width: OPSStyle.Layout.touchTargetLarge + OPSStyle.Layout.spacing4,
+            height: OPSStyle.Layout.touchTargetMin
+        )
+    }
+
+    /// Stand-off between the chip and both the trailing bezel and the header.
+    static var fitChipInset: CGFloat {
+        OPSStyle.Layout.spacing3
+    }
+
+    /// The full container the workspace occupies — bezel to bezel. The
+    /// workspace ignores the safe area so the drawing can run to the edges;
+    /// the insets below put them back where they matter.
+    let containerSize: CGSize
+    /// Status bar + Dynamic Island. Padded into the header band, never into the
+    /// drawing — the drawing passes beneath the header when zoomed.
+    var topInset: CGFloat = 0
+    /// Home indicator. Padded into the settings panel's own content so its
+    /// summary line clears the indicator.
+    var bottomInset: CGFloat = 0
+
+    var headerRect: CGRect {
+        CGRect(
+            x: 0,
+            y: 0,
+            width: max(1, containerSize.width),
+            height: max(0, topInset) + Self.headerHeight
+        )
+    }
+
+    var drawingRect: CGRect {
+        CGRect(
+            x: 0,
+            y: headerRect.height,
+            width: max(1, containerSize.width),
             height: max(
                 1,
-                containerSize.height - Self.headerHeight - Self.fitBarHeight
+                containerSize.height - headerRect.height - Self.sheetPeekHeight
             )
         )
     }
 
-    var headerCenter: CGPoint {
-        CGPoint(
-            x: containerSize.width / 2,
-            y: Self.headerHeight / 2
+    var sheetPeekRect: CGRect {
+        CGRect(
+            x: 0,
+            y: max(headerRect.height, containerSize.height - Self.sheetPeekHeight),
+            width: max(1, containerSize.width),
+            height: Self.sheetPeekHeight
         )
+    }
+
+    /// Tallest the settings panel may grow to — MOBILE.md §6.2 caps a half
+    /// sheet at 50% of the screen. Never taller than the peek, so a degenerate
+    /// container cannot invert the two.
+    var sheetHalfHeight: CGFloat {
+        max(Self.sheetPeekHeight, (containerSize.height / 2).rounded())
+    }
+
+    /// Top-trailing corner of the drawing band — the same corner the close `×`
+    /// occupies in the header, so every "get me out of here" control lives in
+    /// one place.
+    var fitChipRect: CGRect {
+        CGRect(
+            x: drawingRect.maxX - Self.fitChipInset - Self.fitChipSize.width,
+            y: drawingRect.minY + Self.fitChipInset,
+            width: Self.fitChipSize.width,
+            height: Self.fitChipSize.height
+        )
+    }
+
+    var drawingSize: CGSize {
+        drawingRect.size
+    }
+
+    var headerCenter: CGPoint {
+        CGPoint(x: headerRect.midX, y: headerRect.midY)
     }
 
     var drawingCenter: CGPoint {
-        CGPoint(
-            x: drawingSize.width / 2,
-            y: Self.headerHeight + (drawingSize.height / 2)
+        CGPoint(x: drawingRect.midX, y: drawingRect.midY)
+    }
+
+    var fitChipCenter: CGPoint {
+        CGPoint(x: fitChipRect.midX, y: fitChipRect.midY)
+    }
+}
+
+struct VinylPreviewFitResult: Equatable {
+    let bounds: CGRect
+    let origin: CGPoint
+    let scale: CGFloat
+}
+
+/// Resolves the drawing's fit inside its canvas.
+///
+/// The reserve and the scale are mutually dependent: the dimension ring is
+/// specified in screen points — it has to stay legible whatever the deck's
+/// size — while the reserve that holds it lives in source units, and the scale
+/// that converts between them falls out of the reserved bounds. Two refinement
+/// passes settle it: the correction is second order, so the residual is well
+/// under a point. Before this the drawing fitted to the wrap band alone and a
+/// long deck clipped its own dimensions off the canvas.
+enum VinylPreviewFit {
+    static let refinementPasses = 2
+
+    static func resolve(
+        content: CGRect,
+        wrapCanvas: CGFloat,
+        wrapReserve: CGFloat,
+        ringReachPoints: CGFloat,
+        target: CGRect
+    ) -> VinylPreviewFitResult {
+        var reserve = wrapReserve
+        var scale = fittedScale(content: content, reserve: reserve, target: target)
+
+        for _ in 0..<refinementPasses {
+            reserve = max(wrapReserve, wrapCanvas + (ringReachPoints / max(scale, 0.0001)))
+            scale = fittedScale(content: content, reserve: reserve, target: target)
+        }
+
+        let bounds = content.insetBy(dx: -reserve, dy: -reserve)
+        let fitted = CGSize(width: bounds.width * scale, height: bounds.height * scale)
+        return VinylPreviewFitResult(
+            bounds: bounds,
+            origin: CGPoint(
+                x: target.midX - fitted.width / 2,
+                y: target.midY - fitted.height / 2
+            ),
+            scale: scale
         )
     }
 
-    var controlRailCenter: CGPoint {
-        CGPoint(
-            x: drawingSize.width + (Self.controlRailWidth / 2),
-            y: Self.headerHeight
-                + ((containerSize.height - Self.headerHeight) / 2)
-        )
-    }
-
-    var fitBarCenter: CGPoint {
-        CGPoint(
-            x: drawingSize.width / 2,
-            y: containerSize.height - (Self.fitBarHeight / 2)
-        )
+    private static func fittedScale(
+        content: CGRect,
+        reserve: CGFloat,
+        target: CGRect
+    ) -> CGFloat {
+        let bounds = content.insetBy(dx: -reserve, dy: -reserve)
+        guard bounds.width > 0, bounds.height > 0 else { return 1 }
+        return min(target.width / bounds.width, target.height / bounds.height)
     }
 }
 
 struct VinylCutPreview: View {
     let plan: VinylCutPlan
+    /// The drawing's own imperial/metric preference, so an edge reads the same
+    /// here as it does on the deck canvas.
+    var measurementSystem: MeasurementSystem = .imperial
 
     var body: some View {
         Canvas { context, size in
-            guard let bounds = sourceBounds, bounds.width > 0, bounds.height > 0 else {
+            guard let fit = fit(in: size) else {
                 drawEmpty(in: &context, size: size)
                 return
             }
 
-            let target = CGRect(
-                x: VinylOrderLayout.previewInset,
-                y: VinylOrderLayout.previewInset,
-                width: max(1, size.width - (VinylOrderLayout.previewInset * 2)),
-                height: max(1, size.height - (VinylOrderLayout.previewInset * 2))
-            )
-            let scale = min(target.width / bounds.width, target.height / bounds.height)
-            let fitted = CGSize(width: bounds.width * scale, height: bounds.height * scale)
-            let origin = CGPoint(
-                x: target.midX - fitted.width / 2,
-                y: target.midY - fitted.height / 2
-            )
-
             for surface in plan.surfaces {
-                drawSurface(surface, in: &context, bounds: bounds, origin: origin, scale: scale)
+                drawSurface(
+                    surface,
+                    in: &context,
+                    bounds: fit.bounds,
+                    origin: fit.origin,
+                    scale: fit.scale
+                )
             }
         }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Vinyl cut preview")
     }
 
-    private var sourceBounds: CGRect? {
+    private func fit(in size: CGSize) -> VinylPreviewFitResult? {
+        guard let content = contentBounds, content.width > 0, content.height > 0 else {
+            return nil
+        }
+
+        return VinylPreviewFit.resolve(
+            content: content,
+            wrapCanvas: wrapCanvas,
+            wrapReserve: wrapReserve,
+            ringReachPoints: VinylPreviewAnnotationPlanner.dimensionRingReachPoints(
+                for: plan.surfaces,
+                settings: plan.settings,
+                measurementSystem: measurementSystem
+            ),
+            target: CGRect(
+                x: VinylOrderLayout.previewInset,
+                y: VinylOrderLayout.previewInset,
+                width: max(1, size.width - (VinylOrderLayout.previewInset * 2)),
+                height: max(1, size.height - (VinylOrderLayout.previewInset * 2))
+            )
+        )
+    }
+
+    /// Deepest wrap band across the plan's surfaces, in source units.
+    private var wrapCanvas: CGFloat {
+        plan.surfaces
+            .map { CGFloat(plan.settings.edgeWrapInches * surfaceScale($0)) }
+            .max() ?? 0
+    }
+
+    /// The legacy wrap reserve — four band depths, never under one `spacing4`.
+    private var wrapReserve: CGFloat {
+        plan.surfaces
+            .map { max(CGFloat(plan.settings.edgeWrapInches * surfaceScale($0) * 4), CGFloat(OPSStyle.Layout.spacing4)) }
+            .max() ?? CGFloat(OPSStyle.Layout.spacing4)
+    }
+
+    private var contentBounds: CGRect? {
         let points = plan.surfaces.flatMap(\.positions)
         guard let first = points.first else { return nil }
         var minX = first.x
@@ -157,11 +349,7 @@ struct VinylCutPreview: View {
             minY = min(minY, point.y)
             maxY = max(maxY, point.y)
         }
-        let reserve = plan.surfaces
-            .map { max(CGFloat(plan.settings.edgeWrapInches * surfaceScale($0) * 4), CGFloat(OPSStyle.Layout.spacing4)) }
-            .max() ?? CGFloat(OPSStyle.Layout.spacing4)
         return CGRect(x: minX, y: minY, width: max(1, maxX - minX), height: max(1, maxY - minY))
-            .insetBy(dx: -reserve, dy: -reserve)
     }
 
     private func drawSurface(
@@ -173,28 +361,53 @@ struct VinylCutPreview: View {
     ) {
         guard let path = surfacePath(for: surface.positions, bounds: bounds, origin: origin, scale: scale) else { return }
 
-        drawOverlapBands(surface, in: &context, bounds: bounds, origin: origin, scale: scale)
+        // One planner pass per surface per draw. The annotation plan used to be
+        // recomputed for every callout family, which meant four full geometry
+        // passes on every frame of a pinch — expensive at ProMotion rates.
+        let annotationPlan = VinylPreviewAnnotationPlanner.plan(
+            surface: surface,
+            settings: plan.settings,
+            viewportScale: scale,
+            measurementSystem: measurementSystem
+        )
+
+        drawOverlapBands(annotationPlan, in: &context, bounds: bounds, origin: origin, scale: scale)
         context.fill(path, with: .color(OPSStyle.Colors.surfaceActive.opacity(0.42)))
         drawCuts(surface, clippedTo: path, in: &context, bounds: bounds, origin: origin, scale: scale)
-        drawDirectionTransitions(surface, in: &context, bounds: bounds, origin: origin, scale: scale)
+        drawDirectionTransitions(annotationPlan, in: &context, bounds: bounds, origin: origin, scale: scale)
         context.stroke(path, with: .color(OPSStyle.Colors.secondaryText), lineWidth: OPSStyle.Layout.Border.standard)
-        drawHouseEdgeLabels(surface, in: &context, bounds: bounds, origin: origin, scale: scale)
-        drawOverlapLeaders(surface, in: &context, bounds: bounds, origin: origin, scale: scale)
+        drawHouseEdgeLabels(annotationPlan, in: &context, bounds: bounds, origin: origin, scale: scale)
+        drawOverlapLeaders(annotationPlan, in: &context, bounds: bounds, origin: origin, scale: scale)
+        drawDimensionLabels(annotationPlan, in: &context, bounds: bounds, origin: origin, scale: scale)
     }
 
-    private func drawOverlapBands(
-        _ surface: VinylSurfaceCutPlan,
+    /// The deck's own dimensions — the outermost ring of the drawing, outside
+    /// the wrap band and the lap leaders.
+    private func drawDimensionLabels(
+        _ annotationPlan: VinylPreviewAnnotationPlan,
         in context: inout GraphicsContext,
         bounds: CGRect,
         origin: CGPoint,
         scale: CGFloat
     ) {
-        let annotationPlan = VinylPreviewAnnotationPlanner.plan(
-            surface: surface,
-            settings: plan.settings,
-            viewportScale: scale
-        )
+        for label in annotationPlan.dimensionLabels {
+            context.draw(
+                Text(label.text)
+                    .font(OPSStyle.Typography.microLabel)
+                    .foregroundColor(OPSStyle.Colors.text2),
+                at: map(label.point, bounds: bounds, origin: origin, scale: scale),
+                anchor: .center
+            )
+        }
+    }
 
+    private func drawOverlapBands(
+        _ annotationPlan: VinylPreviewAnnotationPlan,
+        in context: inout GraphicsContext,
+        bounds: CGRect,
+        origin: CGPoint,
+        scale: CGFloat
+    ) {
         for band in annotationPlan.bands {
             let bandPath = path(for: band.polygon, bounds: bounds, origin: origin, scale: scale)
             context.fill(bandPath, with: .color(overlapFill(for: band.tone)))
@@ -218,17 +431,12 @@ struct VinylCutPreview: View {
     }
 
     private func drawHouseEdgeLabels(
-        _ surface: VinylSurfaceCutPlan,
+        _ annotationPlan: VinylPreviewAnnotationPlan,
         in context: inout GraphicsContext,
         bounds: CGRect,
         origin: CGPoint,
         scale: CGFloat
     ) {
-        let annotationPlan = VinylPreviewAnnotationPlanner.plan(
-            surface: surface,
-            settings: plan.settings,
-            viewportScale: scale
-        )
         for label in annotationPlan.houseLabels {
             context.draw(
                 Text(label.text)
@@ -241,18 +449,12 @@ struct VinylCutPreview: View {
     }
 
     private func drawOverlapLeaders(
-        _ surface: VinylSurfaceCutPlan,
+        _ annotationPlan: VinylPreviewAnnotationPlan,
         in context: inout GraphicsContext,
         bounds: CGRect,
         origin: CGPoint,
         scale: CGFloat
     ) {
-        let annotationPlan = VinylPreviewAnnotationPlanner.plan(
-            surface: surface,
-            settings: plan.settings,
-            viewportScale: scale
-        )
-
         for leader in annotationPlan.leaders {
             let color = annotationColor(for: leader.tone)
             var line = Path()
@@ -348,17 +550,12 @@ struct VinylCutPreview: View {
     }
 
     private func drawDirectionTransitions(
-        _ surface: VinylSurfaceCutPlan,
+        _ annotationPlan: VinylPreviewAnnotationPlan,
         in context: inout GraphicsContext,
         bounds: CGRect,
         origin: CGPoint,
         scale: CGFloat
     ) {
-        let annotationPlan = VinylPreviewAnnotationPlanner.plan(
-            surface: surface,
-            settings: plan.settings,
-            viewportScale: scale
-        )
         for transition in annotationPlan.transitions {
             var line = Path()
             line.move(to: map(transition.start, bounds: bounds, origin: origin, scale: scale))
@@ -630,31 +827,47 @@ struct VinylOrderLayoutWindow: View {
     let plan: VinylCutPlan
     let projectTitle: String
     let subtitle: String?
+    /// The order's layout settings, owned by the parent. The workspace edits
+    /// them in place and calls `onSettingsChanged` so the parent re-plans.
+    @Binding var settings: VinylOrderSettings
+    let onSettingsChanged: () -> Void
+    /// The drawing's own imperial/metric preference, so an edge reads the same
+    /// here as it does on the deck canvas.
+    let measurementSystem: MeasurementSystem
 
-    @State private var isShowingFullscreen = false
+    @State private var isShowingWorkspace = false
     @State private var viewport = VinylOrderViewportState()
 
     init(
         plan: VinylCutPlan,
         projectTitle: String,
-        subtitle: String? = nil
+        subtitle: String? = nil,
+        settings: Binding<VinylOrderSettings>,
+        measurementSystem: MeasurementSystem = .imperial,
+        onSettingsChanged: @escaping () -> Void
     ) {
         self.plan = plan
         self.projectTitle = projectTitle
         self.subtitle = subtitle
+        self._settings = settings
+        self.measurementSystem = measurementSystem
+        self.onSettingsChanged = onSettingsChanged
     }
 
     var body: some View {
-        Button(action: presentFullscreen) {
+        Button(action: presentWorkspace) {
             VStack(spacing: 0) {
+                // No hairline under this row (bug 1a8e48af, "the title divider
+                // line doesn't need to be there"). The card's own glass edge
+                // already separates the header from the drawing.
                 HStack(spacing: OPSStyle.Layout.spacing2) {
-                    Text("// ORDER LAYOUT")
+                    Text("// \(VinylOrderWorkspaceCopy.screen)")
                         .font(OPSStyle.Typography.panelTitle)
                         .foregroundColor(OPSStyle.Colors.text2)
 
                     Spacer(minLength: OPSStyle.Layout.spacing2)
 
-                    Text("FULL SCREEN")
+                    Text(VinylOrderWorkspaceCopy.fullScreenAction)
                         .font(OPSStyle.Typography.metadata)
                         .foregroundColor(OPSStyle.Colors.text3)
 
@@ -673,11 +886,7 @@ struct VinylOrderLayoutWindow: View {
                 .padding(.trailing, OPSStyle.Layout.spacing2)
                 .frame(minHeight: OPSStyle.Layout.touchTargetMin)
 
-                Rectangle()
-                    .fill(OPSStyle.Colors.line)
-                    .frame(height: OPSStyle.Layout.Border.standard)
-
-                VinylCutPreview(plan: plan)
+                VinylCutPreview(plan: plan, measurementSystem: measurementSystem)
                     .frame(height: VinylOrderLayout.previewHeight)
                     .background(OPSStyle.Colors.background)
             }
@@ -685,15 +894,18 @@ struct VinylOrderLayoutWindow: View {
         }
         .buttonStyle(.plain)
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("Order layout")
-        .accessibilityHint("Opens full screen")
-        .fullScreenCover(isPresented: $isShowingFullscreen, onDismiss: resetViewport) {
-            VinylOrderFullscreenLayout(
+        .accessibilityLabel(VinylOrderWorkspaceCopy.windowLabel)
+        .accessibilityHint(VinylOrderWorkspaceCopy.windowHint)
+        .fullScreenCover(isPresented: $isShowingWorkspace, onDismiss: resetViewport) {
+            VinylOrderWorkspace(
                 plan: plan,
                 projectTitle: displayProjectTitle,
-                subtitle: displaySubtitle,
+                deckTitle: displaySubtitle,
+                measurementSystem: measurementSystem,
+                settings: $settings,
                 viewport: $viewport,
-                onClose: dismissFullscreen
+                onSettingsChanged: onSettingsChanged,
+                onClose: dismissWorkspace
             )
         }
     }
@@ -709,15 +921,15 @@ struct VinylOrderLayoutWindow: View {
         return trimmed.isEmpty ? nil : trimmed
     }
 
-    private func presentFullscreen() {
+    private func presentWorkspace() {
         viewport.fit()
         VinylOrderInteractionFeedback.fire()
-        isShowingFullscreen = true
+        isShowingWorkspace = true
     }
 
-    private func dismissFullscreen() {
+    private func dismissWorkspace() {
         VinylOrderInteractionFeedback.fire()
-        isShowingFullscreen = false
+        isShowingWorkspace = false
     }
 
     private func resetViewport() {
@@ -725,59 +937,111 @@ struct VinylOrderLayoutWindow: View {
     }
 }
 
-private struct VinylOrderFullscreenLayout: View {
+/// The full-screen ORDER LAYOUT — the place the order is *worked*, not a
+/// picture of it.
+///
+/// Three bands tile the screen: a header with no divider, the drawing running
+/// bezel to bezel, and the settings panel resting at its peek. The zoom rail
+/// the founder called "redundant" is gone — pinch, drag and double-tap carry
+/// zoom, and a FIT chip appears only once there is something to return from.
+/// Internal (not private) so the geometry, the viewport and the whole composed
+/// screen are testable and snapshot-provable.
+struct VinylOrderWorkspace: View {
     let plan: VinylCutPlan
     let projectTitle: String
-    let subtitle: String?
+    let deckTitle: String?
+    let measurementSystem: MeasurementSystem
+    @Binding var settings: VinylOrderSettings
     @Binding var viewport: VinylOrderViewportState
+    let onSettingsChanged: () -> Void
     let onClose: () -> Void
 
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var lastMagnification: CGFloat = 1
     @State private var lastDragTranslation: CGSize = .zero
+    @State private var panelDetent: VinylOrderPanelDetent
+    @State private var panelDrag: CGFloat = 0
 
-    private static let zoomStep: CGFloat = 1.25
+    init(
+        plan: VinylCutPlan,
+        projectTitle: String,
+        deckTitle: String?,
+        measurementSystem: MeasurementSystem = .imperial,
+        settings: Binding<VinylOrderSettings>,
+        viewport: Binding<VinylOrderViewportState>,
+        // Where the settings panel opens. Always `.peek` in the app — the
+        // drawing is what the operator came for — and overridable so the
+        // expanded screen can be rendered whole for proof.
+        panelDetent: VinylOrderPanelDetent = .peek,
+        onSettingsChanged: @escaping () -> Void,
+        onClose: @escaping () -> Void
+    ) {
+        self.plan = plan
+        self.projectTitle = projectTitle
+        self.deckTitle = deckTitle
+        self.measurementSystem = measurementSystem
+        self._settings = settings
+        self._viewport = viewport
+        self._panelDetent = State(initialValue: panelDetent)
+        self.onSettingsChanged = onSettingsChanged
+        self.onClose = onClose
+    }
 
     var body: some View {
         GeometryReader { geometry in
-            let layout = VinylOrderFullscreenGeometry(
-                containerSize: geometry.size
+            let layout = VinylOrderWorkspaceGeometry(
+                containerSize: geometry.size,
+                topInset: geometry.safeAreaInsets.top,
+                bottomInset: geometry.safeAreaInsets.bottom
+            )
+            let panelHeight = VinylOrderSettingsPanel.height(
+                detent: panelDetent,
+                dragOffset: panelDrag,
+                peekHeight: VinylOrderWorkspaceGeometry.sheetPeekHeight,
+                halfHeight: layout.sheetHalfHeight
             )
 
             ZStack(alignment: .topLeading) {
                 OPSStyle.Colors.background
-                    .ignoresSafeArea()
 
                 drawingViewport(size: layout.drawingSize)
                     .position(layout.drawingCenter)
 
-                fullscreenHeader
+                header(layout: layout)
                     .frame(
-                        width: geometry.size.width,
-                        height: VinylOrderFullscreenGeometry.headerHeight
+                        width: layout.headerRect.width,
+                        height: layout.headerRect.height
                     )
                     .position(layout.headerCenter)
 
-                zoomControlRail(viewportSize: layout.drawingSize)
+                ZStack { fitChip }
                     .frame(
-                        width: VinylOrderFullscreenGeometry.controlRailWidth,
-                        height: max(
-                            1,
-                            geometry.size.height
-                                - VinylOrderFullscreenGeometry.headerHeight
-                        )
+                        width: VinylOrderWorkspaceGeometry.fitChipSize.width,
+                        height: VinylOrderWorkspaceGeometry.fitChipSize.height
                     )
-                    .position(layout.controlRailCenter)
+                    .animation(OPSStyle.Animation.panel, value: viewport.isFitted)
+                    .allowsHitTesting(!viewport.isFitted)
+                    .position(layout.fitChipCenter)
 
-                fitControlBar
-                    .frame(
-                        width: layout.drawingSize.width,
-                        height: VinylOrderFullscreenGeometry.fitBarHeight
-                    )
-                    .position(layout.fitBarCenter)
+                VinylOrderSettingsPanel(
+                    plan: plan,
+                    settings: $settings,
+                    onSettingsChanged: onSettingsChanged,
+                    peekHeight: VinylOrderWorkspaceGeometry.sheetPeekHeight,
+                    halfHeight: layout.sheetHalfHeight,
+                    bottomInset: layout.bottomInset,
+                    detent: $panelDetent,
+                    dragOffset: $panelDrag
+                )
+                .frame(width: layout.containerSize.width, height: panelHeight)
+                .position(
+                    x: layout.containerSize.width / 2,
+                    y: layout.containerSize.height - (panelHeight / 2)
+                )
             }
+            .frame(width: geometry.size.width, height: geometry.size.height)
             .clipped()
         }
+        .ignoresSafeArea()
         .hidesGlobalTabBar()
         .accessibilityAddTraits(.isModal)
         .onDisappear {
@@ -786,92 +1050,132 @@ private struct VinylOrderFullscreenLayout: View {
         }
     }
 
+    // MARK: - Drawing
+
+    /// The drawing owns the full width. A re-plan crossfades rather than
+    /// snapping: the canvas is keyed on the settings that shape it, so a new
+    /// identity swaps the layout under a 200ms opacity transition on the one
+    /// OPS curve. `OPSStyle.Animation.panel` is already reduce-motion aware,
+    /// and the transition is opacity either way — nothing slides or scales.
     private func drawingViewport(size: CGSize) -> some View {
-        VinylCutPreview(plan: plan)
-            .frame(width: size.width, height: size.height)
-            .scaleEffect(viewport.scale)
-            .offset(viewport.offset)
-            .frame(width: size.width, height: size.height)
-            .clipped()
-            .contentShape(Rectangle())
-            .gesture(magnificationGesture(viewportSize: size))
-            .simultaneousGesture(panGesture(viewportSize: size))
-    }
-
-    private var fullscreenHeader: some View {
-        HStack(alignment: .center, spacing: OPSStyle.Layout.spacing3) {
-            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
-                Text(projectTitle)
-                    .font(OPSStyle.Typography.screenTitle(for: projectTitle))
-                    .foregroundColor(OPSStyle.Colors.text)
-                    .textCase(.uppercase)
-                    .lineLimit(1)
-
-                Text(contextLine)
-                    .font(OPSStyle.Typography.metadata)
-                    .foregroundColor(OPSStyle.Colors.text2)
-                    .textCase(.uppercase)
-                    .lineLimit(1)
-            }
-
-            Spacer(minLength: OPSStyle.Layout.spacing2)
-
-            layoutControl(
-                icon: OPSStyle.Icons.close,
-                label: "Close order layout"
-            ) {
-                onClose()
-            }
+        ZStack {
+            VinylCutPreview(plan: plan, measurementSystem: measurementSystem)
+                .frame(width: size.width, height: size.height)
+                .id(planIdentity)
+                .transition(.opacity)
         }
-        .padding(.horizontal, OPSStyle.Layout.spacing3)
-        .background(
-            OPSStyle.Colors.background.opacity(OPSStyle.Layout.Opacity.heavy)
-        )
-        .overlay(alignment: .bottom) {
-            Rectangle()
-                .fill(OPSStyle.Colors.line)
-                .frame(height: OPSStyle.Layout.Border.standard)
+        .frame(width: size.width, height: size.height)
+        .animation(OPSStyle.Animation.panel, value: planIdentity)
+        .scaleEffect(viewport.scale)
+        .offset(viewport.offset)
+        .frame(width: size.width, height: size.height)
+        .clipped()
+        .contentShape(Rectangle())
+        .onTapGesture(count: 2) { location in
+            zoomToggle(at: location, viewportSize: size)
+        }
+        .gesture(magnificationGesture(viewportSize: size))
+        .simultaneousGesture(panGesture(viewportSize: size))
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(VinylOrderWorkspaceCopy.drawingLabel)
+        .accessibilityValue(VinylOrderWorkspaceCopy.zoomValue(scale: Double(viewport.scale)))
+        .accessibilityAdjustableAction { direction in
+            adjustZoom(direction, viewportSize: size)
         }
     }
 
-    private func zoomControlRail(viewportSize: CGSize) -> some View {
+    /// Changes exactly when the drawing would look different — the settings
+    /// that shape the layout, plus what the engine made of them.
+    private var planIdentity: String {
+        [
+            plan.settings.direction.rawValue,
+            plan.settings.patternMode.rawValue,
+            plan.settings.allowsDirectionalChanges ? "mixed" : "locked",
+            "\(plan.settings.rollWidthInches)",
+            "\(plan.settings.seamOverlapInches)",
+            "\(plan.settings.edgeWrapInches)",
+            "\(plan.totalStripCount)",
+            "\(plan.surfaces.count)"
+        ].joined(separator: "|")
+    }
+
+    // MARK: - Header
+
+    /// No divider (bug 1a8e48af) — the glass wash IS the separation, and the
+    /// drawing passes beneath it when the operator zooms in.
+    private func header(layout: VinylOrderWorkspaceGeometry) -> some View {
         VStack(spacing: 0) {
-            VStack(spacing: OPSStyle.Layout.spacing1) {
-                layoutControl(
-                    icon: OPSStyle.Icons.plus,
-                    label: "Zoom in",
-                    isDisabled: viewport.scale >= VinylOrderViewportState.maximumScale
-                ) {
-                    adjustZoom(
-                        by: Self.zoomStep,
-                        viewportSize: viewportSize
-                    )
+            Color.clear
+                .frame(height: max(0, layout.topInset))
+
+            HStack(alignment: .center, spacing: OPSStyle.Layout.spacing3) {
+                VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
+                    Text(projectTitle)
+                        .font(OPSStyle.Typography.screenTitle(for: projectTitle))
+                        .foregroundColor(OPSStyle.Colors.text)
+                        .textCase(.uppercase)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
+
+                    Text(contextLine)
+                        .font(OPSStyle.Typography.metadata)
+                        .foregroundColor(OPSStyle.Colors.text2)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                        .monospacedDigit()
                 }
 
-                layoutControl(
-                    icon: OPSStyle.Icons.minus,
-                    label: "Zoom out",
-                    isDisabled: viewport.scale <= VinylOrderViewportState.minimumScale
-                ) {
-                    adjustZoom(
-                        by: 1 / Self.zoomStep,
-                        viewportSize: viewportSize
-                    )
+                Spacer(minLength: OPSStyle.Layout.spacing2)
+
+                Button(action: onClose) {
+                    Image(systemName: OPSStyle.Icons.close)
+                        .font(.system(
+                            size: OPSStyle.Layout.IconSize.md,
+                            weight: .semibold
+                        ))
                 }
+                .opsIconButtonStyle(
+                    backgroundColor: OPSStyle.Colors.surfaceActive,
+                    foregroundColor: OPSStyle.Colors.text
+                )
+                .accessibilityLabel(VinylOrderWorkspaceCopy.closeLabel)
             }
-            .padding(OPSStyle.Layout.spacing1)
-            .glassDense(cornerRadius: OPSStyle.Layout.panelRadius)
-
-            Spacer(minLength: OPSStyle.Layout.spacing3)
+            .padding(.horizontal, OPSStyle.Layout.spacing3)
+            .frame(height: VinylOrderWorkspaceGeometry.headerHeight)
+            // MOBILE.md §2.1 — the nav bar is fixed-height by design. Letting an
+            // accessibility type size grow this band would eat the drawing the
+            // screen exists to show; the settings panel below scrolls and does
+            // scale all the way up.
+            .dynamicTypeSize(...DynamicTypeSize.accessibility1)
         }
-        .padding(.horizontal, OPSStyle.Layout.spacing2)
-        .padding(.top, OPSStyle.Layout.spacing3)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background { headerWash }
     }
 
-    private var fitControlBar: some View {
-        HStack(spacing: 0) {
-            Spacer(minLength: OPSStyle.Layout.spacing3)
+    private var headerWash: some View {
+        ZStack {
+            Rectangle().fill(.ultraThinMaterial)
+            Rectangle().fill(
+                OPSStyle.Colors.background.opacity(OPSStyle.Layout.Opacity.heavy)
+            )
+        }
+    }
 
+    private var contextLine: String {
+        VinylOrderWorkspaceCopy.contextLine(
+            plan: plan,
+            deckTitle: deckTitle,
+            measurementSystem: measurementSystem
+        )
+    }
+
+    // MARK: - FIT chip
+
+    /// Present only while the drawing is zoomed. At fit there is nothing to
+    /// return to, so the chip does not sit there as a permanently dead control.
+    @ViewBuilder
+    private var fitChip: some View {
+        if !viewport.isFitted {
             Button(action: fitLayout) {
                 HStack(spacing: OPSStyle.Layout.spacing2) {
                     Image(systemName: OPSStyle.Icons.fit)
@@ -880,53 +1184,24 @@ private struct VinylOrderFullscreenLayout: View {
                             weight: .semibold
                         ))
 
-                    Text("FIT LAYOUT")
-                        .font(OPSStyle.Typography.button)
+                    Text(VinylOrderWorkspaceCopy.fitAction)
+                        .font(OPSStyle.Typography.buttonLabel)
                 }
-                .foregroundColor(
-                    viewport == VinylOrderViewportState()
-                        ? OPSStyle.Colors.textMute
-                        : OPSStyle.Colors.text
-                )
-                .padding(.horizontal, OPSStyle.Layout.spacing3)
-                .frame(minHeight: OPSStyle.Layout.touchTargetMin)
+                .foregroundColor(OPSStyle.Colors.text)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .glassDense(cornerRadius: OPSStyle.Layout.panelRadius)
             }
             .buttonStyle(.plain)
-            .disabled(viewport == VinylOrderViewportState())
-            .accessibilityLabel("Fit layout")
-
-            Spacer(minLength: OPSStyle.Layout.spacing3)
+            // The chip is a fixed 44pt overlay on the drawing — same reasoning
+            // as the header band. VoiceOver reaches zoom through the drawing's
+            // adjustable action, so nothing is lost at the largest sizes.
+            .dynamicTypeSize(...DynamicTypeSize.accessibility1)
+            .accessibilityLabel(VinylOrderWorkspaceCopy.fitLabel)
+            .transition(.opacity)
         }
-        .padding(.horizontal, OPSStyle.Layout.spacing3)
-        .padding(.vertical, OPSStyle.Layout.spacing2)
     }
 
-    private var contextLine: String {
-        guard let subtitle else { return "// ORDER LAYOUT" }
-        return "// ORDER LAYOUT · \(subtitle)"
-    }
-
-    private func layoutControl(
-        icon: String,
-        label: String,
-        isDisabled: Bool = false,
-        action: @escaping () -> Void
-    ) -> some View {
-        Button(action: action) {
-            Image(systemName: icon)
-                .font(.system(
-                    size: OPSStyle.Layout.IconSize.md,
-                    weight: .semibold
-                ))
-        }
-        .opsIconButtonStyle(
-            backgroundColor: OPSStyle.Colors.surfaceActive,
-            foregroundColor: isDisabled ? OPSStyle.Colors.textMute : OPSStyle.Colors.text
-        )
-        .disabled(isDisabled)
-        .accessibilityLabel(label)
-    }
+    // MARK: - Gestures
 
     private func magnificationGesture(viewportSize: CGSize) -> some Gesture {
         MagnificationGesture()
@@ -961,38 +1236,36 @@ private struct VinylOrderFullscreenLayout: View {
             }
     }
 
-    private func adjustZoom(by multiplier: CGFloat, viewportSize: CGSize) {
-        updateViewport(animation: OPSStyle.Animation.hover) {
-            viewport.applyZoom(
-                multiplier: multiplier,
-                viewportSize: viewportSize
-            )
+    /// Discovery beat: the zoom lands under the finger and the light impact
+    /// fires with it, so the gesture reads as having been received.
+    private func zoomToggle(at location: CGPoint, viewportSize: CGSize) {
+        withAnimation(OPSStyle.Animation.page) {
+            viewport.toggleFit(at: location, viewportSize: viewportSize)
+        }
+        VinylOrderInteractionFeedback.fire()
+    }
+
+    private func adjustZoom(
+        _ direction: AccessibilityAdjustmentDirection,
+        viewportSize: CGSize
+    ) {
+        let step: CGFloat
+        switch direction {
+        case .increment: step = VinylOrderViewportState.doubleTapScale
+        case .decrement: step = 1 / VinylOrderViewportState.doubleTapScale
+        @unknown default: return
+        }
+        withAnimation(OPSStyle.Animation.page) {
+            viewport.applyZoom(multiplier: step, viewportSize: viewportSize)
         }
         VinylOrderInteractionFeedback.fire()
     }
 
     private func fitLayout() {
-        updateViewport(animation: OPSStyle.Animation.page) {
+        withAnimation(OPSStyle.Animation.page) {
             viewport.fit()
         }
         VinylOrderInteractionFeedback.fire()
-    }
-
-    private func updateViewport(
-        animation: Animation,
-        _ changes: () -> Void
-    ) {
-        if reduceMotion {
-            var transaction = Transaction()
-            transaction.disablesAnimations = true
-            withTransaction(transaction) {
-                changes()
-            }
-        } else {
-            withAnimation(animation) {
-                changes()
-            }
-        }
     }
 }
 

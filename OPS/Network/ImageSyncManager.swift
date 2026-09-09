@@ -36,6 +36,11 @@ struct ProjectPhotoMirrorRow: Codable, Equatable {
     let uploaded_by: String
     let is_client_visible: Bool
     let taken_at: String
+    /// The task this photo documents, or nil. Capture stamps it on the local
+    /// row before the upload is queued, so it travels with the very first
+    /// insert instead of needing a second write the crew could go offline
+    /// between.
+    let task_id: String?
 }
 
 /// Seam for the canonical `project_photos` insert. Production talks to
@@ -753,6 +758,27 @@ class ImageSyncManager: ObservableObject {
         }
     }
 
+    /// The task each photo documents, read off the local `project_photos` row
+    /// capture wrote before the upload was queued.
+    ///
+    /// A url with no local row simply carries no task: the canonical insert must
+    /// never fail — or lose a photo — because a link could not be resolved.
+    /// Fetched predicate-free and filtered in Swift, the house rule for reads on
+    /// this path (a `#Predicate` fetch is uncatchable when it goes wrong, and
+    /// one project's gallery is small enough that the filter costs nothing).
+    private func portalMirrorTaskLinks(projectId: String, urls: [String]) -> [String: String] {
+        guard let modelContext, !urls.isEmpty else { return [:] }
+        let wanted = Set(urls)
+        let rows = (try? modelContext.fetch(FetchDescriptor<ProjectPhoto>())) ?? []
+        var links: [String: String] = [:]
+        for row in rows {
+            guard row.projectId == projectId, row.deletedAt == nil, wanted.contains(row.url),
+                  let taskId = ProjectPhotoTaskLink.canonical(row.taskId) else { continue }
+            links[row.url] = taskId
+        }
+        return links
+    }
+
     /// The single place a photo becomes visible in the client portal, and the
     /// single place a delivery failure is classified or filed.
     ///
@@ -785,6 +811,7 @@ class ImageSyncManager: ObservableObject {
         // redelivery reuses the ORIGINAL one so a retry never rewrites when the
         // photo was taken.
         let timestamp = ISO8601DateFormatter().string(from: takenAt)
+        let taskLinks = portalMirrorTaskLinks(projectId: projectId, urls: urls)
         let rows = urls.map { url in
             ProjectPhotoMirrorRow(
                 project_id: projectId,
@@ -793,7 +820,8 @@ class ImageSyncManager: ObservableObject {
                 source: source,
                 uploaded_by: uploadedBy,
                 is_client_visible: false,
-                taken_at: timestamp
+                taken_at: timestamp,
+                task_id: taskLinks[url]
             )
         }
 
@@ -1030,6 +1058,32 @@ class ImageSyncManager: ObservableObject {
         try await SupabaseService.shared.client
             .from("project_photos")
             .update(ProjectPhotoVisibilityUpdate(is_client_visible: isVisible))
+            .eq("project_id", value: projectId)
+            .eq("url", value: url)
+            .execute()
+        guard isCurrent(lease) else { throw CancellationError() }
+    }
+
+    /// Bug a290934f — point a single photo at a task, or clear the link.
+    ///
+    /// Mirrors `setPhotoClientVisibility` exactly, including its offline and
+    /// error behaviour: the local model write is the caller's (the sheet has
+    /// already committed and dismissed), and a rejection is thrown so the caller
+    /// can surface it. `task_id` is column-scoped-granted to client roles and
+    /// the server guard checks that the task belongs to the photo's project, so
+    /// a rejection here is a real disagreement worth showing — never swallowed.
+    ///
+    /// A nil `taskId` clears the link. The id travels lowercased: Postgres uuid
+    /// text is lowercase and `UUID().uuidString` is not.
+    func setPhotoTask(url: String, taskId: String?, projectId: String) async throws {
+        guard let lease = beginWork() else { throw CancellationError() }
+        struct ProjectPhotoTaskUpdate: Codable {
+            let task_id: String?
+        }
+
+        try await SupabaseService.shared.client
+            .from("project_photos")
+            .update(ProjectPhotoTaskUpdate(task_id: ProjectPhotoTaskLink.canonical(taskId)))
             .eq("project_id", value: projectId)
             .eq("url", value: url)
             .execute()
@@ -1384,6 +1438,7 @@ class ImageSyncManager: ObservableObject {
         let renderedUrl: String?
         let source: String
         let siteVisitId: String?
+        let taskId: String?
         let uploadedBy: String?
         let caption: String?
         let takenAt: String
@@ -1398,6 +1453,7 @@ class ImageSyncManager: ObservableObject {
             case renderedUrl = "rendered_url"
             case source
             case siteVisitId = "site_visit_id"
+            case taskId = "task_id"
             case uploadedBy = "uploaded_by"
             case caption
             case takenAt = "taken_at"
@@ -1438,6 +1494,7 @@ class ImageSyncManager: ObservableObject {
             renderedUrl: renderedURL,
             source: row.source,
             siteVisitId: canonicalVisitId,
+            taskId: ProjectPhotoTaskLink.canonical(row.taskId),
             uploadedBy: ProjectPhotoUploaderIdentity.canonicalUserID(uploader),
             caption: row.caption,
             takenAt: ISO8601DateFormatter().string(from: row.takenAt ?? row.createdAt),

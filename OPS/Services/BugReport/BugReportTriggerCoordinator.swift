@@ -54,16 +54,17 @@ final class BugReportTriggerCoordinator {
     /// screenshot offer all use this method so their eligibility and capture
     /// ordering cannot drift.
     ///
-    /// - Parameter capturedScreenshot: A shot already taken at trigger time.
-    ///   The screenshot offer holds one (grabbed the instant the operator hit
-    ///   the buttons, seconds before the tap that gets here); shake and
-    ///   Settings pass `nil` and get a live capture.
+    /// - Parameter capturedScreen: A capture already taken at trigger time —
+    ///   the picture plus the view hierarchy behind it. The screenshot offer
+    ///   holds one (grabbed the instant the operator hit the buttons, seconds
+    ///   before the tap that gets here); shake and Settings pass `nil` and get a
+    ///   live capture.
     @discardableResult
     func trigger(
         source: Source,
         appState: AppState,
         dataController: DataController,
-        capturedScreenshot: UIImage? = nil
+        capturedScreen: BugReportCaptureService.AppWindowCapture? = nil
     ) -> Outcome {
         let outcome = trigger(
             source: source,
@@ -72,14 +73,14 @@ final class BugReportTriggerCoordinator {
                 isTutorialActive: appState.shouldRestartTutorial,
                 isPresenterActive: BugReportPresenter.shared.isPresenting
             ),
-            captureScreenshot: { () -> UIImage? in
-                Self.screenshotToPresent(held: capturedScreenshot) {
-                    BugReportCaptureService.shared.captureScreenshot()
+            captureScreenshot: { () -> BugReportCaptureService.AppWindowCapture? in
+                Self.screenshotToPresent(held: capturedScreen) {
+                    BugReportCaptureService.shared.captureAppWindow()
                 }
             },
-            presentOverlay: { screenshot in
+            presentOverlay: { capture in
                 BugReportPresenter.shared.present(
-                    screenshot: screenshot,
+                    capture: capture,
                     appState: appState,
                     dataController: dataController
                 )

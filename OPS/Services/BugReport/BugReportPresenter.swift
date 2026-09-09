@@ -42,7 +42,11 @@ final class BugReportPresenter: NSObject {
 
     // MARK: - Present
 
-    func present(screenshot: UIImage?, appState: AppState, dataController: DataController) {
+    func present(
+        capture: BugReportCaptureService.AppWindowCapture?,
+        appState: AppState,
+        dataController: DataController
+    ) {
         if isPresenting {
             // Self-heal (bug 70087050): a dismissal whose completion never
             // fired (animated dismissal racing a backgrounding), or a
@@ -80,7 +84,7 @@ final class BugReportPresenter: NSObject {
         isPresenting = true
 
         let content = BugReportSheet(
-            screenshot: screenshot,
+            capture: capture,
             onClose: { [weak self] in self?.dismiss() }
         )
         .environmentObject(appState)

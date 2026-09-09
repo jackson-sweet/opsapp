@@ -587,6 +587,14 @@ enum OPSStyle {
         /// read-only strip and its edit strip, so the two modes of the same
         /// card can never drift apart.
         static let activityPhotoTileSize: CGFloat = 80.0
+        /// Task photo tile inside a text block — the pinned task-note strip.
+        /// Small enough that a row of them stays subordinate to the note it
+        /// belongs to, large enough to recognize a job site at arm's length.
+        static let taskPhotoTileCompactSize: CGFloat = 52.0
+        /// Task colour bar along the bottom edge of a gallery tile. The same
+        /// 3pt stripe the task header wears, so one language says "this belongs
+        /// to that task" on both surfaces.
+        static let taskPhotoTileStripeHeight: CGFloat = 3.0
         static let monthGridDayHeaderHeight: CGFloat = 26.0
         static let monthGridCompactBadgeHeight: CGFloat = 10.0
         static let monthGridStandardBadgeHeight: CGFloat = 14.0
@@ -794,6 +802,10 @@ enum OPSStyle {
             static let medium = 0.5   // Medium overlays
             static let strong = 0.7   // Strong overlays
             static let heavy = 0.9    // Almost opaque
+            /// Terminal work — completed or cancelled. It stays visible and
+            /// stays readable; it just stops competing with live work.
+            /// `TaskBadge(faded:)` is the reference use.
+            static let faded = 0.4
         }
 
         // Shadow presets — DEPRECATED (spec v2: zero box-shadows on dark backgrounds.

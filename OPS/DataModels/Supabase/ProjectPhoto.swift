@@ -28,6 +28,10 @@ class ProjectPhoto: Identifiable {
     var renderedURL: String?
     var source: String
     var siteVisitId: String?
+    /// The project task this photo documents, or nil. Stored lowercased: task
+    /// ids are Postgres uuids and `UUID().uuidString` is uppercase, so every
+    /// entry point normalizes through `ProjectPhotoTaskLink.canonical`.
+    var taskId: String?
     var uploadedBy: String
     var caption: String?
     var isClientVisible: Bool
@@ -49,6 +53,7 @@ class ProjectPhoto: Identifiable {
         renderedURL: String? = nil,
         source: String = "other",
         siteVisitId: String? = nil,
+        taskId: String? = nil,
         uploadedBy: String,
         caption: String? = nil,
         isClientVisible: Bool = false,
@@ -63,11 +68,27 @@ class ProjectPhoto: Identifiable {
         self.renderedURL = renderedURL
         self.source = source
         self.siteVisitId = siteVisitId
+        self.taskId = ProjectPhotoTaskLink.canonical(taskId)
         self.uploadedBy = uploadedBy
         self.caption = caption
         self.isClientVisible = isClientVisible
         self.takenAt = takenAt
         self.createdAt = createdAt
+    }
+}
+
+/// Normalization for `project_photos.task_id`.
+///
+/// The column is a Postgres `uuid`; the app generates ids with
+/// `UUID().uuidString`, which is UPPERCASE. Every id comparison in the app is
+/// case-sensitive string equality, so an uppercase link silently fails to match
+/// the task it names. One normalizer, used by every entry point.
+enum ProjectPhotoTaskLink {
+    static func canonical(_ rawValue: String?) -> String? {
+        guard let rawValue else { return nil }
+        let trimmed = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        return trimmed.lowercased()
     }
 }
 
@@ -216,6 +237,13 @@ enum ProjectPhotoDeleteAuthorization {
 }
 
 extension ProjectPhoto {
+    /// The one way to write the task link — normalizes through
+    /// `ProjectPhotoTaskLink.canonical` so no caller can store a value that
+    /// cannot match the task it names.
+    func applyTaskLink(_ rawValue: String?) {
+        taskId = ProjectPhotoTaskLink.canonical(rawValue)
+    }
+
     /// Applies server-owned attribution while respecting a pending local field.
     /// Invalid/blank inbound identities never erase a valid local attribution;
     /// the next valid pull or realtime event can still heal a stale row.

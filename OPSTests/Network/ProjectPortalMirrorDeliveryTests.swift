@@ -112,6 +112,68 @@ final class ProjectPortalMirrorDeliveryTests: XCTestCase {
         XCTAssertTrue(filings.isEmpty, "Nothing failed, so nothing is filed")
     }
 
+    /// Bug a290934f — a photo shot from a task documents that task, and the
+    /// link has to ride the FIRST canonical insert. A second write would be a
+    /// second chance to be offline, and the crew member who framed the shot for
+    /// that task is already walking away.
+    func testTheCanonicalInsertCarriesTheTaskLinkFromTheLocalRow() async throws {
+        let harness = try makeHarness()
+        let taskId = "2b0004b3-4696-49c5-9c74-8bd65bc66c39"
+
+        let linked = ProjectPhoto(
+            id: UUID().uuidString.lowercased(),
+            projectId: projectId,
+            companyId: companyId,
+            url: photoURL,
+            source: "in_progress",
+            taskId: taskId,
+            uploadedBy: uploaderId
+        )
+        harness.context.insert(linked)
+        let unlinked = ProjectPhoto(
+            id: UUID().uuidString.lowercased(),
+            projectId: projectId,
+            companyId: companyId,
+            url: otherPhotoURL,
+            source: "in_progress",
+            uploadedBy: uploaderId
+        )
+        harness.context.insert(unlinked)
+        try harness.context.save()
+
+        let outcome = await harness.manager.deliverPortalMirror(
+            urls: [photoURL, otherPhotoURL],
+            project: harness.project,
+            uploadedBy: uploaderId,
+            source: "in_progress"
+        )
+        XCTAssertEqual(outcome, .delivered)
+
+        let rows = harness.inserter.rows
+        XCTAssertEqual(rows.count, 2)
+        XCTAssertEqual(rows.first(where: { $0.url == photoURL })?.task_id, taskId)
+        XCTAssertNil(
+            rows.first(where: { $0.url == otherPhotoURL })?.task_id,
+            "A photo with no local link carries none — an unknown link never blocks delivery"
+        )
+    }
+
+    /// A url the local store has never seen still delivers. The insert must
+    /// never fail — or lose a photo — because a link could not be resolved.
+    func testAPhotoWithNoLocalRowStillDeliversWithNoLink() async throws {
+        let harness = try makeHarness()
+        let outcome = await harness.manager.deliverPortalMirror(
+            urls: [photoURL],
+            project: harness.project,
+            uploadedBy: uploaderId,
+            source: "in_progress"
+        )
+
+        XCTAssertEqual(outcome, .delivered)
+        XCTAssertEqual(harness.inserter.rows.count, 1)
+        XCTAssertNil(harness.inserter.rows.first?.task_id)
+    }
+
     /// The chokepoint never probes for a batch with nothing in it.
     func testEmptyBatchIsDeliveredWithoutTouchingTheServer() async throws {
         let harness = try makeHarness()

@@ -189,6 +189,101 @@ final class AppUpdateMigrationTests: XCTestCase {
         XCTAssertEqual(projections.first?.primarySubClientId, "sub-client-1")
     }
 
+    func testReleasedV26DoesNotReferenceWidenedLiveProjectPhoto() {
+        XCTAssertTrue(
+            contains(OPSSchemaLegacyProjectPhotoV26.ProjectPhoto.self, in: OPSSchemaV26.self),
+            "V26 must register its frozen released ProjectPhoto shape"
+        )
+        XCTAssertFalse(
+            contains(ProjectPhoto.self, in: OPSSchemaV26.self),
+            "V26 must keep the ProjectPhoto shape released before taskId was added"
+        )
+        XCTAssertTrue(
+            contains(ProjectPhoto.self, in: OPSSchemaV27.self),
+            "V27 must register the widened live ProjectPhoto"
+        )
+    }
+
+    func testV26StoreMigratesToV27PreservingPhotoAndDefaultingTaskLink() throws {
+        let takenAt = Date(timeIntervalSince1970: 3_100_000)
+        let createdAt = Date(timeIntervalSince1970: 3_200_000)
+
+        try autoreleasepool {
+            let sourceSchema = Schema(versionedSchema: OPSSchemaV26.self)
+            let sourceConfiguration = ModelConfiguration(schema: sourceSchema, url: storeURL)
+            let sourceContainer = try ModelContainer(
+                for: sourceSchema,
+                configurations: sourceConfiguration
+            )
+            let context = ModelContext(sourceContainer)
+
+            let photo = OPSSchemaLegacyProjectPhotoV26.ProjectPhoto(
+                id: "photo-v26",
+                projectId: "project-1",
+                companyId: "company-1",
+                url: "https://cdn.example/p.jpg",
+                thumbnailURL: "https://cdn.example/p-thumb.jpg",
+                renderedURL: "https://cdn.example/p-rendered.jpg",
+                source: "in_progress",
+                siteVisitId: "site-visit-1",
+                uploadedBy: "user-1",
+                caption: "Curb detail",
+                isClientVisible: true,
+                takenAt: takenAt,
+                createdAt: createdAt
+            )
+            photo.needsSync = true
+            context.insert(photo)
+            try context.save()
+        }
+
+        let targetSchema = Schema(versionedSchema: OPSSchemaV27.self)
+        let targetConfiguration = ModelConfiguration(schema: targetSchema, url: storeURL)
+        let migratedContainer = try ModelContainer(
+            for: targetSchema,
+            migrationPlan: OPSMigrationPlan.self,
+            configurations: targetConfiguration
+        )
+        let context = ModelContext(migratedContainer)
+
+        let photos = try context.fetch(FetchDescriptor<ProjectPhoto>())
+        XCTAssertEqual(photos.count, 1)
+        let migrated = try XCTUnwrap(photos.first)
+        XCTAssertEqual(migrated.id, "photo-v26")
+        XCTAssertEqual(migrated.projectId, "project-1")
+        XCTAssertEqual(migrated.companyId, "company-1")
+        XCTAssertEqual(migrated.url, "https://cdn.example/p.jpg")
+        XCTAssertEqual(migrated.thumbnailURL, "https://cdn.example/p-thumb.jpg")
+        XCTAssertEqual(migrated.renderedURL, "https://cdn.example/p-rendered.jpg")
+        XCTAssertEqual(migrated.source, "in_progress")
+        XCTAssertEqual(migrated.siteVisitId, "site-visit-1")
+        XCTAssertEqual(migrated.uploadedBy, "user-1")
+        XCTAssertEqual(migrated.caption, "Curb detail")
+        XCTAssertTrue(migrated.isClientVisible)
+        XCTAssertEqual(migrated.takenAt, takenAt)
+        XCTAssertEqual(migrated.createdAt, createdAt)
+        XCTAssertTrue(migrated.needsSync)
+        XCTAssertNil(migrated.taskId, "An installed photo has no task until someone assigns one")
+    }
+
+    func testWidenedProjectPhotoLowercasesTaskLinkAtEveryEntryPoint() {
+        let photo = ProjectPhoto(
+            id: "photo-1",
+            projectId: "project-1",
+            companyId: "company-1",
+            url: "https://cdn.example/a.jpg",
+            taskId: "6F1B2C3D-4E5A-6B7C-8D9E-0F1A2B3C4D5E",
+            uploadedBy: "user-1"
+        )
+        XCTAssertEqual(photo.taskId, "6f1b2c3d-4e5a-6b7c-8d9e-0f1a2b3c4d5e")
+
+        photo.applyTaskLink("ABCDEF01-2345-6789-ABCD-EF0123456789")
+        XCTAssertEqual(photo.taskId, "abcdef01-2345-6789-abcd-ef0123456789")
+
+        photo.applyTaskLink(nil)
+        XCTAssertNil(photo.taskId)
+    }
+
     func testV22StoreMigratesToV24PreservingSiteVisitAndDefaultingServerFields() throws {
         try autoreleasepool {
             let sourceSchema = Schema(versionedSchema: OPSSchemaV22.self)

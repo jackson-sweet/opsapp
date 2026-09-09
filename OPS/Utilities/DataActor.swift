@@ -1798,7 +1798,7 @@ actor DataActor {
                 entityType: .projectPhoto,
                 entityId: id,
                 fields: [
-                    "url", "thumbnailURL", "renderedURL", "source", "uploadedBy", "caption",
+                    "url", "thumbnailURL", "renderedURL", "source", "taskId", "uploadedBy", "caption",
                     "isClientVisible", "takenAt", "updatedAt", "deletedAt"
                 ]
             )
@@ -1807,6 +1807,7 @@ actor DataActor {
             if accept.contains("thumbnailURL") { existing.thumbnailURL = dto.thumbnailURL }
             if accept.contains("renderedURL") { existing.renderedURL = dto.renderedURL }
             if accept.contains("source") { existing.source = dto.source ?? existing.source }
+            if accept.contains("taskId") { existing.applyTaskLink(dto.taskId) }
             existing.applyInboundUploader(dto.uploadedBy, isProtected: !accept.contains("uploadedBy"))
             if accept.contains("caption") { existing.caption = dto.caption }
             if accept.contains("isClientVisible") { existing.isClientVisible = dto.isClientVisible ?? existing.isClientVisible }

@@ -30,6 +30,35 @@ struct ActivityTabView: View {
     /// there is no `.focused` SwiftUI control in this custom UITextView bridge.
     @State private var isTextFieldFocused = false
 
+    /// This project's synced photos, live — the same store the carousel reads,
+    /// so the pinned strip and the gallery can never disagree (bug a290934f).
+    @Query private var projectPhotos: [ProjectPhoto]
+
+    init(
+        notesViewModel: ProjectNotesViewModel,
+        project: Project,
+        onShowImagePicker: @escaping () -> Void,
+        onShowNoteImagePicker: @escaping () -> Void,
+        onPhotoTap: @escaping ([String], Int) -> Void,
+        onProjectPhotoTap: ((Int) -> Void)? = nil,
+        scrollProxy: ScrollViewProxy,
+        noteFieldFocused: Binding<Bool>
+    ) {
+        self.notesViewModel = notesViewModel
+        self.project = project
+        self.onShowImagePicker = onShowImagePicker
+        self.onShowNoteImagePicker = onShowNoteImagePicker
+        self.onPhotoTap = onPhotoTap
+        self.onProjectPhotoTap = onProjectPhotoTap
+        self.scrollProxy = scrollProxy
+        self._noteFieldFocused = noteFieldFocused
+        let projectID = project.id
+        _projectPhotos = Query(
+            filter: #Predicate<ProjectPhoto> { $0.projectId == projectID && $0.deletedAt == nil },
+            sort: [SortDescriptor(\ProjectPhoto.createdAt, order: .reverse)]
+        )
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             // Project photos
@@ -94,7 +123,10 @@ struct ActivityTabView: View {
     /// and last; cancelled work leaves the brief entirely (bug 6854b7b8) —
     /// see PinnedTaskNotesBuilder for the full ruling.
     private var pinnedTaskNotes: [PinnedTaskNote] {
-        PinnedTaskNotesBuilder.entries(from: project.tasks)
+        PinnedTaskNotesBuilder.entries(
+            from: project.tasks,
+            photoIndex: ProjectPhotoTaskIndex(photos: projectPhotos, tasks: project.tasks)
+        )
     }
 
     /// Comment count per photo URL for the carousel badge (bug e1f073ed).
@@ -123,7 +155,11 @@ struct ActivityTabView: View {
             }
 
             if !pinnedTaskNotes.isEmpty {
-                TaskNotesPinnedEntryView(entries: pinnedTaskNotes)
+                TaskNotesPinnedEntryView(
+                    entries: pinnedTaskNotes,
+                    project: project,
+                    onPhotoTap: onPhotoTap
+                )
             }
 
             if notesViewModel.isLoading && notesViewModel.notes.isEmpty && notesViewModel.annotations.isEmpty {
@@ -549,6 +585,12 @@ struct PinnedTaskNote: Identifiable {
     let color: Color
     let status: TaskStatus
     let notes: String
+    /// This task's photos, newest first (bug a290934f). The instruction and
+    /// the evidence for it belong in the same block: reading "watch the grade
+    /// at the north corner" is a different act when you can see the corner.
+    var photoURLs: [String] = []
+    /// Server-generated small renditions, keyed by url.
+    var thumbnailByURL: [String: String] = [:]
 
     var isTerminal: Bool { status.isTerminal }
 
@@ -575,7 +617,10 @@ enum PinnedTaskNotesBuilder {
     /// reads as data loss to the person who wrote it (bugs f1346d3d /
     /// f3c4a2ca). Reactivating a cancelled task re-pins it with no
     /// ceremony, because nothing was ever destroyed to unpin it.
-    static func entries(from tasks: [ProjectTask]) -> [PinnedTaskNote] {
+    static func entries(
+        from tasks: [ProjectTask],
+        photoIndex: ProjectPhotoTaskIndex = .empty
+    ) -> [PinnedTaskNote] {
         let annotated = tasks
             .filter { $0.deletedAt == nil && $0.status != .cancelled }
             .compactMap { (task: ProjectTask) -> (task: ProjectTask, notes: String)? in
@@ -597,7 +642,9 @@ enum PinnedTaskNotesBuilder {
                 title: entry.task.displayTitle,
                 color: Color(hex: entry.task.effectiveColor) ?? OPSStyle.Colors.primaryAccent,
                 status: entry.task.status,
-                notes: entry.notes
+                notes: entry.notes,
+                photoURLs: photoIndex.urls(forTaskID: entry.task.id),
+                thumbnailByURL: photoIndex.thumbnails
             )
         }
     }
@@ -609,14 +656,19 @@ enum PinnedTaskNotesBuilder {
 /// between the composer and today's photos costs more than it gives.
 private struct TaskNotesPinnedEntryView: View {
     let entries: [PinnedTaskNote]
+    let project: Project
+    /// Opens the shared viewer scoped to one task's photos.
+    let onPhotoTap: (([String], Int) -> Void)?
 
     /// Above this count the card arrives collapsed and announces its size.
     private static let openByDefaultLimit = 3
 
     @State private var isExpanded: Bool
 
-    init(entries: [PinnedTaskNote]) {
+    init(entries: [PinnedTaskNote], project: Project, onPhotoTap: (([String], Int) -> Void)? = nil) {
         self.entries = entries
+        self.project = project
+        self.onPhotoTap = onPhotoTap
         _isExpanded = State(initialValue: entries.count <= Self.openByDefaultLimit)
     }
 
@@ -713,9 +765,26 @@ private struct TaskNotesPinnedEntryView: View {
                         : OPSStyle.Colors.primaryText
                 )
                 .fixedSize(horizontal: false, vertical: true)
+
+            // Bug a290934f — the evidence under the instruction it belongs to.
+            // A footnote, not the subject: four tiles, then a count. The whole
+            // set is one tap away in the viewer.
+            if !entry.photoURLs.isEmpty {
+                TaskPhotoStrip(
+                    model: TaskPhotoStripModel(
+                        urls: entry.photoURLs,
+                        limit: TaskPhotoStrip.Size.compact.limit
+                    ),
+                    project: project,
+                    size: .compact,
+                    thumbnailByURL: entry.thumbnailByURL,
+                    onTap: { index in onPhotoTap?(entry.photoURLs, index) }
+                )
+                .accessibilityLabel("\(entry.photoURLs.count) photos on \(entry.title)")
+            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .accessibilityElement(children: .combine)
+        .accessibilityElement(children: .contain)
     }
 }
 
@@ -941,6 +1010,8 @@ private struct ProjectPhotosCarousel: View {
         // hands it the unattributed fallback and offers a delete the trigger
         // rejects. URLs with no row at all fall through to `.unattributed`.
         let uploaderByURL = ProjectPhotoUploaderAttribution.byURL(Array(syncedPhotos))
+        // Bug a290934f — which task each photo documents.
+        let taskIndex = ProjectPhotoTaskIndex(photos: Array(syncedPhotos), tasks: project.tasks)
         let pending = imageSyncManager.currentInFlightUploads(for: project.id)
         // Split in-flight tiles into actively-uploading vs failed. The
         // UPLOADING badge counts only the spinners; failed tiles show
@@ -1070,6 +1141,27 @@ private struct ProjectPhotosCarousel: View {
                                             PhotoCommentCountBadge(count: count)
                                                 .offset(x: 4, y: -4)
                                                 .allowsHitTesting(false)
+                                        }
+                                    }
+                                    // Bug a290934f — which task this photo
+                                    // documents. A 72pt tile cannot carry a
+                                    // legible task NAME (8pt, truncated, in
+                                    // sunlight is not a label), and the gallery
+                                    // question is grouping, not identification:
+                                    // which of these belong together. So the
+                                    // task speaks in the colour it already uses
+                                    // on the task header and on every badge —
+                                    // including the named badges in the pinned
+                                    // card directly below this strip, which is
+                                    // where the colour gets its name.
+                                    .overlay(alignment: .bottom) {
+                                        if let task = taskIndex.task(forURL: url) {
+                                            Rectangle()
+                                                .fill(task.color)
+                                                .frame(height: OPSStyle.Layout.taskPhotoTileStripeHeight)
+                                                .opacity(task.isTerminal ? OPSStyle.Layout.Opacity.faded : 1)
+                                                .allowsHitTesting(false)
+                                                .accessibilityHidden(true)
                                         }
                                     }
 

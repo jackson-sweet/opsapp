@@ -105,11 +105,6 @@ struct LeadSiteVisitBanner: View {
 
     static let accessibilityID = "lead-site-visit-banner"
 
-    /// The dim on a control the banner has stood down — the Leads console's
-    /// own suspended-control value (LeadsQueueBand), so a waiting control
-    /// looks the same on both surfaces of this tab.
-    private static let suspendedOpacity: Double = 0.4
-
     var body: some View {
         if case let .booked(token, windowOpen) = state {
             // The headline carries its own 44pt row, so the stack rides tight
@@ -211,7 +206,7 @@ struct LeadSiteVisitBanner: View {
             )
         }
         .disabled(isCancelling)
-        .opacity(isCancelling ? Self.suspendedOpacity : 1)
+        .opacity(isCancelling ? OPSStyle.Layout.suspendedOpacity : 1)
     }
 
     /// Three weights, no accent. LEAD is the active-toggle surface — the

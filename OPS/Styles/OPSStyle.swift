@@ -613,6 +613,12 @@ enum OPSStyle {
         /// every reschedule presentation and clipped nav + footer; SE-class
         /// overflowed by ~95–125pt.)
         static let schedulerCalendarMinHeight: CGFloat = 112.0
+        /// A control that has STOOD DOWN — visible, unreachable, and saying so.
+        /// The Leads console dims its chips and filter while a search is live;
+        /// the dossier's visit banner dims its verbs while a cancel is on the
+        /// wire. One value, because "waiting" should look the same everywhere.
+        static let suspendedOpacity: Double = 0.4
+
         /// Dependency-floor days stay fully tappable — they only recede.
         static let schedulerPreFloorOpacity: Double = 0.35
         /// How far a selection's cap carries its own fill into the interior,

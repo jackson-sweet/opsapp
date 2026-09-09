@@ -1479,19 +1479,45 @@ final class SiteVisitCaptureViewModel: ObservableObject {
     }
 
     /// Open (not completed, not cancelled) visits for this company, newest first.
+    /// Open visits for this company that belong to the current operator.
+    ///
+    /// Company + open state is the only part of this that may go into the
+    /// store predicate. Assignment is resolved in memory ON PURPOSE:
+    /// `$0.assigneeIds.contains(user)` inside a `#Predicate` asks SwiftData to
+    /// search a stored `[String]` attribute, which CoreData compiles into
+    /// `_NSCoreDataStringSearch` — and that search dereferences a null
+    /// CFString and takes the whole process down with SIGSEGV. It is not a
+    /// thrown error `try?` can swallow; the app is simply gone.
+    ///
+    /// It looked healthy for a long time only because SQLite short-circuits
+    /// `OR`: `createdBy == user` matched first for visits the operator made
+    /// themselves, so the array term never ran. A visit someone else created
+    /// and assigned to this operator — a manager assigning a crew member —
+    /// falls through to the array term and kills the app. Swift's own
+    /// `Array.contains` has no such problem, so the membership test lives
+    /// here instead. Open visits are a small, transient working set, and the
+    /// cancelled-status filter already ran in memory.
+    ///
+    /// With no operator id there is no identity to filter on, so company
+    /// scope stands alone — returning nothing would make the console mint a
+    /// duplicate visit every time it opened.
     private func openVisits() -> [SiteVisit] {
         let company = companyId.lowercased()
-        let user = userId?.lowercased() ?? ""
         let isOpen = #Predicate<SiteVisit> {
             $0.companyId == company && $0.completedAt == nil && $0.deletedAt == nil
         }
-        let isAssigned = #Predicate<SiteVisit> {
-            $0.createdBy == user || $0.assignedTo == user || $0.assigneeIds.contains(user)
-        }
-        let predicate = #Predicate<SiteVisit> { isOpen.evaluate($0) && isAssigned.evaluate($0) }
-        let descriptor = FetchDescriptor<SiteVisit>(predicate: predicate,
+        let descriptor = FetchDescriptor<SiteVisit>(predicate: isOpen,
             sortBy: [SortDescriptor(\.createdAt, order: .reverse)])
-        return ((try? modelContext.fetch(descriptor)) ?? []).filter { $0.status != .cancelled }
+        let open = (try? modelContext.fetch(descriptor)) ?? []
+
+        let user = userId?.lowercased() ?? ""
+        return open.filter { visit in
+            guard visit.status != .cancelled else { return false }
+            guard !user.isEmpty else { return true }
+            return visit.createdBy == user
+                || visit.assignedTo == user
+                || visit.assigneeIds.contains(user)
+        }
     }
 
     private func createVisit() -> SiteVisit? {

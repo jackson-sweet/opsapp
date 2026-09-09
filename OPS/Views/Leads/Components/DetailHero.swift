@@ -24,27 +24,26 @@
 //
 import SwiftUI
 
-/// What the NEXT TOUCH cell prints. A booked visit outranks the follow-up
-/// nudge — a standing appointment IS the next touch (bug a218009e); the
-/// moment the visit completes or cancels, the cell falls back to the
-/// follow-up date with zero bookkeeping.
+/// What the NEXT TOUCH cell prints: the follow-up the operator has promised
+/// themselves, or `—`.
+///
+/// It used to outrank that with a booked visit (bug a218009e) — back when this
+/// 1/3-width cell was the only place on the dossier a standing appointment
+/// appeared at all. Bug 52cc8dae gave the appointment a banner of its own
+/// directly under the header, stating the same day and time in full and
+/// carrying START · REBOOK · CANCEL on it. Printing it again here, truncated
+/// to `VISIT · 6:4…`, said nothing the operator had not just read 200pt
+/// higher, and cost them the one fact this cell can carry alone: whether a
+/// follow-up is booked BEHIND the visit.
 enum LeadNextTouchPresentation: Equatable {
     case unset
     case followUp(day: String, date: String)
-    case visit(day: String, time: String)
 
     static func resolve(
         nextFollowUpAt: Date?,
-        bookedVisitAt: Date?,
         now: Date = Date(),
         calendar: Calendar = .current
     ) -> LeadNextTouchPresentation {
-        if let visitAt = bookedVisitAt {
-            return .visit(
-                day: DaySheetDateToken.day(visitAt, now: now, calendar: calendar),
-                time: timeFormatter.string(from: visitAt).uppercased()
-            )
-        }
         guard let due = nextFollowUpAt else { return .unset }
         return .followUp(
             day: dayFormatter.string(from: due).uppercased(),
@@ -53,13 +52,6 @@ enum LeadNextTouchPresentation: Equatable {
     }
 
     // en_US_POSIX — OPS labels, not localized dates (DaySheetDateToken's rule).
-    private static let timeFormatter: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.dateFormat = "h:mma"
-        return formatter
-    }()
-
     private static let dayFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")
@@ -89,11 +81,9 @@ struct DetailHero: View {
     let canEditValue: Bool
     var fieldEdit: LeadFieldEditController? = nil
 
-    /// The lead's open booked visit, when one exists — flips NEXT TOUCH to
-    /// the appointment (a218009e). Nil = the follow-up date behavior.
-    var openVisitAt: Date? = nil
-    /// Opens the appointment sheet. Nil leaves the cell inert.
-    var onVisitTap: (() -> Void)? = nil
+    // A booked site visit is NOT here. It leads the dossier in
+    // LeadSiteVisitBanner, which states the same day and time in full and
+    // carries the verbs (bug 52cc8dae).
 
     init(
         opportunity: Opportunity,
@@ -102,8 +92,6 @@ struct DetailHero: View {
         canChangeAssignee: Bool = false,
         canEditValue: Bool = false,
         fieldEdit: LeadFieldEditController? = nil,
-        openVisitAt: Date? = nil,
-        onVisitTap: (() -> Void)? = nil,
         onAssigneeTap: @escaping () -> Void = {}
     ) {
         self.opportunity = opportunity
@@ -112,8 +100,6 @@ struct DetailHero: View {
         self.canChangeAssignee = canChangeAssignee
         self.canEditValue = canEditValue
         self.fieldEdit = fieldEdit
-        self.openVisitAt = openVisitAt
-        self.onVisitTap = onVisitTap
         self.onAssigneeTap = onAssigneeTap
     }
 
@@ -283,36 +269,13 @@ struct DetailHero: View {
         }
     }
 
-    /// NEXT TOUCH — the follow-up date, unless a visit is booked: a standing
-    /// appointment IS the next touch. The visit variant is tappable (opens
-    /// the appointment sheet); the date variant stays inert.
+    /// NEXT TOUCH — the follow-up the operator has promised themselves. Inert:
+    /// this strip is scanned, not operated.
     @ViewBuilder
     private var nextTouchCell: some View {
         switch LeadNextTouchPresentation.resolve(
-            nextFollowUpAt: opportunity.nextFollowUpAt,
-            bookedVisitAt: openVisitAt
+            nextFollowUpAt: opportunity.nextFollowUpAt
         ) {
-        case .visit(let day, let time):
-            let cell = KvCell(
-                label: "NEXT TOUCH",
-                value: day,
-                sub: "VISIT · \(time)",
-                useMono: false,
-                subColor: OPSStyle.Colors.tanTextM
-            )
-            if let onVisitTap {
-                Button {
-                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                    onVisitTap()
-                } label: {
-                    cell
-                }
-                .buttonStyle(PlainButtonStyle())
-                .accessibilityLabel("Next touch, site visit \(day.lowercased()) \(time.lowercased()). Opens visit details")
-            } else {
-                cell
-                    .accessibilityLabel("Next touch, site visit \(day.lowercased()) \(time.lowercased())")
-            }
         case .followUp(let day, let date):
             KvCell(label: "NEXT TOUCH", value: day, sub: date, useMono: false)
         case .unset:

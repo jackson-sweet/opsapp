@@ -194,31 +194,81 @@ final class BugReportCaptureService {
 
     // MARK: - Screenshot Capture
 
-    /// Capture the current screen as a UIImage
-    func captureScreenshot() -> UIImage? {
-        let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
-        guard let windowScene = scenes.first(where: { $0.activationState == .foregroundActive }) ?? scenes.first else {
-            DebugLogger.shared.log("Failed to find window scene for screenshot", level: .error, category: "BugReport")
-            return nil
-        }
+    /// The screen at trigger time: the picture, plus the view hierarchy that
+    /// produced it, plus the size both are measured in.
+    ///
+    /// The hierarchy travels with the shot because "point at it" (bug 5aabcc3a)
+    /// resolves the operator's tap seconds later, against a live screen that has
+    /// very likely moved on. Freezing it here is what makes the mark honest.
+    struct AppWindowCapture {
+        let screenshot: UIImage
+        let elements: [BugReportElementCandidate]
+        /// Window bounds in points — the space `elements` frames live in and the
+        /// space the screenshot was rendered at.
+        let size: CGSize
+    }
 
-        // Capture the app's primary window — the `.normal`-level window that
-        // hosts app content (including any presented sheet). This deliberately
-        // excludes keyboard / text-effects windows (which become key while
-        // editing) and the bug-report overlay window (which sits above
-        // `.normal`), so a shake with the keyboard up still grabs the real
-        // screen instead of an empty system window.
-        let appWindows = windowScene.windows.filter { !$0.isHidden && $0.windowLevel == .normal }
-        guard let window = appWindows.first(where: { $0.isKeyWindow }) ?? appWindows.first else {
-            DebugLogger.shared.log("Failed to find app window for screenshot", level: .error, category: "BugReport")
-            return nil
-        }
+    /// Capture the current screen and the hierarchy behind it.
+    func captureAppWindow() -> AppWindowCapture? {
+        guard let window = appWindow() else { return nil }
 
         let renderer = UIGraphicsImageRenderer(bounds: window.bounds)
         let image = renderer.image { _ in
             window.drawHierarchy(in: window.bounds, afterScreenUpdates: false)
         }
-        return image
+        return AppWindowCapture(
+            screenshot: image,
+            elements: Self.flatten(window),
+            size: window.bounds.size
+        )
+    }
+
+    /// The app's primary window — the `.normal`-level window that hosts app
+    /// content (including any presented sheet). This deliberately excludes
+    /// keyboard / text-effects windows (which become key while editing) and the
+    /// bug-report overlay window (which sits above `.normal`), so a shake with
+    /// the keyboard up still grabs the real screen instead of an empty system
+    /// window.
+    private func appWindow() -> UIWindow? {
+        let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
+        guard let windowScene = scenes.first(where: { $0.activationState == .foregroundActive }) ?? scenes.first else {
+            DebugLogger.shared.log("Failed to find window scene for screenshot", level: .error, category: "BugReport")
+            return nil
+        }
+        let appWindows = windowScene.windows.filter { !$0.isHidden && $0.windowLevel == .normal }
+        guard let window = appWindows.first(where: { $0.isKeyWindow }) ?? appWindows.first else {
+            DebugLogger.shared.log("Failed to find app window for screenshot", level: .error, category: "BugReport")
+            return nil
+        }
+        return window
+    }
+
+    /// Flatten a window's visible view tree into window-space candidates.
+    ///
+    /// Breadth-first so the cap, when it bites, keeps the shallow views a human
+    /// can name rather than a thousand leaves of one deep branch. Invisible
+    /// views are skipped entirely — they cannot be what was pointed at.
+    static func flatten(_ window: UIWindow) -> [BugReportElementCandidate] {
+        var candidates: [BugReportElementCandidate] = []
+        var queue: [(view: UIView, depth: Int)] = [(window, 0)]
+
+        while !queue.isEmpty, candidates.count < BugReportElementHitTest.candidateLimit {
+            let (view, depth) = queue.removeFirst()
+            let frame = view.convert(view.bounds, to: window)
+            candidates.append(
+                BugReportElementCandidate(
+                    frame: frame,
+                    depth: depth,
+                    label: view.accessibilityLabel,
+                    identifier: view.accessibilityIdentifier,
+                    viewType: String(describing: type(of: view))
+                )
+            )
+            for subview in view.subviews where !subview.isHidden && subview.alpha > 0.01 {
+                queue.append((subview, depth + 1))
+            }
+        }
+        return candidates
     }
 
     // MARK: - Device Info

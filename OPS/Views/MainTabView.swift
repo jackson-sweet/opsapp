@@ -144,6 +144,12 @@ struct MainTabView: View {
     private let startSiteVisitObserver = NotificationCenter.default
         .publisher(for: Notification.Name("StartSiteVisit"))
 
+    // SET THE TIME on an appointment-review rail row (bug 74bbb5b7). Same
+    // permission posture as the two relays above; the leads tab owns the
+    // booking sheet and drains `pendingVisitBookingLeadId` into it.
+    private let bookSiteVisitObserver = NotificationCenter.default
+        .publisher(for: AppointmentReviewPresentation.bookingRelayName)
+
     // Lead-family notification with no resolvable opportunity. Lands on the
     // LEADS tab rather than the Job Board — the surface the row is about.
     private let openLeadsTabObserver = NotificationCenter.default
@@ -852,6 +858,27 @@ struct MainTabView: View {
             withAnimation(OPSStyle.Animation.fast) {
                 selectedTab = idx
             }
+        }
+
+        // BOOK-a-time relay — the appointment-review rail row's SET THE TIME.
+        // OPS read an email about an appointment and could not commit it; the
+        // remedy on a phone is to put a real time on this lead's calendar, so
+        // the tap lands on the leads tab's booking sheet rather than the lead
+        // detail, where nothing is marked as needing one (bug 74bbb5b7).
+        .onReceive(bookSiteVisitObserver) { notification in
+            guard let leadId = notification.userInfo?["leadId"] as? String, !leadId.isEmpty else { return }
+            appState.clearNavigationOccluders()
+            if notification.userInfo?[DeepLinkCoordinator.deepLinkIdUserInfoKey] != nil {
+                DeepLinkCoordinator.shared.clear()
+            }
+            guard hasLeadsAccess, let idx = leadsTabIndex else {
+                print("[PUSH_NAVIGATION] BOOK visit for \(leadId) without pipeline access — access denied")
+                appState.presentAccessDenied(message: "This lead is no longer available.")
+                return
+            }
+            print("[PUSH_NAVIGATION] Booking a visit for lead: \(leadId)")
+            appState.pendingVisitBookingLeadId = leadId
+            selectTab(idx, with: OPSStyle.Animation.fast)
         }
 
         // Handle access denied presentations (tapped Spotlight result no longer permitted)

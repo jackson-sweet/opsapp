@@ -4,7 +4,8 @@
 //
 //  Visual proof for the rebuilt vinyl ORDER LAYOUT workspace. Renders the REAL
 //  `VinylOrderWorkspace` (and the inline entry card it opens from) to PNGs via
-//  the shared fixed-size host, at the founder's 393 × 852 frame, against the
+//  the shared fixed-size host, at 393 × 852 — one point size NARROWER than the
+//  founder's iPhone 16 Pro (402 × 874), so it is the tighter frame — against the
 //  synthetic L-shaped deck the QA launch gate also drives.
 //
 //  What each PNG has to show, against the founder's own words:
@@ -38,7 +39,9 @@ import XCTest
 @MainActor
 final class VinylOrderWorkspaceSnapshotTests: XCTestCase {
 
-    /// iPhone 16 Pro portrait — the founder's device.
+    /// Portrait, one size DOWN from the founder's iPhone 16 Pro (402 × 874).
+    /// Deliberate: the narrower frame is the one a full-width drawing and a
+    /// three-up segmented control can fail on first.
     private let frameSize = CGSize(width: 393, height: 852)
 
     /// The repo's own artifact folder, not the simulator's temp directory —

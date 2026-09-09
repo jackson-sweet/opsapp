@@ -17,7 +17,8 @@ import XCTest
 
 final class VinylOrderWorkspaceGeometryTests: XCTestCase {
 
-    /// iPhone 16 Pro portrait — the founder's device.
+    /// Portrait, one size DOWN from the founder's iPhone 16 Pro (402 × 874) —
+    /// the tighter of the two, so every band that tiles here tiles there.
     private let container = CGSize(width: 393, height: 852)
 
     /// MOBILE.md §1 bottom safe area (home indicator). Asserted against, not
@@ -151,7 +152,7 @@ final class VinylOrderWorkspaceGeometryTests: XCTestCase {
         XCTAssertEqual(inset.drawingRect.maxY, inset.sheetPeekRect.minY, accuracy: 0.001)
     }
 
-    /// iPhone 16 Pro, the founder's device: bezel-to-bezel width, and a drawing
+    /// A phone one size below the founder's: bezel-to-bezel width, and a drawing
     /// band that is still the majority of the screen.
     func testFoundersDeviceLeavesTheDrawingTheMajorityOfTheScreen() {
         let geometry = VinylOrderWorkspaceGeometry(

@@ -181,6 +181,7 @@ final class BugReportSubmissionService {
         description: String,
         category: String,
         screenshot: UIImage?,
+        element: BugReportElementMark? = nil,
         appState: AppState,
         dataController: DataController
     ) async throws {
@@ -233,6 +234,7 @@ final class BugReportSubmissionService {
             breadcrumbs: Self.convertToJSONArray(breadcrumbs),
             networkLog: Self.convertToJSONArray(networkLog),
             stateSnapshot: Self.convertToJSONDict(stateSnapshot),
+            customMetadata: Self.customMetadata(element: element),
             reporterName: reporterName,
             reporterEmail: reporterEmail
         )
@@ -414,12 +416,31 @@ final class BugReportSubmissionService {
             breadcrumbs: .array(payload.breadcrumbs ?? []),
             networkLog: .array(payload.networkLog ?? []),
             stateSnapshot: .dictionary(payload.stateSnapshot ?? [:]),
-            customMetadata: .dictionary([:]),
+            customMetadata: .dictionary(payload.customMetadata ?? [:]),
             reporterName: payload.reporterName,
             reporterEmail: payload.reporterEmail,
             priority: "none",
             status: "new"
         )
+    }
+
+    /// `custom_metadata.element` — where the operator pointed, and whatever the
+    /// frozen view hierarchy could name there (bug 5aabcc3a). Nil keys are
+    /// written as JSON null rather than omitted, so a reader can tell "the app
+    /// looked and found nothing" from "the app never looked".
+    nonisolated static func customMetadata(element: BugReportElementMark?) -> [String: JSONPrimitive]? {
+        guard let element else { return nil }
+        return [
+            "element": .nested([
+                "x": .double(Double(element.point.x)),
+                "y": .double(Double(element.point.y)),
+                "normalizedX": .double(Double(element.normalized.x)),
+                "normalizedY": .double(Double(element.normalized.y)),
+                "label": element.label.map(JSONPrimitive.string) ?? .null,
+                "identifier": element.identifier.map(JSONPrimitive.string) ?? .null,
+                "viewType": element.viewType.map(JSONPrimitive.string) ?? .null
+            ])
+        ]
     }
 
     // MARK: - JSON Conversion Helpers
@@ -475,6 +496,10 @@ struct BugReportPayload: Codable, Equatable {
     let breadcrumbs: [[String: JSONPrimitive]]?
     let networkLog: [[String: JSONPrimitive]]?
     let stateSnapshot: [String: JSONPrimitive]?
+    /// Free-form report metadata. Today it carries only `element` — the spot
+    /// POINT AT IT marked. Optional so reports queued by an older build still
+    /// decode.
+    let customMetadata: [String: JSONPrimitive]?
     let reporterName: String
     let reporterEmail: String
 
@@ -498,6 +523,7 @@ struct BugReportPayload: Codable, Equatable {
         breadcrumbs: [[String: JSONPrimitive]]? = nil,
         networkLog: [[String: JSONPrimitive]]? = nil,
         stateSnapshot: [String: JSONPrimitive]? = nil,
+        customMetadata: [String: JSONPrimitive]? = nil,
         reporterName: String,
         reporterEmail: String
     ) {
@@ -520,6 +546,7 @@ struct BugReportPayload: Codable, Equatable {
         self.breadcrumbs = breadcrumbs
         self.networkLog = networkLog
         self.stateSnapshot = stateSnapshot
+        self.customMetadata = customMetadata
         self.reporterName = reporterName
         self.reporterEmail = reporterEmail
     }

@@ -132,6 +132,12 @@ class AppState: ObservableObject {
     /// LeadsTabView drains it exactly like the lead deep link.
     @Published var pendingSiteVisitStartLeadId: String? = nil
 
+    /// A BOOK-a-time intent headed for the leads tab's booking sheet — set by
+    /// the appointment-review rail row's SET THE TIME action (bug 74bbb5b7).
+    /// Drained exactly like the two batons above; the sheet is state-aware, so
+    /// a lead that already holds an open booking opens THAT one to reschedule.
+    @Published var pendingVisitBookingLeadId: String? = nil
+
     /// Refresh unread notification count from Supabase
     func refreshUnreadCount() {
         guard let userId = UserDefaults.standard.string(forKey: "user_id"), !userId.isEmpty else { return }

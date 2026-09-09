@@ -121,21 +121,21 @@ final class ScreenshotBugReportOffer {
                 isTutorialActive: appState.shouldRestartTutorial,
                 isPresenterActive: BugReportPresenter.shared.isPresenting
             ),
-            captureScreenshot: { () -> UIImage? in
-                BugReportCaptureService.shared.captureScreenshot()
+            captureScreenshot: { () -> BugReportCaptureService.AppWindowCapture? in
+                BugReportCaptureService.shared.captureAppWindow()
             },
-            presentOffer: { (screenshot: UIImage) in
+            presentOffer: { (capture: BugReportCaptureService.AppWindowCapture) in
                 ToastCenter.shared.present(
                     Self.offerToast {
                         // The tap enters the SAME pipeline shake uses. It
                         // carries the shot taken when the operator pressed the
-                        // buttons — the live screen has almost certainly moved
-                        // on by now.
+                        // buttons — and the view hierarchy behind it, so POINT
+                        // AT IT names what was on screen THEN, not now.
                         BugReportTriggerCoordinator.shared.trigger(
                             source: .screenshot,
                             appState: appState,
                             dataController: dataController,
-                            capturedScreenshot: screenshot
+                            capturedScreen: capture
                         )
                     }
                 )

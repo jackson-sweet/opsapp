@@ -177,6 +177,26 @@ class NotificationRepository {
             .execute()
     }
 
+    /// Mark a known set of notifications as read in one request.
+    ///
+    /// The rail's grouped inbox row (bug 589e3b1e) clears its whole group at
+    /// once; doing that one `markAsRead` at a time would be up to 50 round
+    /// trips on a truck's connection. Callers own the read policy — this method
+    /// writes exactly the ids it is handed.
+    func markAsRead(ids: [String]) async throws {
+        struct MarkRead: Codable {
+            let is_read: Bool
+        }
+        let unique = Array(Set(ids.filter { !$0.isEmpty }))
+        guard !unique.isEmpty else { return }
+        try await client
+            .from("notifications")
+            .update(MarkRead(is_read: true))
+            .in("id", values: unique)
+            .eq("is_read", value: false)
+            .execute()
+    }
+
     /// Mark all notifications as read for a user
     func markAllAsRead(userId: String) async throws {
         struct MarkRead: Codable {

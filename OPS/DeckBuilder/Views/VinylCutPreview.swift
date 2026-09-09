@@ -567,7 +567,19 @@ struct VinylCutPreview: View {
             let label = Text(vinylFormatFeetAndInches(cut.lengthInches))
                 .font(OPSStyle.Typography.smallCaption)
                 .foregroundColor(cut.isPurchased ? OPSStyle.Colors.primaryText : OPSStyle.Colors.tan)
-            clipped.draw(label, at: labelPoint(for: cut, surface: surface, bounds: bounds, origin: origin, scale: scale), anchor: .center)
+            // A label wider than its strip was clipped mid-glyph on the inline
+            // card ("13" with no foot mark on a narrow last cut). Measure first;
+            // a strip too narrow for its label shows the strip alone — the cut
+            // list below carries the number.
+            let resolvedLabel = clipped.resolve(label)
+            let labelSize = resolvedLabel.measure(
+                in: CGSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
+            )
+            let stripBounds = cutPath.boundingRect
+            let labelInset = CGFloat(OPSStyle.Layout.spacing1)
+            guard labelSize.width + labelInset * 2 <= stripBounds.width,
+                  labelSize.height + labelInset * 2 <= stripBounds.height else { continue }
+            clipped.draw(resolvedLabel, at: labelPoint(for: cut, surface: surface, bounds: bounds, origin: origin, scale: scale), anchor: .center)
         }
     }
 

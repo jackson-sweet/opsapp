@@ -69,22 +69,29 @@ struct AssignTaskSheet: View {
                             chip: task.statusChip,
                             chipColor: task.status.color,
                             isSelected: task.id == selectedTaskID,
-                            label: task.title
+                            label: task.title,
+                            isLast: false
                         ) {
                             commit(task.id)
                         }
                     }
 
+                    // The absence chip, in the column's own language. A louder
+                    // treatment would make "no task" read as the loudest choice
+                    // on a screen where every other row is a quiet chip.
                     row(
                         badge: AnyView(
-                            Text("NONE")
-                                .font(OPSStyle.Typography.captionBold)
-                                .foregroundColor(OPSStyle.Colors.secondaryText)
+                            StatusBadgePill(
+                                text: "NONE",
+                                color: OPSStyle.Colors.secondaryText,
+                                size: .medium
+                            )
                         ),
                         chip: nil,
                         chipColor: nil,
                         isSelected: selectedTaskID == nil,
-                        label: "None"
+                        label: "None",
+                        isLast: true
                     ) {
                         commit(nil)
                     }
@@ -110,6 +117,7 @@ struct AssignTaskSheet: View {
         chipColor: Color?,
         isSelected: Bool,
         label: String,
+        isLast: Bool,
         action: @escaping () -> Void
     ) -> some View {
         Button(action: action) {
@@ -138,10 +146,14 @@ struct AssignTaskSheet: View {
         .accessibilityLabel(label)
         .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
 
-        Rectangle()
-            .fill(OPSStyle.Colors.separator)
-            .frame(height: OPSStyle.Layout.Border.standard)
-            .padding(.leading, OPSStyle.Layout.spacing3)
+        // Separators sit BETWEEN rows. A hairline under the last one, with
+        // empty sheet below it, reads as a list that was cut off.
+        if !isLast {
+            Rectangle()
+                .fill(OPSStyle.Colors.separator)
+                .frame(height: OPSStyle.Layout.Border.standard)
+                .padding(.leading, OPSStyle.Layout.spacing3)
+        }
     }
 
     private func commit(_ taskID: String?) {

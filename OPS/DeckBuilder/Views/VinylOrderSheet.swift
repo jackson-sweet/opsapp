@@ -69,6 +69,9 @@ struct VinylOrderSheet: View {
 
     @State private var settings = VinylOrderSettings.default
     @State private var didSeedVinylOrderSettings = false
+    /// The settings value `handlePlanInputChange` last planned for — its
+    /// idempotence latch.
+    @State private var lastPlannedSettings: VinylOrderSettings?
     /// UI mirror of the design's persisted `materialsSettings.orderMode` — the
     /// single source of truth shared with the deck-tab materials card. Seeded on
     /// appear, written straight back to the design on change (so MARK ORDERED and
@@ -192,8 +195,15 @@ struct VinylOrderSheet: View {
         settings = viewModel.drawingData.vinylOrderSettings ?? .default
     }
 
+    /// Re-plan for a settings change. Two paths reach this now — the shared
+    /// settings controls call it directly, and the memo hook's
+    /// `onChange(of: settings)` still catches every other writer (the catalog
+    /// picker, the free-text colour restore) — so it remembers the value it
+    /// last planned for and does nothing when asked twice for the same one.
     private func handlePlanInputChange() {
         guard didSeedVinylOrderSettings else { return }
+        guard lastPlannedSettings != settings else { return }
+        lastPlannedSettings = settings
         viewModel.applyVinylOrderSettings(settings)
         recomputePlan()
     }
@@ -347,7 +357,10 @@ struct VinylOrderSheet: View {
                                 VinylOrderLayoutWindow(
                                     plan: plan,
                                     projectTitle: projectTitle,
-                                    subtitle: deckTitle
+                                    subtitle: deckTitle,
+                                    settings: $settings,
+                                    measurementSystem: viewModel.drawingData.config.measurementSystem,
+                                    onSettingsChanged: handlePlanInputChange
                                 )
                             }
 
@@ -521,29 +534,11 @@ struct VinylOrderSheet: View {
                     }
                 }
 
-                directionControl
-                patternControl
-                if settings.patternMode == .solid {
-                    runLockControl
-                }
-
-                settingStepper(
-                    label: "ROLL",
-                    value: $settings.rollWidthInches,
-                    range: 24...144,
-                    step: 6
-                )
-                settingStepper(
-                    label: "SEAM",
-                    value: $settings.seamOverlapInches,
-                    range: 0...12,
-                    step: 0.25
-                )
-                settingStepper(
-                    label: "WRAP",
-                    value: $settings.edgeWrapInches,
-                    range: 0...18,
-                    step: 0.5
+                // Shared with the full-screen workspace so the two can never
+                // drift — see VinylOrderSettingsControls.
+                VinylOrderSettingsControls(
+                    settings: $settings,
+                    onChange: { handlePlanInputChange() }
                 )
 
                 orderModeControl
@@ -587,25 +582,38 @@ struct VinylOrderSheet: View {
         }
     }
 
+    /// The house counter, matching the shared settings controls above it — a
+    /// stock `Stepper` in the same stack reads as a different control set and
+    /// its hit targets sit well under 44pt.
     private var rollLengthStepper: some View {
-        Stepper(
-            value: Binding(get: { fullRollLengthFeet }, set: { writeFullRollLength($0) }),
-            in: 25...300,
-            step: 5
-        ) {
-            HStack(spacing: OPSStyle.Layout.spacing2) {
-                Text("ROLL LENGTH")
-                    .font(OPSStyle.Typography.smallCaption)
-                    .foregroundColor(OPSStyle.Colors.tertiaryText)
-                    .frame(width: VinylOrderLayout.labelWidth, alignment: .leading)
-                Text("\(Int(fullRollLengthFeet))'")
-                    .font(OPSStyle.Typography.dataValue)
-                    .foregroundColor(OPSStyle.Colors.primaryText)
-                Spacer(minLength: 0)
+        OPSCounterRow(
+            label: "ROLL LENGTH",
+            value: "\(Int(fullRollLengthFeet))'",
+            canDecrement: fullRollLengthFeet > Self.rollLengthRange.lowerBound,
+            canIncrement: fullRollLengthFeet < Self.rollLengthRange.upperBound,
+            onDecrement: {
+                writeFullRollLength(
+                    VinylOrderSettingsControls.stepped(
+                        fullRollLengthFeet,
+                        by: -Self.rollLengthStep,
+                        in: Self.rollLengthRange
+                    )
+                )
+            },
+            onIncrement: {
+                writeFullRollLength(
+                    VinylOrderSettingsControls.stepped(
+                        fullRollLengthFeet,
+                        by: Self.rollLengthStep,
+                        in: Self.rollLengthRange
+                    )
+                )
             }
-        }
-        .tint(OPSStyle.Colors.secondaryText)
+        )
     }
+
+    private static let rollLengthRange: ClosedRange<Double> = 25...300
+    private static let rollLengthStep: Double = 5
 
     private var catalogVariantPicker: some View {
         HStack(spacing: OPSStyle.Layout.spacing2) {
@@ -633,111 +641,6 @@ struct VinylOrderSheet: View {
             .background(OPSStyle.Colors.subtleBackground)
             .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius))
         }
-    }
-
-    private var patternControl: some View {
-        HStack(spacing: OPSStyle.Layout.spacing2) {
-            Text("PATTERN")
-                .font(OPSStyle.Typography.smallCaption)
-                .foregroundColor(OPSStyle.Colors.tertiaryText)
-                .frame(width: VinylOrderLayout.labelWidth, alignment: .leading)
-
-            HStack(spacing: 0) {
-                ForEach(VinylPatternMode.allCases) { patternMode in
-                    Button {
-                        settings.patternMode = patternMode
-                        if patternMode == .linear {
-                            settings.allowsDirectionalChanges = false
-                        }
-                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                    } label: {
-                        Text(patternMode.label)
-                            .font(OPSStyle.Typography.smallCaption)
-                            .foregroundColor(settings.patternMode == patternMode ? OPSStyle.Colors.primaryText : OPSStyle.Colors.secondaryText)
-                            .frame(maxWidth: .infinity)
-                            .frame(height: OPSStyle.Layout.touchTargetMin)
-                            .background(settings.patternMode == patternMode ? OPSStyle.Colors.surfaceActive : Color.clear)
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-            .background(OPSStyle.Colors.subtleBackground)
-            .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius))
-            .overlay(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-            )
-        }
-    }
-
-    private var runLockControl: some View {
-        Toggle(isOn: Binding(
-            get: { !settings.allowsDirectionalChanges },
-            set: { settings.allowsDirectionalChanges = !$0 }
-        )) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text("LOCK RUN")
-                    .font(OPSStyle.Typography.smallCaption)
-                    .foregroundColor(OPSStyle.Colors.tertiaryText)
-                Text(settings.allowsDirectionalChanges ? "SOLID COLOR ONLY" : "ONE DIRECTION")
-                    .font(OPSStyle.Typography.caption)
-                    .foregroundColor(OPSStyle.Colors.secondaryText)
-            }
-        }
-        .tint(OPSStyle.Colors.secondaryText)
-    }
-
-    private var directionControl: some View {
-        HStack(spacing: OPSStyle.Layout.spacing2) {
-            Text("RUN")
-                .font(OPSStyle.Typography.smallCaption)
-                .foregroundColor(OPSStyle.Colors.tertiaryText)
-                .frame(width: VinylOrderLayout.labelWidth, alignment: .leading)
-
-            HStack(spacing: 0) {
-                ForEach(VinylLayoutDirection.allCases) { direction in
-                    Button {
-                        settings.direction = direction
-                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                    } label: {
-                        Text(direction.label)
-                            .font(OPSStyle.Typography.smallCaption)
-                            .foregroundColor(settings.direction == direction ? OPSStyle.Colors.primaryText : OPSStyle.Colors.secondaryText)
-                            .frame(maxWidth: .infinity)
-                            .frame(height: OPSStyle.Layout.touchTargetMin)
-                            .background(settings.direction == direction ? OPSStyle.Colors.surfaceActive : Color.clear)
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-            .background(OPSStyle.Colors.subtleBackground)
-            .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius))
-            .overlay(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
-                    .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
-            )
-        }
-    }
-
-    private func settingStepper(
-        label: String,
-        value: Binding<Double>,
-        range: ClosedRange<Double>,
-        step: Double
-    ) -> some View {
-        Stepper(value: value, in: range, step: step) {
-            HStack(spacing: OPSStyle.Layout.spacing2) {
-                Text(label)
-                    .font(OPSStyle.Typography.smallCaption)
-                    .foregroundColor(OPSStyle.Colors.tertiaryText)
-                    .frame(width: VinylOrderLayout.labelWidth, alignment: .leading)
-                Text(formatInchesForSheet(value.wrappedValue))
-                    .font(OPSStyle.Typography.dataValue)
-                    .foregroundColor(OPSStyle.Colors.primaryText)
-                Spacer(minLength: 0)
-            }
-        }
-        .tint(OPSStyle.Colors.secondaryText)
     }
 
     private var summarySection: some View {
@@ -994,7 +897,7 @@ struct VinylOrderSheet: View {
         let canBank = coveringRoll(for: offcut) != nil && !isBanked && bankingOffcutIds.isEmpty
         return HStack(spacing: OPSStyle.Layout.spacing2) {
             VStack(alignment: .leading, spacing: 2) {
-                Text("\(formatInchesForSheet(offcut.widthInches)) × \(vinylFormatFeetAndInches(offcut.lengthInches))")
+                Text("\(vinylFormatInches(offcut.widthInches)) × \(vinylFormatFeetAndInches(offcut.lengthInches))")
                     .font(OPSStyle.Typography.dataValue)
                     .foregroundColor(OPSStyle.Colors.primaryText)
                 Text("FROM \(offcut.sourceSurfaceLabel.uppercased())")
@@ -1807,14 +1710,6 @@ struct VinylOrderSheet: View {
                 UINotificationFeedbackGenerator().notificationOccurred(.error)
             }
         }
-    }
-
-    private func formatInchesForSheet(_ value: Double) -> String {
-        let rounded = (value * 10).rounded() / 10
-        if rounded.rounded() == rounded {
-            return "\(Int(rounded))\""
-        }
-        return String(format: "%.1f\"", rounded)
     }
 
     private func formatSqFtForSheet(_ value: Double) -> String {

@@ -61,6 +61,9 @@ private struct VinylWizardPageState {
     var vinylSettings: VinylOrderSettings
     var materialsSettings: DeckMaterialsSettings
     var po: String
+    /// The job drawing's own imperial/metric preference, seeded once. Read on
+    /// every body pass would mean decoding the design's drawing JSON per pass.
+    var measurementSystem: MeasurementSystem = .imperial
     var confirmed = false
     var showLayout = false
     var plan: VinylCutPlan?
@@ -292,8 +295,10 @@ struct VinylBulkOrderWizardView: View {
         pageStates = jobs.map { job in
             var vinyl = VinylOrderSettings.default
             var materials = DeckMaterialsSettings()
+            var measurementSystem = MeasurementSystem.imperial
             if let design = job.design {
                 let data = design.drawingData
+                measurementSystem = data.config.measurementSystem
                 vinyl = data.vinylOrderSettings ?? .default
                 let restoredItemId = data.config.vinylCatalogItemId ?? vinyl.catalogItemId
                 let restored = VinylCatalogSelection.restoredSelection(
@@ -313,7 +318,8 @@ struct VinylBulkOrderWizardView: View {
             var state = VinylWizardPageState(
                 vinylSettings: vinyl,
                 materialsSettings: materials,
-                po: job.title
+                po: job.title,
+                measurementSystem: measurementSystem
             )
             if let inputs = job.resolved?.vinylInputs, job.degenerateReason == nil {
                 state.plan = VinylCutListEngine.makePlan(surfaces: inputs, settings: vinyl)
@@ -542,7 +548,10 @@ private struct VinylBulkOrderPageView: View {
                 VinylOrderLayoutWindow(
                     plan: plan,
                     projectTitle: job.title,
-                    subtitle: orderLayoutSubtitle(for: plan)
+                    subtitle: orderLayoutSubtitle(for: plan),
+                    settings: $state.vinylSettings,
+                    measurementSystem: state.measurementSystem,
+                    onSettingsChanged: onPlanInputChange
                 )
 
                 layoutSection

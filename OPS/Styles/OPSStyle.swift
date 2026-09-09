@@ -561,6 +561,14 @@ enum OPSStyle {
         /// shrink it and the gap can only come out of the hit area.
         static let keyboardAccessoryHeight: CGFloat = touchTargetMin + spacing1 * 2
         static let chipMinHeight: CGFloat = 36.0        // §4.3 filter / form-picker chip — the one sanctioned sub-44pt target
+        /// §6.1 bottom-sheet grab handle — 36 × 5pt at `Opacity.light`, capsule.
+        /// The one sanctioned 999px radius outside avatars (MOBILE.md spells it
+        /// out for peek and half sheets alike).
+        static let sheetHandleWidth: CGFloat = 36.0
+        static let sheetHandleHeight: CGFloat = 5.0
+        /// §6.1 peek sheet — the resting height of a sheet that lives on its
+        /// screen: handle, one content row, and the home-indicator clearance.
+        static let sheetPeekHeight: CGFloat = 80.0
         static let segmentedControlInset: CGFloat = 3.0 // §4.1 inset between container and segments
         static let segmentedControlRadius: CGFloat = 5.0
         static let segmentedItemRadius: CGFloat = 3.0

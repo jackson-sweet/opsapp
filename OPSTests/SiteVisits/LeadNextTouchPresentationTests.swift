@@ -1,3 +1,18 @@
+//
+//  LeadNextTouchPresentationTests.swift
+//  OPSTests
+//
+//  The dossier's NEXT TOUCH cell.
+//
+//  It used to prefer a booked site visit over the follow-up date (bug
+//  a218009e), because this 1/3-width cell was then the ONLY place on the
+//  dossier a standing appointment appeared. Bug 52cc8dae gave the appointment
+//  its own banner directly under the header — full day and time, plus
+//  START · REBOOK · CANCEL — so the cell went back to the one thing it can say
+//  that the banner cannot: whether a follow-up is booked behind the visit.
+//  These tests pin that rule, including the case that used to be a visit.
+//
+
 import XCTest
 @testable import OPS
 
@@ -11,14 +26,14 @@ final class LeadNextTouchPresentationTests: XCTestCase {
 
     func testUnsetWhenNothingIsScheduled() {
         XCTAssertEqual(
-            LeadNextTouchPresentation.resolve(nextFollowUpAt: nil, bookedVisitAt: nil, now: date(1, 8)),
+            LeadNextTouchPresentation.resolve(nextFollowUpAt: nil, now: date(1, 8)),
             .unset
         )
     }
 
-    func testFollowUpOnlyPrintsDayAndDate() {
+    func testFollowUpPrintsDayAndDate() {
         let result = LeadNextTouchPresentation.resolve(
-            nextFollowUpAt: date(6, 9), bookedVisitAt: nil, now: date(1, 8)
+            nextFollowUpAt: date(6, 9), now: date(1, 8)
         )
         guard case .followUp(let day, let dateToken) = result else {
             return XCTFail("Expected followUp, got \(result)")
@@ -27,25 +42,26 @@ final class LeadNextTouchPresentationTests: XCTestCase {
         XCTAssertEqual(dateToken, "SEP 6")
     }
 
-    func testBookedVisitOutranksFollowUp() {
+    /// A lead can hold both an appointment and a later nudge. The cell states
+    /// the NUDGE — the appointment is on the banner above it, in full, and
+    /// repeating it here truncated to `VISIT · 6:4…` told the operator nothing
+    /// they had not just read (bug 52cc8dae).
+    func testTheFollowUpStandsEvenWhenAVisitIsBooked() {
         let result = LeadNextTouchPresentation.resolve(
-            nextFollowUpAt: date(8, 9),        // later nudge
-            bookedVisitAt: date(4, 10, 30),    // the appointment wins
-            now: date(1, 8)
+            nextFollowUpAt: date(8, 9), now: date(1, 8)
         )
-        guard case .visit(let day, let time) = result else {
-            return XCTFail("Expected visit, got \(result)")
+        guard case .followUp(_, let dateToken) = result else {
+            return XCTFail("Expected followUp, got \(result)")
         }
-        XCTAssertEqual(time, "10:30AM")
-        XCTAssertFalse(day.isEmpty)            // TODAY/TMRW/EEE/MMM d via DaySheetDateToken
+        XCTAssertEqual(dateToken, "SEP 8")
     }
 
-    func testVisitTomorrowUsesDaySheetVocabulary() {
-        let result = LeadNextTouchPresentation.resolve(
-            nextFollowUpAt: nil,
-            bookedVisitAt: date(2, 14),
-            now: date(1, 8)
+    /// And with no nudge on file the cell is honestly empty — an em dash,
+    /// never a borrowed appointment.
+    func testNoFollowUpReadsAsUnsetRatherThanBorrowingTheVisit() {
+        XCTAssertEqual(
+            LeadNextTouchPresentation.resolve(nextFollowUpAt: nil, now: date(1, 8)),
+            .unset
         )
-        XCTAssertEqual(result, .visit(day: "TMRW", time: "2:00PM"))
     }
 }

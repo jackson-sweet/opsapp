@@ -250,6 +250,10 @@ final class DaySheetCardSnapshotTests: XCTestCase {
         .frame(width: Self.cardWidth)
         .background(Color.black)
         .environmentObject(store)
+        // DaySheetPhotoStrip's presentation closures read the controller. They
+        // are evaluated lazily by SwiftUI, so a host without it does not fail
+        // here — it traps somewhere later, in whichever test is running then.
+        .environmentObject(DataController())
     }
 
     // MARK: - Renders

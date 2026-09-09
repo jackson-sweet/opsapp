@@ -275,41 +275,28 @@ struct BookSiteVisitSheet: View {
 
     private func requestCancelVisit() {
         guard let existing = request.existing else { return }
-        cancelConfirm = OPSConfirmConfig(
-            title: "CANCEL VISIT?",
-            message: "The appointment comes off every calendar. The lead keeps its record.",
-            verb: "CANCEL VISIT",
-            isDestructive: true
-        ) {
-            performCancel(existing)
-        }
+        // The words, the write and the mirror all live in SiteVisitCancellation
+        // — the dossier's visit banner offers the same verb, and a destructive
+        // server write must not have two implementations (bug 52cc8dae).
+        cancelConfirm = SiteVisitCancellation.confirm { performCancel(existing) }
     }
 
     private func performCancel(_ existing: BookSiteVisitForm.BookingSnapshot) {
         isSaving = true
         errorMessage = nil
-        Task {
-            do {
-                let bookingService = await resolveService()
-                _ = try await bookingService.cancel(siteVisitId: existing.siteVisitId)
-                await markCancelledLocally(existing.siteVisitId)
-                await MainActor.run {
-                    UINotificationFeedbackGenerator().notificationOccurred(.success)
-                    NotificationCenter.default.post(
-                        name: Notification.Name("SiteVisitBookingChanged"),
-                        object: nil,
-                        userInfo: ["leadId": request.lead.id]
-                    )
-                    isSaving = false
-                    dismiss()
-                }
-            } catch {
-                await MainActor.run {
-                    isSaving = false
-                    errorMessage = (error as? SiteVisitBookingError)?.errorDescription
-                        ?? SiteVisitBookingError.server(detail: "\(error)").errorDescription
-                }
+        Task { @MainActor in
+            let failure = await SiteVisitCancellation.cancel(
+                siteVisitId: existing.siteVisitId,
+                leadId: request.lead.id,
+                service: resolveService(),
+                modelContext: dataController.modelContext
+            )
+            isSaving = false
+            guard let failure else {
+                dismiss()
+                return
             }
+            errorMessage = failure
         }
     }
 
@@ -360,15 +347,6 @@ struct BookSiteVisitSheet: View {
         if case .clear = intent.reminderOverride { visit.reminderLeadMinutes = nil }
         try? context.save()
         mirrorBookingChange(visitId: visit.id)
-    }
-
-    @MainActor
-    private func markCancelledLocally(_ visitId: String) {
-        guard let context = dataController.modelContext,
-              let visit = fetchLocalVisit(id: visitId, in: context) else { return }
-        visit.status = .cancelled
-        try? context.save()
-        mirrorBookingChange(visitId: visitId)
     }
 
     /// Keep the personal-calendar mirror in lockstep with the booking —

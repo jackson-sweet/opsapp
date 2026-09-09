@@ -835,4 +835,118 @@ final class LeadsQueryEngineTests: XCTestCase {
             .won
         )
     }
+
+    // MARK: - Chip counts (bug 2a89477d)
+
+    /// Three overdue, two fresh, one unconverted win. Only the two named
+    /// "Kingsley" match a search for it, and they sit in different buckets.
+    private func chipCountFixture() -> PipelineViewModel.TriageBuckets {
+        buckets(
+            overdue: [
+                numbered(1, name: "Kyle Kingsley"),
+                numbered(2, name: "Dana Whitfield"),
+                numbered(3, name: "Marcus Webb")
+            ],
+            fresh: [
+                numbered(4, name: "Helen Calloway"),
+                numbered(5, name: "Rita Kingsley")
+            ],
+            unconvertedWon: [numbered(6, name: "Kingsley Holdings")]
+        )
+    }
+
+    /// Browsing is unchanged: the chips describe the queue the operator owns.
+    func testChipCountsAreRawWhileBrowsing() {
+        let b = chipCountFixture()
+        let browsing = controls()
+
+        XCTAssertEqual(LeadsQueryEngine.chipCount(for: .all, controls: browsing, buckets: b), 5)
+        XCTAssertEqual(LeadsQueryEngine.chipCount(for: .overdue, controls: browsing, buckets: b), 3)
+        XCTAssertEqual(LeadsQueryEngine.chipCount(for: .fresh, controls: browsing, buckets: b), 2)
+        XCTAssertEqual(LeadsQueryEngine.chipCount(for: .dueToday, controls: browsing, buckets: b), 0)
+    }
+
+    /// A crew filter never moves a chip — that is the rule the raw counts
+    /// exist to protect, and a search must not quietly repeal it.
+    func testACrewFilterStillDoesNotMoveTheChips() {
+        let b = chipCountFixture()
+        let filtered = controls(crew: .unassigned)
+
+        XCTAssertEqual(LeadsQueryEngine.chipCount(for: .overdue, controls: filtered, buckets: b), 3)
+    }
+
+    /// The filed request: under a live search the chips break the RESULT down
+    /// rather than describing a queue nobody is looking at.
+    func testChipCountsFollowTheSearch() {
+        let b = chipCountFixture()
+        let searching = controls(query: "kingsley")
+
+        XCTAssertEqual(
+            LeadsQueryEngine.chipCount(for: .overdue, controls: searching, buckets: b), 1)
+        XCTAssertEqual(
+            LeadsQueryEngine.chipCount(for: .fresh, controls: searching, buckets: b), 1)
+        XCTAssertEqual(
+            LeadsQueryEngine.chipCount(for: .waitingOnThem, controls: searching, buckets: b), 0)
+    }
+
+    /// ALL counts the searched POPULATION — open leads plus unconverted wins —
+    /// so the chip can never disagree with the `// MATCHES ─── N` header over
+    /// the results, which counts the same set.
+    func testTheAllChipAgreesWithTheMatchesHeader() {
+        let b = chipCountFixture()
+        let searching = controls(query: "kingsley")
+
+        let matches = flatLeads(
+            LeadsQueryEngine.apply(
+                controls: searching,
+                buckets: b,
+                selectedBucket: .all,
+                currentUserId: nil
+            )
+        )
+
+        XCTAssertEqual(matches.count, 3)
+        XCTAssertEqual(
+            LeadsQueryEngine.chipCount(for: .all, controls: searching, buckets: b),
+            matches.count
+        )
+    }
+
+    /// Clearing the query hands the raw counts straight back.
+    func testClearingTheSearchRestoresTheRawCounts() {
+        let b = chipCountFixture()
+
+        XCTAssertEqual(
+            LeadsQueryEngine.chipCount(for: .overdue, controls: controls(query: "kingsley"), buckets: b), 1)
+        XCTAssertEqual(
+            LeadsQueryEngine.chipCount(for: .overdue, controls: controls(query: ""), buckets: b), 3)
+    }
+
+    /// Whitespace is not a search (spec §5.4) — it must not suspend the raw
+    /// counts any more than it suspends the browse filters.
+    func testAWhitespaceQueryLeavesTheChipsRaw() {
+        let b = chipCountFixture()
+
+        XCTAssertEqual(
+            LeadsQueryEngine.chipCount(for: .overdue, controls: controls(query: "   "), buckets: b), 3)
+        XCTAssertEqual(
+            LeadsQueryEngine.chipCount(for: .all, controls: controls(query: "   "), buckets: b), 5)
+    }
+
+    /// A search that matches nothing reads zero everywhere rather than falling
+    /// back to the raw counts and implying results exist.
+    func testASearchWithNoMatchesZeroesEveryChip() {
+        let b = chipCountFixture()
+        let searching = controls(query: "pergola")
+
+        for bucket in [
+            PipelineViewModel.TriageBucket.all, .overdue, .dueToday,
+            .waitingOnYou, .fresh, .waitingOnThem
+        ] {
+            XCTAssertEqual(
+                LeadsQueryEngine.chipCount(for: bucket, controls: searching, buckets: b), 0,
+                "\(bucket) must read 0 when nothing matches"
+            )
+        }
+    }
 }

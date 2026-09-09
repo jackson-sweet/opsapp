@@ -718,6 +718,19 @@ struct EditOpportunityPatch: Encodable {
 // phone number by saving the field blank (the same rule EditOpportunityPatch
 // documents at review I-12).
 
+/// JOB DESCRIPTION — `opportunities.title`, the dossier's header.
+///
+/// Non-optional, and the ONE patch here that cannot clear its column:
+/// `opportunities.title` is NOT NULL server-side, so a blank would be refused
+/// on the wire. The editor blocks an empty save before it leaves the device.
+struct LeadTitlePatch: Encodable {
+    var title: String
+
+    enum CodingKeys: String, CodingKey {
+        case title
+    }
+}
+
 /// ADDRESS + the coordinates that ride it. Clearing the address nulls the pin
 /// with it — a coordinate with no address is a map hero pointing at nothing,
 /// and stale geo must never outlive a hand-typed street.

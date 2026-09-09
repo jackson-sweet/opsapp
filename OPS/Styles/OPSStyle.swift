@@ -293,6 +293,13 @@ enum OPSStyle {
 
         // Borders & neutral fills
         static let line           = Color.white.opacity(0.10)  // Standard hairline — panels, inputs, L1 dividers
+        /// The hairline on a control that is currently the emphasised one —
+        /// an active filter chip, the lead verb in a row of verbs. Sits
+        /// between MOBILE.md §4.3's chip edge (0.18) and §4.1's segment edge
+        /// (0.22); one value so emphasised controls match across the app, and
+        /// the way emphasis is spent WITHOUT the accent (accent is CTA + focus
+        /// only, DESIGN.md §3).
+        static let lineActive     = text.opacity(0.20)
         static let glassBorder    = Color.white.opacity(0.09)  // L1 glass panel edge (MOBILE.md §3)
         static let nestedBorder   = Color.white.opacity(0.08)  // L2 nested-card edge (MOBILE.md §3)
         static let fillNeutral    = Color.white.opacity(0.14)  // Bar fills, progress tracks
@@ -614,6 +621,12 @@ enum OPSStyle {
         /// every reschedule presentation and clipped nav + footer; SE-class
         /// overflowed by ~95–125pt.)
         static let schedulerCalendarMinHeight: CGFloat = 112.0
+        /// A control that has STOOD DOWN — visible, unreachable, and saying so.
+        /// The Leads console dims its chips and filter while a search is live;
+        /// the dossier's visit banner dims its verbs while a cancel is on the
+        /// wire. One value, because "waiting" should look the same everywhere.
+        static let suspendedOpacity: Double = 0.4
+
         /// Dependency-floor days stay fully tappable — they only recede.
         static let schedulerPreFloorOpacity: Double = 0.35
         /// How far a selection's cap carries its own fill into the interior,

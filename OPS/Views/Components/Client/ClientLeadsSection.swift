@@ -19,6 +19,15 @@ import SwiftUI
 import Combine
 import UIKit
 
+/// Which verb opened the NEW LEAD sheet from a client's profile. The form is
+/// identical either way — only what happens after the save differs.
+enum ClientLeadCreateIntent: String, Identifiable {
+    case lead
+    case bookVisit
+
+    var id: String { rawValue }
+}
+
 struct ClientLeadsSection: View {
     let client: Client
     /// Test-only seam (nil in production): pre-supplied leads bypass the async
@@ -39,22 +48,30 @@ struct ClientLeadsSection: View {
     @State private var isHistoryListExpanded = false
     @State private var detailLead: Opportunity?
     @State private var activeSheet: LeadsSheet?
-    @State private var showingAddLead = false
+    /// Which verb opened NEW LEAD — the two differ only in what happens after
+    /// the save (bug 9a49bd47).
+    @State private var addLeadIntent: ClientLeadCreateIntent?
+    /// The booking sheet, opened on the lead BOOK VISIT just created.
+    @State private var bookingRequest: BookSiteVisitRequest?
 
     private var companyId: String { client.companyId ?? dataController.currentUser?.companyId ?? "" }
     private var policy: LeadAccessPolicy { permissionStore.leadAccessPolicy }
     private var canCreate: Bool { policy.canCreate }
 
     var body: some View {
+        // No header `+`. The two things an operator comes to a client's page to
+        // start — a new lead, and an appointment to go look at the work — are
+        // named in the body where they can be read (bug 9a49bd47). A glyph in
+        // a section header was the entry point nobody found.
         SectionCard(
             icon: OPSStyle.Icons.opportunity,
             title: "Leads (\(vm.openLeads.count))",
-            actionIcon: canCreate ? OPSStyle.Icons.plus : nil,
-            actionLabel: canCreate ? "Add" : nil,
-            onAction: canCreate ? { showingAddLead = true } : nil,
             contentPadding: EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0)
         ) {
-            content
+            VStack(spacing: 0) {
+                if canCreate { createVerbs }
+                content
+            }
         }
         .task { await loadNow() }
         .onChange(of: activeSheet == nil) { _, isNil in if isNil { reload() } }
@@ -73,10 +90,90 @@ struct ClientLeadsSection: View {
             .environmentObject(permissionStore)
         }
         .sheet(item: $activeSheet) { sheetView(for: $0) }
-        .sheet(isPresented: $showingAddLead) {
-            AddLeadSheet(seedClient: client, onSaved: { _ in reload() })
+        .sheet(item: $addLeadIntent) { intent in
+            AddLeadSheet(
+                seedClient: client,
+                onSaved: { _ in reload() },
+                onBookSiteVisit: intent == .bookVisit
+                    ? { lead in bookingRequest = BookSiteVisitRequest(lead: lead, existing: nil) }
+                    : nil
+            )
+            .environmentObject(dataController)
+        }
+        .sheet(item: $bookingRequest) { request in
+            BookSiteVisitSheet(request: request)
                 .environmentObject(dataController)
         }
+    }
+
+    // MARK: - Create verbs (bug 9a49bd47)
+
+    /// The two ways work starts with a client already on file. Both create a
+    /// lead bound to THIS client; BOOK VISIT carries straight on into the
+    /// booking sheet, because "when are we going out?" is the actual question
+    /// and stopping at a saved lead answers half of it.
+    private var createVerbs: some View {
+        HStack(spacing: OPSStyle.Layout.spacing2) {
+            createVerb(
+                "NEW LEAD",
+                icon: OPSStyle.Icons.plus,
+                emphasised: false,
+                spoken: "New lead for \(client.name)"
+            ) { addLeadIntent = .lead }
+
+            createVerb(
+                "BOOK VISIT",
+                icon: OPSStyle.Icons.calendar,
+                emphasised: true,
+                spoken: "Book a site visit for \(client.name)"
+            ) { addLeadIntent = .bookVisit }
+        }
+        .padding(.horizontal, OPSStyle.Layout.spacing3)
+        .padding(.top, OPSStyle.Layout.spacing2_5)
+        .padding(.bottom, OPSStyle.Layout.spacing2_5)
+    }
+
+    /// No accent: this profile is a reading surface, and the client's own
+    /// SAVE / SHARE row already owns its emphasis. BOOK VISIT leads on the
+    /// active-control surface instead (DESIGN.md §3, MOBILE.md §4.1).
+    private func createVerb(
+        _ label: String,
+        icon: String,
+        emphasised: Bool,
+        spoken: String,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button {
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            action()
+        } label: {
+            HStack(spacing: OPSStyle.Layout.spacing2) {
+                Image(systemName: icon)
+                    .font(.system(size: OPSStyle.Layout.IconSize.xs, weight: .semibold))
+                Text(label)
+                    .font(OPSStyle.Typography.buttonLabel)
+                    .kerning(0.27)
+                    .textCase(.uppercase)
+                    .lineLimit(1)
+            }
+            .foregroundColor(emphasised ? OPSStyle.Colors.text : OPSStyle.Colors.text2)
+            .frame(maxWidth: .infinity)
+            .frame(minHeight: OPSStyle.Layout.touchTargetMin)
+            .background(
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius, style: .continuous)
+                    .fill(emphasised ? OPSStyle.Colors.surfaceActive : OPSStyle.Colors.surfaceInput)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius, style: .continuous)
+                    .strokeBorder(
+                        emphasised ? OPSStyle.Colors.lineActive : OPSStyle.Colors.line,
+                        lineWidth: OPSStyle.Layout.Border.standard
+                    )
+            )
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(PlainButtonStyle())
+        .accessibilityLabel(spoken)
     }
 
     // MARK: - Content states
@@ -167,40 +264,20 @@ struct ClientLeadsSection: View {
         }
     }
 
+    /// Nothing on file. It no longer carries its own CTA: the two verbs sit
+    /// directly above it now, and an empty state that repeats the button 8pt
+    /// under it is the same invitation twice (bug 9a49bd47).
     private var emptyState: some View {
-        Group {
-            if canCreate {
-                Button { showingAddLead = true } label: {
-                    VStack(spacing: OPSStyle.Layout.spacing2_5) {
-                        Image(systemName: OPSStyle.Icons.opportunity)
-                            .font(.system(size: OPSStyle.Layout.IconSize.xl))
-                            .foregroundColor(OPSStyle.Colors.secondaryText)
-                        VStack(spacing: OPSStyle.Layout.spacing1) {
-                            Text("No leads yet")
-                                .font(OPSStyle.Typography.body)
-                                .foregroundColor(OPSStyle.Colors.primaryText)
-                            Text("Create one?")
-                                .font(OPSStyle.Typography.caption)
-                                .foregroundColor(OPSStyle.Colors.secondaryText)
-                        }
-                    }
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, OPSStyle.Layout.spacing5)
-                }
-                .buttonStyle(PlainButtonStyle())
-            } else {
-                VStack(spacing: OPSStyle.Layout.spacing2_5) {
-                    Image(systemName: OPSStyle.Icons.opportunity)
-                        .font(.system(size: OPSStyle.Layout.IconSize.xl))
-                        .foregroundColor(OPSStyle.Colors.tertiaryText)
-                    Text("No leads")
-                        .font(OPSStyle.Typography.body)
-                        .foregroundColor(OPSStyle.Colors.tertiaryText)
-                }
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, OPSStyle.Layout.spacing5)
-            }
+        VStack(spacing: OPSStyle.Layout.spacing2_5) {
+            Image(systemName: OPSStyle.Icons.opportunity)
+                .font(.system(size: OPSStyle.Layout.IconSize.xl))
+                .foregroundColor(OPSStyle.Colors.tertiaryText)
+            Text("No leads")
+                .font(OPSStyle.Typography.body)
+                .foregroundColor(OPSStyle.Colors.tertiaryText)
         }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, OPSStyle.Layout.spacing5)
     }
 
     private var errorState: some View {

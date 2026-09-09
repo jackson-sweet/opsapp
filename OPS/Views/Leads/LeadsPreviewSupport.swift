@@ -209,6 +209,12 @@ struct LeadsPreviewEnvironment: ViewModifier {
     func body(content: Content) -> some View {
         content
             .environmentObject(DataController())
+            // AppHeader carries SyncStatusIndicator, whose body reads this
+            // model unconditionally — a host that omits it does not degrade,
+            // it traps, and only when sync state happens to make the indicator
+            // evaluate. That made the console's own snapshot proofs die at
+            // 0.000s in full-suite runs, blaming whichever test was current.
+            .environmentObject(SyncStatusIndicatorModel())
             .environmentObject(PermissionStore.previewWithFullAccess())
             .environmentObject(SubscriptionManager.shared)
             .environmentObject(AppState())

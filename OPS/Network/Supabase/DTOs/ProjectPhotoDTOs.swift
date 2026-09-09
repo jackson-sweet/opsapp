@@ -20,6 +20,7 @@ struct ProjectPhotoDTO: Codable, Identifiable {
     let renderedURL: String?
     let source: String?
     let siteVisitId: String?
+    let taskId: String?
     let uploadedBy: String?
     let caption: String?
     let isClientVisible: Bool?
@@ -37,6 +38,7 @@ struct ProjectPhotoDTO: Codable, Identifiable {
         case renderedURL     = "rendered_url"
         case source
         case siteVisitId     = "site_visit_id"
+        case taskId          = "task_id"
         case uploadedBy      = "uploaded_by"
         case caption
         case isClientVisible = "is_client_visible"
@@ -56,6 +58,7 @@ struct ProjectPhotoDTO: Codable, Identifiable {
             renderedURL: renderedURL,
             source: source ?? "other",
             siteVisitId: siteVisitId,
+            taskId: taskId,
             uploadedBy: uploadedBy ?? "",
             caption: caption,
             isClientVisible: isClientVisible ?? false,

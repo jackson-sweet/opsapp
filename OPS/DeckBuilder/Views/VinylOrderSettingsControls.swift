@@ -152,28 +152,43 @@ struct VinylOrderSettingsControls: View {
         optionLabel: KeyPath<Option, String>,
         edit: @escaping (Option) -> VinylOrderSettingsEdit
     ) -> some View {
-        let segments = HStack(spacing: 0) {
-            ForEach(options, id: \.self) { option in
-                Button {
-                    apply(edit(option))
-                } label: {
-                    Text(option[keyPath: optionLabel])
-                        .font(OPSStyle.Typography.smallCaption)
-                        .foregroundColor(
-                            option == selected
-                                ? OPSStyle.Colors.text
-                                : OPSStyle.Colors.text2
-                        )
-                        .frame(maxWidth: .infinity)
-                        .frame(minHeight: OPSStyle.Layout.touchTargetMin)
-                        .background(
-                            option == selected
-                                ? OPSStyle.Colors.surfaceActive
-                                : Color.clear
-                        )
+        let isStacked = dynamicTypeSize.isAccessibilitySize
+
+        @ViewBuilder func segment(_ option: Option) -> some View {
+            Button {
+                apply(edit(option))
+            } label: {
+                Text(option[keyPath: optionLabel])
+                    .font(OPSStyle.Typography.smallCaption)
+                    .foregroundColor(
+                        option == selected
+                            ? OPSStyle.Colors.text
+                            : OPSStyle.Colors.text2
+                    )
+                    .frame(maxWidth: .infinity)
+                    .frame(minHeight: OPSStyle.Layout.touchTargetMin)
+                    .background(
+                        option == selected
+                            ? OPSStyle.Colors.surfaceActive
+                            : Color.clear
+                    )
+            }
+            .buttonStyle(.plain)
+            .accessibilityAddTraits(option == selected ? [.isSelected] : [])
+        }
+
+        // Side by side at every normal size. At accessibility sizes three
+        // uppercase mono words cannot share 393pt — `LENGTH` broke to `LENGT`/`H`
+        // — so the segments become full-width rows, one per option.
+        let segments = Group {
+            if isStacked {
+                VStack(spacing: 0) {
+                    ForEach(options, id: \.self) { segment($0) }
                 }
-                .buttonStyle(.plain)
-                .accessibilityAddTraits(option == selected ? [.isSelected] : [])
+            } else {
+                HStack(spacing: 0) {
+                    ForEach(options, id: \.self) { segment($0) }
+                }
             }
         }
         .background(OPSStyle.Colors.subtleBackground)
@@ -184,7 +199,7 @@ struct VinylOrderSettingsControls: View {
         )
 
         return Group {
-            if dynamicTypeSize.isAccessibilitySize {
+            if isStacked {
                 VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
                     rowLabel(label)
                     segments

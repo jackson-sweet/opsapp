@@ -238,7 +238,11 @@ struct MinimalSignupView: View {
             }
         }
         .onAppear {
-            AnalyticsManager.shared.trackSignupScreenShown(variant: variant.rawValue)
+            AnalyticsService.shared.track(
+                eventType: .screenView,
+                eventName: "signup_screen_shown",
+                properties: ["variant": variant.rawValue]
+            )
             OnboardingSupabaseAnalytics.shared.trackStepView("signup")
         }
     }

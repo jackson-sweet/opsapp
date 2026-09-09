@@ -1038,7 +1038,6 @@ struct MainTabView: View {
         .onChange(of: selectedTab) { _, newValue in
             if !mountedTabs.contains(newValue) { mountedTabs.insert(newValue) }
             let tabName = analyticsTabName(for: newValue)
-            AnalyticsManager.shared.trackTabSelected(tabName: tabName)
             AnalyticsService.shared.track(
                 eventType: .action,
                 eventName: "tab_selected",

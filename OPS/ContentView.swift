@@ -714,7 +714,9 @@ struct PINGatedView: View {
                         Task {
                             let projectCount = await dataController.getProjectCount()
                             let userType = dataController.currentUser?.userType
-                            AnalyticsManager.shared.trackCreateProject(projectCount: projectCount, userType: userType)
+                            if projectCount == 1 {
+                                AnalyticsManager.shared.trackCreateFirstProject(userType: userType)
+                            }
                             AnalyticsService.shared.track(
                                 eventType: .action,
                                 eventName: "project_created",

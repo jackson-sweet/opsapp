@@ -1172,6 +1172,8 @@ struct NotificationListView: View {
                 return ("person.badge.plus", OPSStyle.Colors.primaryAccent)
             case "time_off_booked":
                 return ("calendar.badge.checkmark", OPSStyle.Colors.primaryAccent)
+            case "analytics_source_failed":
+                return (OPSStyle.Icons.alert, OPSStyle.Colors.errorStatus)
             default:
                 return (OPSStyle.Icons.bell, OPSStyle.Colors.secondaryText)
             }

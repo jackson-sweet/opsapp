@@ -492,15 +492,15 @@ struct JobBoardView: View {
         .onChange(of: selectedSection) { oldValue, newSection in
             previousSection = oldValue
             // Track section changes within Job Board
-            let screenName: ScreenName? = {
+            let screenName: String? = {
                 switch newSection {
-                case .projects, .myProjects: return .jobBoardProjects
-                case .tasks, .myTasks:       return .jobBoardTasks
+                case .projects, .myProjects: return "job_board_projects"
+                case .tasks, .myTasks:       return "job_board_tasks"
                 default: return nil
                 }
             }()
             if let screenName = screenName {
-                AnalyticsManager.shared.trackScreenView(screenName: screenName, screenClass: "JobBoardView")
+                AnalyticsService.shared.trackScreenView(screenName: screenName)
             }
         }
         .onAppear {
@@ -536,7 +536,6 @@ struct JobBoardView: View {
     /// counts are per-visit: they ran on every mount back when a tab switch
     /// rebuilt this view, and they still run on every visit now.
     private func beginVisit() {
-        AnalyticsManager.shared.trackScreenView(screenName: .jobBoard, screenClass: "JobBoardView")
         AnalyticsService.shared.trackScreenView(screenName: "job_board")
 
         reviewSnapshots.bind(dataController: dataController, permissionStore: permissionStore)

@@ -2,661 +2,150 @@
 //  AnalyticsManager.swift
 //  OPS
 //
-//  Created for Google Ads conversion tracking via Firebase Analytics
+//  Deliberate Firebase conversion events used for Google Ads optimization.
+//  Detailed product behaviour belongs exclusively to AnalyticsService.
 //
 
 import Foundation
 import FirebaseAnalytics
 
-/// Centralized analytics manager for tracking conversion events
-/// Events flow to Google Ads via Firebase Analytics integration
 final class AnalyticsManager {
+
+    typealias EventLogger = (String, [String: Any]?) -> Void
+    typealias UserPropertySetter = (String?, String) -> Void
+    typealias UserIDSetter = (String?) -> Void
 
     static let shared = AnalyticsManager()
 
-    private init() {}
+    static let firebaseConversionEventNames: Set<String> = [
+        "sign_up",
+        "begin_trial",
+        "complete_onboarding",
+        "create_first_project",
+        "purchase"
+    ]
 
-    // MARK: - Conversion Events
+    private let eventLogger: EventLogger
+    private let userPropertySetter: UserPropertySetter
+    private let userIDSetter: UserIDSetter
 
-    /// Track when a new user completes sign-up
-    /// - Parameters:
-    ///   - userType: The type of user (employee or company/business owner)
-    ///   - method: The sign-up method used (email, apple, google)
+    init(
+        eventLogger: @escaping EventLogger = { name, parameters in
+            Analytics.logEvent(name, parameters: parameters)
+        },
+        userPropertySetter: @escaping UserPropertySetter = { value, name in
+            Analytics.setUserProperty(value, forName: name)
+        },
+        userIDSetter: @escaping UserIDSetter = { value in
+            Analytics.setUserID(value)
+        }
+    ) {
+        self.eventLogger = eventLogger
+        self.userPropertySetter = userPropertySetter
+        self.userIDSetter = userIDSetter
+    }
+
+    // MARK: - Conversion events
+
     func trackSignUp(userType: UserType?, method: SignUpMethod) {
-        var parameters: [String: Any] = [
-            AnalyticsParameterMethod: method.rawValue
-        ]
-
-        if let userType = userType {
-            parameters["user_type"] = userType.rawValue
-        }
-
-        Analytics.logEvent(AnalyticsEventSignUp, parameters: parameters)
-
-        print("[ANALYTICS] 📊 Tracked sign_up - method: \(method.rawValue), user_type: \(userType?.rawValue ?? "unknown")")
+        eventLogger("sign_up", parameters(
+            userType: userType,
+            values: [AnalyticsParameterMethod: method.rawValue]
+        ))
+        debugLog("sign_up")
     }
 
-    /// Track when a user logs in
-    /// - Parameters:
-    ///   - userType: The type of user (employee or company/business owner)
-    ///   - method: The login method used (email, apple, google)
-    func trackLogin(userType: UserType?, method: SignUpMethod) {
-        var parameters: [String: Any] = [
-            AnalyticsParameterMethod: method.rawValue
-        ]
-
-        if let userType = userType {
-            parameters["user_type"] = userType.rawValue
-        }
-
-        Analytics.logEvent(AnalyticsEventLogin, parameters: parameters)
-
-        print("[ANALYTICS] 📊 Tracked login - method: \(method.rawValue), user_type: \(userType?.rawValue ?? "unknown")")
-    }
-
-    /// Track app install / first open (automatic via Firebase, but can be called manually if needed)
-    func trackFirstOpen() {
-        // Firebase tracks first_open automatically
-        // This method exists for explicit tracking if needed
-        Analytics.logEvent(AnalyticsEventAppOpen, parameters: nil)
-
-        print("[ANALYTICS] 📊 Tracked app_open")
-    }
-
-    // MARK: - Onboarding A/B/C Test Events
-
-    /// Track variant assignment on first launch
-    func trackVariantAssigned(variant: String) {
-        Analytics.setUserProperty(variant, forName: "onboarding_variant")
-        Analytics.logEvent("variant_assigned", parameters: [
-            "variant": variant
-        ])
-        print("[ANALYTICS] Tracked variant_assigned: \(variant)")
-    }
-
-    /// Track onboarding flow started
-    func trackOnboardingStarted(variant: String, entryPoint: String) {
-        Analytics.logEvent("onboarding_started", parameters: [
-            "variant": variant,
-            "entry_point": entryPoint
-        ])
-        print("[ANALYTICS] Tracked onboarding_started - variant: \(variant), entry: \(entryPoint)")
-    }
-
-    /// Track when signup screen is shown
-    func trackSignupScreenShown(variant: String) {
-        Analytics.logEvent("signup_screen_shown", parameters: [
-            "variant": variant
-        ])
-        print("[ANALYTICS] Tracked signup_screen_shown - variant: \(variant)")
-    }
-
-    /// Track signup completion with variant
-    func trackSignupCompleted(variant: String, method: SignUpMethod) {
-        Analytics.logEvent("signup_completed", parameters: [
-            "variant": variant,
-            "method": method.rawValue
-        ])
-        print("[ANALYTICS] Tracked signup_completed - variant: \(variant), method: \(method.rawValue)")
-    }
-
-    /// Track crew code screen interactions
-    func trackCrewCodeAction(variant: String, action: String) {
-        Analytics.logEvent("crew_code_action", parameters: [
-            "variant": variant,
-            "action": action
-        ])
-        print("[ANALYTICS] Tracked crew_code_action - variant: \(variant), action: \(action)")
-    }
-
-    /// Track tutorial started with variant context
-    func trackTutorialStartedWithVariant(variant: String, isPreSignup: Bool) {
-        Analytics.logEvent("tutorial_started", parameters: [
-            "variant": variant,
-            "is_pre_signup": isPreSignup
-        ])
-        print("[ANALYTICS] Tracked tutorial_started - variant: \(variant), preSignup: \(isPreSignup)")
-    }
-
-    /// Track tutorial completion (fires to Firebase for A/B test goal metric)
-    func trackTutorialCompleted(variant: String? = nil, flowType: String? = nil, isPreSignup: Bool = false) {
-        var parameters: [String: Any] = [
-            "is_pre_signup": isPreSignup
-        ]
-        if let variant = variant {
-            parameters["variant"] = variant
-        }
-        if let flowType = flowType {
-            parameters["flow_type"] = flowType
-        }
-        Analytics.logEvent("tutorial_completed", parameters: parameters)
-        print("[ANALYTICS] Tracked tutorial_completed - variant: \(variant ?? "none"), flow: \(flowType ?? "none"), preSignup: \(isPreSignup)")
-    }
-
-    /// Track walkthrough screen views (Variant C)
-    func trackWalkthroughScreenViewed(screenIndex: Int) {
-        Analytics.logEvent("walkthrough_screen_viewed", parameters: [
-            "screen_index": screenIndex
-        ])
-        print("[ANALYTICS] Tracked walkthrough_screen_viewed - screen: \(screenIndex)")
-    }
-
-    // MARK: - Trial & Subscription Events
-
-    /// Track when a user starts their free trial
-    /// - Parameters:
-    ///   - userType: The type of user
-    ///   - trialDays: Number of days in the trial (default 30)
     func trackBeginTrial(userType: UserType?, trialDays: Int = 30) {
-        var parameters: [String: Any] = [
-            "trial_days": trialDays
-        ]
-
-        if let userType = userType {
-            parameters["user_type"] = userType.rawValue
-        }
-
-        Analytics.logEvent("begin_trial", parameters: parameters)
-
-        print("[ANALYTICS] 📊 Tracked begin_trial - user_type: \(userType?.rawValue ?? "unknown"), trial_days: \(trialDays)")
+        eventLogger("begin_trial", parameters(
+            userType: userType,
+            values: ["trial_days": trialDays]
+        ))
+        debugLog("begin_trial")
     }
 
-    /// Track when a user subscribes (converts to paid)
-    /// - Parameters:
-    ///   - planName: Name of the subscription plan
-    ///   - price: Price of the subscription
-    ///   - currency: Currency code (default USD)
-    ///   - userType: The type of user
-    func trackSubscribe(planName: String, price: Double, currency: String = "USD", userType: UserType?) {
-        var parameters: [String: Any] = [
-            AnalyticsParameterItemName: planName,
-            AnalyticsParameterPrice: price,
-            AnalyticsParameterCurrency: currency
-        ]
-
-        if let userType = userType {
-            parameters["user_type"] = userType.rawValue
-        }
-
-        // Use Firebase's standard purchase event for better Google Ads integration
-        Analytics.logEvent(AnalyticsEventPurchase, parameters: parameters)
-
-        // Also log custom subscribe event for flexibility
-        Analytics.logEvent("subscribe", parameters: parameters)
-
-        print("[ANALYTICS] 📊 Tracked subscribe - plan: \(planName), price: \(price) \(currency), user_type: \(userType?.rawValue ?? "unknown")")
-    }
-
-    // MARK: - Onboarding & Engagement Events
-
-    /// Track when a user completes onboarding
-    /// - Parameters:
-    ///   - userType: The type of user
-    ///   - hasCompany: Whether the user has/created a company
     func trackCompleteOnboarding(userType: UserType?, hasCompany: Bool) {
-        var parameters: [String: Any] = [
-            "has_company": hasCompany
-        ]
-
-        if let userType = userType {
-            parameters["user_type"] = userType.rawValue
-        }
-
-        Analytics.logEvent("complete_onboarding", parameters: parameters)
-
-        print("[ANALYTICS] 📊 Tracked complete_onboarding - user_type: \(userType?.rawValue ?? "unknown"), has_company: \(hasCompany)")
+        eventLogger("complete_onboarding", parameters(
+            userType: userType,
+            values: ["has_company": hasCompany]
+        ))
+        debugLog("complete_onboarding")
     }
 
-    /// Track when a user creates their first project (high-intent signal)
-    /// - Parameter userType: The type of user
     func trackCreateFirstProject(userType: UserType?) {
-        var parameters: [String: Any] = [:]
-
-        if let userType = userType {
-            parameters["user_type"] = userType.rawValue
-        }
-
-        Analytics.logEvent("create_first_project", parameters: parameters)
-
-        print("[ANALYTICS] 📊 Tracked create_first_project - user_type: \(userType?.rawValue ?? "unknown")")
+        eventLogger("create_first_project", parameters(userType: userType))
+        debugLog("create_first_project")
     }
 
-    /// Track when a user creates a project (general tracking)
-    /// - Parameters:
-    ///   - projectCount: Total number of projects the user now has
-    ///   - userType: The type of user
-    func trackCreateProject(projectCount: Int, userType: UserType?) {
-        var parameters: [String: Any] = [
-            "project_count": projectCount
-        ]
-
-        if let userType = userType {
-            parameters["user_type"] = userType.rawValue
-        }
-
-        Analytics.logEvent("create_project", parameters: parameters)
-
-        // Track first project separately for conversion optimization
-        if projectCount == 1 {
-            trackCreateFirstProject(userType: userType)
-        }
-
-        print("[ANALYTICS] 📊 Tracked create_project - count: \(projectCount), user_type: \(userType?.rawValue ?? "unknown")")
+    func trackPurchase(
+        planName: String,
+        price: Double,
+        currency: String = "USD",
+        userType: UserType?
+    ) {
+        eventLogger("purchase", parameters(
+            userType: userType,
+            values: [
+                AnalyticsParameterItemName: planName,
+                AnalyticsParameterPrice: price,
+                AnalyticsParameterCurrency: currency
+            ]
+        ))
+        debugLog("purchase")
     }
 
-    // MARK: - User Properties
+    // MARK: - Conversion segmentation
 
-    /// Set the user type as a user property for segmentation
-    /// - Parameter userType: The type of user
     func setUserType(_ userType: UserType?) {
-        if let userType = userType {
-            Analytics.setUserProperty(userType.rawValue, forName: "user_type")
-            print("[ANALYTICS] 📊 Set user property user_type: \(userType.rawValue)")
-        }
+        userPropertySetter(userType?.rawValue, "user_type")
+        debugLog("user_type_updated")
     }
 
-    /// Set the user ID for analytics
-    /// - Parameter userId: The user's unique ID
     func setUserId(_ userId: String?) {
-        Analytics.setUserID(userId)
-        if let userId = userId {
-            print("[ANALYTICS] 📊 Set user ID: \(userId)")
-        }
+        userIDSetter(userId)
+        debugLog("user_id_updated")
     }
 
-    /// Set subscription status as a user property
-    /// - Parameter isSubscribed: Whether user has active subscription
     func setSubscriptionStatus(_ isSubscribed: Bool) {
-        Analytics.setUserProperty(isSubscribed ? "subscribed" : "free", forName: "subscription_status")
-        print("[ANALYTICS] 📊 Set user property subscription_status: \(isSubscribed ? "subscribed" : "free")")
+        userPropertySetter(
+            isSubscribed ? "subscribed" : "free",
+            "subscription_status"
+        )
+        debugLog("subscription_status_updated")
     }
 
-    // MARK: - Screen View Tracking
-
-    /// Track when a screen is viewed
-    /// - Parameters:
-    ///   - screenName: The name of the screen being viewed
-    ///   - screenClass: The class name of the screen (optional)
-    func trackScreenView(screenName: ScreenName, screenClass: String? = nil) {
-        var parameters: [String: Any] = [
-            AnalyticsParameterScreenName: screenName.rawValue
-        ]
-
-        if let screenClass = screenClass {
-            parameters[AnalyticsParameterScreenClass] = screenClass
+    private func parameters(
+        userType: UserType?,
+        values: [String: Any] = [:]
+    ) -> [String: Any] {
+        var result = values
+        if let userType {
+            result["user_type"] = userType.rawValue
         }
-
-        Analytics.logEvent(AnalyticsEventScreenView, parameters: parameters)
-
-        print("[ANALYTICS] 📊 Tracked screen_view - screen: \(screenName.rawValue)")
+        return result
     }
 
-    /// Track tab selection in main navigation
-    /// - Parameter tabName: The name of the selected tab
-    func trackTabSelected(tabName: TabName) {
-        let parameters: [String: Any] = [
-            "tab_name": tabName.rawValue,
-            "tab_index": tabName.index
-        ]
-
-        Analytics.logEvent("tab_selected", parameters: parameters)
-
-        print("[ANALYTICS] 📊 Tracked tab_selected - tab: \(tabName.rawValue)")
-    }
-
-    // MARK: - Task CRUD Events
-
-    /// Track when a task is created
-    /// - Parameters:
-    ///   - taskType: The type of task created
-    ///   - hasSchedule: Whether the task has scheduled dates
-    ///   - teamSize: Number of team members assigned
-    func trackTaskCreated(taskType: String?, hasSchedule: Bool, teamSize: Int) {
-        var parameters: [String: Any] = [
-            "has_schedule": hasSchedule,
-            "team_size": teamSize
-        ]
-
-        if let taskType = taskType {
-            parameters["task_type"] = taskType
-        }
-
-        Analytics.logEvent("task_created", parameters: parameters)
-
-        print("[ANALYTICS] 📊 Tracked task_created - type: \(taskType ?? "unknown"), hasSchedule: \(hasSchedule), teamSize: \(teamSize)")
-    }
-
-    /// Track when a task is edited
-    /// - Parameter taskId: The ID of the edited task
-    func trackTaskEdited(taskId: String) {
-        let parameters: [String: Any] = [
-            "task_id": taskId
-        ]
-
-        Analytics.logEvent("task_edited", parameters: parameters)
-
-        print("[ANALYTICS] 📊 Tracked task_edited - taskId: \(taskId)")
-    }
-
-    /// Track when a task is deleted
-    func trackTaskDeleted() {
-        Analytics.logEvent("task_deleted", parameters: nil)
-
-        print("[ANALYTICS] 📊 Tracked task_deleted")
-    }
-
-    /// Track when a task status changes
-    /// - Parameters:
-    ///   - oldStatus: The previous status
-    ///   - newStatus: The new status
-    func trackTaskStatusChanged(oldStatus: String, newStatus: String) {
-        let parameters: [String: Any] = [
-            "old_status": oldStatus,
-            "new_status": newStatus
-        ]
-
-        Analytics.logEvent("task_status_changed", parameters: parameters)
-
-        print("[ANALYTICS] 📊 Tracked task_status_changed - from: \(oldStatus) to: \(newStatus)")
-    }
-
-    /// Track when a task is completed (high-value event)
-    /// - Parameter taskType: The type of task completed
-    func trackTaskCompleted(taskType: String?) {
-        var parameters: [String: Any] = [:]
-
-        if let taskType = taskType {
-            parameters["task_type"] = taskType
-        }
-
-        Analytics.logEvent("task_completed", parameters: parameters)
-
-        print("[ANALYTICS] 📊 Tracked task_completed - type: \(taskType ?? "unknown")")
-    }
-
-    // MARK: - Client CRUD Events
-
-    /// Track when a client is created
-    /// - Parameters:
-    ///   - hasEmail: Whether client has email
-    ///   - hasPhone: Whether client has phone
-    ///   - hasAddress: Whether client has address
-    ///   - importMethod: How the client was added (manual or contact_import)
-    func trackClientCreated(hasEmail: Bool, hasPhone: Bool, hasAddress: Bool, importMethod: ClientImportMethod = .manual) {
-        let parameters: [String: Any] = [
-            "has_email": hasEmail,
-            "has_phone": hasPhone,
-            "has_address": hasAddress,
-            "import_method": importMethod.rawValue
-        ]
-
-        Analytics.logEvent("client_created", parameters: parameters)
-
-        print("[ANALYTICS] 📊 Tracked client_created - email: \(hasEmail), phone: \(hasPhone), address: \(hasAddress), method: \(importMethod.rawValue)")
-    }
-
-    /// Track when a client is edited
-    /// - Parameter clientId: The ID of the edited client
-    func trackClientEdited(clientId: String) {
-        let parameters: [String: Any] = [
-            "client_id": clientId
-        ]
-
-        Analytics.logEvent("client_edited", parameters: parameters)
-
-        print("[ANALYTICS] 📊 Tracked client_edited - clientId: \(clientId)")
-    }
-
-    /// Track when a client is deleted
-    func trackClientDeleted() {
-        Analytics.logEvent("client_deleted", parameters: nil)
-
-        print("[ANALYTICS] 📊 Tracked client_deleted")
-    }
-
-    // MARK: - Project Status Events
-
-    /// Track when a project status changes
-    /// - Parameters:
-    ///   - oldStatus: The previous status
-    ///   - newStatus: The new status
-    func trackProjectStatusChanged(oldStatus: String, newStatus: String) {
-        let parameters: [String: Any] = [
-            "old_status": oldStatus,
-            "new_status": newStatus
-        ]
-
-        Analytics.logEvent("project_status_changed", parameters: parameters)
-
-        print("[ANALYTICS] 📊 Tracked project_status_changed - from: \(oldStatus) to: \(newStatus)")
-    }
-
-    /// Track when a project is edited
-    /// - Parameter projectId: The ID of the edited project
-    func trackProjectEdited(projectId: String) {
-        let parameters: [String: Any] = [
-            "project_id": projectId
-        ]
-
-        Analytics.logEvent("project_edited", parameters: parameters)
-
-        print("[ANALYTICS] 📊 Tracked project_edited - projectId: \(projectId)")
-    }
-
-    /// Track when a project is deleted
-    func trackProjectDeleted() {
-        Analytics.logEvent("project_deleted", parameters: nil)
-
-        print("[ANALYTICS] 📊 Tracked project_deleted")
-    }
-
-    // MARK: - Team Member Events
-
-    /// Track when a team member is invited
-    /// - Parameters:
-    ///   - role: The role assigned to the team member
-    ///   - teamSize: Current team size after invitation
-    func trackTeamMemberInvited(role: String, teamSize: Int) {
-        let parameters: [String: Any] = [
-            "role": role,
-            "team_size": teamSize
-        ]
-
-        Analytics.logEvent("team_member_invited", parameters: parameters)
-
-        print("[ANALYTICS] 📊 Tracked team_member_invited - role: \(role), teamSize: \(teamSize)")
-    }
-
-    /// Track when a team member is removed
-    func trackTeamMemberRemoved() {
-        Analytics.logEvent("team_member_removed", parameters: nil)
-
-        print("[ANALYTICS] 📊 Tracked team_member_removed")
-    }
-
-    /// Track when a team member role is changed
-    /// - Parameters:
-    ///   - oldRole: The previous role
-    ///   - newRole: The new role
-    func trackTeamMemberRoleChanged(oldRole: String, newRole: String) {
-        let parameters: [String: Any] = [
-            "old_role": oldRole,
-            "new_role": newRole
-        ]
-
-        Analytics.logEvent("team_member_role_changed", parameters: parameters)
-
-        print("[ANALYTICS] 📊 Tracked team_member_role_changed - from: \(oldRole) to: \(newRole)")
-    }
-
-    // MARK: - Navigation & Engagement Events
-
-    /// Track when navigation to a project is started
-    /// - Parameter projectId: The ID of the project being navigated to
-    func trackNavigationStarted(projectId: String) {
-        let parameters: [String: Any] = [
-            "project_id": projectId
-        ]
-
-        Analytics.logEvent("navigation_started", parameters: parameters)
-
-        print("[ANALYTICS] 📊 Tracked navigation_started - projectId: \(projectId)")
-    }
-
-    /// Track when a search is performed
-    /// - Parameters:
-    ///   - section: Where the search was performed (projects, tasks, clients, etc.)
-    ///   - resultsCount: Number of results returned
-    func trackSearchPerformed(section: SearchSection, resultsCount: Int) {
-        let parameters: [String: Any] = [
-            "section": section.rawValue,
-            "results_count": resultsCount
-        ]
-
-        Analytics.logEvent("search_performed", parameters: parameters)
-
-        print("[ANALYTICS] 📊 Tracked search_performed - section: \(section.rawValue), results: \(resultsCount)")
-    }
-
-    /// Track when a filter is applied
-    /// - Parameters:
-    ///   - section: Where the filter was applied
-    ///   - filterType: The type of filter applied
-    func trackFilterApplied(section: SearchSection, filterType: String) {
-        let parameters: [String: Any] = [
-            "section": section.rawValue,
-            "filter_type": filterType
-        ]
-
-        Analytics.logEvent("filter_applied", parameters: parameters)
-
-        print("[ANALYTICS] 📊 Tracked filter_applied - section: \(section.rawValue), filter: \(filterType)")
-    }
-
-    /// Track when an image is uploaded
-    /// - Parameters:
-    ///   - count: Number of images uploaded
-    ///   - context: Where the image was uploaded (project, client, etc.)
-    func trackImageUploaded(count: Int, context: String) {
-        let parameters: [String: Any] = [
-            "image_count": count,
-            "context": context
-        ]
-
-        Analytics.logEvent("image_uploaded", parameters: parameters)
-
-        print("[ANALYTICS] 📊 Tracked image_uploaded - count: \(count), context: \(context)")
-    }
-
-    /// Track when a form is abandoned without saving
-    /// - Parameters:
-    ///   - formType: The type of form (project, task, client)
-    ///   - fieldsFilled: Number of fields that had data
-    func trackFormAbandoned(formType: FormType, fieldsFilled: Int) {
-        let parameters: [String: Any] = [
-            "form_type": formType.rawValue,
-            "fields_filled": fieldsFilled
-        ]
-
-        Analytics.logEvent("form_abandoned", parameters: parameters)
-
-        print("[ANALYTICS] 📊 Tracked form_abandoned - type: \(formType.rawValue), fieldsFilled: \(fieldsFilled)")
-    }
-
-    // MARK: - Calendar Events
-
-    /// Track calendar view mode changes
-    /// - Parameter viewMode: The new view mode (month or week)
-    func trackCalendarViewModeChanged(viewMode: String) {
-        let parameters: [String: Any] = [
-            "view_mode": viewMode
-        ]
-
-        Analytics.logEvent("calendar_view_mode_changed", parameters: parameters)
-
-        print("[ANALYTICS] 📊 Tracked calendar_view_mode_changed - mode: \(viewMode)")
-    }
-
-    /// Track when a calendar day is selected
-    /// - Parameter eventsCount: Number of events on the selected day
-    func trackCalendarDaySelected(eventsCount: Int) {
-        let parameters: [String: Any] = [
-            "events_count": eventsCount
-        ]
-
-        Analytics.logEvent("calendar_day_selected", parameters: parameters)
-
-        print("[ANALYTICS] 📊 Tracked calendar_day_selected - events: \(eventsCount)")
+    private func debugLog(_ event: String) {
+        #if DEBUG
+        print("[ANALYTICS] Firebase conversion: \(event)")
+        #endif
     }
 }
-
-// MARK: - Supporting Types
 
 enum SignUpMethod: String {
-    case email = "email"
-    case apple = "apple"
-    case google = "google"
+    case email
+    case apple
+    case google
 }
 
-/// Screen names for analytics tracking
-enum ScreenName: String {
-    // Main tabs
-    case home = "home"
-    case jobBoard = "job_board"
-    case inventory = "inventory"
-    case schedule = "schedule"
-    case settings = "settings"
-
-    // Job Board sections
-    case jobBoardDashboard = "job_board_dashboard"
-    case jobBoardProjects = "job_board_projects"
-    case jobBoardTasks = "job_board_tasks"
-    case jobBoardClients = "job_board_clients"
-
-    // Detail views
-    case projectDetails = "project_details"
-    case taskDetails = "task_details"
-    case clientDetails = "client_details"
-
-    // Forms
-    case projectForm = "project_form"
-    case taskForm = "task_form"
-    case clientForm = "client_form"
-
-    // Settings sections
-    case profileSettings = "profile_settings"
-    case organizationSettings = "organization_settings"
-    case notificationSettings = "notification_settings"
-    case appSettings = "app_settings"
-    case manageTeam = "manage_team"
-    case manageSubscription = "manage_subscription"
-
-    // Subscription
-    case planSelection = "plan_selection"
-    case subscriptionLockout = "subscription_lockout"
-
-    // Auth
-    case login = "login"
-    case forgotPassword = "forgot_password"
-
-    // Onboarding A/B/C Test
-    case minimalSignup = "minimal_signup"
-    case crewCodeShare = "crew_code_share"
-    case walkthroughScreen = "walkthrough_screen"
-}
-
-/// Tab names for analytics tracking
 enum TabName: String {
-    case home = "home"
-    case pipeline = "pipeline"
-    case books = "books"
+    case home
+    case pipeline
+    case books
     case jobBoard = "job_board"
-    case inventory = "inventory"
-    case schedule = "schedule"
-    case settings = "settings"
+    case inventory
+    case schedule
+    case settings
 
-    /// Base index (without dynamic tabs like inventory)
-    /// Note: Actual tab index may vary based on user permissions
     var index: Int {
         switch self {
         case .home: return 0
@@ -670,24 +159,7 @@ enum TabName: String {
     }
 }
 
-/// Client import method for analytics
 enum ClientImportMethod: String {
-    case manual = "manual"
+    case manual
     case contactImport = "contact_import"
-}
-
-/// Search section for analytics
-enum SearchSection: String {
-    case projects = "projects"
-    case tasks = "tasks"
-    case clients = "clients"
-    case calendar = "calendar"
-    case settings = "settings"
-}
-
-/// Form type for analytics
-enum FormType: String {
-    case project = "project"
-    case task = "task"
-    case client = "client"
 }

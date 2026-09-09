@@ -229,6 +229,53 @@ class OpportunityRepository {
         return rows.first?.opportunityId
     }
 
+    /// Batched twin of `opportunityId(forEmailThreadId:)` — one request for a
+    /// whole rail's worth of thread ids instead of one per row (bug 589e3b1e:
+    /// 89 inbox notifications would otherwise mean 89 selects).
+    ///
+    /// The returned map holds an entry for EVERY id asked for. An id the read
+    /// did not return is recorded with a nil opportunity: the thread is either
+    /// gone or hidden from this operator by `email_threads`' RLS, and in both
+    /// cases the app cannot route it to a lead. A caller that must distinguish
+    /// "no lead" from "never looked up" reads the key's presence, not its value
+    /// — a thrown error leaves the caller with no map at all.
+    func opportunityIds(forEmailThreadIds ids: [String]) async throws -> [String: String?] {
+        struct ThreadRow: Decodable {
+            let id: String
+            let opportunityId: String?
+            enum CodingKeys: String, CodingKey {
+                case id
+                case opportunityId = "opportunity_id"
+            }
+        }
+
+        var seen = Set<String>()
+        let unique = ids
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty && seen.insert($0).inserted }
+        guard !unique.isEmpty else { return [:] }
+
+        var resolved: [String: String?] = [:]
+        for chunk in stride(from: 0, to: unique.count, by: 100).map({
+            Array(unique[$0..<min($0 + 100, unique.count)])
+        }) {
+            let rows: [ThreadRow] = try await client
+                .from("email_threads")
+                .select("id,opportunity_id")
+                .in("id", values: chunk)
+                .execute()
+                .value
+            for row in rows {
+                resolved[row.id] = row.opportunityId
+            }
+        }
+
+        for id in unique where resolved[id] == nil {
+            resolved[id] = String?.none
+        }
+        return resolved
+    }
+
     /// Latest email-thread subject for a lead — powers the EMAIL quick action's
     /// "Re:" compose and the detail CONTACT sheet. Nil when the lead has no
     /// correspondence.

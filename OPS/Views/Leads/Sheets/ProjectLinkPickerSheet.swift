@@ -165,13 +165,17 @@ struct ProjectLinkPickerSheet: View {
                         .lineLimit(1)
                         .truncationMode(.middle)
 
-                    if let address = candidate.address, !address.isEmpty {
-                        Text(address)
+                    // WHO it is for, then WHERE — the two facts that answer
+                    // "which project is this?". The client leads the line
+                    // because it is what the operator searched by, and tail
+                    // truncation is what keeps it on screen (bug 18dea542).
+                    if let subtitle = candidate.subtitle {
+                        Text(subtitle)
                             .font(OPSStyle.Typography.miniLabel)
                             .kerning(1.0)
                             .foregroundColor(OPSStyle.Colors.text3)
                             .lineLimit(1)
-                            .truncationMode(.middle)
+                            .truncationMode(.tail)
                             .textCase(.uppercase)
                     }
 

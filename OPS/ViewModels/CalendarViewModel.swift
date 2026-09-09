@@ -100,7 +100,7 @@ class CalendarViewModel: ObservableObject {
 
     /// Force reload of calendar data (called after scheduling changes)
     func reloadCalendarData() {
-        clearProjectCountCache()
+        invalidateForReload()
         scheduleCalendarLoad(around: selectedDate, force: true)
     }
     
@@ -267,11 +267,25 @@ class CalendarViewModel: ObservableObject {
     /// is bounded and assembled by the DataActor; freshness is never traded for
     /// a main-thread shortcut.
     func clearProjectCountCache() {
+        invalidateForReload()
+        // A scope or filter change alters what a row MEANS, so the displayed
+        // caches go with the guard — a stale ALL day under a fresh MINE filter
+        // would be a lie for the length of the reload.
+        projectCountCache = [:]
+        dayTaskCache = [:]
+    }
+
+    /// Bug a4225f3f — a data-change reload used to empty the day caches up
+    /// front, so every schedule edit blanked the day for the length of the
+    /// off-main reload ("all events disappear momentarily"). The last snapshot
+    /// now stays on screen and `performCalendarLoad` swaps in the replacement
+    /// synchronously; the generation bump still cancels a stale in-flight load
+    /// and dropping `cachedWeekStart` means the reload can never be skipped as
+    /// "same week".
+    func invalidateForReload() {
         calendarLoadGeneration &+= 1
         calendarLoadTask?.cancel()
         calendarLoadTask = nil
-        projectCountCache = [:]
-        dayTaskCache = [:]
         cachedWeekStart = nil
         cachedWeekSnapshot = nil
         cachedAuxiliaryWindow = nil
@@ -440,7 +454,10 @@ class CalendarViewModel: ObservableObject {
     /// Land a rebuilt window. `tasks` supplies the live models for the ids the
     /// snapshot names — the snapshot itself carries ids because it may have been
     /// built in another context.
-    private func applyWeekCache(_ snapshot: CalendarWeekCacheSnapshot, resolving tasks: [ProjectTask]) {
+    /// Internal (not private) so the reload policy can be proven with a seeded
+    /// snapshot instead of a full DataActor load — see
+    /// `CalendarReloadKeepsLastSnapshotTests`.
+    func applyWeekCache(_ snapshot: CalendarWeekCacheSnapshot, resolving tasks: [ProjectTask]) {
         let byId = Dictionary(tasks.map { ($0.id, $0) }, uniquingKeysWith: { current, _ in current })
 
         var newCache: [String: [ProjectTask]] = [:]
@@ -494,7 +511,7 @@ class CalendarViewModel: ObservableObject {
     /// context, even when the long-lived DataActor feature flag is disabled.
     @MainActor
     func reloadCalendarDataOffMain() async {
-        clearProjectCountCache()
+        invalidateForReload()
         guard let weekStart = weekCacheAnchor(for: selectedDate) else { return }
         calendarLoadGeneration &+= 1
         let generation = calendarLoadGeneration

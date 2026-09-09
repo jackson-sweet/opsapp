@@ -67,6 +67,34 @@ enum LeadContactRosterState: Equatable {
     case noClient        // lead has no client link
 }
 
+/// A lead's client link, read the same way everywhere.
+///
+/// `opportunities.client_id` arrives as an optional string that is sometimes
+/// an empty one, so "has a client" is a rule rather than a nil check — and it
+/// has to be the SAME rule in the view model that loads the roster and in the
+/// row that decides whether to show a client or invite one (bug 908888f6).
+enum LeadClientLink {
+    /// The link, or nil when there is none. Empty and whitespace-only are none.
+    static func normalised(_ raw: String?) -> String? {
+        guard let raw else { return nil }
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
+    }
+
+    /// True when the lead is linked to a client, whatever that client's row
+    /// has loaded yet.
+    static func isLinked(_ raw: String?) -> Bool { normalised(raw) != nil }
+}
+
+/// How the dossier fetches the linked client and its people.
+///
+/// Injected so the reload rule — *the roster follows the lead's CURRENT link* —
+/// is assertable without a network. Production hands in `ClientRepository`.
+struct LeadClientRosterLoader {
+    var client: @MainActor (String) async throws -> Client
+    var subClients: @MainActor (String) async throws -> [SubClient]
+}
+
 @MainActor
 class LeadDetailViewModel: ObservableObject {
     @Published var activities: [Activity] = []
@@ -83,16 +111,39 @@ class LeadDetailViewModel: ObservableObject {
 
     private let opportunityId: String
     private let companyId: String
-    private let clientId: String?
+    /// The client link the roster currently reflects. NOT a snapshot of the
+    /// link the screen opened with: a lead gains its first client while the
+    /// dossier is open (the CLIENT row's picker writes it), and a roster frozen
+    /// at open time is what made an assignment that DID land read as a
+    /// failure — the row fell back to its ASSIGN CLIENT invitation over a
+    /// client that was already saved (bug 908888f6).
+    private var clientId: String?
     private let repository: OpportunityRepository
     private let activityRepository: ActivityRepository
+    private let rosterLoader: LeadClientRosterLoader
 
-    init(opportunityId: String, companyId: String, clientId: String? = nil) {
+    init(
+        opportunityId: String,
+        companyId: String,
+        clientId: String? = nil,
+        rosterLoader: LeadClientRosterLoader? = nil
+    ) {
         self.opportunityId = opportunityId
         self.companyId = companyId
-        self.clientId = clientId
+        self.clientId = LeadClientLink.normalised(clientId)
         self.repository = OpportunityRepository(companyId: companyId)
         self.activityRepository = ActivityRepository(companyId: companyId)
+        self.rosterLoader = rosterLoader ?? Self.liveRosterLoader(companyId: companyId)
+    }
+
+    /// Production roster fetch — the two `ClientRepository` reads the dossier
+    /// has always made, behind the seam.
+    static func liveRosterLoader(companyId: String) -> LeadClientRosterLoader {
+        let repo = ClientRepository(companyId: companyId)
+        return LeadClientRosterLoader(
+            client: { id in Self.mapClient(try await repo.fetchOne(id)) },
+            subClients: { id in try await repo.fetchSubClients(for: id).map(Self.mapSubClient) }
+        )
     }
 
     func loadAll() async {
@@ -144,16 +195,32 @@ class LeadDetailViewModel: ObservableObject {
     }
 
     private func loadClientRoster() async {
-        guard let clientId, !clientId.isEmpty else { return }
-        let repo = ClientRepository(companyId: companyId)
+        guard let clientId else {
+            // Unlinked: the roster states nothing rather than keeping the last
+            // client it happened to hold.
+            client = nil
+            subClients = []
+            return
+        }
         do {
-            let dto = try await repo.fetchOne(clientId)
-            client = Self.mapClient(dto)
+            client = try await rosterLoader.client(clientId)
         } catch { print("[LeadDetail] client failed: \(error)") }
         do {
-            let dtos = try await repo.fetchSubClients(for: clientId)
-            subClients = dtos.map(Self.mapSubClient)
+            subClients = try await rosterLoader.subClients(clientId)
         } catch { print("[LeadDetail] sub-clients failed: \(error)") }
+    }
+
+    /// The lead's client link moved — re-point the roster at it.
+    ///
+    /// Called whenever `opportunity.clientId` changes under the open dossier:
+    /// the CLIENT row's picker, its RETRY, or any other writer. Idempotent —
+    /// a link that has not actually moved costs nothing, so wiring it to a
+    /// view's `onChange` is free.
+    func clientLinkChanged(to newClientId: String?) async {
+        let next = LeadClientLink.normalised(newClientId)
+        guard next != clientId else { return }
+        clientId = next
+        await loadClientRoster()
     }
 
     private func loadAttachments() async {

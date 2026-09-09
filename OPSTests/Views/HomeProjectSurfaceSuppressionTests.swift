@@ -105,6 +105,34 @@ final class HomeProjectSurfaceSuppressionTests: XCTestCase {
         XCTAssertFalse(state.isProjectSurfacePresented)
     }
 
+    /// Bug 030c82a9 — the founder opened a job from BILLABLE THIS WEEK, tapped
+    /// DONE, and both the billable and needs-tasks cards were gone. DONE
+    /// dismisses through the environment: the sheet's binding flips first, and
+    /// only an `onDismiss` can run `dismissProjectDetails()` afterwards. The
+    /// container had no `onDismiss`, so the viewing flags stayed armed and the
+    /// signal never cleared. This is the exact order `ProjectSheetContainer`
+    /// now relies on.
+    func testSheetDismissalReleasesTheSurfaceOnlyThroughDismissProjectDetails() async throws {
+        let state = AppState()
+        state.viewProjectDetailsById("project-1")
+        XCTAssertTrue(state.isViewingDetailsOnly)
+        XCTAssertEqual(state.activeProjectID, "project-1")
+        XCTAssertTrue(state.isProjectSurfacePresented, "the arming window counts as presented")
+        // Let the deferred `showProjectDetails = true` land, as it does in the app.
+        try await Task.sleep(for: .milliseconds(250))
+        XCTAssertTrue(state.showProjectDetails)
+
+        // The binding flips first — the sheet is already off screen.
+        state.showProjectDetails = false
+        XCTAssertTrue(state.isProjectSurfacePresented, "the binding alone leaves the viewing flags armed — this was the bug")
+
+        // Then the container's onDismiss runs.
+        state.dismissProjectDetails()
+        XCTAssertFalse(state.isProjectSurfacePresented)
+        XCTAssertFalse(state.isViewingDetailsOnly)
+        XCTAssertNil(state.activeProjectID)
+    }
+
     /// Logout resets it — a stale true would hide the cards for the next user.
     func testLogoutResetClearsTheSignal() {
         let state = AppState()

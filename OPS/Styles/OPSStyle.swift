@@ -293,6 +293,13 @@ enum OPSStyle {
 
         // Borders & neutral fills
         static let line           = Color.white.opacity(0.10)  // Standard hairline — panels, inputs, L1 dividers
+        /// The hairline on a control that is currently the emphasised one —
+        /// an active filter chip, the lead verb in a row of verbs. Sits
+        /// between MOBILE.md §4.3's chip edge (0.18) and §4.1's segment edge
+        /// (0.22); one value so emphasised controls match across the app, and
+        /// the way emphasis is spent WITHOUT the accent (accent is CTA + focus
+        /// only, DESIGN.md §3).
+        static let lineActive     = text.opacity(0.20)
         static let glassBorder    = Color.white.opacity(0.09)  // L1 glass panel edge (MOBILE.md §3)
         static let nestedBorder   = Color.white.opacity(0.08)  // L2 nested-card edge (MOBILE.md §3)
         static let fillNeutral    = Color.white.opacity(0.14)  // Bar fills, progress tracks
@@ -561,6 +568,14 @@ enum OPSStyle {
         /// shrink it and the gap can only come out of the hit area.
         static let keyboardAccessoryHeight: CGFloat = touchTargetMin + spacing1 * 2
         static let chipMinHeight: CGFloat = 36.0        // §4.3 filter / form-picker chip — the one sanctioned sub-44pt target
+        /// §6.1 bottom-sheet grab handle — 36 × 5pt at `Opacity.light`, capsule.
+        /// The one sanctioned 999px radius outside avatars (MOBILE.md spells it
+        /// out for peek and half sheets alike).
+        static let sheetHandleWidth: CGFloat = 36.0
+        static let sheetHandleHeight: CGFloat = 5.0
+        /// §6.1 peek sheet — the resting height of a sheet that lives on its
+        /// screen: handle, one content row, and the home-indicator clearance.
+        static let sheetPeekHeight: CGFloat = 80.0
         static let segmentedControlInset: CGFloat = 3.0 // §4.1 inset between container and segments
         static let segmentedControlRadius: CGFloat = 5.0
         static let segmentedItemRadius: CGFloat = 3.0
@@ -572,6 +587,14 @@ enum OPSStyle {
         /// read-only strip and its edit strip, so the two modes of the same
         /// card can never drift apart.
         static let activityPhotoTileSize: CGFloat = 80.0
+        /// Task photo tile inside a text block — the pinned task-note strip.
+        /// Small enough that a row of them stays subordinate to the note it
+        /// belongs to, large enough to recognize a job site at arm's length.
+        static let taskPhotoTileCompactSize: CGFloat = 52.0
+        /// Task colour bar along the bottom edge of a gallery tile. The same
+        /// 3pt stripe the task header wears, so one language says "this belongs
+        /// to that task" on both surfaces.
+        static let taskPhotoTileStripeHeight: CGFloat = 3.0
         static let monthGridDayHeaderHeight: CGFloat = 26.0
         static let monthGridCompactBadgeHeight: CGFloat = 10.0
         static let monthGridStandardBadgeHeight: CGFloat = 14.0
@@ -606,6 +629,12 @@ enum OPSStyle {
         /// every reschedule presentation and clipped nav + footer; SE-class
         /// overflowed by ~95–125pt.)
         static let schedulerCalendarMinHeight: CGFloat = 112.0
+        /// A control that has STOOD DOWN — visible, unreachable, and saying so.
+        /// The Leads console dims its chips and filter while a search is live;
+        /// the dossier's visit banner dims its verbs while a cancel is on the
+        /// wire. One value, because "waiting" should look the same everywhere.
+        static let suspendedOpacity: Double = 0.4
+
         /// Dependency-floor days stay fully tappable — they only recede.
         static let schedulerPreFloorOpacity: Double = 0.35
         /// How far a selection's cap carries its own fill into the interior,
@@ -773,6 +802,10 @@ enum OPSStyle {
             static let medium = 0.5   // Medium overlays
             static let strong = 0.7   // Strong overlays
             static let heavy = 0.9    // Almost opaque
+            /// Terminal work — completed or cancelled. It stays visible and
+            /// stays readable; it just stops competing with live work.
+            /// `TaskBadge(faded:)` is the reference use.
+            static let faded = 0.4
         }
 
         // Shadow presets — DEPRECATED (spec v2: zero box-shadows on dark backgrounds.

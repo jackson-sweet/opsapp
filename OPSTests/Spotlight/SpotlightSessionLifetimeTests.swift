@@ -62,7 +62,12 @@ final class SpotlightSessionLifetimeTests: XCTestCase {
     }
 
     private func makeContainer() throws -> ModelContainer {
-        let schema = Schema(OPSSchemaV26.models)
+        // The head, not a version literal. These fixtures mean "the current
+        // schema"; naming V26 silently pinned them to a graph whose frozen
+        // models the live code no longer uses — inserting or fetching a live
+        // @Model against a stale container traps inside SwiftData with an
+        // uncatchable EXC_BREAKPOINT. See OPSSchemaCurrent.swift.
+        let schema = Schema(OPSSchemaCurrent.models)
         return try ModelContainer(for: schema,
             configurations: ModelConfiguration(schema: schema, isStoredInMemoryOnly: true))
     }

@@ -375,12 +375,14 @@ struct LeadsTabView: View {
     @ViewBuilder
     private var surface: some View {
         VStack(spacing: 0) {
-            // Visit-day START cards — pinned above whichever surface is live,
-            // so the morning's appointment leads the tab until it's started
-            // or dismissed. START goes straight into the ONE capture cover.
+            // Today's visits rail — pinned above whichever surface is live,
+            // so the morning's appointments lead the tab until each is started
+            // or dismissed. START goes straight into the ONE capture cover; a
+            // row opens the lead (f77d38fc).
             SiteVisitStartCardsHost(
                 currentUserId: dataController.currentUser?.id,
-                onStart: { activeSiteVisitLead = $0 }
+                onStart: { activeSiteVisitLead = $0 },
+                onOpen: { detailLead = $0 }
             )
             surfaceBody
         }
@@ -512,17 +514,25 @@ struct LeadsTabView: View {
         )
     }
 
-    /// Chips carry RAW bucket counts, deliberately: they describe the queue the
-    /// operator owns, not the slice a crew filter is currently showing. A chip
-    /// that read `OVERDUE 0` because of a crew filter would look like there is
-    /// nothing overdue. Group headers below carry the filtered counts.
+    /// Chip counts are `LeadsQueryEngine.chipCount` — raw bucket counts while
+    /// browsing (a chip describes the queue the operator owns, not the slice a
+    /// crew filter is showing), and the breakdown of the MATCHES while a search
+    /// is live (bug 2a89477d). Group headers below carry the filtered counts.
     private var bucketChips: [TacticalChip] {
         let order: [PipelineViewModel.TriageBucket] = [
             .all, .overdue, .dueToday, .waitingOnYou, .fresh, .waitingOnThem
         ]
         return order.map { b in
-            let count = (b == .all) ? buckets.all.count : buckets.leads(for: b).count
-            return TacticalChip(id: b.rawValue, label: chipLabel(b), count: count, tone: bucketTone(b))
+            TacticalChip(
+                id: b.rawValue,
+                label: chipLabel(b),
+                count: LeadsQueryEngine.chipCount(
+                    for: b,
+                    controls: controls,
+                    buckets: buckets
+                ),
+                tone: bucketTone(b)
+            )
         }
     }
 

@@ -39,6 +39,42 @@ struct AppHeaderHeightKey: PreferenceKey {
     }
 }
 
+enum ScheduleHeaderAction: Equatable {
+    case month
+    case search
+    case filters
+    case scope
+}
+
+struct ScheduleHeaderActionPlacement: Equatable {
+    let primary: [ScheduleHeaderAction]
+    let secondary: [ScheduleHeaderAction]
+}
+
+/// Schedule keeps its two highest-frequency actions in the title band. Lower-
+/// frequency configuration stays grouped in the header's context strip rather
+/// than hiding the month-grid toggle or exceeding the mobile two-action limit.
+enum ScheduleHeaderActionPlacementPolicy {
+    static func placement(
+        hasMonthAction: Bool,
+        hasFilterAction: Bool,
+        hasScopeAction: Bool
+    ) -> ScheduleHeaderActionPlacement {
+        var primary: [ScheduleHeaderAction] = []
+        if hasMonthAction { primary.append(.month) }
+        primary.append(.search)
+
+        var secondary: [ScheduleHeaderAction] = []
+        if hasFilterAction { secondary.append(.filters) }
+        if hasScopeAction { secondary.append(.scope) }
+
+        return ScheduleHeaderActionPlacement(
+            primary: primary,
+            secondary: secondary
+        )
+    }
+}
+
 struct AppHeader: View {
     enum HeaderType {
         case home
@@ -52,7 +88,7 @@ struct AppHeader: View {
     }
 
     private enum TrailingAction: String, Identifiable {
-        case scheduleMenu
+        case scheduleMonth
         case jobBoardMenu
         case inventoryInsights
         case newLead
@@ -89,6 +125,7 @@ struct AppHeader: View {
     var onFilterTapped: (() -> Void)? = nil
     var onInsightsTapped: (() -> Void)? = nil
     var onMonthTapped: (() -> Void)? = nil
+    var isMonthExpanded: Bool = false
     var onScopeToggled: (() -> Void)? = nil
     var onPaymentReviewTapped: (() -> Void)? = nil
     var paymentReviewBadgeCount: Int = 0
@@ -130,9 +167,6 @@ struct AppHeader: View {
     
     var body: some View {
         headerContent
-            .overlayPreferenceValue(OPSHeaderTrailingSlotBoundsKey.self) { anchor in
-                statusOverlay(trailingSlot: anchor)
-            }
             .background(
                 GeometryReader { proxy in
                     Color.clear.preference(
@@ -158,13 +192,15 @@ struct AppHeader: View {
 
     /// No header hosts the recovery pill IN FLOW. Home used to reserve a row
     /// here, which pushed TODAY / ACTIVE / ALL and the map down the moment an
-    /// attention item existed (bug 417aac7b). It is superimposed instead — see
-    /// `statusOverlay` — so this stays the header's true, pill-independent
-    /// height. Home project mode drops the header entirely and hosts the same
-    /// control in its own project stack.
+    /// attention item existed (bug 417aac7b). It is an overlay on the BAND
+    /// instead — see `statusOverlay` — so this stays the header's true,
+    /// pill-independent height, and the pill is painted above the band's own
+    /// trailing control rather than beside or below it. Home project mode drops
+    /// the header entirely and hosts the same control in its own project stack.
     private var headerContent: some View {
         VStack(spacing: 0) {
             headerBand
+                .overlay { statusOverlay }
             contextStrip
         }
     }
@@ -178,29 +214,40 @@ struct AppHeader: View {
         headerType == .settings && appState.isSettingsSearchActive
     }
 
-    /// The needs-a-look pill, hung off the header's BOTTOM edge.
+    /// The needs-a-look pill, superimposed on the title band's control row.
     ///
     /// Jackson's direction: the pill is the most urgent thing on screen, so it
-    /// superimposes over header content and is addressed or cancelled. It is
-    /// therefore free to cover header TEXT — the greeting, the company line,
-    /// the screen title — and reserves no layout of its own, so nothing below
-    /// the header moves when it appears or leaves.
+    /// superimposes over header content and is then addressed or cancelled —
+    /// and (2026-09-08) "It should appear ONTOP of the avatar", "with a
+    /// dropshadow". It is therefore free to cover header TEXT — the greeting,
+    /// the company line, the screen title — AND the trailing control itself,
+    /// and it reserves no layout of its own, so nothing below the header moves
+    /// when it appears or leaves.
     ///
-    /// It is never free to cover a CONTROL. The header's trailing cluster
-    /// (Home's avatar, every other root's search / action buttons) lives in the
-    /// top band row, and at accessibility sizes the pill is tall enough to
-    /// reach that row — so the overlay reserves the cluster's whole column via
-    /// its measured bounds rather than relying on the pill staying short.
-    /// Anchored to the bottom edge, it also cannot reach the filter row below
-    /// the header, which is what the previous fix got wrong.
+    /// TAP OWNERSHIP — deliberate. Do not "fix" this back. While the pill is
+    /// visible it covers the header's trailing cluster (Home's notifications
+    /// avatar, every other root's search / action buttons), so taps in that
+    /// region open PENDING WORK rather than the control's own destination.
+    /// That is the accepted consequence of the direction above: the pill is
+    /// transient and outranks the control for as long as it is there, and the
+    /// control returns the instant the work is addressed. Do NOT restore the
+    /// control's taps by shrinking the pill, offsetting it, or hit-testing
+    /// around it — the close before this one reserved the cluster's column for
+    /// exactly that reason and was rejected.
+    ///
+    /// What it is still never free to do is reach the content BELOW the header
+    /// — Home's TODAY / ACTIVE / ALL row, the first content row on every other
+    /// root. That was the original defect, and `HeaderSyncStatusGeometry`
+    /// documents why sitting on the control row makes it impossible by
+    /// construction.
     @ViewBuilder
-    private func statusOverlay(trailingSlot: Anchor<CGRect>?) -> some View {
+    private var statusOverlay: some View {
         if !headerIsSearchInput,
            HeaderSyncStatusPlacementPolicy.showsHeaderOverlay(
                isSyncRestoredAlertVisible: dataController.showSyncRestoredAlert,
                isSuppressedByToast: toastCenter.isSuppressingSyncStatusIndicator
            ) {
-            HeaderSyncStatusOverlay(trailingSlot: trailingSlot) {
+            HeaderSyncStatusOverlay {
                 SyncStatusIndicator(placement: .header)
             }
         }
@@ -259,23 +306,39 @@ struct AppHeader: View {
             .accessibilityElement(children: .combine)
         } else if headerType == .schedule {
             HStack(spacing: OPSStyle.Layout.spacing2) {
-                Text("TODAY")
-                Text("·")
-                Text(todayDateString)
+                HStack(spacing: OPSStyle.Layout.spacing2) {
+                    Text("TODAY")
+                    Text("·")
+                    Text(todayDateString)
+                }
+                .accessibilityElement(children: .combine)
+
                 Spacer(minLength: 0)
+
+                if hasScheduleMenuActions {
+                    scheduleMenu
+                }
             }
             .font(OPSStyle.Typography.caption)
             .foregroundColor(OPSStyle.Colors.secondaryText)
             .padding(.horizontal, OPSStyle.Layout.spacing3_5)
             .padding(.bottom, OPSStyle.Layout.spacing2)
-            .accessibilityElement(children: .combine)
         }
     }
 
     private var trailingActions: [TrailingAction] {
         switch headerType {
         case .schedule:
-            return hasScheduleMenuActions ? [.scheduleMenu, .search] : [.search]
+            return scheduleHeaderPlacement.primary.compactMap { action in
+                switch action {
+                case .month:
+                    return .scheduleMonth
+                case .search:
+                    return .search
+                case .filters, .scope:
+                    return nil
+                }
+            }
         case .jobBoard:
             return hasJobBoardMenuActions ? [.jobBoardMenu, .search] : [.search]
         case .inventory:
@@ -289,8 +352,16 @@ struct AppHeader: View {
         }
     }
 
+    private var scheduleHeaderPlacement: ScheduleHeaderActionPlacement {
+        ScheduleHeaderActionPlacementPolicy.placement(
+            hasMonthAction: onMonthTapped != nil,
+            hasFilterAction: onFilterTapped != nil,
+            hasScopeAction: onScopeToggled != nil
+        )
+    }
+
     private var hasScheduleMenuActions: Bool {
-        onMonthTapped != nil || onFilterTapped != nil || onScopeToggled != nil
+        !scheduleHeaderPlacement.secondary.isEmpty
     }
 
     private var hasJobBoardMenuActions: Bool {
@@ -304,8 +375,18 @@ struct AppHeader: View {
     @ViewBuilder
     private func trailingAction(_ action: TrailingAction) -> some View {
         switch action {
-        case .scheduleMenu:
-            scheduleMenu
+        case .scheduleMonth:
+            Button(action: { onMonthTapped?() }) {
+                headerActionIcon(
+                    symbol: isMonthExpanded
+                        ? OPSStyle.Icons.calendarFill
+                        : OPSStyle.Icons.calendar
+                )
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Month view")
+            .accessibilityAddTraits(isMonthExpanded ? .isSelected : [])
+            .wizardTarget("toggle_month", style: .circle)
         case .jobBoardMenu:
             jobBoardMenu
         case .inventoryInsights:
@@ -330,11 +411,6 @@ struct AppHeader: View {
 
     private var scheduleMenu: some View {
         Menu {
-            if let onMonthTapped {
-                Button(action: onMonthTapped) {
-                    Label("MONTH VIEW", systemImage: OPSStyle.Icons.calendar)
-                }
-            }
             if let onFilterTapped {
                 Button(action: onFilterTapped) {
                     Label(scheduleFilterMenuTitle, systemImage: OPSStyle.Icons.filter)
@@ -358,7 +434,6 @@ struct AppHeader: View {
             )
         }
         .buttonStyle(.plain)
-        .wizardTarget("toggle_month", style: .circle)
     }
 
     private var jobBoardMenu: some View {

@@ -521,6 +521,89 @@ final class LeadFieldEditTests: XCTestCase {
         XCTAssertEqual(spy.changes, [.address(nil, latitude: nil, longitude: nil)])
     }
 
+    // MARK: - Title (bug 53e869f6)
+
+    /// The header is correctable in place, through the same write path every
+    /// other dossier field uses.
+    func testTitleCommitSendsTheTypedTitle() async {
+        let lead = makeLead()
+        lead.title = "Jaime Taylor - Lead"
+        let fresh = serverRow(from: lead)
+        fresh.title = "Cedar deck rebuild, 320 sq ft"
+        let spy = WriteSpy(result: .success(fresh))
+        let controller = makeController(lead: lead, spy: spy)
+
+        controller.begin(.title)
+        await controller.saveTitle("  Cedar deck rebuild, 320 sq ft  ")
+
+        XCTAssertEqual(spy.changes, [.title("Cedar deck rebuild, 320 sq ft")])
+        XCTAssertEqual(
+            lead.title, "Cedar deck rebuild, 320 sq ft",
+            "the header repaints from the SERVER's row"
+        )
+        XCTAssertNil(controller.editing)
+    }
+
+    /// `opportunities.title` is NOT NULL — unlike every other field here, a
+    /// blank is not a clear but a write the server would refuse. It never
+    /// leaves the device.
+    func testABlankTitleNeverReachesTheWire() async {
+        let lead = makeLead()
+        lead.title = "Jaime Taylor - Lead"
+        let spy = WriteSpy(result: .success(serverRow(from: lead)))
+        let controller = makeController(lead: lead, spy: spy)
+
+        controller.begin(.title)
+        await controller.saveTitle("   ")
+
+        XCTAssertEqual(spy.callCount, 0)
+        XCTAssertTrue(
+            controller.isEditing(.title),
+            "the editor stays open — the operator still has a title to type"
+        )
+        XCTAssertEqual(lead.title, "Jaime Taylor - Lead")
+    }
+
+    /// A failed title write behaves like every other failed write: editor open,
+    /// input intact, retry resends the same string.
+    func testAFailedTitleSaveKeepsTheEditorOpenAndRetries() async {
+        let lead = makeLead()
+        lead.title = "Jaime Taylor - Lead"
+        let spy = WriteSpy(result: .failure(StubError(description: "The network connection was lost")))
+        let controller = makeController(lead: lead, spy: spy)
+
+        controller.begin(.title)
+        await controller.saveTitle("Cedar deck rebuild")
+
+        XCTAssertTrue(controller.isEditing(.title))
+        XCTAssertEqual(controller.failure(for: .title), .offline)
+        XCTAssertEqual(lead.title, "Jaime Taylor - Lead")
+
+        let fresh = serverRow(from: lead)
+        fresh.title = "Cedar deck rebuild"
+        spy.result = .success(fresh)
+        await controller.retry()
+
+        XCTAssertEqual(spy.changes, [.title("Cedar deck rebuild"), .title("Cedar deck rebuild")])
+        XCTAssertEqual(lead.title, "Cedar deck rebuild")
+    }
+
+    /// The header's editor seeds from what the header SHOWS, so an untitled
+    /// lead does not ask the operator to retype the name already on screen.
+    func testHeroTitleFallsBackThroughDescriptionToContactName() {
+        let lead = makeLead()
+
+        lead.title = "Cedar deck rebuild"
+        lead.descriptionText = "Rear yard"
+        XCTAssertEqual(LeadHeroTitle.resolve(lead), "Cedar deck rebuild")
+
+        lead.title = nil
+        XCTAssertEqual(LeadHeroTitle.resolve(lead), "Rear yard")
+
+        lead.descriptionText = nil
+        XCTAssertEqual(LeadHeroTitle.resolve(lead), "Helen Calloway")
+    }
+
     /// Emptying the value sends an explicit nil, not a zero. Zero is a real
     /// number and would pollute pipeline totals.
     func testClearingValueSendsNilNotZero() async {
@@ -548,6 +631,42 @@ final class LeadFieldEditTests: XCTestCase {
         XCTAssertEqual(spy.changes, [.client(id: "33333333-3333-3333-3333-333333333333")])
         XCTAssertEqual(lead.clientId, "33333333-3333-3333-3333-333333333333")
         XCTAssertNil(controller.editing)
+    }
+
+    /// Bug 908888f6. The dossier's roster fetches the real client row a beat
+    /// after the write lands; until it does, the picked name is the only thing
+    /// the CLIENT row can show. Dropping it on success is a blink back to `—`
+    /// on a row the operator just filled in.
+    func testThePickedClientNameOutlivesTheWrite() async {
+        let lead = makeLead(clientId: nil)
+        let fresh = serverRow(from: lead, clientId: "33333333-3333-3333-3333-333333333333")
+        let spy = WriteSpy(result: .success(fresh))
+        let controller = makeController(lead: lead, spy: spy)
+
+        await controller.commitClient(
+            id: "33333333-3333-3333-3333-333333333333",
+            name: "Calloway Homes"
+        )
+
+        XCTAssertEqual(controller.pendingClientName, "Calloway Homes")
+        XCTAssertFalse(controller.isSaving(.client))
+    }
+
+    /// It is a bridge, not a memory: opening any editor drops it, so a stale
+    /// name can never outlive the correction that produced it.
+    func testOpeningAnotherEditorDropsThePickedClientName() async {
+        let lead = makeLead(clientId: nil)
+        let fresh = serverRow(from: lead, clientId: "33333333-3333-3333-3333-333333333333")
+        let spy = WriteSpy(result: .success(fresh))
+        let controller = makeController(lead: lead, spy: spy)
+
+        await controller.commitClient(
+            id: "33333333-3333-3333-3333-333333333333",
+            name: "Calloway Homes"
+        )
+        controller.begin(.address)
+
+        XCTAssertNil(controller.pendingClientName)
     }
 
     // MARK: - 5. A failed write surfaces and preserves input

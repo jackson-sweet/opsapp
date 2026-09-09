@@ -58,9 +58,26 @@ struct TaskDetailsView: View {
     /// the card stays hidden rather than flashing for off-mode companies.
     @State private var companyInventoryMode: InventoryMode = .off
 
+    /// Bug a290934f — this project's synced photos, live. The task's own
+    /// evidence is a reading of that one store; there is no second photo
+    /// system to keep in step.
+    @Query private var projectPhotos: [ProjectPhoto]
+    @State private var showingPhotoCapture = false
+    @State private var photoViewerTarget: TaskPhotoViewerTarget?
+
     init(task: ProjectTask, project: Project) {
         self._task = State(initialValue: task)
         self.project = project
+        let projectID = project.id
+        _projectPhotos = Query(
+            filter: #Predicate<ProjectPhoto> { $0.projectId == projectID && $0.deletedAt == nil },
+            sort: [SortDescriptor(\ProjectPhoto.createdAt, order: .reverse)]
+        )
+    }
+
+    /// The task's photos, newest first.
+    private var taskPhotoIndex: ProjectPhotoTaskIndex {
+        ProjectPhotoTaskIndex(photos: projectPhotos, tasks: [task])
     }
     
     var body: some View {
@@ -170,6 +187,11 @@ struct TaskDetailsView: View {
 
                         taskTypeSection
 
+                        // Evidence of the work sits with the work's identity:
+                        // someone on this task is either about to shoot a photo
+                        // for it or looking for the one they already shot.
+                        photosSection
+
                         // Material History is meaningless when the company
                         // doesn't track inventory — hide the whole card rather
                         // than render an empty em-dash for off-mode companies.
@@ -226,6 +248,38 @@ struct TaskDetailsView: View {
             ProjectDetailsView(project: project)
                 .environmentObject(dataController)
                 .environmentObject(appState)
+        }
+        // Bug a290934f — the same standardized batch camera the project's PHOTO
+        // action opens, pre-scoped to this task. The scope rides the durable
+        // capture receipt, so a batch recovered after the app dies still knows
+        // which task it documents.
+        .fullScreenCover(isPresented: $showingPhotoCapture) {
+            CameraBatchView(
+                owner: StagedPhotoDestinations.owner(
+                    companyID: project.companyId,
+                    userID: dataController.currentUser?.id ?? "",
+                    kind: "project",
+                    id: project.id,
+                    taskID: task.id
+                )
+            ) { batch in
+                guard let context = dataController.modelContext else { return false }
+                return await StagedPhotoDestinations.acceptProject(
+                    batch, project: project, userID: dataController.currentUser?.id ?? "",
+                    context: context, imageSyncManager: dataController.imageSyncManager,
+                    taskID: task.id
+                )
+            }
+        }
+        .fullScreenCover(item: $photoViewerTarget) { target in
+            let urls = taskPhotoIndex.urls(forTaskID: task.id)
+            PhotoCommentViewer(
+                photos: urls,
+                initialIndex: min(target.value, max(urls.count - 1, 0)),
+                onDismiss: { photoViewerTarget = nil },
+                projectId: project.id
+            )
+            .environmentObject(dataController)
         }
         .sheet(isPresented: $showingClientContact) {
             // Pass the actual Client object if available, otherwise create a temporary one
@@ -517,6 +571,37 @@ struct TaskDetailsView: View {
         } catch {
             ToastCenter.shared.present(Toast(label: Feedback.Err.operationFailed, tone: .error))
         }
+    }
+
+    // MARK: - Photos (bug a290934f)
+
+    private var photosSection: some View {
+        let index = taskPhotoIndex
+        let urls = index.urls(forTaskID: task.id)
+        return SectionCard(
+            icon: OPSStyle.Icons.photos,
+            title: "Photos",
+            count: urls.isEmpty ? nil : urls.count,
+            actionIcon: OPSStyle.Icons.camera,
+            actionLabel: "PHOTO",
+            onAction: { showingPhotoCapture = true }
+        ) {
+            if urls.isEmpty {
+                Text("No photos yet")
+                    .font(OPSStyle.Typography.body)
+                    .foregroundColor(OPSStyle.Colors.secondaryText)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            } else {
+                TaskPhotoStrip(
+                    model: TaskPhotoStripModel(urls: urls, limit: TaskPhotoStrip.Size.section.limit),
+                    project: project,
+                    size: .section,
+                    thumbnailByURL: index.thumbnails,
+                    onTap: { photoViewerTarget = TaskPhotoViewerTarget(value: $0) }
+                )
+            }
+        }
+        .padding(.horizontal)
     }
 
     private var materialHistorySection: some View {

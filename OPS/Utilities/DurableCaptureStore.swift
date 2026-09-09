@@ -145,6 +145,29 @@ actor DurableCaptureStore {
         return contexts
     }
 
+    /// Every context that still holds retained custody for this account — items
+    /// neither discarded nor delivered, whether or not they were acknowledged.
+    ///
+    /// `pendingContextIDs` answers a narrower question (is there unaccepted
+    /// work?) and would miss a context whose items were all accepted but never
+    /// retired. Destination reopen needs the wider set so retirement settles
+    /// every journal it owns. Failure to read a journal propagates: unreadable
+    /// custody must never look like no capture.
+    func retainedContextIDs(companyID: String, userID: String) throws -> Set<String> {
+        guard FileManager.default.fileExists(atPath: root.path) else { return [] }
+        let files = try FileManager.default.contentsOfDirectory(at: root, includingPropertiesForKeys: nil)
+        var contexts = Set<String>()
+        for file in files where file.pathExtension == "json" {
+            let manifest = try read(file.deletingPathExtension().lastPathComponent)
+            guard manifest.batch.owner.companyID == companyID.lowercased(),
+                  manifest.batch.owner.userID == userID.lowercased() else { continue }
+            if manifest.batch.items.contains(where: {
+                !manifest.discarded.contains($0.id) && !(manifest.delivered ?? []).contains($0.id)
+            }) { contexts.insert(manifest.batch.owner.contextID) }
+        }
+        return contexts
+    }
+
     func recover(owner: StagedCaptureOwner) throws -> [StagedCaptureBatch] {
         try recordDelivered(localURLs: [], account: .init(companyID: owner.companyID, userID: owner.userID))
         guard FileManager.default.fileExists(atPath: root.path) else { return [] }

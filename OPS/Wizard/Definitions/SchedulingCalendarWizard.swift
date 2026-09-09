@@ -43,7 +43,7 @@ struct SchedulingCalendarWizard: WizardDefinitionProtocol {
         WizardStepDefinition(
             id: "toggle_month",
             instruction: "SWITCH TO MONTH VIEW",
-            description: "Open the header actions, then choose Month view.",
+            description: "Tap the calendar button.",
             targetScreen: "Schedule",
             completionNotification: "WizardCalendarMonthToggled"
         ),

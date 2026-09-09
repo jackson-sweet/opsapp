@@ -116,7 +116,7 @@ struct LeadsFilterControl: View {
         .overlay(
             RoundedRectangle(cornerRadius: OPSStyle.Layout.sidebarHoverRadius, style: .continuous)
                 .strokeBorder(
-                    isActive ? OPSStyle.Colors.text.opacity(0.20) : OPSStyle.Colors.line,
+                    isActive ? OPSStyle.Colors.lineActive : OPSStyle.Colors.line,
                     lineWidth: 1
                 )
         )

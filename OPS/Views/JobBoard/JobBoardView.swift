@@ -480,7 +480,8 @@ struct JobBoardView: View {
                         activeOnly: activeOnly,
                         assignedToMe: assignedToMe,
                         selectedStatuses: selectedProjectStatuses,
-                        selectedTeamMemberIds: selectedProjectTeamMemberIds
+                        selectedTeamMemberIds: selectedProjectTeamMemberIds,
+                        sortOption: projectSortOption.wrappedValue
                     )
                 }
             }

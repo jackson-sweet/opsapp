@@ -110,7 +110,7 @@ final class StagedPhotoDestinationsTests: XCTestCase {
         let row = ProjectPhoto(id: "photo-a", projectId: "project-a", companyId: companyID, url: "local://photo", uploadedBy: userID)
         func receipt(_ company: String = "company-a", _ user: String = "user-a", _ deleted: String? = nil) -> ProjectPhotoDTO {
             ProjectPhotoDTO(id: "photo-a", projectId: "project-a", companyId: company, url: "https://example.test/canonical.jpg",
-                thumbnailURL: nil, renderedURL: nil, source: nil, siteVisitId: nil, uploadedBy: user, caption: nil,
+                thumbnailURL: nil, renderedURL: nil, source: nil, siteVisitId: nil, taskId: nil, uploadedBy: user, caption: nil,
                 isClientVisible: nil, takenAt: nil, createdAt: nil, updatedAt: nil, deletedAt: deleted)
         }
         XCTAssertNil(StagedPhotoDestinations.canonicalCaptureURL(for: row, receipts: [receipt("foreign")]))

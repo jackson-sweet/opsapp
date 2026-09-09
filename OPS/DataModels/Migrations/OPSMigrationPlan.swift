@@ -146,6 +146,11 @@
 //  persistent shape. Installed stores therefore remain recognizable and gain
 //  the empty projection table through an adjacent lightweight migration.
 //
+//  V26 → V27 stage: a photo may document a task. Adds the nullable
+//  `ProjectPhoto.taskId` mirroring `project_photos.task_id`. The released
+//  V9–V26 photo shape is frozen as `OPSSchemaLegacyProjectPhotoV26.ProjectPhoto`
+//  so every historical fingerprint stays byte-identical.
+//
 
 import Foundation
 import SwiftData
@@ -178,7 +183,8 @@ enum OPSMigrationPlan: SchemaMigrationPlan {
             OPSSchemaV23.self,
             OPSSchemaV24.self,
             OPSSchemaV25.self,
-            OPSSchemaV26.self
+            OPSSchemaV26.self,
+            OPSSchemaV27.self
         ]
     }
 
@@ -208,9 +214,18 @@ enum OPSMigrationPlan: SchemaMigrationPlan {
             addSiteVisitBookingFieldsV22toV23,
             addPhaseCAppointmentFieldsV23toV24,
             addProjectPrimarySubClientV24toV25,
-            addDeckDrawingMergeBaseV25toV26
+            addDeckDrawingMergeBaseV25toV26,
+            addProjectPhotoTaskLinkV26toV27
         ]
     }
+
+    /// V26 → V27: nullable `ProjectPhoto.taskId`. Purely additive — an
+    /// installed photo documents no task until someone assigns one, so there is
+    /// nothing to backfill and SwiftData infers the transform.
+    static let addProjectPhotoTaskLinkV26toV27 = MigrationStage.lightweight(
+        fromVersion: OPSSchemaV26.self,
+        toVersion: OPSSchemaV27.self
+    )
 
     /// V25 → V26: nullable local drawing merge base. Do not backfill it from
     /// drawingDataJSON: a legacy row can contain unsent work and needsSync is

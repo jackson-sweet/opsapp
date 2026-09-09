@@ -12,6 +12,12 @@
 //  it — go, move it, kill it — are the only actions that matter until it
 //  passes. So it leads, directly under the header, and the verbs are on it.
 //
+//  It is the appointment's only statement on this screen: NEXT TOUCH went back
+//  to the follow-up nudge rather than printing the same day and time again
+//  200pt lower, truncated. The rest of the appointment — who is going, how
+//  long, how far off — is one tap behind the headline, in the sheet that
+//  already held it.
+//
 //  State-aware, never a menu of possibilities:
 //    · no open booking          → nothing renders. No empty banner, no "—".
 //    · booked, day not here yet → REBOOK / CANCEL. No START: a visit you are

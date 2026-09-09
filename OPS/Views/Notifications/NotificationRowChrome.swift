@@ -44,7 +44,10 @@ struct NotificationRowChrome<Icon: View, Detail: View>: View {
                     VStack(spacing: 6) {
                         Circle()
                             .fill(isRead ? Color.clear : OPSStyle.Colors.primaryAccent)
-                            .frame(width: 6, height: 6)
+                            .frame(
+                                width: OPSStyle.Layout.Indicator.dotSM,
+                                height: OPSStyle.Layout.Indicator.dotSM
+                            )
 
                         icon()
                     }
@@ -130,7 +133,7 @@ struct NotificationDetailDivider: View {
     var body: some View {
         Rectangle()
             .fill(OPSStyle.Colors.cardBorderSubtle)
-            .frame(height: 1)
+            .frame(height: OPSStyle.Layout.Border.standard)
             .padding(.horizontal, OPSStyle.Layout.spacing3)
     }
 }

@@ -34,7 +34,7 @@ struct BugReportScreenshotViewer: View {
 
     var body: some View {
         ZStack {
-            Color.black.ignoresSafeArea()
+            OPSStyle.Colors.background.ignoresSafeArea()
 
             if let image {
                 shot(image)
@@ -91,7 +91,10 @@ struct BugReportScreenshotViewer: View {
                 .frame(width: 9, height: 9)
             Circle()
                 .fill(OPSStyle.Colors.primaryAccent)
-                .frame(width: 6, height: 6)
+                .frame(
+                    width: OPSStyle.Layout.Indicator.dotSM,
+                    height: OPSStyle.Layout.Indicator.dotSM
+                )
         }
     }
 

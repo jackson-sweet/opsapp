@@ -197,6 +197,7 @@ struct LeadSiteVisitBanner: View {
                 headlineRow(text, missed: missed, showsDisclosure: true)
             }
             .buttonStyle(PlainButtonStyle())
+            .bugReportPickable(.button, label: text)
             .accessibilityLabel("\(spoken). Opens visit details")
         } else {
             headlineRow(text, missed: missed, showsDisclosure: false)
@@ -306,6 +307,7 @@ struct LeadSiteVisitBanner: View {
                 .contentShape(Rectangle())
         }
         .buttonStyle(PlainButtonStyle())
+        .bugReportPickable(.button, label: label)
         .accessibilityLabel(spoken)
     }
 

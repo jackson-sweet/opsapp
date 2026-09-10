@@ -52,4 +52,37 @@ final class BugReportPresenterLatchTests: XCTestCase {
             hasWindow: true, windowHidden: false, sceneAlive: false, sheetUp: true
         ))
     }
+
+    // MARK: - POINT AT IT (bug 14e5a792)
+
+    /// Mid-pick the sheet is deliberately down and the pick layer is up. That
+    /// is a live report holding the operator's draft — a second shake must not
+    /// tear it down and start a blank one.
+    func testPickLayerUpWithTheSheetDownIsAlive() {
+        XCTAssertTrue(BugReportPresenter.isPresentationAlive(
+            hasWindow: true, windowHidden: false, sceneAlive: true,
+            sheetUp: false, pickLayerUp: true
+        ))
+    }
+
+    /// The pick layer never rescues a presentation whose window or scene is
+    /// gone — those are still corpses.
+    func testPickLayerDoesNotRescueADeadWindow() {
+        XCTAssertFalse(BugReportPresenter.isPresentationAlive(
+            hasWindow: true, windowHidden: true, sceneAlive: true,
+            sheetUp: false, pickLayerUp: true
+        ))
+        XCTAssertFalse(BugReportPresenter.isPresentationAlive(
+            hasWindow: true, windowHidden: false, sceneAlive: false,
+            sheetUp: false, pickLayerUp: true
+        ))
+    }
+
+    /// Neither the sheet nor the pick layer: nothing on screen.
+    func testNoSheetAndNoPickLayerIsDead() {
+        XCTAssertFalse(BugReportPresenter.isPresentationAlive(
+            hasWindow: true, windowHidden: false, sceneAlive: true,
+            sheetUp: false, pickLayerUp: false
+        ))
+    }
 }

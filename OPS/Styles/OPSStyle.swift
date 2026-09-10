@@ -787,6 +787,10 @@ enum OPSStyle {
         enum Border {
             static let standard: CGFloat = 1.0
             static let thick: CGFloat = 2.0
+            /// Outline on an element singled out on top of live content — the
+            /// bug report's POINT AT IT pick. The design system's focus-ring
+            /// weight (DESIGN.md §15), drawn in `text`, never the accent.
+            static let outline: CGFloat = 1.5
         }
 
         // Dot/indicator sizes

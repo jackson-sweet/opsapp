@@ -135,6 +135,7 @@ struct OPSActionBarButton: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(ActionBarButtonStyle())
+        .bugReportPickable(.button, label: label)
         .opacity(isDisabled ? 0.5 : 1.0)
         .allowsHitTesting(!isDisabled)
     }

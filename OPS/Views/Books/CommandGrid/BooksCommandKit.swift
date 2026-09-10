@@ -38,6 +38,7 @@ extension View {
                 RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
                     .strokeBorder(border, lineWidth: OPSStyle.Layout.Border.standard)
             )
+            .bugReportPickable(.card)
     }
 }
 

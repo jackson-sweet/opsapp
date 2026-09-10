@@ -207,6 +207,19 @@ class ExpenseRepository {
             .value
     }
 
+    /// Canonical affected-row readback after a batch decision. Company scope
+    /// is explicit as well as enforced by RLS.
+    func fetchBatch(_ batchId: String) async throws -> ExpenseBatchDTO {
+        try await client
+            .from("expense_batches")
+            .select()
+            .eq("company_id", value: companyId)
+            .eq("id", value: batchId)
+            .single()
+            .execute()
+            .value
+    }
+
     func fetchBatchExpenses(_ batchId: String) async throws -> [ExpenseDTO] {
         try await client
             .from("expenses")

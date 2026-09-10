@@ -23,7 +23,7 @@ final class SupplierBillCaptureQueueTests: XCTestCase {
         let queue = SupplierBillCaptureQueue(
             directoryURL: queueDirectory,
             idProvider: { "AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAAA" },
-            dateProvider: { Date(timeIntervalSince1970: 1_788_500_000) }
+            dateProvider: { Date(timeIntervalSince1970: 1_788_500_000.123_456) }
         )
 
         let item = try queue.enqueue(

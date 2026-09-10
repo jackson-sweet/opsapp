@@ -114,7 +114,7 @@ final class SupplierBillCaptureQueue {
             originalFilename: Self.safeFilename(originalFilename),
             storedFilename: storedFilename,
             sizeBytes: Int64(fileData.count),
-            queuedAt: dateProvider()
+            queuedAt: Self.persistedDate(dateProvider())
         )
 
         do {
@@ -180,5 +180,10 @@ final class SupplierBillCaptureQueue {
         let leaf = URL(fileURLWithPath: filename).lastPathComponent
             .trimmingCharacters(in: .whitespacesAndNewlines)
         return leaf.isEmpty ? "supplier-bill.pdf" : leaf
+    }
+
+    private static func persistedDate(_ date: Date) -> Date {
+        let milliseconds = floor(date.timeIntervalSince1970 * 1_000)
+        return Date(timeIntervalSince1970: milliseconds / 1_000)
     }
 }

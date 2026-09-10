@@ -83,6 +83,7 @@ final class SiteVisitCaptureViewModel: ObservableObject {
     enum EntryIntent { case newVisit, resume(visitId: String) }
     private let entryIntent: EntryIntent
     @Published private(set) var pendingChecklistValues: [String: SiteVisitChecklistValue] = [:]
+    private var pendingChecklistBases: [String: SiteVisitWriteState] = [:]
     private var checklistSaveTask: Task<Void, Never>?
     var flushIdentityEdits: (() -> Void)?
 
@@ -379,8 +380,7 @@ final class SiteVisitCaptureViewModel: ObservableObject {
         }
 
         selectedSiteVisitType = refreshedType
-        guard !checklistAnswers.contains(where: { $0.isActive && $0.isAnswered }),
-              let visit = siteVisit else {
+        guard let visit = siteVisit else {
             return
         }
 
@@ -391,14 +391,8 @@ final class SiteVisitCaptureViewModel: ObservableObject {
             companyId: companyId,
             opportunityId: activeOpportunityId,
             createdBy: userId
-        )
+        ).filter { candidate in !existing.contains(where: { $0.fieldId == candidate.fieldId }) }
         guard persistSiteVisitChanges({
-            let now = Date()
-            for answer in existing {
-                answer.deletedAt = now
-                answer.updatedAt = now
-                answer.needsSync = true
-            }
             for answer in replacements { modelContext.insert(answer) }
         }) else { return }
         reloadChecklistAnswers()
@@ -422,14 +416,8 @@ final class SiteVisitCaptureViewModel: ObservableObject {
             companyId: companyId,
             opportunityId: activeOpportunityId,
             createdBy: userId
-        )
+        ).filter { candidate in !activeExisting.contains(where: { $0.fieldId == candidate.fieldId }) }
         guard persistSiteVisitChanges({
-            let now = Date()
-            for answer in activeExisting {
-                answer.deletedAt = now
-                answer.updatedAt = now
-                answer.needsSync = true
-            }
             for answer in answers {
                 modelContext.insert(answer)
             }
@@ -460,17 +448,16 @@ final class SiteVisitCaptureViewModel: ObservableObject {
     }
 
     func bufferChecklistAnswer(_ answer: SiteVisitChecklistAnswer, value: SiteVisitChecklistValue) {
-        switch answer.kind {
-        case .shortText, .longText, .measurement:
-            pendingChecklistValues[answer.id] = value
-            checklistSaveTask?.cancel()
-            checklistSaveTask = Task { [weak self] in
-                try? await Task.sleep(for: .milliseconds(350))
-                guard !Task.isCancelled else { return }
-                self?.flushChecklistEdits()
-            }
-        default: updateChecklistAnswer(answer, value: value)
+        // Persist the first keystroke and its original revision together. The
+        // queue coalesces unattempted commands; a crash cannot lose a buffer or
+        // let an in-flight receipt acknowledge text it never transmitted.
+        if pendingChecklistBases[answer.id] == nil {
+            var state = answer.writeState
+            state.begin(SiteVisitWriteModels.values(answer))
+            pendingChecklistBases[answer.id] = state
         }
+        pendingChecklistValues[answer.id] = value
+        _ = flushChecklistEdits()
     }
 
     @discardableResult
@@ -482,16 +469,18 @@ final class SiteVisitCaptureViewModel: ObservableObject {
             guard answer.isActive, let value = pending[answer.id], value != answer.answerValue else { return nil }
             return (answer, value)
         }
-        guard !changes.isEmpty else { pendingChecklistValues = [:]; return true }
+        guard !changes.isEmpty else { pendingChecklistValues = [:]; pendingChecklistBases = [:]; return true }
         guard persistSiteVisitChanges({
             let now = Date()
             for (answer, value) in changes {
+                if let original = pendingChecklistBases[answer.id] { answer.writeState = original }
                 answer.answerValue = value
                 answer.updatedAt = now
                 answer.needsSync = true
             }
         }) else { return false }
         pendingChecklistValues = [:]
+        pendingChecklistBases = [:]
         return true
     }
 
@@ -1587,6 +1576,7 @@ final class SiteVisitCaptureViewModel: ObservableObject {
                 artifact.needsSync = true
             }
             for answer in childAnswers(of: visit.id) where answer.deletedAt == nil {
+                answer.beginVersionedEdit()
                 answer.deletedAt = now
                 answer.updatedAt = now
                 answer.needsSync = true

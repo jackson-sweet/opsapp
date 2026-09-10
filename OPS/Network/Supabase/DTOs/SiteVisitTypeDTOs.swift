@@ -20,6 +20,7 @@ struct SiteVisitTypeDTO: Codable, Identifiable, Equatable, Sendable {
     let createdAt: String?
     let updatedAt: String?
     let deletedAt: String?
+    var writeRevision: Int64? = nil
 
     enum CodingKeys: String, CodingKey {
         case id, slug, name, fields
@@ -31,6 +32,7 @@ struct SiteVisitTypeDTO: Codable, Identifiable, Equatable, Sendable {
         case createdAt = "created_at"
         case updatedAt = "updated_at"
         case deletedAt = "deleted_at"
+        case writeRevision = "write_revision"
     }
 }
 
@@ -51,6 +53,7 @@ extension SiteVisitTypeDTO {
         model.updatedAt = updatedAt.flatMap(SupabaseDate.parse)
         model.deletedAt = deletedAt.flatMap(SupabaseDate.parse)
         model.needsSync = false
+        model.writeState = SiteVisitWriteState(revision: writeRevision ?? 0)
         model.lastSyncedAt = Date()
         return model
     }

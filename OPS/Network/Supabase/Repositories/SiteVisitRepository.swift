@@ -227,14 +227,7 @@ final class SiteVisitRepository: SiteVisitRemoteWriting, @unchecked Sendable {
     func upsertChecklistAnswer(
         _ payload: UpsertSiteVisitChecklistAnswerDTO
     ) async throws -> SiteVisitChecklistAnswerDTO {
-        try requireCompany(payload.companyId)
-        return try await sendAndDecode(
-            .upsert(
-                table: .checklistAnswers,
-                companyId: companyId,
-                payload: try encoder.encode(payload)
-            )
-        )
+        throw SiteVisitWriteError.legacyPayload
     }
 
     @discardableResult
@@ -350,10 +343,10 @@ private final class SupabaseSiteVisitRemoteTransport: SiteVisitRemoteTransport {
         case let .upsert(table, _, payload):
             switch table {
             case .visits:
-                return try await upsert(
-                    try decoder.decode(CreateSiteVisitDTO.self, from: payload),
-                    table: table.rawValue
-                )
+                struct CaptureParameters: Encodable { let p_capture: CreateSiteVisitDTO }
+                return try await client.rpc("save_site_visit_capture",
+                    params: CaptureParameters(p_capture: decoder.decode(CreateSiteVisitDTO.self, from: payload)))
+                    .execute().data
             case .artifacts:
                 return try await upsert(
                     try decoder.decode(UpsertSiteVisitArtifactDTO.self, from: payload),

@@ -1,0 +1,30 @@
+Test Suite 'Phone writes' started at 2026-09-10 15:17:57.693.
+Test Suite 'SiteVisitWriteCommandTests' started at 2026-09-10 15:17:57.735.
+Test Case '-[tests.SiteVisitWriteCommandTests testDeletionReceiptAcceptsEquivalentTimestampAndRejectsDifferentInstant]' started.
+Test Case '-[tests.SiteVisitWriteCommandTests testDeletionReceiptAcceptsEquivalentTimestampAndRejectsDifferentInstant]' passed (0.138 seconds).
+Test Case '-[tests.SiteVisitWriteCommandTests testFirstKeystrokeBaseSurvivesLaterIncomingRevision]' started.
+Test Case '-[tests.SiteVisitWriteCommandTests testFirstKeystrokeBaseSurvivesLaterIncomingRevision]' passed (0.000 seconds).
+Test Case '-[tests.SiteVisitWriteCommandTests testNoOpEmptyMediaWireEncodingDoesNotChangeAnswerMeaning]' started.
+Test Case '-[tests.SiteVisitWriteCommandTests testNoOpEmptyMediaWireEncodingDoesNotChangeAnswerMeaning]' passed (0.002 seconds).
+Test Case '-[tests.SiteVisitWriteCommandTests testOnlyExactSavedPredecessorCanAdvanceBase]' started.
+Test Case '-[tests.SiteVisitWriteCommandTests testOnlyExactSavedPredecessorCanAdvanceBase]' passed (0.014 seconds).
+Test Case '-[tests.SiteVisitWriteCommandTests testResolutionRestartKeepsExactIdentityChoiceAndReviewedAuthority]' started.
+Test Case '-[tests.SiteVisitWriteCommandTests testResolutionRestartKeepsExactIdentityChoiceAndReviewedAuthority]' passed (0.035 seconds).
+Test Case '-[tests.SiteVisitWriteCommandTests testRestartPreservesOriginalBaseAndExplicitFalse]' started.
+Test Case '-[tests.SiteVisitWriteCommandTests testRestartPreservesOriginalBaseAndExplicitFalse]' passed (0.000 seconds).
+Test Case '-[tests.SiteVisitWriteCommandTests testSupersessionAndCurrentResolutionCannotRebaseDirtyDescendant]' started.
+Test Case '-[tests.SiteVisitWriteCommandTests testSupersessionAndCurrentResolutionCannotRebaseDirtyDescendant]' passed (0.004 seconds).
+Test Suite 'SiteVisitWriteCommandTests' passed at 2026-09-10 15:17:57.944.
+	 Executed 7 tests, with 0 failures (0 unexpected) in 0.194 (0.209) seconds
+Test Suite 'SiteVisitWritePersistenceTests' started at 2026-09-10 15:17:57.944.
+Test Case '-[tests.SiteVisitWritePersistenceTests testOriginalBaseAndResolutionSurviveDiskReopenAndAnotherContext]' started.
+Test Case '-[tests.SiteVisitWritePersistenceTests testOriginalBaseAndResolutionSurviveDiskReopenAndAnotherContext]' passed (0.691 seconds).
+Test Case '-[tests.SiteVisitWritePersistenceTests testPendingDeletionKeepsOriginalTimestampAcrossRebuild]' started.
+Test Case '-[tests.SiteVisitWritePersistenceTests testPendingDeletionKeepsOriginalTimestampAcrossRebuild]' passed (0.003 seconds).
+Test Case '-[tests.SiteVisitWritePersistenceTests testTemplateDraftFreezesBaseBeforeRemoteMutation]' started.
+Test Case '-[tests.SiteVisitWritePersistenceTests testTemplateDraftFreezesBaseBeforeRemoteMutation]' passed (0.000 seconds).
+Test Suite 'SiteVisitWritePersistenceTests' passed at 2026-09-10 15:17:58.639.
+	 Executed 3 tests, with 0 failures (0 unexpected) in 0.695 (0.695) seconds
+Test Suite 'Phone writes' passed at 2026-09-10 15:17:58.640.
+	 Executed 10 tests, with 0 failures (0 unexpected) in 0.888 (0.947) seconds
+PASS: ten Foundation command XCTest cases

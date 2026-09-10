@@ -111,6 +111,16 @@ struct SiteVisitChecklistValue: Codable, Equatable {
     var artifactIds: [String]
     var deckDesignId: String?
 
+    enum CodingKeys: String, CodingKey { case text, boolValue, choice, artifactIds, deckDesignId }
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        text = try c.decodeIfPresent(String.self, forKey: .text)
+        boolValue = try c.decodeIfPresent(Bool.self, forKey: .boolValue)
+        choice = try c.decodeIfPresent(String.self, forKey: .choice)
+        artifactIds = try c.decodeIfPresent([String].self, forKey: .artifactIds) ?? []
+        deckDesignId = try c.decodeIfPresent(String.self, forKey: .deckDesignId)
+    }
+
     static let empty = SiteVisitChecklistValue()
 
     init(
@@ -173,6 +183,7 @@ final class SiteVisitType: Identifiable {
     var deletedAt: Date?
     var needsSync: Bool
     var lastSyncedAt: Date?
+    var siteVisitWriteStateData: Data?
 
     init(
         id: String = UUID().uuidString,
@@ -209,6 +220,7 @@ final class SiteVisitType: Identifiable {
             return decoded.sorted { $0.sortOrder < $1.sortOrder }
         }
         set {
+            beginVersionedEdit()
             fieldsData = try? JSONEncoder().encode(newValue.sorted { $0.sortOrder < $1.sortOrder })
             updatedAt = Date()
             needsSync = true
@@ -321,6 +333,7 @@ final class SiteVisitChecklistAnswer: Identifiable {
     var deletedAt: Date?
     var needsSync: Bool
     var lastSyncedAt: Date?
+    var siteVisitWriteStateData: Data?
 
     init(
         id: String = UUID().uuidString,
@@ -365,6 +378,7 @@ final class SiteVisitChecklistAnswer: Identifiable {
             return decoded
         }
         set {
+            beginVersionedEdit()
             answerValueData = try? JSONEncoder().encode(newValue)
             updatedAt = Date()
             needsSync = true

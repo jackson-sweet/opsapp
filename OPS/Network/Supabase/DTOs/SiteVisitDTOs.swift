@@ -303,7 +303,7 @@ struct SiteVisitArtifactDTO: Decodable, Equatable, Identifiable {
     }
 }
 
-struct SiteVisitChecklistAnswerDTO: Decodable, Equatable, Identifiable {
+struct SiteVisitChecklistAnswerDTO: Codable, Equatable, Identifiable {
     let id: String
     let siteVisitId: String
     let companyId: String
@@ -316,6 +316,7 @@ struct SiteVisitChecklistAnswerDTO: Decodable, Equatable, Identifiable {
     let helpText: String?
     let sortOrder: Int
     let answerValue: SiteVisitChecklistValue
+    var writeRevision: Int64? = nil
     let createdBy: String
     let createdAt: Date
     let updatedAt: Date
@@ -332,6 +333,7 @@ struct SiteVisitChecklistAnswerDTO: Decodable, Equatable, Identifiable {
         case helpText = "help_text"
         case sortOrder = "sort_order"
         case answerValue = "answer_value"
+        case writeRevision = "write_revision"
         case createdBy = "created_by"
         case createdAt = "created_at"
         case updatedAt = "updated_at"
@@ -354,6 +356,7 @@ struct SiteVisitChecklistAnswerDTO: Decodable, Equatable, Identifiable {
         answerValue = SiteVisitWire.canonicalChecklistValue(
             try c.decodeIfPresent(SiteVisitChecklistValue.self, forKey: .answerValue) ?? .empty
         )
+        writeRevision = try c.decodeIfPresent(Int64.self, forKey: .writeRevision)
         createdBy = try SiteVisitWire.requiredText(try c.decode(String.self, forKey: .createdBy), key: CodingKeys.createdBy).lowercased()
         createdAt = try SiteVisitWire.requiredDate(c, key: .createdAt)
         updatedAt = try SiteVisitWire.requiredDate(c, key: .updatedAt)
@@ -491,8 +494,10 @@ struct CreateSiteVisitDTO: Codable, Equatable {
         self.scheduledAt = SupabaseDate.format(scheduledAt)
         durationMinutes = model.durationMinutes
         assigneeIds = try model.assigneeIds.map { try SiteVisitWire.payloadUUID($0, field: "assignee_ids") }
-        status = model.status
-        completedAt = model.completedAt.map(SupabaseDate.format)
+        // The final answers/media drain before the existing completion RPC.
+        // A locally completed packet's initial upload must remain editable.
+        status = model.status == .completed ? .inProgress : model.status
+        completedAt = nil
         notes = model.notes
         internalNotes = model.internalNotes
         measurements = model.measurements

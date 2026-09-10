@@ -47,6 +47,12 @@ final class SyncOperation {
     // Completion timestamps
     var completedAt: Date?
     var serverConfirmedAt: Date?
+    /// Never reset by Retry/coalescing. Once sent, a versioned command is immutable.
+    var siteVisitWriteAttemptedAt: Date?
+    var siteVisitWriteReceiptData: Data?
+    var siteVisitWriteActorId: String?
+    var siteVisitWriteResolutionData: Data?
+    var siteVisitWriteResolutionHistoryData: Data?
 
     init(
         entityType: String,

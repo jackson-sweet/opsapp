@@ -42,7 +42,7 @@ struct SiteVisitOutboundSync {
         }
         switch type {
         case .siteVisit, .siteVisitArtifact, .siteVisitChecklistAnswer,
-             .siteVisitIdentityDraft:
+             .siteVisitIdentityDraft, .siteVisitType:
             return true
         default:
             return false
@@ -188,12 +188,14 @@ struct SiteVisitOutboundSync {
     ) -> [SyncOperation] {
         let ordered = operations.sorted(by: operationOrder)
         var result = ordered.filter {
-            $0.operationType == SiteVisitSyncOperation.completionOperationType
+            SiteVisitVersionedSync.handles($0)
+                || $0.operationType == SiteVisitSyncOperation.completionOperationType
                 || $0.operationType == SiteVisitSyncOperation.mediaOperationType
                 || $0.operationType == SiteVisitSyncOperation.stageOperationType
         }
         let crud = ordered.filter {
-            $0.operationType != SiteVisitSyncOperation.completionOperationType
+            !SiteVisitVersionedSync.handles($0)
+                && $0.operationType != SiteVisitSyncOperation.completionOperationType
                 && $0.operationType != SiteVisitSyncOperation.mediaOperationType
                 && $0.operationType != SiteVisitSyncOperation.stageOperationType
         }
@@ -233,6 +235,11 @@ struct SiteVisitOutboundSync {
         try Task.checkCancellation()
         guard isCurrent() else { throw CancellationError() }
         guard Self.isSiteVisitOperation(operation) else { return false }
+        if SiteVisitVersionedSync.handles(operation) {
+            try await SiteVisitVersionedSync.execute(operation: operation, context: context,
+                companyId: activeCompanyId, actorId: sessionUserId(), isCurrent: isCurrent, isolation: isolation)
+            return true
+        }
         let envelope: SiteVisitSyncOperation.Payload
         do {
             envelope = try JSONDecoder().decode(

@@ -20,6 +20,7 @@ enum SiteVisitSyncOperation {
         let entityId: String
         let completion: SiteVisitCompletionPayload?
         let stageCommand: SiteVisitStageCommand?
+        let writeCommand: SiteVisitWriteCommand?
 
         enum CodingKeys: String, CodingKey {
             case companyId = "company_id"
@@ -27,6 +28,7 @@ enum SiteVisitSyncOperation {
             case entityId = "entity_id"
             case completion
             case stageCommand = "stage_command"
+            case writeCommand = "write_command"
         }
 
         init(
@@ -34,13 +36,15 @@ enum SiteVisitSyncOperation {
             siteVisitId: String,
             entityId: String,
             completion: SiteVisitCompletionPayload? = nil,
-            stageCommand: SiteVisitStageCommand? = nil
+            stageCommand: SiteVisitStageCommand? = nil,
+            writeCommand: SiteVisitWriteCommand? = nil
         ) {
             self.companyId = companyId.lowercased()
             self.siteVisitId = siteVisitId.lowercased()
             self.entityId = entityId.lowercased()
             self.completion = completion
             self.stageCommand = stageCommand
+            self.writeCommand = writeCommand
         }
     }
 
@@ -72,9 +76,8 @@ enum SiteVisitSyncOperation {
             ),
             changedFields: [
                 "opportunity_id", "project_id", "project_ref", "client_id",
-                "client_ref", "scheduled_at", "duration_minutes", "assignee_ids",
-                "status", "completed_at", "notes", "internal_notes", "measurements",
-                "photos", "activity_id", "calendar_event_id", "deleted_at",
+                "client_ref", "status", "notes", "internal_notes", "measurements",
+                "photos", "deleted_at",
             ],
             priority: 0
         )
@@ -106,14 +109,12 @@ enum SiteVisitSyncOperation {
         Specification(
             entityType: .siteVisitChecklistAnswer,
             entityId: answer.id.lowercased(),
-            operationType: operationType(
-                deletedAt: answer.deletedAt,
-                lastSyncedAt: answer.lastSyncedAt
-            ),
+            operationType: "siteVisitWrite",
             payload: Payload(
                 companyId: answer.companyId,
                 siteVisitId: answer.siteVisitId,
-                entityId: answer.id
+                entityId: answer.id,
+                writeCommand: SiteVisitWriteModels.command(answer)
             ),
             changedFields: [
                 "opportunity_id", "site_visit_type_id", "field_id", "label", "kind",

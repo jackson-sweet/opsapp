@@ -73,7 +73,7 @@ final class SiteVisitRecoveryVault {
     private static let dedicatedKeychainService = "co.opsapp.ops.site-visit-recovery-v1"
     private static let dedicatedKeychainAccount = "vault-key"
     private static let unresolvedStatuses: Set<String> = [
-        "pending", "inProgress", "failed", "parked",
+        "pending", "inProgress", "failed", "parked", "declined",
     ]
     private static let archivableStatuses = unresolvedStatuses.union(["quarantined"])
 
@@ -166,6 +166,10 @@ final class SiteVisitRecoveryVault {
         let company = canonical(companyId)
         guard !company.isEmpty else { return [] }
         var visitIds = Set<String>()
+        let templates = try modelContext.fetch(FetchDescriptor<SiteVisitType>()).filter {
+            canonical($0.companyId) == company && ($0.needsSync || $0.lastSyncedAt == nil)
+        }
+        if !templates.isEmpty { visitIds.insert("templates:\(company)") }
 
         for visit in try modelContext.fetch(FetchDescriptor<SiteVisit>()) where
             canonical(visit.companyId) == company
@@ -195,6 +199,11 @@ final class SiteVisitRecoveryVault {
             unresolvedStatuses.contains(operation.status)
                 && SiteVisitOutboundSync.isSiteVisitOperation(operation)
         {
+            if operation.entityType == SyncEntityType.siteVisitType.rawValue,
+               SiteVisitVersionedSync.command(operation)?.companyId == company {
+                visitIds.insert("templates:\(company)")
+                continue
+            }
             guard let payload = try? JSONDecoder().decode(
                 SiteVisitSyncOperation.Payload.self,
                 from: operation.payload
@@ -271,7 +280,7 @@ final class SiteVisitRecoveryVault {
     func summaries(userId: String, companyId: String) -> [EntrySummary] {
         let identity = SiteVisitRecoveryIdentity(userId: userId, companyId: companyId)
         guard !identity.userId.isEmpty, !identity.companyId.isEmpty else { return [] }
-        return readEntries().compactMap { entry in
+        return ((try? readEntries()) ?? []).compactMap { entry in
             guard entry.archive.identity == identity else { return nil }
             return EntrySummary(
                 id: entry.archive.id,
@@ -306,7 +315,7 @@ final class SiteVisitRecoveryVault {
     ) throws -> Int {
         let identity = SiteVisitRecoveryIdentity(userId: userId, companyId: companyId)
         guard !identity.userId.isEmpty, !identity.companyId.isEmpty else { return 0 }
-        let entries = readEntries()
+        let entries = try readEntries()
             .filter {
                 $0.archive.identity == identity
                     && $0.archive.quarantineReason == nil
@@ -330,7 +339,7 @@ final class SiteVisitRecoveryVault {
     /// device account itself is deleted.
     func discardStoredWork(userId: String, companyId: String) throws {
         let identity = SiteVisitRecoveryIdentity(userId: userId, companyId: companyId)
-        for entry in readEntries() where entry.archive.identity == identity {
+        for entry in try readEntries() where entry.archive.identity == identity {
             try fileManager.removeItem(at: entry.directory)
         }
         deleteKeyIfVaultIsEmpty()
@@ -342,7 +351,7 @@ final class SiteVisitRecoveryVault {
         companyId: String
     ) throws {
         let identity = SiteVisitRecoveryIdentity(userId: userId, companyId: companyId)
-        for entry in readEntries() where
+        for entry in try readEntries() where
             entry.archive.identity == identity && entry.archive.id == id
         {
             try fileManager.removeItem(at: entry.directory)
@@ -364,7 +373,7 @@ final class SiteVisitRecoveryVault {
         guard !identity.userId.isEmpty, !identity.companyId.isEmpty else {
             return .empty
         }
-        let entries = readEntries()
+        let entries = try readEntries()
             .filter {
                 $0.archive.identity == identity
                     && $0.archive.quarantineReason == .parentDeleted
@@ -456,7 +465,7 @@ final class SiteVisitRecoveryVault {
         guard !identity.userId.isEmpty,
               !identity.companyId.isEmpty,
               !visitId.isEmpty,
-              let entry = readEntries().first(where: {
+              let entry = try readEntries().first(where: {
                   $0.archive.identity == identity
                       && $0.archive.id == id
                       && $0.archive.quarantineReason != nil
@@ -553,6 +562,7 @@ final class SiteVisitRecoveryVault {
         let drafts: [DraftModelSnapshot]
         let operations: [OperationSnapshot]
         let media: [MediaSnapshot]
+        var templates: [TemplateModelSnapshot]? = nil
     }
 
     private struct SiteVisitRecoveryIdentitySnapshot: Codable, Equatable {
@@ -693,6 +703,7 @@ final class SiteVisitRecoveryVault {
         let helpText: String?; let sortOrder: Int; let answerValueData: Data?
         let createdBy: String?; let createdAt: Date; let updatedAt: Date?
         let deletedAt: Date?; let needsSync: Bool; let lastSyncedAt: Date?
+        var siteVisitWriteStateData: Data? = nil
 
         init(_ model: SiteVisitChecklistAnswer) {
             id = model.id; siteVisitId = model.siteVisitId; companyId = model.companyId
@@ -702,6 +713,7 @@ final class SiteVisitRecoveryVault {
             answerValueData = model.answerValueData; createdBy = model.createdBy
             createdAt = model.createdAt; updatedAt = model.updatedAt; deletedAt = model.deletedAt
             needsSync = model.needsSync; lastSyncedAt = model.lastSyncedAt
+            siteVisitWriteStateData = model.siteVisitWriteStateData
         }
 
         func makeModel() -> SiteVisitChecklistAnswer {
@@ -723,6 +735,7 @@ final class SiteVisitRecoveryVault {
             model.answerValueData = answerValueData; model.createdBy = createdBy
             model.createdAt = createdAt; model.updatedAt = updatedAt; model.deletedAt = deletedAt
             model.needsSync = needsSync; model.lastSyncedAt = lastSyncedAt
+            model.siteVisitWriteStateData = siteVisitWriteStateData
         }
     }
 
@@ -775,6 +788,11 @@ final class SiteVisitRecoveryVault {
         let lastAttemptedAt: Date?; let status: String; let lastError: String?
         let previousValues: Data?; let priority: Int; let requiresWiFi: Bool
         let dependsOnId: String?; let completedAt: Date?; let serverConfirmedAt: Date?
+        var siteVisitWriteAttemptedAt: Date? = nil
+        var siteVisitWriteReceiptData: Data? = nil
+        var siteVisitWriteActorId: String? = nil
+        var siteVisitWriteResolutionData: Data? = nil
+        var siteVisitWriteResolutionHistoryData: Data? = nil
 
         init(_ model: SyncOperation) {
             id = model.id; entityType = model.entityType; entityId = model.entityId
@@ -785,6 +803,11 @@ final class SiteVisitRecoveryVault {
             priority = model.priority; requiresWiFi = model.requiresWiFi
             dependsOnId = model.dependsOnId; completedAt = model.completedAt
             serverConfirmedAt = model.serverConfirmedAt
+            siteVisitWriteAttemptedAt = model.siteVisitWriteAttemptedAt
+            siteVisitWriteReceiptData = model.siteVisitWriteReceiptData
+            siteVisitWriteActorId = model.siteVisitWriteActorId
+            siteVisitWriteResolutionData = model.siteVisitWriteResolutionData
+            siteVisitWriteResolutionHistoryData = model.siteVisitWriteResolutionHistoryData
         }
 
         func makeModel() -> SyncOperation {
@@ -807,6 +830,39 @@ final class SiteVisitRecoveryVault {
             model.priority = priority; model.requiresWiFi = requiresWiFi
             model.dependsOnId = dependsOnId; model.completedAt = completedAt
             model.serverConfirmedAt = serverConfirmedAt
+            model.siteVisitWriteAttemptedAt = siteVisitWriteAttemptedAt
+            model.siteVisitWriteReceiptData = siteVisitWriteReceiptData
+            model.siteVisitWriteActorId = siteVisitWriteActorId
+            model.siteVisitWriteResolutionData = siteVisitWriteResolutionData
+            model.siteVisitWriteResolutionHistoryData = siteVisitWriteResolutionHistoryData
+        }
+    }
+
+    private struct TemplateModelSnapshot: Codable {
+        let dto: SiteVisitTypeDTO
+        let state: Data?
+        let needsSync: Bool
+        let lastSyncedAt: Date?
+        init(_ model: SiteVisitType) {
+            dto = SiteVisitTypeDTO(id: model.id, companyId: model.companyId,
+                slug: model.slug, name: model.name, descriptionText: model.descriptionText,
+                isSystemTemplate: model.isSystemTemplate, isDefault: model.isDefault,
+                sortOrder: model.sortOrder, fields: model.fields,
+                createdAt: SupabaseDate.format(model.createdAt), updatedAt: model.updatedAt.map(SupabaseDate.format),
+                deletedAt: model.deletedAt.map(SupabaseDate.format), writeRevision: model.writeState.revision)
+            state = model.siteVisitWriteStateData
+            needsSync = model.needsSync; lastSyncedAt = model.lastSyncedAt
+        }
+        func makeModel() -> SiteVisitType { let model = dto.toModel(); apply(to: model); return model }
+        func apply(to model: SiteVisitType) {
+            model.slug = dto.slug; model.name = dto.name; model.descriptionText = dto.descriptionText
+            model.isSystemTemplate = dto.isSystemTemplate; model.isDefault = dto.isDefault
+            model.sortOrder = dto.sortOrder; model.fields = dto.fields
+            model.createdAt = dto.createdAt.flatMap(SupabaseDate.parse) ?? model.createdAt
+            model.updatedAt = dto.updatedAt.flatMap(SupabaseDate.parse)
+            model.deletedAt = dto.deletedAt.flatMap(SupabaseDate.parse)
+            model.needsSync = needsSync; model.lastSyncedAt = lastSyncedAt
+            model.siteVisitWriteStateData = state
         }
     }
 
@@ -849,6 +905,12 @@ final class SiteVisitRecoveryVault {
             }
         let operations = try modelContext.fetch(FetchDescriptor<SyncOperation>())
             .filter { operation in
+                if siteVisitId == "templates:\(identity.companyId)",
+                   operation.entityType == SyncEntityType.siteVisitType.rawValue,
+                   Self.archivableStatuses.contains(operation.status) {
+                    return SiteVisitVersionedSync.command(operation)?.companyId == identity.companyId
+                        || (try? JSONSerialization.jsonObject(with: operation.payload) as? [String: Any])?["company_id"] as? String == identity.companyId
+                }
                 guard Self.archivableStatuses.contains(operation.status),
                       SiteVisitOutboundSync.isSiteVisitOperation(operation),
                       let payload = try? JSONDecoder().decode(
@@ -879,7 +941,9 @@ final class SiteVisitRecoveryVault {
             answers: answers.map(AnswerModelSnapshot.init),
             drafts: drafts.map(DraftModelSnapshot.init),
             operations: operations.map(OperationSnapshot.init),
-            media: media
+            media: media,
+            templates: siteVisitId == "templates:\(identity.companyId)" ? try modelContext.fetch(FetchDescriptor<SiteVisitType>())
+                .filter { Self.canonical($0.companyId) == identity.companyId }.map(TemplateModelSnapshot.init) : nil
         )
     }
 
@@ -922,20 +986,16 @@ final class SiteVisitRecoveryVault {
         }
     }
 
-    private func readEntries() -> [StoredEntry] {
-        guard fileManager.fileExists(atPath: rootDirectory.path),
-              let key = try? symmetricKey(),
-              let directories = try? fileManager.contentsOfDirectory(
-                at: rootDirectory,
-                includingPropertiesForKeys: [.isDirectoryKey],
-                options: []
-              ) else { return [] }
-        return directories.compactMap { directory in
-            let bundleURL = directory.appendingPathComponent(Self.bundleFilename)
-            guard let encrypted = try? Data(contentsOf: bundleURL),
-                  let plaintext = try? decrypt(encrypted, with: key),
-                  let archive = try? JSONDecoder().decode(Archive.self, from: plaintext),
-                  archive.version == Self.archiveVersion else { return nil }
+    private func readEntries() throws -> [StoredEntry] {
+        guard fileManager.fileExists(atPath: rootDirectory.path) else { return [] }
+        let key = try symmetricKey()
+        let directories = try fileManager.contentsOfDirectory(at: rootDirectory,
+            includingPropertiesForKeys: [.isDirectoryKey], options: [])
+        return try directories.filter { !$0.lastPathComponent.hasPrefix(".tmp-") }.map { directory in
+            let encrypted = try Data(contentsOf: directory.appendingPathComponent(Self.bundleFilename))
+            let plaintext = try decrypt(encrypted, with: key)
+            let archive = try JSONDecoder().decode(Archive.self, from: plaintext)
+            guard archive.version == Self.archiveVersion else { throw VaultError.corruptArchive }
             return StoredEntry(directory: directory, archive: archive)
         }
     }
@@ -960,6 +1020,16 @@ final class SiteVisitRecoveryVault {
         into modelContext: ModelContext
     ) throws {
         let company = archive.identity.companyId
+        for snapshot in archive.templates ?? [] {
+            let id = snapshot.dto.id
+            if let existing = try modelContext.fetch(FetchDescriptor<SiteVisitType>(predicate: #Predicate { $0.id == id })).first {
+                try validateCompany(existing.companyId, company, entity: "checklist template", id: id)
+                if existing.needsSync && (existing.fields != snapshot.dto.fields || existing.name != snapshot.dto.name || existing.siteVisitWriteStateData != snapshot.state) {
+                    throw VaultError.identityConflict(entity: "newer local checklist", id: id)
+                }
+                snapshot.apply(to: existing)
+            } else { modelContext.insert(snapshot.makeModel()) }
+        }
         if let snapshot = archive.visit {
             let all = try modelContext.fetch(FetchDescriptor<SiteVisit>())
             if let existing = all.first(where: { Self.canonical($0.id) == Self.canonical(snapshot.id) }) {
@@ -982,6 +1052,9 @@ final class SiteVisitRecoveryVault {
         for snapshot in archive.answers {
             if let existing = existingAnswers.first(where: { Self.canonical($0.id) == Self.canonical(snapshot.id) }) {
                 try validateCompany(existing.companyId, company, entity: "answer", id: snapshot.id)
+                if existing.needsSync && (existing.answerValueData != snapshot.answerValueData || existing.siteVisitWriteStateData != snapshot.siteVisitWriteStateData) {
+                    throw VaultError.identityConflict(entity: "newer local answer", id: snapshot.id)
+                }
                 snapshot.apply(to: existing)
             } else {
                 modelContext.insert(snapshot.makeModel())
@@ -998,7 +1071,14 @@ final class SiteVisitRecoveryVault {
         }
         let existingOperations = try modelContext.fetch(FetchDescriptor<SyncOperation>())
         for snapshot in archive.operations {
+            if let actor = snapshot.siteVisitWriteActorId, actor != archive.identity.userId {
+                throw VaultError.identityConflict(entity: "saved form actor", id: snapshot.id.uuidString)
+            }
             if let existing = existingOperations.first(where: { $0.id == snapshot.id }) {
+                guard existing.payload == snapshot.payload,
+                      existing.siteVisitWriteActorId == snapshot.siteVisitWriteActorId else {
+                    throw VaultError.identityConflict(entity: "saved command", id: snapshot.id.uuidString)
+                }
                 snapshot.apply(to: existing)
             } else {
                 modelContext.insert(snapshot.makeModel())

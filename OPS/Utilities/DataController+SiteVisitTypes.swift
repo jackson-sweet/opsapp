@@ -61,6 +61,8 @@ extension DataController {
                 throw SiteVisitTypeSettingsError.companyMismatch
             }
             type = existing
+            if let original = draft.originalWriteState { type.writeState = original }
+            type.beginVersionedEdit()
             operationType = existing.lastSyncedAt == nil ? "create" : "update"
             if !existing.isSystemTemplate {
                 existing.name = name
@@ -91,6 +93,7 @@ extension DataController {
         var displacedDefaults: [SiteVisitType] = []
         if type.isDefault {
             for other in active where other.id != type.id && other.isDefault {
+                other.beginVersionedEdit()
                 other.isDefault = false
                 other.updatedAt = Date()
                 other.needsSync = true
@@ -98,11 +101,8 @@ extension DataController {
             }
         }
 
+        try SiteVisitVersionedSync.enqueueTemplates(displacedDefaults + [type], context: context)
         try context.save()
-        for displaced in displacedDefaults {
-            try queueSiteVisitType(displaced, operationType: "update")
-        }
-        try queueSiteVisitType(type, operationType: operationType)
         NotificationCenter.default.post(name: .siteVisitTypesChanged, object: nil)
         Task { await syncEngine.triggerSync() }
         return type
@@ -135,24 +135,19 @@ extension DataController {
 
         var replacementDefault: SiteVisitType?
         if type.isDefault, let replacement = active.first(where: { $0.id != type.id }) {
+            replacement.beginVersionedEdit()
             replacement.isDefault = true
             replacement.updatedAt = Date()
             replacement.needsSync = true
             replacementDefault = replacement
         }
+        type.beginVersionedEdit()
         type.deletedAt = Date()
+        type.isDefault = false
         type.updatedAt = Date()
         type.needsSync = true
+        try SiteVisitVersionedSync.enqueueTemplates([type] + [replacementDefault].compactMap { $0 }, context: context)
         try context.save()
-        if let replacementDefault {
-            try queueSiteVisitType(replacementDefault, operationType: "update")
-        }
-        syncEngine.recordOperation(
-            entityType: .siteVisitType,
-            entityId: type.id.lowercased(),
-            operationType: "delete",
-            changedFields: [:]
-        )
         NotificationCenter.default.post(name: .siteVisitTypesChanged, object: nil)
         Task { await syncEngine.triggerSync() }
     }
@@ -167,12 +162,8 @@ extension DataController {
         _ type: SiteVisitType,
         operationType: String
     ) throws {
-        syncEngine.recordOperation(
-            entityType: .siteVisitType,
-            entityId: type.id.lowercased(),
-            operationType: operationType,
-            changedFields: try SiteVisitTypeSyncPayload.make(type)
-        )
+        guard let context = modelContext else { throw SiteVisitTypeSettingsError.unavailable }
+        try SiteVisitVersionedSync.enqueueTemplates([type], context: context)
     }
 
     private func activeSiteVisitTypes(

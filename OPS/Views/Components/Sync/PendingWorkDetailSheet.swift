@@ -10,6 +10,7 @@
 //
 
 import SwiftUI
+import SwiftData
 
 struct PendingWorkDetailSheet: View {
     let item: RecoveryItem
@@ -18,6 +19,7 @@ struct PendingWorkDetailSheet: View {
     let onExport: () -> Void
     let onDiscard: () async -> Bool
 
+    @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
     @State private var showDiscardConfirm = false
     @State private var showRawDetails = false
@@ -53,6 +55,9 @@ struct PendingWorkDetailSheet: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2_5) {
                     memberList
+                    ForEach(versionedOperations) { operation in
+                        SiteVisitConflictReview(operation: operation)
+                    }
 
                     if !metadataRows.isEmpty {
                         metadataLedger
@@ -78,6 +83,18 @@ struct PendingWorkDetailSheet: View {
         .presentationDragIndicator(.hidden)
         .preferredColorScheme(.dark)
         .interactiveDismissDisabled(isDiscarding)
+    }
+
+    private var versionedOperations: [SyncOperation] {
+        let ids: [UUID]
+        switch item {
+        case .op(let snapshot, _, _): ids = [snapshot.id]
+        case .bundle(let bundle): ids = bundle.members.compactMap(\.syncOpId)
+        default: ids = []
+        }
+        return ((try? modelContext.fetch(FetchDescriptor<SyncOperation>())) ?? []).filter {
+            ids.contains($0.id) && SiteVisitVersionedSync.handles($0) && $0.status != "completed"
+        }.sorted { $0.createdAt < $1.createdAt }
     }
 
     // MARK: - Handle (§6.2)
@@ -330,7 +347,7 @@ struct PendingWorkDetailSheet: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
 
-            if isRetryable {
+            if isRetryable && versionedOperations.isEmpty {
                 Button {
                     onRetry()
                     dismiss()
@@ -404,7 +421,7 @@ struct PendingWorkDetailSheet: View {
     /// The scope this row's discard covers — nil when the row deliberately
     /// omits a discard entirely.
     private var discardScope: RecoveryDiscardScope? {
-        item.discardPolicy.confirmationScope
+        versionedOperations.isEmpty ? item.discardPolicy.confirmationScope : nil
     }
 
     private var discardConfirmationTitle: String {

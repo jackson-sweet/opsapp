@@ -53,6 +53,12 @@ enum SyncErrorClassifier {
     /// for errors that only surface via `localizedDescription` (wrapped /
     /// re-thrown), then `.transient` — never park on a guess.
     static func disposition(for error: Error) -> SyncFailureDisposition {
+        if let write = error as? SiteVisitWriteError {
+            switch write {
+            case .conflict, .legacyPayload: return .permanent
+            case .invalidReceipt: return .transient
+            }
+        }
         // Site-visit writes deliberately preserve repository failure semantics
         // across both outbound engines. RLS/auth asks the app to re-authenticate;
         // FK/schema/data failures park for actionable recovery; transport retries.

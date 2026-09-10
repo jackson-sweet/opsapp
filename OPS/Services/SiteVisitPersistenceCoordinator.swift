@@ -585,7 +585,8 @@ final class SiteVisitPersistenceCoordinator {
                                dependency: String?, index: inout OperationIndex) throws -> SyncOperation {
         let candidates = index.candidates(specification)
         let payload = try encodeOperation(specification.payload)
-        if let existing = candidates.last(where: { $0.status != "inProgress" }) {
+        if let existing = candidates.last(where: { $0.status != "inProgress" &&
+            (!SiteVisitVersionedSync.handles($0) || ($0.status == "pending" && $0.siteVisitWriteAttemptedAt == nil && $0.lastAttemptedAt == nil)) }) {
             transactionOperationIds.insert(existing.id)
             if existing.operationType != "create" || specification.operationType == "delete" {
                 existing.operationType = specification.operationType
@@ -607,6 +608,7 @@ final class SiteVisitPersistenceCoordinator {
             priority: specification.priority,
             dependsOnId: candidates.last?.id.uuidString.lowercased() ?? dependency)
         transactionOperationIds.insert(operation.id)
+        if SiteVisitVersionedSync.handles(operation) { operation.siteVisitWriteActorId = SiteVisitAuthorHeal.sessionUserId()?.lowercased() }
         modelContext.insert(operation)
         index.append(operation)
         return operation
@@ -660,7 +662,8 @@ final class SiteVisitPersistenceCoordinator {
             .sorted(by: operationOrder)
 
         let payload = try encodeOperation(specification.payload)
-        if let existing = candidates.last(where: { $0.status != "inProgress" }) {
+        if let existing = candidates.last(where: { $0.status != "inProgress" &&
+            (!SiteVisitVersionedSync.handles($0) || ($0.status == "pending" && $0.siteVisitWriteAttemptedAt == nil && $0.lastAttemptedAt == nil)) }) {
             if existing.operationType != "create" || specification.operationType == "delete" {
                 existing.operationType = specification.operationType
             }
@@ -685,7 +688,7 @@ final class SiteVisitPersistenceCoordinator {
             return existing
         }
 
-        let inProgressDependency = candidates.last(where: { $0.status == "inProgress" })
+        let inProgressDependency = candidates.last(where: { $0.status == "inProgress" || SiteVisitVersionedSync.handles($0) })
             .map { $0.id.uuidString.lowercased() }
         let operation = SyncOperation(
             entityType: specification.entityType.rawValue,
@@ -696,6 +699,7 @@ final class SiteVisitPersistenceCoordinator {
             priority: specification.priority,
             dependsOnId: inProgressDependency ?? dependsOnId
         )
+        if SiteVisitVersionedSync.handles(operation) { operation.siteVisitWriteActorId = SiteVisitAuthorHeal.sessionUserId()?.lowercased() }
         modelContext.insert(operation)
         operations.append(operation)
         return operation

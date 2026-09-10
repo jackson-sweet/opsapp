@@ -5471,7 +5471,7 @@ actor DataActor {
             // retrying forever against a server that already has the row.
             // See `errorIndicatesPrimaryKeyViolation` for the detection contract.
             // MUST run before disposition routing — a 23505 classifies permanent.
-            if operation.operationType == "create",
+            if operation.operationType == "create", !SiteVisitOutboundSync.isSiteVisitOperation(operation),
                errorIndicatesPrimaryKeyViolation(error) {
                 try? currentModelTransaction {
                     operation.status = "completed"

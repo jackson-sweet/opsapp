@@ -615,6 +615,12 @@ enum SiteVisitServerMerge {
             )
         }
         try requireCompany(logical.companyId, expected: dto.companyId)
+        if logical.needsSync || logical.writeState.baseRevision != nil ||
+            (try fetchChecklistOperations(answerId: logical.id, in: context)).contains(where: { !checklistResolvedStatuses.contains($0.status) }) {
+            // Preserve logical-ID collisions as two reviewable versions. Never
+            // retarget an immutable attempted write to a different server row.
+            return ChecklistAnswerResolution(answer: logical, canonicalId: logical.id, operationMigrations: [])
+        }
         let operationMigrations = try prepareChecklistOperationMigrations(
             from: logical.id,
             to: dto.id,
@@ -760,10 +766,23 @@ enum SiteVisitServerMerge {
                 model.deletedAt = dto.deletedAt
                 model.lastSyncedAt = now
                 model.needsSync = false
+                model.writeState = SiteVisitWriteState(revision: dto.writeRevision ?? 0)
                 context.insert(model)
             }
         }
 
+        let queued = try fetchChecklistOperations(answerId: existing.id, in: context)
+        if existing.needsSync || existing.writeState.baseRevision != nil ||
+            queued.contains(where: { !checklistResolvedStatuses.contains($0.status) }) {
+            let incoming = try SiteVisitWriteJSON.encode(dto)
+            if existing.writeState.remoteRow == incoming { return .unchanged }
+            return .updated {
+                var state = existing.writeState
+                state.remoteRow = incoming
+                existing.writeState = state
+            }
+        }
+        if let revision = dto.writeRevision, revision < existing.writeState.revision { return .unchanged }
         let isStale = existing.lastSyncedAt != nil
             && isOlder(dto.updatedAt, than: existing.updatedAt)
         let protection = try protectedFields(
@@ -775,10 +794,12 @@ enum SiteVisitServerMerge {
             now: now
         )
         let accept = { field in !isStale && protection.accepts(field) }
-        let acceptsTombstone = dto.deletedAt != nil || accept("deleted_at")
+        let acceptsTombstone = accept("deleted_at")
+        guard fields.allSatisfy(accept) else { return .unchanged }
 
         let changed =
-            resolution.requiresIdentityMigration
+            (dto.writeRevision ?? 0) != existing.writeState.revision
+            || resolution.requiresIdentityMigration
             || (accept("opportunity_id") && existing.opportunityId != dto.opportunityId)
             || (accept("site_visit_type_id") && existing.siteVisitTypeId != dto.siteVisitTypeId)
             || (accept("field_id") && existing.fieldId != dto.fieldId)
@@ -820,6 +841,7 @@ enum SiteVisitServerMerge {
             }
             existing.lastSyncedAt = now
             existing.needsSync = protection.hasLocalWork
+            if !isStale { existing.writeState = SiteVisitWriteState(revision: dto.writeRevision ?? 0) }
         }
     }
 

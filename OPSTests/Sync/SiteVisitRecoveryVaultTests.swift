@@ -606,9 +606,54 @@ final class SiteVisitRecoveryVaultTests: XCTestCase {
     }
 
     @MainActor
+    func testTemplateAndDurableResolutionCustodyRemainExactAcrossAccountSwitch() throws {
+        let root = try makeTemporaryDirectory()
+        let vault = makeVault(root: root) { _ in nil }
+        let container = try makeContainer()
+        let context = container.mainContext
+        let type = SiteVisitType(companyId: companyID, slug: "scope", name: "Pending company form")
+        type.writeState = .init(revision: 4)
+        type.beginVersionedEdit(); type.name = "My proposed form"
+        context.insert(type)
+        let command = try SiteVisitWriteModels.command([type])
+        let operation = SyncOperation(entityType: SyncEntityType.siteVisitType.rawValue, entityId: type.id,
+            operationType: "siteVisitWrite", payload: try JSONEncoder().encode(command), changedFields: ["name"])
+        operation.siteVisitWriteActorId = userID
+        operation.siteVisitWriteAttemptedAt = Date(timeIntervalSince1970: 100)
+        operation.siteVisitWriteResolutionData = try JSONEncoder().encode(SiteVisitWriteResolution(id: UUID(), choice: "current", current: []))
+        operation.status = "parked"
+        context.insert(operation); try context.save()
+        let bytes = operation.payload; let resolutionBytes = operation.siteVisitWriteResolutionData
+        XCTAssertEqual(try vault.captureUnsentWork(from: context, userId: userID, companyId: companyID, removeOriginalMedia: false), 1)
+        context.delete(operation); context.delete(type); try context.save()
+        XCTAssertEqual(try vault.restore(into: context, userId: "different-actor", companyId: companyID), 0)
+        XCTAssertTrue(try context.fetch(FetchDescriptor<SiteVisitType>()).isEmpty)
+        XCTAssertEqual(try vault.restore(into: context, userId: userID, companyId: companyID), 1)
+        let restored = try XCTUnwrap(context.fetch(FetchDescriptor<SyncOperation>()).first)
+        XCTAssertEqual(restored.payload, bytes)
+        XCTAssertEqual(restored.siteVisitWriteActorId, userID)
+        XCTAssertEqual(restored.siteVisitWriteAttemptedAt, Date(timeIntervalSince1970: 100))
+        XCTAssertEqual(restored.siteVisitWriteResolutionData, resolutionBytes)
+        XCTAssertEqual(try context.fetch(FetchDescriptor<SiteVisitType>()).first?.writeState.baseRevision, 4)
+    }
+
+    @MainActor
+    func testCorruptVaultDoesNotReportSuccessfulEmptyRestore() throws {
+        let root = try makeTemporaryDirectory()
+        let directory = root.appendingPathComponent("vault/broken")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        try Data("invalid encrypted archive".utf8).write(to: directory.appendingPathComponent("bundle.opsvault"))
+        let vault = makeVault(root: root) { _ in nil }
+        let container = try makeContainer()
+        XCTAssertThrowsError(try vault.restore(into: container.mainContext, userId: userID, companyId: companyID))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: directory.appendingPathComponent("bundle.opsvault").path))
+    }
+
+    @MainActor
     private func makeContainer() throws -> ModelContainer {
         let schema = Schema([
             SiteVisit.self,
+            SiteVisitType.self,
             SiteVisitCaptureArtifact.self,
             SiteVisitChecklistAnswer.self,
             SiteVisitIdentityDraft.self,

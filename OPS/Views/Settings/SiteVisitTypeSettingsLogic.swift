@@ -15,6 +15,7 @@ struct SiteVisitTypeDraft: Identifiable {
     var isSystemTemplate: Bool
     var isDefault: Bool
     var fields: [SiteVisitTypeFieldDefinition]
+    var originalWriteState: SiteVisitWriteState?
 
     static let blank = SiteVisitTypeDraft(
         id: nil,
@@ -54,6 +55,9 @@ struct SiteVisitTypeDraft: Identifiable {
             isDefault: type.isDefault,
             fields: type.fields
         )
+        var state = type.writeState
+        state.begin(SiteVisitWriteModels.values(type))
+        originalWriteState = state
     }
 }
 

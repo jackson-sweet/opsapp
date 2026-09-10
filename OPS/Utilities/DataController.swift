@@ -1732,6 +1732,7 @@ class DataController: ObservableObject {
             // account's unsent field work to survive into the next login.
             deleteAll(FetchDescriptor<SiteVisitCaptureArtifact>(), label: "SiteVisitCaptureArtifact", in: context)
             deleteAll(FetchDescriptor<SiteVisitChecklistAnswer>(), label: "SiteVisitChecklistAnswer", in: context)
+            deleteAll(FetchDescriptor<SiteVisitType>(), label: "SiteVisitType", in: context)
             deleteAll(FetchDescriptor<SiteVisitIdentityDraft>(), label: "SiteVisitIdentityDraft", in: context)
             deleteAll(FetchDescriptor<SiteVisit>(), label: "SiteVisit", in: context)
             deleteAll(FetchDescriptor<CalendarUserEvent>(), label: "CalendarUserEvent", in: context)

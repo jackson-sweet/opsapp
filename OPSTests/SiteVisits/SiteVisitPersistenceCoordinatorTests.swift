@@ -539,6 +539,34 @@ final class SiteVisitPersistenceCoordinatorTests: XCTestCase {
         XCTAssertEqual(media.retryCount, 0)
     }
 
+    func testAttemptedChecklistPayloadSurvivesFailureAndNewEditWhileUnattemptedEditsCoalesce() throws {
+        let context = try makeContainer().mainContext
+        let coordinator = SiteVisitPersistenceCoordinator(modelContext: context, companyId: companyId)
+        let visit = makeVisit()
+        visit.needsSync = false; visit.lastSyncedAt = Date()
+        context.insert(visit); try context.save()
+        let answer = SiteVisitChecklistAnswer(siteVisitId: visitId, companyId: companyId, opportunityId: nil,
+            siteVisitTypeId: nil, fieldId: "scope", label: "Scope", kind: .shortText, required: false, sortOrder: 1)
+        try coordinator.commit { context.insert(answer); answer.answerValue = .text("one") }
+        let original = try XCTUnwrap(context.fetch(FetchDescriptor<SyncOperation>()).first { SiteVisitVersionedSync.handles($0) })
+        try coordinator.commit { answer.answerValue = .text("two") }
+        let coalesced = try context.fetch(FetchDescriptor<SyncOperation>()).filter { SiteVisitVersionedSync.handles($0) }
+        XCTAssertEqual(coalesced.count, 1)
+        XCTAssertEqual(coalesced[0].id, original.id)
+        XCTAssertEqual(SiteVisitVersionedSync.command(original)?.rows[0].baseRevision, 0)
+        let bytes = original.payload
+        original.status = "parked"; original.siteVisitWriteAttemptedAt = Date(); try context.save()
+        try coordinator.commit { answer.answerValue = .text("three") }
+        let writes = try context.fetch(FetchDescriptor<SyncOperation>()).filter { SiteVisitVersionedSync.handles($0) }
+        XCTAssertEqual(writes.count, 2)
+        XCTAssertEqual(original.payload, bytes)
+        XCTAssertEqual(original.status, "parked")
+        let next = try XCTUnwrap(writes.first { $0.id != original.id })
+        XCTAssertEqual(next.dependsOnId, original.id.uuidString.lowercased())
+        XCTAssertEqual(SiteVisitVersionedSync.command(next)?.rows[0].baseRevision, 0)
+        XCTAssertEqual(SiteVisitVersionedSync.command(next)?.rows[0].values["answer_value"]?["text"], .string("three"))
+    }
+
     private func makeVisit() -> SiteVisit {
         SiteVisit(
             id: visitId,

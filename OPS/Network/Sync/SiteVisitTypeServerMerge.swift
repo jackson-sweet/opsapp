@@ -37,6 +37,19 @@ enum SiteVisitTypeServerMerge {
 
         if let existing = try context.fetch(descriptor).first {
             guard existing.companyId.lowercased() == companyId else { return false }
+            let ownsQueuedWork = try context.fetch(FetchDescriptor<SyncOperation>()).contains {
+                $0.status != "completed" && SiteVisitVersionedSync.command($0)?.rows.contains(where: { $0.id == id }) == true
+            }
+            // No age limit: failed/parked/in-flight work and orphan dirty models
+            // remain the local version until an exact acknowledgement or review.
+            if existing.needsSync || hasPendingLocalOperation || ownsQueuedWork || existing.writeState.baseRevision != nil {
+                var state = existing.writeState
+                state.remoteRow = try SiteVisitWriteJSON.encode(dto)
+                existing.writeState = state
+                return true
+            }
+            if let revision = dto.writeRevision, revision < existing.writeState.revision { return false }
+            guard Self.mutableFields.isSubset(of: acceptedFields) else { return false }
 
             if acceptedFields.contains("slug") { existing.slug = dto.slug }
             if acceptedFields.contains("name") { existing.name = dto.name }
@@ -59,6 +72,7 @@ enum SiteVisitTypeServerMerge {
             existing.updatedAt = dto.updatedAt.flatMap(SupabaseDate.parse)
             existing.lastSyncedAt = Date()
             existing.needsSync = hasPendingLocalOperation
+            existing.writeState = SiteVisitWriteState(revision: dto.writeRevision ?? 0)
         } else {
             guard !hasPendingLocalOperation else { return false }
             context.insert(dto.toModel())

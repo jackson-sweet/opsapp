@@ -130,7 +130,7 @@ struct JobBoardProjectCardModel {
         let address = project.address
         return JobBoardProjectCardModel(
             addressText: (address?.isEmpty == false) ? JobBoardCardText.streetOnly(address!) : "NO ADDRESS",
-            dateText: JobBoardCardText.dateText(project.startDate),
+            dateText: JobBoardCardText.dateText(project.computedStartDate),
             teamCount: project.teamMembers.count,
             isAssignedToMe: isAssigned,
             showsUnscheduledBadge: showsUnscheduled,

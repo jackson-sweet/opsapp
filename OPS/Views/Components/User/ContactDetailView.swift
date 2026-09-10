@@ -1179,7 +1179,7 @@ struct ContactDetailView: View {
                                         .foregroundColor(OPSStyle.Colors.primaryText)
                                         .lineLimit(1)
 
-                                    if let startDate = project.startDate {
+                                    if let startDate = project.computedStartDate {
                                         Text(DateFormatter.localizedString(from: startDate, dateStyle: .short, timeStyle: .none))
                                             .font(OPSStyle.Typography.smallCaption)
                                             .foregroundColor(OPSStyle.Colors.secondaryText)

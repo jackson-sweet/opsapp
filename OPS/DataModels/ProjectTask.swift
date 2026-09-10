@@ -261,6 +261,15 @@ final class ProjectTask {
         return taskColor
     }
     
+    /// Ordinary work never clears a tombstone. Explicit Trash restoration does.
+    var isAvailableForWork: Bool {
+        guard deletedAt == nil else { return false }
+        guard let project else { return true } // Unlinked local creates remain editable.
+        return project.deletedAt == nil
+            && project.id.lowercased() == projectId.lowercased()
+            && project.companyId.lowercased() == companyId.lowercased()
+    }
+
     /// Whether the current user may edit THIS task's *fields* — task type,
     /// description, title. Gated on `tasks.edit`, scope-aware on the task's
     /// assignees, mirroring `canEditSchedule`.
@@ -270,13 +279,13 @@ final class ProjectTask {
     /// read as able to edit every task in the company. It had no call sites;
     /// this replaces it rather than preserving the wrong answer.
     var canEditFields: Bool {
-        PermissionStore.shared.canEditTaskFields(assigneeIds: getTeamMemberIds())
+        isAvailableForWork && PermissionStore.shared.canEditTaskFields(assigneeIds: getTeamMemberIds())
     }
 
     /// Whether the current user may change which crew this task is assigned to.
     /// `tasks.assign` is defined all-only, so this is not per-task.
     var canAssignCrew: Bool {
-        PermissionStore.shared.canAssignTaskCrew
+        isAvailableForWork && PermissionStore.shared.canAssignTaskCrew
     }
 
     /// Whether the current user may edit THIS task's *schedule* (start/end dates,
@@ -285,7 +294,7 @@ final class ProjectTask {
     /// from `canEdit` (tasks.edit): a Crew member may edit task fields and change
     /// status but never move the task on the calendar.
     var canEditSchedule: Bool {
-        PermissionStore.shared.canEditSchedule(assigneeIds: getTeamMemberIds())
+        isAvailableForWork && PermissionStore.shared.canEditSchedule(assigneeIds: getTeamMemberIds())
     }
     
     /// Whether the current user may complete, reopen, or cancel THIS task.
@@ -297,7 +306,7 @@ final class ProjectTask {
     /// `TaskReviewQuery`. It had no call sites; the sheet's status buttons now
     /// read this instead of being ungated.
     var canChangeStatus: Bool {
-        PermissionStore.shared.canChangeTaskStatus(assigneeIds: getTeamMemberIds())
+        isAvailableForWork && PermissionStore.shared.canChangeTaskStatus(assigneeIds: getTeamMemberIds())
     }
     
     // MARK: - Dependency Helpers

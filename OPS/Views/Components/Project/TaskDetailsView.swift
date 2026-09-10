@@ -234,6 +234,13 @@ struct TaskDetailsView: View {
         .onChange(of: task.id) { _, _ in
             loadMaterialHistory()
         }
+        .onChange(of: task.isAvailableForWork, initial: true) { _, available in
+            guard !available else { return }
+            showingScheduler = false
+            showingTeamMemberPicker = false
+            showingTaskTypeConflictAlert = false
+            dismiss()
+        }
         .sheet(isPresented: $showingTeamMemberDetails) {
             if let selectedMember = selectedTeamMember {
                 ContactDetailView(user: selectedMember)
@@ -374,7 +381,7 @@ struct TaskDetailsView: View {
                     onTap: { openInMaps() },
                     projectName: project.title,
                     status: project.status,
-                    taskColorHexes: project.tasks
+                    taskColorHexes: project.liveTasks
                         .filter { $0.deletedAt == nil && $0.status == .active }
                         .map { $0.effectiveColor },
                     onResolvedCoordinate: { coord in
@@ -531,7 +538,7 @@ struct TaskDetailsView: View {
         type.dependencies.compactMap { dependency in
             let predecessorType = allTaskTypes.first { $0.id == dependency.dependsOnTaskTypeId }
             let predecessorName = predecessorType?.display ?? "Required predecessor"
-            let predecessors = project.tasks.filter {
+            let predecessors = project.liveTasks.filter {
                 $0.deletedAt == nil &&
                 $0.id != task.id &&
                 $0.taskTypeId == dependency.dependsOnTaskTypeId
@@ -548,13 +555,7 @@ struct TaskDetailsView: View {
 
     @MainActor
     private func applyTaskTypeSwitch(to type: TaskType) async {
-        task.taskTypeId = type.id
-        task.taskType = type
-        task.taskColor = type.color
-        task.dependencyOverridesJSON = nil
-        task.needsSync = true
-        try? modelContext.save()
-
+        guard task.canEditFields else { return }
         do {
             try await dataController.updateTaskFields(
                 taskId: task.id,
@@ -791,7 +792,7 @@ struct TaskDetailsView: View {
                             .frame(width: 24)
 
                         VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
-                            Text("SCHEDULED")
+                            Text(task.needsSync ? SyncStatusCopy.localTaskChanges : "SCHEDULED")
                                 .font(OPSStyle.Typography.smallCaption)
                                 .foregroundColor(OPSStyle.Colors.secondaryText)
 
@@ -1056,7 +1057,7 @@ struct TaskDetailsView: View {
     private var navigationSection: some View {
         VStack(spacing: OPSStyle.Layout.spacing3) {
             // Sort tasks and find current position
-            let sortedTasks = project.tasks.sorted { $0.displayOrder < $1.displayOrder }
+            let sortedTasks = project.liveTasks.sorted { $0.displayOrder < $1.displayOrder }
 
             // Find previous and next tasks based on display order, not array position
             let currentOrder = task.displayOrder
@@ -1279,161 +1280,29 @@ struct TaskDetailsView: View {
 
     private func handleScheduleUpdate(startDate: Date, endDate: Date) {
         guard task.canEditSchedule else { return }
-        print("🔄 Task handleScheduleUpdate called - New dates: \(startDate) to \(endDate)")
-
-        // Set dates directly on the task
-        task.startDate = startDate
-        task.endDate = endDate
-        let daysDiff = Calendar.current.dateComponents([.day], from: startDate, to: endDate).day ?? 0
-        task.duration = daysDiff + 1
-        task.needsSync = true
-
-        // Update parent project dates if necessary
-        if let project = task.project {
-            let allTasks = project.tasks
-            let earliestStart = allTasks.compactMap { $0.startDate }.min() ?? startDate
-            let latestEnd = allTasks.compactMap { $0.endDate }.max() ?? endDate
-
-            if project.startDate != earliestStart || project.endDate != latestEnd {
-                print("🔄 Updating project dates to match task range")
-                project.startDate = earliestStart
-                project.endDate = latestEnd
-                project.needsSync = true
+        Task { @MainActor in
+            do {
+                try await dataController.updateTaskSchedule(task: task, startDate: startDate, endDate: endDate)
+                ToastCenter.shared.present(Feedback.Task.rescheduled)
+                refreshTrigger.toggle()
+            } catch {
+                ToastCenter.shared.present(Toast(label: error.localizedDescription, tone: .error))
             }
-        }
-
-        // Save to database
-        do {
-            try modelContext.save()
-            print("✅ Successfully saved task schedule update")
-            ToastCenter.shared.present(Feedback.Task.rescheduled)
-
-            // Force view refresh to show updated dates
-            refreshTrigger.toggle()
-
-            // Notify calendar views to refresh
-            dataController.scheduledTasksDidChange.toggle()
-
-            // Sync task dates to server
-            Task {
-                await syncTaskDatesToServer()
-            }
-        } catch {
-            print("❌ Failed to save task schedule update: \(error)")
         }
     }
 
     private func handleClearDates() {
         guard task.canEditSchedule else { return }
-        print("🗑️ handleClearDates called - Clearing task dates")
-
-        let projectId = task.project?.id
-
-        // Clear dates directly on task
-        task.startDate = nil
-        task.endDate = nil
-        task.duration = 0
-        task.needsSync = true
-
-        // Capture scheduled task data for recalculation
-        let scheduledTaskDates: [(start: Date, end: Date)]? = task.project?.tasks.compactMap { projectTask in
-            guard projectTask.id != task.id,
-                  let start = projectTask.startDate,
-                  let end = projectTask.endDate else {
-                return nil
+        Task { @MainActor in
+            do {
+                try await dataController.updateTaskFields(taskId: task.id, fields: [
+                    "start_date": .null, "end_date": .null, "duration": .integer(0)
+                ])
+                ToastCenter.shared.present(Feedback.Task.datesCleared)
+                refreshTrigger.toggle()
+            } catch {
+                ToastCenter.shared.present(Toast(label: error.localizedDescription, tone: .error))
             }
-            return (start, end)
-        }
-
-        // Save to database
-        do {
-            try modelContext.save()
-            print("✅ Successfully cleared task dates")
-            ToastCenter.shared.present(Feedback.Task.datesCleared)
-
-            // Force view refresh to show cleared dates
-            refreshTrigger.toggle()
-
-            // Notify calendar views to refresh
-            dataController.scheduledTasksDidChange.toggle()
-
-            // Sync to Supabase
-            Task {
-                do {
-                    // STEP 1: Clear task dates in Supabase
-                    print("📡 Clearing task dates in Supabase...")
-                    try await dataController.updateTaskFields(
-                        taskId: task.id,
-                        fields: [
-                            "start_date": .null,
-                            "end_date": .null,
-                            "duration": .integer(0)
-                        ]
-                    )
-                    print("✅ Task dates cleared")
-
-                    // STEP 2: Recalculate parent project dates
-                    if let project = task.project {
-                        print("🔄 Recalculating parent project dates...")
-
-                        if let dates = scheduledTaskDates, !dates.isEmpty {
-                            let earliestStart = dates.map { $0.start }.min()
-                            let latestEnd = dates.map { $0.end }.max()
-
-                            if let start = earliestStart, let end = latestEnd {
-                                try await dataController.updateProjectDates(
-                                    project: project,
-                                    startDate: start,
-                                    endDate: end
-                                )
-                                print("✅ Project dates updated")
-                            }
-                        } else {
-                            print("🗑️ No scheduled tasks - clearing project dates")
-                            try await dataController.updateProjectDates(
-                                project: project,
-                                startDate: nil,
-                                endDate: nil
-                            )
-                            print("✅ Project dates cleared")
-                        }
-                    }
-                } catch {
-                    print("❌ Failed to clear dates in Supabase: \(error)")
-                }
-            }
-        } catch {
-            print("❌ Failed to save cleared task dates: \(error)")
-        }
-    }
-
-    private func syncTaskDatesToServer() async {
-        print("🔄 Syncing task dates to server: \(task.id)")
-
-        do {
-            let formatter = ISO8601DateFormatter()
-            formatter.formatOptions = [.withInternetDateTime]
-
-            let startDateString = task.startDate.map { formatter.string(from: $0) } ?? ""
-            let endDateString = task.endDate.map { formatter.string(from: $0) } ?? ""
-
-            try await dataController.updateTaskFields(
-                taskId: task.id,
-                fields: [
-                    "start_date": .string(startDateString),
-                    "end_date": .string(endDateString),
-                    "duration": .integer(task.duration)
-                ]
-            )
-
-            await MainActor.run {
-                task.needsSync = false
-                try? modelContext.save()
-            }
-
-            print("✅ Task dates synced successfully to server")
-        } catch {
-            print("⚠️ Failed to sync task dates to server: \(error)")
         }
     }
 
@@ -1510,6 +1379,7 @@ struct TaskDetailsView: View {
     }
     
     private func updateTaskStatus(to newStatus: TaskStatus) {
+        guard task.canChangeStatus else { return }
         let impactFeedback = UIImpactFeedbackGenerator(style: .medium)
         impactFeedback.impactOccurred()
 
@@ -1569,7 +1439,7 @@ struct TaskDetailsView: View {
     }
     
     private var canModify: Bool {
-        permissionStore.can("tasks.edit")
+        task.canEditFields
     }
 
     private func formatDateRange(_ start: Date, _ end: Date) -> String {
@@ -1695,7 +1565,7 @@ struct TaskDetailsView: View {
     
     private func checkIfAllTasksComplete() {
         // Check if all tasks in the project are complete
-        let allTasks = project.tasks
+        let allTasks = project.liveTasks
         let incompleteTasks = allTasks.filter { $0.status != .completed && $0.status != .cancelled }
         
         // If all tasks are complete or cancelled, show the alert

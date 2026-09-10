@@ -495,8 +495,8 @@ struct UniversalJobBoardCard: View {
 
     private var compactDateRange: String {
         guard case .project(let project) = cardType else { return "-" }
-        let start = project.computedStartDate ?? project.startDate
-        let end = project.computedEndDate ?? project.endDate
+        let start = project.computedStartDate
+        let end = project.computedEndDate
         switch (start, end) {
         case (let s?, let e?):
             return "\(DateHelper.simpleDateString(from: s)) - \(DateHelper.simpleDateString(from: e))"

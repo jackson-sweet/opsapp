@@ -234,7 +234,7 @@ struct ProjectsWithoutTasksReviewView: View {
             }
 
             HStack(alignment: .top, spacing: OPSStyle.Layout.spacing2) {
-                ProjectReviewDetailCell(label: "START", value: dateLabel(project.startDate))
+                ProjectReviewDetailCell(label: "START", value: dateLabel(project.computedStartDate))
                 ProjectReviewDetailCell(label: "ADDRESS", value: cleanDetail(project.address))
             }
 

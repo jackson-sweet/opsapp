@@ -481,13 +481,28 @@ final class Project: Identifiable {
     // MARK: - Computed Date Properties (from tasks)
 
     var computedStartDate: Date? {
-        let taskDates = tasks.compactMap { $0.startDate }
+        let taskDates = liveTasks.compactMap { $0.startDate }
         return taskDates.min()
     }
 
     var computedEndDate: Date? {
-        let taskDates = tasks.compactMap { $0.endDate }
+        let taskDates = liveTasks.compactMap { $0.endDate }
         return taskDates.max()
+    }
+
+    /// Ordinary project work excludes deleted, foreign and duplicate task rows.
+    var liveTasks: [ProjectTask] {
+        let owned = tasks.filter {
+            $0.projectId.lowercased() == id.lowercased()
+                && $0.companyId.lowercased() == companyId.lowercased()
+        }
+        // An old live twin must not expose an identity with a known tombstone.
+        let deletedIDs = Set(owned.filter { $0.deletedAt != nil }.map { $0.id.lowercased() })
+        var seen = Set<String>()
+        return owned.filter {
+            $0.isAvailableForWork && !deletedIDs.contains($0.id.lowercased())
+                && seen.insert($0.id.lowercased()).inserted
+        }
     }
 
     /// Update project team members based on all task team members

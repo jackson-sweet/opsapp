@@ -648,13 +648,14 @@ final class SyncOperationReconcilerTests: XCTestCase {
                 errorDescription: missing
             )
         )
-        // A task update against a missing row is not the project verdict.
-        XCTAssertNil(
+        // A task update uses its own conservative row reconciliation.
+        XCTAssertEqual(
             SyncOperationReconcilers.kind(
                 operationType: "update",
                 entityType: SyncEntityType.projectTask.rawValue,
                 errorDescription: missing
-            )
+            ),
+            .taskTombstone
         )
         // Right shape, unrelated error — still parks.
         XCTAssertNil(

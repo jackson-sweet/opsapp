@@ -85,7 +85,7 @@ enum SyncOperationReconcilers {
         }
         if operationType == "update",
            entityType == SyncEntityType.projectTask.rawValue,
-           isTaskNotFound(errorDescription) {
+           (isTaskNotFound(errorDescription) || errorDescription.contains(SyncError.serverRowMissingMarker)) {
             return .taskTombstone
         }
         if operationType == "update",
@@ -253,6 +253,34 @@ enum SyncOperationReconcilers {
             predicate: #Predicate<ProjectPhoto> { $0.id == id }
         )
         return try context.fetch(descriptor).first
+    }
+
+    struct ServerTaskRow: Decodable {
+        let id: String
+        let company_id: String
+        let deleted_at: String?
+    }
+
+    /// Called in either driver's model transaction after its scoped server read.
+    /// Invisibility can mean permission loss, deletion, or an absent row. None
+    /// proves delivery; the local copy and Pending Work must survive all three.
+    static func reconcileTaskUpdate(_ operation: SyncOperation, server: ServerTaskRow?,
+        companyId: String, in context: ModelContext) throws -> Bool {
+        guard let server, server.id.lowercased() == operation.entityId.lowercased(),
+              server.company_id.lowercased() == companyId.lowercased() else { return false }
+        let operations = try context.fetch(FetchDescriptor<SyncOperation>())
+        guard !TaskLifecycleSync.hasUnresolvedCreationOrRestore(taskId: operation.entityId, in: operations),
+              !TaskLifecycleSync.isLifecycle(operation),
+              let raw = server.deleted_at, let deletedAt = SupabaseDate.parse(raw) else { return false }
+        // Explicit evidence can hide stale live twins, but must not discard their edits.
+        let ids = [operation.entityId.lowercased(), operation.entityId.uppercased()]
+        let tasks = try context.fetch(FetchDescriptor<ProjectTask>(predicate: #Predicate { ids.contains($0.id) }))
+        for task in tasks where task.companyId.lowercased() == companyId.lowercased() {
+            task.deletedAt = task.deletedAt ?? deletedAt
+        }
+        if TaskLifecycleSync.carriesSchedule(operation) { return false }
+        markResolved(operation)
+        return true
     }
 
     // MARK: - Task update: the tombstone wins

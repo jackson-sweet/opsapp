@@ -847,7 +847,7 @@ struct ProjectSearchRow: View {
                         
                         // Date and address info
                         HStack(spacing: OPSStyle.Layout.spacing2) {
-                            if let startDate = project.startDate {
+                            if let startDate = project.computedStartDate {
                                 HStack(spacing: OPSStyle.Layout.spacing1) {
                                     Image(systemName: OPSStyle.Icons.calendar)
                                         .font(.system(size: OPSStyle.Layout.IconSize.xs))

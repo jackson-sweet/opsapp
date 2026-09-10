@@ -25,6 +25,8 @@ enum SyncStatusTone {
 }
 
 enum SyncStatusCopy {
+    static let localTaskChanges = "NOT SYNCED"
+
     enum SiteVisitLogout {
         static let warningTitle = "Site visit not saved yet"
         static let warningBody = "This phone still has site visit work that has not reached OPS. Stay signed in to retry, or discard it and log out."
@@ -270,11 +272,9 @@ enum SyncStatusCopy {
 
         // Row status lines (sentence case — the existing SyncStatusCopy register).
         static let parkedRow = "Server said no — held here"
-        /// A park with a different cause and a different answer. The server did
-        /// not reject the change; the record it belonged to is not in OPS any
-        /// more. Retrying cannot help, so the line says what happened and the
-        /// detail block below says what the operator still has.
-        static let missingRow = "That record is gone from OPS — held here"
+        /// An invisible row is ambiguous: deleted, inaccessible, or not yet
+        /// created. Preserve the local work without claiming which cause won.
+        static let missingRow = "OPS could not find or access this record — held here"
         /// A third cause, and the only one with a fix the operator can act on
         /// right here: the work is fine, but the customer it belongs to never
         /// reached OPS. Naming the customer — not the lead — is what points the
@@ -359,6 +359,7 @@ enum SyncStatusCopy {
         static func isMissingRow(_ raw: String?) -> Bool {
             guard let raw, !raw.isEmpty else { return false }
             return raw.lowercased().contains(SyncError.serverRowMissingMarker)
+                || raw.lowercased().contains("task_not_found")
         }
 
         /// The reconciler's edit-permission verdict, recognized by the stable

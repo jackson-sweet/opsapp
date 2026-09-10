@@ -433,6 +433,11 @@ final class OutboundProcessor {
 
         for (_, groupOps) in groups {
             guard !groupOps.isEmpty else { continue }
+            // Preserve delete → restore → later edits as individually acknowledged commands.
+            if groupOps.contains(where: TaskLifecycleSync.isLifecycle) {
+                result.append(contentsOf: groupOps.sorted(by: TaskLifecycleSync.precedes))
+                continue
+            }
             var ops = groupOps
 
             // Single operation — no coalescing needed
@@ -780,6 +785,7 @@ final class OutboundProcessor {
                 // calendar row's dirty flag — and it commits with the
                 // completion, because that flag is what keeps the inbound merge
                 // off a locally-edited row (bug ef5a69e6).
+                try TaskLifecycleSync.clearNeedsSyncAfterConfirmation(operation, companyId: scope.companyID, in: context)
                 try CalendarUserEventOutboundSync.clearNeedsSyncOnCompletion(
                     for: operation,
                     in: context
@@ -902,45 +908,22 @@ final class OutboundProcessor {
         isCurrent: () -> Bool
     ) async -> Bool {
         guard isCurrent() else { return false }
-        struct ServerTaskRow: Decodable {
-            let id: String
-            let deleted_at: String?
-        }
+        guard let companyId = UserDefaults.standard.string(forKey: "currentUserCompanyId"), !companyId.isEmpty else { return false }
         do {
-            let rows: [ServerTaskRow] = try await SupabaseService.shared.client
+            let rows: [SyncOperationReconcilers.ServerTaskRow] = try await SupabaseService.shared.client
                 .from("project_tasks")
-                .select("id, deleted_at")
+                .select("id, company_id, deleted_at")
                 .eq("id", value: operation.entityId.lowercased())
+                .eq("company_id", value: companyId.lowercased())
                 .execute()
                 .value
             guard isCurrent() else { return false }
-            if rows.isEmpty {
-                // The task read policy hides soft-deleted rows entirely, so the
-                // tombstone this op parked on can never become visible here. The
-                // RPC raised task_not_found under the caller's own RLS — the task
-                // is gone from this caller's world and a retry can never succeed.
-                // Retire the operation; leave local task data untouched so a
-                // permission eclipse (not a deletion) self-corrects on later pulls.
-                try context.transaction {
-                    SyncOperationReconcilers.markResolved(operation)
-                }
-                print("[OutboundProcessor] projectTask update \(operation.entityId) retired: server row invisible after task_not_found")
-                return true
-            }
-            guard let server = rows.first,
-                  let deletedAtRaw = server.deleted_at,
-                  let deletedAt = SupabaseDate.parse(deletedAtRaw) else { return false }
-
+            var resolved = false
             try context.transaction {
-                _ = try SyncOperationReconcilers.applyTaskTombstone(
-                    taskId: operation.entityId,
-                    deletedAt: deletedAt,
-                    in: context
-                )
-                SyncOperationReconcilers.markResolved(operation)
+                resolved = try SyncOperationReconcilers.reconcileTaskUpdate(operation,
+                    server: rows.first, companyId: companyId, in: context)
             }
-            print("[OutboundProcessor] projectTask update \(operation.entityId) resolved against server tombstone")
-            return true
+            return resolved
         } catch {
             guard isCurrent() else { return false }
             print("[OutboundProcessor] task tombstone reconciliation failed for \(operation.entityId): \(error)")

@@ -4070,6 +4070,7 @@ class DataController: ObservableObject {
     enum DurableSyncMutationError: LocalizedError, Equatable {
         case contextUnavailable
         case invalidProjectContact
+        case taskUnavailable
         case syncQueueFailed
         case persistenceFailed(String)
 
@@ -4079,6 +4080,8 @@ class DataController: ObservableObject {
                 return "Local storage is unavailable."
             case .invalidProjectContact:
                 return "That contact is no longer available for this project."
+            case .taskUnavailable:
+                return "This task is unavailable. Check Settings > Trash before editing it."
             case .syncQueueFailed:
                 return "The change could not be secured for sync."
             case .persistenceFailed(let message):
@@ -4117,6 +4120,7 @@ class DataController: ObservableObject {
         guard let context = modelContext else {
             throw DurableSyncMutationError.contextUnavailable
         }
+        try requireAvailableTask(task)
         let oldStatus = task.status
         let project = task.project
         let predecessorId = task.id
@@ -4503,11 +4507,43 @@ class DataController: ObservableObject {
         }
     }
 
+    /// Reject stale retained references as well as the normal deleted-row case.
+    /// UUID casing cannot allow a live duplicate to edit a known tombstone.
+    @MainActor
+    private func requireAvailableTask(_ task: ProjectTask) throws {
+        guard task.isAvailableForWork else { throw DurableSyncMutationError.taskUnavailable }
+        guard let context = modelContext else { throw DurableSyncMutationError.contextUnavailable }
+        let ids = [task.id.lowercased(), task.id.uppercased()]
+        let rows = try context.fetch(FetchDescriptor<ProjectTask>(predicate: #Predicate { ids.contains($0.id) }))
+        guard !rows.contains(where: {
+            $0.companyId.lowercased() == task.companyId.lowercased() && $0.deletedAt != nil
+        }) else { throw DurableSyncMutationError.taskUnavailable }
+        let projectIDs = [task.projectId.lowercased(), task.projectId.uppercased()]
+        let parents = try context.fetch(FetchDescriptor<Project>(predicate: #Predicate { projectIDs.contains($0.id) }))
+        guard !parents.contains(where: {
+            $0.companyId.lowercased() == task.companyId.lowercased() && $0.deletedAt != nil
+        }) else { throw DurableSyncMutationError.taskUnavailable }
+    }
+
     // MARK: - Task Schedule Operations
 
     /// Update task schedule dates - SINGLE SOURCE OF TRUTH for task scheduling updates
     @MainActor
     func updateTaskSchedule(task: ProjectTask, startDate: Date, endDate: Date, manualEdit: Bool = true, deferBroadcast: Bool = false) async throws {
+        guard let syncEngine else { throw DurableSyncMutationError.contextUnavailable }
+        try await updateTaskSchedule(task: task, startDate: startDate, endDate: endDate,
+            manualEdit: manualEdit, deferBroadcast: deferBroadcast,
+            stagingOperationsWith: { specs, context in
+                try syncEngine.stageOperationsForTransaction(specs, in: context)
+            })
+    }
+
+    @MainActor
+    func updateTaskSchedule(task: ProjectTask, startDate: Date, endDate: Date,
+        manualEdit: Bool = true, deferBroadcast: Bool = false,
+        stagingOperationsWith stageOperations: DurableSyncOperationStager) async throws {
+        try requireAvailableTask(task)
+        guard let context = modelContext else { throw DurableSyncMutationError.contextUnavailable }
         let commitInterval = scheduleSignposter.beginInterval("updateTaskSchedule", id: scheduleSignposter.makeSignpostID())
         defer { scheduleSignposter.endInterval("updateTaskSchedule", commitInterval) }
 
@@ -4520,17 +4556,29 @@ class DataController: ObservableObject {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime]
 
-        // Apply locally
-        task.startDate = startDate
-        task.endDate = endDate
         let daysDiff = Calendar.current.dateComponents([.day], from: startDate, to: endDate).day ?? 0
-        task.duration = daysDiff + 1
-        // Manual edits lock the cascade — predecessor movements no longer
-        // touch this task. System-driven calls (auto-schedule, cascade
-        // application) pass manualEdit: false to preserve auto-tracking.
-        if manualEdit { task.scheduleLocked = true }
-        task.needsSync = true
-        try? modelContext?.save()
+        let duration = daysDiff + 1
+        var changedFields: [String: Any] = [
+            "start_date": formatter.string(from: startDate),
+            "end_date": formatter.string(from: endDate),
+            "duration": duration
+        ]
+        if manualEdit { changedFields["schedule_locked"] = true }
+        try persistDurableSyncMutation(
+            spec: .init(entityType: .projectTask, entityId: task.id,
+                operationType: "update", changedFields: changedFields),
+            in: context, stagingOperationsWith: stageOperations,
+            apply: {
+                task.startDate = startDate
+                task.endDate = endDate
+                task.duration = duration
+                if manualEdit { task.scheduleLocked = true }
+                task.needsSync = true
+                self.refreshLocalProjectScheduleCache(for: task)
+            }, rematerializeAfterRollback: {
+                let id = task.id
+                _ = try? context.fetch(FetchDescriptor<ProjectTask>(predicate: #Predicate { $0.id == id }))
+            })
 
         // Mirror to iPhone Calendar
         let mirrorTaskId = task.id
@@ -4545,21 +4593,6 @@ class DataController: ObservableObject {
         if !deferBroadcast {
             notifyScheduledTasksChanged()
         }
-
-        // Record for async sync
-        var changedFields: [String: Any] = [
-            "start_date": formatter.string(from: startDate),
-            "end_date": formatter.string(from: endDate),
-            "duration": task.duration
-        ]
-        if manualEdit { changedFields["schedule_locked"] = true }
-
-        syncEngine.recordOperation(
-            entityType: .projectTask,
-            entityId: task.id,
-            operationType: "update",
-            changedFields: changedFields
-        )
 
         // Announce the move only if the dates actually changed and the task can
         // still be worked (a completed or cancelled task moving shouldn't ping
@@ -4591,6 +4624,17 @@ class DataController: ObservableObject {
                 print("[UPDATE_TASK_SCHEDULE] ⚠️ Failed to recalculate task indices: \(error)")
             }
         }
+    }
+
+    /// Derived display cache only. Task writes own the schedule; updating this
+    /// projection must not require a separate project-edit grant or enqueue a
+    /// project write based on a potentially partial, scope-filtered task list.
+    private func refreshLocalProjectScheduleCache(for task: ProjectTask) {
+        guard let project = task.project, project.deletedAt == nil,
+              project.companyId.lowercased() == task.companyId.lowercased(),
+              project.id.lowercased() == task.projectId.lowercased() else { return }
+        project.startDate = project.computedStartDate
+        project.endDate = project.computedEndDate
     }
 
     // MARK: - Push & Cascade Scheduling
@@ -5000,7 +5044,7 @@ class DataController: ObservableObject {
         let indexInterval = scheduleSignposter.beginInterval("recalculateTaskIndices", id: scheduleSignposter.makeSignpostID())
         defer { scheduleSignposter.endInterval("recalculateTaskIndices", indexInterval) }
 
-        let allTasks = project.tasks
+        let allTasks = project.liveTasks
 
         // Separate scheduled and unscheduled tasks
         var scheduledTasks: [(task: ProjectTask, startDate: Date)] = []
@@ -5114,6 +5158,7 @@ class DataController: ObservableObject {
     /// 5. Sending push notifications to newly assigned members
     @MainActor
     func updateTaskTeamMembers(task: ProjectTask, memberIds: [String]) async throws {
+        try requireAvailableTask(task)
         print("[UPDATE_TASK_TEAM] 🔄 Starting comprehensive task team update...")
         print("[UPDATE_TASK_TEAM] Task ID: \(task.id)")
         print("[UPDATE_TASK_TEAM] New member IDs: \(memberIds)")
@@ -6347,6 +6392,7 @@ class DataController: ObservableObject {
     /// Update task - SINGLE SOURCE OF TRUTH
     @MainActor
     func updateTask(task: ProjectTask) async throws {
+        try requireAvailableTask(task)
         // Apply locally
         task.needsSync = true
         try? modelContext?.save()
@@ -7052,31 +7098,60 @@ class DataController: ObservableObject {
     /// This replaces syncManager.updateTaskFields() calls.
     @MainActor
     func updateTaskFields(taskId: String, fields: [String: AnyJSON]) async throws {
-        guard let context = modelContext else { return }
+        guard let syncEngine else { throw DurableSyncMutationError.contextUnavailable }
+        try await updateTaskFields(taskId: taskId, fields: fields,
+            stagingOperationsWith: { specs, context in
+                try syncEngine.stageOperationsForTransaction(specs, in: context)
+            })
+    }
 
-        // Apply locally for known fields
-        let descriptor = FetchDescriptor<ProjectTask>(predicate: #Predicate { $0.id == taskId })
-        if let task = try? context.fetch(descriptor).first {
-            applyTaskFieldsLocally(task: task, fields: fields, context: context)
-            task.needsSync = true
-            try? context.save()
+    @MainActor
+    func updateTaskFields(taskId: String, fields: [String: AnyJSON],
+        stagingOperationsWith stageOperations: DurableSyncOperationStager) async throws {
+        guard let context = modelContext else {
+            throw DurableSyncMutationError.contextUnavailable
         }
-
-        // Convert AnyJSON to [String: Any]
-        let changedFields = anyJSONToDict(fields)
-
-        syncEngine.recordOperation(
-            entityType: .projectTask,
-            entityId: taskId,
-            operationType: "update",
-            changedFields: changedFields
-        )
+        let ids = [taskId.lowercased(), taskId.uppercased()]
+        let descriptor = FetchDescriptor<ProjectTask>(predicate: #Predicate { ids.contains($0.id) })
+        guard let task = try context.fetch(descriptor).first else {
+            throw DurableSyncMutationError.taskUnavailable
+        }
+        try requireAvailableTask(task)
+        // Restore and delete have their own explicit workflows, never a generic edit.
+        guard fields["deleted_at"] == nil else { throw DurableSyncMutationError.taskUnavailable }
+        try persistDurableSyncMutation(
+            spec: .init(entityType: .projectTask, entityId: task.id, operationType: "update",
+                changedFields: anyJSONToDict(fields)),
+            in: context,
+            stagingOperationsWith: stageOperations, apply: {
+                self.applyTaskFieldsLocally(task: task, fields: fields, context: context)
+                task.needsSync = true
+                if !Set(fields.keys).isDisjoint(with: TaskLifecycleSync.scheduleFields) {
+                    self.refreshLocalProjectScheduleCache(for: task)
+                }
+            }, rematerializeAfterRollback: { _ = try? context.fetch(descriptor) })
+        if !Set(fields.keys).isDisjoint(with: TaskLifecycleSync.scheduleFields) {
+            notifyScheduledTasksChanged()
+            Task { @MainActor in
+                await CalendarMirrorService.shared.mirrorEvent(opsId: task.id, source: .projectTask)
+            }
+        }
     }
 
     /// Apply AnyJSON field values to a local ProjectTask model
     private func applyTaskFieldsLocally(task: ProjectTask, fields: [String: AnyJSON], context: ModelContext) {
         for (key, value) in fields {
             switch key {
+            case "start_date":
+                if case .string(let v) = value { task.startDate = SupabaseDate.parse(v) }
+                if case .null = value { task.startDate = nil }
+            case "end_date":
+                if case .string(let v) = value { task.endDate = SupabaseDate.parse(v) }
+                if case .null = value { task.endDate = nil }
+            case "duration":
+                if case .integer(let v) = value { task.duration = v }
+            case "schedule_locked":
+                if case .bool(let v) = value { task.scheduleLocked = v }
             case "status":
                 if case .string(let v) = value { task.status = TaskStatus(rawValue: v) ?? task.status }
             case "task_notes":
@@ -8451,6 +8526,13 @@ extension DataController {
         push: TaskPushCopy?
     ) async -> [String] {
         await flushPendingWorkForNotifications()
+        // A timed-out drain or permanent rejection is not a saved schedule.
+        // Do not announce old server dates while the operator's new dates wait here.
+        guard let context = modelContext else { return [] }
+        let ids = [taskId.lowercased(), taskId.uppercased()]
+        guard let task = try? context.fetch(FetchDescriptor<ProjectTask>(predicate: #Predicate { ids.contains($0.id) })).first,
+              task.isAvailableForWork, !task.needsSync else { return [] }
+
 
         guard let recipients = try? await taskLifecycleSyncer.notifyTaskRescheduled(taskId: taskId),
               !recipients.isEmpty,

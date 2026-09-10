@@ -5678,6 +5678,7 @@ actor DataActor {
                 // calendar row's dirty flag — and it commits with the
                 // completion, because that flag is what keeps the inbound merge
                 // off a locally-edited row (bug ef5a69e6).
+                try TaskLifecycleSync.clearNeedsSyncAfterConfirmation(operation, companyId: scope.companyID, in: modelContext)
                 try CalendarUserEventOutboundSync.clearNeedsSyncOnCompletion(
                     for: operation,
                     in: modelContext
@@ -5882,46 +5883,22 @@ actor DataActor {
         guard let scope = outboundScope() else { return false }
         let handle = OutboundHandle(operation)
         func isCurrent() -> Bool { outboundIsCurrent(scope, handle: handle) }
-        struct ServerTaskRow: Decodable {
-            let id: String
-            let deleted_at: String?
-        }
+        guard let companyId = scope.companyID, !companyId.isEmpty else { return false }
         do {
-            let rows: [ServerTaskRow] = try await SupabaseService.shared.client
+            let rows: [SyncOperationReconcilers.ServerTaskRow] = try await SupabaseService.shared.client
                 .from("project_tasks")
-                .select("id, deleted_at")
+                .select("id, company_id, deleted_at")
                 .eq("id", value: operation.entityId.lowercased())
+                .eq("company_id", value: companyId.lowercased())
                 .execute()
                 .value
             guard isCurrent() else { return false }
-            if rows.isEmpty {
-                // The task read policy hides soft-deleted rows entirely, so the
-                // tombstone this op parked on can never become visible here. The
-                // RPC raised task_not_found under the caller's own RLS — the task
-                // is gone from this caller's world and a retry can never succeed.
-                // Retire the operation; leave local task data untouched so a
-                // permission eclipse (not a deletion) self-corrects on later pulls.
-                try currentModelTransaction {
-                    SyncOperationReconcilers.markResolved(operation)
-                }
-                print("[DataActor] projectTask update \(operation.entityId) retired: server row invisible after task_not_found")
-                return true
-            }
-            guard let server = rows.first,
-                  let deletedAtRaw = server.deleted_at,
-                  let deletedAt = SupabaseDate.parse(deletedAtRaw) else { return false }
-
+            var resolved = false
             try currentModelTransaction {
-                _ = try SyncOperationReconcilers.applyTaskTombstone(
-                    taskId: operation.entityId,
-                    deletedAt: deletedAt,
-                    in: modelContext
-                )
-                SyncOperationReconcilers.markResolved(operation)
+                resolved = try SyncOperationReconcilers.reconcileTaskUpdate(operation,
+                    server: rows.first, companyId: companyId, in: modelContext)
             }
-            print("[DataActor] projectTask update \(operation.entityId) resolved against server tombstone")
-            print("[DUPE_TRACE] ACTOR.outbound.completed.tombstone id=\(operation.entityId) op=\(operation.operationType)")
-            return true
+            return resolved
         } catch {
             guard isCurrent() else { return false }
             print("[DataActor] task tombstone reconciliation failed for \(operation.entityId): \(error)")
@@ -6496,6 +6473,11 @@ actor DataActor {
 
         for (_, groupOps) in groups {
             guard !groupOps.isEmpty else { continue }
+            // Preserve delete → restore → later edits as individually acknowledged commands.
+            if groupOps.contains(where: TaskLifecycleSync.isLifecycle) {
+                result.append(contentsOf: groupOps.sorted(by: TaskLifecycleSync.precedes))
+                continue
+            }
             var ops = groupOps
 
             if ops.count == 1 {

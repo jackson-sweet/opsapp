@@ -142,7 +142,7 @@ struct ProjectBioSheet: View {
             sectionHeader("TIMELINE")
 
             HStack(spacing: OPSStyle.Layout.spacing4) {
-                if let start = project.startDate {
+                if let start = project.computedStartDate {
                     dateColumn("STARTED", date: start)
                 }
                 if let completed = project.completedAt {

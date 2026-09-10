@@ -244,7 +244,7 @@ struct CopyFromProjectSheet: View {
                         }
                     }
 
-                    if let startDate = project.startDate {
+                    if let startDate = project.computedStartDate {
                         HStack(alignment: .bottom, spacing: OPSStyle.Layout.spacing1) {
                             Image(systemName: OPSStyle.Icons.calendar)
                                 .font(.system(size: OPSStyle.Layout.IconSize.xs))

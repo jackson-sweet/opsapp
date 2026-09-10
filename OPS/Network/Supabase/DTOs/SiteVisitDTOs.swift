@@ -317,6 +317,7 @@ struct SiteVisitChecklistAnswerDTO: Codable, Equatable, Identifiable {
     let sortOrder: Int
     let answerValue: SiteVisitChecklistValue
     var writeRevision: Int64? = nil
+    var answerState: String? = nil
     let createdBy: String
     let createdAt: Date
     let updatedAt: Date
@@ -334,6 +335,7 @@ struct SiteVisitChecklistAnswerDTO: Codable, Equatable, Identifiable {
         case sortOrder = "sort_order"
         case answerValue = "answer_value"
         case writeRevision = "write_revision"
+        case answerState = "answer_state"
         case createdBy = "created_by"
         case createdAt = "created_at"
         case updatedAt = "updated_at"
@@ -357,6 +359,7 @@ struct SiteVisitChecklistAnswerDTO: Codable, Equatable, Identifiable {
             try c.decodeIfPresent(SiteVisitChecklistValue.self, forKey: .answerValue) ?? .empty
         )
         writeRevision = try c.decodeIfPresent(Int64.self, forKey: .writeRevision)
+        answerState = try c.decodeIfPresent(String.self, forKey: .answerState)
         createdBy = try SiteVisitWire.requiredText(try c.decode(String.self, forKey: .createdBy), key: CodingKeys.createdBy).lowercased()
         createdAt = try SiteVisitWire.requiredDate(c, key: .createdAt)
         updatedAt = try SiteVisitWire.requiredDate(c, key: .updatedAt)

@@ -3,6 +3,7 @@ import SwiftData
 import Supabase
 
 enum SiteVisitVersionedSync {
+    typealias Deliver = (UUID, SiteVisitWriteCommand, String) async throws -> SiteVisitWriteReceipt
     static func handles(_ operation: SyncOperation) -> Bool {
         operation.entityType == SyncEntityType.siteVisitType.rawValue ||
             operation.entityType == SyncEntityType.siteVisitChecklistAnswer.rawValue
@@ -44,7 +45,7 @@ enum SiteVisitVersionedSync {
             params: Parameters(p_command_id: id, p_command: command, p_expected_actor: expectedActorId)).execute().value
     }
     static func execute(operation: SyncOperation, context: ModelContext, companyId: String, actorId: String?,
-                        isCurrent: () -> Bool, isolation: isolated (any Actor)? = #isolation) async throws {
+                        isCurrent: () -> Bool, deliverWrite: Deliver = { try await deliver(id: $0, command: $1, expectedActorId: $2) }, isolation: isolated (any Actor)? = #isolation) async throws {
         guard let command = command(operation), command.protocol == SiteVisitWriteCommand.revision,
               command.companyId == companyId.lowercased(), !command.rows.isEmpty,
               command.rows.contains(where: { $0.id == operation.entityId.lowercased() }),
@@ -60,7 +61,7 @@ enum SiteVisitVersionedSync {
         if let resolution {
             receipt = try await deliverResolution(originalId: operation.id, command: command, resolution: resolution, expectedActorId: actorId)
         } else {
-            receipt = try await deliver(id: operation.id, command: command, expectedActorId: actorId)
+            receipt = try await deliverWrite(operation.id, command, actorId)
         }
         guard isCurrent(), !Task.isCancelled else { throw CancellationError() }
         try applyReceipt(receipt, to: operation, command: command, resolutionData: resolutionData,
@@ -80,6 +81,13 @@ enum SiteVisitVersionedSync {
               latest.siteVisitWriteActorId == actorId,
               latest.payload == originalOperation.payload,
               self.command(latest) == command else { throw CancellationError() }
+        let discarded = try verificationContext.fetch(FetchDescriptor<SyncOperation>()).contains { candidate in
+            guard candidate.operationType == SiteVisitSyncOperation.discardOperationType,
+                  candidate.siteVisitWriteReceiptData != nil,
+                  let intent = (try? JSONDecoder().decode(SiteVisitSyncOperation.Payload.self, from: candidate.payload))?.discard else { return false }
+            return intent.supersededOperationIds.contains(operationId)
+        }
+        guard !discarded else { throw CancellationError() }
         let context = verificationContext
         let operation = latest
         guard receipt.commandId == (resolution?.id ?? operation.id), receipt.entity == command.entity,
@@ -97,7 +105,8 @@ enum SiteVisitVersionedSync {
             // revisions/timestamps/author and derived parent links are separate.
             for requested in command.rows {
                 guard let actual = receipt.rows.first(where: { $0["id"]?.string == requested.id }),
-                      actual.matchesRequested(requested.values) else { throw SiteVisitWriteError.invalidReceipt }
+                      actual.matchesRequested(requested.values),
+                      requested.clearAnswer != true || actual["answer_state"]?.string == "cleared" else { throw SiteVisitWriteError.invalidReceipt }
             }
         }
         if let resolution, receipt.outcome == "resolved" {
@@ -115,7 +124,8 @@ enum SiteVisitVersionedSync {
                 if command.entity == "template", case .object(var values) = expected, let actual {
                     values["id"] = actual["id"]; expected = .object(values)
                 }
-                guard let actual, actual["write_revision"]?.revision != nil, actual.matchesRequested(expected) else { throw SiteVisitWriteError.invalidReceipt }
+                guard let actual, actual["write_revision"]?.revision != nil, actual.matchesRequested(expected),
+                      row.clearAnswer != true || actual["answer_state"]?.string == "cleared" else { throw SiteVisitWriteError.invalidReceipt }
             }
         }
         var rebasedCommands: [(PersistentIdentifier, Data)] = []

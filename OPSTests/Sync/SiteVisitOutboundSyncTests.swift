@@ -785,6 +785,64 @@ final class SiteVisitOutboundSyncTests: XCTestCase {
         XCTAssertEqual(remote.calls.count, suspension == "factory" ? 0 : 1)
     }
 
+    func testLinkedPhotoDrainsUploadAndMetadataBeforeImmutableAnswerAcrossRestart() async throws {
+        let prior = UserDefaults.standard.string(forKey: "currentUserId")
+        UserDefaults.standard.set(userId, forKey: "currentUserId")
+        defer { if let prior { UserDefaults.standard.set(prior, forKey: "currentUserId") } else { UserDefaults.standard.removeObject(forKey: "currentUserId") } }
+        for legacy in [false, true] {
+            let container = try makeContainer()
+            let context = ModelContext(container)
+            let visit = makeVisit(), artifact = makeArtifact(localURL: "local://project_images/photo.jpg")
+            let answer = SiteVisitChecklistAnswer(id: answerId, siteVisitId: visitId, companyId: companyId,
+                opportunityId: nil, siteVisitTypeId: nil, fieldId: "photo", label: "Photo", kind: .photo,
+                required: false, sortOrder: 0, createdBy: userId)
+            answer.answerValue = .init(artifactIds: [artifactId])
+            try SiteVisitPersistenceCoordinator(modelContext: context, companyId: companyId).commit {
+                context.insert(visit); context.insert(artifact); context.insert(answer)
+            }
+            let initial = try allOperations(context)
+            let answerOperation = try XCTUnwrap(initial.first { $0.entityType == SyncEntityType.siteVisitChecklistAnswer.rawValue })
+            let media = try XCTUnwrap(initial.first { $0.operationType == SiteVisitSyncOperation.mediaOperationType })
+            if legacy {
+                media.dependsOnId = answerOperation.id.uuidString.lowercased()
+                answerOperation.dependsOnId = initial.first { $0.entityType == SyncEntityType.siteVisitArtifact.rawValue && $0.operationType != SiteVisitSyncOperation.mediaOperationType }?.id.uuidString.lowercased()
+                answerOperation.siteVisitWriteAttemptedAt = Date()
+                try context.save()
+            }
+            let bytes = answerOperation.payload
+            let remote = RecordingSiteVisitWriter(visitDTO: try makeVisitDTO(status: .inProgress))
+            var uploads = 0, answers = 0
+            let sync = SiteVisitOutboundSync(repositoryFactory: { _ in remote },
+                mediaManager: SiteVisitMediaSyncManager(uploader: { _,_,_,_,_ in uploads += 1; return "https://example.invalid/upload.jpg" },
+                    loader: { _ in (Data([1,2,3]), "image/jpeg") }), sessionUserId: { self.userId },
+                deliverWrite: { id, command, actor in
+                    XCTAssertEqual(actor, self.userId)
+                    XCTAssertEqual(uploads, 1)
+                    XCTAssertEqual(remote.artifactPayloads.last?.assetURL, "https://example.invalid/upload.jpg")
+                    answers += 1
+                    let rows = command.rows.map { row -> SiteVisitWriteJSON in
+                        guard case .object(var values) = row.values else { fatalError() }
+                        values["id"] = .string(row.id); values["company_id"] = .string(self.companyId); values["write_revision"] = .number(1)
+                        return .object(values)
+                    }
+                    return SiteVisitWriteReceipt(commandId: id, entity: command.entity, outcome: "saved", reason: nil, rows: rows)
+                })
+            for _ in 0..<10 {
+                let restarted = ModelContext(container)
+                let operations = try allOperations(restarted)
+                guard let next = operations.first(where: { SiteVisitOutboundSync.isReady($0, in: operations) }) else { break }
+                next.status = "inProgress"; try restarted.save()
+                let handled = try await sync.executeIfHandled(operation: next, context: restarted, activeCompanyId: companyId)
+                XCTAssertTrue(handled)
+                next.status = "completed"; try restarted.save()
+            }
+            let final = try allOperations(ModelContext(container))
+            XCTAssertTrue(final.allSatisfy { $0.status == "completed" }, "No linked-photo dependency cycle: \(final.map { $0.operationType + ":" + $0.status })")
+            XCTAssertEqual(final.first { $0.id == answerOperation.id }?.payload, bytes)
+            XCTAssertEqual(answers, 1); XCTAssertEqual(uploads, 1)
+        }
+    }
+
     private func makeVisit() -> SiteVisit {
         makeVisit(author: userId)
     }
@@ -936,6 +994,7 @@ private final class RecordingSiteVisitWriter: SiteVisitRemoteWriting {
     }
 
     var calls: [Call] = []
+    var artifactPayloads: [UpsertSiteVisitArtifactDTO] = []
     var expectedActors: [String] = []
     var beforeVisitResponse: (() async -> Void)?
     let visitDTO: SiteVisitDTO
@@ -968,6 +1027,7 @@ private final class RecordingSiteVisitWriter: SiteVisitRemoteWriting {
     func upsertArtifact(
         _ payload: UpsertSiteVisitArtifactDTO
     ) async throws -> SiteVisitArtifactDTO {
+        artifactPayloads.append(payload)
         calls.append(.upsertArtifact(createdBy: payload.createdBy))
         if let upsertError { throw upsertError }
         return try Self.decode(

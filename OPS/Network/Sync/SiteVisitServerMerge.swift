@@ -767,7 +767,7 @@ enum SiteVisitServerMerge {
                 model.deletedAt = dto.deletedAt
                 model.lastSyncedAt = now
                 model.needsSync = false
-                model.writeState = SiteVisitWriteState(revision: dto.writeRevision ?? 0)
+                model.writeState = SiteVisitWriteState(revision: dto.writeRevision ?? 0, answerState: dto.answerState)
                 context.insert(model)
             }
         }
@@ -800,6 +800,7 @@ enum SiteVisitServerMerge {
 
         let changed =
             (dto.writeRevision ?? 0) != existing.writeState.revision
+            || dto.answerState != existing.writeState.answerState
             || resolution.requiresIdentityMigration
             || (accept("opportunity_id") && existing.opportunityId != dto.opportunityId)
             || (accept("site_visit_type_id") && existing.siteVisitTypeId != dto.siteVisitTypeId)
@@ -842,7 +843,7 @@ enum SiteVisitServerMerge {
             }
             existing.lastSyncedAt = now
             existing.needsSync = protection.hasLocalWork
-            if !isStale { existing.writeState = SiteVisitWriteState(revision: dto.writeRevision ?? 0) }
+            if !isStale { existing.writeState = SiteVisitWriteState(revision: dto.writeRevision ?? 0, answerState: dto.answerState) }
         }
     }
 

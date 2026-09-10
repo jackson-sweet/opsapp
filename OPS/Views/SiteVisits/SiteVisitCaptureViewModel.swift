@@ -436,6 +436,7 @@ final class SiteVisitCaptureViewModel: ObservableObject {
     ) {
         guard answer.answerValue != value else { return }
         guard persistSiteVisitChanges({
+            var state = answer.writeState; state.explicitlyEdited = true; answer.writeState = state
             answer.answerValue = value
             answer.updatedAt = Date()
             answer.needsSync = true
@@ -454,6 +455,7 @@ final class SiteVisitCaptureViewModel: ObservableObject {
         if pendingChecklistBases[answer.id] == nil {
             var state = answer.writeState
             state.begin(SiteVisitWriteModels.values(answer))
+            state.explicitlyEdited = true
             pendingChecklistBases[answer.id] = state
         }
         pendingChecklistValues[answer.id] = value
@@ -1564,11 +1566,11 @@ final class SiteVisitCaptureViewModel: ObservableObject {
     }
 
     /// Operator-initiated discard of the ACTIVE visit. Soft-deletes captured
-    /// artifacts and checklist answers (so the deletion syncs), marks the visit
-    /// cancelled (excluded from future open-visit lookups), and clears state.
+    /// artifacts and checklist answers in one actor-bound packet command,
+    /// tombstones the visit, and clears the capture state.
     func discardVisit() {
         guard let visit = siteVisit else { return }
-        guard persistSiteVisitChanges({
+        guard persistSiteVisitChanges(discarding: visit, {
             let now = Date()
             for artifact in childArtifacts(of: visit.id) where artifact.deletedAt == nil {
                 artifact.deletedAt = now
@@ -1585,7 +1587,7 @@ final class SiteVisitCaptureViewModel: ObservableObject {
                 draft.deletedAt = now
                 draft.touch()
             }
-            visit.status = .cancelled
+            visit.deletedAt = now
             visit.updatedAt = now
             visit.needsSync = true
         }) else { return }
@@ -1901,20 +1903,15 @@ final class SiteVisitCaptureViewModel: ObservableObject {
     }
 
     private func shouldHydrateCapturedEvidence(for answer: SiteVisitChecklistAnswer) -> Bool {
-        if !answer.isAnswered { return true }
-        switch answer.kind {
-        case .photo, .photoMarkup:
-            return true
-        case .checkbox, .yesNoNA, .shortText, .longText, .measurement, .deckDesign:
-            return false
-        }
+        !answer.isAnswered && answer.writeState.explicitlyEdited != true &&
+            !["cleared", "unknown"].contains(answer.writeState.answerState ?? "") && pendingChecklistValues[answer.id] == nil
     }
 
     private func capturedEvidenceValue(for answer: SiteVisitChecklistAnswer) -> SiteVisitChecklistValue? {
         switch answer.kind {
         case .photo, .photoMarkup:
             let ids = activeArtifacts
-                .filter(\.pipesToProjectPhotos)
+                .filter { $0.pipesToProjectPhotos && (answer.kind != .photoMarkup || [.annotatedPhoto, .dimensionedPhoto].contains($0.kind)) }
                 .map(\.id)
             return ids.isEmpty ? nil : .artifacts(ids)
         case .measurement:
@@ -1963,12 +1960,14 @@ final class SiteVisitCaptureViewModel: ObservableObject {
     @discardableResult
     private func persistSiteVisitChanges(
         completing visit: SiteVisit? = nil,
+        discarding discardedVisit: SiteVisit? = nil,
         revisedMediaArtifactIds: Set<String> = [],
         _ mutation: () throws -> Void
     ) -> Bool {
         do {
             _ = try persistenceCoordinator.commit(
                 completing: visit,
+                discarding: discardedVisit,
                 revisedMediaArtifactIds: revisedMediaArtifactIds,
                 mutation: mutation
             )

@@ -12,6 +12,7 @@ import Foundation
 enum SiteVisitSyncOperation {
     static let completionOperationType = "siteVisitComplete"
     static let mediaOperationType = "siteVisitMediaUpload"
+    static let discardOperationType = "siteVisitDiscard"
     static let stageOperationType = "siteVisitStageMove"
 
     struct Payload: Codable, Equatable {
@@ -21,11 +22,13 @@ enum SiteVisitSyncOperation {
         let completion: SiteVisitCompletionPayload?
         let stageCommand: SiteVisitStageCommand?
         let writeCommand: SiteVisitWriteCommand?
+        let discard: SiteVisitDiscardIntent?
 
         enum CodingKeys: String, CodingKey {
             case companyId = "company_id"
             case siteVisitId = "site_visit_id"
             case entityId = "entity_id"
+            case discard
             case completion
             case stageCommand = "stage_command"
             case writeCommand = "write_command"
@@ -37,7 +40,8 @@ enum SiteVisitSyncOperation {
             entityId: String,
             completion: SiteVisitCompletionPayload? = nil,
             stageCommand: SiteVisitStageCommand? = nil,
-            writeCommand: SiteVisitWriteCommand? = nil
+            writeCommand: SiteVisitWriteCommand? = nil,
+            discard: SiteVisitDiscardIntent? = nil
         ) {
             self.companyId = companyId.lowercased()
             self.siteVisitId = siteVisitId.lowercased()
@@ -45,6 +49,7 @@ enum SiteVisitSyncOperation {
             self.completion = completion
             self.stageCommand = stageCommand
             self.writeCommand = writeCommand
+            self.discard = discard
         }
     }
 

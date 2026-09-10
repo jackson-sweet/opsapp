@@ -90,6 +90,7 @@ final class SiteVisitPersistenceCoordinator {
     @discardableResult
     func commit(
         completing visit: SiteVisit? = nil,
+        discarding discardedVisit: SiteVisit? = nil,
         stageCommand: SiteVisitStageCommand? = nil,
         revisedMediaArtifactIds: Set<String> = [],
         mutation: () throws -> Void
@@ -100,6 +101,19 @@ final class SiteVisitPersistenceCoordinator {
         guard ownsContext || !modelContext.hasChanges else {
             throw Error.pendingChangesRequireIsolation
         }
+        let discardIntent: SiteVisitDiscardIntent?
+        if let discardedVisit {
+            guard discardedVisit.bookedAt == nil, discardedVisit.deletedAt == nil,
+                  ![SiteVisitStatus.completed, .cancelled].contains(discardedVisit.status),
+                  let actor = SiteVisitAuthorHeal.sessionUserId()?.lowercased() else { throw SiteVisitWriteError.legacyPayload }
+            let all = try modelContext.fetch(FetchDescriptor<SyncOperation>())
+            let originalIds = all.filter {
+                $0.status != "completed" && ($0.siteVisitWriteActorId == nil || $0.siteVisitWriteActorId == actor) &&
+                (try? JSONDecoder().decode(SiteVisitSyncOperation.Payload.self, from: $0.payload))?.siteVisitId == discardedVisit.id.lowercased()
+            }.map(\.id)
+            discardIntent = SiteVisitDiscardIntent(capture: try SiteVisitWriteJSON.encode(CreateSiteVisitDTO(model: discardedVisit)),
+                discardedAt: SupabaseDate.format(Date()), supersededOperationIds: originalIds)
+        } else { discardIntent = nil }
         var queuedIds: [UUID] = []
         var completionId: UUID?
         let boundary = SiteVisitMutationBoundary(context: modelContext)
@@ -122,7 +136,26 @@ final class SiteVisitPersistenceCoordinator {
                 lastChangedEntityCount = changed.count
                 lastBoundarySnapshotCount = boundary.pendingSnapshotCount + changed.count
                 lastLoadedOperationCount = 0
-                let result = try queueChangedEntities(changed, completing: visit, revisedMediaArtifactIds: revisedMediaArtifactIds)
+                let result: QueueResult
+                if let discardedVisit, let discardIntent {
+                    let discardedAt = SupabaseDate.parse(discardIntent.discardedAt)
+                    discardedVisit.deletedAt = discardedAt
+                    for row in changed {
+                        if let artifact = row as? SiteVisitCaptureArtifact, artifact.deletedAt != nil { artifact.deletedAt = discardedAt }
+                        if let answer = row as? SiteVisitChecklistAnswer, answer.deletedAt != nil { answer.deletedAt = discardedAt }
+                        if let draft = row as? SiteVisitIdentityDraft, draft.deletedAt != nil { draft.deletedAt = discardedAt }
+                    }
+                    let payload = SiteVisitSyncOperation.Payload(companyId: companyId, siteVisitId: discardedVisit.id,
+                        entityId: discardedVisit.id, discard: discardIntent)
+                    let operation = SyncOperation(entityType: SyncEntityType.siteVisit.rawValue, entityId: discardedVisit.id,
+                        operationType: SiteVisitSyncOperation.discardOperationType, payload: try encodeOperation(payload), changedFields: ["deleted_at"])
+                    operation.siteVisitWriteActorId = SiteVisitAuthorHeal.sessionUserId()?.lowercased()
+                    modelContext.insert(operation)
+                    transactionOperationIds.insert(operation.id)
+                    result = QueueResult(operationIds: [operation.id], chainTips: [discardedVisit.id.lowercased(): operation.id.uuidString.lowercased()])
+                } else {
+                    result = try queueChangedEntities(changed, completing: visit, revisedMediaArtifactIds: revisedMediaArtifactIds)
+                }
                 queuedIds = result.operationIds
 
                 if let visit {
@@ -318,7 +351,7 @@ final class SiteVisitPersistenceCoordinator {
             }, sortBy: [SortDescriptor(\.createdAt)]))
         }
         let ids = Array(Set(visits.flatMap { [$0.id.lowercased(), $0.id.uppercased()] }))
-        let visitIds = Set(ids.map { $0.lowercased() })
+        var visitIds = Set(ids.map { $0.lowercased() })
         guard !ids.isEmpty else { return QueueResult(operationIds: [], chainTips: [:]) }
         let artifacts = try modelContext.fetch(FetchDescriptor<SiteVisitCaptureArtifact>(predicate: #Predicate {
             companies.contains($0.companyId) && ids.contains($0.siteVisitId)
@@ -331,7 +364,11 @@ final class SiteVisitPersistenceCoordinator {
         }, sortBy: [SortDescriptor(\.createdAt)]))
         var operations = try fetchOperations(entityIds: Set(ids + artifacts.map(\.id) + answers.map(\.id) + drafts.map(\.id)))
 
-        for visit in visits where visit.needsSync {
+        let discardedPackets = Set(operations.filter { $0.operationType == SiteVisitSyncOperation.discardOperationType }.compactMap {
+            (try? JSONDecoder().decode(SiteVisitSyncOperation.Payload.self, from: $0.payload))?.siteVisitId
+        })
+        visitIds.subtract(discardedPackets)
+        for visit in visits where visit.needsSync && visitIds.contains(visit.id.lowercased()) {
             let specification = SiteVisitSyncOperation.parent(visit)
             if onlyOrphans,
                hasUnresolvedOperation(specification, operations: operations) {
@@ -366,6 +403,32 @@ final class SiteVisitPersistenceCoordinator {
             queuedIds.append(operation.id)
             chainTips[visitId] = operation.id.uuidString.lowercased()
         }
+
+        // Upload before linked answers; readiness also waits for the remote-URL
+        // metadata acknowledgment queued by the media sender.
+        for artifact in artifacts where
+            artifact.deletedAt == nil && needsMediaUpload(artifact)
+        {
+            let visitId = artifact.siteVisitId.lowercased()
+            guard visitIds.contains(visitId) else { continue }
+            let specification = SiteVisitSyncOperation.media(artifact)
+            if onlyOrphans,
+               hasUnresolvedOperation(specification, operations: operations) {
+                continue
+            }
+            let operation = try enqueue(
+                specification,
+                dependsOnId: dependencyRoot(
+                    for: visitId,
+                    chainTips: chainTips,
+                    operations: operations
+                ),
+                operations: &operations
+            )
+            queuedIds.append(operation.id)
+            chainTips[visitId] = operation.id.uuidString.lowercased()
+        }
+
 
         for answer in answers {
             let visitId = answer.siteVisitId.lowercased()
@@ -409,31 +472,6 @@ final class SiteVisitPersistenceCoordinator {
             chainTips[visitId] = operation.id.uuidString.lowercased()
         }
 
-        // Media follows every model row. Each operation uploads all still-local
-        // variants for one artifact; it persists progress per variant and queues
-        // the remote-URL artifact upsert behind itself.
-        for artifact in artifacts where
-            artifact.deletedAt == nil && needsMediaUpload(artifact)
-        {
-            let visitId = artifact.siteVisitId.lowercased()
-            guard visitIds.contains(visitId) else { continue }
-            let specification = SiteVisitSyncOperation.media(artifact)
-            if onlyOrphans,
-               hasUnresolvedOperation(specification, operations: operations) {
-                continue
-            }
-            let operation = try enqueue(
-                specification,
-                dependsOnId: dependencyRoot(
-                    for: visitId,
-                    chainTips: chainTips,
-                    operations: operations
-                ),
-                operations: &operations
-            )
-            queuedIds.append(operation.id)
-            chainTips[visitId] = operation.id.uuidString.lowercased()
-        }
 
         var seenOperationIds: Set<UUID> = []
         let distinctOperationIds = queuedIds.filter { seenOperationIds.insert($0).inserted }
@@ -496,7 +534,7 @@ final class SiteVisitPersistenceCoordinator {
             queued.append(operation.id)
             tips[visit.id.lowercased()] = operation.id.uuidString.lowercased()
         }
-        for specification in specifications where validVisitIds.contains(specification.payload.siteVisitId) {
+        for specification in artifacts.map(SiteVisitSyncOperation.artifact) where validVisitIds.contains(specification.payload.siteVisitId) {
             let operation = try enqueueScoped(specification,
                 dependency: tips[specification.payload.siteVisitId], index: &index)
             queued.append(operation.id)
@@ -515,6 +553,12 @@ final class SiteVisitPersistenceCoordinator {
                 dependency: tips[artifact.siteVisitId.lowercased()], index: &index)
             queued.append(operation.id)
             tips[artifact.siteVisitId.lowercased()] = operation.id.uuidString.lowercased()
+        }
+        for specification in answers.map(SiteVisitSyncOperation.checklistAnswer) + drafts.map(SiteVisitSyncOperation.identityDraft) where validVisitIds.contains(specification.payload.siteVisitId) {
+            let operation = try enqueueScoped(specification,
+                dependency: tips[specification.payload.siteVisitId], index: &index)
+            queued.append(operation.id)
+            tips[specification.payload.siteVisitId] = operation.id.uuidString.lowercased()
         }
         if let visitToComplete {
             let tail = index.byId.values.filter {

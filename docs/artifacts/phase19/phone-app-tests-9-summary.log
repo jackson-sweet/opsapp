@@ -1,0 +1,20 @@
+Test Suite 'Selected tests' started at 2026-09-10 17:56:35.189.
+Test Suite 'OPSTests.xctest' started at 2026-09-10 17:56:35.189.
+Test Suite 'SiteVisitFieldWorkflowTests' started at 2026-09-10 17:56:35.189.
+Test Case '-[OPSTests.SiteVisitFieldWorkflowTests testAcceptCurrentUnknownRemainsEmptyWhenCaptureReopens]' started.
+Test Case '-[OPSTests.SiteVisitFieldWorkflowTests testAcceptCurrentUnknownRemainsEmptyWhenCaptureReopens]' passed (0.145 seconds).
+Test Case '-[OPSTests.SiteVisitFieldWorkflowTests testDiscardRejectsBookedVisitBeforeLocalTombstones]' started.
+Test Case '-[OPSTests.SiteVisitFieldWorkflowTests testDiscardRejectsBookedVisitBeforeLocalTombstones]' passed (0.033 seconds).
+Test Case '-[OPSTests.SiteVisitFieldWorkflowTests testDiscardUIClosesUnsentAndSyncedPacketsWithoutUploadingChildren]' started.
+Test Case '-[OPSTests.SiteVisitFieldWorkflowTests testDiscardUIClosesUnsentAndSyncedPacketsWithoutUploadingChildren]' passed (0.095 seconds).
+Test Case '-[OPSTests.SiteVisitFieldWorkflowTests testHydrationSelectsOnlyRealMarkupAndPreservesExplicitClearingAcrossReopen]' started.
+Test Case '-[OPSTests.SiteVisitFieldWorkflowTests testHydrationSelectsOnlyRealMarkupAndPreservesExplicitClearingAcrossReopen]' passed (0.038 seconds).
+Test Case '-[OPSTests.SiteVisitFieldWorkflowTests testInboundClearAndUnknownSurviveFreshAndCleanMergeWhileUntouchedHydrates]' started.
+Test Case '-[OPSTests.SiteVisitFieldWorkflowTests testInboundClearAndUnknownSurviveFreshAndCleanMergeWhileUntouchedHydrates]' passed (0.211 seconds).
+Test Suite 'SiteVisitFieldWorkflowTests' passed at 2026-09-10 17:56:35.712.
+	 Executed 5 tests, with 0 failures (0 unexpected) in 0.522 (0.523) seconds
+Test Suite 'OPSTests.xctest' passed at 2026-09-10 17:56:35.712.
+	 Executed 5 tests, with 0 failures (0 unexpected) in 0.522 (0.524) seconds
+Test Suite 'Selected tests' passed at 2026-09-10 17:56:35.712.
+	 Executed 5 tests, with 0 failures (0 unexpected) in 0.522 (0.524) seconds
+** TEST SUCCEEDED **

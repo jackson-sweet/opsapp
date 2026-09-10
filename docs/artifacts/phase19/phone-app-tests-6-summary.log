@@ -1,0 +1,18 @@
+Test Suite 'Selected tests' started at 2026-09-10 17:45:55.280.
+Test Suite 'OPSTests.xctest' started at 2026-09-10 17:45:55.280.
+Test Suite 'SiteVisitConflictReviewSnapshotTests' started at 2026-09-10 17:45:55.280.
+Test Case '-[OPSTests.SiteVisitConflictReviewSnapshotTests testCurrentAndPendingVersionsRender]' started.
+PHONE REVIEW SNAPSHOT: /Users/jacksonsweet/Library/Developer/CoreSimulator/Devices/FA315A2B-AD37-45C2-937A-816BD34CDCDD/data/Containers/Data/Application/E11DEFDD-9CD0-4564-947E-FFE4B11580B8/tmp/phone-conflict-review-snapshots/phone-conflict-review-390.png
+Test Case '-[OPSTests.SiteVisitConflictReviewSnapshotTests testCurrentAndPendingVersionsRender]' passed (1.576 seconds).
+Test Case '-[OPSTests.SiteVisitConflictReviewSnapshotTests testReviewSurvivesNarrowAccessibilityLayout]' started.
+PHONE REVIEW SNAPSHOT: /Users/jacksonsweet/Library/Developer/CoreSimulator/Devices/FA315A2B-AD37-45C2-937A-816BD34CDCDD/data/Containers/Data/Application/E11DEFDD-9CD0-4564-947E-FFE4B11580B8/tmp/phone-conflict-review-snapshots/phone-conflict-review-320-accessibility.png
+Test Case '-[OPSTests.SiteVisitConflictReviewSnapshotTests testReviewSurvivesNarrowAccessibilityLayout]' passed (1.379 seconds).
+Test Case '-[OPSTests.SiteVisitConflictReviewSnapshotTests testSummaryIncludesChangedFieldDefinitionAndOrder]' started.
+Test Case '-[OPSTests.SiteVisitConflictReviewSnapshotTests testSummaryIncludesChangedFieldDefinitionAndOrder]' passed (0.001 seconds).
+Test Suite 'SiteVisitConflictReviewSnapshotTests' passed at 2026-09-10 17:45:58.237.
+	 Executed 3 tests, with 0 failures (0 unexpected) in 2.955 (2.956) seconds
+Test Suite 'OPSTests.xctest' passed at 2026-09-10 17:45:58.237.
+	 Executed 3 tests, with 0 failures (0 unexpected) in 2.955 (2.957) seconds
+Test Suite 'Selected tests' passed at 2026-09-10 17:45:58.237.
+	 Executed 3 tests, with 0 failures (0 unexpected) in 2.955 (2.957) seconds
+** TEST SUCCEEDED **

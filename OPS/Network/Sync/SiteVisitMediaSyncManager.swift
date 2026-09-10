@@ -288,6 +288,7 @@ struct SiteVisitMediaSyncManager {
                     && $0.entityId.lowercased() == artifact.id.lowercased()
                     && $0.operationType != SiteVisitSyncOperation.mediaOperationType
                     && $0.operationType != SiteVisitSyncOperation.completionOperationType
+                    && $0.siteVisitWriteActorId == mediaOperation.siteVisitWriteActorId
                     && unresolved.contains($0.status)
             }
             .sorted(by: Self.operationOrder)
@@ -318,8 +319,7 @@ struct SiteVisitMediaSyncManager {
             return
         }
 
-        context.insert(
-            SyncOperation(
+        let queued = SyncOperation(
                 entityType: specification.entityType.rawValue,
                 entityId: specification.entityId,
                 operationType: specification.operationType,
@@ -328,7 +328,9 @@ struct SiteVisitMediaSyncManager {
                 priority: specification.priority,
                 dependsOnId: mediaOperation.id.uuidString.lowercased()
             )
-        )
+        queued.siteVisitWriteActorId = mediaOperation.siteVisitWriteActorId
+        context.insert(queued)
+
     }
 
     private func sourceURL(

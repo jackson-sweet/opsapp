@@ -33,7 +33,10 @@ final class SiteVisitConflictReviewSnapshotTests: XCTestCase {
         let schema = Schema(versionedSchema: OPSSchemaCurrent.self)
         let container = try ModelContainer(for: schema, configurations: ModelConfiguration(schema: schema, isStoredInMemoryOnly: true))
         let context = container.mainContext
-        let type = SiteVisitType(companyId: "review-company", slug: "deck-survey", name: "Deck survey")
+        let type = SiteVisitType(companyId: "review-company", slug: "deck-survey", name: "Deck survey", fields: [
+            .init(id: "clearance", label: "Stair clearance", kind: .measurement, sortOrder: 0),
+            .init(id: "markup", label: "Marked landing photo", kind: .photoMarkup, sortOrder: 1)])
+        if width < 390 { type.fields = Array(type.fields.prefix(1)) }
         type.writeState = .init(revision: 4)
         context.insert(type)
         type.beginVersionedEdit()
@@ -58,6 +61,12 @@ final class SiteVisitConflictReviewSnapshotTests: XCTestCase {
             .padding(OPSStyle.Layout.spacing3)
             .background(OPSStyle.Colors.background)
         let image = try FixedSizeSnapshot.render(view, size: CGSize(width: width, height: sizeCategory == .large ? 1200 : 2100), minimumSettle: 1, settleDeadline: 3)
+        let cgImage = try XCTUnwrap(image.cgImage)
+        var average = [UInt8](repeating: 0, count: 4)
+        let sampling = try XCTUnwrap(CGContext(data: &average, width: 1, height: 1, bitsPerComponent: 8,
+            bytesPerRow: 4, space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
+        sampling.draw(cgImage, in: CGRect(x: 0, y: 0, width: 1, height: 1))
+        XCTAssertGreaterThan(average.prefix(3).max() ?? 0, 2, "Snapshot must contain visible review content")
         let data = try XCTUnwrap(image.pngData())
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent("phone-conflict-review-snapshots")
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)

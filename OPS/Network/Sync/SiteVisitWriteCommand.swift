@@ -73,7 +73,8 @@ struct SiteVisitWriteCommand: Codable, Equatable, Sendable {
         var baseRevision: Int64
         var before: SiteVisitWriteJSON
         let values: SiteVisitWriteJSON
-        enum CodingKeys: String, CodingKey { case id, before, values; case baseRevision = "base_revision" }
+        var clearAnswer: Bool? = nil
+        enum CodingKeys: String, CodingKey { case id, before, values; case baseRevision = "base_revision"; case clearAnswer = "clear_answer" }
     }
     enum CodingKeys: String, CodingKey { case `protocol`, entity, rows; case companyId = "company_id" }
 
@@ -105,6 +106,8 @@ struct SiteVisitWriteState: Codable, Equatable, Sendable {
     var baseRevision: Int64?
     var baseRow: SiteVisitWriteJSON?
     var remoteRow: SiteVisitWriteJSON?
+    var explicitlyEdited: Bool?
+    var answerState: String?
 
     mutating func begin(_ values: SiteVisitWriteJSON) {
         guard baseRevision == nil else { return }
@@ -113,6 +116,8 @@ struct SiteVisitWriteState: Codable, Equatable, Sendable {
     }
     mutating func accept(_ row: SiteVisitWriteJSON) {
         revision = row["write_revision"]?.revision ?? 0
+        answerState = row["answer_state"]?.string
+        explicitlyEdited = nil
         baseRevision = nil; baseRow = nil; remoteRow = nil
     }
 }

@@ -1,0 +1,170 @@
+Test Suite 'Selected tests' started at 2026-09-10 17:42:52.738.
+Test Suite 'OPSTests.xctest' started at 2026-09-10 17:42:52.738.
+Test Suite 'SiteVisitConflictReviewSnapshotTests' started at 2026-09-10 17:42:52.738.
+Test Case '-[OPSTests.SiteVisitConflictReviewSnapshotTests testCurrentAndPendingVersionsRender]' started.
+PHONE REVIEW SNAPSHOT: /Users/jacksonsweet/Library/Developer/CoreSimulator/Devices/FA315A2B-AD37-45C2-937A-816BD34CDCDD/data/Containers/Data/Application/23FC58CD-5D42-4882-9973-8D1B1BA3C54E/tmp/phone-conflict-review-snapshots/phone-conflict-review-390.png
+Test Case '-[OPSTests.SiteVisitConflictReviewSnapshotTests testCurrentAndPendingVersionsRender]' passed (1.533 seconds).
+Test Case '-[OPSTests.SiteVisitConflictReviewSnapshotTests testReviewSurvivesNarrowAccessibilityLayout]' started.
+PHONE REVIEW SNAPSHOT: /Users/jacksonsweet/Library/Developer/CoreSimulator/Devices/FA315A2B-AD37-45C2-937A-816BD34CDCDD/data/Containers/Data/Application/23FC58CD-5D42-4882-9973-8D1B1BA3C54E/tmp/phone-conflict-review-snapshots/phone-conflict-review-320-accessibility.png
+Test Case '-[OPSTests.SiteVisitConflictReviewSnapshotTests testReviewSurvivesNarrowAccessibilityLayout]' passed (1.558 seconds).
+Test Case '-[OPSTests.SiteVisitConflictReviewSnapshotTests testSummaryIncludesChangedFieldDefinitionAndOrder]' started.
+Test Case '-[OPSTests.SiteVisitConflictReviewSnapshotTests testSummaryIncludesChangedFieldDefinitionAndOrder]' passed (0.001 seconds).
+Test Suite 'SiteVisitConflictReviewSnapshotTests' passed at 2026-09-10 17:42:55.832.
+	 Executed 3 tests, with 0 failures (0 unexpected) in 3.092 (3.094) seconds
+Test Suite 'SiteVisitFieldWorkflowTests' started at 2026-09-10 17:42:55.832.
+Test Case '-[OPSTests.SiteVisitFieldWorkflowTests testDiscardRejectsBookedVisitBeforeLocalTombstones]' started.
+Test Case '-[OPSTests.SiteVisitFieldWorkflowTests testDiscardRejectsBookedVisitBeforeLocalTombstones]' passed (0.103 seconds).
+Test Case '-[OPSTests.SiteVisitFieldWorkflowTests testDiscardUIClosesUnsentAndSyncedPacketsWithoutUploadingChildren]' started.
+Test Case '-[OPSTests.SiteVisitFieldWorkflowTests testDiscardUIClosesUnsentAndSyncedPacketsWithoutUploadingChildren]' passed (0.108 seconds).
+Test Case '-[OPSTests.SiteVisitFieldWorkflowTests testHydrationSelectsOnlyRealMarkupAndPreservesExplicitClearingAcrossReopen]' started.
+Test Case '-[OPSTests.SiteVisitFieldWorkflowTests testHydrationSelectsOnlyRealMarkupAndPreservesExplicitClearingAcrossReopen]' passed (0.041 seconds).
+Test Suite 'SiteVisitFieldWorkflowTests' passed at 2026-09-10 17:42:56.085.
+	 Executed 3 tests, with 0 failures (0 unexpected) in 0.252 (0.253) seconds
+Test Suite 'SiteVisitOutboundSyncTests' started at 2026-09-10 17:42:56.085.
+Test Case '-[OPSTests.SiteVisitOutboundSyncTests test_completionRetryUsesPersistedPayloadAndStoresActivityId]' started.
+Test Case '-[OPSTests.SiteVisitOutboundSyncTests test_completionRetryUsesPersistedPayloadAndStoresActivityId]' passed (0.019 seconds).
+Test Case '-[OPSTests.SiteVisitOutboundSyncTests test_parentUpsertUsesCurrentModelSnapshotAndClearsDirtyFlag]' started.
+Test Case '-[OPSTests.SiteVisitOutboundSyncTests test_parentUpsertUsesCurrentModelSnapshotAndClearsDirtyFlag]' passed (0.015 seconds).
+Test Case '-[OPSTests.SiteVisitOutboundSyncTests testCaptureRejectsReplacementActorBeforeWrite]' started.
+Test Case '-[OPSTests.SiteVisitOutboundSyncTests testCaptureRejectsReplacementActorBeforeWrite]' passed (0.008 seconds).
+Test Case '-[OPSTests.SiteVisitOutboundSyncTests testCaptureTransmitsOriginalActorAndRejectsPostResponseSessionSwitch]' started.
+Test Case '-[OPSTests.SiteVisitOutboundSyncTests testCaptureTransmitsOriginalActorAndRejectsPostResponseSessionSwitch]' passed (0.007 seconds).
+Test Case '-[OPSTests.SiteVisitOutboundSyncTests testCoalescingCannotSupersedeAnotherActorsCapture]' started.
+Test Case '-[OPSTests.SiteVisitOutboundSyncTests testCoalescingCannotSupersedeAnotherActorsCapture]' passed (0.005 seconds).
+Test Case '-[OPSTests.SiteVisitOutboundSyncTests testLinkedPhotoDrainsUploadAndMetadataBeforeImmutableAnswerAcrossRestart]' started.
+Test Case '-[OPSTests.SiteVisitOutboundSyncTests testLinkedPhotoDrainsUploadAndMetadataBeforeImmutableAnswerAcrossRestart]' passed (0.050 seconds).
+Test Suite 'SiteVisitOutboundSyncTests' passed at 2026-09-10 17:42:56.191.
+	 Executed 6 tests, with 0 failures (0 unexpected) in 0.104 (0.105) seconds
+Test Suite 'SiteVisitPersistenceCoordinatorTests' started at 2026-09-10 17:42:56.191.
+Test Case '-[OPSTests.SiteVisitPersistenceCoordinatorTests test_bindingCompletedVisitQueuesUpdateThenNewCompletion]' started.
+Test Case '-[OPSTests.SiteVisitPersistenceCoordinatorTests test_bindingCompletedVisitQueuesUpdateThenNewCompletion]' passed (0.009 seconds).
+Test Case '-[OPSTests.SiteVisitPersistenceCoordinatorTests test_candidateScopedRecoveryDoesNotEnqueueOutsideExactVisitIds]' started.
+Test Case '-[OPSTests.SiteVisitPersistenceCoordinatorTests test_candidateScopedRecoveryDoesNotEnqueueOutsideExactVisitIds]' passed (0.007 seconds).
+Test Case '-[OPSTests.SiteVisitPersistenceCoordinatorTests test_childCreateDependsOnParentAndRepeatedEditCoalesces]' started.
+Test Case '-[OPSTests.SiteVisitPersistenceCoordinatorTests test_childCreateDependsOnParentAndRepeatedEditCoalesces]' passed (0.008 seconds).
+Test Case '-[OPSTests.SiteVisitPersistenceCoordinatorTests test_completionIsSeparateAndDependsOnCapturedGraphTail]' started.
+Test Case '-[OPSTests.SiteVisitPersistenceCoordinatorTests test_completionIsSeparateAndDependsOnCapturedGraphTail]' passed (0.006 seconds).
+Test Case '-[OPSTests.SiteVisitPersistenceCoordinatorTests test_createVisitCommitsParentAndCreateOperationTogether]' started.
+Test Case '-[OPSTests.SiteVisitPersistenceCoordinatorTests test_createVisitCommitsParentAndCreateOperationTogether]' passed (0.006 seconds).
+Test Case '-[OPSTests.SiteVisitPersistenceCoordinatorTests test_encodingFailureRollsBackModelAndOperation]' started.
+Test Case '-[OPSTests.SiteVisitPersistenceCoordinatorTests test_encodingFailureRollsBackModelAndOperation]' passed (0.007 seconds).
+Test Case '-[OPSTests.SiteVisitPersistenceCoordinatorTests test_failedEditRematerializesHeldModelAndQueueReferences]' started.
+Test Case '-[OPSTests.SiteVisitPersistenceCoordinatorTests test_failedEditRematerializesHeldModelAndQueueReferences]' passed (0.007 seconds).
+Test Case '-[OPSTests.SiteVisitPersistenceCoordinatorTests test_historyHeavyEditDoesNotEncodeOrReviveOtherVisits]' started.
+Test Case '-[OPSTests.SiteVisitPersistenceCoordinatorTests test_historyHeavyEditDoesNotEncodeOrReviveOtherVisits]' passed (0.346 seconds).
+Test Case '-[OPSTests.SiteVisitPersistenceCoordinatorTests test_isolatedTransactionPreservesUnrelatedPendingValuesAndStoredBaselineOnSuccessAndFailure]' started.
+Test Case '-[OPSTests.SiteVisitPersistenceCoordinatorTests test_isolatedTransactionPreservesUnrelatedPendingValuesAndStoredBaselineOnSuccessAndFailure]' passed (0.017 seconds).
+Test Case '-[OPSTests.SiteVisitPersistenceCoordinatorTests test_mediaUploadFollowsArtifactAndCompletionFollowsMedia]' started.
+Test Case '-[OPSTests.SiteVisitPersistenceCoordinatorTests test_mediaUploadFollowsArtifactAndCompletionFollowsMedia]' passed (0.007 seconds).
+Test Case '-[OPSTests.SiteVisitPersistenceCoordinatorTests test_metadataEditDoesNotReviveStoppedMediaButNewMarkupDoes]' started.
+Test Case '-[OPSTests.SiteVisitPersistenceCoordinatorTests test_metadataEditDoesNotReviveStoppedMediaButNewMarkupDoes]' passed (0.010 seconds).
+Test Case '-[OPSTests.SiteVisitPersistenceCoordinatorTests test_noMutationDoesNotReviveStoppedOperation]' started.
+Test Case '-[OPSTests.SiteVisitPersistenceCoordinatorTests test_noMutationDoesNotReviveStoppedOperation]' passed (0.007 seconds).
+Test Case '-[OPSTests.SiteVisitPersistenceCoordinatorTests test_orphanRecoveryIsCompanyScopedAndNeverRevivesParkedWork]' started.
+Test Case '-[OPSTests.SiteVisitPersistenceCoordinatorTests test_orphanRecoveryIsCompanyScopedAndNeverRevivesParkedWork]' passed (0.006 seconds).
+Test Case '-[OPSTests.SiteVisitPersistenceCoordinatorTests test_sharedLegacyWrapperRefusesPendingChangesBeforeInvokingMutation]' started.
+Test Case '-[OPSTests.SiteVisitPersistenceCoordinatorTests test_sharedLegacyWrapperRefusesPendingChangesBeforeInvokingMutation]' passed (0.006 seconds).
+Test Case '-[OPSTests.SiteVisitPersistenceCoordinatorTests test_throwingMutationRestoresHeldReferenceBeforeQueueConstruction]' started.
+Test Case '-[OPSTests.SiteVisitPersistenceCoordinatorTests test_throwingMutationRestoresHeldReferenceBeforeQueueConstruction]' passed (0.006 seconds).
+Test Case '-[OPSTests.SiteVisitPersistenceCoordinatorTests test_transactionFailureDoesNotReportACommittedVisit]' started.
+Test Case '-[OPSTests.SiteVisitPersistenceCoordinatorTests test_transactionFailureDoesNotReportACommittedVisit]' passed (0.004 seconds).
+Test Case '-[OPSTests.SiteVisitPersistenceCoordinatorTests test_unsavedUnrelatedGraphDoesNotEnterOwnedBoundarySnapshotWork]' started.
+Test Case '-[OPSTests.SiteVisitPersistenceCoordinatorTests test_unsavedUnrelatedGraphDoesNotEnterOwnedBoundarySnapshotWork]' passed (0.018 seconds).
+Test Case '-[OPSTests.SiteVisitPersistenceCoordinatorTests test_uppercaseLegacyOperationCoalescesWithoutForkingQueue]' started.
+Test Case '-[OPSTests.SiteVisitPersistenceCoordinatorTests test_uppercaseLegacyOperationCoalescesWithoutForkingQueue]' passed (0.007 seconds).
+Test Case '-[OPSTests.SiteVisitPersistenceCoordinatorTests testAttemptedChecklistPayloadSurvivesFailureAndNewEditWhileUnattemptedEditsCoalesce]' started.
+Test Case '-[OPSTests.SiteVisitPersistenceCoordinatorTests testAttemptedChecklistPayloadSurvivesFailureAndNewEditWhileUnattemptedEditsCoalesce]' passed (0.013 seconds).
+Test Case '-[OPSTests.SiteVisitPersistenceCoordinatorTests testCaptureAndCompletionRetainTheirEnqueuedActorAcrossAccountChange]' started.
+Test Case '-[OPSTests.SiteVisitPersistenceCoordinatorTests testCaptureAndCompletionRetainTheirEnqueuedActorAcrossAccountChange]' passed (0.013 seconds).
+Test Suite 'SiteVisitPersistenceCoordinatorTests' passed at 2026-09-10 17:42:56.704.
+	 Executed 20 tests, with 0 failures (0 unexpected) in 0.508 (0.513) seconds
+Test Suite 'SiteVisitRecoveryVaultTests' started at 2026-09-10 17:42:56.704.
+Test Case '-[OPSTests.SiteVisitRecoveryVaultTests test_activeServerSyncedParentReleasesDeletedParentCustodyWithoutDeletingWork]' started.
+Test Case '-[OPSTests.SiteVisitRecoveryVaultTests test_activeServerSyncedParentReleasesDeletedParentCustodyWithoutDeletingWork]' passed (0.027 seconds).
+Test Case '-[OPSTests.SiteVisitRecoveryVaultTests test_deletedUnsyncedOrStaleParentCannotReleaseDeletedParentCustody]' started.
+Test Case '-[OPSTests.SiteVisitRecoveryVaultTests test_deletedUnsyncedOrStaleParentCannotReleaseDeletedParentCustody]' passed (0.011 seconds).
+Test Case '-[OPSTests.SiteVisitRecoveryVaultTests test_explicitQuarantineDiscardRemovesExactOrphanSourceAndMediaButKeepsParent]' started.
+Test Case '-[OPSTests.SiteVisitRecoveryVaultTests test_explicitQuarantineDiscardRemovesExactOrphanSourceAndMediaButKeepsParent]' passed (0.016 seconds).
+Test Case '-[OPSTests.SiteVisitRecoveryVaultTests test_forcedLogoutArchiveRestoresOnlyToExactIdentityAndRestoresMedia]' started.
+Test Case '-[OPSTests.SiteVisitRecoveryVaultTests test_forcedLogoutArchiveRestoresOnlyToExactIdentityAndRestoresMedia]' passed (0.017 seconds).
+Test Case '-[OPSTests.SiteVisitRecoveryVaultTests test_logoutMediaCleanupRemovesEveryCurrentCompanyVisitFileOnly]' started.
+Test Case '-[OPSTests.SiteVisitRecoveryVaultTests test_logoutMediaCleanupRemovesEveryCurrentCompanyVisitFileOnly]' passed (0.007 seconds).
+Test Case '-[OPSTests.SiteVisitRecoveryVaultTests test_logoutWipeDeletesAllFourVisitModelsChildrenFirst]' started.
+Test Case '-[OPSTests.SiteVisitRecoveryVaultTests test_logoutWipeDeletesAllFourVisitModelsChildrenFirst]' passed (0.008 seconds).
+Test Case '-[OPSTests.SiteVisitRecoveryVaultTests test_quarantineIsDurableIdempotentAndInvisibleToWrongAccount]' started.
+Test Case '-[OPSTests.SiteVisitRecoveryVaultTests test_quarantineIsDurableIdempotentAndInvisibleToWrongAccount]' passed (0.010 seconds).
+Test Case '-[OPSTests.SiteVisitRecoveryVaultTests test_restoreLeavesQuarantinePacketsInProtectedCustody]' started.
+Test Case '-[OPSTests.SiteVisitRecoveryVaultTests test_restoreLeavesQuarantinePacketsInProtectedCustody]' passed (0.008 seconds).
+Test Case '-[OPSTests.SiteVisitRecoveryVaultTests test_unsentDetectionIncludesChildrenAndOperationsWithoutAParent]' started.
+Test Case '-[OPSTests.SiteVisitRecoveryVaultTests test_unsentDetectionIncludesChildrenAndOperationsWithoutAParent]' passed (0.006 seconds).
+Test Case '-[OPSTests.SiteVisitRecoveryVaultTests testCorruptVaultDoesNotReportSuccessfulEmptyRestore]' started.
+Test Case '-[OPSTests.SiteVisitRecoveryVaultTests testCorruptVaultDoesNotReportSuccessfulEmptyRestore]' passed (0.007 seconds).
+Test Case '-[OPSTests.SiteVisitRecoveryVaultTests testOlderVaultCannotReplaceNewerResolutionForSameCommand]' started.
+Test Case '-[OPSTests.SiteVisitRecoveryVaultTests testOlderVaultCannotReplaceNewerResolutionForSameCommand]' passed (0.015 seconds).
+Test Case '-[OPSTests.SiteVisitRecoveryVaultTests testTemplateAndDurableResolutionCustodyRemainExactAcrossAccountSwitch]' started.
+Test Case '-[OPSTests.SiteVisitRecoveryVaultTests testTemplateAndDurableResolutionCustodyRemainExactAcrossAccountSwitch]' passed (0.012 seconds).
+Test Suite 'SiteVisitRecoveryVaultTests' passed at 2026-09-10 17:42:56.850.
+	 Executed 12 tests, with 0 failures (0 unexpected) in 0.144 (0.146) seconds
+Test Suite 'SiteVisitRepositoryTests' started at 2026-09-10 17:42:56.851.
+Test Case '-[OPSTests.SiteVisitRepositoryTests testCaptureDeletionCarriesOriginalActorAndTimestamp]' started.
+Test Case '-[OPSTests.SiteVisitRepositoryTests testCaptureDeletionCarriesOriginalActorAndTimestamp]' passed (0.001 seconds).
+Test Case '-[OPSTests.SiteVisitRepositoryTests testCompletionUsesGuardedRPCRequestInsteadOfTableUpdate]' started.
+Test Case '-[OPSTests.SiteVisitRepositoryTests testCompletionUsesGuardedRPCRequestInsteadOfTableUpdate]' passed (0.001 seconds).
+Test Case '-[OPSTests.SiteVisitRepositoryTests testFetchAllScopesEveryTableToCompanyAndDeltaCursor]' started.
+Test Case '-[OPSTests.SiteVisitRepositoryTests testFetchAllScopesEveryTableToCompanyAndDeltaCursor]' passed (0.002 seconds).
+Test Case '-[OPSTests.SiteVisitRepositoryTests testFetchBundleScopesParentAndChildrenToCompanyAndVisit]' started.
+Test Case '-[OPSTests.SiteVisitRepositoryTests testFetchBundleScopesParentAndChildrenToCompanyAndVisit]' passed (0.001 seconds).
+Test Case '-[OPSTests.SiteVisitRepositoryTests testPayloadFromAnotherCompanyIsRejectedBeforeTransport]' started.
+Test Case '-[OPSTests.SiteVisitRepositoryTests testPayloadFromAnotherCompanyIsRejectedBeforeTransport]' passed (0.002 seconds).
+Test Case '-[OPSTests.SiteVisitRepositoryTests testPostgrestFailurePreservesCodeMessageDetailAndHintForQueuePolicy]' started.
+Test Case '-[OPSTests.SiteVisitRepositoryTests testPostgrestFailurePreservesCodeMessageDetailAndHintForQueuePolicy]' passed (0.004 seconds).
+Test Case '-[OPSTests.SiteVisitRepositoryTests testSoftDeleteIsCompanyScopedAndNeverUsesHardDelete]' started.
+Test Case '-[OPSTests.SiteVisitRepositoryTests testSoftDeleteIsCompanyScopedAndNeverUsesHardDelete]' passed (0.000 seconds).
+Test Case '-[OPSTests.SiteVisitRepositoryTests testStructuredServerErrorsRetainAuthPermanentAndTransportDisposition]' started.
+Test Case '-[OPSTests.SiteVisitRepositoryTests testStructuredServerErrorsRetainAuthPermanentAndTransportDisposition]' passed (0.000 seconds).
+Test Case '-[OPSTests.SiteVisitRepositoryTests testWrappedPostgrestPrimaryKeyViolationRemainsAnIdempotentCreateRetry]' started.
+Test Case '-[OPSTests.SiteVisitRepositoryTests testWrappedPostgrestPrimaryKeyViolationRemainsAnIdempotentCreateRetry]' passed (0.000 seconds).
+Test Suite 'SiteVisitRepositoryTests' passed at 2026-09-10 17:42:56.864.
+	 Executed 9 tests, with 0 failures (0 unexpected) in 0.012 (0.014) seconds
+Test Suite 'SiteVisitVersionedSyncTests' started at 2026-09-10 17:42:56.864.
+Test Case '-[OPSTests.SiteVisitVersionedSyncTests testAcknowledgementPreservesEditCommittedByAnotherContext]' started.
+Test Case '-[OPSTests.SiteVisitVersionedSyncTests testAcknowledgementPreservesEditCommittedByAnotherContext]' passed (0.010 seconds).
+Test Case '-[OPSTests.SiteVisitVersionedSyncTests testExactAcknowledgementUpdatesRegisteredUnattemptedDescendant]' started.
+Test Case '-[OPSTests.SiteVisitVersionedSyncTests testExactAcknowledgementUpdatesRegisteredUnattemptedDescendant]' passed (0.009 seconds).
+Test Case '-[OPSTests.SiteVisitVersionedSyncTests testInboundLowercaseReceiptFindsLegacyTemplateWithoutDuplicateOrOverwrite]' started.
+Test Case '-[OPSTests.SiteVisitVersionedSyncTests testInboundLowercaseReceiptFindsLegacyTemplateWithoutDuplicateOrOverwrite]' passed (0.006 seconds).
+Test Case '-[OPSTests.SiteVisitVersionedSyncTests testOldResponseCannotCrossNewResolutionOrActorBinding]' started.
+Test Case '-[OPSTests.SiteVisitVersionedSyncTests testOldResponseCannotCrossNewResolutionOrActorBinding]' passed (0.006 seconds).
+Test Suite 'SiteVisitVersionedSyncTests' passed at 2026-09-10 17:42:56.896.
+	 Executed 4 tests, with 0 failures (0 unexpected) in 0.031 (0.032) seconds
+Test Suite 'SiteVisitWriteCommandTests' started at 2026-09-10 17:42:56.896.
+Test Case '-[OPSTests.SiteVisitWriteCommandTests testDeletionReceiptAcceptsEquivalentTimestampAndRejectsDifferentInstant]' started.
+Test Case '-[OPSTests.SiteVisitWriteCommandTests testDeletionReceiptAcceptsEquivalentTimestampAndRejectsDifferentInstant]' passed (0.001 seconds).
+Test Case '-[OPSTests.SiteVisitWriteCommandTests testFirstKeystrokeBaseSurvivesLaterIncomingRevision]' started.
+Test Case '-[OPSTests.SiteVisitWriteCommandTests testFirstKeystrokeBaseSurvivesLaterIncomingRevision]' passed (0.000 seconds).
+Test Case '-[OPSTests.SiteVisitWriteCommandTests testNoOpEmptyMediaWireEncodingDoesNotChangeAnswerMeaning]' started.
+Test Case '-[OPSTests.SiteVisitWriteCommandTests testNoOpEmptyMediaWireEncodingDoesNotChangeAnswerMeaning]' passed (0.000 seconds).
+Test Case '-[OPSTests.SiteVisitWriteCommandTests testOnlyExactSavedPredecessorCanAdvanceBase]' started.
+Test Case '-[OPSTests.SiteVisitWriteCommandTests testOnlyExactSavedPredecessorCanAdvanceBase]' passed (0.000 seconds).
+Test Case '-[OPSTests.SiteVisitWriteCommandTests testResolutionRestartKeepsExactIdentityChoiceAndReviewedAuthority]' started.
+Test Case '-[OPSTests.SiteVisitWriteCommandTests testResolutionRestartKeepsExactIdentityChoiceAndReviewedAuthority]' passed (0.001 seconds).
+Test Case '-[OPSTests.SiteVisitWriteCommandTests testRestartPreservesOriginalBaseAndExplicitFalse]' started.
+Test Case '-[OPSTests.SiteVisitWriteCommandTests testRestartPreservesOriginalBaseAndExplicitFalse]' passed (0.000 seconds).
+Test Case '-[OPSTests.SiteVisitWriteCommandTests testSupersessionAndCurrentResolutionCannotRebaseDirtyDescendant]' started.
+Test Case '-[OPSTests.SiteVisitWriteCommandTests testSupersessionAndCurrentResolutionCannotRebaseDirtyDescendant]' passed (0.000 seconds).
+Test Suite 'SiteVisitWriteCommandTests' passed at 2026-09-10 17:42:56.902.
+	 Executed 7 tests, with 0 failures (0 unexpected) in 0.004 (0.005) seconds
+Test Suite 'SiteVisitWritePersistenceTests' started at 2026-09-10 17:42:56.902.
+Test Case '-[OPSTests.SiteVisitWritePersistenceTests testOriginalBaseAndResolutionSurviveDiskReopenAndAnotherContext]' started.
+Test Case '-[OPSTests.SiteVisitWritePersistenceTests testOriginalBaseAndResolutionSurviveDiskReopenAndAnotherContext]' passed (0.018 seconds).
+Test Case '-[OPSTests.SiteVisitWritePersistenceTests testPendingDeletionKeepsOriginalTimestampAcrossRebuild]' started.
+Test Case '-[OPSTests.SiteVisitWritePersistenceTests testPendingDeletionKeepsOriginalTimestampAcrossRebuild]' passed (0.001 seconds).
+Test Case '-[OPSTests.SiteVisitWritePersistenceTests testTemplateDraftFreezesBaseBeforeRemoteMutation]' started.
+Test Case '-[OPSTests.SiteVisitWritePersistenceTests testTemplateDraftFreezesBaseBeforeRemoteMutation]' passed (0.001 seconds).
+Test Suite 'SiteVisitWritePersistenceTests' passed at 2026-09-10 17:42:56.922.
+	 Executed 3 tests, with 0 failures (0 unexpected) in 0.019 (0.020) seconds
+Test Suite 'OPSTests.xctest' passed at 2026-09-10 17:42:56.922.
+	 Executed 67 tests, with 0 failures (0 unexpected) in 4.166 (4.184) seconds
+Test Suite 'Selected tests' passed at 2026-09-10 17:42:56.922.
+	 Executed 67 tests, with 0 failures (0 unexpected) in 4.166 (4.185) seconds
+** TEST SUCCEEDED **

@@ -58,9 +58,10 @@ final class SiteVisitRecoveryVaultTests: XCTestCase {
             kind: .shortText,
             required: true,
             sortOrder: 1,
-            answerValue: SiteVisitChecklistValue(text: "Replace railing"),
+            answerValue: .empty,
             createdBy: userID
         )
+        answer.writeState = .init(revision: 7, answerState: "unknown")
         let draft = SiteVisitIdentityDraft(
             siteVisitId: visitID,
             companyId: companyID,
@@ -131,6 +132,7 @@ final class SiteVisitRecoveryVaultTests: XCTestCase {
         XCTAssertEqual(try context.fetchCount(FetchDescriptor<SiteVisitChecklistAnswer>()), 1)
         XCTAssertEqual(try context.fetchCount(FetchDescriptor<SiteVisitIdentityDraft>()), 1)
         XCTAssertEqual(try context.fetchCount(FetchDescriptor<SyncOperation>()), 1)
+        XCTAssertEqual(try context.fetch(FetchDescriptor<SiteVisitChecklistAnswer>()).first?.writeState.answerState, "unknown")
         XCTAssertEqual(try Data(contentsOf: mediaURL), originalMedia)
         XCTAssertTrue(vault.summaries(userId: userID, companyId: companyID).isEmpty)
     }

@@ -53,7 +53,8 @@ enum SiteVisitWriteModels {
         let state = answer.writeState
         return .init(companyId: answer.companyId.lowercased(), entity: "answer", rows: [
             .init(id: answer.id.lowercased(), baseRevision: state.baseRevision ?? state.revision,
-                  before: state.baseRow ?? values(answer), values: values(answer))
+                  before: state.baseRow ?? values(answer), values: values(answer),
+                  clearAnswer: state.explicitlyEdited == true && !answer.isAnswered ? true : nil)
         ])
     }
     static func command(_ types: [SiteVisitType]) throws -> SiteVisitWriteCommand {

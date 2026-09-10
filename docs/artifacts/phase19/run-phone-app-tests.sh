@@ -10,6 +10,8 @@ xcodebuild test -project OPS.xcodeproj -scheme OPS \
   -derivedDataPath /private/tmp/ops-site-visits-p19/DerivedData \
   -clonedSourcePackagesDirPath /private/tmp/ops-site-visits-p19/SourcePackages \
   -disableAutomaticPackageResolution -parallel-testing-enabled NO -jobs 2 \
+  -only-testing:OPSTests/SiteVisitFieldWorkflowTests \
+  -only-testing:OPSTests/SiteVisitOutboundSyncTests/testLinkedPhotoDrainsUploadAndMetadataBeforeImmutableAnswerAcrossRestart \
   -only-testing:OPSTests/SiteVisitWriteCommandTests \
   -only-testing:OPSTests/SiteVisitWritePersistenceTests \
   -only-testing:OPSTests/SiteVisitVersionedSyncTests \

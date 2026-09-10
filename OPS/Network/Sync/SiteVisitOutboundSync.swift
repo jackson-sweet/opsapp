@@ -20,6 +20,8 @@ struct SiteVisitOutboundSync {
     private let repositoryFactory: RepositoryFactory
     private let mediaManager: SiteVisitMediaSyncManager
     private let sessionUserId: () -> String?
+    private let deliverWrite: SiteVisitVersionedSync.Deliver
+    private let deliverDiscard: SiteVisitDiscardTransport.Deliver
     private let deliverStage: SiteVisitStageTransport.Deliver
 
     init(
@@ -28,11 +30,15 @@ struct SiteVisitOutboundSync {
         },
         mediaManager: SiteVisitMediaSyncManager = SiteVisitMediaSyncManager(),
         sessionUserId: @escaping () -> String? = { SiteVisitAuthorHeal.sessionUserId() },
+        deliverWrite: @escaping SiteVisitVersionedSync.Deliver = { try await SiteVisitVersionedSync.deliver(id: $0, command: $1, expectedActorId: $2) },
+        deliverDiscard: @escaping SiteVisitDiscardTransport.Deliver = SiteVisitDiscardTransport.deliver,
         deliverStage: @escaping SiteVisitStageTransport.Deliver = SiteVisitStageTransport.deliver
     ) {
         self.repositoryFactory = repositoryFactory
         self.mediaManager = mediaManager
         self.sessionUserId = sessionUserId
+        self.deliverWrite = deliverWrite
+        self.deliverDiscard = deliverDiscard
         self.deliverStage = deliverStage
     }
 
@@ -79,6 +85,44 @@ struct SiteVisitOutboundSync {
            now < lastAttempt.addingTimeInterval(operation.backoffDelay) {
             return false
         }
+        if operation.operationType == SiteVisitSyncOperation.discardOperationType { return true }
+        if let envelope = try? JSONDecoder().decode(SiteVisitSyncOperation.Payload.self, from: operation.payload),
+           operations.contains(where: { candidate in
+               candidate.operationType == SiteVisitSyncOperation.discardOperationType && unresolvedStatuses.contains(candidate.status) &&
+                   (try? JSONDecoder().decode(SiteVisitSyncOperation.Payload.self, from: candidate.payload))?.siteVisitId == envelope.siteVisitId
+           }) { return false }
+        let referencedMedia = Set(SiteVisitVersionedSync.command(operation)?.rows.flatMap { row -> [String] in
+            guard case .array(let ids) = row.values["answer_value"]?["artifactIds"] else { return [] }
+            return ids.compactMap { $0.string?.lowercased() }
+        } ?? [])
+        // The URL-bearing metadata write is queued during upload. A static
+        // answer->media edge alone cannot prove that remote custody has landed.
+        if !referencedMedia.isEmpty && operations.contains(where: { candidate in
+            candidate.id != operation.id && unresolvedStatuses.contains(candidate.status) &&
+                candidate.entityType == SyncEntityType.siteVisitArtifact.rawValue &&
+                referencedMedia.contains(candidate.entityId.lowercased())
+        }) { return false }
+        // Older persisted graphs put media behind the answer that needs it.
+        // Bypass only that inverted edge, retaining parent/initial metadata
+        // prerequisites. Neither command payload nor attempt/base is rewritten.
+        let repairingMediaOrder = operation.operationType == SiteVisitSyncOperation.mediaOperationType &&
+            operations.contains { candidate in
+                candidate.entityType == SyncEntityType.siteVisitChecklistAnswer.rawValue &&
+                    dependsTransitively(operation, on: candidate, in: operations)
+            }
+        if repairingMediaOrder {
+            let envelope = try? JSONDecoder().decode(SiteVisitSyncOperation.Payload.self, from: operation.payload)
+            if operations.contains(where: { candidate in
+                guard candidate.id != operation.id, unresolvedStatuses.contains(candidate.status),
+                      !dependsTransitively(candidate, on: operation, in: operations) else { return false }
+                return (candidate.entityType == SyncEntityType.siteVisit.rawValue &&
+                        candidate.entityId.lowercased() == envelope?.siteVisitId &&
+                        ["create", "update", "delete"].contains(candidate.operationType)) ||
+                    (candidate.entityType == SyncEntityType.siteVisitArtifact.rawValue &&
+                        candidate.entityId.lowercased() == operation.entityId.lowercased() &&
+                        candidate.operationType != SiteVisitSyncOperation.mediaOperationType)
+            }) { return false }
+        }
         // Sequencing that can never be satisfied must not gate the drain. The
         // 2026-08-19 device wedge held ten ops at zero attempts indefinitely:
         // an artifact update whose dependsOnId was its OWN id, an identity
@@ -88,6 +132,7 @@ struct SiteVisitOutboundSync {
         if let dependency = operation.dependsOnId,
            !dependency.isEmpty,
            !dependencyIsCompleted(dependency, in: operations),
+           !repairingMediaOrder,
            !dependsTransitively(operation, on: operation, in: operations) {
             return false
         }
@@ -191,12 +236,14 @@ struct SiteVisitOutboundSync {
             SiteVisitVersionedSync.handles($0)
                 || $0.operationType == SiteVisitSyncOperation.completionOperationType
                 || $0.operationType == SiteVisitSyncOperation.mediaOperationType
+                || $0.operationType == SiteVisitSyncOperation.discardOperationType
                 || $0.operationType == SiteVisitSyncOperation.stageOperationType
         }
         let crud = ordered.filter {
             !SiteVisitVersionedSync.handles($0)
                 && $0.operationType != SiteVisitSyncOperation.completionOperationType
                 && $0.operationType != SiteVisitSyncOperation.mediaOperationType
+                && $0.operationType != SiteVisitSyncOperation.discardOperationType
                 && $0.operationType != SiteVisitSyncOperation.stageOperationType
         }
         let groups = Dictionary(grouping: crud) {
@@ -237,7 +284,7 @@ struct SiteVisitOutboundSync {
         guard Self.isSiteVisitOperation(operation) else { return false }
         if SiteVisitVersionedSync.handles(operation) {
             try await SiteVisitVersionedSync.execute(operation: operation, context: context,
-                companyId: activeCompanyId, actorId: sessionUserId(), isCurrent: isCurrent, isolation: isolation)
+                companyId: activeCompanyId, actorId: sessionUserId(), isCurrent: isCurrent, deliverWrite: deliverWrite, isolation: isolation)
             return true
         }
         let envelope: SiteVisitSyncOperation.Payload
@@ -264,6 +311,16 @@ struct SiteVisitOutboundSync {
             throw SyncError.encodingFailed(
                 detail: "Site-visit operation entity id does not match its envelope"
             )
+        }
+
+        if operation.operationType == SiteVisitSyncOperation.discardOperationType {
+            guard let intent = envelope.discard, let actor = operation.siteVisitWriteActorId,
+                  actor == sessionUserId()?.lowercased() else { throw SiteVisitWriteError.legacyPayload }
+            if operation.siteVisitWriteAttemptedAt == nil { operation.siteVisitWriteAttemptedAt = Date(); try context.save() }
+            let receipt = try await deliverDiscard(operation.id, intent, actor)
+            guard isCurrent(), !Task.isCancelled else { throw CancellationError() }
+            try SiteVisitDiscardTransport.accept(receipt, operation: operation, intent: intent, actor: actor, context: context)
+            return true
         }
 
         if operation.operationType == SiteVisitSyncOperation.stageOperationType {

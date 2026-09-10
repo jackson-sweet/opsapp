@@ -128,6 +128,23 @@ private struct BugReportProbe: UIViewRepresentable {
     }
 }
 
+// MARK: - The picker's own chrome
+
+private struct BugReportPickExcludedKey: EnvironmentKey {
+    static let defaultValue = false
+}
+
+extension EnvironmentValues {
+    /// True inside the pick layer itself. Its glass bar and tag are built
+    /// from the same house surfaces as the app, and the picker must never
+    /// pick its own chrome — the iOS twin of the web picker's
+    /// `data-element-picker-root` exclusion.
+    var bugReportPickExcluded: Bool {
+        get { self[BugReportPickExcludedKey.self] }
+        set { self[BugReportPickExcludedKey.self] = newValue }
+    }
+}
+
 // MARK: - The modifier
 
 struct BugReportPickableModifier: ViewModifier {
@@ -137,6 +154,8 @@ struct BugReportPickableModifier: ViewModifier {
 
     /// A parked keep-alive tab mounts nothing: it is on no one's screen.
     @Environment(\.isActiveTab) private var isActiveTab
+    /// The pick layer's own chrome mounts nothing.
+    @Environment(\.bugReportPickExcluded) private var isExcluded
 
     func body(content: Content) -> some View {
         // The probe rides in a background so the content's identity — and
@@ -145,7 +164,7 @@ struct BugReportPickableModifier: ViewModifier {
         // subtree on each flip. With pick mode off, the background holds an
         // empty conditional: no view, no representable, no UIView.
         content.background {
-            if BugReportPickMode.shared.isActive && isActiveTab {
+            if BugReportPickMode.shared.isActive && isActiveTab && !isExcluded {
                 BugReportProbe(role: role, label: label, component: component)
                     .allowsHitTesting(false)
                     .accessibilityHidden(true)

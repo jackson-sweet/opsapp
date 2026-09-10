@@ -436,6 +436,42 @@ final class BugReportPickableTests: XCTestCase {
         }
     }
 
+    /// The pick layer's bar and tag are glass-dense surfaces — house
+    /// components that are pickable everywhere else. Laid over content in the
+    /// same window (as this harness does, and as a future host might), they
+    /// must still mount nothing: the picker never picks itself.
+    func testThePickLayerItselfIsNeverPickable() async throws {
+        BugReportPickMode.shared.deactivate()
+        let stage = try BugReportPickStage(OPSStyle.Colors.background.ignoresSafeArea())
+        defer {
+            stage.tearDown()
+            BugReportPickMode.shared.deactivate()
+        }
+        BugReportPickMode.shared.activate()
+
+        let session = BugReportPickSession(
+            appWindow: stage.window,
+            screenName: "Test",
+            capture: { _ in nil }
+        )
+        session.prime(lines: [])
+        stage.overlay(BugReportPickLayer(session: session, onCancel: {}, onLift: { _ in }))
+        await stage.settle(minimum: 0.4)
+        XCTAssertTrue(
+            BugReportPickProbeReadout.probes(in: stage.window).isEmpty,
+            "The armed bar must not mount a probe"
+        )
+
+        // A finger down brings up the tag, another glass-dense surface.
+        session.track(at: CGPoint(x: stage.window.bounds.midX, y: stage.window.bounds.midY))
+        await stage.settle(minimum: 0.3)
+        XCTAssertEqual(session.target?.source, .region)
+        XCTAssertTrue(
+            BugReportPickProbeReadout.probes(in: stage.window).isEmpty,
+            "The tag must not mount a probe"
+        )
+    }
+
     private struct KeepAliveScreen: View {
         var body: some View {
             KeepAliveTabContainer(selected: 0, mounted: [0, 1]) { index in

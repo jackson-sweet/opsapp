@@ -48,6 +48,9 @@ struct BugReportPickLayer: View {
             }
             .ignoresSafeArea()
         }
+        // The bar and the tag are glass surfaces; they are the picker, never
+        // something it can pick.
+        .environment(\.bugReportPickExcluded, true)
         .onAppear {
             withAnimation(OPSStyle.Animation.panel) { hasEntered = true }
         }

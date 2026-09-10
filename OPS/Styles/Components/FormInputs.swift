@@ -42,6 +42,7 @@ struct FormField: View {
                 readOnlyValue
             }
         }
+        .bugReportPickable(.field, label: title)
     }
 
     @ViewBuilder
@@ -132,6 +133,7 @@ struct FormTextEditor: View {
                     )
             }
         }
+        .bugReportPickable(.field, label: title)
     }
 
     private var editableEditor: some View {
@@ -227,6 +229,7 @@ struct FormSelectField<Option: Hashable>: View {
             .accessibilityLabel(title)
             .accessibilityValue(optionName(selection))
         }
+        .bugReportPickable(.select, label: title)
     }
 }
 
@@ -280,6 +283,7 @@ struct FormToggle: View {
                     lineWidth: OPSStyle.Layout.Border.standard
                 )
         )
+        .bugReportPickable(.toggle, label: title)
     }
 }
 

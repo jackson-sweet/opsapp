@@ -87,6 +87,7 @@ struct GlassSurfaceModifier: ViewModifier {
                     .strokeBorder(borderColor, lineWidth: 1)
             )
             .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+            .bugReportPickable(.card)
     }
 }
 
@@ -115,6 +116,7 @@ struct GlassDenseModifier: ViewModifier {
                     .strokeBorder(OPSStyle.Colors.glassBorder, lineWidth: 1)
             )
             .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+            .bugReportPickable(.card)
     }
 }
 
@@ -140,6 +142,7 @@ struct NestedCardModifier: ViewModifier {
                     .strokeBorder(OPSStyle.Colors.nestedBorder, lineWidth: 1)
             )
             .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+            .bugReportPickable(.card)
     }
 }
 

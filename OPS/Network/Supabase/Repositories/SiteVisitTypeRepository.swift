@@ -39,40 +39,17 @@ final class SiteVisitTypeRepository: @unchecked Sendable {
             .executeResilient(label: "site_visit_types")
     }
 
+    // Template writes must carry an immutable durable command and original base.
+    // Keep legacy entry points fail-closed if an older caller reaches them.
     func upsert(_ dto: SiteVisitTypeDTO) async throws {
-        try await client
-            .from("site_visit_types")
-            .upsert(dto, onConflict: "id")
-            .execute()
+        throw SiteVisitWriteError.legacyPayload
     }
 
     func updateFields(_ id: String, fields: [String: AnyJSON]) async throws {
-        var payload = fields
-        payload["updated_at"] = .string(
-            ISO8601DateFormatter().string(from: Date())
-        )
-        let response = try await client
-            .from("site_visit_types")
-            .update(payload)
-            .eq("id", value: id.lowercased())
-            .eq("company_id", value: companyId)
-            .select("id")
-            .execute()
-        // `softDelete` routes through here carrying `deleted_at`; the guard
-        // exempts tombstone writes, so this covers field edits only.
-        try SupabaseWriteGuard.requireAffectedRow(
-            response: response.data,
-            table: "site_visit_types",
-            id: id.lowercased(),
-            fields: payload
-        )
+        throw SiteVisitWriteError.legacyPayload
     }
 
     func softDelete(_ id: String) async throws {
-        let now = ISO8601DateFormatter().string(from: Date())
-        try await updateFields(
-            id,
-            fields: ["deleted_at": .string(now)]
-        )
+        throw SiteVisitWriteError.legacyPayload
     }
 }

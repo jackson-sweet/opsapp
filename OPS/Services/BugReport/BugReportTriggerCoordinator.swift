@@ -54,17 +54,16 @@ final class BugReportTriggerCoordinator {
     /// screenshot offer all use this method so their eligibility and capture
     /// ordering cannot drift.
     ///
-    /// - Parameter capturedScreen: A capture already taken at trigger time —
-    ///   the picture plus the view hierarchy behind it. The screenshot offer
-    ///   holds one (grabbed the instant the operator hit the buttons, seconds
-    ///   before the tap that gets here); shake and Settings pass `nil` and get a
-    ///   live capture.
+    /// - Parameter capturedScreen: A screenshot already taken at trigger time.
+    ///   The screenshot offer holds one (grabbed the instant the operator hit
+    ///   the buttons, seconds before the tap that gets here); shake and
+    ///   Settings pass `nil` and get a live capture.
     @discardableResult
     func trigger(
         source: Source,
         appState: AppState,
         dataController: DataController,
-        capturedScreen: BugReportCaptureService.AppWindowCapture? = nil
+        capturedScreen: UIImage? = nil
     ) -> Outcome {
         let outcome = trigger(
             source: source,
@@ -73,14 +72,14 @@ final class BugReportTriggerCoordinator {
                 isTutorialActive: appState.shouldRestartTutorial,
                 isPresenterActive: BugReportPresenter.shared.isPresenting
             ),
-            captureScreenshot: { () -> BugReportCaptureService.AppWindowCapture? in
+            captureScreenshot: { () -> UIImage? in
                 Self.screenshotToPresent(held: capturedScreen) {
-                    BugReportCaptureService.shared.captureAppWindow()
+                    BugReportCaptureService.shared.captureScreenshot()
                 }
             },
-            presentOverlay: { capture in
+            presentOverlay: { screenshot in
                 BugReportPresenter.shared.present(
-                    capture: capture,
+                    screenshot: screenshot,
                     appState: appState,
                     dataController: dataController
                 )

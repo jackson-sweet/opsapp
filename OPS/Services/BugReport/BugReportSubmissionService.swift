@@ -181,7 +181,7 @@ final class BugReportSubmissionService {
         description: String,
         category: String,
         screenshot: UIImage?,
-        element: BugReportElementMark? = nil,
+        element: BugReportElementPick? = nil,
         appState: AppState,
         dataController: DataController
     ) async throws {
@@ -424,22 +424,19 @@ final class BugReportSubmissionService {
         )
     }
 
-    /// `custom_metadata.element` — where the operator pointed, and whatever the
-    /// frozen view hierarchy could name there (bug 5aabcc3a). Nil keys are
-    /// written as JSON null rather than omitted, so a reader can tell "the app
-    /// looked and found nothing" from "the app never looked".
-    nonisolated static func customMetadata(element: BugReportElementMark?) -> [String: JSONPrimitive]? {
+    /// `custom_metadata.elementReferences` — what the operator picked with
+    /// POINT AT IT (bug 14e5a792), in the web picker's exact shape so the
+    /// admin bug console reads iOS picks the same way it reads web ones. See
+    /// `BugReportElementPick.elementReference` for the field-by-field mapping.
+    ///
+    /// Nil when nothing was picked, so an unmarked report carries no empty
+    /// array. The retired `custom_metadata.element` key (5aabcc3a) is no
+    /// longer written; reports queued by that build still decode, because the
+    /// outbox stores metadata as free-form JSON.
+    nonisolated static func customMetadata(element: BugReportElementPick?) -> [String: JSONPrimitive]? {
         guard let element else { return nil }
         return [
-            "element": .nested([
-                "x": .double(Double(element.point.x)),
-                "y": .double(Double(element.point.y)),
-                "normalizedX": .double(Double(element.normalized.x)),
-                "normalizedY": .double(Double(element.normalized.y)),
-                "label": element.label.map(JSONPrimitive.string) ?? .null,
-                "identifier": element.identifier.map(JSONPrimitive.string) ?? .null,
-                "viewType": element.viewType.map(JSONPrimitive.string) ?? .null
-            ])
+            "elementReferences": .nestedArray([.nested(element.elementReference)])
         ]
     }
 
@@ -496,9 +493,9 @@ struct BugReportPayload: Codable, Equatable {
     let breadcrumbs: [[String: JSONPrimitive]]?
     let networkLog: [[String: JSONPrimitive]]?
     let stateSnapshot: [String: JSONPrimitive]?
-    /// Free-form report metadata. Today it carries only `element` — the spot
-    /// POINT AT IT marked. Optional so reports queued by an older build still
-    /// decode.
+    /// Free-form report metadata. Today it carries only `elementReferences` —
+    /// what POINT AT IT picked. Optional and untyped so reports queued by an
+    /// older build (including 5aabcc3a's `element` key) still decode.
     let customMetadata: [String: JSONPrimitive]?
     let reporterName: String
     let reporterEmail: String

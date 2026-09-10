@@ -336,3 +336,30 @@ extension BugReportPresenter: UIAdaptivePresentationControllerDelegate {
 private final class PassthroughRootController: UIViewController {
     override var preferredStatusBarStyle: UIStatusBarStyle { .lightContent }
 }
+
+// MARK: - Round-trip test seam
+
+#if DEBUG
+/// Lets `BugReportPointAtItRoundTripTests` drive the REAL sequence — sheet
+/// steps aside, the pick layer comes up over the live app, the finger lifts,
+/// the sheet comes back carrying the mark — without synthesising touches.
+/// Debug builds only; nothing here ships.
+extension BugReportPresenter {
+    var testingSheetIsUp: Bool { window?.rootViewController?.presentedViewController != nil }
+    var testingPickLayerIsUp: Bool { pickHost != nil }
+    var testingDraft: BugReportDraft? { draft }
+
+    /// The finger lifting at `point` (pick-layer points, which are app-window
+    /// points: both windows fill the same scene).
+    func testingLift(at point: CGPoint) {
+        guard let session = pickSession else { return }
+        finishPointing(session, at: point)
+    }
+
+    /// CANCEL on the pick layer.
+    func testingCancelPick() {
+        guard let session = pickSession else { return }
+        returnToSheet(from: session)
+    }
+}
+#endif

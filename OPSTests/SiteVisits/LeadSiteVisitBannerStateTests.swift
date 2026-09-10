@@ -63,15 +63,47 @@ final class LeadSiteVisitBannerStateTests: XCTestCase {
         )
     }
 
-    /// An appointment whose time has passed but which nobody closed is still
-    /// startable — that is exactly the visit somebody is late for.
-    func testAPastAppointmentIsStillStartable() {
+    /// An appointment earlier TODAY that nobody closed is still startable —
+    /// that is exactly the visit somebody is late for.
+    func testAnAppointmentEarlierTodayIsStillStartable() {
+        let earlierToday = max(calendar.startOfDay(for: now), now.addingTimeInterval(-3_600))
+        let state = LeadSiteVisitBannerState.resolve(
+            scheduledAt: earlierToday,
+            now: now,
+            calendar: calendar
+        )
+        XCTAssertTrue(state.windowOpen)
+        XCTAssertFalse(state.isMissed)
+    }
+
+    /// Bug 2b085519 — an Aug 28 booking nobody started or cancelled read
+    /// "SITE VISIT · TODAY 11:00AM" with START on it two weeks later. A
+    /// booking from an earlier day is MISSED: its real date, and no START.
+    func testAnEarlierDayReadsAsMissedWithItsRealDate() {
+        let twoWeeksAgo = now.addingTimeInterval(-13 * 86_400)
+        let state = LeadSiteVisitBannerState.resolve(
+            scheduledAt: twoWeeksAgo,
+            now: now,
+            calendar: calendar
+        )
+        XCTAssertTrue(state.isMissed)
+        XCTAssertFalse(state.windowOpen, "a missed booking offers REBOOK / CANCEL, never START")
+        XCTAssertEqual(
+            state.token,
+            SiteVisitBookingLookup.bookedToken(for: twoWeeksAgo, now: now, calendar: calendar)
+        )
+        XCTAssertEqual(state.token?.hasPrefix("TODAY"), false, "got \(state.token ?? "nil")")
+    }
+
+    /// Yesterday is already gone — missed, not late.
+    func testYesterdayIsMissed() {
+        let yesterday = calendar.date(byAdding: .day, value: -1, to: now)!
         XCTAssertTrue(
             LeadSiteVisitBannerState.resolve(
-                scheduledAt: now.addingTimeInterval(-3 * 86_400),
+                scheduledAt: yesterday,
                 now: now,
                 calendar: calendar
-            ).windowOpen
+            ).isMissed
         )
     }
 
@@ -99,5 +131,26 @@ final class LeadSiteVisitBannerStateTests: XCTestCase {
             calendar: calendar
         ).token
         XCTAssertEqual(token?.hasPrefix("TODAY"), true, "got \(token ?? "nil")")
+    }
+
+    /// The shared day word never calls a past day TODAY — the appointment
+    /// sheet, the day sheet row and the reschedule dialogs all print it.
+    func testAPastDayPrintsItsDate() {
+        let date = now.addingTimeInterval(-13 * 86_400)
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = calendar.timeZone
+        formatter.dateFormat = "MMM d"
+        XCTAssertEqual(
+            DaySheetDateToken.day(date, now: now, calendar: calendar),
+            formatter.string(from: date).uppercased()
+        )
+    }
+
+    /// Today and tomorrow keep their words.
+    func testTodayAndTomorrowKeepTheirWords() {
+        XCTAssertEqual(DaySheetDateToken.day(now, now: now, calendar: calendar), "TODAY")
+        let tomorrow = calendar.date(byAdding: .day, value: 1, to: now)!
+        XCTAssertEqual(DaySheetDateToken.day(tomorrow, now: now, calendar: calendar), "TMRW")
     }
 }

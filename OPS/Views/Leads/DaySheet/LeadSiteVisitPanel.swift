@@ -67,12 +67,16 @@ enum DaySheetDateToken {
         return "\(hours / 24)D AGO"
     }
 
-    /// TODAY / TMRW / FRI / AUG 4 — when it lands.
+    /// TODAY / TMRW / FRI / AUG 4 — when it lands. A day already behind
+    /// today prints its date: calling it TODAY put a two-week-old booking at
+    /// the top of a lead as "SITE VISIT · TODAY" (bug 2b085519). A past
+    /// weekday name would be just as wrong — "MON" reads as the next one.
     static func day(_ date: Date, now: Date = Date(), calendar: Calendar = .current) -> String {
         let days = calendar.dateComponents([.day],
                                            from: calendar.startOfDay(for: now),
                                            to: calendar.startOfDay(for: date)).day ?? 0
-        if days <= 0 { return "TODAY" }
+        if days < 0 { return monthDayFormatter.string(from: date).uppercased() }
+        if days == 0 { return "TODAY" }
         if days == 1 { return "TMRW" }
         if days < 7 { return weekdayFormatter.string(from: date).uppercased() }
         return monthDayFormatter.string(from: date).uppercased()

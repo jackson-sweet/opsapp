@@ -233,10 +233,16 @@ private struct FormMultilineInput: UIViewRepresentable {
     }
 }
 
-private final class FormMultilineTextView: UITextView {
+final class FormMultilineTextView: UITextView {
     let placeholderLabel = UILabel()
+    private let bodyFont: UIFont
 
-    override init(frame: CGRect, textContainer: NSTextContainer?) {
+    init(
+        frame: CGRect,
+        textContainer: NSTextContainer?,
+        bodyFont: UIFont = OPSStyle.Typography.uiBody
+    ) {
+        self.bodyFont = bodyFont
         super.init(frame: frame, textContainer: textContainer)
         backgroundColor = .clear
         textColor = UIColor(OPSStyle.Colors.text)
@@ -278,10 +284,18 @@ private final class FormMultilineTextView: UITextView {
 
     func updatePresentation() {
         let selection = selectedRange
-        let scaledFont = UIFontMetrics(forTextStyle: .body).scaledFont(
-            for: OPSStyle.Typography.uiBody,
-            compatibleWith: traitCollection
-        )
+        let scaledFont: UIFont
+        if bodyFont.fontDescriptor.object(forKey: .textStyle) != nil {
+            // uiBody falls back to a preferred system font if Mohave is absent.
+            // Preferred fonts already carry Dynamic Type scaling; passing one
+            // into UIFontMetrics again raises an exception.
+            scaledFont = UIFont.preferredFont(forTextStyle: .body, compatibleWith: traitCollection)
+        } else {
+            scaledFont = UIFontMetrics(forTextStyle: .body).scaledFont(
+                for: bodyFont,
+                compatibleWith: traitCollection
+            )
+        }
         if font != scaledFont { font = scaledFont }
         let alignment: NSTextAlignment = effectiveUserInterfaceLayoutDirection == .rightToLeft
             ? .right : .left

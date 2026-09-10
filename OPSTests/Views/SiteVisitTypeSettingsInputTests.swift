@@ -162,6 +162,49 @@ final class SiteVisitTypeSettingsInputTests: XCTestCase {
         }
     }
 
+    func testPreferredFontFallbackUsesInitialTraitsAndRendersPlaceholder() throws {
+        try withFallbackTextView(contentSizeCategory: .accessibilityExtraLarge) { _, textView in
+            let expected = UIFont.preferredFont(forTextStyle: .body, compatibleWith: textView.traitCollection)
+            let font = try XCTUnwrap(textView.font)
+            XCTAssertEqual(font.fontName, expected.fontName)
+            XCTAssertEqual(font.pointSize, expected.pointSize, accuracy: 0.01)
+            XCTAssertEqual(textView.placeholderLabel.font, font)
+            XCTAssertFalse(textView.placeholderLabel.isHidden)
+            try assertRenderedText(in: textView, name: "system-font-placeholder-accessibility")
+        }
+    }
+
+    func testPreferredFontFallbackResizesDuringEditingAndRendersDraft() throws {
+        try withFallbackTextView(contentSizeCategory: .large) { host, textView in
+            XCTAssertTrue(textView.becomeFirstResponder())
+            let description = "Measure deck.\nCheck access."
+            textView.insertText(description)
+            textView.updatePlaceholder()
+            let selection = NSRange(location: 8, length: 4)
+            textView.selectedRange = selection
+
+            for category in [UIContentSizeCategory.accessibilityExtraExtraLarge, .small] {
+                host.traitOverrides.preferredContentSizeCategory = category
+                XCTAssertTrue(waitUntil {
+                    let expected = UIFont.preferredFont(
+                        forTextStyle: .body,
+                        compatibleWith: UITraitCollection(preferredContentSizeCategory: category)
+                    )
+                    return textView.traitCollection.preferredContentSizeCategory == category
+                        && abs((textView.font?.pointSize ?? 0) - expected.pointSize) < 0.01
+                        && textView.placeholderLabel.font == textView.font
+                })
+                XCTAssertEqual(textView.text, description)
+                XCTAssertEqual(textView.selectedRange, selection)
+                XCTAssertTrue(textView.isFirstResponder)
+            }
+
+            textView.resignFirstResponder()
+            XCTAssertTrue(textView.placeholderLabel.isHidden)
+            try assertRenderedText(in: textView, name: "system-font-draft-after-resize")
+        }
+    }
+
     func testRightToLeftDescriptionAlignsCaretAndPlaceholderAtTheLeadingInset() throws {
         try withEditor(layoutDirection: .rightToLeft, placeholder: "وصف الزيارة") { draft, _, textView in
             let placeholder = try XCTUnwrap(descendants(of: UILabel.self, in: textView).first)
@@ -282,6 +325,71 @@ final class SiteVisitTypeSettingsInputTests: XCTestCase {
 
     private func descendants<T: UIView>(of type: T.Type, in view: UIView) -> [T] {
         (view as? T).map { [$0] } ?? view.subviews.flatMap { descendants(of: type, in: $0) }
+    }
+
+    private func withFallbackTextView(
+        contentSizeCategory: UIContentSizeCategory,
+        _ assertions: (UIViewController, FormMultilineTextView) throws -> Void
+    ) throws {
+        let window = try AppHostWindow.acquire()
+        let originalRoot = window.rootViewController
+        let host = UIViewController()
+        host.traitOverrides.preferredContentSizeCategory = contentSizeCategory
+        host.view.backgroundColor = UIColor(OPSStyle.Colors.background)
+        // Exercise the uiBody fallback without unregistering shared app fonts.
+        // Its original size deliberately differs from the receiving view's traits.
+        let fallback = UIFont.preferredFont(
+            forTextStyle: .body,
+            compatibleWith: UITraitCollection(preferredContentSizeCategory: .accessibilityExtraExtraExtraLarge)
+        )
+        let textView = FormMultilineTextView(
+            frame: CGRect(x: 0, y: 0, width: 320, height: OPSStyle.Layout.inputHeight * 2),
+            textContainer: nil,
+            bodyFont: fallback
+        )
+        textView.placeholderLabel.text = "Description"
+        textView.updatePlaceholder()
+        host.view.addSubview(textView)
+        window.rootViewController = host
+        defer {
+            host.view.endEditing(true)
+            window.rootViewController = originalRoot
+            window.layoutIfNeeded()
+        }
+        window.layoutIfNeeded()
+        host.view.layoutIfNeeded()
+        XCTAssertTrue(waitUntil {
+            textView.traitCollection.preferredContentSizeCategory == contentSizeCategory
+        })
+        try assertions(host, textView)
+    }
+
+    private func assertRenderedText(in textView: UITextView, name: String) throws {
+        textView.layoutIfNeeded()
+        let image = UIGraphicsImageRenderer(bounds: textView.bounds).image { context in
+            UIColor(OPSStyle.Colors.background).setFill()
+            context.fill(textView.bounds)
+            XCTAssertTrue(textView.drawHierarchy(in: textView.bounds, afterScreenUpdates: true))
+        }
+        let cgImage = try XCTUnwrap(image.cgImage)
+        var pixels = [UInt8](repeating: 0, count: cgImage.width * cgImage.height)
+        try pixels.withUnsafeMutableBytes { buffer in
+            let context = try XCTUnwrap(CGContext(
+                data: buffer.baseAddress,
+                width: cgImage.width,
+                height: cgImage.height,
+                bitsPerComponent: 8,
+                bytesPerRow: cgImage.width,
+                space: CGColorSpaceCreateDeviceGray(),
+                bitmapInfo: CGImageAlphaInfo.none.rawValue
+            ))
+            context.draw(cgImage, in: CGRect(x: 0, y: 0, width: cgImage.width, height: cgImage.height))
+        }
+        XCTAssertGreaterThan(pixels.filter { $0 > 64 }.count, 20, "The rendered editor must contain visible text")
+        let attachment = XCTAttachment(image: image)
+        attachment.name = name
+        attachment.lifetime = .keepAlways
+        add(attachment)
     }
 
     private func waitUntil(timeout: TimeInterval = 2, _ condition: () -> Bool) -> Bool {

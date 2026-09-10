@@ -186,6 +186,9 @@ private struct FormMultilineInput: UIViewRepresentable {
         textView.accessibilityLabel = title
         textView.accessibilityHint = placeholder.isEmpty ? nil : placeholder
         textView.placeholderLabel.text = placeholder
+        textView.semanticContentAttribute = context.environment.layoutDirection == .rightToLeft
+            ? .forceRightToLeft : .forceLeftToRight
+        textView.updatePresentation()
 
         // Ordinary typing already matches the binding. Do not replace that
         // text (or marked text), which would move the caret or interrupt IME.
@@ -236,7 +239,6 @@ private final class FormMultilineTextView: UITextView {
     override init(frame: CGRect, textContainer: NSTextContainer?) {
         super.init(frame: frame, textContainer: textContainer)
         backgroundColor = .clear
-        font = OPSStyle.Typography.uiBody
         textColor = UIColor(OPSStyle.Colors.text)
         tintColor = UIColor(OPSStyle.Colors.text)
         keyboardAppearance = .dark
@@ -252,16 +254,43 @@ private final class FormMultilineTextView: UITextView {
         self.textContainer.lineFragmentPadding = 0
         setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
 
-        placeholderLabel.font = font
         placeholderLabel.textColor = UIColor(OPSStyle.Colors.text3)
         placeholderLabel.numberOfLines = 0
         placeholderLabel.isUserInteractionEnabled = false
         placeholderLabel.isAccessibilityElement = false
         addSubview(placeholderLabel)
+
+        updatePresentation()
+        registerForTraitChanges([UITraitPreferredContentSizeCategory.self]) {
+            (view: FormMultilineTextView, _: UITraitCollection) in
+            view.updatePresentation()
+        }
     }
 
     required init?(coder: NSCoder) {
         return nil
+    }
+
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        updatePresentation()
+    }
+
+    func updatePresentation() {
+        let selection = selectedRange
+        let scaledFont = UIFontMetrics(forTextStyle: .body).scaledFont(
+            for: OPSStyle.Typography.uiBody,
+            compatibleWith: traitCollection
+        )
+        if font != scaledFont { font = scaledFont }
+        let alignment: NSTextAlignment = effectiveUserInterfaceLayoutDirection == .rightToLeft
+            ? .right : .left
+        if textAlignment != alignment { textAlignment = alignment }
+        // A typography/locale update must not act like a new editing session.
+        if selectedRange != selection { selectedRange = selection }
+        placeholderLabel.font = font
+        placeholderLabel.textAlignment = alignment
+        setNeedsLayout()
     }
 
     func updatePlaceholder() {

@@ -17,6 +17,8 @@ final class SiteVisitTypeSettingsInputTests: XCTestCase {
         @Published var text = ""
         @Published var isEditable = true
         @Published var unrelatedChange = false
+        var layoutDirection: LayoutDirection = .leftToRight
+        var placeholder = "What this visit is for"
     }
 
     private struct EditorHarness: View {
@@ -26,7 +28,7 @@ final class SiteVisitTypeSettingsInputTests: XCTestCase {
             VStack {
                 FormTextEditor(
                     title: draft.unrelatedChange ? "DESCRIPTION UPDATED" : "DESCRIPTION",
-                    placeholder: "What this visit is for",
+                    placeholder: draft.placeholder,
                     text: $draft.text,
                     isEditable: draft.isEditable,
                     height: OPSStyle.Layout.inputHeight * 2
@@ -34,6 +36,7 @@ final class SiteVisitTypeSettingsInputTests: XCTestCase {
             }
             .padding(OPSStyle.Layout.spacing3)
             .background(OPSStyle.Colors.background)
+            .environment(\.layoutDirection, draft.layoutDirection)
         }
     }
 
@@ -44,7 +47,9 @@ final class SiteVisitTypeSettingsInputTests: XCTestCase {
                 top: inset, left: inset, bottom: inset, right: inset
             ))
             XCTAssertEqual(textView.textContainer.lineFragmentPadding, 0)
-            XCTAssertEqual(textView.font, OPSStyle.Typography.uiBody)
+            let font = try XCTUnwrap(textView.font)
+            XCTAssertEqual(font.fontName, OPSStyle.Typography.uiBody.fontName)
+            XCTAssertEqual(font.pointSize, OPSStyle.Typography.uiBody.pointSize, accuracy: 0.01)
             XCTAssertEqual(textView.backgroundColor, .clear)
             XCTAssertEqual(textView.accessibilityLabel, "DESCRIPTION")
 
@@ -99,6 +104,92 @@ final class SiteVisitTypeSettingsInputTests: XCTestCase {
 
             XCTAssertTrue(textView.becomeFirstResponder())
             XCTAssertTrue(textView.inputAccessoryView === accessory)
+            textView.resignFirstResponder()
+        }
+    }
+
+    func testDescriptionStartsAtTheCurrentAccessibilityTextSize() throws {
+        try withEditor(contentSizeCategory: .accessibilityExtraLarge) { _, _, textView in
+            let font = try XCTUnwrap(textView.font)
+            let placeholder = try XCTUnwrap(descendants(of: UILabel.self, in: textView).first)
+            XCTAssertEqual(textView.traitCollection.preferredContentSizeCategory, .accessibilityExtraLarge)
+            XCTAssertEqual(font.fontName, OPSStyle.Typography.uiBody.fontName)
+            XCTAssertGreaterThan(font.pointSize, OPSStyle.Typography.uiBody.pointSize)
+            XCTAssertEqual(placeholder.font, font)
+            XCTAssertFalse(placeholder.isHidden)
+            XCTAssertEqual(textView.bounds.height, OPSStyle.Layout.inputHeight * 2, accuracy: 0.5)
+            XCTAssertTrue(textView.isScrollEnabled)
+        }
+    }
+
+    func testDescriptionTextSizeChangesPreserveDraftSelectionAndFocus() throws {
+        try withEditor { draft, host, textView in
+            let initialFont = try XCTUnwrap(textView.font)
+            let placeholder = try XCTUnwrap(descendants(of: UILabel.self, in: textView).first)
+            XCTAssertTrue(textView.becomeFirstResponder())
+            let description = "Measure deck.\nCheck access and framing."
+            textView.insertText(description)
+            XCTAssertTrue(waitUntil { draft.text == description })
+            let selection = NSRange(location: 8, length: 4)
+            textView.selectedRange = selection
+
+            host.traitOverrides.preferredContentSizeCategory = .accessibilityExtraExtraExtraLarge
+            XCTAssertTrue(waitUntil {
+                textView.traitCollection.preferredContentSizeCategory == .accessibilityExtraExtraExtraLarge
+                    && (textView.font?.pointSize ?? 0) > initialFont.pointSize
+                    && placeholder.font == textView.font
+            })
+            XCTAssertEqual(draft.text, description)
+            XCTAssertEqual(textView.text, description)
+            XCTAssertEqual(textView.selectedRange, selection)
+            XCTAssertTrue(textView.isFirstResponder)
+
+            host.traitOverrides.preferredContentSizeCategory = .medium
+            XCTAssertTrue(waitUntil {
+                textView.traitCollection.preferredContentSizeCategory == .medium
+                    && (textView.font?.pointSize ?? initialFont.pointSize) < initialFont.pointSize
+                    && placeholder.font == textView.font
+            })
+            XCTAssertEqual(draft.text, description)
+            XCTAssertEqual(textView.selectedRange, selection)
+            XCTAssertTrue(textView.isFirstResponder)
+
+            textView.selectedRange = NSRange(location: 0, length: (description as NSString).length)
+            textView.insertText("")
+            XCTAssertTrue(waitUntil { draft.text.isEmpty && !placeholder.isHidden })
+            XCTAssertEqual(placeholder.font, textView.font)
+            textView.resignFirstResponder()
+        }
+    }
+
+    func testRightToLeftDescriptionAlignsCaretAndPlaceholderAtTheLeadingInset() throws {
+        try withEditor(layoutDirection: .rightToLeft, placeholder: "وصف الزيارة") { draft, _, textView in
+            let placeholder = try XCTUnwrap(descendants(of: UILabel.self, in: textView).first)
+            XCTAssertTrue(textView.becomeFirstResponder())
+            textView.layoutIfNeeded()
+            XCTAssertEqual(textView.effectiveUserInterfaceLayoutDirection, .rightToLeft)
+            XCTAssertEqual(textView.textAlignment, .right)
+            XCTAssertEqual(placeholder.textAlignment, .right)
+            XCTAssertEqual(placeholder.font, textView.font)
+            XCTAssertEqual(
+                placeholder.frame.maxX,
+                textView.bounds.width - OPSStyle.Layout.spacing3,
+                accuracy: 0.5
+            )
+            XCTAssertEqual(
+                textView.caretRect(for: textView.beginningOfDocument).maxX,
+                placeholder.frame.maxX,
+                accuracy: 2
+            )
+
+            textView.insertText("قياس سطح المنزل")
+            XCTAssertTrue(waitUntil { draft.text == "قياس سطح المنزل" })
+            XCTAssertEqual(
+                textView.caretRect(for: textView.beginningOfDocument).maxX,
+                placeholder.frame.maxX,
+                accuracy: 2
+            )
+            XCTAssertTrue(placeholder.isHidden)
             textView.resignFirstResponder()
         }
     }
@@ -164,12 +255,18 @@ final class SiteVisitTypeSettingsInputTests: XCTestCase {
     }
 
     private func withEditor(
+        contentSizeCategory: UIContentSizeCategory = .large,
+        layoutDirection: LayoutDirection = .leftToRight,
+        placeholder: String = "What this visit is for",
         _ assertions: (Draft, UIHostingController<EditorHarness>, UITextView) throws -> Void
     ) throws {
         let window = try AppHostWindow.acquire()
         let originalRoot = window.rootViewController
         let draft = Draft()
+        draft.layoutDirection = layoutDirection
+        draft.placeholder = placeholder
         let host = UIHostingController(rootView: EditorHarness(draft: draft))
+        host.traitOverrides.preferredContentSizeCategory = contentSizeCategory
         window.rootViewController = host
         defer {
             host.view.endEditing(true)

@@ -54,6 +54,12 @@ struct WeekEventSpan: Identifiable {
     let isLastSegment: Bool
     let isSingleDay: Bool
     let taskTypeDisplay: String?  // Task type for subtitle in tall events
+
+    /// Span indices belong to one visible week, including continuation bars.
+    func dayDetailsDate(weekDates: [Date?]) -> Date? {
+        guard weekDates.indices.contains(startDayIndex) else { return nil }
+        return weekDates[startDayIndex]
+    }
 }
 
 struct MoreEventsIndicator: Identifiable {
@@ -63,15 +69,63 @@ struct MoreEventsIndicator: Identifiable {
     let row: Int
 }
 
-/// Pure weekly lane allocator for the month grid. Event rows keep the mobile
-/// 44pt interaction minimum; the compact `+N` lane is reserved only on days
-/// that actually overflow. Replanning to a fixed point keeps multi-day spans
-/// and their overflow indicators collision-free across every covered day.
+/// Overview bars are previews inside the full-size day target. Expanded bars
+/// retain their independent 44pt schedule controls. The planner and renderer
+/// share these dimensions so a touch-target minimum cannot silently consume
+/// the compact overview's event lanes (bug 709b9fa1).
+struct MonthGridEventLayout {
+    let cellHeight: CGFloat
+
+    var allowsEventInteraction: Bool {
+        cellHeight >= OPSStyle.Layout.monthGridExpandedHeightThreshold
+    }
+
+    var badgeHeight: CGFloat {
+        cellHeight < OPSStyle.Layout.monthGridStandardHeightThreshold
+            ? OPSStyle.Layout.monthGridCompactBadgeHeight
+            : OPSStyle.Layout.monthGridStandardBadgeHeight
+    }
+
+    var rowHeight: CGFloat {
+        allowsEventInteraction
+            ? OPSStyle.Layout.touchTargetMin
+            : badgeHeight + OPSStyle.Layout.spacing1
+    }
+
+    var indicatorHeight: CGFloat {
+        allowsEventInteraction ? badgeHeight : rowHeight
+    }
+
+    var barVerticalInset: CGFloat {
+        allowsEventInteraction ? OPSStyle.Layout.hairlineWidth : OPSStyle.Layout.spacing1 / 2
+    }
+}
+
+/// Pure weekly lane allocator. The `+N` lane is reserved only on days that
+/// overflow. Replanning to a fixed point keeps multi-day spans and their
+/// overflow indicators collision-free across every covered day.
 struct MonthGridEventSlotPlanner {
     struct Candidate: Equatable {
         let id: String
         let startDayIndex: Int
         let endDayIndex: Int
+
+        init(id: String, startDayIndex: Int, endDayIndex: Int) {
+            self.id = id
+            self.startDayIndex = startDayIndex
+            self.endDayIndex = endDayIndex
+        }
+
+        /// Clip a span to this visible week, including partial month weeks.
+        init?(id: String, startDate: Date, endDate: Date, dates: [Date?], calendar: Calendar) {
+            let coveredDays = dates.indices.filter { index in
+                guard let date = dates[index] else { return false }
+                return calendar.isDate(date, inSameDayAs: startDate) ||
+                    (date >= startDate && date <= endDate)
+            }
+            guard let first = coveredDays.first, let last = coveredDays.last else { return nil }
+            self.init(id: id, startDayIndex: first, endDayIndex: last)
+        }
     }
 
     struct Plan: Equatable {
@@ -87,17 +141,15 @@ struct MonthGridEventSlotPlanner {
         cellHeight: CGFloat
     ) -> Plan {
         let dayCount = eventIdsByDay.count
+        let layout = MonthGridEventLayout(cellHeight: cellHeight)
         let availableHeight = max(0, cellHeight - OPSStyle.Layout.monthGridDayHeaderHeight)
-        let indicatorHeight = cellHeight < OPSStyle.Layout.monthGridStandardHeightThreshold
-            ? OPSStyle.Layout.monthGridCompactBadgeHeight
-            : OPSStyle.Layout.monthGridStandardBadgeHeight
         let normalCapacity = max(
             1,
-            Int(availableHeight / OPSStyle.Layout.touchTargetMin)
+            Int(availableHeight / layout.rowHeight)
         )
         let overflowCapacity = max(
             1,
-            Int((availableHeight - indicatorHeight) / OPSStyle.Layout.touchTargetMin)
+            Int((availableHeight - layout.indicatorHeight) / layout.rowHeight)
         )
 
         var indicatorDays = Set<Int>()
@@ -388,14 +440,6 @@ struct MonthGridView: View {
 
     // MARK: - Long-press / context-menu helpers (Bug 70591eb5)
 
-    /// Returns the first visible day of `span` within the supplied `dates`
-    /// array. Used to anchor the day sheet when a badge is tapped — matches
-    /// the behaviour of tapping the first day cell that the badge covers.
-    private func dayDateForSpan(_ span: WeekEventSpan, dates: [Date?]) -> Date? {
-        guard span.startDayIndex >= 0, span.startDayIndex < dates.count else { return nil }
-        return dates[span.startDayIndex]
-    }
-
     /// Full schedule-action contract for a task badge. Non-task spans and tasks
     /// outside the user's calendar.edit scope remain read-only.
     private func scheduleQuickActions(for span: WeekEventSpan) -> ScheduleCardQuickActions? {
@@ -461,7 +505,7 @@ struct MonthGridView: View {
                     // Forward to the day cell so the day sheet still opens when
                     // users tap a badge — preserves the previous "badge is
                     // non-interactive" behavior.
-                    if let tapDate = dayDateForSpan(span, dates: dates) {
+                    if let tapDate = span.dayDetailsDate(weekDates: dates) {
                         viewModel.selectDate(tapDate, userInitiated: true)
                         sheetDate = IdentifiableDate(date: tapDate)
                         NotificationCenter.default.post(
@@ -470,12 +514,12 @@ struct MonthGridView: View {
                         )
                     }
                 },
-                quickActions: scheduleQuickActions(for: span),
+                quickActions: eventLayout.allowsEventInteraction ? scheduleQuickActions(for: span) : nil,
                 onOpenDayDetails: {
                     // Open the day sheet anchored at the event's first day in the
                     // visible week so the user lands on the same place as a normal
                     // day-cell tap.
-                    if let firstDate = dates[span.startDayIndex] {
+                    if let firstDate = span.dayDetailsDate(weekDates: dates) {
                         viewModel.selectDate(firstDate, userInitiated: true)
                         sheetDate = IdentifiableDate(date: firstDate)
                     }
@@ -485,7 +529,7 @@ struct MonthGridView: View {
                 x: dayWidth * CGFloat(span.startDayIndex),
                 y: OPSStyle.Layout.monthGridDayHeaderHeight + (CGFloat(span.row) * eventRowHeight)
             )
-            .reschedulable(dragPayload(for: span), session: dragSession)
+            .reschedulable(eventLayout.allowsEventInteraction ? dragPayload(for: span) : nil, session: dragSession)
         }
     }
 
@@ -586,7 +630,8 @@ struct MonthGridView: View {
         ToastCenter.shared.present(Toast(label: Feedback.Err.operationFailed, tone: .error))
     }
 
-    private var eventRowHeight: CGFloat { OPSStyle.Layout.touchTargetMin }
+    private var eventLayout: MonthGridEventLayout { MonthGridEventLayout(cellHeight: cellHeight) }
+    private var eventRowHeight: CGFloat { eventLayout.rowHeight }
 
     private func weekSpansForWeek(dates: [Date?], weekIndex: Int) -> ([WeekEventSpan], [MoreEventsIndicator]) {
         let calendar = Calendar.current
@@ -614,27 +659,15 @@ struct MonthGridView: View {
             for event in eventsByDay[dayIndex] {
                 guard seenEventIds.insert(event.eventId).inserted else { continue }
 
-                var weekStartIndex = -1
-                var weekEndIndex = -1
-
-                for (checkDayIndex, checkDate) in dates.enumerated() {
-                    guard let checkDate = checkDate else { continue }
-                    if calendar.isDate(checkDate, inSameDayAs: event.startDate) ||
-                       (checkDate >= event.startDate && checkDate <= event.endDate) {
-                        if weekStartIndex == -1 {
-                            weekStartIndex = checkDayIndex
-                        }
-                        weekEndIndex = checkDayIndex
-                    }
-                }
-
-                guard weekStartIndex >= 0 && weekEndIndex >= 0 else { continue }
-                orderedEvents.append(event)
-                plannerCandidates.append(.init(
+                guard let candidate = MonthGridEventSlotPlanner.Candidate(
                     id: event.eventId,
-                    startDayIndex: weekStartIndex,
-                    endDayIndex: weekEndIndex
-                ))
+                    startDate: event.startDate,
+                    endDate: event.endDate,
+                    dates: dates,
+                    calendar: calendar
+                ) else { continue }
+                orderedEvents.append(event)
+                plannerCandidates.append(candidate)
             }
         }
 
@@ -806,8 +839,8 @@ struct MonthGridView: View {
                                                 // mid-drag by the drag preview's teardown, which handed
                                                 // the badges their hit-testing back and let them swallow
                                                 // the drop — the drag then did nothing at all.
-                                                eventBars(weekSpans, dates: dates, dayWidth: dayWidth)
-                                                    .allowsHitTesting(!dragSession.isDragInFlight)
+                                                eventBars(weekSpans, dates: weekDates, dayWidth: dayWidth)
+                                                    .allowsHitTesting(eventLayout.allowsEventInteraction && !dragSession.isDragInFlight)
 
                                                 ForEach(moreIndicators) { indicator in
                                                     MoreEventsIndicatorView(indicator: indicator, cellHeight: cellHeight, dayWidth: dayWidth)
@@ -1044,6 +1077,17 @@ struct MonthDayCell: View {
         StatutoryHolidays.holiday(on: date) != nil
     }
 
+    /// The compact bars are visual previews. VoiceOver reads every event from
+    /// the day target, including work represented by the overflow count.
+    private var accessibilitySummary: String {
+        var seenEventIds = Set<String>()
+        let eventTitles = cache.events(for: date)
+            .filter { seenEventIds.insert($0.eventId).inserted }
+            .map(\.title)
+        let holidayNames = [StatutoryHolidays.holiday(on: date)?.name].compactMap { $0 }
+        return (holidayNames + eventTitles).joined(separator: ". ")
+    }
+
     private var textColor: Color {
         if isToday {
             // Today's date is black on white circle
@@ -1094,6 +1138,12 @@ struct MonthDayCell: View {
         .onTapGesture {
             onTap()
         }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(date.formatted(date: .complete, time: .omitted))
+        .accessibilityValue(accessibilitySummary)
+        .accessibilityHint("Tap for day details.")
+        .accessibilityAddTraits(.isButton)
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 }
 
@@ -1246,6 +1296,8 @@ struct EventBar: View {
     var quickActions: ScheduleCardQuickActions? = nil
     var onOpenDayDetails: (() -> Void)? = nil
 
+    private var layout: MonthGridEventLayout { MonthGridEventLayout(cellHeight: cellHeight) }
+
     private enum DisplayLevel {
         case level1  // < 120: compact dots
         case level2  // 120-180: short bars with title
@@ -1269,9 +1321,7 @@ struct EventBar: View {
 
     // Base slot height (unit height for positioning)
     private var baseSlotHeight: CGFloat {
-        displayLevel == .level1
-            ? OPSStyle.Layout.monthGridCompactBadgeHeight
-            : OPSStyle.Layout.monthGridStandardBadgeHeight
+        layout.badgeHeight
     }
 
     // Actual bar height: tall events are 3x base height
@@ -1316,11 +1366,9 @@ struct EventBar: View {
         .frame(height: barHeight)
         .clipped()
         .background(eventBackground)
-        .padding(.horizontal, 2)
-        .padding(.vertical, 1)
-        // Keep the compact month-grid visual while giving every badge its own
-        // non-overlapping, field-usable interaction row.
-        .frame(height: OPSStyle.Layout.touchTargetMin, alignment: .top)
+        .padding(.horizontal, OPSStyle.Layout.spacing1 / 2)
+        .padding(.vertical, layout.barVerticalInset)
+        .frame(height: layout.rowHeight, alignment: .top)
         // Bug 70591eb5: tap forwards to the day sheet (preserving the
         // previous "badge is non-interactive" behaviour) and long-press
         // exposes quick reschedule actions via the system context menu.
@@ -1346,6 +1394,10 @@ struct EventBar: View {
         .accessibilityLabel(scheduleAccessibilityLabel)
         .accessibilityHint(scheduleAccessibilityHint)
         .accessibilityAddTraits(.isButton)
+        // Compact previews share the day cell's full-size target and complete
+        // spoken summary. Expanded bars retain their own actions and drag.
+        .allowsHitTesting(layout.allowsEventInteraction)
+        .accessibilityHidden(!layout.allowsEventInteraction)
     }
 
     // Short event: single line title (Level 1, 2, and multi-day at Level 3)
@@ -1407,32 +1459,23 @@ struct MoreEventsIndicatorView: View {
     let cellHeight: CGFloat
     let dayWidth: CGFloat
 
-    private var badgeHeight: CGFloat {
-        if cellHeight < OPSStyle.Layout.monthGridStandardHeightThreshold {
-            return OPSStyle.Layout.monthGridCompactBadgeHeight
-        } else {
-            return OPSStyle.Layout.monthGridStandardBadgeHeight
-        }
-    }
-
-    private var fontSize: Font {
-        Font.system(size: 10)
-    }
+    private var layout: MonthGridEventLayout { MonthGridEventLayout(cellHeight: cellHeight) }
 
     var body: some View {
         HStack(alignment: .center, spacing: 0) {
             Text("+ \(indicator.count)")
-                .font(fontSize)
+                .font(OPSStyle.Typography.miniLabel)
                 .foregroundColor(OPSStyle.Colors.tertiaryText)
                 .lineLimit(1)
                 .padding(.horizontal, OPSStyle.Layout.spacing1)
-                .padding(.vertical, 2)
+                .padding(.vertical, OPSStyle.Layout.spacing1 / 2)
             Spacer(minLength: 0)
         }
-        .frame(width: dayWidth, height: badgeHeight)
+        .frame(width: dayWidth, height: layout.indicatorHeight)
         .background(OPSStyle.Colors.secondaryText.opacity(0.1))
         .cornerRadius(OPSStyle.Layout.cornerRadius)
-        .padding(.horizontal, 2)
+        .padding(.horizontal, OPSStyle.Layout.spacing1 / 2)
+        .accessibilityHidden(true)
     }
 }
 

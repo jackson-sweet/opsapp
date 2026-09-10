@@ -756,6 +756,7 @@ struct SiteVisitCompletionPayload: Codable, Equatable {
 struct CompleteSiteVisitRPCParams: Codable, Equatable {
     let p_site_visit_id: String
     let p_completion: SiteVisitCompletionPayload
+    let p_expected_actor: String
 }
 
 struct SiteVisitCompletionResponseDTO: Decodable, Equatable {

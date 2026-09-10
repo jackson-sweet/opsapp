@@ -20,6 +20,11 @@ enum SiteVisitTypeServerMerge {
         "deleted_at"
     ]
 
+    /// Older local templates used uppercase UUID strings; wire IDs are lowercase.
+    static func fetch(id: String, context: ModelContext) throws -> SiteVisitType? {
+        try context.fetch(FetchDescriptor<SiteVisitType>()).first { $0.id.lowercased() == id.lowercased() }
+    }
+
     @discardableResult
     static func merge(
         dto: SiteVisitTypeDTO,
@@ -31,11 +36,7 @@ enum SiteVisitTypeServerMerge {
         let companyId = dto.companyId.lowercased()
         guard !id.isEmpty, !companyId.isEmpty else { return false }
 
-        let descriptor = FetchDescriptor<SiteVisitType>(
-            predicate: #Predicate { $0.id == id }
-        )
-
-        if let existing = try context.fetch(descriptor).first {
+        if let existing = try fetch(id: id, context: context) {
             guard existing.companyId.lowercased() == companyId else { return false }
             let ownsQueuedWork = try context.fetch(FetchDescriptor<SyncOperation>()).contains {
                 $0.status != "completed" && SiteVisitVersionedSync.command($0)?.rows.contains(where: { $0.id == id }) == true

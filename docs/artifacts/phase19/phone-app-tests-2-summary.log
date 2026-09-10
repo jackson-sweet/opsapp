@@ -1,0 +1,3 @@
+OPS/MapboxConfig.swift:26: Fatal error: Missing MBXAccessToken in Info.plist — add your Mapbox token there.
+2026-09-10 16:45:23.458071-0600 OPS[55034:5337655] OPS/MapboxConfig.swift:26: Fatal error: Missing MBXAccessToken in Info.plist — add your Mapbox token there.
+** TEST FAILED **

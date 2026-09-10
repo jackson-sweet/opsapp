@@ -755,7 +755,11 @@ private final class RecordingChecklistAnswerWriter: SiteVisitRemoteWriting {
         self.response = response
     }
 
-    func upsertVisit(_ payload: CreateSiteVisitDTO) async throws -> SiteVisitDTO {
+    func deleteVisit(_ id: String, at deletedAt: Date, expectedActorId: String) async throws {
+        try await softDelete(.visits, id: id, at: deletedAt)
+    }
+
+    func upsertVisit(_ payload: CreateSiteVisitDTO, expectedActorId: String) async throws -> SiteVisitDTO {
         throw SiteVisitRepositoryError.transport("Unexpected visit upsert")
     }
 
@@ -788,7 +792,8 @@ private final class RecordingChecklistAnswerWriter: SiteVisitRemoteWriting {
 
     func completeSiteVisit(
         _ id: String,
-        completion: SiteVisitCompletionPayload
+        completion: SiteVisitCompletionPayload,
+        expectedActorId: String
     ) async throws -> SiteVisitCompletionResponseDTO {
         throw SiteVisitRepositoryError.transport("Unexpected completion")
     }

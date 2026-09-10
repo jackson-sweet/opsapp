@@ -197,7 +197,7 @@ final class SiteVisitType: Identifiable {
         fields: [SiteVisitTypeFieldDefinition] = [],
         createdAt: Date = Date()
     ) {
-        self.id = id
+        self.id = id.lowercased()
         self.companyId = companyId
         self.slug = slug
         self.name = name

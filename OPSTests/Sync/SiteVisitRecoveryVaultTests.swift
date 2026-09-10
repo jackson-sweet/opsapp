@@ -114,6 +114,11 @@ final class SiteVisitRecoveryVaultTests: XCTestCase {
             0
         )
 
+        let unavailableDestinationVault = makeVault(root: root) { _ in nil }
+        XCTAssertThrowsError(try unavailableDestinationVault.restore(into: context, userId: userID, companyId: companyID))
+        XCTAssertEqual(unavailableDestinationVault.summaries(userId: userID, companyId: companyID).count, 1)
+        XCTAssertTrue(try context.fetch(FetchDescriptor<SiteVisit>()).isEmpty)
+
         let restored = try vault.restore(
             into: context,
             userId: userID,
@@ -635,6 +640,29 @@ final class SiteVisitRecoveryVaultTests: XCTestCase {
         XCTAssertEqual(restored.siteVisitWriteAttemptedAt, Date(timeIntervalSince1970: 100))
         XCTAssertEqual(restored.siteVisitWriteResolutionData, resolutionBytes)
         XCTAssertEqual(try context.fetch(FetchDescriptor<SiteVisitType>()).first?.writeState.baseRevision, 4)
+    }
+
+    @MainActor
+    func testOlderVaultCannotReplaceNewerResolutionForSameCommand() throws {
+        let root = try makeTemporaryDirectory()
+        let vault = makeVault(root: root) { _ in nil }
+        let container = try makeContainer()
+        let context = container.mainContext
+        let type = SiteVisitType(companyId: companyID, slug: "scope", name: "Pending")
+        context.insert(type)
+        let command = try SiteVisitWriteModels.command([type])
+        let operation = SyncOperation(entityType: SyncEntityType.siteVisitType.rawValue, entityId: type.id,
+            operationType: "siteVisitWrite", payload: try JSONEncoder().encode(command), changedFields: ["name"])
+        operation.siteVisitWriteActorId = userID
+        operation.status = "parked"
+        context.insert(operation); try context.save()
+        XCTAssertEqual(try vault.captureUnsentWork(from: context, userId: userID, companyId: companyID, removeOriginalMedia: false), 1)
+        let chosen = try JSONEncoder().encode(SiteVisitWriteResolution(id: UUID(), choice: "current", current: []))
+        operation.siteVisitWriteResolutionData = chosen
+        try context.save()
+        XCTAssertThrowsError(try vault.restore(into: context, userId: userID, companyId: companyID))
+        XCTAssertEqual(operation.siteVisitWriteResolutionData, chosen)
+        XCTAssertEqual(vault.summaries(userId: userID, companyId: companyID).count, 1)
     }
 
     @MainActor

@@ -38,10 +38,10 @@ enum SiteVisitVersionedSync {
         context.insert(operation)
     }
     @MainActor
-    static func deliver(id: UUID, command: SiteVisitWriteCommand) async throws -> SiteVisitWriteReceipt {
-        struct Parameters: Encodable { let p_command_id: UUID; let p_command: SiteVisitWriteCommand }
+    static func deliver(id: UUID, command: SiteVisitWriteCommand, expectedActorId: String) async throws -> SiteVisitWriteReceipt {
+        struct Parameters: Encodable { let p_command_id: UUID; let p_command: SiteVisitWriteCommand; let p_expected_actor: String }
         return try await SupabaseService.shared.client.rpc("apply_site_visit_write",
-            params: Parameters(p_command_id: id, p_command: command)).execute().value
+            params: Parameters(p_command_id: id, p_command: command, p_expected_actor: expectedActorId)).execute().value
     }
     static func execute(operation: SyncOperation, context: ModelContext, companyId: String, actorId: String?,
                         isCurrent: () -> Bool, isolation: isolated (any Actor)? = #isolation) async throws {
@@ -58,15 +58,30 @@ enum SiteVisitVersionedSync {
         let resolution = try resolutionData.map { try JSONDecoder().decode(SiteVisitWriteResolution.self, from: $0) }
         let receipt: SiteVisitWriteReceipt
         if let resolution {
-            receipt = try await deliverResolution(originalId: operation.id, command: command, resolution: resolution)
+            receipt = try await deliverResolution(originalId: operation.id, command: command, resolution: resolution, expectedActorId: actorId)
         } else {
-            receipt = try await deliver(id: operation.id, command: command)
+            receipt = try await deliver(id: operation.id, command: command, expectedActorId: actorId)
         }
         guard isCurrent(), !Task.isCancelled else { throw CancellationError() }
-        let operationId = operation.id
-        let verificationContext = ModelContext(context.container)
+        try applyReceipt(receipt, to: operation, command: command, resolutionData: resolutionData,
+            context: context, companyId: companyId, actorId: actorId)
+    }
+
+    /// A network suspension can leave registered SwiftData objects older than
+    /// edits committed by another context. Apply only against a fresh read.
+    static func applyReceipt(_ receipt: SiteVisitWriteReceipt, to originalOperation: SyncOperation,
+                             command: SiteVisitWriteCommand, resolutionData: Data?,
+                             context originalContext: ModelContext, companyId: String, actorId: String) throws {
+        let resolution = try resolutionData.map { try JSONDecoder().decode(SiteVisitWriteResolution.self, from: $0) }
+        let operationId = originalOperation.id
+        let verificationContext = ModelContext(originalContext.container)
         guard let latest = try verificationContext.fetch(FetchDescriptor<SyncOperation>(predicate: #Predicate { $0.id == operationId })).first,
-              latest.siteVisitWriteResolutionData == resolutionData else { throw CancellationError() }
+              latest.siteVisitWriteResolutionData == resolutionData,
+              latest.siteVisitWriteActorId == actorId,
+              latest.payload == originalOperation.payload,
+              self.command(latest) == command else { throw CancellationError() }
+        let context = verificationContext
+        let operation = latest
         guard receipt.commandId == (resolution?.id ?? operation.id), receipt.entity == command.entity,
               ["saved", "conflict", "resolved", "superseded"].contains(receipt.outcome),
               receipt.rows.allSatisfy({ $0["company_id"]?.string == companyId.lowercased() }) else {
@@ -103,6 +118,7 @@ enum SiteVisitVersionedSync {
                 guard let actual, actual["write_revision"]?.revision != nil, actual.matchesRequested(expected) else { throw SiteVisitWriteError.invalidReceipt }
             }
         }
+        var rebasedCommands: [(PersistentIdentifier, Data)] = []
         try context.transaction {
             operation.siteVisitWriteReceiptData = try JSONEncoder().encode(receipt)
             if receipt.outcome == "conflict", let resolution {
@@ -117,6 +133,7 @@ enum SiteVisitVersionedSync {
                 if var next = self.command(descendant) {
                     next.acknowledgePredecessor(receipt)
                     try setCommand(next, on: descendant)
+                    rebasedCommands.append((descendant.persistentModelID, descendant.payload))
                 }
             }
             for row in command.rows {
@@ -150,7 +167,7 @@ enum SiteVisitVersionedSync {
                         model.deletedAt = Date(); model.needsSync = false; model.lastSyncedAt = Date()
                         model.writeState = .init()
                     }
-                } else if command.entity == "template", let model = try context.fetch(FetchDescriptor<SiteVisitType>(predicate: #Predicate { $0.id == id })).first {
+                } else if command.entity == "template", let model = try SiteVisitTypeServerMerge.fetch(id: id, context: context) {
                     let exactLocal = SiteVisitWriteModels.values(model).matchesRequested(row.values)
                     if receipt.outcome == "conflict" || hasLater || !exactLocal {
                         var state = model.writeState; state.remoteRow = saved
@@ -180,6 +197,16 @@ enum SiteVisitVersionedSync {
                 }
             }
         }
+        // The owning engine still updates status on its registered operation.
+        // Carry the receipt bookkeeping back so that save cannot reinstate an
+        // older resolution while leaving freshly read entity models untouched.
+        for (id, payload) in rebasedCommands {
+            let registered: SyncOperation? = originalContext.registeredModel(for: id)
+            if let registered, registered.siteVisitWriteAttemptedAt == nil { registered.payload = payload }
+        }
+        originalOperation.siteVisitWriteReceiptData = operation.siteVisitWriteReceiptData
+        originalOperation.siteVisitWriteResolutionData = operation.siteVisitWriteResolutionData
+        originalOperation.siteVisitWriteResolutionHistoryData = operation.siteVisitWriteResolutionHistoryData
         if receipt.outcome == "conflict" { throw SiteVisitWriteError.conflict }
     }
     private static func acceptResolved(_ dto: SiteVisitChecklistAnswerDTO, row: SiteVisitWriteJSON,
@@ -201,7 +228,7 @@ enum SiteVisitVersionedSync {
     private static func acceptResolved(_ dto: SiteVisitTypeDTO, row: SiteVisitWriteJSON,
                                        proposal: SiteVisitType, context: ModelContext) throws {
         let id = dto.id
-        let canonical = try context.fetch(FetchDescriptor<SiteVisitType>(predicate: #Predicate { $0.id == id })).first
+        let canonical = try SiteVisitTypeServerMerge.fetch(id: id, context: context)
         let target = canonical ?? proposal
         if target !== proposal && (target.needsSync || target.writeState.baseRevision != nil) {
             var state = target.writeState; state.remoteRow = row; target.writeState = state
@@ -215,23 +242,23 @@ enum SiteVisitVersionedSync {
         if target !== proposal { proposal.deletedAt = Date(); proposal.isDefault = false }
     }
     @MainActor
-    static func review(_ command: SiteVisitWriteCommand) async throws -> [SiteVisitWriteJSON] {
-        struct Parameters: Encodable { let p_command: SiteVisitWriteCommand }
+    static func review(_ command: SiteVisitWriteCommand, expectedActorId: String) async throws -> [SiteVisitWriteJSON] {
+        struct Parameters: Encodable { let p_command: SiteVisitWriteCommand; let p_expected_actor: String }
         struct Response: Decodable { let rows: [SiteVisitWriteJSON] }
         let response: Response = try await SupabaseService.shared.client.rpc("review_site_visit_write",
-            params: Parameters(p_command: command)).execute().value
+            params: Parameters(p_command: command, p_expected_actor: expectedActorId)).execute().value
         guard response.rows.allSatisfy({ $0["company_id"]?.string == command.companyId }) else { throw SiteVisitWriteError.invalidReceipt }
         return response.rows
     }
     @MainActor
-    static func deliverResolution(originalId: UUID, command: SiteVisitWriteCommand, resolution: SiteVisitWriteResolution) async throws -> SiteVisitWriteReceipt {
+    static func deliverResolution(originalId: UUID, command: SiteVisitWriteCommand, resolution: SiteVisitWriteResolution, expectedActorId: String) async throws -> SiteVisitWriteReceipt {
         struct Parameters: Encodable {
             let p_resolution_id: UUID; let p_original_id: UUID; let p_command: SiteVisitWriteCommand
-            let p_choice: String; let p_current: [SiteVisitWriteJSON]
+            let p_choice: String; let p_current: [SiteVisitWriteJSON]; let p_expected_actor: String
         }
         return try await SupabaseService.shared.client.rpc("resolve_site_visit_write", params: Parameters(
             p_resolution_id: resolution.id, p_original_id: originalId, p_command: command,
-            p_choice: resolution.choice, p_current: resolution.current)).execute().value
+            p_choice: resolution.choice, p_current: resolution.current, p_expected_actor: expectedActorId)).execute().value
     }
     private static func hasAncestor(_ id: UUID, operation: SyncOperation, all: [SyncOperation]) -> Bool {
         var cursor = operation.dependsOnId?.lowercased()

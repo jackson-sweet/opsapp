@@ -274,6 +274,63 @@ final class SiteVisitOutboundSyncTests: XCTestCase {
         XCTAssertEqual(completion.operationType, SiteVisitSyncOperation.completionOperationType)
     }
 
+    func testCoalescingCannotSupersedeAnotherActorsCapture() throws {
+        let context = try makeContainer().mainContext
+        let visit = makeVisit(); context.insert(visit)
+        let first = try insert(SiteVisitSyncOperation.parent(visit), in: context)
+        let second = try insert(SiteVisitSyncOperation.parent(visit), in: context)
+        first.siteVisitWriteActorId = userId
+        second.siteVisitWriteActorId = "replacement-actor"
+        let result = SiteVisitOutboundSync.coalesceOperations([first, second])
+        XCTAssertEqual(Set(result.map(\.id)), [first.id, second.id])
+        XCTAssertNotEqual(first.status, "completed")
+        XCTAssertNotEqual(second.status, "completed")
+    }
+
+    func testCaptureRejectsReplacementActorBeforeWrite() async throws {
+        let context = try makeContainer().mainContext
+        let visit = makeVisit(); context.insert(visit)
+        let operation = try insert(SiteVisitSyncOperation.parent(visit), in: context)
+        operation.siteVisitWriteActorId = userId
+        try context.save()
+        let remote = RecordingSiteVisitWriter(visitDTO: try makeVisitDTO(status: .inProgress))
+        do {
+            _ = try await makeSync(remote, sessionUserId: "replacement-actor").executeIfHandled(
+                operation: operation, context: context, activeCompanyId: companyId)
+            XCTFail("Expected original actor binding")
+        } catch SiteVisitWriteError.legacyPayload {}
+        XCTAssertTrue(remote.calls.isEmpty)
+        XCTAssertEqual(operation.siteVisitWriteActorId, userId)
+        operation.siteVisitWriteActorId = nil; try context.save()
+        do {
+            _ = try await makeSync(remote, sessionUserId: userId).executeIfHandled(
+                operation: operation, context: context, activeCompanyId: companyId)
+            XCTFail("Legacy operation must not adopt the current actor")
+        } catch SiteVisitWriteError.legacyPayload {}
+        XCTAssertNil(operation.siteVisitWriteActorId)
+        XCTAssertTrue(remote.calls.isEmpty)
+    }
+
+    func testCaptureTransmitsOriginalActorAndRejectsPostResponseSessionSwitch() async throws {
+        let context = try makeContainer().mainContext
+        let visit = makeVisit(); context.insert(visit)
+        let operation = try insert(SiteVisitSyncOperation.parent(visit), in: context)
+        operation.siteVisitWriteActorId = userId
+        try context.save()
+        var session = userId
+        let remote = RecordingSiteVisitWriter(visitDTO: try makeVisitDTO(status: .inProgress))
+        remote.beforeVisitResponse = { session = "replacement-actor" }
+        let sync = SiteVisitOutboundSync(repositoryFactory: { _ in remote }, sessionUserId: { session })
+        do {
+            _ = try await sync.executeIfHandled(operation: operation, context: context, activeCompanyId: companyId,
+                isCurrent: { session == self.userId })
+            XCTFail("Expected session invalidation")
+        } catch is CancellationError {}
+        XCTAssertEqual(remote.expectedActors, [userId])
+        XCTAssertEqual(operation.siteVisitWriteActorId, userId)
+        XCTAssertTrue(visit.needsSync)
+    }
+
     func test_parentUpsertUsesCurrentModelSnapshotAndClearsDirtyFlag() async throws {
         let context = try makeContainer().mainContext
         let visit = makeVisit()
@@ -289,7 +346,8 @@ final class SiteVisitOutboundSyncTests: XCTestCase {
             mediaManager: SiteVisitMediaSyncManager(
                 uploader: { _, _, _, _, _ in XCTFail("No media expected"); return "" },
                 loader: { _ in throw URLError(.fileDoesNotExist) }
-            )
+            ),
+            sessionUserId: { self.userId }
         )
 
         let handled = try await sync.executeIfHandled(
@@ -323,7 +381,8 @@ final class SiteVisitOutboundSyncTests: XCTestCase {
             mediaManager: SiteVisitMediaSyncManager(
                 uploader: { _, _, _, _, _ in "" },
                 loader: { _ in throw URLError(.fileDoesNotExist) }
-            )
+            ),
+            sessionUserId: { self.userId }
         )
 
         _ = try await sync.executeIfHandled(
@@ -421,6 +480,7 @@ final class SiteVisitOutboundSyncTests: XCTestCase {
         visit.notes = "Legacy visit"
         context.insert(visit)
         let operation = try insert(SiteVisitSyncOperation.parent(visit), in: context)
+        operation.siteVisitWriteActorId = sessionUserId
         operation.status = "inProgress"
         let remote = RecordingSiteVisitWriter(visitDTO: try makeVisitDTO(status: .inProgress))
 
@@ -820,6 +880,7 @@ final class SiteVisitOutboundSyncTests: XCTestCase {
             priority: specification.priority,
             dependsOnId: dependency?.id.uuidString.lowercased()
         )
+        operation.siteVisitWriteActorId = userId
         context.insert(operation)
         return operation
     }
@@ -875,6 +936,7 @@ private final class RecordingSiteVisitWriter: SiteVisitRemoteWriting {
     }
 
     var calls: [Call] = []
+    var expectedActors: [String] = []
     var beforeVisitResponse: (() async -> Void)?
     let visitDTO: SiteVisitDTO
     let activityId: String?
@@ -892,7 +954,12 @@ private final class RecordingSiteVisitWriter: SiteVisitRemoteWriting {
         self.upsertError = upsertError
     }
 
-    func upsertVisit(_ payload: CreateSiteVisitDTO) async throws -> SiteVisitDTO {
+    func deleteVisit(_ id: String, at deletedAt: Date, expectedActorId: String) async throws {
+        try await softDelete(.visits, id: id, at: deletedAt)
+    }
+
+    func upsertVisit(_ payload: CreateSiteVisitDTO, expectedActorId: String) async throws -> SiteVisitDTO {
+        expectedActors.append(expectedActorId)
         calls.append(.upsertVisit(notes: payload.notes))
         await beforeVisitResponse?()
         return visitDTO
@@ -976,7 +1043,8 @@ private final class RecordingSiteVisitWriter: SiteVisitRemoteWriting {
 
     func completeSiteVisit(
         _ id: String,
-        completion: SiteVisitCompletionPayload
+        completion: SiteVisitCompletionPayload,
+        expectedActorId: String
     ) async throws -> SiteVisitCompletionResponseDTO {
         calls.append(.complete(notes: completion.notes))
         await beforeVisitResponse?()

@@ -200,7 +200,7 @@ struct SiteVisitOutboundSync {
                 && $0.operationType != SiteVisitSyncOperation.stageOperationType
         }
         let groups = Dictionary(grouping: crud) {
-            "\($0.entityType)::\($0.entityId.lowercased())"
+            "\($0.entityType)::\($0.entityId.lowercased())::\($0.siteVisitWriteActorId ?? "unbound")"
         }
 
         for group in groups.values {
@@ -363,6 +363,9 @@ struct SiteVisitOutboundSync {
     ) async throws {
         try Task.checkCancellation()
         guard isCurrent() else { throw CancellationError() }
+        guard let expectedActor = operation.siteVisitWriteActorId, expectedActor == sessionUserId()?.lowercased() else {
+            throw SiteVisitWriteError.legacyPayload
+        }
         let visit = try fetchVisit(id: envelope.entityId, context: context)
 
         if operation.operationType == SiteVisitSyncOperation.completionOperationType {
@@ -375,7 +378,7 @@ struct SiteVisitOutboundSync {
             try requireCompany(visit.companyId, expected: envelope.companyId)
             let response = try await repository.completeSiteVisit(
                 envelope.siteVisitId,
-                completion: completion
+                completion: completion, expectedActorId: expectedActor
             )
             try Task.checkCancellation()
             guard isCurrent() else { throw CancellationError() }
@@ -395,11 +398,8 @@ struct SiteVisitOutboundSync {
         }
 
         if operation.operationType == "delete" || visit?.deletedAt != nil {
-            try await repository.softDelete(
-                .visits,
-                id: envelope.entityId,
-                at: visit?.deletedAt ?? Date()
-            )
+            guard let deletedAt = visit?.deletedAt else { throw SiteVisitWriteError.legacyPayload }
+            try await repository.deleteVisit(envelope.entityId, at: deletedAt, expectedActorId: expectedActor)
             try Task.checkCancellation()
             guard isCurrent() else { throw CancellationError() }
             if let visit {
@@ -414,7 +414,7 @@ struct SiteVisitOutboundSync {
         try requireCompany(visit.companyId, expected: envelope.companyId)
         try healAuthorIfNeeded(visit, parentVisitId: nil, context: context)
         let response = try await repository.upsertVisit(
-            try CreateSiteVisitDTO(model: visit)
+            try CreateSiteVisitDTO(model: visit), expectedActorId: expectedActor
         )
         try Task.checkCancellation()
         guard isCurrent() else { throw CancellationError() }

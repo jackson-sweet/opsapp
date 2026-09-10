@@ -24,10 +24,10 @@ enum SiteVisitRemoteRequest: Equatable {
         since: Date?,
         siteVisitId: String?
     )
-    case upsert(table: SiteVisitRemoteTable, companyId: String, payload: Data)
+    case upsert(table: SiteVisitRemoteTable, companyId: String, payload: Data, expectedActorId: String? = nil)
     case update(table: SiteVisitRemoteTable, id: String, companyId: String, payload: Data)
-    case softDelete(table: SiteVisitRemoteTable, id: String, companyId: String, deletedAt: Date)
-    case complete(id: String, companyId: String, payload: Data)
+    case softDelete(table: SiteVisitRemoteTable, id: String, companyId: String, deletedAt: Date, expectedActorId: String? = nil)
+    case complete(id: String, companyId: String, payload: Data, expectedActorId: String)
 }
 
 protocol SiteVisitRemoteTransport: AnyObject {
@@ -38,7 +38,8 @@ protocol SiteVisitRemoteTransport: AnyObject {
 /// Supabase adapter, so ordering/retry behavior can be proved without a live
 /// network while production still has one tenant-scoped repository boundary.
 protocol SiteVisitRemoteWriting: AnyObject {
-    func upsertVisit(_ payload: CreateSiteVisitDTO) async throws -> SiteVisitDTO
+    func deleteVisit(_ id: String, at deletedAt: Date, expectedActorId: String) async throws
+    func upsertVisit(_ payload: CreateSiteVisitDTO, expectedActorId: String) async throws -> SiteVisitDTO
     func upsertArtifact(
         _ payload: UpsertSiteVisitArtifactDTO
     ) async throws -> SiteVisitArtifactDTO
@@ -55,7 +56,8 @@ protocol SiteVisitRemoteWriting: AnyObject {
     ) async throws
     func completeSiteVisit(
         _ id: String,
-        completion: SiteVisitCompletionPayload
+        completion: SiteVisitCompletionPayload,
+        expectedActorId: String
     ) async throws -> SiteVisitCompletionResponseDTO
 }
 
@@ -186,13 +188,14 @@ final class SiteVisitRepository: SiteVisitRemoteWriting, @unchecked Sendable {
     // MARK: - Parent writes
 
     @discardableResult
-    func upsertVisit(_ payload: CreateSiteVisitDTO) async throws -> SiteVisitDTO {
+    func upsertVisit(_ payload: CreateSiteVisitDTO, expectedActorId: String) async throws -> SiteVisitDTO {
         try requireCompany(payload.companyId)
         return try await sendAndDecode(
             .upsert(
                 table: .visits,
                 companyId: companyId,
-                payload: try encoder.encode(payload)
+                payload: try encoder.encode(payload),
+                expectedActorId: expectedActorId
             )
         )
     }
@@ -265,16 +268,23 @@ final class SiteVisitRepository: SiteVisitRemoteWriting, @unchecked Sendable {
         }
     }
 
+    func deleteVisit(_ id: String, at deletedAt: Date, expectedActorId: String) async throws {
+        _ = try await transport.send(.softDelete(table: .visits, id: id.lowercased(), companyId: companyId,
+            deletedAt: deletedAt, expectedActorId: expectedActorId))
+    }
+
     func completeSiteVisit(
         _ id: String,
-        completion: SiteVisitCompletionPayload
+        completion: SiteVisitCompletionPayload,
+        expectedActorId: String
     ) async throws -> SiteVisitCompletionResponseDTO {
         do {
             return try await sendAndDecode(
                 .complete(
                     id: id.lowercased(),
                     companyId: companyId,
-                    payload: try encoder.encode(completion)
+                    payload: try encoder.encode(completion),
+                    expectedActorId: expectedActorId
                 )
             )
         } catch {
@@ -340,12 +350,13 @@ private final class SupabaseSiteVisitRemoteTransport: SiteVisitRemoteTransport {
                 siteVisitId: siteVisitId
             )
 
-        case let .upsert(table, _, payload):
+        case let .upsert(table, _, payload, expectedActorId):
             switch table {
             case .visits:
-                struct CaptureParameters: Encodable { let p_capture: CreateSiteVisitDTO }
+                guard let expectedActorId else { throw SiteVisitWriteError.legacyPayload }
+                struct CaptureParameters: Encodable { let p_capture: CreateSiteVisitDTO; let p_expected_actor: String }
                 return try await client.rpc("save_site_visit_capture",
-                    params: CaptureParameters(p_capture: decoder.decode(CreateSiteVisitDTO.self, from: payload)))
+                    params: CaptureParameters(p_capture: decoder.decode(CreateSiteVisitDTO.self, from: payload), p_expected_actor: expectedActorId))
                     .execute().data
             case .artifacts:
                 return try await upsert(
@@ -381,7 +392,15 @@ private final class SupabaseSiteVisitRemoteTransport: SiteVisitRemoteTransport {
                 .execute()
                 .data
 
-        case let .softDelete(table, id, companyId, deletedAt):
+        case let .softDelete(table, id, companyId, deletedAt, expectedActorId):
+            if table == .visits {
+                guard let expectedActorId else { throw SiteVisitWriteError.legacyPayload }
+                struct DeleteParameters: Encodable {
+                    let p_site_visit_id: String; let p_deleted_at: String; let p_expected_actor: String
+                }
+                return try await client.rpc("delete_site_visit_capture", params: DeleteParameters(
+                    p_site_visit_id: id, p_deleted_at: SupabaseDate.format(deletedAt), p_expected_actor: expectedActorId)).execute().data
+            }
             let payload = SiteVisitSoftDeleteDTO(
                 deletedAt: SupabaseDate.format(deletedAt)
             )
@@ -394,14 +413,15 @@ private final class SupabaseSiteVisitRemoteTransport: SiteVisitRemoteTransport {
                 .execute()
                 .data
 
-        case let .complete(id, _, payload):
+        case let .complete(id, _, payload, expectedActorId):
             let completion = try decoder.decode(SiteVisitCompletionPayload.self, from: payload)
             let params = CompleteSiteVisitRPCParams(
                 p_site_visit_id: id,
-                p_completion: completion
+                p_completion: completion,
+                p_expected_actor: expectedActorId
             )
             return try await client
-                .rpc("complete_site_visit_guarded", params: params)
+                .rpc("complete_site_visit_capture", params: params)
                 .execute()
                 .data
         }

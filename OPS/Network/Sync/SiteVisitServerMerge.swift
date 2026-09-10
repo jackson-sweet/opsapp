@@ -615,8 +615,9 @@ enum SiteVisitServerMerge {
             )
         }
         try requireCompany(logical.companyId, expected: dto.companyId)
+        let logicalOperations = try fetchChecklistOperations(answerId: logical.id, in: context)
         if logical.needsSync || logical.writeState.baseRevision != nil ||
-            (try fetchChecklistOperations(answerId: logical.id, in: context)).contains(where: { !checklistResolvedStatuses.contains($0.status) }) {
+            logicalOperations.contains(where: { !checklistResolvedStatuses.contains($0.status) }) {
             // Preserve logical-ID collisions as two reviewable versions. Never
             // retarget an immutable attempted write to a different server row.
             return ChecklistAnswerResolution(answer: logical, canonicalId: logical.id, operationMigrations: [])

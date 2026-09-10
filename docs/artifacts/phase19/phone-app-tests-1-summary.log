@@ -1,0 +1,2 @@
+/Users/jacksonsweet/Projects/OPS/.worktrees/ops-mcp-site-visits-ios-p19/OPS/Network/Sync/SiteVisitServerMerge.swift:618:72: error: operator can throw but expression is not marked with 'try'
+** TEST FAILED **

@@ -500,7 +500,11 @@ final class SiteVisitDrainStressTests: XCTestCase {
 // MARK: - Offline repository stub
 
 private final class StubSiteVisitWriter: SiteVisitRemoteWriting {
-    func upsertVisit(_ payload: CreateSiteVisitDTO) async throws -> SiteVisitDTO {
+    func deleteVisit(_ id: String, at deletedAt: Date, expectedActorId: String) async throws {
+        try await softDelete(.visits, id: id, at: deletedAt)
+    }
+
+    func upsertVisit(_ payload: CreateSiteVisitDTO, expectedActorId: String) async throws -> SiteVisitDTO {
         try JSONDecoder().decode(SiteVisitDTO.self, from: Data("""
         {
           "id":"\(payload.id)",
@@ -585,7 +589,8 @@ private final class StubSiteVisitWriter: SiteVisitRemoteWriting {
 
     func completeSiteVisit(
         _ id: String,
-        completion: SiteVisitCompletionPayload
+        completion: SiteVisitCompletionPayload,
+        expectedActorId: String
     ) async throws -> SiteVisitCompletionResponseDTO {
         throw SiteVisitRepositoryError.transport("No completion in this backlog")
     }

@@ -48,6 +48,7 @@ final class SiteVisitRecoveryVault {
         case invalidKey
         case keychain(OSStatus)
         case corruptArchive
+        case mediaDestinationUnavailable
         case identityConflict(entity: String, id: String)
 
         var errorDescription: String? {
@@ -58,8 +59,10 @@ final class SiteVisitRecoveryVault {
                 return "The site visit recovery keychain failed (\(status))."
             case .corruptArchive:
                 return "A protected site visit archive is damaged."
+            case .mediaDestinationUnavailable:
+                return "The photo restore location is unavailable. Your archive is still saved."
             case .identityConflict(let entity, let id):
-                return "Protected \(entity) \(id) belongs to another company."
+                return "Protected \(entity) \(id) differs from local work. Both versions remain saved."
             }
         }
     }
@@ -977,9 +980,11 @@ final class SiteVisitRecoveryVault {
             )
             try protectContents(of: temporary)
             if fileManager.fileExists(atPath: destination.path) {
-                try fileManager.removeItem(at: destination)
+                _ = try fileManager.replaceItemAt(destination, withItemAt: temporary,
+                    backupItemName: nil, options: .usingNewMetadataOnly)
+            } else {
+                try fileManager.moveItem(at: temporary, to: destination)
             }
-            try fileManager.moveItem(at: temporary, to: destination)
         } catch {
             try? fileManager.removeItem(at: temporary)
             throw error
@@ -1003,7 +1008,7 @@ final class SiteVisitRecoveryVault {
     private func restoreMedia(for entry: StoredEntry) throws {
         let key = try symmetricKey()
         for media in entry.archive.media {
-            guard let destination = mediaURLResolver(media.localId) else { continue }
+            guard let destination = mediaURLResolver(media.localId) else { throw VaultError.mediaDestinationUnavailable }
             let encryptedURL = entry.directory.appendingPathComponent(media.encryptedFilename)
             let plaintext = try decrypt(Data(contentsOf: encryptedURL), with: key)
             try fileManager.createDirectory(
@@ -1022,9 +1027,10 @@ final class SiteVisitRecoveryVault {
         let company = archive.identity.companyId
         for snapshot in archive.templates ?? [] {
             let id = snapshot.dto.id
-            if let existing = try modelContext.fetch(FetchDescriptor<SiteVisitType>(predicate: #Predicate { $0.id == id })).first {
+            if let existing = try SiteVisitTypeServerMerge.fetch(id: id, context: modelContext) {
                 try validateCompany(existing.companyId, company, entity: "checklist template", id: id)
-                if existing.needsSync && (existing.fields != snapshot.dto.fields || existing.name != snapshot.dto.name || existing.siteVisitWriteStateData != snapshot.state) {
+                if (existing.needsSync || existing.writeState.baseRevision != nil) &&
+                    (SiteVisitWriteModels.values(existing) != SiteVisitWriteModels.values(snapshot.makeModel()) || existing.siteVisitWriteStateData != snapshot.state) {
                     throw VaultError.identityConflict(entity: "newer local checklist", id: id)
                 }
                 snapshot.apply(to: existing)
@@ -1052,7 +1058,8 @@ final class SiteVisitRecoveryVault {
         for snapshot in archive.answers {
             if let existing = existingAnswers.first(where: { Self.canonical($0.id) == Self.canonical(snapshot.id) }) {
                 try validateCompany(existing.companyId, company, entity: "answer", id: snapshot.id)
-                if existing.needsSync && (existing.answerValueData != snapshot.answerValueData || existing.siteVisitWriteStateData != snapshot.siteVisitWriteStateData) {
+                if (existing.needsSync || existing.writeState.baseRevision != nil) &&
+                    (SiteVisitWriteModels.values(existing) != SiteVisitWriteModels.values(snapshot.makeModel()) || existing.siteVisitWriteStateData != snapshot.siteVisitWriteStateData) {
                     throw VaultError.identityConflict(entity: "newer local answer", id: snapshot.id)
                 }
                 snapshot.apply(to: existing)
@@ -1076,7 +1083,12 @@ final class SiteVisitRecoveryVault {
             }
             if let existing = existingOperations.first(where: { $0.id == snapshot.id }) {
                 guard existing.payload == snapshot.payload,
-                      existing.siteVisitWriteActorId == snapshot.siteVisitWriteActorId else {
+                      existing.siteVisitWriteActorId == snapshot.siteVisitWriteActorId,
+                      existing.siteVisitWriteAttemptedAt == snapshot.siteVisitWriteAttemptedAt,
+                      existing.siteVisitWriteReceiptData == snapshot.siteVisitWriteReceiptData,
+                      existing.siteVisitWriteResolutionData == snapshot.siteVisitWriteResolutionData,
+                      existing.siteVisitWriteResolutionHistoryData == snapshot.siteVisitWriteResolutionHistoryData,
+                      existing.status != "completed" || snapshot.status == "completed" else {
                     throw VaultError.identityConflict(entity: "saved command", id: snapshot.id.uuidString)
                 }
                 snapshot.apply(to: existing)

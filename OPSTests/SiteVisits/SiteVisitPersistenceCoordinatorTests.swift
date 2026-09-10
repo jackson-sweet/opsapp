@@ -567,6 +567,31 @@ final class SiteVisitPersistenceCoordinatorTests: XCTestCase {
         XCTAssertEqual(SiteVisitVersionedSync.command(next)?.rows[0].values["answer_value"]?["text"], .string("three"))
     }
 
+    func testCaptureAndCompletionRetainTheirEnqueuedActorAcrossAccountChange() throws {
+        let previous = UserDefaults.standard.string(forKey: "currentUserId")
+        defer { if let previous { UserDefaults.standard.set(previous, forKey: "currentUserId") } else { UserDefaults.standard.removeObject(forKey: "currentUserId") } }
+        UserDefaults.standard.set(userId, forKey: "currentUserId")
+        let context = try makeContainer().mainContext
+        let coordinator = SiteVisitPersistenceCoordinator(modelContext: context, companyId: companyId)
+        let visit = makeVisit()
+        try coordinator.commit { context.insert(visit) }
+        let original = try XCTUnwrap(context.fetch(FetchDescriptor<SyncOperation>()).first)
+        XCTAssertEqual(original.siteVisitWriteActorId, userId)
+        let originalPayload = original.payload
+        UserDefaults.standard.set("replacement-actor", forKey: "currentUserId")
+        try coordinator.commit { visit.notes = "Changed locally" }
+        XCTAssertEqual(original.siteVisitWriteActorId, userId)
+        XCTAssertEqual(original.payload, originalPayload)
+        XCTAssertEqual(try context.fetchCount(FetchDescriptor<SyncOperation>()), 2)
+        UserDefaults.standard.set(userId, forKey: "currentUserId")
+        try coordinator.commit(completing: visit) { visit.status = .completed; visit.completedAt = Date() }
+        let completion = try XCTUnwrap(context.fetch(FetchDescriptor<SyncOperation>()).first { $0.operationType == SiteVisitSyncOperation.completionOperationType })
+        XCTAssertEqual(completion.siteVisitWriteActorId, userId)
+        UserDefaults.standard.set("replacement-actor", forKey: "currentUserId")
+        completion.status = "parked"; try context.save()
+        XCTAssertEqual(completion.siteVisitWriteActorId, userId)
+    }
+
     private func makeVisit() -> SiteVisit {
         SiteVisit(
             id: visitId,

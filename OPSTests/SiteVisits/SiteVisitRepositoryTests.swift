@@ -81,18 +81,28 @@ final class SiteVisitRepositoryTests: XCTestCase {
 
         let result = try await repository.completeSiteVisit(
             visitId,
-            completion: SiteVisitCompletionPayload(notes: "Scope complete", photos: [])
+            completion: SiteVisitCompletionPayload(notes: "Scope complete", photos: []), expectedActorId: userId
         )
 
         XCTAssertEqual(result.visit.status, .completed)
         XCTAssertEqual(transport.requests.count, 1)
-        guard case let .complete(id, scopedCompanyId, payload) = transport.requests[0] else {
+        guard case let .complete(id, scopedCompanyId, payload, expectedActorId) = transport.requests[0] else {
             return XCTFail("Completion must use the guarded RPC request")
         }
         XCTAssertEqual(id, visitId)
+        XCTAssertEqual(expectedActorId, userId)
         XCTAssertEqual(scopedCompanyId, companyId)
         let object = try XCTUnwrap(JSONSerialization.jsonObject(with: payload) as? [String: Any])
         XCTAssertEqual(object["notes"] as? String, "Scope complete")
+    }
+
+    func testCaptureDeletionCarriesOriginalActorAndTimestamp() async throws {
+        let transport = RecordingSiteVisitTransport()
+        let repository = SiteVisitRepository(companyId: companyId, transport: transport)
+        let deletedAt = Date(timeIntervalSince1970: 100)
+        try await repository.deleteVisit(visitId, at: deletedAt, expectedActorId: userId)
+        XCTAssertEqual(transport.requests, [.softDelete(table: .visits, id: visitId, companyId: companyId,
+            deletedAt: deletedAt, expectedActorId: userId)])
     }
 
     func testPayloadFromAnotherCompanyIsRejectedBeforeTransport() async throws {
@@ -108,7 +118,7 @@ final class SiteVisitRepositoryTests: XCTestCase {
         let payload = try CreateSiteVisitDTO(model: visit)
 
         do {
-            _ = try await repository.upsertVisit(payload)
+            _ = try await repository.upsertVisit(payload, expectedActorId: userId)
             XCTFail("Expected a tenant mismatch")
         } catch let error as SiteVisitRepositoryError {
             guard case .companyMismatch = error else {
@@ -263,9 +273,9 @@ private extension SiteVisitRemoteRequest {
     var table: SiteVisitRemoteTable? {
         switch self {
         case .fetch(let table, _, _, _),
-             .upsert(let table, _, _),
+             .upsert(let table, _, _, _),
              .update(let table, _, _, _),
-             .softDelete(let table, _, _, _):
+             .softDelete(let table, _, _, _, _):
             return table
         case .complete:
             return nil

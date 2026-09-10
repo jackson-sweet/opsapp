@@ -155,6 +155,15 @@ final class LeadsFieldReports0908SnapshotTests: XCTestCase {
         )
     }
 
+    /// Bug 2b085519 — a booking from two weeks ago that nobody closed reads
+    /// as missed with its real date, and offers REBOOK / CANCEL, not START.
+    func testVisitBannerForAnEarlierDayReadsMissed() throws {
+        try snapshotDossierHead(
+            scheduledAt: now.addingTimeInterval(-13 * 86_400),
+            name: "2b085519_banner_missed"
+        )
+    }
+
     func testVisitBannerAbsentWithNoBooking() throws {
         try snapshotDossierHead(scheduledAt: nil, name: "52cc8dae_banner_absent")
     }

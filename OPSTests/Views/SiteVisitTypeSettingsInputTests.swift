@@ -41,7 +41,7 @@ final class SiteVisitTypeSettingsInputTests: XCTestCase {
     }
 
     func testDescriptionCaretAndPlaceholderShareTokenizedInsets() throws {
-        try withEditor { _, host, textView in
+        try withEditor { draft, host, textView in
             let inset = OPSStyle.Layout.spacing3
             XCTAssertEqual(textView.textContainerInset, UIEdgeInsets(
                 top: inset, left: inset, bottom: inset, right: inset
@@ -65,13 +65,53 @@ final class SiteVisitTypeSettingsInputTests: XCTestCase {
             XCTAssertEqual(placeholder.font, textView.font)
             XCTAssertEqual(placeholder.frame.minX, inset, accuracy: 0.5)
             XCTAssertEqual(placeholder.frame.minY, inset, accuracy: 0.5)
-            XCTAssertEqual(
-                textView.caretRect(for: textView.beginningOfDocument).minX,
-                placeholder.frame.minX,
-                accuracy: 0.5
-            )
+            let emptyCaret = textView.caretRect(for: textView.beginningOfDocument)
+            // The insertion caret is painted around the text origin. Its left
+            // edge includes half the caret width; it is not the glyph origin.
+            XCTAssertGreaterThan(emptyCaret.width, 0)
+            XCTAssertEqual(emptyCaret.midX, placeholder.frame.minX, accuracy: 0.5)
             XCTAssertEqual(textView.bounds.height, OPSStyle.Layout.inputHeight * 2, accuracy: 0.5)
             XCTAssertTrue(textView.isScrollEnabled)
+
+            draft.text = "Measure deck."
+            XCTAssertTrue(waitUntil { textView.text == draft.text })
+            host.view.layoutIfNeeded()
+            textView.layoutIfNeeded()
+            XCTAssertTrue(placeholder.isHidden)
+
+            // Inspect the real TextKit 2 layout, without accessing the legacy
+            // layoutManager property (which would replace the layout engine).
+            let layoutManager = try XCTUnwrap(textView.textLayoutManager)
+            let contentManager = try XCTUnwrap(layoutManager.textContentManager)
+            layoutManager.ensureLayout(for: contentManager.documentRange)
+            let fragment = try XCTUnwrap(layoutManager.textLayoutFragment(
+                for: contentManager.documentRange.location
+            ))
+            let line = try XCTUnwrap(fragment.textLineFragments.first)
+            let glyphOriginX = textView.textContainerInset.left
+                + fragment.layoutFragmentFrame.minX
+                + line.typographicBounds.minX
+                + line.glyphOrigin.x
+            let populatedCaret = textView.caretRect(for: textView.beginningOfDocument)
+            let geometry = """
+            inset: \(inset)
+            placeholder: \(placeholder.frame)
+            emptyCaret: \(emptyCaret)
+            populatedCaret: \(populatedCaret)
+            layoutFragment: \(fragment.layoutFragmentFrame)
+            lineBounds: \(line.typographicBounds)
+            lineGlyphOrigin: \(line.glyphOrigin)
+            glyphOriginInTextViewX: \(glyphOriginX)
+            """
+            let attachment = XCTAttachment(string: geometry)
+            attachment.name = "description-text-origin-geometry"
+            attachment.lifetime = .keepAlways
+            add(attachment)
+            print("Description text origin geometry:\n\(geometry)")
+
+            XCTAssertEqual(glyphOriginX, placeholder.frame.minX, accuracy: 0.5)
+            XCTAssertEqual(emptyCaret.midX, glyphOriginX, accuracy: 0.5)
+            XCTAssertEqual(populatedCaret.midX, glyphOriginX, accuracy: 0.5)
         }
     }
 
